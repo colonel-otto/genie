@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
-use crate::objects::masters::master_type::BUILDING;
+use crate::objects::masters::master_type::{BUILDING, COMBAT};
 use crate::production::spawn::{
     BuildSite, INSIDE, PASSABLE, REACH, Tested, hill_fails, placement_terrains,
 };
@@ -54,6 +54,9 @@ pub struct Near {
     /// The terrain of its tile (`+0x2e8`, taken as the tile it stands on) is a forest
     /// ([`crate::map::terrain::TerrainKind::forest`]).
     pub forest_tile: bool,
+    /// Its master's outline radii and height (`+0x688`, `+0x68c`, `+0x690`), BUILD's box for
+    /// obstruction types 11 to 13.
+    pub outline: [f32; 3],
 }
 
 impl Near {
@@ -181,8 +184,8 @@ pub(super) fn overlapping(
 /// BUILD's placement test (`FUN_140e7a400`'s call of the master's slot 0x50, the building
 /// master's `FUN_14123aee0` with BUILD's flags: `p6` human, `p7`, `p8`, `p9` 1, `p10` 0, `p11` 1,
 /// no object of its own, `p13` 0, `p14` 1): 0 when the foundation may go to `p`, else the game's
-/// code. First the static test (`FUN_141123f80` through `FUN_141264db0`, whose scans are off)
-/// over the clearance box: off the map 7; per tile, columns then rows, a terrain the
+/// code. First the static test (`FUN_141123f80` through `FUN_141264db0`; their scans run only
+/// for the Build's test, [`BuildSite::scans`]) over the box of the site's radii: off the map 7; per tile, columns then rows, a terrain the
 /// restriction forbids 2 (`DAT_142eb7e5c`'s threshold, the spawn's); a human who explored none of
 /// the tiles 5; a hill mode's tile ([`hill_fails`]) 3. Then the building master's scan of the tiles within 8 (rows, then columns; each
 /// tile's objects in its list's order): an object the player sees, or on a tile it never
@@ -194,9 +197,7 @@ pub(super) fn overlapping(
 /// own tile), not buildable on, whose box with a
 /// height overlaps the clearance box: 6. Not modelled: the placement terrains, hill modes, the
 /// zone test (`FUN_1415c6400`), the editor (game mode 4), a fogged object of fog visibility 3,
-/// game type 7's test of allies, the
-/// outline radii of
-/// obstruction types 11 to 13.
+/// game type 7's test of allies.
 pub fn build_placement(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
@@ -204,6 +205,9 @@ pub fn build_placement(
 ) -> Result<u8, GenieError> {
     if let Some(code) = build_static_test(site, map, p)? {
         return Ok(code);
+    }
+    if site.scans && static_scans_find(site, map, p)? {
+        return Ok(6);
     }
     // FUN_14123aee0's scan
     let [w, h] = map.size();
@@ -216,13 +220,58 @@ pub fn build_placement(
                 if site.own.contains(&o.id) {
                     continue;
                 }
-                if build_sees(site, map, &o, sight)? && blocks_build(site, map, &o, p)? {
+                if build_sees(site, map, &o, sight)? && blocks_build(site, map, &o, p) {
                     return Ok(6);
                 }
             }
         }
     }
     Ok(0)
+}
+
+/// The static scans of the Build's test (`p11` and `p13` 1, [`BuildSite::scans`]), for a master with
+/// a height ([`BuildSite::tall`]) and radii: `FUN_141123f80`'s, then `FUN_141264db0`'s, each over
+/// the tiles within [`REACH`] (rows, then columns; each tile's objects in its list's order) for an
+/// object other than the site's own (`p12`), below state 7, not buildable on, no desolid building
+/// (`FUN_141264db0`'s passes classes 51 and 54), with a height (`FUN_141123f80`'s gives a tree's
+/// farm and an obstructing building one, `FUN_141264db0`'s an obstructing building; the
+/// latter passes over the units, type 70), whose box overlaps the site's: true when one does
+/// (the game's code 6).
+fn static_scans_find(
+    site: &BuildSite<'_>,
+    map: &dyn PlaceMap,
+    p: [f32; 2],
+) -> Result<bool, GenieError> {
+    let [rx, ry] = site.radius;
+    if !site.tall || !(0.0 < rx || 0.0 < ry) {
+        return Ok(false);
+    }
+    let first = |o: &Near| {
+        let listed = !site.own.contains(&o.id)
+            && o.state < 7
+            && o.buildable_on != 1
+            && (o.kind != BUILDING || !o.desolid);
+        let tall = o.tall
+            || (site.class == class::TREE && o.class == class::FARM)
+            || (o.kind == BUILDING && o.obstruction_type != 0);
+        listed.then_some(tall)
+    };
+    if !overlapping(map, p, site.radius, &first)?.is_empty() {
+        return Ok(true);
+    }
+    let second = |o: &Near| {
+        let listed = !site.own.contains(&o.id)
+            && o.state < 7
+            && o.buildable_on != 1
+            && o.kind != COMBAT
+            && (o.kind != BUILDING
+                || o.class == class::CLASS_51
+                || o.class == class::CLASS_54
+                || !o.desolid);
+        let tall = o.tall || (o.kind == BUILDING && !matches!(o.obstruction_type, 0 | 12));
+        listed.then_some(tall)
+    };
+    Ok(!overlapping(map, p, site.radius, &second)?.is_empty())
 }
 
 /// BUILD's static test (`FUN_141123f80` through `FUN_141264db0`) over the clearance box at `p`:
@@ -235,7 +284,7 @@ pub(super) fn build_static_test(
     p: [f32; 2],
 ) -> Result<Option<u8>, GenieError> {
     let [x, y] = p;
-    let [rx, ry] = site.clearance;
+    let [rx, ry] = site.radius;
     let [w, h] = map.size();
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
     if x - rx < 0.0 || w as f32 <= far_x || y - ry < 0.0 || h as f32 <= far_y {
@@ -337,31 +386,33 @@ pub(super) fn build_sees(
 
 /// Whether an object BUILD's scan counts blocks the foundation at `p`: one BUILD neither
 /// ignores ([`build_ignores`]) nor passes ([`build_passes`]), whose box with a height overlaps
-/// the clearance box. Obstruction types 11 to 13 are not modelled.
+/// the site's box. Its box is its master's radii and height, for obstruction types 11 to 13 its
+/// outline's ([`Near::outline`]); a height of 0 counts as 1 for a building and for an object
+/// holding food, wood, stone or gold.
 pub(super) fn blocks_build(
     site: &BuildSite<'_>,
     map: &dyn PlaceMap,
     o: &Near,
     [x, y]: [f32; 2],
-) -> Result<bool, GenieError> {
+) -> bool {
     if build_ignores(site, map, o) || build_passes(site, map, o) {
-        return Ok(false);
+        return false;
     }
-    if (11..=13).contains(&o.obstruction_type) {
-        return Err(GenieError::unsupported(
-            "an object of obstruction types 11 to 13 near a BUILD (its outline radii)",
-        ));
-    }
-    // no height: a building's counts as 1, and so does that of an object holding food,
-    // wood, stone or gold
-    let tall = o.tall || o.kind == BUILDING || o.holds;
-    let [rx, ry] = site.clearance;
-    let [orx, ory] = o.radius;
-    Ok(0.0 < orx
+    let ([orx, ory], tall) = if (11..=13).contains(&o.obstruction_type) {
+        let [ox, oy, oz] = o.outline;
+        (
+            [ox, oy],
+            0.0 < oz || (oz == 0.0 && (o.kind == BUILDING || o.holds)),
+        )
+    } else {
+        (o.radius, o.tall || o.kind == BUILDING || o.holds)
+    };
+    let [rx, ry] = site.radius;
+    0.0 < orx
         && 0.0 < ory
         && tall
         && (o.position[0] - x).abs() < orx + rx
-        && (o.position[1] - y).abs() < ory + ry)
+        && (o.position[1] - y).abs() < ory + ry
 }
 
 /// The objects BUILD's scan ignores: one dead, a moving one where the site does not obstruct,

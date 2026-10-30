@@ -288,6 +288,9 @@ pub struct Master {
     /// `+0x688`, `+0x68c`: the `.dat`'s `outline_size` (x, y), an obstruction-type-11 object's
     /// shape radii (`FUN_141054fe0`).
     pub outline: [f32; 2],
+    /// `+0x690`: the `.dat`'s `outline_size` z, the height BUILD's scan takes for an object of
+    /// obstruction types 11 to 13 (`FUN_14123aee0`).
+    pub outline_height: f32,
     /// `+0x5fc`, `clearance_size`: a completed building's foundation terrain covers its position
     /// plus and minus this.
     pub clearance: [f32; 2],

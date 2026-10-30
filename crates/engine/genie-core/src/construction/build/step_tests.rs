@@ -507,6 +507,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     };
     t.spatial.insert(BUILDER, me);
     own(&mut t, HOUSE).place_for_test([30.0, 88.0, 0.0]);
+    sighted(&mut t);
     let _ = code(&mut t, 20);
     let b = build(&t);
     let walk = b.move_to.unwrap();
@@ -753,6 +754,13 @@ fn stump(t: &mut World) {
     assert_ne!(t.spatial.tiles().word(10, 10).unwrap() >> 23, 0);
 }
 
+/// The players' sight and the terrain the Build's placement test reads
+/// ([`crate::world::tests::placeable_on`]) over the world's map.
+fn sighted(t: &mut World) {
+    let map = t.spatial.map;
+    crate::world::tests::placeable_on(t, map);
+}
+
 /// A Build waiting for the house's footprint (state 222), its wait run out in this update.
 fn placing() -> BuildAction {
     BuildAction {
@@ -772,6 +780,7 @@ fn placing() -> BuildAction {
 fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
     let mut t = site_world(class::VILLAGER, [12.5, 10.5, 0.0], placing());
     stump(&mut t);
+    sighted(&mut t);
     let _ = code(&mut t, 20);
     assert_eq!(t.spatial.get(77).map(|p| p.obstruction), Some(None));
     assert_eq!(t.spatial.tiles().word(10, 10).unwrap() >> 23, 0);
@@ -794,6 +803,7 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
         let mut t = site_world(class::VILLAGER, [12.5, 10.5, 0.0], placing());
         t.players[1].computer = computer;
         stump(&mut t);
+        sighted(&mut t);
         // player 3's mark on a tile of the footprint (10, 10)
         t.spatial
             .tiles_mut_for_test()
@@ -815,6 +825,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
     for (waits, state, after) in [(MAX_WAITS, HALTED, 0), (3, WAIT, 4)] {
         let mut t = site_world(class::VILLAGER, [12.5, 10.5, 0.0], placing());
         stump(&mut t);
+        sighted(&mut t);
         own(&mut t, BUILDER).footprint_waits = waits;
         let mut other = own(&mut t, BUILDER).clone();
         other.id = 6;
@@ -1305,4 +1316,126 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
         [ActionKind::Build.value(), 0, 0],
     );
     assert_eq!(heard(&t), [no_site]);
+}
+
+/// Player 1's standing lumber camp 30 (master 562, built) at `at`.
+fn camp(t: &mut World, at: [f32; 3]) {
+    let mut camp = own(t, HOUSE).clone();
+    camp.id = 30;
+    camp.life.master_id = 562;
+    camp.life.state = 2;
+    camp.construction = Some(construction(25.0, 0, false));
+    camp.place_for_test(at);
+    t.players[1].objects.push(camp);
+    t.spatial.insert(30, placed(at, 1.0, 3, 562));
+}
+
+/// Player 1's villager 6, a copy of the builder without actions, standing at `at`.
+fn villager(t: &mut World, at: [f32; 3]) {
+    let mut other = own(t, BUILDER).clone();
+    other.id = 6;
+    other.actions = ActionList::default();
+    other.place_for_test(at);
+    t.players[1].objects.push(other);
+    let me = *t.spatial.get(BUILDER).unwrap();
+    t.spatial.insert(
+        6,
+        Placed {
+            position: at,
+            speed: 0.8,
+            ..me
+        },
+    );
+}
+
+/// The house's desolid annex 10029 (a copy of the house, `+0xbb8` the house) at `at`.
+fn annex(t: &mut World, at: [f32; 3]) -> i32 {
+    const ANNEX: i32 = 10029;
+    let mut annex = own(t, HOUSE).clone();
+    annex.id = ANNEX;
+    annex.annex_of = Some(HOUSE);
+    annex.place_for_test(at);
+    t.players[1].objects.push(annex);
+    t.spatial.insert(ANNEX, placed(at, 1.0, 3, 70));
+    t.spatial.set_annex(ANNEX, Some(HOUSE));
+    ANNEX
+}
+
+/// How often villager 6 was sent off (notify 0x216).
+fn sent_off(t: &World) -> usize {
+    let ai = t.players[1].objects.by_id(6).unwrap().ai.as_ref().unwrap();
+    ai.notifies
+        .iter()
+        .filter(|n| n.kind == crate::unit_ai::SENT_OFF)
+        .count()
+}
+
+/// `set_state(7)`'s placement test of the foundation (its master's slot 0x50, `FUN_14123aee0`):
+/// a standing building of the player whose box overlaps the house's gives 6, and `set_state(2)`
+/// halts the Build (the interface's event 0x88, not held): the standing sprite, the foundation
+/// let go, no point.
+#[test]
+fn a_foundation_a_building_overlaps_halts_the_build() {
+    let mut t = site_world(class::VILLAGER, [12.8, 10.5, 0.0], placing());
+    sighted(&mut t);
+    camp(&mut t, [11.6, 10.5, 0.0]);
+    let _ = code(&mut t, 20);
+    let b = build(&t);
+    assert_eq!((b.state, b.target, b.point), (HALTED, -1, [-1.0; 3]));
+    assert!(stands(&t));
+}
+
+/// The annexes' tests come first (`0x140aae200` case 7, the foundation's `+0xbc0`): a unit on
+/// an annex that may stay is sent off (`FUN_14123bb20`) and the builder waits for it (`bVar21`,
+/// `LAB_140aaf5d4`) though no unit stands on the foundation; an annex a building overlaps
+/// halts the Build and sends no unit off.
+#[test]
+fn an_annex_s_test_sends_its_units_off_or_halts_the_build() {
+    for blocked in [false, true] {
+        let mut t = site_world(class::VILLAGER, [15.2, 10.5, 0.0], placing());
+        sighted(&mut t);
+        let _ = annex(&mut t, [12.5, 10.5, 0.0]);
+        villager(&mut t, [12.6, 10.6, 0.0]);
+        if blocked {
+            camp(&mut t, [14.0, 10.5, 0.0]);
+        }
+        let _ = code(&mut t, 20);
+        let b = build(&t);
+        if blocked {
+            assert_eq!((b.state, b.target, sent_off(&t)), (HALTED, -1, 0));
+        } else {
+            assert_eq!((b.state, b.target, sent_off(&t)), (WAIT, HOUSE, 1));
+            assert_eq!(builder(&t).footprint_waits, 1);
+        }
+    }
+}
+
+/// A builder outside the foundation's footprint but on an annex's, nearer to its centre than the
+/// foundation's radii (`0x140aae200` case 7's loop over `+0xbc0`), walks off the annex
+/// (`set_state(223)` with the annex as the target) when units stand on the foundation; the
+/// foundation is its target again.
+#[test]
+fn a_builder_on_an_annex_walks_off_it() {
+    let mut t = site_world(class::VILLAGER, [12.4, 10.5, 0.0], placing());
+    t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+    t.spatial.insert(HOUSE, placed(AT_HOUSE, 1.0, 3, 70));
+    let me = Placed {
+        obstruction_type: 5,
+        ..placed([12.4, 10.5, 0.0], 0.2, class::VILLAGER, 83)
+    };
+    t.spatial.insert(BUILDER, me);
+    sighted(&mut t);
+    let a = annex(&mut t, [12.5, 10.5, 0.0]);
+    villager(&mut t, [10.6, 10.6, 0.0]);
+    let _ = code(&mut t, 20);
+    let b = build(&t);
+    let walk = b.move_to.unwrap();
+    assert_eq!((b.state, b.target, sent_off(&t)), (CLEAR, HOUSE, 1));
+    let [x, y, _] = walk.point;
+    let off = |c: f32, p: f32| 1.0 < (p - c).abs();
+    assert!(
+        off(12.5, x) || off(10.5, y),
+        "{:?} off annex {a}",
+        walk.point
+    );
 }

@@ -186,6 +186,7 @@ fn sheep(state: u8) -> Near {
         holds: false,
         hp: 7.0,
         forest_tile: false,
+        outline: [0.0; 3],
     }
 }
 
@@ -261,7 +262,9 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
     let site = BuildSite {
         player: 1,
         human: true,
-        clearance: [1.0, 1.0],
+        radius: [1.0, 1.0],
+        tall: false,
+        scans: false,
         class: 3,
         obstructs: true,
         restriction: &[1.0],
@@ -864,13 +867,15 @@ impl PlaceMap for Dark {
     }
 }
 
-/// Player 1's house site (class 3, clearance 1, obstructing) on terrain 0, which `restriction`
+/// Player 1's house site (class 3, radii 1, obstructing, no height) on terrain 0, which `restriction`
 /// rates; `human` or not.
 const fn house_site(restriction: &[f32], human: bool) -> BuildSite<'_> {
     BuildSite {
         player: 1,
         human,
-        clearance: [1.0, 1.0],
+        radius: [1.0, 1.0],
+        tall: false,
+        scans: false,
         class: 3,
         obstructs: true,
         restriction,
@@ -1090,7 +1095,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         ..sheep(2)
     };
     let blocks = |site: &BuildSite<'_>, o: Near| blocks_build(site, &flat, &o, [21.0, 21.0]);
-    assert_eq!(blocks(&site, house), Ok(true));
+    assert!(blocks(&site, house));
     for passed in [
         Near { state: 3, ..house },
         Near {
@@ -1118,7 +1123,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
             ..house
         },
     ] {
-        assert_eq!(blocks(&site, passed), Ok(false), "{passed:?}");
+        assert!(!blocks(&site, passed), "{passed:?}");
     }
     let gate = BuildSite {
         class: class::GATE,
@@ -1129,18 +1134,78 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         player: 1,
         ..house
     };
-    assert_eq!(blocks(&gate, wall), Ok(false));
-    assert_eq!(blocks(&site, wall), Ok(true));
+    assert!(!blocks(&gate, wall));
+    assert!(blocks(&site, wall));
+    // obstruction types 11 to 13 take the outline's box: one that does not reach the site, or
+    // a negative height, passes; a height of 0 counts as 1 for a building
+    let outlined = |outline| Near {
+        position: [22.6, 21.0, 0.0],
+        obstruction_type: 11,
+        outline,
+        ..house
+    };
+    assert!(blocks(&site, outlined([1.0, 1.0, 2.0])));
+    assert!(!blocks(&site, outlined([0.4, 0.4, 2.0])));
+    assert!(blocks(&site, outlined([1.0, 1.0, 0.0])));
+    assert!(!blocks(&site, outlined([1.0, 1.0, -1.0])));
+}
+
+/// The Build's test ([`BuildSite::scans`]) runs the static scans for a site with a height: they
+/// find a dying house (state 4) that BUILD's own scan passes over, but not one of the site's own,
+/// a desolid foundation, or anything for a site without a height.
+#[test]
+fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
+    let house = Near {
+        id: 600,
+        position: [21.5, 21.5, 0.0],
+        radius: [1.0, 1.0],
+        kind: 80,
+        class: 3,
+        moving: false,
+        player: 2,
+        state: 4,
+        obstruction_type: 2,
+        ..sheep(2)
+    };
+    let build = house_site(&[1.0], false);
+    let test = |site: &BuildSite<'_>, o: Near| {
+        build_placement(site, &Flat(vec![o]), [21.0, 21.0]).unwrap()
+    };
+    assert_eq!(test(&build, house), 0);
+    let scans = BuildSite {
+        tall: true,
+        scans: true,
+        ..build
+    };
+    assert_eq!(test(&scans, house), 6);
     assert_eq!(
-        blocks(
-            &site,
+        test(
+            &BuildSite {
+                own: &[600],
+                ..scans
+            },
+            house
+        ),
+        0
+    );
+    assert_eq!(
+        test(
+            &scans,
             Near {
-                obstruction_type: 11,
+                desolid: true,
                 ..house
             }
-        )
-        .unwrap_err()
-        .reason(),
-        "an object of obstruction types 11 to 13 near a BUILD (its outline radii)"
+        ),
+        0
+    );
+    assert_eq!(
+        test(
+            &BuildSite {
+                tall: false,
+                ..scans
+            },
+            house
+        ),
+        0
     );
 }

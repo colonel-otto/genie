@@ -11,8 +11,14 @@ pub struct BuildSite<'a> {
     pub player: usize,
     /// A human player (`p6`: the explored test).
     pub human: bool,
-    /// The master's clearance radii (`+0x5fc`, `+0x600`; `p9`).
-    pub clearance: [f32; 2],
+    /// The master's radii the test measures by (`p9`): its clearance radii (`+0x5fc`, `+0x600`)
+    /// for BUILD, its size radii (`+0x5d8`, `+0x5dc`) for the Build's test of its foundation.
+    pub radius: [f32; 2],
+    /// The master's height radius (`+0x5e0`) is above 0, which the static scans need.
+    pub tall: bool,
+    /// `p13` 1: `FUN_141123f80`'s and `FUN_141264db0`'s own scans run, the latter passing over the
+    /// units (type 70); BUILD's runs neither.
+    pub scans: bool,
     /// The master's class.
     pub class: i16,
     /// The master's `obstruction_type` is neither 0 nor 12 (`FUN_1411205c0`).

@@ -392,7 +392,11 @@ pub(crate) fn builder_masters() -> Masters {
 /// A flat map of terrain 0 that the first terrain restriction lets anything stand on, every
 /// tile seen by every player: BUILD's placement test passes anywhere free.
 pub(crate) fn placeable(t: &mut World) {
-    let (w, h) = (120, 120);
+    placeable_on(t, [120, 120]);
+}
+
+/// [`placeable`]'s terrain and sight on a map of `w` × `h` tiles.
+pub(crate) fn placeable_on(t: &mut World, [w, h]: [i32; 2]) {
     let n = (w * h) as usize;
     t.spatial.map = [w, h];
     let mut terrain = crate::map::terrain::Terrain::new(

@@ -210,6 +210,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             .unwrap_or(-1),
         clearance: unit.clearance_size,
         outline: [unit.outline_size[0], unit.outline_size[1]],
+        outline_height: unit.outline_size[2],
         terrain_bonus: unit.type50.as_ref().map_or(-1, |t| t.defense_terrain_bonus),
         building: unit.building.as_ref().map(|b| work::BuildingMaster {
             adjacent_mode: b.adjacent_mode,

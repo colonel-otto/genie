@@ -70,6 +70,8 @@ pub mod build {
     pub const CLEARING_REACH: f32 = f32::from_bits(0x4080_0000);
     /// 1.0
     pub const DROP_REACH: f32 = f32::from_bits(0x3f80_0000);
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
     /// 0.33000001311302185
     pub const EXTRA_BUILDER: f32 = f32::from_bits(0x3ea8_f5c3);
     /// 0.10000000149011612

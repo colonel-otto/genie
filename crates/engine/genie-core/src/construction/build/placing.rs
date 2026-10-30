@@ -6,21 +6,30 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
     HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER_RATE, footprint_clearing,
 };
+use crate::map::spatial::Placed;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
 
+/// The radius a part of a building must pass to count as an annex the builder stands on
+/// (`0x140aae200` case 7).
+const EPSILON: f32 = crate::math::image::build::EPSILON;
+
 impl BuildAction {
     /// `set_state(7)` (`0x140aae200` case 7) on a foundation no builder started: clear the
     /// footprint of what may be built over (`FUN_1415c3620` with `param_6`,
     /// [`footprint_clearing`]: the records of what goes go first, then the objects,
-    /// [`crate::world::World::clear_object`]), send the units standing on it off but this
-    /// builder (`FUN_14123bb20`, [`crate::world::World::evacuate`]; those just cleared are in
-    /// state 7, which the test passes over), and send this builder off it if it stands there
-    /// itself. Another player's marks on the footprint ([`Spatial::foreign_marks`]) remove a
-    /// human owner's foundation ([`BuildAction::remove_marked`]) and halt the Build.
+    /// [`crate::world::World::clear_object`]); test whether the foundation may stay (its master's
+    /// slot 0x50, [`crate::world::World::foundation_code`]); if it may, send the units standing
+    /// on it off but this builder (`FUN_14123bb20`, [`crate::world::World::evacuate`]; those just
+    /// cleared are in state 7, which the test passes over), and send this builder off it if it
+    /// stands there itself. Its main building and the annexes are tested first
+    /// ([`BuildAction::part_tests`]). Another player's marks on the footprint
+    /// ([`Spatial::foreign_marks`]) remove a human owner's foundation
+    /// ([`BuildAction::remove_marked`]) and halt the Build; so does a part or a foundation that may
+    /// not stay (`set_state(2)`).
     ///
     /// # Errors
     ///
@@ -60,22 +69,24 @@ impl BuildAction {
             c.w.spatial.drop_record(cl.id);
         }
         c.w.pathing.tiles_changed(c.w.spatial.take_changes());
-        let obstructs = !matches!(placed.obstruction_type, 0 | 12);
-        let occupants: Vec<i32> =
-            c.w.spatial
-                .footprint_occupants(self.target, &placed, obstructs, &reads.looks)?
-                .into_iter()
-                .filter(|&id| !cleared.iter().any(|cl| cl.id == id))
-                .collect();
+        let cleared_ids: Vec<i32> = cleared.iter().map(|cl| cl.id).collect();
+        let occupants = site_occupants(c, self.target, &placed, &cleared_ids, reads)?;
         for cl in cleared {
             c.w.clear_object(cl, true)?;
         }
+        let parts = self.part_tests(c, builder, &cleared_ids, reads)?;
+        // the foundation's placement test (its master's slot 0x50, FUN_14123aee0): one that may
+        // not stay, or follows a part that may not, sends no unit off
+        let own = with_annexes(c, self.target);
+        // the builder lent to its slot, where the tests' scans meet it (FD-045-D32)
+        let code = self.lend(c, builder, |w, _, _| w.foundation_code(&placed, true, &own))?;
+        let stays = parts.stay && code == 0;
         let others: Vec<i32> = occupants
             .iter()
             .copied()
             .filter(|&id| id != builder.id)
             .collect();
-        if !others.is_empty() {
+        if stays && !others.is_empty() {
             c.w.evacuate(self.target, &others)?;
         }
         if c.w.spatial.foreign_marks(&placed) {
@@ -85,7 +96,17 @@ impl BuildAction {
             self.remove_marked(c)?;
             return self.halt_placing(c, builder, reads);
         }
+        if !stays {
+            // the interface hears of it (FUN_140c898a0 0x88, not held), and set_state(2) halts
+            // the Build
+            return self.halt_placing(c, builder, reads);
+        }
+        // the foundation's FUN_14123bb20 found no unit: the builder joins, or waits while units
+        // stand on a part
         if occupants.is_empty() {
+            if parts.occupied {
+                return self.wait_or_halt(c, builder, reads);
+            }
             return self.join(c, builder);
         }
         let [bx, by, _] = builder.position();
@@ -94,9 +115,107 @@ impl BuildAction {
         if inside {
             return self.clear(c, builder);
         }
-        // LAB_140aaf5d4: the builder waits a second (set_state 222) up to 21 times; then the
-        // interface hears of it (FUN_140c898a0 0x88, not held), set_state(2) halts the Build
-        // (the standing sprite, the foundation let go, no point) and the waits start again
+        if let Some(annex) = self.annex_beneath(c, builder, placed.radius)? {
+            // set_state(223) with the annex as the target: the walk off the annex's footprint;
+            // the foundation is the target again
+            let site = std::mem::replace(&mut self.target, annex);
+            let walk = self.clear(c, builder);
+            self.target = site;
+            return walk;
+        }
+        self.wait_or_halt(c, builder, reads)
+    }
+
+    /// The tests before the foundation's own in `0x140aae200` case 7: its main building's
+    /// (`+0xbb8`, of a foundation that is an annex) and the main's annexes' (`+0xbc0` to
+    /// `+0xbe0`, the foundation among them), then the foundation's own annexes', each by its
+    /// master's slot 0x50 ([`crate::world::World::foundation_code`]) at its own place. While no
+    /// part so far failed, the units on a part that may stay are sent off but this builder
+    /// (`FUN_14123bb20`, [`crate::world::World::evacuate`]). The annexes go in id order, the
+    /// order of their slots.
+    ///
+    /// # Errors
+    ///
+    /// A part gone from the map, and what the test and the send-off do not model.
+    fn part_tests(
+        &mut self,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        cleared: &[i32],
+        reads: &BuildReads,
+    ) -> Result<PartTests, GenieError> {
+        let mut parts = Vec::new();
+        if let Some(main) = c.w.spatial.annex_of(self.target) {
+            parts.push(main);
+            parts.extend(c.w.spatial.annexes_of(main));
+        }
+        parts.extend(c.w.spatial.annexes_of(self.target));
+        let mut tests = PartTests {
+            stay: true,
+            occupied: false,
+        };
+        for part in parts {
+            let placed = *c.w.spatial.get_known(part)?.ok_or(SITE_GONE)?;
+            let own = with_annexes(c, part);
+            let (_, unit) = c.w.object(part).ok_or(SITE_GONE)?;
+            let desolid = unit.construction.is_some_and(|k| k.desolid);
+            let code = self.lend(c, builder, |w, _, _| {
+                w.foundation_code(&placed, desolid, &own)
+            })?;
+            if code != 0 {
+                tests.stay = false;
+            } else if tests.stay {
+                let others: Vec<i32> = site_occupants(c, part, &placed, cleared, reads)?
+                    .into_iter()
+                    .filter(|&id| id != builder.id)
+                    .collect();
+                if !others.is_empty() {
+                    c.w.evacuate(part, &others)?;
+                    tests.occupied = true;
+                }
+            }
+        }
+        Ok(tests)
+    }
+
+    /// The first of the foundation's annexes whose radii are both above [`EPSILON`] and whose
+    /// centre the builder stands nearer than the foundation's radii `radius` to, each way
+    /// (`0x140aae200` case 7, the annexes in id order).
+    ///
+    /// # Errors
+    ///
+    /// An annex gone from the map.
+    fn annex_beneath(
+        &self,
+        c: &Step<'_>,
+        builder: &Unit,
+        radius: [f32; 2],
+    ) -> Result<Option<i32>, GenieError> {
+        let [bx, by, _] = builder.position();
+        for annex in c.w.spatial.annexes_of(self.target) {
+            let placed = c.w.spatial.get_known(annex)?.ok_or(SITE_GONE)?;
+            let [ax, ay, _] = placed.position;
+            let sized = EPSILON < placed.radius[0] && EPSILON < placed.radius[1];
+            if sized && (bx - ax).abs() < radius[0] && (by - ay).abs() < radius[1] {
+                return Ok(Some(annex));
+            }
+        }
+        Ok(None)
+    }
+
+    /// `LAB_140aaf5d4`: the builder waits a second (`set_state` 222) up to 21 times; then the
+    /// interface hears of it (`FUN_140c898a0` 0x88, not held), `set_state(2)` halts the Build
+    /// (the standing sprite, the foundation let go, no point) and the waits start again.
+    ///
+    /// # Errors
+    ///
+    /// The halt's.
+    fn wait_or_halt(
+        &mut self,
+        c: &mut Step<'_>,
+        builder: &mut Unit,
+        reads: &BuildReads,
+    ) -> Result<(), GenieError> {
         if MAX_WAITS <= builder.footprint_waits {
             builder.footprint_waits = 0;
             return self.halt_placing(c, builder, reads);
@@ -243,6 +362,50 @@ impl BuildAction {
         self.move_to = move_reads.to_point([spot[0], spot[1], at[2]], 0.0, self.task.moving)?;
         Ok(())
     }
+}
+
+/// What the tests of a foundation's main building and annexes found ([`BuildAction::part_tests`]).
+struct PartTests {
+    /// Every part may stay (`bVar5`).
+    stay: bool,
+    /// Units stood on a part that may stay (`bVar21`).
+    occupied: bool,
+}
+
+/// The objects a placement test of building `id` passes over (`p12`): the building and its
+/// annexes, theirs too (`FUN_14123d090`, through the four slots `+0xbc0` to `+0xbe0`).
+fn with_annexes(c: &Step<'_>, id: i32) -> Vec<i32> {
+    let mut own = vec![id];
+    let mut next = 0;
+    while let Some(&part) = own.get(next) {
+        own.extend(c.w.spatial.annexes_of(part));
+        next += 1;
+    }
+    own
+}
+
+/// The units the game counts on `site`'s footprint ([`Spatial::footprint_occupants`]) but those
+/// just cleared off it (state 7, which `FUN_14123bb20` passes over).
+///
+/// # Errors
+///
+/// A footprint on a part of the map the world does not know.
+///
+/// [`Spatial::footprint_occupants`]: crate::map::spatial::Spatial::footprint_occupants
+fn site_occupants(
+    c: &Step<'_>,
+    site: i32,
+    placed: &Placed,
+    cleared: &[i32],
+    reads: &BuildReads,
+) -> Result<Vec<i32>, GenieError> {
+    let obstructs = !matches!(placed.obstruction_type, 0 | 12);
+    Ok(c.w
+        .spatial
+        .footprint_occupants(site, placed, obstructs, &reads.looks)?
+        .into_iter()
+        .filter(|id| !cleared.contains(id))
+        .collect())
 }
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments).

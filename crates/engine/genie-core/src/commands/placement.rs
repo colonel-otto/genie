@@ -2,6 +2,7 @@
 //! builders, the placement test and the payment.
 
 use crate::GenieError;
+use crate::objects::masters::Master;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::player_master;
 use crate::world::{RICE_FARM, World};
@@ -103,30 +104,15 @@ impl World {
         own: &[i32],
     ) -> Result<u8, GenieError> {
         let site = self.master(player, master)?;
-        if self.spatial.sight.is_none() {
-            return Err(GenieError::unsupported(
-                "BUILD's placement test without the players' sight",
-            ));
-        }
-        let restriction = self
-            .spatial
-            .terrain
-            .as_ref()
-            .and_then(|t| {
-                usize::try_from(site.terrain_restriction)
-                    .ok()
-                    .and_then(|r| t.restrictions.get(r))
-            })
-            .ok_or(GenieError::unsupported(
-                "a foundation's terrain restriction the data file does not have",
-            ))?;
         let build = crate::production::spawn::BuildSite {
             player,
             human,
-            clearance: site.clearance,
+            radius: site.clearance,
+            tall: site.tall,
+            scans: false,
             class: site.class,
             obstructs: !matches!(site.obstruction_type, 0 | 12),
-            restriction,
+            restriction: self.site_restriction(site)?,
             hill_mode: site.hill_mode,
             placement: site.placement,
             zones: false,
@@ -134,6 +120,70 @@ impl World {
         };
         let map = crate::production::spawn::WorldMap { turns: self };
         crate::production::spawn::build_placement(&build, &map, at)
+    }
+
+    /// The Build's placement test of the building `placed` (`0x140aae200` case 7: its master's
+    /// slot 0x50, `FUN_14123aee0`, with `p6` 0, `p7` 0, `p8` 0, `p9` 0, `p10` 1, `p11` 1, the
+    /// building as `p12`, `p13` 1, `p14` 1): by the master's size radii, without the explored test
+    /// and the hill mode, with the static scans ([`crate::production::spawn::BuildSite::scans`]);
+    /// the scans pass over `own` (the building and its annexes); the updating builder must be
+    /// lent to its slot for them ([`crate::world::step::Step::lend`]). A `desolid` building's master is its copy without a height
+    /// (`FUN_1411cf770` writes `+0x5e0` 0), so the static scans do not run for it. 0 when the
+    /// building may stay, else the game's code.
+    ///
+    /// # Errors
+    ///
+    /// A master the player lacks, and what the test does not model.
+    pub(crate) fn foundation_code(
+        &self,
+        placed: &crate::map::spatial::Placed,
+        desolid: bool,
+        own: &[i32],
+    ) -> Result<u8, GenieError> {
+        let player = placed.player;
+        let site = self.master(player, placed.master)?;
+        let test = crate::production::spawn::BuildSite {
+            player,
+            human: false,
+            radius: site.radius,
+            tall: site.tall && !desolid,
+            scans: true,
+            class: site.class,
+            obstructs: !matches!(site.obstruction_type, 0 | 12),
+            restriction: self.site_restriction(site)?,
+            hill_mode: 0,
+            placement: site.placement,
+            zones: false,
+            own,
+        };
+        let map = crate::production::spawn::WorldMap { turns: self };
+        let at = [placed.position[0], placed.position[1]];
+        crate::production::spawn::build_placement(&test, &map, at)
+    }
+
+    /// The terrain restriction a placement test of `site` reads (`+0x606`), from the data file.
+    ///
+    /// # Errors
+    ///
+    /// A world without the players' sight, and a restriction the data file does not have.
+    fn site_restriction(&self, site: &Master) -> Result<&[f32], GenieError> {
+        if self.spatial.sight.is_none() {
+            return Err(GenieError::unsupported(
+                "BUILD's placement test without the players' sight",
+            ));
+        }
+        self.spatial
+            .terrain
+            .as_ref()
+            .and_then(|t| {
+                usize::try_from(site.terrain_restriction)
+                    .ok()
+                    .and_then(|r| t.restrictions.get(r))
+            })
+            .map(Vec::as_slice)
+            .ok_or(GenieError::unsupported(
+                "a foundation's terrain restriction the data file does not have",
+            ))
     }
 
     /// The payment's test of a foundation of `master` for `player` (`FUN_14162fb60` ->
