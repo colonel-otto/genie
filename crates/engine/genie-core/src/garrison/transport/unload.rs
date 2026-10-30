@@ -328,7 +328,7 @@ impl crate::world::World {
             || (made.radius[0], terrain.restriction_mask(moving.restriction)),
             |m| (m.stats.radius[0], m.stats.restriction_mask),
         );
-        let zone_map = zone_map.map(|k| self.zones.map(k));
+        let zone_map = zone_map.map(|k| self.zones.map(k)).transpose()?;
         let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
         let mut draws = DropDraws::new(around, made.radius, [w, h], last, &mut rng);
         let mut found = None;

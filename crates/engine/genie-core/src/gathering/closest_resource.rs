@@ -82,7 +82,7 @@ pub(crate) fn closest_resource_of(
                 .restrictions
                 .get(restriction)
                 .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-            let zones = c.zones.of(w, h, &terrain.kinds, values);
+            let zones = c.zones.of(w, h, &terrain.kinds, values)?;
             let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
             zone(s.position()) == zone(unit.position())
         };

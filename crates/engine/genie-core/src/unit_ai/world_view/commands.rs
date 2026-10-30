@@ -224,7 +224,7 @@ impl UnitView<'_, '_> {
             .restrictions
             .get(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let zones = self.c.w.zones.of(w, h, &terrain.kinds, values);
+        let zones = self.c.w.zones.of(w, h, &terrain.kinds, values)?;
         let me = Me {
             id: unit.id,
             group: unit.group.id,

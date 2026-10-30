@@ -225,7 +225,7 @@ impl<'a> MapShore<'a> {
             .get(r)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let [w, h] = self.map;
-        Ok(Some(self.zones.of(w, h, &self.terrain.kinds, values)))
+        Ok(Some(self.zones.of(w, h, &self.terrain.kinds, values)?))
     }
 }
 

@@ -170,13 +170,17 @@ impl Planner {
     /// becomes that search's path and the rest after the point.
     pub(super) fn shorter_start(&mut self, req: &Request, levels: &mut Path) {
         let n = levels.points.len();
-        let p0 = levels.points[0];
+        let Some(&p0) = levels.points.first() else {
+            return;
+        };
         let mut i = 1;
         if n <= 1 {
             return;
         }
         loop {
-            let pi = levels.points[i];
+            let Some(&pi) = levels.points.get(i) else {
+                return;
+            };
             let d = (p0[1] - pi[1]) * (p0[1] - pi[1])
                 + (p0[0] - pi[0]) * (p0[0] - pi[0])
                 + (p0[2] - pi[2]) * (p0[2] - pi[2]);
@@ -192,14 +196,16 @@ impl Planner {
         if i <= 1 || i == n {
             return;
         }
-        let pt = levels.points[i];
+        let Some(&pt) = levels.points.get(i) else {
+            return;
+        };
         let mut shortcut = Path::default();
         let to_point = Request {
             to: [pt[0], pt[2]],
             ..req.clone()
         };
         if self.search_on_tiles(&to_point, &mut shortcut) == Found::Goal {
-            for &p in &levels.points[i + 1..] {
+            for &p in levels.points.iter().skip(i + 1) {
                 let _ = shortcut.push(p);
             }
             // the game empties the path before it appends the shortcut (0x140f7c940)

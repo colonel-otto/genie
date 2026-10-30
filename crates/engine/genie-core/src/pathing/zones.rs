@@ -12,6 +12,9 @@
 //! maps are saved (`FUN_141414790`, read by `FUN_1414110f0`): a game loaded from a save holds
 //! them as they were made, and a map is not made again when the terrain changes later.
 
+use crate::GenieError;
+use crate::world::slots::CheckedIndex;
+
 /// The number after the last a patch takes; the next patch takes 0 again. A tile not yet
 /// reached holds it.
 const PATCHES: u16 = 0x200;
@@ -20,12 +23,11 @@ const PATCHES: u16 = 0x200;
 const COUNTED: usize = 0x200;
 
 /// A terrain restriction the slice's data lacks, whose zone map the slice cannot make.
-pub const UNKNOWN_RESTRICTION: crate::GenieError =
-    crate::GenieError::unsupported("a restriction the slice's data has not got");
+pub const UNKNOWN_RESTRICTION: GenieError =
+    GenieError::unsupported("a restriction the slice's data has not got");
 
 /// The map's zones of a world without its terrain.
-pub const NO_TERRAIN: crate::GenieError =
-    crate::GenieError::unsupported("the map's zones without its terrain");
+pub const NO_TERRAIN: GenieError = GenieError::unsupported("the map's zones without its terrain");
 
 /// A tile's zone off the map (`FUN_141413890`).
 const OFF_MAP: u16 = 0;
@@ -110,8 +112,9 @@ impl ZoneMap {
     /// Whether the restriction is above 0 on a tile's terrain (`+0x818` indexed by map tile
     /// `+0x9`).
     fn open(&self, kinds: &[u8], i: usize) -> bool {
-        self.passable
-            .get(usize::from(kinds[i]))
+        kinds
+            .get(i)
+            .and_then(|&k| self.passable.get(usize::from(k)))
             .copied()
             .unwrap_or(false)
     }
@@ -142,14 +145,17 @@ impl ZoneMap {
                     continue;
                 }
                 let start = (y * w + x) as usize;
-                if self.zones[start] != PATCHES {
+                let Some(cell) = self.zones.get_mut(start) else {
+                    continue;
+                };
+                if *cell != PATCHES {
                     continue;
                 }
                 if 0x1ff < next {
                     wrapped = true;
                 }
                 let zone = if next < i32::from(PATCHES) { next } else { 0 };
-                self.zones[start] = zone as u16;
+                *cell = zone as u16;
                 let kind = self.open(kinds, start);
                 self.flood(kinds, x, y, kind, zone as u16);
                 next = zone + 1;
@@ -171,8 +177,12 @@ impl ZoneMap {
                     continue;
                 }
                 let j = (ny * w + nx) as usize;
-                if self.zones[j] == PATCHES && self.open(kinds, j) == kind {
-                    self.zones[j] = zone;
+                let open = self.open(kinds, j) == kind;
+                if let Some(cell) = self.zones.get_mut(j)
+                    && *cell == PATCHES
+                    && open
+                {
+                    *cell = zone;
                     stack.push((nx, ny));
                 }
             }
@@ -183,11 +193,13 @@ impl ZoneMap {
     /// `FUN_141413bb0`: a zone's tile count, counted over the whole map and cached when the cache
     /// holds less than 1.
     fn count_tiles(&mut self, zone: u16) -> i32 {
-        let at = usize::from(zone);
-        if self.tiles[at] < 1 {
-            self.tiles[at] = self.zones.iter().filter(|&&z| z == zone).count() as i32;
+        let Some(cached) = self.tiles.get_mut(usize::from(zone)) else {
+            return 0;
+        };
+        if *cached < 1 {
+            *cached = self.zones.iter().filter(|&&z| z == zone).count() as i32;
         }
-        self.tiles[at]
+        *cached
     }
 
     /// `FUN_141412a80`: which zones touch, and for two that do not, a zone that touches both.
@@ -206,7 +218,10 @@ impl ZoneMap {
         self.through = (0..size).map(|i| (i < size / 2).then_some(0)).collect();
         for y in 0..h {
             for x in 0..w {
-                let z = i32::from(self.zones[(y * w + x) as usize]);
+                let z = self
+                    .zones
+                    .get((y * w + x) as usize)
+                    .map_or(0, |&z| i32::from(z));
                 for dy in -1..=1 {
                     for dx in -1..=1 {
                         let (nx, ny) = (x + dx, y + dy);
@@ -214,7 +229,9 @@ impl ZoneMap {
                             continue;
                         }
                         let neighbour = if ny < h {
-                            i32::from(self.zones[(ny * w + nx) as usize])
+                            self.zones
+                                .get((ny * w + nx) as usize)
+                                .map_or(0, |&z| i32::from(z))
                         } else {
                             0
                         };
@@ -226,15 +243,16 @@ impl ZoneMap {
             }
         }
         let n = n as usize;
+        let touches = |a: usize, b: usize| self.touching.get(a * n + b).copied().unwrap_or(false);
         for a in 0..n {
             for b in 0..n {
-                if self.touching[a * n + b] {
+                if touches(a, b) {
                     continue;
                 }
-                if let Some(c) =
-                    (0..n).find(|&c| self.touching[a * n + c] && self.touching[b * n + c])
+                if let Some(c) = (0..n).find(|&c| touches(a, c) && touches(b, c))
+                    && let Some(slot) = self.through.get_mut(a * n + b)
                 {
-                    self.through[a * n + b] = Some(c as u16);
+                    *slot = Some(c as u16);
                 }
             }
         }
@@ -246,7 +264,10 @@ impl ZoneMap {
         if x < 0 || y < 0 || self.width <= x || self.height <= y {
             return OFF_MAP;
         }
-        self.zones[(y * self.width + x) as usize]
+        self.zones
+            .get((y * self.width + x) as usize)
+            .copied()
+            .unwrap_or(OFF_MAP)
     }
 
     /// `FUN_141414c00`: the first tile of zone `zone` within `reach` of tile `at`, column by
@@ -350,8 +371,8 @@ impl Zones {
                 && m.passable.iter().zip(values).all(|(&p, &v)| p == (0.0 < v))
         });
         if let Some(i) = found {
-            if relabel {
-                self.maps[i].label(kinds);
+            if relabel && let Some(map) = self.maps.get_mut(i) {
+                map.label(kinds);
             }
             return i;
         }
@@ -360,16 +381,29 @@ impl Zones {
     }
 
     /// The zone map at `index`.
-    #[must_use]
-    pub fn map(&self, index: usize) -> &ZoneMap {
-        &self.maps[index]
+    ///
+    /// # Errors
+    ///
+    /// An index no zone map has.
+    pub fn map(&self, index: usize) -> Result<&ZoneMap, GenieError> {
+        self.maps.checked(index)
     }
 
     /// The zone map of a restriction whose value per terrain is `values`, as a unit asks for it
     /// (`FUN_1411931c0`, `FUN_1414138d0` without the relabel).
-    pub fn of(&mut self, width: i32, height: i32, kinds: &[u8], values: &[f32]) -> &ZoneMap {
+    ///
+    /// # Errors
+    ///
+    /// A zone map the table lost between its search and its read.
+    pub fn of(
+        &mut self,
+        width: i32,
+        height: i32,
+        kinds: &[u8],
+        values: &[f32],
+    ) -> Result<&ZoneMap, GenieError> {
         let i = self.find(width, height, kinds, values, false);
-        &self.maps[i]
+        self.maps.checked(i)
     }
 }
 
@@ -519,9 +553,9 @@ mod tests {
     fn restrictions_of_one_pattern_share_their_map() {
         let mut zones = Zones::default();
         let kinds = [0, 1];
-        let _ = zones.of(2, 1, &kinds, &[1.0, 0.0]);
-        let _ = zones.of(2, 1, &kinds, &[0.5, -1.0]);
-        let _ = zones.of(2, 1, &kinds, &[0.0, 1.0]);
+        let _ = zones.of(2, 1, &kinds, &[1.0, 0.0]).unwrap();
+        let _ = zones.of(2, 1, &kinds, &[0.5, -1.0]).unwrap();
+        let _ = zones.of(2, 1, &kinds, &[0.0, 1.0]).unwrap();
         assert_eq!(zones.maps.len(), 2);
     }
 
@@ -544,10 +578,10 @@ mod tests {
     fn a_relabel_numbers_the_terrain_again_and_keeps_the_rest() {
         let mut zones = Zones::default();
         let i = zones.find(3, 3, &WALL, &[1.0, 0.0], false);
-        let before = zones.map(i).clone();
+        let before = zones.map(i).unwrap().clone();
         // the wall is gone: one patch, the count 1; the tile counts and the adjacency stay
         let i = zones.find(3, 3, &[0; 9], &[1.0, 0.0], true);
-        let after = zones.map(i);
+        let after = zones.map(i).unwrap();
         assert_eq!(after.zone(2, 2), 0);
         assert_eq!(after.count(), 1);
         assert_eq!(after.tiles(1), before.tiles(1));
@@ -556,6 +590,6 @@ mod tests {
         assert_eq!(after.adjacent(0, 1), Some(true));
         // without the relabel flag the map is not numbered again
         let i = zones.find(3, 3, &WALL, &[1.0, 0.0], false);
-        assert_eq!(zones.map(i).zone(1, 0), 0);
+        assert_eq!(zones.map(i).unwrap().zone(1, 0), 0);
     }
 }

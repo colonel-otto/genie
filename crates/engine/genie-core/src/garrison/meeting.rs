@@ -305,7 +305,7 @@ fn shore(
         .get(stats.restriction)
         .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
     let [w, h] = spatial.map;
-    let map = zones.of(w, h, &terrain.kinds, values);
+    let map = zones.of(w, h, &terrain.kinds, values)?;
     let own = map.zone(cvttss2si(ux), cvttss2si(uy));
     let from = [cvttss2si(t.position[0]), cvttss2si(t.position[1])];
     for (tile @ [x, y], place) in LandingWalk::new(from, [cvttss2si(ux), cvttss2si(uy)]) {

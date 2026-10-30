@@ -227,8 +227,10 @@ impl Mesh {
             (self.shapes.len() - 1) as u32
         } else {
             let id = self.free;
-            self.free = self.shapes[id as usize][0] as u32;
-            self.shapes[id as usize] = n;
+            self.free = self.shapes.get(id as usize).map_or(NONE, |s| s[0] as u32);
+            if let Some(slot) = self.shapes.get_mut(id as usize) {
+                *slot = n;
+            }
             id
         };
         let (tx0, ty0, tx1, ty1) = tile_range(n, self.width);
@@ -236,13 +238,16 @@ impl Mesh {
         for ty in ty0..=ty1 {
             for tx in tx0..=tx1 {
                 let t = (ty * self.width + tx) as usize;
-                for k in 0..self.tiles[t].len() {
-                    let o = self.tiles[t][k];
+                let mut k = 0;
+                while let Some(&o) = self.tiles.get(t).and_then(|list| list.get(k)) {
                     if visited.insert(o) {
                         self.touch(o, id);
                     }
+                    k += 1;
                 }
-                self.tiles[t].push(id);
+                if let Some(list) = self.tiles.get_mut(t) {
+                    list.push(id);
+                }
             }
         }
         id
@@ -251,7 +256,10 @@ impl Mesh {
     /// The contacts between an existing shape `o` and the new shape `n`: one per corner of their
     /// overlap that lies on both outlines.
     fn touch(&mut self, o: u32, n: u32) {
-        let (or, nr) = (self.shapes[o as usize], self.shapes[n as usize]);
+        let (Some(&or), Some(&nr)) = (self.shapes.get(o as usize), self.shapes.get(n as usize))
+        else {
+            return;
+        };
         let i = overlap(nr, or);
         if !(i[0] < i[2] && i[1] < i[3]) {
             return;
@@ -280,62 +288,94 @@ impl Mesh {
                     // the game would index slot -1 here (0x140fdbf7a)
                     continue;
                 };
-                let (a, b) = (self.shapes[other as usize], self.shapes[owner as usize]);
+                let (Some(&a), Some(&b)) = (
+                    self.shapes.get(other as usize),
+                    self.shapes.get(owner as usize),
+                ) else {
+                    continue;
+                };
                 let flag = match lo {
                     0 => c[0] == a[0] || c[0] == b[0],
                     1 => c[1] == a[1] || c[1] == b[1],
                     2 => c[0] == a[2] || c[0] == b[2],
                     _ => c[1] == a[3] || c[1] == b[3],
                 };
-                self.sides[owner as usize][lo as usize].push(Contact {
-                    other,
-                    side: hi,
-                    at: c,
-                    along: along(lo),
-                    flag: u8::from(flag),
-                    half,
-                });
+                self.contact(
+                    (owner, lo),
+                    Contact {
+                        other,
+                        side: hi,
+                        at: c,
+                        along: along(lo),
+                        flag: u8::from(flag),
+                        half,
+                    },
+                );
             } else if (hi + 1) & 3 == lo {
-                self.sides[o as usize][lo as usize].push(Contact {
-                    other: n,
-                    side: hi,
-                    at: c,
-                    along: along(lo),
-                    flag: 0,
-                    half,
-                });
+                self.contact(
+                    (o, lo),
+                    Contact {
+                        other: n,
+                        side: hi,
+                        at: c,
+                        along: along(lo),
+                        flag: 0,
+                        half,
+                    },
+                );
             } else if hi.wrapping_sub(1) & 3 == lo {
-                self.sides[n as usize][hi as usize].push(Contact {
-                    other: o,
-                    side: lo,
-                    at: c,
-                    along: along(hi),
-                    flag: 0,
-                    half,
-                });
+                self.contact(
+                    (n, hi),
+                    Contact {
+                        other: o,
+                        side: lo,
+                        at: c,
+                        along: along(hi),
+                        flag: 0,
+                        half,
+                    },
+                );
             }
+        }
+    }
+
+    /// A contact goes last on side `side` of shape `owner`.
+    fn contact(&mut self, (owner, side): (u32, u32), contact: Contact) {
+        if let Some(list) = self
+            .sides
+            .get_mut(owner as usize)
+            .and_then(|s| s.get_mut(side as usize))
+        {
+            list.push(contact);
         }
     }
 
     /// `FUN_140fdc250`: the shape's contacts leave every shape over its tiles, its id leaves the
     /// tiles; the last slot is dropped, any other becomes the first free one.
     pub fn remove(&mut self, id: u32) {
-        let r = self.shapes[id as usize];
+        let Some(&r) = self.shapes.get(id as usize) else {
+            return;
+        };
         let (tx0, ty0, tx1, ty1) = tile_range(r, self.width);
         let mut visited = HashSet::new();
         for ty in ty0..=ty1 {
             for tx in tx0..=tx1 {
                 let t = (ty * self.width + tx) as usize;
-                for k in 0..self.tiles[t].len() {
-                    let s = self.tiles[t][k];
-                    if visited.insert(s) {
-                        for side in &mut self.sides[s as usize] {
+                let mut k = 0;
+                while let Some(&s) = self.tiles.get(t).and_then(|list| list.get(k)) {
+                    if visited.insert(s)
+                        && let Some(sides) = self.sides.get_mut(s as usize)
+                    {
+                        for side in sides {
                             side.retain(|c| c.other != id);
                         }
                     }
+                    k += 1;
                 }
-                if let Some(at) = self.tiles[t].iter().position(|&x| x == id) {
-                    let _ = self.tiles[t].remove(at);
+                if let Some(list) = self.tiles.get_mut(t)
+                    && let Some(at) = list.iter().position(|&x| x == id)
+                {
+                    let _ = list.remove(at);
                 }
             }
         }
@@ -343,8 +383,10 @@ impl Mesh {
             let _ = self.shapes.pop();
             let _ = self.sides.pop();
         } else {
-            self.shapes[id as usize] = [self.free as i32, 0, 0, 0];
-            for side in &mut self.sides[id as usize] {
+            if let Some(slot) = self.shapes.get_mut(id as usize) {
+                *slot = [self.free as i32, 0, 0, 0];
+            }
+            for side in self.sides.get_mut(id as usize).into_iter().flatten() {
                 side.clear();
             }
             self.free = id;
@@ -354,7 +396,7 @@ impl Mesh {
     /// `FUN_140fdc730`: the shape moved: removed and added again when the new box differs from
     /// the stored one (compared before rounding, so an odd box always differs). Returns its id.
     pub fn replace(&mut self, id: u32, rect: Rect) -> u32 {
-        if self.shapes[id as usize] == rect {
+        if self.shapes.get(id as usize) == Some(&rect) {
             return id;
         }
         self.remove(id);

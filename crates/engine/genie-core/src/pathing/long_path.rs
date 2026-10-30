@@ -31,6 +31,7 @@ use crate::GenieError;
 use crate::map::spatial::{BLOCKED, Tiles};
 use crate::math::fmath::Vec3;
 use crate::pathing::tile_path::Path;
+use crate::world::slots::CheckedIndex;
 
 /// A heap pop finds the heap empty where the caller checked its top.
 const EMPTY_HEAP: GenieError = GenieError::unreachable("a heap pop without a top");
@@ -164,22 +165,23 @@ impl Heap {
     }
 
     /// `FUN_140fa0bd0` on a slot just filled: it rises while its cost is at most its parent's.
-    fn push(&mut self, at: [i32; 2], cost: i32) {
+    fn push(&mut self, at: [i32; 2], cost: i32) -> Result<(), GenieError> {
         self.slots.push((at, cost));
         let mut i = self.slots.len() - 1;
         let mut parent = i >> 1;
-        if self.slots[parent].1 < cost {
-            return;
+        if self.slots.checked(parent)?.1 < cost {
+            return Ok(());
         }
         loop {
-            self.slots[i] = self.slots[parent];
+            *self.slots.checked_mut(i)? = *self.slots.checked_mut(parent)?;
             i /= 2;
             parent /= 2;
-            if self.slots[parent].1 < cost {
+            if self.slots.checked(parent)?.1 < cost {
                 break;
             }
         }
-        self.slots[i] = (at, cost);
+        *self.slots.checked_mut(i)? = (at, cost);
+        Ok(())
     }
 
     /// The pop after the top's expansion check (`FUN_140f9eb70`): the last slot moves to the top
@@ -191,7 +193,7 @@ impl Heap {
         if count < 1 {
             return Ok(());
         }
-        self.slots[1] = last;
+        *self.slots.checked_mut(1)? = last;
         let half = count / 2;
         if half <= 1 {
             return Ok(());
@@ -199,20 +201,22 @@ impl Heap {
         let mut i = 1usize;
         loop {
             let mut child = 2 * i;
-            if (child as i32) < count && self.slots[child + 1].1 < self.slots[child].1 {
+            if (child as i32) < count
+                && self.slots.checked(child + 1)?.1 < self.slots.checked(child)?.1
+            {
                 child += 1;
             }
-            if last.1 < self.slots[child].1 {
+            if last.1 < self.slots.checked(child)?.1 {
                 break;
             }
-            self.slots[i] = self.slots[child];
+            *self.slots.checked_mut(i)? = *self.slots.checked_mut(child)?;
             i = child;
             if half <= child as i32 {
                 break;
             }
         }
         if i != 1 {
-            self.slots[i] = last;
+            *self.slots.checked_mut(i)? = last;
         }
         Ok(())
     }
@@ -280,7 +284,13 @@ fn trace(
     width: i32,
     z: f32,
 ) -> Option<Path> {
-    let direction = |[x, y]: [i32; 2]| entered[(y * width + x) as usize].unwrap_or(0xff);
+    let direction = |[x, y]: [i32; 2]| {
+        entered
+            .get((y * width + x) as usize)
+            .copied()
+            .flatten()
+            .unwrap_or(0xff)
+    };
     let centre = |[x, y]: [i32; 2]| -> Vec3 { [x as f32 + TILE_CENTRE, z, y as f32 + TILE_CENTRE] };
     let mut path = Path::default();
     let mut at = end;
@@ -380,7 +390,9 @@ impl<'a> Grid<'a> {
         for &[x, y] in &req.lowered {
             if 0 <= x && x < w && 0 <= y && y < h {
                 let i = (y * w + x) as usize;
-                lowered[i] = lowered[i].wrapping_add(1);
+                if let Some(cell) = lowered.get_mut(i) {
+                    *cell = cell.wrapping_add(1);
+                }
             }
         }
         Self {
@@ -400,7 +412,12 @@ impl<'a> Grid<'a> {
         let Some(t) = self.tiles.tall(x, y) else {
             return 0;
         };
-        t.wrapping_sub(self.lowered[(y * self.width + x) as usize])
+        t.wrapping_sub(
+            self.lowered
+                .get((y * self.width + x) as usize)
+                .copied()
+                .unwrap_or(0),
+        )
     }
 
     /// The step onto `n` (with the tiles `beside` a diagonal): its terrain and the beside tiles'
@@ -458,6 +475,79 @@ impl<'a> Grid<'a> {
     }
 }
 
+/// The search's tables: the cost of each tile, the direction it was entered by this search and
+/// the heap of the tiles to expand.
+struct Front {
+    cost: Vec<i32>,
+    entered: Vec<Option<u8>>,
+    heap: Heap,
+}
+
+/// The tile the search expands from: its place, its cost and the direction it was entered by.
+struct Origin {
+    at: [i32; 2],
+    cost: i32,
+    came: Option<u8>,
+}
+
+/// What the search's steps share: the tiles, the request, the map's size and the goal.
+struct Relax<'a> {
+    grid: Grid<'a>,
+    req: &'a LongRequest,
+    map: [i32; 2],
+    goal: [i32; 2],
+    rect: [i32; 4],
+}
+
+impl Relax<'_> {
+    /// The step from `from` onto tile `to` in direction `dir`: skipped when the tile was reached
+    /// as cheaply or is not open; else its cost and direction are kept and it joins the heap.
+    /// Returns the tile when it is the goal.
+    fn step(
+        &self,
+        front: &mut Front,
+        from: &Origin,
+        (to, dir): ([i32; 2], u8),
+    ) -> Result<Option<[i32; 2]>, GenieError> {
+        let [nx, ny] = to;
+        let [x1, y1] = self.req.to;
+        let i = (ny * self.map[0] + nx) as usize;
+        let new_cost = step_cost(from.cost, from.at, to, [x1, y1]);
+        let seen = *front.entered.checked(i)?;
+        let old = *front.cost.checked(i)?;
+        if seen.is_some() && new_cost >= old {
+            return Ok(None);
+        }
+        let rect = self.rect;
+        let in_rect = rect[0] <= nx && nx <= rect[2] && rect[1] <= ny && ny <= rect[3];
+        let at_goal = (nx == self.goal[0] && ny == self.goal[1]) || in_rect;
+        if !self
+            .grid
+            .step_open(to, beside_diagonal(dir, to), at_goal, self.req)?
+        {
+            return Ok(None);
+        }
+        let cur_dir = from.came.unwrap_or(0xff);
+        let mut c = if dir == cur_dir {
+            new_cost
+        } else {
+            new_cost.wrapping_add(1)
+        };
+        if at_goal {
+            c = 0;
+        }
+        if seen.is_none() || c < old {
+            *front.cost.checked_mut(i)? = c;
+            *front.entered.checked_mut(i)? = Some(dir);
+            front.heap.push(to, c)?;
+            if at_goal {
+                return Ok(Some(to));
+            }
+        }
+        Ok(None)
+    }
+}
+
 /// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
 fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, GenieError> {
     let [w, h] = map;
@@ -475,17 +565,24 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
     let in_rect = |x: i32, y: i32| rect[0] <= x && x <= rect[2] && rect[1] <= y && y <= rect[3];
     let n = (w.max(0) * h.max(0)) as usize;
     let index = |x: i32, y: i32| (y * w + x) as usize;
-    let grid = Grid::new(tiles, map, req);
+    let relax = Relax {
+        grid: Grid::new(tiles, map, req),
+        req,
+        map,
+        goal,
+        rect,
+    };
     let quad = |a: i32| (a * 4).wrapping_mul(a * 4);
     // a tile's cost (`+0x38420`) and, entered this search, the direction it was entered by
     // (`+0x20`, under the search's generation `+0x2db430`: an older one reads as never entered)
-    let mut cost = vec![0i32; n];
-    let mut entered: Vec<Option<u8>> = vec![None; n];
-    let start_cost = quad(dy).wrapping_add(quad(dx));
-    cost[index(x0, y0)] = start_cost;
-    let mut heap = Heap {
-        slots: vec![([0, 0], SENTINEL), ([x0, y0], start_cost)],
+    let mut front = Front {
+        cost: vec![0i32; n],
+        entered: vec![None; n],
+        heap: Heap { slots: Vec::new() },
     };
+    let start_cost = quad(dy).wrapping_add(quad(dx));
+    *front.cost.checked_mut(index(x0, y0))? = start_cost;
+    front.heap.slots = vec![([0, 0], SENTINEL), ([x0, y0], start_cost)];
     let straight = crate::math::fmath::sqrt(gap2 as f32) as i32;
     let budget = if req.computer {
         straight.wrapping_mul(COMPUTER_FACTOR)
@@ -496,11 +593,11 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
     // in quarter tiles squared, a popped tile's a quarter of that)
     let mut nearest = ([x0, y0], start_cost);
     let mut expansions = 0;
-    while 0 < heap.count() {
+    while 0 < front.heap.count() {
         if budget < expansions || MOST_EXPANSIONS < expansions {
             break;
         }
-        let ([cx, cy], _) = heap.slots[1];
+        let ([cx, cy], _) = *front.heap.slots.checked(1)?;
         let (gx, gy) = (x1 - cx, y1 - cy);
         let d =
             crate::math::fmath::sqrt(gx.wrapping_mul(gx).wrapping_add(gy.wrapping_mul(gy)) as f32);
@@ -508,16 +605,17 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
             return Ok(Searched::Ran {
                 reached: true,
                 end: [cx, cy],
-                entered,
+                entered: front.entered,
             });
         }
         let near = quad(y1 - cy).wrapping_add(quad(x1 - cx)) >> 2;
         if near < nearest.1 {
             nearest = ([cx, cy], near);
         }
-        heap.pop()?;
-        let came = entered[index(cx, cy)];
+        front.heap.pop()?;
+        let came = *front.entered.checked(index(cx, cy))?;
         let back = behind(came.unwrap_or(8));
+        let here = *front.cost.checked(index(cx, cy))?;
         for (dir, step) in STEPS.iter().enumerate() {
             let dir = dir as u8;
             let (nx, ny) = (cx + step[0], cy + step[1]);
@@ -530,35 +628,17 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
             {
                 continue;
             }
-            let new_cost = step_cost(cost[index(cx, cy)], [cx, cy], [nx, ny], [x1, y1]);
-            let seen = entered[index(nx, ny)];
-            if seen.is_some() && new_cost >= cost[index(nx, ny)] {
-                continue;
-            }
-            let at_goal = (nx == goal[0] && ny == goal[1]) || in_rect(nx, ny);
-            if !grid.step_open([nx, ny], beside_diagonal(dir, [nx, ny]), at_goal, req)? {
-                continue;
-            }
-            let cur_dir = came.unwrap_or(0xff);
-            let mut c = if dir == cur_dir {
-                new_cost
-            } else {
-                new_cost.wrapping_add(1)
+            let from = Origin {
+                at: [cx, cy],
+                cost: here,
+                came,
             };
-            if at_goal {
-                c = 0;
-            }
-            if seen.is_none() || c < cost[index(nx, ny)] {
-                cost[index(nx, ny)] = c;
-                entered[index(nx, ny)] = Some(dir);
-                heap.push([nx, ny], c);
-                if at_goal {
-                    return Ok(Searched::Ran {
-                        reached: true,
-                        end: [nx, ny],
-                        entered,
-                    });
-                }
+            if let Some(end) = relax.step(&mut front, &from, ([nx, ny], dir))? {
+                return Ok(Searched::Ran {
+                    reached: true,
+                    end,
+                    entered: front.entered,
+                });
             }
         }
         expansions += 1;
@@ -567,7 +647,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
     Ok(Searched::Ran {
         reached: false,
         end: nearest.0,
-        entered,
+        entered: front.entered,
     })
 }
 
@@ -753,7 +833,7 @@ mod tests {
             slots: vec![([0, 0], SENTINEL)],
         };
         for (i, c) in [5, 3, 8, 1, 9, 2].into_iter().enumerate() {
-            h.push([i as i32, 0], c);
+            h.push([i as i32, 0], c).unwrap();
         }
         assert_eq!(h.slots[1].1, 1);
         h.pop().unwrap();

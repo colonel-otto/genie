@@ -177,11 +177,16 @@ impl Pathing {
         };
         slots[1] = target;
         let mut count = 2;
-        for (i, &a) in annexes.iter().take(4).enumerate() {
-            slots[1 + i] = a;
+        for (i, (cell, &a)) in slots
+            .iter_mut()
+            .skip(1)
+            .zip(annexes.iter().take(4))
+            .enumerate()
+        {
+            *cell = a;
             count = 3 + i;
         }
-        (slots, slots[..count].to_vec())
+        (slots, slots.iter().take(count).copied().collect())
     }
 
     /// The smoothing ran with the ignore list `slots` ([`Pathing::smoothing_ignore`]): the static

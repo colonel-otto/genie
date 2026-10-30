@@ -113,8 +113,8 @@ impl Path {
     pub fn insert(&mut self, index: usize, p: Vec3) -> bool {
         let n = self.points.len();
         if n < index
-            || (0 < index && self.points[index - 1] == p)
-            || (index < n && self.points[index] == p)
+            || (0 < index && self.points.get(index - 1) == Some(&p))
+            || (index < n && self.points.get(index) == Some(&p))
         {
             return false;
         }
@@ -131,7 +131,10 @@ impl Path {
     pub fn measure(&mut self) {
         let mut total = 0.0;
         for w in self.points.windows(2) {
-            let d = fmath::sub(w[1], w[0]);
+            let [a, b] = w else {
+                continue;
+            };
+            let d = fmath::sub(*b, *a);
             total += fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
         }
         self.length = total;
