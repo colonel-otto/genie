@@ -5,10 +5,12 @@
 use crate::GenieError;
 use crate::groups::UnitGroup;
 
+mod attack;
 mod awake;
 mod checks;
 mod entry;
 mod moves;
+mod release;
 mod send;
 
 pub use self::awake::IDLE_SPAN;
@@ -62,10 +64,10 @@ enum Shown {
     Running,
 }
 
-/// The updates of an attack (`FUN_14103f4e0`) and of the other commands on a target
-/// (`FUN_141040bd0`), and the attack formation's refill (`FUN_1410163f0`): not modelled.
+/// The update of the other commands on a target (`FUN_141040bd0`), and the attack formation's
+/// refill (`FUN_1410163f0`): not modelled.
 const OTHER_COMMANDS: GenieError = GenieError::unsupported(
-    "a group command's update other than a move or a follow (FUN_14103f4e0, FUN_141040bd0)",
+    "a group command's update other than a move, a follow or an attack (FUN_141040bd0)",
 );
 
 impl UnitGroup {

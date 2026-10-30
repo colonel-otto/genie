@@ -298,10 +298,14 @@ pub mod group {
     pub const CATCH_UP: f32 = f32::from_bits(0x3f99_999a);
     /// 3.0
     pub const CATCH_UP_SPAN: f32 = f32::from_bits(0x4040_0000);
+    /// -2.0
+    pub const CHASING_SLACK: f32 = f32::from_bits(0xc000_0000);
     /// 0.5
     pub const CLEARANCE: f32 = f32::from_bits(0x3f00_0000);
     /// 1.0
     pub const CLOSE: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.25
+    pub const CONTACT_SLACK: f32 = f32::from_bits(0x3e80_0000);
     /// 1.0
     pub const DEFAULT_FORWARD: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
@@ -348,6 +352,8 @@ pub mod group {
     pub const PULL_KEEP: f32 = f32::from_bits(0x3f4c_cccd);
     /// 0.20000000298023224
     pub const PULL_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
+    /// 2.0
+    pub const RANGED_SLACK: f32 = f32::from_bits(0x4000_0000);
     /// 1.5707963705062866
     pub const RIGHT_ANGLE: f32 = f32::from_bits(0x3fc9_0fdb);
     /// 1.0099999904632568

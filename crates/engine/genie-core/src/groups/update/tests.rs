@@ -1495,6 +1495,197 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
     );
 }
 
+/// Group 1 attacks object 20 (command 9, an object target first seen at its place) with its
+/// three members in category 1.
+fn attacking(t: &mut World) {
+    let g = t.groups.get_mut(1).unwrap();
+    g.current_command = 9;
+    g.current_target = crate::groups::TargetData {
+        target: 20,
+        kind: 1,
+        original_position: [3.5, 0.0, 3.5],
+        ..crate::groups::TargetData::default()
+    };
+    g.unit_types = vec![crate::groups::UnitTypeStatistic {
+        formation_category: 1,
+        units: vec![10, 11, 12],
+        ..crate::groups::UnitTypeStatistic::default()
+    }];
+    g.flags = 0;
+    g.motion.maximum_velocity_forward = 1.0;
+}
+
+/// Every object of every player in the spatial index at its place (`FUN_14118f8c0`-style gaps and
+/// the work command's reach read it).
+fn register(t: &mut World) {
+    let placed: Vec<(i32, crate::map::spatial::Placed)> = t
+        .players
+        .iter()
+        .enumerate()
+        .flat_map(|(p, player)| player.objects.iter().map(move |u| (p, u)))
+        .filter_map(|(p, u)| {
+            let m = t.masters.get(p)?.get(u.life.master_id)?;
+            Some((
+                u.id,
+                crate::map::spatial::Placed {
+                    position: u.position(),
+                    radius: m.radius,
+                    class: m.class,
+                    player: p,
+                    master: m.id,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            ))
+        })
+        .collect();
+    for (id, placed) in placed {
+        t.spatial.insert(id, placed);
+    }
+}
+
+/// `FUN_14103f4e0` with the target out of sight (not pending): queued commands finish it; else
+/// the group stops, forgets its command and its target (range too), and finishes when its nearest
+/// member (11, a footprint gap of about 2.37) is within the range, which rises to that member's
+/// line of sight (4); a target farther away sends it back to where it was first seen, asking
+/// for a relayout.
+#[test]
+fn an_attack_whose_target_is_gone_from_sight_ends_or_goes_back() {
+    let mut t = world();
+    attacking(&mut t);
+    t.groups.get_mut(1).unwrap().command_queue = vec![crate::groups::GroupCommand::default()];
+    let mut relayout = false;
+    assert!(t.attack_update(1, &mut relayout).unwrap());
+    assert_eq!(t.groups.get(1).unwrap().current_command, 9);
+    t.groups.get_mut(1).unwrap().command_queue.clear();
+    assert!(t.attack_update(1, &mut relayout).unwrap());
+    let g = t.groups.get(1).unwrap();
+    assert_eq!(
+        (g.current_command, g.current_target),
+        (
+            -1,
+            crate::groups::TargetData {
+                target: -1,
+                kind: -1,
+                ..crate::groups::TargetData::default()
+            }
+        )
+    );
+    // the update then deletes the group: no command queued and the target gone
+    attacking(&mut t);
+    assert!(!t.command_update(1, &mut relayout).unwrap());
+    assert!(!relayout);
+    // a far target: back to the first place
+    attacking(&mut t);
+    t.players[2].objects[0].body = crate::objects::layers::Body::at([7.5, 7.5, 0.0]);
+    assert!(!t.attack_update(1, &mut relayout).unwrap());
+    assert!(relayout);
+    assert_eq!(t.groups.get(1).unwrap().current_target.target, -1);
+    assert_eq!(t.groups.get(1).unwrap().current_command, 1);
+}
+
+/// A first member the world does not hold ends the update without finishing it.
+#[test]
+fn an_attack_without_a_first_member_does_nothing() {
+    let mut t = world();
+    attacking(&mut t);
+    t.groups.get_mut(1).unwrap().members[0].id = 99;
+    let mut relayout = false;
+    assert!(!t.attack_update(1, &mut relayout).unwrap());
+    assert_eq!(t.groups.get(1).unwrap().current_command, 9);
+}
+
+/// The categories of a pending attack: a category none of whose units is within its range (the
+/// footprint gap less 0.25 for no range) leaves the command unfinished and the group arrived (flags
+/// bit 3) when its motion stands; once arrived the category is released at once: the group stops
+/// and each unit is sent (its own move clears). A group arrived and on its way (bit 4) sends all
+/// its members at the end of the update, clears bit 4 and is finished.
+#[test]
+fn an_attack_releases_a_category_in_reach_or_arrived() {
+    let mut t = world();
+    attacking(&mut t);
+    register(&mut t);
+    light(&mut t, 1, 3, 3, true);
+    assert!(t.target_pending(1).unwrap());
+    let reasons = |t: &World, reason: i32| {
+        t.groups
+            .get(1)
+            .unwrap()
+            .members
+            .iter()
+            .all(|m| m.specific_move.reason == reason)
+    };
+    for m in &mut t.groups.get_mut(1).unwrap().members {
+        m.specific_move.reason = 5;
+    }
+    let mut relayout = false;
+    // nothing in reach: not finished, arrived
+    assert!(!t.attack_update(1, &mut relayout).unwrap());
+    assert_eq!(t.groups.get(1).unwrap().flags, 0x8);
+    assert!(reasons(&t, 5));
+    // arrived: the category is released
+    assert!(t.attack_update(1, &mut relayout).unwrap());
+    assert_eq!(t.groups.get(1).unwrap().flags, 0x8);
+    assert!(reasons(&t, -1));
+    // arrived and on its way: all are sent at the end
+    for m in &mut t.groups.get_mut(1).unwrap().members {
+        m.specific_move.reason = 5;
+    }
+    t.groups.get_mut(1).unwrap().unit_types.clear();
+    t.groups.get_mut(1).unwrap().flags = 0x10;
+    assert!(t.attack_update(1, &mut relayout).unwrap());
+    assert_eq!(t.groups.get(1).unwrap().flags, 0x8);
+    assert!(reasons(&t, -1));
+}
+
+/// A unit in contact (a footprint gap of 0.14 less 0.25 within no range) releases the category
+/// without the group having arrived.
+#[test]
+fn a_unit_in_contact_releases_its_category() {
+    let mut t = world();
+    attacking(&mut t);
+    t.players[1].objects[0].body = crate::objects::layers::Body::at([3.0, 3.0, 0.0]);
+    register(&mut t);
+    light(&mut t, 1, 3, 3, true);
+    for m in &mut t.groups.get_mut(1).unwrap().members {
+        m.specific_move.reason = 5;
+    }
+    let mut relayout = false;
+    assert!(t.attack_update(1, &mut relayout).unwrap());
+    assert!(
+        t.groups
+            .get(1)
+            .unwrap()
+            .members
+            .iter()
+            .all(|m| m.specific_move.reason == -1)
+    );
+}
+
+/// A target that moved more than 1 from where it stood and is in sight is attacked anew; the
+/// group's move to it begins, which ends the update (not finished).
+#[test]
+fn an_attack_follows_a_target_that_moved() {
+    let mut t = world();
+    attacking(&mut t);
+    register(&mut t);
+    light(&mut t, 1, 3, 3, true);
+    t.groups
+        .get_mut(1)
+        .unwrap()
+        .current_target
+        .original_position = [3.5, 0.0, 1.5];
+    let mut relayout = false;
+    assert!(!t.attack_update(1, &mut relayout).unwrap());
+    let g = t.groups.get(1).unwrap();
+    assert_eq!(g.current_target.target, 20);
+    assert_eq!((g.current_command, g.flags & 0x18), (9, 0x10));
+}
+
 /// Owner 2's masters: master 4 and a gate (master 5: a building of class 39) and the target 20
 /// is the gate, with 21 its annex at (2.5, 2.5).
 fn gate_world() -> World {
@@ -1567,4 +1758,47 @@ fn a_unit_s_speed_is_its_movers_unless_a_charge_runs() {
     m4.max_charge = 0.0;
     t.masters[1] = Masters::new([m4]);
     assert_eq!(speed(&t, 10).unwrap(), 0.8);
+}
+
+/// `FUN_14103d460`: a released unit works on the part of the target (its order queue empties
+/// with the group's retargeting byte set), its own move clears, and a unit on the special list
+/// with a speed draws its retarget timer from the time to the target at that speed: the gap
+/// (about 2.37) over 0.8 is 2 whole seconds, 4000 ms, so the timer is a draw below 2000 plus
+/// 3000.
+#[test]
+fn a_released_special_unit_draws_its_retarget_timer() {
+    let mut t = world();
+    attacking(&mut t);
+    register(&mut t);
+    light(&mut t, 1, 3, 3, true);
+    t.players[1].objects[1]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
+    let g = t.groups.get_mut(1).unwrap();
+    g.special_units = vec![11];
+    g.current_target.disable_retargeting = 1;
+    for u in &mut t.players[1].objects {
+        u.ai.as_mut().unwrap().orders = vec![crate::unit_ai::QueuedOrder::default()];
+        u.ai.as_mut().unwrap().retarget_timer = 7;
+    }
+    let mut reference = t.streams.clone();
+    let draw = reference.get(crate::math::rng::Stream::Ai).rand15();
+    t.release_units(1, &[10, 11], 20).unwrap();
+    let timers: Vec<u32> = t.players[1]
+        .objects
+        .iter()
+        .map(|u| u.ai.as_ref().unwrap().retarget_timer)
+        .collect();
+    assert_eq!(timers, [7, 3000 + draw % 2000, 7]);
+    assert!(
+        t.players[1]
+            .objects
+            .iter()
+            .take(2)
+            .all(|u| u.ai.as_ref().unwrap().orders.is_empty())
+    );
+    assert_eq!(t.players[1].objects[2].ai.as_ref().unwrap().orders.len(), 1);
+    // the target the world does not hold: nothing
+    t.release_units(1, &[12], 77).unwrap();
+    assert_eq!(t.players[1].objects[2].ai.as_ref().unwrap().orders.len(), 1);
 }

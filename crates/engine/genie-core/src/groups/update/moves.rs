@@ -19,8 +19,10 @@ impl World {
     /// and y, the range half the lead's master's line of sight, at once) when the target is
     /// that range or more (`COMISS` then `JC`: a NaN is not) from where the group's target was
     /// (`+0x3c8`, the height left out), and sets flags bit 12; without the target or a lead it
-    /// ends as a finished move. An attack (`FUN_14103f4e0`) and the other commands
-    /// (`FUN_141040bd0`) are not modelled.
+    /// ends as a finished move. An attack ([`World::attack_update`], `FUN_14103f4e0`) that
+    /// finished deletes the group when no command is queued and its target is no longer pending
+    /// ([`World::target_pending`]), else hibernates it. The other commands (`FUN_141040bd0`) are
+    /// not modelled.
     pub(super) fn command_update(
         &mut self,
         group: i32,
@@ -76,6 +78,16 @@ impl World {
                     }
                     _ => true,
                 }
+            }
+            ATTACK => {
+                if self.attack_update(group, relayout)? {
+                    let g = self.groups.held(group)?;
+                    if g.command_queue.is_empty() && !self.target_pending(group)? {
+                        return Ok(false);
+                    }
+                    self.groups.held_mut(group)?.hibernating = 1;
+                }
+                return Ok(true);
             }
             _ => return Err(OTHER_COMMANDS),
         };

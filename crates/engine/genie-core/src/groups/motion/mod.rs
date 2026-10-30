@@ -153,6 +153,13 @@ impl Motion {
         self.velocity[2] = 0.0;
     }
 
+    /// `FUN_14104a050`: the motion stops ([`Motion::stand`]) and its walked level resets
+    /// (`FUN_140f98e80`, its path and its parents gone, its repath time kept).
+    pub(in crate::groups) fn stop_walk(&mut self) {
+        self.stand();
+        reset_level(&mut self.paths);
+    }
+
     /// `BMotion::calculateYawAngle` (`FUN_141046270`): the angle from `forward` (`param_2`) to
     /// `direction` (`param_3`, `FUN_14087e650`); with `clamp` (`param_5` 1) at most `+0xa0`
     /// (the yaw per second moving) times `dt` (`param_4`), as `MINSS` takes it at 0x1410463e2

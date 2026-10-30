@@ -73,6 +73,25 @@ fn a_motion_moves_with_a_velocity_and_waits_for_a_path() {
     assert!(!m.waits_to_move());
 }
 
+/// `FUN_14104a050`: the forward speed and its acceleration go to 0 (the other components stay)
+/// and the walked level resets, its parents gone.
+#[test]
+fn stopping_the_walk_stands_the_motion_and_resets_its_level() {
+    let mut m = Motion::new();
+    m.velocity = [1.0, 2.0, 3.0];
+    m.acceleration = [4.0, 5.0, 6.0];
+    m.paths = vec![
+        level(0, &[[1.0, 1.0], [2.0, 2.0]], 1, 3),
+        level(1, &[[2.0, 2.0]], 1, 0),
+    ];
+    m.stop_walk();
+    assert_eq!(
+        (m.velocity, m.acceleration),
+        ([1.0, 2.0, 0.0], [4.0, 5.0, 0.0])
+    );
+    assert_eq!(m.paths, [PathData::without_path()]);
+}
+
 /// `FUN_1410481f0`: levels 0 and 1 below the top (2) go and the top walks from waypoint 1
 /// (state 2, 10 tries); a top of another level resets; a lone level stays.
 #[test]

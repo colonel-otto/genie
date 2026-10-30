@@ -75,7 +75,7 @@ pub(crate) struct AttackOrder {
 impl UnitGroup {
     /// The group's target data forgets its target, place, radius and retargeting byte (the
     /// resets in `FUN_14100f7f0`); its range and certain action stay.
-    const fn forget_target_data(&mut self) {
+    pub(in crate::groups) const fn forget_target_data(&mut self) {
         let t = &mut self.current_target;
         t.target = -1;
         t.kind = -1;

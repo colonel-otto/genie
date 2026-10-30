@@ -94,7 +94,7 @@ impl World {
     /// # Errors
     ///
     /// What the stop does not model.
-    fn stand_unit(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(super) fn stand_unit(&mut self, id: i32) -> Result<(), GenieError> {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.body.mover_mut()
         {
