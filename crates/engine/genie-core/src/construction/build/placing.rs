@@ -212,7 +212,7 @@ impl BuildAction {
     }
 
     /// `set_state(223)`: a quiet `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`,
-    /// `FUN_140aa0d30` with the task's moving sprite, [`BuildWalks::to_point`]); it starts in
+    /// `FUN_140aa0d30` with the task's moving sprite, [`MoveToReads::to_point`]); it starts in
     /// state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`), in 13 for a unit
     /// without speed.
     ///
@@ -221,7 +221,7 @@ impl BuildAction {
     /// A builder without movement state or its master, a foundation gone from the map, no free
     /// tile beside it, and a sprite the table lacks.
     ///
-    /// [`BuildWalks::to_point`]: crate::construction::build::BuildWalks::to_point
+    /// [`MoveToReads::to_point`]: crate::movement::move_to::MoveToReads::to_point
     pub(super) fn clear(&mut self, c: &mut Step<'_>, builder: &Unit) -> Result<(), GenieError> {
         let mover = builder.body.mover().ok_or(BUILDER_UNMOVING)?;
         let site = c.w.spatial.get(self.target).ok_or(SITE_GONE)?;
@@ -239,8 +239,8 @@ impl BuildAction {
                     "no free tile beside the footprint (set_state 2)",
                 ))?;
         self.state = CLEAR;
-        let walks = builder.build_walks(&c.w.masters, c.player, &c.w.graphics)?;
-        self.move_to = walks.to_point([spot[0], spot[1], at[2]], self.task.moving)?;
+        let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
+        self.move_to = move_reads.to_point([spot[0], spot[1], at[2]], 0.0, self.task.moving)?;
         Ok(())
     }
 }

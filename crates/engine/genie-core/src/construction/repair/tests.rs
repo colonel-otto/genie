@@ -1,6 +1,8 @@
 use super::*;
 use crate::movement::Me;
-use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait, SpriteReads};
+use crate::movement::move_to::{
+    MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, WalkTo,
+};
 use crate::objects::teardown::HeadCode;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
@@ -44,19 +46,34 @@ const DEFAULTS: MoveDefaults = MoveDefaults {
     object: Some(21),
 };
 
-/// The `MoveTo`s' sprites of the tests' repairer: [`DEFAULTS`] in the table `graphics`.
-const fn sprites(
+/// What the tests' repairer's `MoveTo`s read of it: [`DEFAULTS`] in the table `graphics`, alive
+/// (state 2), of speed 1, at (10, 10) with radii 0.2.
+const fn move_reads(
     graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
-) -> SpriteReads<'_> {
-    SpriteReads {
-        defaults: DEFAULTS,
-        graphics,
+) -> MoveToReads<'_> {
+    MoveToReads {
+        sprites: SpriteReads {
+            defaults: DEFAULTS,
+            graphics,
+        },
+        state: 2,
+        speed: 1.0,
+        at: [10.0, 10.0, 0.0],
+        ground: [0.2, 0.2],
     }
 }
 
-/// The Repair of the work command on the object 20 at (11, 10), within 0, with [`TASK`].
+/// The tests' target, the object 20 at (11, 10), 0.3 from the repairer and alive.
+const TARGET: WalkTo = WalkTo {
+    id: 20,
+    at: [11.0, 10.0, 0.0],
+    gap: 0.3,
+    state: Some(2),
+};
+
+/// The Repair of the work command on [`TARGET`], within 0, with [`TASK`].
 fn started() -> RepairAction {
-    RepairAction::start((20, [11.0, 10.0, 0.0]), TASK, 0.0, &sprites(&graphics())).unwrap()
+    RepairAction::start(TARGET, TASK, 0.0, &move_reads(&graphics())).unwrap()
 }
 
 /// A villager's master work rate 1 with a powerup of 0: half a hit point per second per the
@@ -296,8 +313,10 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
         let r = RepairAction { task, ..started() };
         let id = |m: MoveToAction| m.sprite.map(|s| s.id);
         [
-            id(r.to_target(&sprites(&g)).unwrap()),
-            id(r.to_point([1.0, 2.0, 0.0], &sprites(&g)).unwrap()),
+            id(r.walk(&move_reads(&g), Some(TARGET)).unwrap().unwrap()),
+            id(r.to_point([1.0, 2.0, 0.0], &move_reads(&g))
+                .unwrap()
+                .unwrap()),
         ]
     };
     assert_eq!(shown(TASK), [Some(21), Some(20)]);
@@ -310,8 +329,8 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
         task: lacking,
         ..started()
     };
-    assert!(r.to_target(&sprites(&g)).is_err());
-    assert!(r.to_point([1.0, 2.0, 0.0], &sprites(&g)).is_err());
+    assert!(r.walk(&move_reads(&g), Some(TARGET)).is_err());
+    assert!(r.to_point([1.0, 2.0, 0.0], &move_reads(&g)).is_err());
 }
 
 /// Every `MoveTo` of the Repair is quiet (`0x140ad9c60`: `FUN_140a7a170` with 1): the start's
@@ -319,7 +338,7 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
 #[test]
 fn a_repair_s_move_tos_are_quiet() {
     let g = graphics();
-    let r = RepairAction::start((20, [11.0, 10.0, 0.0]), TASK, 1.5, &sprites(&g)).unwrap();
+    let r = RepairAction::start(TARGET, TASK, 1.5, &move_reads(&g)).unwrap();
     let to_target = MoveToAction {
         state: MoveTo::Start,
         point: [11.0, 10.0, 0.0],
@@ -332,13 +351,44 @@ fn a_repair_s_move_tos_are_quiet() {
     };
     assert_eq!(r.move_to, Some(to_target));
     assert_eq!(
-        r.to_point([1.0, 2.0, 0.0], &sprites(&g)),
-        Ok(MoveToAction::sub_to_point(
+        r.to_point([1.0, 2.0, 0.0], &move_reads(&g)),
+        Ok(Some(MoveToAction::sub_to_point(
             [1.0, 2.0, 0.0],
             0.0,
             Some(g[&20])
-        ))
+        )))
     );
+}
+
+/// Its sub-action list adds each `MoveTo` as `FUN_140a977e0` does (`0x140aa2100`): beside its
+/// target (0.01 or nearer) it arrived, a repairer without speed failed, and one in state 3 or
+/// later adds none; with no target it walks to (0, 0, 0).
+#[test]
+fn a_repair_s_move_to_starts_as_its_list_adds_it() {
+    let g = graphics();
+    let state = |to, reads: MoveToReads<'_>| {
+        RepairAction::start(to, TASK, 0.0, &reads)
+            .unwrap()
+            .move_to
+            .map(|m| m.state)
+    };
+    let beside = WalkTo {
+        gap: 0.01,
+        ..TARGET
+    };
+    assert_eq!(state(beside, move_reads(&g)), Some(MoveTo::Arrived));
+    let stuck = MoveToReads {
+        speed: 0.0,
+        ..move_reads(&g)
+    };
+    assert_eq!(state(TARGET, stuck), Some(MoveTo::Failed));
+    let dying = MoveToReads {
+        state: 3,
+        ..move_reads(&g)
+    };
+    assert_eq!(state(TARGET, dying), None);
+    let none = started().walk(&move_reads(&g), None).unwrap().unwrap();
+    assert_eq!((none.target, none.point), (-1, [0.0; 3]));
 }
 
 /// Its states show the task's sprites (slot 0x68, `set_state` `0x140ad9c60`): the turn toward
@@ -375,7 +425,7 @@ fn a_repair_s_walk_to_its_point_shows_its_sprite_as_it_starts() {
         let r = v.actions.repair_mut().unwrap();
         let g = graphics();
         let _ = r
-            .take_point([35.5, 95.5, 0.0], mover, &sprites(&g))
+            .take_point([35.5, 95.5, 0.0], mover, &move_reads(&g))
             .unwrap();
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         assert_eq!(repair_of(&t).move_to.map(|m| m.state), Some(MoveTo::Moving));
@@ -589,7 +639,7 @@ fn a_move_sends_the_repairer_to_its_point() {
     };
     let g = graphics();
     assert_eq!(
-        r.take_point([30.0, 5.0, 0.0], Some(&mut mover), &sprites(&g)),
+        r.take_point([30.0, 5.0, 0.0], Some(&mut mover), &move_reads(&g)),
         Ok((20, true))
     );
     assert_eq!(
@@ -643,13 +693,18 @@ fn walking_again_starts_a_new_move_to_the_target() {
         state: WALK_POINT,
         move_to: Some(MoveToAction {
             state: MoveTo::Arrived,
-            ..r.to_point([3.0, 4.0, 0.0], &sprites(&g)).unwrap()
+            ..r.to_point([3.0, 4.0, 0.0], &move_reads(&g))
+                .unwrap()
+                .unwrap()
         }),
         ..r
     };
-    assert_eq!(walking.walk_again(Some(&mut mover), &sprites(&g)), Ok(()));
+    assert_eq!(
+        walking.walk_again(TARGET, Some(&mut mover), &move_reads(&g)),
+        Ok(())
+    );
     assert_eq!(
         (walking.state, walking.move_to),
-        (MOVE, Some(r.to_target(&sprites(&g)).unwrap()))
+        (MOVE, r.walk(&move_reads(&g), Some(TARGET)).unwrap())
     );
 }

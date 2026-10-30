@@ -14489,8 +14489,9 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
 /// repair: the reach test fails and the quick path finds no way closer, so the Repair fails
 /// (state 13), lets the house go, tells its unit AI (0x1f9 with the repair action) and ends; the
 /// house keeps its 300 hit points and nothing is paid. Moved within reach (its footprint touching
-/// the house's), the same work command repairs: it faces the house (6), joins its repairers
-/// and repairs (7), the house gaining hit points.
+/// the house's), the same work command repairs: its `MoveTo` arrived as its list added it
+/// (`0x140aa2100`: within 0.01), so it faces the house (6) in its first update, joins its
+/// repairers and repairs (7), the house gaining hit points.
 #[test]
 fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     let mut t = repairing([29.5, 89.5, 0.0]);
@@ -14518,7 +14519,7 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     let house = &t.players[1].objects[1];
     assert_eq!(
         (house.life.hp, house.repairers(), house.workers),
-        (309.922_58, 1, 1)
+        (309.947_57, 1, 1)
     );
     assert_eq!(t.players[1].resources, [100.0; 4]);
 }
@@ -14561,8 +14562,8 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
     assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
-    assert_eq!(t.players[1].objects[1].life.hp, 302.424_4);
-    assert_eq!(t.players[1].resources, [100.0, 99.889_73, 100.0, 100.0]);
+    assert_eq!(t.players[1].objects[1].life.hp, 302.449_4);
+    assert_eq!(t.players[1].resources, [100.0, 99.888_596, 100.0, 100.0]);
     // a castle (650 stone, 4800 hit points) pays its share in stone
     let mut t = repairing(near);
     for masters in &mut t.masters {
@@ -14582,8 +14583,8 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
     assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
-    assert_eq!(t.players[1].objects[1].life.hp, 3_002.415_5);
-    assert_eq!(t.players[1].resources, [100.0, 100.0, 99.671_42, 100.0]);
+    assert_eq!(t.players[1].objects[1].life.hp, 3_002.440_4);
+    assert_eq!(t.players[1].resources, [100.0, 100.0, 99.668_03, 100.0]);
     let mut t = repairing(near);
     let house = &mut t.players[1].objects[1];
     (house.life.hp, house.armor_removed) = (549.0, [3, 4]);
@@ -14623,7 +14624,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     };
     assert_eq!(
         allied(300.0),
-        (vec![Some(4), Some(6), Some(7)], 302.424_4, [3, 4], 1, 1)
+        (vec![Some(4), Some(6), Some(7)], 302.449_4, [3, 4], 1, 1)
     );
     assert_eq!(
         allied(549.0),
@@ -14667,7 +14668,7 @@ fn a_repair_of_an_annex_repairs_its_main_building_and_counts_there() {
             annex.repairers(),
             main.repairers()
         ),
-        (302.424_4, 302.424_4, 0, 1)
+        (302.449_4, 302.449_4, 0, 1)
     );
 }
 

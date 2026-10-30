@@ -43,7 +43,6 @@ pub use self::clearing::{ClearLook, Cleared, ClearingSite};
 pub use self::drop_off::DropSearch;
 #[cfg(test)]
 use self::placing::beside_diagonal;
-pub use self::walks::{BuildWalks, WalkTo};
 pub(crate) use crate::construction::build::world_side::{NO_CONSTRUCTION, NOT_HELD, held};
 #[cfg(test)]
 use crate::map::spatial::Spatial;
@@ -379,8 +378,6 @@ const MAX_WAITS: u8 = 21;
 const CLEAR: u8 = 223;
 /// 224 (`0xe0`): the work ended, the building completed.
 pub(crate) const FINISHED: u8 = 224;
-/// The last object state an action takes as its target (`FUN_140a7a230`: one above is refused).
-const LAST_TAKEN: u8 = 6;
 /// 3: the action waits without a target.
 pub(crate) const IDLE: u8 = 3;
 /// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
@@ -395,8 +392,6 @@ const DROP_REACH: f32 = crate::math::image::build::DROP_REACH;
 /// of `0x400011` over `order - 0x2c5`).
 pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
     [OrderKind::Gather, OrderKind::Hunt, OrderKind::OnTarget];
-/// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
-const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
 
 #[cfg(test)]
 mod stack_tests {

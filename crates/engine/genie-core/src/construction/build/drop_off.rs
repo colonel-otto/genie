@@ -1,7 +1,6 @@
 //! State 8: a builder that carries something walks to a drop site first ([`DropSearch`]).
 
 use crate::GenieError;
-use crate::construction::build::walks::walk_to;
 use crate::construction::build::{
     BuildAction, BuildReads, DROP, DROP_REACH, DROP_WAIT, DROPPED_ORDERS,
 };
@@ -143,11 +142,11 @@ impl BuildAction {
     /// none the unit tells its unit AI (notify 0x203, the Build's action value) and walks to its
     /// foundation (`set_state(4)`); with one a quiet `MoveTo` (`+0x61` 1) to it within the
     /// search's range starts (`FUN_140aa0df0` with its point the site's place and the found
-    /// task's carrying sprite, else the Build task's moving one; [`BuildWalks::to_object`]):
+    /// task's carrying sprite, else the Build task's moving one; [`MoveToReads::to_object`]):
     /// arrived within 0.01 of its footprint (`FUN_140aa2100`), in state 13 for a unit without
     /// speed.
     ///
-    /// [`BuildWalks::to_object`]: crate::construction::build::BuildWalks::to_object
+    /// [`MoveToReads::to_object`]: crate::movement::move_to::MoveToReads::to_object
     ///
     /// # Errors
     ///
@@ -183,11 +182,12 @@ impl BuildAction {
             )?;
             return self.restart(c, builder);
         };
-        let to = walk_to(c.w, builder, id)?
+        let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
+        let to = move_reads
+            .walk_to(c.w, id)?
             .ok_or(GenieError::unsupported("a drop site without a place"))?;
-        let walks = builder.build_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let given = sprite.or(self.task.moving);
-        self.move_to = walks.to_object(to, range, given, TargetMoved::AsksAgain)?;
+        self.move_to = move_reads.to_object(to, range, given, TargetMoved::AsksAgain)?;
         Ok(())
     }
 

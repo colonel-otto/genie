@@ -1,5 +1,5 @@
 use super::*;
-use crate::movement::move_to::{MoveDefaults, MoveTo, MoveWait, SpriteReads, TargetMoved};
+use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -352,13 +352,15 @@ pub(crate) fn graphics() -> BTreeMap<i16, crate::objects::sprite::Graphic> {
 /// speed 1, no default sprites), with `task` ([`BuildAction::start`]).
 pub(crate) fn started(id: i32, at: [f32; 3], gap: f32, task: BuildTask) -> BuildAction {
     let graphics = graphics();
-    let walks = BuildWalks {
+    let move_reads = MoveToReads {
         sprites: SpriteReads {
             defaults: MoveDefaults::default(),
             graphics: &graphics,
         },
         state: 2,
         speed: 1.0,
+        at: [at[0] - gap, at[1], 0.0],
+        ground: [0.2, 0.2],
     };
     let to = WalkTo {
         id,
@@ -366,90 +368,13 @@ pub(crate) fn started(id: i32, at: [f32; 3], gap: f32, task: BuildTask) -> Build
         gap,
         state: Some(0),
     };
-    BuildAction::start(to, task, &walks).unwrap()
+    BuildAction::start(to, task, &move_reads).unwrap()
 }
 
-/// The Build's `MoveTo`s (`FUN_140aa0df0`, `FUN_140aa0d30`, then `FUN_140a977e0`): one to an
-/// object takes its maker's sprite, else the object default; one to a point the point default;
-/// each is quiet and new. Within 0.01 of its target it arrived, else it starts (13 without
-/// speed); a target above state 6 is refused (far, the point stays its place); one without a
-/// target walks to (0, 0, 0); a builder in state 3 or later adds none; a sprite the table lacks
-/// is an error.
+/// A Build's start (`0x140aadd80`, `set_state(4)`) takes the task's moving sprite for its
+/// `MoveTo` ([`BuildTask::walk`]).
 #[test]
-fn a_build_s_move_tos_take_their_sprite_target_and_start() {
-    let graphics = graphics();
-    let walks = BuildWalks {
-        sprites: SpriteReads {
-            defaults: MoveDefaults {
-                point: Some(20),
-                object: Some(21),
-            },
-            graphics: &graphics,
-        },
-        state: 2,
-        speed: 1.0,
-    };
-    let house = WalkTo {
-        id: 10028,
-        at: [10.5, 10.5, 0.0],
-        gap: 5.0,
-        state: Some(0),
-    };
-    let to = |w: &BuildWalks<'_>, to, given| {
-        w.to_object(to, 0.1, given, TargetMoved::Follows)
-            .unwrap()
-            .unwrap()
-    };
-    let m = to(&walks, house, None);
-    assert_eq!(
-        (m.state, m.target, m.point, m.range),
-        (MoveTo::Start, 10028, [10.5, 10.5, 0.0], 0.1)
-    );
-    assert_eq!(
-        (m.sprite.map(|g| g.id), m.quiet, m.wait),
-        (Some(21), true, MoveWait::NEW)
-    );
-    assert_eq!(to(&walks, house, Some(3)).sprite.map(|g| g.id), Some(3));
-    let near = WalkTo { gap: 0.01, ..house };
-    assert_eq!(to(&walks, near, None).state, MoveTo::Arrived);
-    let gone = WalkTo {
-        gap: 0.0,
-        state: Some(7),
-        ..house
-    };
-    let refused = to(&walks, gone, None);
-    assert_eq!(
-        (refused.state, refused.target, refused.point),
-        (MoveTo::Start, -1, house.at)
-    );
-    let stuck = BuildWalks {
-        speed: 0.0,
-        ..walks
-    };
-    assert_eq!(to(&stuck, house, None).state, MoveTo::Failed);
-    let nothing = walks.to_nothing(0.1, None).unwrap().unwrap();
-    assert_eq!(
-        (nothing.state, nothing.target, nothing.point),
-        (MoveTo::Start, -1, [0.0; 3])
-    );
-    let point = walks.to_point([4.0, 5.0, 0.0], None).unwrap().unwrap();
-    assert_eq!(
-        (
-            point.state,
-            point.target,
-            point.range,
-            point.sprite.map(|g| g.id)
-        ),
-        (MoveTo::Start, -1, 0.0, Some(20))
-    );
-    let dying = BuildWalks { state: 3, ..walks };
-    assert_eq!(
-        dying.to_object(house, 0.1, None, TargetMoved::Follows),
-        Ok(None)
-    );
-    assert_eq!(dying.to_point([4.0, 5.0, 0.0], None), Ok(None));
-    assert!(walks.to_point([4.0, 5.0, 0.0], Some(99)).is_err());
-    // start's MoveTo takes the task's moving sprite
+fn a_build_s_move_to_takes_its_task_s_moving_sprite() {
     let moving = started(10028, [10.5, 10.5, 0.0], 5.0, MOVING_TASK);
     assert_eq!(moving.move_to.and_then(|m| m.sprite).map(|g| g.id), Some(3));
 }

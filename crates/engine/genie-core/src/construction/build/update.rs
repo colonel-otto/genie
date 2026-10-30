@@ -3,11 +3,11 @@
 
 use crate::GenieError;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, BuildWalks, CLEAR, DROP, FINISHED,
-    HALTED, IDLE, MOVE, PLACE, WAIT, WALK_POINT, WORK, WalkTo,
+    BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DROP, FINISHED, HALTED, IDLE,
+    MOVE, PLACE, WAIT, WALK_POINT, WORK,
 };
 use crate::movement::Me;
-use crate::movement::move_to::{GiveUp, MoveToAction};
+use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -23,16 +23,20 @@ use crate::world::step::Step;
 impl BuildAction {
     /// The action's start (slot 5, `0x140aadd80`) on the foundation `to`: state 4, whose
     /// `set_state` (`0x140aae200`) takes the foundation's place as the point and makes the
-    /// `MoveTo` to it ([`BuildWalks::to_foundation`] with what it reads of the builder, `walks`).
+    /// `MoveTo` to it ([`BuildTask::walk`] with what it reads of the builder, `move_reads`).
     ///
     /// # Errors
     ///
     /// A sprite the table lacks.
-    pub fn start(to: WalkTo, task: BuildTask, walks: &BuildWalks<'_>) -> Result<Self, GenieError> {
+    pub fn start(
+        to: WalkTo,
+        task: BuildTask,
+        move_reads: &MoveToReads<'_>,
+    ) -> Result<Self, GenieError> {
         Ok(Self {
             target: to.id,
             state: MOVE,
-            move_to: walks.to_foundation(&task, Some(to))?,
+            move_to: task.walk(move_reads, Some(to))?,
             point: to.at,
             task,
             added: false,
@@ -42,7 +46,7 @@ impl BuildAction {
     }
 
     /// `set_state(4)` (and slot 0x48 or 0x68 before it) on `target` at `at`, with the `MoveTo`
-    /// its case 4 makes ([`BuildWalks::to_foundation`]); the second target and the timer stay.
+    /// its case 4 makes ([`BuildTask::walk`]); the second target and the timer stay.
     #[must_use]
     pub(super) const fn restarted(
         &self,

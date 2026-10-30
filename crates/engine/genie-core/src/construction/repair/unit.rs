@@ -5,7 +5,6 @@ use crate::construction::repair::payment::PaidAttributes;
 use crate::construction::repair::{CountedIn, RepairReads, Repairee};
 use crate::map::spatial::Spatial;
 use crate::movement::Me;
-use crate::movement::move_to::MoveDefaults;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
@@ -39,7 +38,7 @@ impl Unit {
 
     /// What the Repair's update reads as it starts ([`RepairReads`]): its `target` and the
     /// object its repairers count in, as the world holds them (none for a target it does not
-    /// hold), the repairer's master's radii, work rate, sprites and terrain restriction, the
+    /// hold), the repairer's master's radii, work rate, standing sprite and terrain restriction, the
     /// game mode, the owner's type and the unit AI's stance.
     pub(crate) fn repair_reads(
         &self,
@@ -58,8 +57,6 @@ impl Unit {
             rate: self.work_rate_powerup + own.work_rate,
             waits: own.class == class::VILLAGER && !c.w.players[c.player].computer,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
-            // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-            defaults: MoveDefaults::of(&own, self.abilities.look.as_ref()),
             standing: sprite_id(own.standing_sprite),
             restriction: usize::try_from(own.terrain_restriction).ok(),
         })

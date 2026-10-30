@@ -327,9 +327,9 @@ impl BuildAction {
     /// stays, as does a computer player's builder walking to it (state 4); else `set_state(4)`:
     /// it leaves the builders of `FUN_140aaddb0`'s building (`builders`, an annex's main
     /// building's) and its `MoveTo` (the unit stops, slot 0x5d0), and the new `MoveTo` to the
-    /// foundation at `at` starts (`walk`, [`BuildWalks::to_foundation`]).
+    /// foundation at `at` starts (`walk`, [`BuildTask::walk`]).
     ///
-    /// [`BuildWalks::to_foundation`]: crate::construction::build::BuildWalks::to_foundation
+    /// [`BuildTask::walk`]: crate::construction::build::BuildTask::walk
     ///
     /// # Errors
     ///
@@ -364,9 +364,9 @@ impl BuildAction {
     /// (`FUN_140ab0300`) takes it (the caller's builder count, release and take; the Build is no
     /// longer among the builders) and `set_state(4)` starts over: its `MoveTo` goes (the unit
     /// stops, slot 0x5d0) and the new one to the foundation `target` at `at` starts (`walk`,
-    /// [`BuildWalks::to_foundation`]).
+    /// [`BuildTask::walk`]).
     ///
-    /// [`BuildWalks::to_foundation`]: crate::construction::build::BuildWalks::to_foundation
+    /// [`BuildTask::walk`]: crate::construction::build::BuildTask::walk
     ///
     /// # Errors
     ///

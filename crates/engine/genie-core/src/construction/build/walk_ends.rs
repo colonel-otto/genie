@@ -169,14 +169,14 @@ impl BuildAction {
 
     /// `set_state(11)` (`0x140aae200` case 0xb): the prelude ([`BuildAction::leave`]), then a
     /// quiet `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's moving sprite;
-    /// `FUN_140a7a170` with 1, [`BuildWalks::to_point`]), which starts in state 3 (a `MoveTo`
+    /// `FUN_140a7a170` with 1, [`MoveToReads::to_point`]), which starts in state 3 (a `MoveTo`
     /// without a target is far from it), in 13 for a unit without speed.
     ///
     /// # Errors
     ///
     /// The prelude's, a builder without movement state or its master, a sprite the table lacks.
     ///
-    /// [`BuildWalks::to_point`]: crate::construction::build::BuildWalks::to_point
+    /// [`MoveToReads::to_point`]: crate::movement::move_to::MoveToReads::to_point
     pub(super) fn walk_to_point(
         &mut self,
         c: &mut Step<'_>,
@@ -184,8 +184,8 @@ impl BuildAction {
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
         self.state = WALK_POINT;
-        let walks = builder.build_walks(&c.w.masters, c.player, &c.w.graphics)?;
-        self.move_to = walks.to_point(self.point, self.task.moving)?;
+        let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
+        self.move_to = move_reads.to_point(self.point, 0.0, self.task.moving)?;
         Ok(())
     }
 }

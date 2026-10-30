@@ -9,7 +9,7 @@ use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntMove;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{
-    MoveTo, MoveToAction, SpriteReads, ai_sprite, object_sprite, point_sprite,
+    MoveTo, MoveToAction, MoveToReads, SpriteReads, ai_sprite, object_sprite, point_sprite,
 };
 use crate::objects::masters::Masters;
 use crate::objects::masters::class;
@@ -185,8 +185,8 @@ impl Unit {
             // the Transport's (0x140aa3e40): the caller sails it there
             Some(crate::garrison::transport::TRANSPORT) => Ok(PointMove::Sails),
             Some(crate::construction::repair::REPAIR) => {
-                let sprites = self.point_sprites(masters, graphics)?;
-                self.repair_takes_point(point, &sprites)
+                let move_reads = MoveToReads::of(self, self.master_in(masters)?, graphics);
+                self.repair_takes_point(point, &move_reads)
             }
             Some(other) => Err(GenieError::unreachable(
                 "a top action of a type top_action never holds",
@@ -295,20 +295,20 @@ impl Unit {
     }
 
     /// The Repair's slot 0x40 (`FUN_140ad9700`, [`RepairAction::take_point`]): its point, slot
-    /// 0x68 with none, `set_state(11)`, whose `MoveTo` takes `sprites`' default for none. Returns
+    /// 0x68 with none, `set_state(11)`, whose `MoveTo` reads `move_reads`. Returns
     /// the target let go and the one whose repairers it leaves.
     ///
     /// [`RepairAction::take_point`]: crate::construction::repair::RepairAction::take_point
     fn repair_takes_point(
         &mut self,
         point: [f32; 3],
-        sprites: &SpriteReads<'_>,
+        move_reads: &MoveToReads<'_>,
     ) -> Result<PointMove, GenieError> {
         let repair = self
             .actions
             .repair_mut()
             .ok_or(GenieError::unreachable("a Repair head without its Repair"))?;
-        let (old, counted) = repair.take_point(point, self.body.mover_mut(), sprites)?;
+        let (old, counted) = repair.take_point(point, self.body.mover_mut(), move_reads)?;
         Ok(PointMove::Repairs(
             Some(old).filter(|&t| t != -1),
             counted.then_some(old),

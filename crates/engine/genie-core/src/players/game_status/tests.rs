@@ -210,12 +210,23 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         id: 32,
         actions: ActionList::default().with_repair(Some(
             crate::construction::repair::RepairAction::start(
-                (-1, [3.5, 3.5, 0.0]),
+                crate::movement::move_to::WalkTo {
+                    id: -1,
+                    at: [3.5, 3.5, 0.0],
+                    gap: crate::movement::move_to::NO_TARGET_GAP,
+                    state: None,
+                },
                 repair_task,
                 0.0,
-                &crate::movement::move_to::SpriteReads {
-                    defaults: crate::movement::move_to::MoveDefaults::default(),
-                    graphics: &std::collections::BTreeMap::new(),
+                &crate::movement::move_to::MoveToReads {
+                    sprites: crate::movement::move_to::SpriteReads {
+                        defaults: crate::movement::move_to::MoveDefaults::default(),
+                        graphics: &std::collections::BTreeMap::new(),
+                    },
+                    state: 2,
+                    speed: 1.0,
+                    at: [3.5, 3.5, 0.0],
+                    ground: [0.2, 0.2],
                 },
             )
             .unwrap(),

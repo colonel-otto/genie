@@ -14,6 +14,10 @@ use crate::world::slots::PlayerSlots;
 /// A repairer whose top action is no Repair where the order retargets it.
 const NO_REPAIR: GenieError = GenieError::unreachable("a repair retarget without a Repair on top");
 
+/// A Repair's target the world does not hold where the work command starts or retargets it.
+const REPAIR_TARGET_GONE: GenieError =
+    GenieError::unreachable("a Repair's target the world does not hold");
+
 /// A builder whose Build the retake found gone right after it checked.
 const NO_BUILD: GenieError = GenieError::unreachable("a Build taken from a builder that has none");
 
@@ -115,7 +119,7 @@ impl World {
         let t_state = Some(t.life.state);
         let unit = &self.players.live(player, idx)?;
         let builder = unit.master(&self.masters, player)?;
-        let to = crate::construction::build::WalkTo {
+        let to = crate::movement::move_to::WalkTo {
             id: target,
             at: t_at,
             gap: crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius),
@@ -126,8 +130,8 @@ impl World {
             builder.work_rate + unit.work_rate_powerup,
         );
         // the sprites its MoveTo's constructor takes for none (FUN_140aa0df0)
-        let walks = crate::construction::build::BuildWalks::of(unit, builder, &self.graphics);
-        let build = crate::construction::build::BuildAction::start(to, build_task, &walks)?;
+        let move_reads = crate::movement::move_to::MoveToReads::of(unit, builder, &self.graphics);
+        let build = crate::construction::build::BuildAction::start(to, build_task, &move_reads)?;
         self.take(target, self.releaser(player, idx))?;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
@@ -166,28 +170,24 @@ impl World {
         target: i32,
         task: &crate::objects::masters::Task,
     ) -> Result<(crate::construction::repair::RepairAction, i32), GenieError> {
-        let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
-            "a Repair's target the world does not hold",
-        ))?;
+        let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
         let tm = t.master(&self.masters, tp)?;
         if crate::construction::repair::SHIPS.contains(&tm.class) {
             return Err(crate::construction::repair::SHIP_REPAIR);
         }
-        let (t_at, class) = (t.position(), i32::from(tm.class));
+        let class = i32::from(tm.class);
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
-        // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
-        let sprites = crate::movement::move_to::SpriteReads::of(
-            master,
-            unit.abilities.look.as_ref(),
-            &self.graphics,
-        );
+        let move_reads = crate::movement::move_to::MoveToReads::of(unit, master, &self.graphics);
+        let to = move_reads
+            .walk_to(self, target)?
+            .ok_or(REPAIR_TARGET_GONE)?;
         let repair_task = crate::construction::repair::RepairTask::of(task);
         let repair = crate::construction::repair::RepairAction::start(
-            (target, t_at),
+            to,
             repair_task,
             master.weapon_range,
-            &sprites,
+            &move_reads,
         )?;
         self.take(target, self.releaser(player, idx))?;
         Ok((repair, class))
@@ -316,12 +316,9 @@ impl World {
         idx: usize,
         target: i32,
     ) -> Result<i32, GenieError> {
-        let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
-            "a Repair's target the world does not hold",
-        ))?;
+        let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
         let tm = t.master(&self.masters, tp)?;
-        let (t_at, class, ship) = (
-            t.position(),
+        let (class, ship) = (
             i32::from(tm.class),
             crate::construction::repair::SHIPS.contains(&tm.class),
         );
@@ -344,12 +341,14 @@ impl World {
                 return Err(crate::construction::repair::SHIP_REPAIR);
             }
             let unit = &self.players.live(player, idx)?;
-            // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
-            let sprites = crate::movement::move_to::SpriteReads::of(
+            let move_reads = crate::movement::move_to::MoveToReads::of(
+                unit,
                 unit.master(&self.masters, player)?,
-                unit.abilities.look.as_ref(),
                 &self.graphics,
             );
+            let to = move_reads
+                .walk_to(self, target)?
+                .ok_or(REPAIR_TARGET_GONE)?;
             let unit = self.players.live_mut(player, idx)?;
             let r = unit.actions.repair_mut().ok_or(NO_REPAIR)?;
             // slot 0x68 dropped the count on another target; set_state(4)'s prelude makes a
@@ -357,8 +356,7 @@ impl World {
             let counted = same && r.counted;
             r.counted = false;
             r.target = taken;
-            r.point = t_at;
-            r.walk_again(unit.body.mover_mut(), &sprites)?;
+            r.walk_again(to, unit.body.mover_mut(), &move_reads)?;
             if counted {
                 self.leave_builders(target)?;
             }
@@ -431,15 +429,15 @@ impl World {
                 "a Build's retarget without its Build",
             ))?;
         let builder = unit.master(&self.masters, player)?;
-        let to = crate::construction::build::WalkTo {
+        let to = crate::movement::move_to::WalkTo {
             id: target,
             at: t_at,
             gap: crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius),
             state: t_state,
         };
         // set_state(4)'s MoveTo to the foundation (FUN_140aa0df0), made before the borrows below
-        let walk = crate::construction::build::BuildWalks::of(unit, builder, &self.graphics)
-            .to_foundation(&old.task, Some(to))?;
+        let move_reads = crate::movement::move_to::MoveToReads::of(unit, builder, &self.graphics);
+        let walk = old.task.walk(&move_reads, Some(to))?;
         if old.target != target {
             // the task finder took the new target below state 3, which slot 0x68 keeps
             let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;

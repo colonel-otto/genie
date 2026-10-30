@@ -7,9 +7,8 @@ use crate::construction::repair::{
     RepairReads, RepairTask, Repairee, SHIP_REPAIR, SHIPS, WAIT, WALK_POINT, WORK,
 };
 use crate::math::rng::Stream;
-use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
-    GiveUp, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads, Sprites,
+    GiveUp, MoveTo, MoveToAction, MoveToReads, Shown, Sprites, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, PathAsk, footprint_gap};
 use crate::objects::lifecycle::seconds;
@@ -63,57 +62,55 @@ fn show(
 
 impl RepairAction {
     /// A Repair from the work command (the factory `FUN_140aca4b0` case 0x6a, `FUN_140ad7fa0`):
-    /// its target, whose place `at` is its point, the task, not counted, not quiet; the start
+    /// its target `to`, whose place is its point, the task, not counted, not quiet; the start
     /// (slot 5, `FUN_140ad9030` with its force flag) then turns to state 4, whose `set_state`
-    /// makes the `MoveTo` to the target within `range` ([`RepairAction::to_target`]).
+    /// makes the `MoveTo` to the target within `range` ([`RepairAction::walk`] with what it
+    /// reads of the repairer, `move_reads`).
     ///
     /// # Errors
     ///
     /// A sprite the table lacks.
     pub fn start(
-        (target, at): (i32, [f32; 3]),
+        to: WalkTo,
         task: RepairTask,
         range: f32,
-        sprites: &SpriteReads<'_>,
+        move_reads: &MoveToReads<'_>,
     ) -> Result<Self, GenieError> {
         let mut repair = Self {
-            target,
+            target: to.id,
             state: MOVE,
             move_to: None,
-            point: at,
+            point: to.at,
             timer: 0.0,
             task,
             range,
             counted: false,
             quiet: false,
         };
-        repair.move_to = Some(repair.to_target(sprites)?);
+        repair.move_to = repair.walk(move_reads, Some(to))?;
         Ok(repair)
     }
 
-    /// The `MoveTo` of state 4 to the target within its range (`0x140ad9c60`: `FUN_140aa0df0`),
-    /// made quiet (`FUN_140a7a170` with 1), with the task's moving sprite, else the
-    /// constructor's default (`sprites`).
+    /// The `MoveTo` of state 4 (`0x140ad9c60` case 4: `FUN_140aa0df0` with the action's range and
+    /// the task's moving sprite `+0x40`, then quiet) to the target `to`, or without one
+    /// ([`MoveToReads::to_nothing`]), as the sub-action list adds it.
     ///
     /// # Errors
     ///
     /// A sprite the table lacks.
-    pub fn to_target(&self, sprites: &SpriteReads<'_>) -> Result<MoveToAction, GenieError> {
-        Ok(MoveToAction {
-            state: MoveTo::Start,
-            // its point (`+0x38`, `FUN_140aa0df0`): the target's place, as the action took it
-            point: self.point,
-            target: self.target,
-            range: self.range,
-            sprite: sprites.to_object(self.task.moving)?,
-            quiet: true,
-            on_target_moved: TargetMoved::Follows,
-            wait: MoveWait::NEW,
-        })
+    pub fn walk(
+        &self,
+        move_reads: &MoveToReads<'_>,
+        to: Option<WalkTo>,
+    ) -> Result<Option<MoveToAction>, GenieError> {
+        to.map_or_else(
+            || move_reads.to_nothing(self.range, self.task.moving),
+            |to| move_reads.to_object(to, self.range, self.task.moving, TargetMoved::Follows),
+        )
     }
 
-    /// The quiet `MoveTo` of state 11 (`0x140ad9c60`: `FUN_140aa0d30`, quiet) to `point` within
-    /// 0, with the task's moving sprite, else the constructor's default (`sprites`).
+    /// The quiet `MoveTo` of state 11 (`0x140ad9c60` case 0xb: `FUN_140aa0d30`, quiet) to
+    /// `point` within 0 with the task's moving sprite, as the sub-action list adds it.
     ///
     /// # Errors
     ///
@@ -121,13 +118,9 @@ impl RepairAction {
     pub fn to_point(
         &self,
         point: [f32; 3],
-        sprites: &SpriteReads<'_>,
-    ) -> Result<MoveToAction, GenieError> {
-        Ok(MoveToAction::sub_to_point(
-            point,
-            0.0,
-            sprites.to_point(self.task.moving)?,
-        ))
+        move_reads: &MoveToReads<'_>,
+    ) -> Result<Option<MoveToAction>, GenieError> {
+        move_reads.to_point(point, 0.0, self.task.moving)
     }
 
     /// One update (slot 6, `0x140adaa20`) of `repairer` (`me`) through its step, with what it
@@ -492,16 +485,7 @@ impl RepairAction {
                 notify(repairer, crate::unit_ai::REQUIRES_SEARCH)?;
                 standing(c, repairer)?;
             }
-            MOVE => {
-                if let Some(t) = reads.target {
-                    self.point = t.position;
-                }
-                let sprites = SpriteReads {
-                    defaults: reads.defaults,
-                    graphics: &c.w.graphics,
-                };
-                self.move_to = Some(self.to_target(&sprites)?);
-            }
+            MOVE => self.enter_walk(c, repairer, reads)?,
             FACE => {
                 if let Some(t) = reads.target {
                     self.point = t.position;
@@ -523,44 +507,65 @@ impl RepairAction {
                 }
             }
             WALK_POINT => {
-                let sprites = SpriteReads {
-                    defaults: reads.defaults,
-                    graphics: &c.w.graphics,
-                };
-                self.move_to = Some(self.to_point(self.point, &sprites)?);
+                let move_reads = repairer.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
+                self.move_to = self.to_point(self.point, &move_reads)?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// `set_state(4)` from the work command's new target (slot 0x48, the caller's prelude):
-    /// the `MoveTo` goes (a walking one stops the unit) and a new one to the target starts
-    /// ([`RepairAction::to_target`] with `sprites`).
+    /// `set_state(4)`'s case: the target's place is the point, and the `MoveTo` to it starts
+    /// ([`RepairAction::walk`], none for a target the world does not hold).
+    ///
+    /// # Errors
+    ///
+    /// A repairer without its master, a target whose master its table lacks, a sprite the table
+    /// lacks.
+    fn enter_walk(
+        &mut self,
+        c: &Step<'_>,
+        repairer: &Unit,
+        reads: &RepairReads,
+    ) -> Result<(), GenieError> {
+        if let Some(t) = reads.target {
+            self.point = t.position;
+        }
+        let move_reads = repairer.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
+        let to = move_reads.walk_to(c.w, self.target)?;
+        self.move_to = self.walk(&move_reads, to)?;
+        Ok(())
+    }
+
+    /// `set_state(4)` from the work command's new target `to` (slot 0x48, the caller's
+    /// prelude): its place is the point, the `MoveTo` goes (a walking one stops the unit) and a
+    /// new one to the target starts ([`RepairAction::walk`] with `move_reads`).
     ///
     /// # Errors
     ///
     /// A sprite the table lacks, and the unit's stop that the motion step does not model.
     pub fn walk_again(
         &mut self,
+        to: WalkTo,
         mover: Option<&mut crate::movement::Mover>,
-        sprites: &SpriteReads<'_>,
+        move_reads: &MoveToReads<'_>,
     ) -> Result<(), GenieError> {
-        let walk = self.to_target(sprites)?;
+        let walk = self.walk(move_reads, Some(to))?;
         if self.move_to.take().is_some()
             && let Some(m) = mover
         {
             m.stop()?;
         }
+        self.point = to.at;
         self.state = MOVE;
-        self.move_to = Some(walk);
+        self.move_to = walk;
         Ok(())
     }
 
     /// Slot 8 (`FUN_140ad9700`), a move to `point` (its target argument unread): the point is
     /// the action's, slot 0x68 with none (a counted repairer leaves the repairers, the target
     /// goes), then `set_state(11)` (the `MoveTo` goes, a walking one stopping the unit; a quiet
-    /// one to the point starts, [`RepairAction::to_point`] with `sprites`). Returns the target
+    /// one to the point starts, [`RepairAction::to_point`] with `move_reads`). Returns the target
     /// let go and whether it counted.
     ///
     /// # Errors
@@ -570,9 +575,9 @@ impl RepairAction {
         &mut self,
         point: [f32; 3],
         mover: Option<&mut crate::movement::Mover>,
-        sprites: &SpriteReads<'_>,
+        move_reads: &MoveToReads<'_>,
     ) -> Result<(i32, bool), GenieError> {
-        let walk = self.to_point(point, sprites)?;
+        let walk = self.to_point(point, move_reads)?;
         self.point = point;
         let counted = std::mem::replace(&mut self.counted, false);
         let old = std::mem::replace(&mut self.target, -1);
@@ -582,7 +587,7 @@ impl RepairAction {
             m.stop()?;
         }
         self.state = WALK_POINT;
-        self.move_to = Some(walk);
+        self.move_to = walk;
         Ok((old, counted))
     }
 

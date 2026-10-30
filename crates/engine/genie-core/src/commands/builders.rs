@@ -3,9 +3,10 @@
 
 use crate::GenieError;
 use crate::commands::FOUNDATION_GONE;
-use crate::construction::build::{BuildAction, BuildTask, BuildWalks, WalkTo};
+use crate::construction::build::{BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{MoveToReads, WalkTo};
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::player_master;
@@ -196,8 +197,8 @@ impl World {
         };
         let task = BuildTask::of(task, builder.work_rate + unit.work_rate_powerup);
         // the sprites its MoveTo's constructor takes for none (FUN_140aa0df0)
-        let walks = BuildWalks::of(unit, builder, &self.graphics);
-        Ok((with, BuildAction::start(to, task, &walks)?))
+        let move_reads = MoveToReads::of(unit, builder, &self.graphics);
+        Ok((with, BuildAction::start(to, task, &move_reads)?))
     }
 
     /// The queue path of a builder at `idx` of player `q` (slot 0x30 into slot 0x28): its
@@ -378,11 +379,11 @@ impl World {
             gap: footprint_gap(unit.position(), builder.radius, f_at, site.radius),
             state: Some(f.life.state),
         };
-        let walks = BuildWalks::of(unit, builder, &self.graphics);
+        let move_reads = MoveToReads::of(unit, builder, &self.graphics);
         let build = BuildAction::start(
             to,
             BuildTask::of(&task, builder.work_rate + unit.work_rate_powerup),
-            &walks,
+            &move_reads,
         )?;
         if let Some(m) = switch.map(|m| m.id) {
             self.change_master(player, idx, m)?;

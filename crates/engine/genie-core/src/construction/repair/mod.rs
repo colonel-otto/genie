@@ -11,7 +11,7 @@
 //! reaches ([`repair_target`]).
 
 use crate::GenieError;
-use crate::movement::move_to::{MoveDefaults, MoveToAction};
+use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use genie_diff::Diff;
@@ -163,8 +163,6 @@ pub(crate) struct RepairReads {
     /// The unit AI's stance (`+0x1a9`), which sets the wait
     /// ([`crate::movement::move_to::MoveWait::give_up`]).
     pub(crate) stance: u8,
-    /// The sprites its `MoveTo`s take when the task gives none.
-    pub(crate) defaults: MoveDefaults,
     /// The master's standing sprite (`+0x470`), which slot 0x68 shows for none.
     pub(crate) standing: Option<i16>,
     /// The master's terrain restriction, whose mask its quick path takes.
