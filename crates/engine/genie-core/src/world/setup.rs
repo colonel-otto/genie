@@ -55,6 +55,7 @@ impl World {
             techs: Vec::new(),
             effects: Vec::new(),
             market: crate::players::market::Market::default(),
+            ai: crate::players::ai_module::AiModules::default(),
             groups: crate::groups::UnitGroups::default(),
             last_commanded: Vec::new(),
             dt_seconds: 0.0,

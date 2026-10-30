@@ -32,6 +32,7 @@ A player has more than its objects. This folder holds the rest:
 | [`tracker.rs`](tracker.rs) | The player's object tracker (`player+0x18`, the "Object Tracker"): lists of the player's object ids by key, in the order the ids came in. |
 | [`treason.rs`](treason.rs) | Treason (GAME's sub-command 0xa, the old Spies): a player with a castle pays gold to have its allies see the kings of the players it is not allied with, a flare at each king for each of them. |
 | [`tribute.rs`](tribute.rs) | A player's tribute: `TRIBE_COMMAND_GIVE_ATTRIBUTES` (0xc4, `TRIBE_Command::do_command`'s case, `FUN_140e7d040`). |
+| [`ai_module/`](ai_module/) | A computer player's AI module (`player+0x7a8`, `TribeMainDecisionAIModule`, 0x28fb8 bytes). |
 | [`game_status/`](game_status/) | The players' game status (`+0x89`: playing, won, lost) and what changes it: RESIGN (`FUN_140d25af0`), the world's victory check after every update (`TRIBE_World` slot 0x68, `FUN_1415c9480`, whose tail `FUN_14152e3d0` decides who won), and the status setter (`WorldPlayer` slot 1, `FUN_141639860`) with a defeated player's stop of its objects (`FUN_141613ed0`): its villagers, fishing boats and explorers stop and stand, its buildings stop and give back their queues, and every unit AI's orders go. |
 | [`world_player/`](world_player/) | The world player's own update (`WorldPlayer::update`, `0x14163b100`, slot 0x100) and Gaia's (`WorldPlayerGaia::update`, `0x141681cd0`, its slot 0x100). |
 <!-- /files -->
@@ -39,6 +40,6 @@ A player has more than its objects. This folder holds the rest:
 ## How it connects
 
 <!-- uses -->
-- Uses: [`combat`](../combat/), [`construction`](../construction/), [`garrison`](../garrison/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`ownership`](../ownership/), [`production`](../production/), [`technology`](../technology/), [`unit_ai`](../unit_ai/), [`world`](../world/).
+- Uses: [`combat`](../combat/), [`construction`](../construction/), [`garrison`](../garrison/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`ownership`](../ownership/), [`production`](../production/), [`technology`](../technology/), [`unit_ai`](../unit_ai/), [`vision`](../vision/), [`world`](../world/).
 - Used by: [`combat`](../combat/), [`commands`](../commands/), [`construction`](../construction/), [`garrison`](../garrison/), [`gathering`](../gathering/), [`map`](../map/), [`objects`](../objects/), [`orders`](../orders/), [`ownership`](../ownership/), [`production`](../production/), [`technology`](../technology/), [`world`](../world/).
 <!-- /uses -->

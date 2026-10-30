@@ -230,8 +230,11 @@ pub struct Visibility {
     /// The UMV list's capacity (`+0x5e04`): it grows by 8.
     pub extents_capacity: i32,
     /// Players whose type is 3: a computer player's map tells its AI of a newly explored tile
-    /// (its slot 0x88), which the slice does not model.
+    /// (its slot 0x88, [`crate::players::ai_module`]).
     pub computer: Vec<bool>,
+    /// The tiles a computer player's map explored that its AI module has not heard of yet, in
+    /// order ([`Visibility::take_ai_tiles`]).
+    ai_tiles: Vec<(usize, [i32; 2])>,
     seers: BTreeMap<i32, Seer>,
     /// The objects-in-sight registry, when the slice holds it (the save does not).
     pub registry: Option<Registry>,
@@ -301,6 +304,7 @@ impl Visibility {
             extents,
             extents_capacity,
             computer,
+            ai_tiles: Vec::new(),
             seers: BTreeMap::new(),
             registry: None,
             new_tiles: vec![Vec::new(); players],
@@ -316,6 +320,11 @@ impl Visibility {
     /// The first unmodelled case met since the last call.
     pub const fn take_unsupported(&mut self) -> Option<GenieError> {
         self.unsupported.take()
+    }
+
+    /// The tiles a computer player's map explored since the last call, as (player, tile).
+    pub fn take_ai_tiles(&mut self) -> Vec<(usize, [i32; 2])> {
+        std::mem::take(&mut self.ai_tiles)
     }
 
     fn unsupported(&mut self, what: &'static str) {

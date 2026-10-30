@@ -395,3 +395,16 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
     assert_eq!(v.maps[2].counts[v.index(8, 9)], 1);
     assert_eq!(v.maps[2].counts[v.index(11, 9)], 1);
 }
+
+/// A computer player's first sight of a tile queues it for its AI module (slot 0x88), once per
+/// tile; a human player's sight queues nothing.
+#[test]
+fn a_computer_players_newly_explored_tiles_are_queued_for_its_ai_module() {
+    let mut v = world(3);
+    v.computer = vec![false, true, false];
+    assert_eq!(v.explore(1, 10, 10, 0, false), 1);
+    assert_eq!(v.explore(1, 10, 10, 0, false), 0);
+    assert_eq!(v.explore(2, 20, 20, 0, false), 1);
+    assert_eq!(v.take_ai_tiles(), vec![(1, [10, 10])]);
+    assert_eq!(v.take_ai_tiles(), vec![]);
+}

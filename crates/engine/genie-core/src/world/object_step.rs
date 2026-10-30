@@ -56,7 +56,7 @@ impl World {
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
         }
-        if let Some(e) = self.spatial.take_sight_unsupported()
+        if let Some(e) = self.take_sight_unsupported()
             && result.is_ok()
         {
             result = Err(e);

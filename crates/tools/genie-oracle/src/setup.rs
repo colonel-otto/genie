@@ -215,6 +215,12 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
             );
         }
     }
+    // the computer players' AI modules (player+0x7a8, saved only where the AI was created)
+    for (i, p) in header.players().iter().enumerate() {
+        if let Some(m) = p.world_player().tribe_main_decision_aimodule.as_deref() {
+            turns.ai.set(i, ai_module(m));
+        }
+    }
     let map = &world.map;
     turns.pathing = genie_core::pathing::Pathing::new(
         [map.map_width, map.map_height],
@@ -529,3 +535,40 @@ pub(super) fn garrison_firepower(turns: &mut World) {
 
 #[cfg(test)]
 mod tests;
+
+/// A player's AI module as saved: the parts the simulation reads
+/// ([`genie_core::players::ai_module`]). The explorer and its search points are not saved; the
+/// load makes them none and empty.
+pub fn ai_module(
+    m: &genie_save::generated::world::TribeMainDecisionAi,
+) -> genie_core::players::ai_module::AiModule {
+    use genie_core::players::ai_module::{AiModule, InfoModule, TacticalModule};
+    let info = &m.tribe_information_aimodule;
+    let grid = &info.tribe_information_aimodule;
+    let width = grid.x_size_value.max(0) as usize;
+    let cells = grid
+        .row_value
+        .iter()
+        .flat_map(|r| {
+            let row = r.row_value.as_deref().unwrap_or(&[]);
+            (0..width).map(move |x| row.get(x).copied().unwrap_or(0))
+        })
+        .collect();
+    AiModule {
+        info: InfoModule {
+            width: info.map_width,
+            height: info.map_height,
+            path_map: genie_core::movement::explore::InfluenceMap {
+                size: [grid.x_size_value, grid.y_size_value],
+                origin: [grid.x_reference_point_value, grid.y_reference_point_value],
+                limit: grid.unchangeable_limit_value,
+                cells,
+            },
+            explorer: None,
+            search: Vec::new(),
+        },
+        tactical: TacticalModule {
+            slot_times: m.tribe_tactical_aimodule.slot_times.clone(),
+        },
+    }
+}

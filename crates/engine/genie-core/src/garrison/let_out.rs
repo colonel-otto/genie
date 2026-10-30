@@ -200,7 +200,7 @@ impl World {
         {
             let _ = v.sight_on(id, at, made.radius, false, false);
         }
-        if let Some(e) = self.spatial.take_sight_unsupported() {
+        if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }
         Ok(())

@@ -31,7 +31,7 @@ impl Visibility {
                     self.maps[player].explored += 1;
                     self.new_tile(player, tx, ty);
                     if self.computer.get(player).copied().unwrap_or(false) {
-                        self.unsupported("a computer player's newly explored tile (its slot 0x88)");
+                        self.ai_tiles.push((player, [tx, ty]));
                     }
                     if self.links[i].0 & (LINKED | ANCHOR) != 0 {
                         self.reveal_building(player, tx, ty);

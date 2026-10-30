@@ -2291,12 +2291,10 @@ pub struct TribeInformationAiState {
     #[brw(magic = b"\xa0\x0a")]
     #[br(count = 4)]
     pub unnamed_list_at_0x140b4d74e: Vec<TribeInformationAiStateEntry3>,
-    /// unnamed in the binary
-    /// read into local_3538+0x20a3
-    pub unnamed_at_0x140b4da14: u32,
-    /// unnamed in the binary
-    /// read into (longlong)puVar23+0x1051c
-    pub unnamed_at_0x140b4da65: u32,
+    /// the width read into +0x10518 of the information module (FUN_140b8ab60's bound on x)
+    pub map_width: i32,
+    /// the height read into +0x1051c of the information module (FUN_140b8ab60's bound on y)
+    pub map_height: i32,
     /// unnamed in the binary
     /// read into puVar23+0x20a4
     pub unnamed_at_0x140b4dab6: u32,
@@ -2517,8 +2515,8 @@ impl Default for TribeInformationAiState {
             unnamed_at_0x140b4d255: Default::default(),
             unnamed_list_at_0x140b4d3e2: Default::default(),
             unnamed_list_at_0x140b4d74e: vec![Default::default(); 4],
-            unnamed_at_0x140b4da14: Default::default(),
-            unnamed_at_0x140b4da65: Default::default(),
+            map_width: Default::default(),
+            map_height: Default::default(),
             unnamed_at_0x140b4dab6: Default::default(),
             unnamed_at_0x140b4db06: Default::default(),
             marker: Default::default(),
@@ -2963,14 +2961,12 @@ pub struct TribeTacticalAiState {
     /// read at 0x140bb2d5a into a local (local_230)
     #[br(count = unnamed_at_0x140bb2ced as usize)]
     pub unnamed_at_0x140bb2d5a: Vec<u32>,
-    /// unnamed in the binary
-    /// read at 0x140bb2e41 into a local (local_234)
+    /// the count of the words read into +0x1f8 of the tactical module (`(iVar29 + 0x7e) * 4`)
     #[brw(magic = b"\xa0\x0a")]
-    pub unnamed_at_0x140bb2e41: u32,
-    /// unnamed in the binary
-    /// read into (longlong)param_1+((longlong)iVar29+0x7e)*4
-    #[br(count = unnamed_at_0x140bb2e41 as usize)]
-    pub unnamed_at_0x140bb2eb2: Vec<u32>,
+    pub slot_times_count: u32,
+    /// the words at +0x1f8 of the tactical module: FUN_140c09de0 gives slot i of them (-1 past 0x1ff); the hear logic's explore case reads slot 0x100 in seconds
+    #[br(count = slot_times_count as usize)]
+    pub slot_times: Vec<i32>,
     /// unnamed in the binary
     /// read at 0x140bb2fb5 into a local (local_234)
     #[brw(magic = b"\xa0\x0a")]
@@ -3200,8 +3196,8 @@ impl Default for TribeTacticalAiState {
             unnamed_at_0x140bb2c4a: Default::default(),
             unnamed_at_0x140bb2ced: Default::default(),
             unnamed_at_0x140bb2d5a: Default::default(),
-            unnamed_at_0x140bb2e41: Default::default(),
-            unnamed_at_0x140bb2eb2: Default::default(),
+            slot_times_count: Default::default(),
+            slot_times: Default::default(),
             unnamed_at_0x140bb2fb5: Default::default(),
             unnamed_at_0x140bb301a: Default::default(),
             unnamed_at_0x140bb30ac: Default::default(),

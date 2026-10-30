@@ -2,6 +2,7 @@
 //! tribute, treason, the market, their history, their object trackers, and the world player's
 //! own update.
 
+pub mod ai_module;
 pub mod attribute;
 pub mod diplomacy;
 pub mod game_status;

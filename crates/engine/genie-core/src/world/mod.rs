@@ -266,6 +266,8 @@ pub struct World {
     pub zones: crate::pathing::zones::Zones,
     /// The world's ids and pools for the objects of recyclable masters ([`Recycling`]).
     pub recycling: Recycling,
+    /// The computer players' AI modules (`player+0x7a8`), by player.
+    pub ai: crate::players::ai_module::AiModules,
     pub(crate) streams: Streams,
     /// The `.dat`'s technologies, by id.
     pub techs: Vec<crate::technology::TechDef>,
