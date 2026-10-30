@@ -878,7 +878,7 @@ fn a_player_s_attribute_reads_the_resources_first() {
         attributes: vec![9.0; 6],
         ..Player::default()
     };
-    assert_eq!(p.attribute(2), Some(3.0));
-    assert_eq!(p.attribute(5), Some(9.0));
-    assert_eq!(p.attribute(6), None);
+    assert_eq!(p.attribute(AttributeId::numbered(2)), Some(3.0));
+    assert_eq!(p.attribute(AttributeId::numbered(5)), Some(9.0));
+    assert_eq!(p.attribute(AttributeId::numbered(6)), None);
 }

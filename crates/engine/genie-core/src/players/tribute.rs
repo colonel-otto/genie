@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::math::fmath::maxss;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -104,15 +105,25 @@ impl World {
                 .resources
                 .checked(usize::from(gift.attribute))?;
             let (given, paid) = settle(have, gift);
-            self.players.player_mut(to)?.add_attribute(kind, given)?;
-            self.players.player_mut(from)?.add_attribute(kind, -paid)?;
+            self.players
+                .player_mut(to)?
+                .add_attribute(AttributeId::try_from(kind)?, given)?;
+            self.players
+                .player_mut(from)?
+                .add_attribute(AttributeId::try_from(kind)?, -paid)?;
             let giver = self.players.player_mut(from)?;
-            giver.add_attribute(TRIBUTE_GIVEN, given)?;
-            giver.add_attribute(TRIBUTE_PAID, paid)?;
-            giver.add_attribute(TRIBUTE_TO + i16::from(to.index() as u8), given)?;
+            giver.add_attribute(AttributeId::try_from(TRIBUTE_GIVEN)?, given)?;
+            giver.add_attribute(AttributeId::try_from(TRIBUTE_PAID)?, paid)?;
+            giver.add_attribute(
+                AttributeId::try_from(TRIBUTE_TO + i16::from(to.index() as u8))?,
+                given,
+            )?;
             let receiver = self.players.player_mut(to)?;
-            receiver.add_attribute(TRIBUTE_RECEIVED, given)?;
-            receiver.add_attribute(TRIBUTE_FROM + i16::from(from.index() as u8), given)?;
+            receiver.add_attribute(AttributeId::try_from(TRIBUTE_RECEIVED)?, given)?;
+            receiver.add_attribute(
+                AttributeId::try_from(TRIBUTE_FROM + i16::from(from.index() as u8))?,
+                given,
+            )?;
             if receiver.computer {
                 return Err(GenieError::unsupported(
                     "a computer player's AI told of a tribute (0x20a, slot 0x3c8)",

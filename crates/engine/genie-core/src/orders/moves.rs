@@ -14,6 +14,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{MoveOrder, Place, TOO_CLOSE, Work, ignore_unit, packs, readiness, work_reach};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -401,7 +402,10 @@ impl World {
         if !pasture {
             return Ok(Some(-1));
         }
-        let room = Attributes::get(self.players.player(player)?, PASTURE_WORKERS)?;
+        let room = Attributes::get(
+            self.players.player(player)?,
+            AttributeId::try_from(PASTURE_WORKERS)?,
+        )?;
         let workers = self.livestock_workers(order.target) as f32;
         // COMISS room with the workers, JBE: a NaN is full
         if room > workers {

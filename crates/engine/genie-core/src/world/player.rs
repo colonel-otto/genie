@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::objects::object_list::ObjectList;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -197,8 +198,8 @@ pub(crate) const NO_ATTRIBUTE: GenieError =
 
 impl crate::technology::Attributes for Player {
     /// An attribute's value (the resources' from [`Player::resources`]).
-    fn get(&self, i: i16) -> Result<f32, GenieError> {
-        let k = usize::try_from(i).map_err(|_| GenieError::unsupported("a negative attribute"))?;
+    fn get(&self, i: AttributeId) -> Result<f32, GenieError> {
+        let k = i.index();
         self.resources
             .get(k)
             .or_else(|| self.attributes.get(k))
@@ -207,13 +208,11 @@ impl crate::technology::Attributes for Player {
     }
 
     /// An attribute set to `v`, as a technology's payment writes it (no side effects).
-    fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
-        match usize::try_from(i) {
-            Ok(k) => match self.resources.get_mut(k) {
-                Some(r) => *r = v,
-                None => *self.attributes.get_mut(k).ok_or(NO_ATTRIBUTE)? = v,
-            },
-            Err(_) => return Err(GenieError::unsupported("a negative attribute")),
+    fn set(&mut self, i: AttributeId, v: f32) -> Result<(), GenieError> {
+        let k = i.index();
+        match self.resources.get_mut(k) {
+            Some(r) => *r = v,
+            None => *self.attributes.get_mut(k).ok_or(NO_ATTRIBUTE)? = v,
         }
         Ok(())
     }
@@ -243,18 +242,28 @@ impl Player {
     /// Attribute `i` (`player+0x100`, decoded; the first four are [`Player::resources`]), None
     /// past its count (`+0x90`, the saved attributes').
     #[must_use]
-    pub fn attribute(&self, i: usize) -> Option<f32> {
+    pub fn attribute(&self, attribute: AttributeId) -> Option<f32> {
+        let i = attribute.index();
         let value = self.attributes.get(i).copied()?;
         Some(self.resources.get(i).copied().unwrap_or(value))
+    }
+
+    /// [`Player::add_attribute`] for an attribute number a data field holds (a storage or cost
+    /// entry): a negative number is a gap, as [`AttributeId::required`].
+    ///
+    /// # Errors
+    ///
+    /// A negative number, or the errors of [`Player::add_attribute`].
+    pub fn add_data_attribute(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
+        self.add_attribute(AttributeId::required(kind)?, amount)
     }
 
     /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows
     /// by `amount` (`FUN_14165d040`; the peak of attribute 11, `+0x6fc`, and the resource events of
     /// `FUN_140c898a0` are not held). Food, wood, stone and gold are the slice's `resources`; the
     /// attributes whose change has side effects (50, 183, 196) are not modelled.
-    pub fn add_attribute(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
-        let i =
-            usize::try_from(kind).map_err(|_| GenieError::unsupported("a negative attribute"))?;
+    pub fn add_attribute(&mut self, kind: AttributeId, amount: f32) -> Result<(), GenieError> {
+        let i = kind.index();
         match i {
             50 | 183 | 196 => Err(GenieError::unsupported(
                 "an attribute whose change has side effects",
@@ -277,9 +286,9 @@ impl Player {
     /// # Errors
     ///
     /// [`Player::add_attribute`]'s.
-    pub fn take_at_least_zero(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
+    pub fn take_at_least_zero(&mut self, kind: AttributeId, amount: f32) -> Result<(), GenieError> {
         self.add_attribute(kind, -amount)?;
-        if let Some(v) = usize::try_from(kind).ok().and_then(|i| self.value_mut(i))
+        if let Some(v) = self.value_mut(kind.index())
             && *v < 0.0
         {
             *v = 0.0;
@@ -305,7 +314,7 @@ impl Player {
         adds: impl IntoIterator<Item = (i16, f32)>,
     ) -> Result<(), GenieError> {
         for (kind, amount) in adds {
-            self.add_attribute(kind, amount)?;
+            self.add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         Ok(())
     }

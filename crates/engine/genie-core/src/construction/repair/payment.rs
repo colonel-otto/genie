@@ -8,6 +8,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
+use crate::players::attribute::AttributeId;
 
 /// The classes whose repair pays its unit share (`FUN_1412143b0`: the ships 20, 21, 22, 2 and
 /// 53, the siege 13 and the classes 51, 54 and 55).
@@ -188,27 +189,26 @@ impl PaidAttributes {
 }
 
 impl crate::technology::Attributes for PaidAttributes {
-    fn get(&self, i: i16) -> Result<f32, GenieError> {
-        usize::try_from(i)
-            .ok()
-            .and_then(|k| self.values.get(k))
+    fn get(&self, i: AttributeId) -> Result<f32, GenieError> {
+        self.values
+            .get(i.index())
             .copied()
             .ok_or(crate::world::NO_ATTRIBUTE)
     }
 
-    fn set(&mut self, _: i16, _: f32) -> Result<(), GenieError> {
+    fn set(&mut self, _: AttributeId, _: f32) -> Result<(), GenieError> {
         Err(GenieError::unreachable(
             "a repair's payment that sets an attribute",
         ))
     }
 
-    fn subtract(&mut self, i: i16, amount: f32) -> Result<(), GenieError> {
-        let v = usize::try_from(i)
-            .ok()
-            .and_then(|k| self.values.get_mut(k))
+    fn subtract(&mut self, i: AttributeId, amount: f32) -> Result<(), GenieError> {
+        let v = self
+            .values
+            .get_mut(i.index())
             .ok_or(crate::world::NO_ATTRIBUTE)?;
         *v -= amount;
-        self.adds.push((i, -amount));
+        self.adds.push((i.get(), -amount));
         Ok(())
     }
 }

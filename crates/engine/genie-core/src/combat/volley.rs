@@ -22,6 +22,7 @@ use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
@@ -41,7 +42,7 @@ fn missile_storage(
     let mut held = (-1, 0.0);
     for &(kind, amount, flag) in storage {
         if kind >= 0 && matches!(flag, 1 | 2 | 32) {
-            owner.add_attribute(kind, amount)?;
+            owner.add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         if kind != -1 && flag == 0 {
             held = (kind, amount);

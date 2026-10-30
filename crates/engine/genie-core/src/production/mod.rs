@@ -20,7 +20,7 @@ use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, TrainLocation};
-use crate::players::attribute;
+use crate::players::attribute::{self, AttributeId};
 use crate::technology::TechId;
 use genie_diff::Diff;
 
@@ -433,7 +433,7 @@ pub fn population(storage: &[(i16, f32, u8)]) -> f32 {
         // The population headroom (attribute 4), the population (11), the population cap (32), the
         // units queued (80) and the units in production (81).
         // The population (attribute 11).
-        .filter(|&&(kind, _, _)| kind == attribute::HEADROOM)
+        .filter(|&&(kind, _, _)| kind == attribute::HEADROOM.get())
         .fold(0.0, |pop, &(_, amount, _)| pop - amount)
 }
 
@@ -442,17 +442,17 @@ pub const POPULATION_CAP: usize = 32;
 /// The units queued (attribute 80).
 pub const QUEUED: i16 = 80;
 /// The units in production (attribute 81).
-pub const IN_PRODUCTION: i16 = 81;
+pub const IN_PRODUCTION: AttributeId = AttributeId::numbered(81);
 
 /// `FUN_1411e7dc0`'s test before it makes a unit's make action: the population with the units in
 /// production and this one stays within the cap (`COMISS`, `JBE`: a NaN passes), and the
 /// headroom covers them. A building that fails it waits (housed).
 pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
     let a = |i: usize| attributes.get(i).copied().ok_or(crate::world::NO_ATTRIBUTE);
-    let in_production = a(IN_PRODUCTION as usize)?;
+    let in_production = a(IN_PRODUCTION.index())?;
     Ok(
-        a(POPULATION_CAP)? < a(attribute::POPULATION)? + in_production + pop
-            || (a(attribute::HEADROOM as usize)? - in_production) - pop < 0.0,
+        a(POPULATION_CAP)? < a(attribute::POPULATION.index())? + in_production + pop
+            || (a(attribute::HEADROOM.index())? - in_production) - pop < 0.0,
     )
 }
 
@@ -462,6 +462,7 @@ mod tests {
     use crate::objects::masters::Masters;
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
+    use crate::players::attribute::AttributeId;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
     use crate::test_ids::tech_id;
@@ -675,11 +676,11 @@ mod tests {
     struct Held(Vec<f32>);
 
     impl crate::technology::Attributes for Held {
-        fn get(&self, i: i16) -> Result<f32, GenieError> {
-            Ok(self.0[i as usize])
+        fn get(&self, i: AttributeId) -> Result<f32, GenieError> {
+            Ok(self.0[i.index()])
         }
-        fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
-            self.0[i as usize] = v;
+        fn set(&mut self, i: AttributeId, v: f32) -> Result<(), GenieError> {
+            self.0[i.index()] = v;
             Ok(())
         }
     }
@@ -719,7 +720,7 @@ mod tests {
         };
         let refunded = |state: &mut TechState, tech, modifier| {
             let mut held = Held(vec![0.0; 90]);
-            held.0[usize::try_from(attribute::RESEARCH_COST_MODIFIER).unwrap()] = modifier;
+            held.0[attribute::RESEARCH_COST_MODIFIER.index()] = modifier;
             let r = refund_tech(state, &def, tech, &mut held);
             (r, held.0[0], held.0[1])
         };

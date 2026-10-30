@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute::{self, AttributeId};
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
@@ -383,7 +384,7 @@ impl World {
                 );
             }
             for &(p, attribute, amount) in &r.adds {
-                self.players[p.index()].add_attribute(attribute, amount)?;
+                self.players[p.index()].add_attribute(AttributeId::try_from(attribute)?, amount)?;
             }
         }
         Ok(())
@@ -434,12 +435,12 @@ impl World {
         if master.class == class::VILLAGER {
             // the attacker's class as the hit saw it: the attacker may be out for its update
             if matches!(kill.attacker_class, class::PREY | class::PREDATOR) {
-                self.players[q.index()].add_attribute(227, 1.0)?;
+                self.players[q.index()].add_attribute(AttributeId::numbered(227), 1.0)?;
             }
             let by_kind = match self.players[ap].kind {
-                1 => Some(229),
-                2 => Some(226),
-                3 => Some(228),
+                1 => Some(AttributeId::numbered(229)),
+                2 => Some(AttributeId::numbered(226)),
+                3 => Some(AttributeId::numbered(228)),
                 _ => None,
             };
             if let Some(kind) = by_kind {
@@ -504,15 +505,15 @@ impl World {
             class::CLASS_63,
         ];
         if !PEACEFUL.contains(&master.class) {
-            self.players[ap].add_attribute(20, 1.0)?;
-            self.players[q.index()].add_attribute(154, 1.0)?;
+            self.players[ap].add_attribute(attribute::KILLS, 1.0)?;
+            self.players[q.index()].add_attribute(attribute::KILLS_OTHER, 1.0)?;
         }
-        self.players[ap].add_attribute(q.index() as i16 + 300, 1.0)?;
-        self.players[q.index()].add_attribute(ap as i16 + 325, 1.0)?;
+        self.players[ap].add_attribute(AttributeId::try_from(q.index() as i16 + 300)?, 1.0)?;
+        self.players[q.index()].add_attribute(AttributeId::try_from(ap as i16 + 325)?, 1.0)?;
         let cost = paid_cost(master);
-        self.players[ap].add_attribute(170, cost)?;
-        self.players[q.index()].add_attribute(152, cost)?;
-        self.players[ap].add_attribute(q.index() as i16 + 400, cost)?;
+        self.players[ap].add_attribute(attribute::KILLS_VALUE, cost)?;
+        self.players[q.index()].add_attribute(attribute::KILLS_VALUE_OTHER, cost)?;
+        self.players[ap].add_attribute(AttributeId::try_from(q.index() as i16 + 400)?, cost)?;
         Ok(())
     }
 }

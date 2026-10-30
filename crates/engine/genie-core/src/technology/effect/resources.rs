@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::effect::OBJECT_GONE;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -185,7 +186,12 @@ impl World {
                     }
                 }
             }
-            _ => return self.players.player_mut(p)?.add_attribute(attribute, v),
+            _ => {
+                return self
+                    .players
+                    .player_mut(p)?
+                    .add_attribute(AttributeId::try_from(attribute)?, v);
+            }
         }
         // FUN_14165d040's store of the sum
         let sum = v + self.attribute_of(p, attribute);

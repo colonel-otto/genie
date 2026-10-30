@@ -3,67 +3,199 @@
 //! (food, wood, stone, gold). A master's attribute types are a different set
 //! ([`crate::objects::masters::attribute`]).
 
+use crate::GenieError;
+use getset::CopyGetters;
+
+/// A player's attribute number (`player+0x100`'s array, the `.dat`'s attribute types, an effect's
+/// attribute argument): 0 or more. The first four are the resources (food, wood, stone, gold).
+/// The simulation names the ones it tells apart (below); any other is a number the data holds
+/// ([`AttributeId::numbered`]). A field that holds −1 for none is `Option<AttributeId>`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, CopyGetters)]
+pub struct AttributeId(
+    /// Its value, the attribute's place in the player's attributes.
+    #[getset(get_copy = "pub")]
+    i16,
+);
+
+impl AttributeId {
+    /// An attribute the code names, in a constant: only this module makes them.
+    const fn named(value: i16) -> Self {
+        assert!(0 <= value, "a negative attribute number");
+        Self(value)
+    }
+
+    /// An attribute the code names by its number, where the game's own number is the name (the
+    /// attributes the engine reads once, and the tests').
+    #[must_use]
+    pub const fn numbered(value: i16) -> Self {
+        Self::named(value)
+    }
+
+    /// Its place in a table by attribute number (the player's attributes).
+    #[must_use]
+    pub const fn index(self) -> usize {
+        self.0.unsigned_abs() as usize
+    }
+
+    /// The attribute `by` places on: a table of attributes that run by player or by kind from this
+    /// one (the trickle rates, the gathered totals).
+    ///
+    /// # Panics
+    ///
+    /// A number past the table's `i16` range: a bug in the caller's offset.
+    #[must_use]
+    pub const fn offset(self, by: usize) -> Self {
+        let value = self.0 as i64 + by as i64;
+        assert!(
+            value <= i16::MAX as i64,
+            "an attribute number past the table"
+        );
+        Self(value as i16)
+    }
+
+    /// The attribute of a table place (a number of `usize`, as a command or a loop holds it).
+    #[must_use]
+    pub fn of_index(index: usize) -> Option<Self> {
+        i16::try_from(index).ok().and_then(Self::of_data)
+    }
+
+    /// Whether it is one of the four resources (food, wood, stone, gold).
+    #[must_use]
+    pub const fn is_resource(self) -> bool {
+        self.0 <= 3
+    }
+
+    /// The attribute a data field names, none for a negative value (−1 in the `.dat`).
+    #[must_use]
+    pub fn of_data(value: i16) -> Option<Self> {
+        (0 <= value).then_some(Self(value))
+    }
+
+    /// The attribute of an entry that must name one (a storage or cost entry of −1 is a slot
+    /// the game's payment and storage code does not take).
+    ///
+    /// # Errors
+    ///
+    /// A negative value: the slice does not model what the game does with a −1 entry.
+    pub fn required(value: i16) -> Result<Self, GenieError> {
+        Self::of_data(value)
+            .ok_or_else(|| GenieError::unsupported("a negative attribute").with("value", value))
+    }
+
+    /// The value of a field that holds −1 for none.
+    #[must_use]
+    pub const fn field(attribute: Option<Self>) -> i16 {
+        match attribute {
+            Some(a) => a.0,
+            None => -1,
+        }
+    }
+}
+
+impl std::fmt::Display for AttributeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl genie_diff::Diff for AttributeId {
+    fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
+        d.equal(self, other);
+    }
+}
+
+impl TryFrom<i16> for AttributeId {
+    type Error = GenieError;
+
+    /// The attribute of value `value`.
+    ///
+    /// # Errors
+    ///
+    /// A negative value, which no attribute is.
+    fn try_from(value: i16) -> Result<Self, GenieError> {
+        Self::of_data(value)
+            .ok_or_else(|| GenieError::unsupported("a negative attribute").with("attribute", value))
+    }
+}
+
 /// Food: the first of the four resources (food, wood, stone, gold: 0 to 3).
-pub const FOOD: usize = 0;
+pub const FOOD: AttributeId = AttributeId::named(0);
 /// Wood.
-pub const WOOD: usize = 1;
+pub const WOOD: AttributeId = AttributeId::named(1);
 /// Stone.
-pub const STONE: usize = 2;
+pub const STONE: AttributeId = AttributeId::named(2);
 /// Gold: a sale gives it and a purchase costs it, the treason costs it.
-pub const GOLD: usize = 3;
+pub const GOLD: AttributeId = AttributeId::named(3);
 /// The current age (`+0x30`, `player+0x100`), as the `i16` game mode 16's QUEUE, a new soldier's
 /// unit AI (`FUN_140c12300`) and a command compare; the mode's bound is `DAT_14330eb8c`.
-pub const CURRENT_AGE: i16 = 6;
+pub const CURRENT_AGE: AttributeId = AttributeId::named(6);
 /// The population headroom (`+0x308` 4): a building's held amount gives it, and a cost check
 /// skips it (`FUN_141618db0` with its fifth argument 1).
-pub const HEADROOM: i16 = 4;
+pub const HEADROOM: AttributeId = AttributeId::named(4);
 /// The population.
-pub const POPULATION: usize = 11;
+pub const POPULATION: AttributeId = AttributeId::named(11);
 /// The units owned.
-pub const UNITS_OWNED: usize = 19;
+pub const UNITS_OWNED: AttributeId = AttributeId::named(19);
 /// The kills.
-pub const KILLS: usize = 20;
+pub const KILLS: AttributeId = AttributeId::named(20);
 /// The explored share of the map, in percent.
-pub const EXPLORED: usize = 22;
+pub const EXPLORED: AttributeId = AttributeId::named(22);
 /// The civilian population.
-pub const CIVILIAN_POPULATION: usize = 37;
+pub const CIVILIAN_POPULATION: AttributeId = AttributeId::named(37);
 /// The military population.
-pub const MILITARY_POPULATION: usize = 40;
+pub const MILITARY_POPULATION: AttributeId = AttributeId::named(40);
 /// The razings.
-pub const RAZINGS: usize = 43;
+pub const RAZINGS: AttributeId = AttributeId::named(43);
 /// The kill ratio: kills less losses.
-pub const KILL_RATIO: usize = 44;
+pub const KILL_RATIO: AttributeId = AttributeId::named(44);
 /// The survival to the finish, which a defeat clears.
-pub const SURVIVAL: usize = 45;
+pub const SURVIVAL: AttributeId = AttributeId::named(45);
 /// The town centre is not available (0 lets a builder place one, `FUN_141625a20`).
-pub const NO_TOWN_CENTRE: usize = 48;
+pub const NO_TOWN_CENTRE: AttributeId = AttributeId::named(48);
 /// The gold counter, which gold with a statistic grows (`FUN_141616820`).
-pub const GOLD_COUNTER: usize = 49;
+pub const GOLD_COUNTER: AttributeId = AttributeId::named(49);
 /// The research cost modifier, as the `i16` the cost code compares.
-pub const RESEARCH_COST_MODIFIER: i16 = 85;
+pub const RESEARCH_COST_MODIFIER: AttributeId = AttributeId::named(85);
 /// The kills' value of the other players.
-pub const KILLS_VALUE_OTHER: usize = 152;
+pub const KILLS_VALUE_OTHER: AttributeId = AttributeId::named(152);
 /// The razings' value of the other players.
-pub const RAZINGS_VALUE_OTHER: usize = 153;
+pub const RAZINGS_VALUE_OTHER: AttributeId = AttributeId::named(153);
 /// The kills of the other players.
-pub const KILLS_OTHER: usize = 154;
+pub const KILLS_OTHER: AttributeId = AttributeId::named(154);
 /// The razings of the other players.
-pub const RAZINGS_OTHER: usize = 155;
+pub const RAZINGS_OTHER: AttributeId = AttributeId::named(155);
 /// The units' value.
-pub const UNITS_VALUE: usize = 164;
+pub const UNITS_VALUE: AttributeId = AttributeId::named(164);
 /// The buildings' value.
-pub const BUILDINGS_VALUE: usize = 165;
+pub const BUILDINGS_VALUE: AttributeId = AttributeId::named(165);
 /// The first of the gathered totals of food, wood and stone (166 to 168).
-pub const GATHERED: usize = 166;
+pub const GATHERED: AttributeId = AttributeId::named(166);
 /// The gathered total of gold.
-pub const GOLD_GATHERED: usize = 169;
+pub const GOLD_GATHERED: AttributeId = AttributeId::named(169);
 /// The kills' value.
-pub const KILLS_VALUE: usize = 170;
+pub const KILLS_VALUE: AttributeId = AttributeId::named(170);
 /// The razings' value.
-pub const RAZINGS_VALUE: usize = 172;
+pub const RAZINGS_VALUE: AttributeId = AttributeId::named(172);
 /// The town centres a player may have (`FUN_141625a20`).
-pub const TOWN_CENTRE_LIMIT: usize = 218;
+pub const TOWN_CENTRE_LIMIT: AttributeId = AttributeId::named(218);
 /// The first of the trickles a minute of food, wood, stone and gold (230 to 233).
-pub const TRICKLES: usize = 230;
+pub const TRICKLES: AttributeId = AttributeId::named(230);
 /// The food a minute of the livestock in the player's mills.
-pub const MILL_FOOD: usize = 254;
+pub const MILL_FOOD: AttributeId = AttributeId::named(254);
+
+#[cfg(test)]
+mod tests {
+    use super::{AttributeId, FOOD, GOLD, POPULATION};
+
+    /// The four resources come first, a negative value is no attribute.
+    #[test]
+    fn the_resources_are_the_first_four_and_a_negative_value_is_none() {
+        assert!(FOOD.is_resource() && GOLD.is_resource());
+        assert!(!POPULATION.is_resource());
+        assert_eq!(AttributeId::of_data(-1), None);
+        assert_eq!(AttributeId::of_data(11), Some(POPULATION));
+        assert_eq!(AttributeId::field(Some(GOLD)), 3);
+        assert_eq!(AttributeId::field(None), -1);
+        assert!(AttributeId::try_from(-2).is_err());
+    }
+}

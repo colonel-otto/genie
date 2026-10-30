@@ -287,25 +287,27 @@ impl History {
         // the save holds every attribute of the .dat's count, these among them
         let a = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
         let int = |i: usize| cvttss2si(a(i));
-        let civilian = a(attribute::CIVILIAN_POPULATION);
-        let military = a(attribute::MILITARY_POPULATION);
+        let civilian = a(attribute::CIVILIAN_POPULATION.index());
+        let military = a(attribute::MILITARY_POPULATION.index());
         if military + civilian < 0.0 {
             self.add_entry(0, 0.0, 0.0);
         } else {
             self.add_entry(0, short(civilian), short(military));
         }
-        let kills = int(attribute::KILLS).wrapping_sub(self.old_total_kills);
-        let kills_value = int(attribute::KILLS_VALUE).wrapping_sub(self.old_build_value_kills);
-        let razings = int(attribute::RAZINGS).wrapping_sub(self.old_total_razings);
+        let kills = int(attribute::KILLS.index()).wrapping_sub(self.old_total_kills);
+        let kills_value =
+            int(attribute::KILLS_VALUE.index()).wrapping_sub(self.old_build_value_kills);
+        let razings = int(attribute::RAZINGS.index()).wrapping_sub(self.old_total_razings);
         let razings_value =
-            int(attribute::RAZINGS_VALUE).wrapping_sub(self.old_build_value_razings);
-        let kills_other = int(attribute::KILLS_OTHER).wrapping_sub(self.old_total_kills_other);
-        let kills_value_other =
-            int(attribute::KILLS_VALUE_OTHER).wrapping_sub(self.old_build_value_kills_other);
+            int(attribute::RAZINGS_VALUE.index()).wrapping_sub(self.old_build_value_razings);
+        let kills_other =
+            int(attribute::KILLS_OTHER.index()).wrapping_sub(self.old_total_kills_other);
+        let kills_value_other = int(attribute::KILLS_VALUE_OTHER.index())
+            .wrapping_sub(self.old_build_value_kills_other);
         let razings_other =
-            int(attribute::RAZINGS_OTHER).wrapping_sub(self.old_total_razings_other);
-        let razings_value_other =
-            int(attribute::RAZINGS_VALUE_OTHER).wrapping_sub(self.old_build_value_razings_other);
+            int(attribute::RAZINGS_OTHER.index()).wrapping_sub(self.old_total_razings_other);
+        let razings_value_other = int(attribute::RAZINGS_VALUE_OTHER.index())
+            .wrapping_sub(self.old_build_value_razings_other);
         let value = self
             .old_current_build_value_buildings
             .wrapping_add(self.old_current_build_value_units);
@@ -355,16 +357,16 @@ impl History {
             // total_share + running in the game; the share is never a NaN, so the order is moot
             self.running_ave_bv_percent += total_share;
         }
-        self.old_total_razings = int(attribute::RAZINGS);
-        self.old_build_value_razings = int(attribute::RAZINGS_VALUE);
-        self.old_total_razings_other = int(attribute::RAZINGS_OTHER);
-        self.old_build_value_razings_other = int(attribute::RAZINGS_VALUE_OTHER);
-        self.old_total_kills = int(attribute::KILLS);
-        self.old_build_value_kills = int(attribute::KILLS_VALUE);
-        self.old_total_kills_other = int(attribute::KILLS_OTHER);
-        self.old_build_value_kills_other = int(attribute::KILLS_VALUE_OTHER);
-        self.old_current_build_value_units = int(attribute::UNITS_VALUE);
-        self.old_current_build_value_buildings = int(attribute::BUILDINGS_VALUE);
+        self.old_total_razings = int(attribute::RAZINGS.index());
+        self.old_build_value_razings = int(attribute::RAZINGS_VALUE.index());
+        self.old_total_razings_other = int(attribute::RAZINGS_OTHER.index());
+        self.old_build_value_razings_other = int(attribute::RAZINGS_VALUE_OTHER.index());
+        self.old_total_kills = int(attribute::KILLS.index());
+        self.old_build_value_kills = int(attribute::KILLS_VALUE.index());
+        self.old_total_kills_other = int(attribute::KILLS_OTHER.index());
+        self.old_build_value_kills_other = int(attribute::KILLS_VALUE_OTHER.index());
+        self.old_current_build_value_units = int(attribute::UNITS_VALUE.index());
+        self.old_current_build_value_buildings = int(attribute::BUILDINGS_VALUE.index());
         if self.battle_flag == 0 {
             for (i, kill) in self.old_player_kill_bv.iter_mut().enumerate() {
                 *kill = cvttss2si_64(a(KILL_VALUE_OF + i)) as i32;
@@ -608,11 +610,11 @@ mod tests {
             ..History::default()
         };
         let mut a = attributes();
-        a[attribute::CIVILIAN_POPULATION] = 12.0;
-        a[attribute::MILITARY_POPULATION] = 3.0;
-        a[attribute::KILLS] = 2.0;
-        a[attribute::UNITS_VALUE] = 500.0;
-        a[attribute::BUILDINGS_VALUE] = 900.7;
+        a[attribute::CIVILIAN_POPULATION.index()] = 12.0;
+        a[attribute::MILITARY_POPULATION.index()] = 3.0;
+        a[attribute::KILLS.index()] = 2.0;
+        a[attribute::UNITS_VALUE.index()] = 500.0;
+        a[attribute::BUILDINGS_VALUE.index()] = 900.7;
         a[KILL_VALUE_OF + 2] = 45.0;
         a[RAZING_VALUE_OF + 1] = 5_000_000_000.0;
         h.update(&a, 0, 30).unwrap();
@@ -627,7 +629,7 @@ mod tests {
         // 5e9 through the 64-bit conversion keeps its low half
         assert_eq!(h.old_player_razing_bv, vec![0, 5_000_000_000_i64 as i32, 0]);
         // a negative population sum gives an entry of zeros
-        a[attribute::MILITARY_POPULATION] = -13.0;
+        a[attribute::MILITARY_POPULATION.index()] = -13.0;
         h.update_count = 29;
         h.update(&a, 0, 30).unwrap();
         assert_eq!(h.entries[1], [0, 0]);
@@ -647,14 +649,14 @@ mod tests {
             ..History::default()
         };
         let mut a = attributes();
-        a[attribute::UNITS_VALUE] = 600.0;
-        a[attribute::BUILDINGS_VALUE] = 400.0;
-        a[attribute::KILLS_VALUE] = 100.0;
-        a[attribute::RAZINGS_VALUE] = 30.0;
-        a[attribute::KILLS_VALUE_OTHER] = 30.0;
-        a[attribute::KILLS] = 70_000.0;
-        a[attribute::KILLS_OTHER] = 3.0;
-        a[attribute::RAZINGS] = 1.0;
+        a[attribute::UNITS_VALUE.index()] = 600.0;
+        a[attribute::BUILDINGS_VALUE.index()] = 400.0;
+        a[attribute::KILLS_VALUE.index()] = 100.0;
+        a[attribute::RAZINGS_VALUE.index()] = 30.0;
+        a[attribute::KILLS_VALUE_OTHER.index()] = 30.0;
+        a[attribute::KILLS.index()] = 70_000.0;
+        a[attribute::KILLS_OTHER.index()] = 3.0;
+        a[attribute::RAZINGS.index()] = 1.0;
         a[KILL_VALUE_OF + 1] = 50.0;
         a[KILL_VALUE_OF + 2] = 40.0;
         a[RAZING_VALUE_OF + 2] = 20_000.0;
@@ -707,8 +709,8 @@ mod tests {
             ..History::default()
         };
         let mut a = attributes();
-        a[attribute::UNITS_VALUE] = 1000.0;
-        a[attribute::KILLS_VALUE] = 130.0;
+        a[attribute::UNITS_VALUE.index()] = 1000.0;
+        a[attribute::KILLS_VALUE.index()] = 130.0;
         h.update(&a, 0, 30).unwrap();
         assert_eq!(h.battle_flag, 2);
         h.update_count = 29;
@@ -734,8 +736,8 @@ mod tests {
             ..History::default()
         };
         let mut a = attributes();
-        a[attribute::UNITS_VALUE] = 1000.0;
-        a[attribute::KILLS_VALUE] = 120.0;
+        a[attribute::UNITS_VALUE.index()] = 1000.0;
+        a[attribute::KILLS_VALUE.index()] = 120.0;
         h.update(&a, 0, 30).unwrap();
         assert_eq!(h.battle_flag, 0);
     }

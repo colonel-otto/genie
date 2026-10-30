@@ -7,6 +7,7 @@ use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -155,8 +156,7 @@ impl World {
             return Ok(());
         }
         let player = &mut self.players[owner.index()];
-        let multiplier = usize::try_from(task.attribute_type2)
-            .ok()
+        let multiplier = AttributeId::of_data(task.attribute_type2)
             .and_then(|a| player.attribute(a))
             .unwrap_or(0.0);
         let amount = generated(self.dt_seconds, task, multiplier);
@@ -173,7 +173,7 @@ impl World {
             give,
         )?;
         for (kind, amount) in adds {
-            self.players[owner.index()].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         Ok(())
     }

@@ -10,6 +10,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::tech_outside;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -289,7 +290,7 @@ impl World {
         let def = self.techs.get(tech).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
-        let get = |i: i16| crate::technology::Attributes::get(owner, i);
+        let get = |i: i16| crate::technology::Attributes::get(owner, AttributeId::try_from(i)?);
         let factors = crate::technology::factors(tech_id, &get)?;
         let listed = owner.techs[tech].listed_costs(def, factors)?;
         let mut sums = [0i16; 4];

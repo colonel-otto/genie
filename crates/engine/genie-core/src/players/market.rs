@@ -9,15 +9,15 @@ use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
 use crate::players::PlayerId;
-use crate::players::attribute;
+use crate::players::attribute::{self, AttributeId};
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
 /// The commodities are the player's attribute indices: food, wood and stone (the commands' only
 /// ones) and the ore (attribute 0x38), which only the price reads know.
-const FOOD: u8 = attribute::FOOD as u8;
-const WOOD: u8 = attribute::WOOD as u8;
-const STONE: u8 = attribute::STONE as u8;
+const FOOD: u8 = attribute::FOOD.index() as u8;
+const WOOD: u8 = attribute::WOOD.index() as u8;
+const STONE: u8 = attribute::STONE.index() as u8;
 const ORE: u8 = 0x38;
 /// The player's attribute 78, the share of a trade's worth the market keeps.
 const FEE: usize = 78;
@@ -166,7 +166,7 @@ impl World {
             let held = self
                 .players
                 .player(p)?
-                .attribute(usize::from(attribute))
+                .attribute(AttributeId::numbered(i16::from(attribute)))
                 .unwrap_or(0.0);
             if below_or_unordered(held, volume as f32) {
                 return Ok(());
@@ -180,7 +180,7 @@ impl World {
             let fee = self.fee(p) * worth;
             let gold = cvttss2si(worth - fee + ROUND) as f32;
             // The gold a sale gives and a purchase costs.
-            self.add_resource(p, attribute::GOLD, gold, 1, true)?;
+            self.add_resource(p, attribute::GOLD.index(), gold, 1, true)?;
             let lot = volume.wrapping_neg() as f32;
             self.add_resource(p, usize::from(attribute), lot, 0, true)?;
         }
@@ -216,7 +216,7 @@ impl World {
                 return Ok(());
             }
             let paid = cvttss2si(cost) as f32;
-            self.add_resource(p, attribute::GOLD, -paid, 0, true)?;
+            self.add_resource(p, attribute::GOLD.index(), -paid, 0, true)?;
             self.market.trade(attribute, true);
             self.add_resource(p, usize::from(attribute), lot, 0, true)?;
         }
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn a_purchase_costs_the_lot_s_worth_and_the_fee_at_least_21() {
         let mut t = trading();
-        t.players[1].resources[attribute::GOLD] = 170.0;
+        t.players[1].resources[attribute::GOLD.index()] = 170.0;
         t.buy(player_id(1), FOOD, 2).unwrap();
         let p = &t.players[1];
         assert_eq!(p.resources, [200.0, 100.0, 100.0, 21.0]);
@@ -358,10 +358,13 @@ mod tests {
         let mut t = trading();
         t.players[1].commodity_volume = 10;
         t.buy(player_id(1), WOOD, 1).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD], 100.0 - 21.0);
+        assert_eq!(
+            t.players[1].resources[attribute::GOLD.index()],
+            100.0 - 21.0
+        );
         // no volume, no purchase
         t.players[1].commodity_volume = 0;
         t.buy(player_id(1), WOOD, 1).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD], 79.0);
+        assert_eq!(t.players[1].resources[attribute::GOLD.index()], 79.0);
     }
 }

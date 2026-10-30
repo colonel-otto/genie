@@ -19,6 +19,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
 use crate::world::{BUILDING_COST, Gate, World};
@@ -74,7 +75,8 @@ impl World {
                 .filter(|&&(resource, _, paid)| 0 <= resource && paid)
                 .map(|&(_, amount, _)| i32::from(amount))
                 .sum();
-            self.players[player.index()].add_attribute(BUILDING_COST, paid as f32)?;
+            self.players[player.index()]
+                .add_attribute(AttributeId::try_from(BUILDING_COST)?, paid as f32)?;
         }
         Ok(())
     }
@@ -97,7 +99,7 @@ impl World {
                 held = (kind, amount);
             }
             if 0 <= kind && matches!(flag, 1 | 2 | 32) {
-                owner.add_attribute(kind, amount)?;
+                owner.add_attribute(AttributeId::required(kind)?, amount)?;
             }
         }
         Ok(held)

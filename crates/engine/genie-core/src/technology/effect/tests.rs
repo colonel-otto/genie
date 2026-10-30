@@ -136,22 +136,22 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
     let master = Master {
         id: ids::HOUSE,
         storage: vec![
-            (attribute::HEADROOM, -5.0, 0),
-            (POPULATION, 3.0, 0),
+            (attribute::HEADROOM.get(), -5.0, 0),
+            (POPULATION.get(), 3.0, 0),
             (7, 1.0, 0),
-            (RESOURCE_19, 2.0, 0),
+            (RESOURCE_19.get(), 2.0, 0),
         ],
         ..Master::default()
     };
     t.population_storage(PlayerId::new(0), &master, -8.0)
         .unwrap();
-    let at = |i: i16| t.players[0].attributes[i as usize];
+    let at = |i: i16| t.players[0].attributes[usize::try_from(i).unwrap()];
     assert_eq!(
         [
-            at(attribute::HEADROOM),
-            at(POPULATION),
+            at(attribute::HEADROOM.get()),
+            at(POPULATION.get()),
             at(7),
-            at(RESOURCE_19)
+            at(RESOURCE_19.get())
         ],
         [-3.0, 5.0, 0.0, 0.0]
     );

@@ -10,6 +10,7 @@
 use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::world::slots::CheckedIndex;
 
 pub mod effect;
@@ -32,7 +33,7 @@ const SCALED_BY_38: TechId = TechId::SCALED_BY_38;
 /// The attribute 0x2f3's cost adjustments scale by (`+0x130`).
 const ATTRIBUTE_38: i16 = 38;
 /// The resource a cost the player cannot meet takes the rest from (`+0x18`: gold).
-const GOLD: i16 = attribute::GOLD as i16;
+const GOLD: AttributeId = attribute::GOLD;
 /// A researched technology's state (3), which a disable command keeps (`FUN_1413cdb00`) and the
 /// player's tree counts.
 pub(crate) const RESEARCHED: i16 = 3;
@@ -193,7 +194,7 @@ pub fn factors(
         0.0
     } else {
         // The attribute that scales research costs above 0 (`+0x2a8`: 85).
-        attribute(attribute::RESEARCH_COST_MODIFIER)?
+        attribute(attribute::RESEARCH_COST_MODIFIER.get())?
     };
     let scale = if tech == SCALED_BY_38 {
         attribute(ATTRIBUTE_38)? as i32 as i16
@@ -416,7 +417,9 @@ impl TechState {
         building: MasterId,
         attributes: &mut dyn Attributes,
     ) -> Result<bool, GenieError> {
-        if !self.can_research(def, factors, repeat, &|i| attributes.get(i))? {
+        if !self.can_research(def, factors, repeat, &|i| {
+            attributes.get(AttributeId::try_from(i)?)
+        })? {
             return Ok(false);
         }
         for j in 0..3 {
@@ -428,13 +431,13 @@ impl TechState {
                     "a research cost the building pays (FUN_1411c7470)",
                 ));
             }
-            let have = attributes.get(attr)?;
+            let have = attributes.get(AttributeId::try_from(attr)?)?;
             if amount <= have {
-                attributes.set(attr, have - amount)?;
+                attributes.set(AttributeId::try_from(attr)?, have - amount)?;
             } else {
                 let gold = attributes.get(GOLD)?;
                 attributes.set(GOLD, gold - (amount - have))?;
-                attributes.set(attr, 0.0)?;
+                attributes.set(AttributeId::try_from(attr)?, 0.0)?;
             }
         }
         if def.kind == SHARED_KIND {
@@ -468,16 +471,16 @@ impl TechState {
 /// The player's attributes as a technology's costs read and write them.
 pub trait Attributes {
     /// Attribute `i`.
-    fn get(&self, i: i16) -> Result<f32, GenieError>;
+    fn get(&self, i: AttributeId) -> Result<f32, GenieError>;
     /// Attribute `i` set to `v`.
-    fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError>;
+    fn set(&mut self, i: AttributeId, v: f32) -> Result<(), GenieError>;
     /// Attribute `i` less `amount` (a payment's `SUBSS`), by default through [`Attributes::get`]
     /// and [`Attributes::set`].
     ///
     /// # Errors
     ///
     /// An attribute the player does not have.
-    fn subtract(&mut self, i: i16, amount: f32) -> Result<(), GenieError> {
+    fn subtract(&mut self, i: AttributeId, amount: f32) -> Result<(), GenieError> {
         let v = self.get(i)?;
         self.set(i, v - amount)
     }
@@ -525,11 +528,11 @@ mod tests {
     struct Held([f32; 4]);
 
     impl Attributes for Held {
-        fn get(&self, i: i16) -> Result<f32, GenieError> {
-            Ok(self.0[i as usize])
+        fn get(&self, i: AttributeId) -> Result<f32, GenieError> {
+            Ok(self.0[i.index()])
         }
-        fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
-            self.0[i as usize] = v;
+        fn set(&mut self, i: AttributeId, v: f32) -> Result<(), GenieError> {
+            self.0[i.index()] = v;
             Ok(())
         }
     }
@@ -558,7 +561,7 @@ mod tests {
         // its queue entry records the 50 gold, which its start finds paid
         let paid = s.entry_costs(&d, (0.0, 1)).unwrap();
         assert_eq!(paid, [(3, 50.0), (-1, 0.0), (-1, 0.0)]);
-        let get = |i: i16| held.get(i);
+        let get = |i: i16| held.get(AttributeId::required(i)?);
         assert_eq!(s.start_test(&d, (0.0, 1), &paid, &get), Ok(true));
         // without the entry's payment the 50 gold left would do too, but that difference is
         // the game's FUN_1411c68b0

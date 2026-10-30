@@ -517,7 +517,7 @@ mod tests {
             -1,
         )]);
         assert!(!t.can_make(PlayerId::new(1), TOWN_CENTRE_621));
-        t.players[1].attributes[attribute::TOWN_CENTRE_LIMIT] = 1.0;
+        t.players[1].attributes[attribute::TOWN_CENTRE_LIMIT.index()] = 1.0;
         assert!(t.can_make(PlayerId::new(1), TOWN_CENTRE_621));
     }
 

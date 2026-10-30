@@ -8,6 +8,7 @@ use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::players::tracker::Key;
 use crate::production::{Making, refund, refund_research};
@@ -77,7 +78,7 @@ impl World {
             owner.tracker.unplace(e.master, class);
         }
         let pop = master.as_ref().map_or(0.0, |m| population(&m.storage));
-        owner.add_attribute(QUEUED, -pop * f32::from(count))
+        owner.add_attribute(AttributeId::try_from(QUEUED)?, -pop * f32::from(count))
     }
 
     /// `count` researches of a research entry `e` at the building at `idx` of player `p`
@@ -218,7 +219,7 @@ impl World {
         let pop = master
             .as_ref()
             .map_or(0.0, |m| crate::production::population(&m.storage));
-        owner.add_attribute(crate::production::QUEUED, -pop)
+        owner.add_attribute(AttributeId::try_from(crate::production::QUEUED)?, -pop)
     }
 
     /// `FUN_1411d66b0`'s cancel of up to five of a kind, from the unit entry `e` of the

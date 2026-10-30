@@ -15,6 +15,7 @@ use crate::objects::unit::Unit;
 use crate::orders::object_gone;
 use crate::orders::{Place, TROPHIES, TROPHY, clear_powerups, damage_share};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -294,7 +295,7 @@ impl World {
         let switched = switch_master(unit, &old, &next, world)?;
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.leaving {
-            owner.add_attribute(kind, amount)?;
+            owner.add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         if switched.promoted {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
@@ -304,7 +305,7 @@ impl World {
         }
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.coming {
-            owner.add_attribute(kind, amount)?;
+            owner.add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         Ok(())
     }

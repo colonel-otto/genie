@@ -15,6 +15,7 @@ use crate::objects::masters::{Master, Masters, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 
 use crate::unit_ai::OWNER_CHANGED;
 use crate::world::World;
@@ -367,14 +368,14 @@ impl World {
         };
         for &(kind, amount, flag) in &m.storage {
             if 0 <= kind && matches!(flag, 2 | 16 | 32) {
-                self.players[old].add_attribute(kind, -amount)?;
+                self.players[old].add_attribute(AttributeId::required(kind)?, -amount)?;
             }
         }
         count_class(&mut self.players[old].attributes, m, -1.0);
         count_class(&mut self.players[new].attributes, m, 1.0);
         for &(kind, amount, flag) in &m.storage {
             if 0 <= kind && matches!(flag, 1 | 2 | 32) {
-                self.players[new].add_attribute(kind, amount)?;
+                self.players[new].add_attribute(AttributeId::required(kind)?, amount)?;
             }
         }
         Ok(())
@@ -474,11 +475,11 @@ pub(crate) fn lose_built_storage(
 ) -> Result<(), GenieError> {
     for &(kind, amount, flag) in &master.storage {
         if flag == STORAGE_WHILE_BUILT && 0 <= kind {
-            p.add_attribute(kind, -amount)?;
+            p.add_attribute(AttributeId::required(kind)?, -amount)?;
         }
     }
     // The population headroom attribute, which a building's held amount gives (`+0x308` 4).
-    if held == attribute::HEADROOM {
+    if held == attribute::HEADROOM.get() {
         p.add_attribute(attribute::HEADROOM, -amount)?;
     }
     Ok(())
@@ -498,10 +499,10 @@ pub(crate) fn gain_built_storage(
 ) -> Result<(), GenieError> {
     for &(kind, amount, flag) in &master.storage {
         if matches!(flag, STORAGE_WHILE_BUILT | STORAGE_8) && 0 <= kind {
-            p.add_attribute(kind, amount)?;
+            p.add_attribute(AttributeId::required(kind)?, amount)?;
         }
     }
-    if held == attribute::HEADROOM {
+    if held == attribute::HEADROOM.get() {
         p.add_attribute(attribute::HEADROOM, amount)?;
     }
     Ok(())

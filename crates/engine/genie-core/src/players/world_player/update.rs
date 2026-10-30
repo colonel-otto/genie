@@ -69,14 +69,14 @@ impl World {
         };
         let player = self.players.player_mut(p)?;
         if let Some(e) = explored {
-            set(&mut player.attributes, attribute::EXPLORED, e);
+            set(&mut player.attributes, attribute::EXPLORED.index(), e);
         }
         let a = &player.attributes;
-        let ratio = get(a, attribute::KILLS)
-            - (get(a, attribute::UNITS_OWNED) - get(a, attribute::POPULATION));
-        set(&mut player.attributes, attribute::KILL_RATIO, ratio);
-        if !at_most_or_unordered(0.0, get(&player.attributes, attribute::KILL_RATIO)) {
-            set(&mut player.attributes, attribute::KILL_RATIO, 0.0);
+        let ratio = get(a, attribute::KILLS.index())
+            - (get(a, attribute::UNITS_OWNED.index()) - get(a, attribute::POPULATION.index()));
+        set(&mut player.attributes, attribute::KILL_RATIO.index(), ratio);
+        if !at_most_or_unordered(0.0, get(&player.attributes, attribute::KILL_RATIO.index())) {
+            set(&mut player.attributes, attribute::KILL_RATIO.index(), 0.0);
         }
         if !matches!(player.kind, HUMAN_TYPE | COMPUTER_TYPE) {
             return Ok(());
@@ -144,7 +144,7 @@ impl World {
             self.set_status(p, crate::players::game_status::LOST)?;
             set(
                 &mut self.players.player_mut(p)?.attributes,
-                attribute::SURVIVAL,
+                attribute::SURVIVAL.index(),
                 0.0,
             );
         }

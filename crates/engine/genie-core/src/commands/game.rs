@@ -177,7 +177,7 @@ impl World {
                     && self.has_treason_building(p)
                 {
                     // The pending debit's entry of gold (`FUN_141630ef0` with 3).
-                    self.players[p.index()].pending_debit[attribute::GOLD] -= TREASON_COST;
+                    self.players[p.index()].pending_debit[attribute::GOLD.index()] -= TREASON_COST;
                     self.treason(p)?;
                 }
             }
@@ -362,7 +362,7 @@ mod tests {
         );
         // no castle: no treason
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
-        assert_eq!(t.players[1].pending_debit[attribute::GOLD], 0.0);
+        assert_eq!(t.players[1].pending_debit[attribute::GOLD.index()], 0.0);
         let castle = Master {
             id: CASTLE,
             class: class::TOWER,
@@ -372,7 +372,10 @@ mod tests {
         t.track_add(PlayerId::new(1), 500, CASTLE).unwrap();
         t.track_complete(PlayerId::new(1), 500, CASTLE).unwrap();
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
-        assert_eq!(t.players[1].pending_debit[attribute::GOLD], -TREASON_COST);
+        assert_eq!(
+            t.players[1].pending_debit[attribute::GOLD.index()],
+            -TREASON_COST
+        );
     }
 
     /// GAME's queue cases for the command's player: 0xd and 0x15 buy farms and pastures for the

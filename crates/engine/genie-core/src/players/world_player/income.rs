@@ -20,7 +20,7 @@ impl World {
         for kind in 0..4 {
             let rate = get(
                 &self.players.player(p)?.attributes,
-                attribute::TRICKLES + kind,
+                attribute::TRICKLES.offset(kind).index(),
             );
             if at_most_or_unordered(rate, 0.0) {
                 continue;
@@ -51,8 +51,11 @@ impl World {
             }
         }
         let grows = crate::math::fmath::log(sum / LIVESTOCK_SCALE + SECOND);
-        let rate = get(&self.players.player(p)?.attributes, attribute::MILL_FOOD) / MINUTE;
-        self.add_resource(p, attribute::FOOD, rate * (time * grows), 1, true)?;
+        let rate = get(
+            &self.players.player(p)?.attributes,
+            attribute::MILL_FOOD.index(),
+        ) / MINUTE;
+        self.add_resource(p, attribute::FOOD.index(), rate * (time * grows), 1, true)?;
         Ok(())
     }
 
@@ -71,17 +74,23 @@ impl World {
         stat: u8,
         share: bool,
     ) -> Result<(), GenieError> {
-        if kind == attribute::GOLD {
+        if kind == attribute::GOLD.index() {
             if stat != 0 {
                 let a = &mut self.players.player_mut(p)?.attributes;
-                let counter = get(a, attribute::GOLD_COUNTER);
-                set(a, attribute::GOLD_COUNTER, amount + counter);
+                let counter = get(a, attribute::GOLD_COUNTER.index());
+                set(a, attribute::GOLD_COUNTER.index(), amount + counter);
                 if stat == 1 {
-                    self.add_attribute_base(p, attribute::GOLD_GATHERED, amount, 1, share)?;
+                    self.add_attribute_base(p, attribute::GOLD_GATHERED.index(), amount, 1, share)?;
                 }
             }
         } else if stat == 1 {
-            self.add_attribute_base(p, attribute::GATHERED + kind, amount, 1, share)?;
+            self.add_attribute_base(
+                p,
+                attribute::GATHERED.offset(kind).index(),
+                amount,
+                1,
+                share,
+            )?;
         }
         self.add_attribute_base(p, kind, amount, stat, share)?;
         Ok(())

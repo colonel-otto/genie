@@ -8,12 +8,13 @@ use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::technology::effect::{Change, OBJECT_GONE};
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
-pub(crate) const POPULATION: i16 = attribute::POPULATION as i16;
-pub(super) const RESOURCE_19: i16 = 19;
+pub(crate) const POPULATION: AttributeId = attribute::POPULATION;
+pub(super) const RESOURCE_19: AttributeId = AttributeId::numbered(19);
 /// A storage flag of `'@'` (64): the object's storage stays with it (`FUN_141195a50`).
 pub(super) const KEPT_STORAGE: u8 = 64;
 /// A hit point total a capped multiply holds an object's below (`FUN_1411962e0`: `0x46fffe00`).
@@ -189,8 +190,8 @@ impl World {
                     && 0 <= kind
                 {
                     let owner = self.players.player_mut(p)?;
-                    owner.add_attribute(kind, -amount)?;
-                    owner.add_attribute(kind, v)?;
+                    owner.add_attribute(AttributeId::required(kind)?, -amount)?;
+                    owner.add_attribute(AttributeId::required(kind)?, v)?;
                 }
             }
             _ => {}
@@ -267,14 +268,14 @@ impl World {
     ) -> Result<(), GenieError> {
         let owner = self.players.player_mut(p)?;
         for &(kind, amount, _) in master.storage.iter().take(3) {
-            match kind {
+            match AttributeId::of_data(kind) {
                 // The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
                 // headroom (4), and current population (11) and 19, which hold its magnitude.
-                attribute::HEADROOM => {
+                Some(attribute::HEADROOM) => {
                     owner.add_attribute(attribute::HEADROOM, amount.abs())?;
                     owner.add_attribute(attribute::HEADROOM, v)?;
                 }
-                POPULATION | RESOURCE_19 => {
+                Some(kind @ (POPULATION | RESOURCE_19)) => {
                     owner.add_attribute(kind, -amount)?;
                     owner.add_attribute(kind, v.abs())?;
                 }

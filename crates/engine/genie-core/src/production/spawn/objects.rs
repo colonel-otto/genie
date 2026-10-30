@@ -281,7 +281,7 @@ impl World {
         let mut held = (-1, 0.0);
         for &(kind, amount, flag) in &made.storage {
             if kind >= 0 && matches!(flag, 1 | 2 | 32) {
-                owner.add_attribute(kind, amount)?;
+                owner.add_data_attribute(kind, amount)?;
             }
             if kind != -1 && flag == 0 {
                 held = (kind, amount);

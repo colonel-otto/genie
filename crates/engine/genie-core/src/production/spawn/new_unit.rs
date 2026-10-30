@@ -15,6 +15,7 @@ use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::production::IN_PRODUCTION;
 
 use crate::unit_ai::ActionKind;
@@ -346,7 +347,7 @@ impl World {
         let owner = &mut self.players[p.index()];
         for &(kind, amount, flag) in &made.storage {
             if kind >= 0 && matches!(flag, 1 | 2 | 32) {
-                owner.add_attribute(kind, amount)?;
+                owner.add_attribute(AttributeId::required(kind)?, amount)?;
             }
         }
         let cost: i32 = made
@@ -355,11 +356,11 @@ impl World {
             .filter(|&&(resource, _, paid)| resource >= 0 && paid)
             .map(|&(_, amount, _)| i32::from(amount))
             .sum();
-        owner.add_attribute(98, cost as f32)?;
-        owner.add_attribute(164, cost as f32)?;
-        owner.add_attribute(246, cost as f32)?;
+        owner.add_attribute(AttributeId::numbered(98), cost as f32)?;
+        owner.add_attribute(attribute::UNITS_VALUE, cost as f32)?;
+        owner.add_attribute(AttributeId::numbered(246), cost as f32)?;
         if made.class == class::VILLAGER {
-            owner.add_attribute(248, 1.0)?;
+            owner.add_attribute(AttributeId::numbered(248), 1.0)?;
         }
         // the combat setup's class counters (FUN_141226060)
         crate::objects::lifecycle::death_parts::count_class(&mut owner.attributes, made, 1.0);

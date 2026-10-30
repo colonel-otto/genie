@@ -44,6 +44,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 use genie_diff::Diff;
 
@@ -225,8 +226,7 @@ impl World {
             }
             for task in &tasks {
                 if task.action_type == REMOVAL_REWARD && task.work_range < EPSILON {
-                    let multiplier = usize::try_from(task.attribute_type2)
-                        .ok()
+                    let multiplier = AttributeId::of_data(task.attribute_type2)
                         .and_then(|a| self.players[owner.index()].attribute(a));
                     let cost = player_master(&self.masters, owner, own.id)
                         .map_or(&[][..], |m| &m.cost[..]);

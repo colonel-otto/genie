@@ -424,7 +424,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
             },
         );
         let p = &mut t.players[1];
-        p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
+        p.attributes[crate::production::IN_PRODUCTION.index()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
             ai_type: UnitAiType::PREDATOR,
             current_order: None,
@@ -442,10 +442,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     assert_eq!(p.objects.len(), before + 1);
     let made = p.objects.last().unwrap();
     assert_eq!(made.life.master_id, ids::VILLAGER_MALE);
-    assert_eq!(
-        p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()],
-        2.0
-    );
+    assert_eq!(p.attributes[crate::production::IN_PRODUCTION.index()], 2.0);
     let completed = p.objects[2]
         .ai
         .as_ref()
@@ -534,7 +531,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
             },
         );
         let p = &mut t.players[1];
-        p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
+        p.attributes[crate::production::IN_PRODUCTION.index()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
             ai_type: UnitAiType::PREDATOR,
             current_order: None,

@@ -9,6 +9,7 @@ use crate::objects::masters::master_type;
 use crate::objects::teardown::HeadCode;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::attribute::AttributeId;
 use crate::test_ids::object_id;
 
 const TASK: RepairTask = RepairTask {
@@ -97,11 +98,11 @@ fn the_work_counts_half_for_each_repairer_past_the_first() {
 struct Held(Vec<f32>);
 
 impl crate::technology::Attributes for Held {
-    fn get(&self, i: i16) -> Result<f32, GenieError> {
-        Ok(self.0[i as usize])
+    fn get(&self, i: AttributeId) -> Result<f32, GenieError> {
+        Ok(self.0[i.index()])
     }
-    fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError> {
-        self.0[i as usize] = v;
+    fn set(&mut self, i: AttributeId, v: f32) -> Result<(), GenieError> {
+        self.0[i.index()] = v;
         Ok(())
     }
 }

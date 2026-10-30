@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
 use crate::technology::TechId;
@@ -91,7 +92,7 @@ impl World {
         let state = &owner.techs[t];
         let repeatable = state.repeatable(def, false);
         let shared = def.kind == crate::technology::SHARED_KIND;
-        let time_modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
+        let time_modifier = owner.get(AttributeId::try_from(RESEARCH_TIME_MODIFIER)?)?;
         let location = state
             .location(master)
             .copied()
@@ -163,7 +164,7 @@ impl World {
                 .iter()
                 .find(|l| l.0 == master.get())
                 .map_or(-1.0, |l| f32::from(l.1));
-            let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
+            let modifier = owner.get(AttributeId::try_from(RESEARCH_TIME_MODIFIER)?)?;
             if !crate::technology::is_age(tech) && 0.0 < modifier {
                 time *= modifier;
             }
@@ -192,8 +193,9 @@ impl World {
         // attribute 269, cut by CVTTSS2SI and its low short above 0, names an effect of the
         // world's table the player gets with the building as its object (its slot 0x10,
         // `TRIBE_Effects::do_effect`, which skips an id the table does not hold)
-        let reward =
-            crate::math::conversions::cvttss2si(self.players[p.index()].get(WORLD_EFFECT)?) as i16;
+        let reward = crate::math::conversions::cvttss2si(
+            self.players[p.index()].get(AttributeId::try_from(WORLD_EFFECT)?)?,
+        ) as i16;
         if 0 < reward
             && let Some(effect) = usize::try_from(reward)
                 .ok()
@@ -272,7 +274,7 @@ impl World {
             .find(|l| l.0 == master.get())
             .map_or(-1.0, |l| f32::from(l.1));
         let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
-        let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
+        let modifier = owner.get(AttributeId::try_from(RESEARCH_TIME_MODIFIER)?)?;
         if !crate::technology::is_age(r.tech) && 0.0 < modifier {
             time *= modifier;
         }

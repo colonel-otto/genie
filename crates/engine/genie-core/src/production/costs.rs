@@ -7,6 +7,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::production::{POPULATION_CAP, QUEUED};
 use crate::technology::TechId;
 
@@ -31,8 +32,8 @@ pub fn refund(
             .rev()
             .find(|c| c.0 != -1 && c.0 == i32::from(attribute))
             .map_or(0.0, |c| c.1);
-        let held = attributes.get(attribute)?;
-        attributes.set(attribute, held + back)?;
+        let held = attributes.get(AttributeId::required(attribute)?)?;
+        attributes.set(AttributeId::required(attribute)?, held + back)?;
     }
     Ok(())
 }
@@ -53,8 +54,11 @@ pub fn refund_research(
         if attribute < 0 {
             continue;
         }
-        let held = attributes.get(attribute)?;
-        attributes.set(attribute, held + f32::from(count) * amount)?;
+        let held = attributes.get(AttributeId::try_from(attribute)?)?;
+        attributes.set(
+            AttributeId::try_from(attribute)?,
+            held + f32::from(count) * amount,
+        )?;
     }
     Ok(())
 }
@@ -74,8 +78,11 @@ pub fn refund_master(
         if attribute < 0 || !paid {
             continue;
         }
-        let held = attributes.get(attribute)?;
-        attributes.set(attribute, (i32::from(amount) * n) as f32 + held)?;
+        let held = attributes.get(AttributeId::required(attribute)?)?;
+        attributes.set(
+            AttributeId::required(attribute)?,
+            (i32::from(amount) * n) as f32 + held,
+        )?;
     }
     Ok(())
 }
@@ -110,8 +117,8 @@ pub fn refund_tech(
         if 0.0 < modifier {
             v = f32::from(cvttss2si(v * modifier) as i16);
         }
-        let held = attributes.get(c.attribute)?;
-        attributes.set(c.attribute, held + v)?;
+        let held = attributes.get(AttributeId::try_from(c.attribute)?)?;
+        attributes.set(AttributeId::try_from(c.attribute)?, held + v)?;
     }
     state.state = 1;
     state.research_done = 0.0;
@@ -176,12 +183,12 @@ pub fn cost_test(
             continue;
         }
         let need = f32::from(amount) * count;
-        if attribute == attribute::HEADROOM {
+        if attribute == attribute::HEADROOM.get() {
             if !population {
                 continue;
             }
-            let pop = attributes.get(attribute::POPULATION as i16)?;
-            let cap = attributes.get(POPULATION_CAP as i16)?;
+            let pop = attributes.get(attribute::POPULATION)?;
+            let cap = attributes.get(AttributeId::try_from(POPULATION_CAP as i16)?)?;
             if cap <= pop {
                 return Ok(false);
             }
@@ -192,10 +199,10 @@ pub fn cost_test(
             } else {
                 room
             };
-            if limit < attributes.get(QUEUED)? + pop + need {
+            if limit < attributes.get(AttributeId::try_from(QUEUED)?)? + pop + need {
                 return Ok(false);
             }
-        } else if attributes.get(attribute)? < need {
+        } else if attributes.get(AttributeId::try_from(attribute)?)? < need {
             return Ok(false);
         }
     }
@@ -224,7 +231,7 @@ pub fn pay(
         if attribute < 0 || !paid {
             continue;
         }
-        attributes.subtract(attribute, f32::from(amount) * count)?;
+        attributes.subtract(AttributeId::try_from(attribute)?, f32::from(amount) * count)?;
     }
     Ok(true)
 }
@@ -255,7 +262,7 @@ pub fn master_costs(
             continue;
         }
         slot.1 = cvttss2si(f32::from(amount) * ONE) as i16;
-        let held = attributes.get(attribute)?;
+        let held = attributes.get(AttributeId::try_from(attribute)?)?;
         if held < f32::from(slot.1) && can {
             let have = cvttss2si(held) as i16;
             extra = extra.wrapping_add(slot.1.wrapping_sub(have));

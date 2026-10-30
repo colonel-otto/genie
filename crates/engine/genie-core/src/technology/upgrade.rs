@@ -15,6 +15,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -398,7 +399,9 @@ impl World {
                 amount,
             )?;
             for (k, v) in adds {
-                self.players.player_mut(p)?.add_attribute(k, v)?;
+                self.players
+                    .player_mut(p)?
+                    .add_attribute(AttributeId::try_from(k)?, v)?;
             }
             let u = self.object_at_mut(place)?;
             u.life.attribute_type = -1;

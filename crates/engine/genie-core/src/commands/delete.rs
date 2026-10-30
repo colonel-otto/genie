@@ -20,6 +20,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::orders::object_gone;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::players::game_status::LOST;
 use crate::world::World;
 
@@ -231,8 +232,10 @@ impl World {
         if 0.0 < share {
             for (resource, amount, paid) in cost {
                 if 0 <= resource && paid {
-                    self.players[owner.index()]
-                        .add_attribute(resource, f32::from(amount) * share)?;
+                    self.players[owner.index()].add_attribute(
+                        AttributeId::required(resource)?,
+                        f32::from(amount) * share,
+                    )?;
                 }
             }
         }
@@ -429,7 +432,7 @@ impl World {
         if new == 3 && state == 2 {
             for (kind, amount) in crate::objects::lifecycle::death_parts::refund_of(master, main) {
                 let player = &mut self.players[owner.index()];
-                player.add_attribute(kind, -amount)?;
+                player.add_attribute(AttributeId::try_from(kind)?, -amount)?;
                 if player.attributes[kind as usize] < 0.0 {
                     player.attributes[kind as usize] = 0.0;
                 }
@@ -462,11 +465,7 @@ impl World {
             return Ok(());
         }
         if 2 < new && old < 3 {
-            for &(kind, amount, flag) in &master.storage {
-                if 0 <= kind && matches!(flag, 2 | 16) {
-                    self.players[owner.index()].add_attribute(kind, -amount)?;
-                }
-            }
+            self.leave_storage(owner, master, |flag| matches!(flag, 2 | 16))?;
             if master.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS && self.game_state != 2
             {
                 self.ghosts_at_death(owner.index(), id)?;
@@ -482,17 +481,29 @@ impl World {
         }
         self.spatial.sight_state(id, new)?;
         if old < 7 && new == 7 {
-            for &(kind, amount, flag) in &master.storage {
-                if 0 <= kind && flag == 32 {
-                    self.players[owner.index()].add_attribute(kind, -amount)?;
-                }
-            }
+            self.leave_storage(owner, master, |flag| flag == 32)?;
         }
         if let Some((_, u)) = self.object_mut(id) {
             u.life.state = new;
         }
         if !matches!(new, 2 | 6) && matches!(self.place(id), Some(Place::Sleeping(..))) {
             let _ = self.wake(id)?;
+        }
+        Ok(())
+    }
+
+    /// The storage of the master's entries of a flag `leaves` takes, which leaves its owner
+    /// (`FUN_1411a56c0` with 0).
+    fn leave_storage(
+        &mut self,
+        owner: PlayerId,
+        master: &Master,
+        leaves: impl Fn(u8) -> bool,
+    ) -> Result<(), GenieError> {
+        for &(kind, amount, flag) in &master.storage {
+            if 0 <= kind && leaves(flag) {
+                self.players[owner.index()].add_attribute(AttributeId::required(kind)?, -amount)?;
+            }
         }
         Ok(())
     }
@@ -512,7 +523,7 @@ impl World {
             .ok_or(crate::construction::build::NOT_HELD)?;
         let death = crate::objects::lifecycle::death_parts::built_death(u, master, computer)?;
         for &(kind, amount) in &death.adds {
-            self.players[owner.index()].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         self.unwatch(owner, id)?;
         if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
@@ -521,7 +532,7 @@ impl World {
         self.combat_set_state(owner, id, 3, master)?;
         if let Some(kind) = death.building.count {
             let player = &mut self.players[owner.index()];
-            player.add_attribute(kind, -1.0)?;
+            player.add_attribute(AttributeId::try_from(kind)?, -1.0)?;
             if player.attributes[kind as usize] < 0.0 {
                 player.attributes[kind as usize] = 0.0;
             }

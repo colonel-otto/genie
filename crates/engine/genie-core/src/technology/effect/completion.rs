@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::EffectCommand;
 use crate::technology::RESEARCHED;
 use crate::technology::TechId;
@@ -58,13 +59,13 @@ impl World {
         let state = owner.techs.checked(t)?;
         let location = building.map_or_else(|| state.locations.first(), |b| state.location(b));
         if location.is_some_and(|l| l.building.is_some() && l.button != 0) {
-            let get = |k: i16| owner.get(k);
+            let get = |k: i16| owner.get(AttributeId::try_from(k)?);
             let factors = crate::technology::factors(tech, &get)?;
             let listed = state.listed_costs(&def, factors)?;
             let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
             let owner = self.players.player_mut(p)?;
-            owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
-            owner.add_attribute(RESEARCH_SPENT, spent)?;
+            owner.add_attribute(AttributeId::try_from(TECHS_RESEARCHED)?, 1.0)?;
+            owner.add_attribute(AttributeId::try_from(RESEARCH_SPENT)?, spent)?;
         }
         let age = match t {
             101 => Some(crate::players::history::FEUDAL_AGE),

@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::RESEARCHED;
 use crate::technology::TechId;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
@@ -222,13 +223,13 @@ impl World {
         self.research_effect_known(p, tech)?;
         self.do_effect(p, &def.effect, None)?;
         let owner = self.players.player(p)?;
-        let get = |k: i16| crate::technology::Attributes::get(owner, k);
+        let get = |k: i16| crate::technology::Attributes::get(owner, AttributeId::try_from(k)?);
         let factors = crate::technology::factors(tech, &get)?;
         let listed = owner.techs.checked(t)?.listed_costs(&def, factors)?;
         let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
         let owner = self.players.player_mut(p)?;
-        owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
-        owner.add_attribute(RESEARCH_SPENT, spent)?;
+        owner.add_attribute(AttributeId::try_from(TECHS_RESEARCHED)?, 1.0)?;
+        owner.add_attribute(AttributeId::try_from(RESEARCH_SPENT)?, spent)?;
         Ok(true)
     }
 

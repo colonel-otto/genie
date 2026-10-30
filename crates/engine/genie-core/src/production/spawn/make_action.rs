@@ -4,7 +4,8 @@ use crate::GenieError;
 use crate::objects::masters::player_master;
 use crate::orders::NO_QUEUE;
 use crate::players::PlayerId;
-use crate::production::{IN_PRODUCTION, MakeObj, Making, QUEUED, housed, population};
+use crate::players::attribute::AttributeId;
+use crate::production::{IN_PRODUCTION, MakeObj, MakeTech, Making, QUEUED, housed, population};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
@@ -161,7 +162,7 @@ impl World {
                 .master
                 .and_then(|m| player_master(&self.masters, p, m))
                 .map_or(0.0, |m| population(&m.storage));
-            self.players[p.index()].add_attribute(QUEUED, -pop)?;
+            self.players[p.index()].add_attribute(AttributeId::try_from(QUEUED)?, -pop)?;
         }
         if let Some(production) = self.players[p.index()].objects[i].production.as_mut() {
             production.queue.release_first();
@@ -185,7 +186,6 @@ impl World {
         i: usize,
         making: Making,
     ) -> Result<(), GenieError> {
-        use crate::technology::Attributes;
         if 3 <= self.players[p.index()].objects[i].life.state {
             return self.destroy_action(p, i, making);
         }
@@ -198,32 +198,42 @@ impl World {
                     make.state = MakeObj::MAKING;
                 }
             }
-            Making::Research(r) => {
-                let (t, def) = self.research_tech(p, r.tech)?;
-                let owner = &self.players[p.index()];
-                let get = |k: i16| owner.get(k);
-                let factors = crate::technology::factors(r.tech, &get)?;
-                let paid = owner.objects[i]
-                    .production
-                    .as_ref()
-                    .and_then(|q| q.queue.first())
-                    .map_or(crate::production::NO_COSTS, |e| e.costs);
-                if !owner.techs[t].start_test(def, factors, &paid, &get)? {
-                    return Err(GenieError::unsupported(
-                        "a research whose start test fails (its refund)",
-                    ));
-                }
-                let master = owner.objects[i].life.master_id;
-                let state = &mut self.players[p.index()].techs[t];
-                state.state = 2;
-                state.building_master = Some(master);
-                r.state = MakeObj::MAKING;
-                r.progress = 0.0;
-            }
+            Making::Research(r) => self.start_research(p, i, r)?,
         }
         if let Some(production) = self.players[p.index()].objects[i].production.as_mut() {
             production.action = Some(making);
         }
+        Ok(())
+    }
+
+    /// A research action's start (`0x140ad1d80`): see [`World::start_production_action`].
+    fn start_research(
+        &mut self,
+        p: PlayerId,
+        i: usize,
+        r: &mut MakeTech,
+    ) -> Result<(), GenieError> {
+        use crate::technology::Attributes;
+        let (t, def) = self.research_tech(p, r.tech)?;
+        let owner = &self.players[p.index()];
+        let get = |k: i16| owner.get(AttributeId::try_from(k)?);
+        let factors = crate::technology::factors(r.tech, &get)?;
+        let paid = owner.objects[i]
+            .production
+            .as_ref()
+            .and_then(|q| q.queue.first())
+            .map_or(crate::production::NO_COSTS, |e| e.costs);
+        if !owner.techs[t].start_test(def, factors, &paid, &get)? {
+            return Err(GenieError::unsupported(
+                "a research whose start test fails (its refund)",
+            ));
+        }
+        let master = owner.objects[i].life.master_id;
+        let state = &mut self.players[p.index()].techs[t];
+        state.state = 2;
+        state.building_master = Some(master);
+        r.state = MakeObj::MAKING;
+        r.progress = 0.0;
         Ok(())
     }
 

@@ -10,6 +10,7 @@ use crate::math::rng::Stream;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::Attributes;
 use crate::world::World;
 
@@ -97,8 +98,11 @@ impl World {
         let radius_x = self.master(p, master)?.radius.x();
         let mut points = edge_points(at, radius_x);
         let owner = &self.players[p.index()];
-        let count = cvttss2si(Attributes::get(owner, PASTURE_LIVESTOCK)?);
-        let food = Attributes::get(owner, PASTURE_FOOD)? / count as f32;
+        let count = cvttss2si(Attributes::get(
+            owner,
+            AttributeId::try_from(PASTURE_LIVESTOCK)?,
+        )?);
+        let food = Attributes::get(owner, AttributeId::try_from(PASTURE_FOOD)?)? / count as f32;
         let map = self.spatial.map;
         let mut made = 0;
         while made < count && !points.is_empty() {
@@ -195,7 +199,10 @@ impl World {
             tended.push((id, l.workers, gap));
         }
         crate::math::msvc::sort(&mut tended, &|a, b| a.2 < b.2);
-        let room = Attributes::get(&self.players[q.index()], PASTURE_WORKERS)?;
+        let room = Attributes::get(
+            &self.players[q.index()],
+            AttributeId::try_from(PASTURE_WORKERS)?,
+        )?;
         let mut pick = -1;
         for (id, workers, _) in tended {
             if workers == 0 {

@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, player_master};
 use crate::orders::Place;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 
 impl crate::world::World {
     /// What a built building's storage gave its owner leaves (`FUN_1411e63f0`, then
@@ -28,7 +29,7 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
         for (kind, amount) in crate::objects::lifecycle::death_parts::storage_leaves(u, master) {
-            self.players[owner.index()].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         Ok(())
     }
@@ -62,7 +63,7 @@ impl crate::world::World {
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
         self.track_complete(owner, id, master.id)?;
         for (kind, amount) in part.attributes {
-            self.players[owner.index()].add_attribute(kind, amount)?;
+            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         if part.pasture {
             self.setup_pasture(owner, id)?;
