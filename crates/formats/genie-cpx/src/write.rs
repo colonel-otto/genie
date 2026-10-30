@@ -15,19 +15,43 @@ pub enum WriteCampaignError {
     NotFoundError(usize),
 }
 
+/// `value` as a `T` when it is below `limit`, else an error naming `what`.
+fn below<T: TryFrom<usize>>(value: usize, limit: usize, what: &str) -> io::Result<T> {
+    let too_large = || {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{what} {value} is not below {limit}"),
+        )
+    };
+    if limit <= value {
+        return Err(too_large());
+    }
+    T::try_from(value).map_err(|_| too_large())
+}
+
+/// The padded `bytes` of a name of at most `width - 1` bytes.
+fn padded(bytes: &[u8], width: usize, what: &str) -> io::Result<Vec<u8>> {
+    let _ = below::<usize>(bytes.len(), width, what)?;
+    let mut out = bytes.to_vec();
+    out.resize(width, 0);
+    Ok(out)
+}
+
 fn write_variable_str<W: Write>(output: &mut W, value: &str) -> io::Result<()> {
     output.write_u16::<LE>(0x0A60)?;
-    let len = value.len();
-    assert!(len < u16::MAX as usize);
-    output.write_u16::<LE>(u16::try_from(len).expect("checked by the assert above"))?;
+    let len: u16 = below(value.len(), usize::from(u16::MAX), "a string's length")?;
+    output.write_u16::<LE>(len)?;
     output.write_all(value.as_bytes())?;
     Ok(())
 }
 
 /// Write the campaign header to the `output` stream.
 fn write_campaign_header<W: Write>(header: &CampaignHeader, output: &mut W) -> io::Result<()> {
-    assert!(header.num_scenarios < i32::MAX as usize);
-    let num_scenarios = u32::try_from(header.num_scenarios).expect("checked by the assert above");
+    let num_scenarios: u32 = below(
+        header.num_scenarios,
+        i32::MAX as usize,
+        "the number of scenarios",
+    )?;
 
     output.write_all(&header.version)?;
     if header.version == AOE2_DE {
@@ -40,23 +64,25 @@ fn write_campaign_header<W: Write>(header: &CampaignHeader, output: &mut W) -> i
             DLCPackage::RiseOfTheRajas,
             DLCPackage::LastKhans,
         ];
-        output.write_u32::<LE>(u32::try_from(dependencies.len()).expect("six packages"))?;
+        output.write_u32::<LE>(below(dependencies.len(), 7, "the number of packages")?)?;
         for dep in &dependencies {
             output.write_i32::<LE>(i32::from(*dep))?;
         }
-        let mut name_bytes = header.name.as_bytes().to_vec();
-        assert!(name_bytes.len() < 256);
-        name_bytes.resize(256, 0);
-        output.write_all(&name_bytes)?;
+        output.write_all(&padded(
+            header.name.as_bytes(),
+            256,
+            "the campaign name's length",
+        )?)?;
         output.write_u32::<LE>(num_scenarios)?;
     } else if header.version == AOE1_DE {
         output.write_u32::<LE>(num_scenarios)?;
         write_variable_str(output, &header.name)?;
     } else {
-        let mut name_bytes = header.name.as_bytes().to_vec();
-        assert!(name_bytes.len() < 256);
-        name_bytes.resize(256, 0);
-        output.write_all(&name_bytes)?;
+        output.write_all(&padded(
+            header.name.as_bytes(),
+            256,
+            "the campaign name's length",
+        )?)?;
         output.write_u32::<LE>(num_scenarios)?;
     }
     Ok(())
@@ -64,21 +90,22 @@ fn write_campaign_header<W: Write>(header: &CampaignHeader, output: &mut W) -> i
 
 /// Write metadata for a single scenario into the `output` stream in the classic AoE/AoK format.
 fn write_scenario_meta<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
-    assert!(meta.size < i32::MAX as usize);
-    assert!(meta.offset < i32::MAX as usize);
-
-    output.write_i32::<LE>(i32::try_from(meta.size).expect("checked by the assert above"))?;
-    output.write_i32::<LE>(i32::try_from(meta.offset).expect("checked by the assert above"))?;
-
-    let mut name_bytes = meta.name.as_bytes().to_vec();
-    assert!(name_bytes.len() < 255);
-    name_bytes.extend(vec![0; 255 - name_bytes.len()]);
-    output.write_all(&name_bytes)?;
-
-    let mut filename_bytes = meta.filename.as_bytes().to_vec();
-    assert!(filename_bytes.len() < 255);
-    filename_bytes.extend(vec![0; 255 - filename_bytes.len()]);
-    output.write_all(&filename_bytes)?;
+    output.write_i32::<LE>(below(meta.size, i32::MAX as usize, "a scenario's size")?)?;
+    output.write_i32::<LE>(below(
+        meta.offset,
+        i32::MAX as usize,
+        "a scenario's offset",
+    )?)?;
+    output.write_all(&padded(
+        meta.name.as_bytes(),
+        255,
+        "a scenario name's length",
+    )?)?;
+    output.write_all(&padded(
+        meta.filename.as_bytes(),
+        255,
+        "a file name's length",
+    )?)?;
 
     Ok(())
 }
@@ -86,11 +113,8 @@ fn write_scenario_meta<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Res
 /// Write metadata for a single scenario into the `output` stream, in the `AoE1`: DE format.
 fn write_scenario_meta_de<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
     // `u64::MAX as usize` is `usize::MAX` on every target.
-    assert!(meta.size < usize::MAX);
-    assert!(meta.offset < usize::MAX);
-
-    output.write_u64::<LE>(meta.size as u64)?;
-    output.write_u64::<LE>(meta.offset as u64)?;
+    output.write_u64::<LE>(below(meta.size, usize::MAX, "a scenario's size")?)?;
+    output.write_u64::<LE>(below(meta.offset, usize::MAX, "a scenario's offset")?)?;
     write_variable_str(output, &meta.name)?;
     write_variable_str(output, &meta.filename)?;
     Ok(())
@@ -98,11 +122,12 @@ fn write_scenario_meta_de<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::
 
 /// Write metadata for a single scenario into the `output` stream, in the `AoE2`: DE format.
 fn write_scenario_meta_de2<W: Write>(meta: &ScenarioMeta, output: &mut W) -> io::Result<()> {
-    assert!(meta.size < u32::MAX as usize);
-    assert!(meta.offset < u32::MAX as usize);
-
-    output.write_u32::<LE>(u32::try_from(meta.size).expect("checked by the assert above"))?;
-    output.write_u32::<LE>(u32::try_from(meta.offset).expect("checked by the assert above"))?;
+    output.write_u32::<LE>(below(meta.size, u32::MAX as usize, "a scenario's size")?)?;
+    output.write_u32::<LE>(below(
+        meta.offset,
+        u32::MAX as usize,
+        "a scenario's offset",
+    )?)?;
     write_variable_str(output, &meta.name)?;
     write_variable_str(output, &meta.filename)?;
     Ok(())
@@ -343,5 +368,55 @@ mod genie_error_tests {
             )
         );
         assert!(std::error::Error::source(&e).is_some());
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+
+    fn invalid(e: &io::Error) -> bool {
+        e.kind() == io::ErrorKind::InvalidData
+    }
+
+    /// A value at its limit is an error, one below it converts.
+    #[test]
+    fn a_value_at_its_limit_is_an_error() {
+        assert_eq!(below::<u16>(5, 6, "x").unwrap(), 5);
+        assert!(invalid(&below::<u16>(6, 6, "x").unwrap_err()));
+        assert!(invalid(&below::<u8>(300, 1000, "x").unwrap_err()));
+    }
+
+    /// A name of the width or more does not pad.
+    #[test]
+    fn a_name_of_the_width_does_not_pad() {
+        assert_eq!(padded(b"ab", 4, "n").unwrap(), b"ab\0\0");
+        assert!(invalid(&padded(b"abcd", 4, "n").unwrap_err()));
+    }
+
+    /// A string of more than a u16's length, a name too long and a size past the format's
+    /// range fail to write.
+    #[test]
+    fn what_does_not_fit_fails_to_write() {
+        let mut out = Vec::new();
+        assert!(invalid(
+            &write_variable_str(&mut out, &"a".repeat(70_000)).unwrap_err()
+        ));
+        let meta = ScenarioMeta {
+            size: u32::MAX as usize,
+            offset: 0,
+            name: String::new(),
+            filename: String::new(),
+        };
+        assert!(invalid(
+            &write_scenario_meta_de2(&meta, &mut out).unwrap_err()
+        ));
+        let meta = ScenarioMeta {
+            size: 1,
+            offset: 0,
+            name: "n".repeat(255),
+            filename: String::new(),
+        };
+        assert!(invalid(&write_scenario_meta(&meta, &mut out).unwrap_err()));
     }
 }
