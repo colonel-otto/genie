@@ -5,11 +5,12 @@ use crate::names::unmodelled_command;
 use genie_core::GenieError;
 use genie_core::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
-    BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GameCommand, GateCommand,
-    GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order, OrderCommand,
-    PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand,
-    TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
-    UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
+    BuildingQueueCommand, Command, DeleteCommand, FlareCommand, FormFormationCommand, GameCommand,
+    GateCommand, GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order,
+    OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand,
+    StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand,
+    UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
+    UnmodelledCommand, Waypoints,
 };
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
@@ -170,6 +171,11 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
         Packet::AutoScout(c) => Command::AutoScout(AutoScoutCommand {
             player: PlayerId::from(c.commp_id),
             units: listed(c.field_0x04, &c.ids),
+        }),
+        Packet::FormFormation(c) => Command::FormFormation(FormFormationCommand {
+            player: PlayerId::from(c.commp_id),
+            units: listed(c.num, &c.ids),
+            formation: c.formation,
         }),
         Packet::SeekShelter(c) => Command::SeekShelter(SeekShelterCommand {
             player: PlayerId::from(c.commp_id),

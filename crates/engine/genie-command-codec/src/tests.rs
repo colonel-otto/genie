@@ -4,11 +4,12 @@
 use crate::{decode, encode};
 use genie_core::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
-    BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GameCommand, GateCommand,
-    GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order, OrderCommand,
-    PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand,
-    TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
-    UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
+    BuildingQueueCommand, Command, DeleteCommand, FlareCommand, FormFormationCommand, GameCommand,
+    GateCommand, GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order,
+    OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand,
+    StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand,
+    UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
+    UnmodelledCommand, Waypoints,
 };
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
@@ -342,6 +343,23 @@ fn the_unit_lists_keep_their_counted_ids() {
         Command::SeekShelter(SeekShelterCommand {
             player: player_id(3),
             units: unit_list(object_ids([36])),
+        })
+    );
+    let form = packets::FormFormation {
+        commp_id: 3,
+        num: 2,
+        gap_0x06: [0; 2],
+        formation: 7,
+        ids: vec![37, 38],
+    }
+    .encode()
+    .unwrap();
+    assert_eq!(
+        round_trip(&form),
+        Command::FormFormation(FormFormationCommand {
+            player: player_id(3),
+            units: unit_list(object_ids([37, 38])),
+            formation: 7,
         })
     );
     let stop = packets::Stop {

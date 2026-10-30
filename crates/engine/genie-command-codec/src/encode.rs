@@ -67,6 +67,7 @@ fn packet(command: &Command) -> Result<Packet, GenieError> {
         | Command::UnitAiState(_)
         | Command::AutoScout(_)
         | Command::SeekShelter(_)
+        | Command::FormFormation(_)
         | Command::Patrol(_)
         | Command::AttackMove(_)
         | Command::Unload(_)
@@ -130,6 +131,13 @@ fn listed(command: &Command) -> Result<Packet, GenieError> {
             field_0x04: c.units.count,
             gap_0x06: [0; 2],
             ids: ids(&c.units.ids, packets::AutoScout::FIXED)?,
+        }),
+        Command::FormFormation(c) => Packet::FormFormation(packets::FormFormation {
+            commp_id: c.player.get(),
+            num: c.units.count,
+            gap_0x06: [0; 2],
+            formation: c.formation,
+            ids: ids(&c.units.ids, packets::FormFormation::FIXED)?,
         }),
         Command::SeekShelter(c) => Packet::SeekShelter(packets::SeekShelter {
             commp_id: c.player.get(),

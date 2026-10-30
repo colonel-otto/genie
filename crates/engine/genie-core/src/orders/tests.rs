@@ -2703,6 +2703,68 @@ fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
     t
 }
 
+/// `FORM_FORMATION` (`FUN_14161dba0`) of three soldiers: the splitter makes one group of them, its
+/// differentiator the command count, its formation locked to the command's type (5), the group
+/// listed as its own differentiator group and the command count one higher.
+#[test]
+fn a_formation_of_soldiers_makes_one_group_locked_to_its_type() {
+    let units = [
+        (11, 4, [20.0, 20.0]),
+        (12, 4, [21.0, 20.0]),
+        (13, 4, [22.0, 20.0]),
+    ];
+    let mut t = searchable(patrollers(&units, &[]));
+    t.form_formation(player_id(1), &object_ids([11, 12, 13]), 5)
+        .unwrap();
+    let g = &t.groups.groups;
+    assert_eq!(g.len(), 1);
+    let ids: Vec<i32> = g[0].members.iter().map(|m| m.id).collect();
+    assert_eq!(ids, [11, 12, 13]);
+    assert_eq!(g[0].formation_locked_type, 5);
+    assert_eq!(g[0].differentiator_id, 0);
+    assert_eq!(g[0].differentiator_groups, [g[0].id as u32]);
+    assert_eq!(t.groups.commands, 1);
+    // the same units again: their group takes the command without a new one
+    t.form_formation(player_id(1), &object_ids([11, 12, 13]), 6)
+        .unwrap();
+    assert_eq!(t.groups.groups.len(), 1);
+    assert_eq!(t.groups.groups[0].formation_locked_type, 6);
+    assert_eq!(t.groups.groups[0].differentiator_id, 1);
+    assert_eq!(t.groups.commands, 2);
+}
+
+/// A unit whose order is a defend or a follow stops first: its ignore list empties and its
+/// order ends; any other unit's order stays. Units the world lacks make no group, and a human
+/// whose units are all gone is refused (no command is counted).
+#[test]
+fn a_formation_stops_the_units_that_march_and_ignores_gone_ones() {
+    let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+    let mut t = searchable(patrollers(&units, &[]));
+    for (i, order) in [Some(OrderKind::Defend), Some(OrderKind::Patrol)]
+        .into_iter()
+        .enumerate()
+    {
+        let u = &mut t.players[1].objects[i];
+        u.ai.as_mut().unwrap().current_order = order;
+        u.body.mover_mut().unwrap().ignore_units = vec![99];
+    }
+    t.form_formation(player_id(1), &object_ids([11, 12]), 5)
+        .unwrap();
+    let marched = &t.players[1].objects[0];
+    assert_eq!(marched.body.mover().unwrap().ignore_units, []);
+    assert_ne!(
+        marched.ai.as_ref().unwrap().current_order,
+        Some(OrderKind::Defend)
+    );
+    let other = &t.players[1].objects[1];
+    assert_eq!(other.body.mover().unwrap().ignore_units, [99]);
+    // all gone: refused
+    let before = t.groups.commands;
+    t.form_formation(player_id(1), &object_ids([70, 71]), 5)
+        .unwrap();
+    assert_eq!(t.groups.commands, before);
+}
+
 /// MarvinBlue/426049701's first PATROL (update 25): player 1's scout alone, one waypoint,
 /// `+0x8` set. It moves loose (slot 0x340: a forced, walking `MoveTo` to the waypoint at its
 /// height), waits to move with an empty ignore list and no waypoints of its own; its unit AI

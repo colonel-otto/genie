@@ -25,6 +25,7 @@ mod attack;
 mod commands;
 mod drop_site;
 mod follow;
+mod form;
 mod gather;
 mod interact;
 mod moves;

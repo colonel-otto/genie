@@ -33,6 +33,7 @@ The files hold the orders by kind:
 | [`commands.rs`](commands.rs) | The unit AI's state, gates, the auto scout and the STOP, EXPLORE and standing commands. |
 | [`drop_site.rs`](drop_site.rs) | The drop-offs: an unasked one, the ordered drop site, the table's, one now and elsewhere, and the way back. |
 | [`follow.rs`](follow.rs) | FOLLOW and GUARD, a move to an object and the head action's move. |
+| [`form.rs`](form.rs) | `FORM_FORMATION`'s handler (`FUN_14161dba0`): the listed units are split into groups, which lock to the formation the command names. |
 | [`gather.rs`](gather.rs) | A gather's retarget and take, the quarry, a gather's and a hunt's start. |
 | [`interact.rs`](interact.rs) | An interact order's unit, an order on a target, MOVE and its groups. |
 | [`mod.rs`](mod.rs) | The orders a command gives its units: INTERACT and its splitter into loose units and groups, the moves, patrols and follows, the work, gather, hunt and build orders, the drop-offs, the town bell and the Empire Wars start. |

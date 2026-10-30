@@ -18,6 +18,7 @@ mod building_commands;
 pub mod building_queue;
 pub mod delete;
 pub mod flare;
+pub mod form_formation;
 pub mod game;
 pub mod gate;
 pub mod gather_point;
@@ -52,6 +53,7 @@ pub use self::build::BuildCommand;
 pub use self::building_queue::BuildingQueueCommand;
 pub use self::delete::DeleteCommand;
 pub use self::flare::FlareCommand;
+pub use self::form_formation::FormFormationCommand;
 pub use self::game::GameCommand;
 pub use self::gate::GateCommand;
 pub use self::gather_point::GatherPointCommand;
@@ -149,10 +151,58 @@ pub enum Command {
     SeekShelter(SeekShelterCommand),
     /// `UNIT_AI_STATE` (0x12).
     UnitAiState(UnitAiStateCommand),
+    /// `FORM_FORMATION` (0x17).
+    FormFormation(FormFormationCommand),
     /// `UNIT_ORDER` (0x75).
     UnitOrder(UnitOrderCommand),
     /// INTERACT (0x00), WORK (0x02), MOVE (0x03), RETREAT (0x23), FOLLOW or GUARD.
     Order(OrderCommand),
+}
+
+/// A match over every kind of command: `$game`, `$unmodelled` and `$trade` for the three that
+/// differ (with the command as `$g`, `$u`, `$t`), `$any` for each other (with it as `$c`). One
+/// flat dispatch, so that a new command is a name in this list and not a branch of every
+/// function that reads them.
+macro_rules! by_kind {
+    (
+        $command:expr,
+        $c:ident => $any:expr,
+        $g:ident => $game:expr,
+        $u:ident => $unmodelled:expr,
+        $t:ident => $trade:expr $(,)?
+    ) => {
+        match $command {
+            Command::Game($g) => $game,
+            Command::Unmodelled($u) => $unmodelled,
+            Command::Trade($t) => $trade,
+            Command::Build($c) => $any,
+            Command::BuildWall($c) => $any,
+            Command::GatherPoint($c) => $any,
+            Command::Queue($c) => $any,
+            Command::Research($c) => $any,
+            Command::CommandQueue($c) => $any,
+            Command::GoBackToWork($c) => $any,
+            Command::GoBackToWork2($c) => $any,
+            Command::AllBackToWork($c) => $any,
+            Command::TownBell($c) => $any,
+            Command::Delete($c) => $any,
+            Command::Flare($c) => $any,
+            Command::Tribute($c) => $any,
+            Command::Gate($c) => $any,
+            Command::Unload($c) => $any,
+            Command::TransformObject($c) => $any,
+            Command::Resign($c) => $any,
+            Command::AutoScout($c) => $any,
+            Command::Stop($c) => $any,
+            Command::Patrol($c) => $any,
+            Command::AttackMove($c) => $any,
+            Command::SeekShelter($c) => $any,
+            Command::UnitAiState($c) => $any,
+            Command::FormFormation($c) => $any,
+            Command::UnitOrder($c) => $any,
+            Command::Order($c) => $any,
+        }
+    };
 }
 
 impl Command {
@@ -162,36 +212,13 @@ impl Command {
     ///
     /// What the run does not model.
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        match self {
-            Self::Build(c) => c.run(w),
-            Self::BuildWall(c) => c.run(w),
-            Self::GatherPoint(c) => c.run(w),
-            Self::Queue(c) => c.run(w),
-            Self::Research(c) => c.run(w),
-            Self::Unmodelled(c) => Err(c.why.clone()),
-            Self::Game(c) => c.run(w),
-            Self::CommandQueue(c) => c.run(w),
-            Self::GoBackToWork(c) => c.run(w),
-            Self::GoBackToWork2(c) => c.run(w),
-            Self::AllBackToWork(c) => c.run(w),
-            Self::TownBell(c) => c.run(w),
-            Self::Delete(c) => c.run(w),
-            Self::Flare(c) => c.run(w),
-            Self::Tribute(c) => c.run(w),
-            Self::Trade(c) => c.run(w),
-            Self::Gate(c) => c.run(w),
-            Self::Unload(c) => c.run(w),
-            Self::TransformObject(c) => c.run(w),
-            Self::Resign(c) => c.run(w),
-            Self::AutoScout(c) => c.run(w),
-            Self::Stop(c) => c.run(w),
-            Self::Patrol(c) => c.run(w),
-            Self::AttackMove(c) => c.run(w),
-            Self::SeekShelter(c) => c.run(w),
-            Self::UnitAiState(c) => c.run(w),
-            Self::UnitOrder(c) => c.run(w),
-            Self::Order(c) => c.run(w),
-        }
+        by_kind!(
+            self,
+            c => c.run(w),
+            g => g.run(w),
+            u => Err(u.why.clone()),
+            t => t.run(w),
+        )
     }
 
     /// The player whose lane a failed run stops, of `players` world players: a GAME
@@ -208,36 +235,13 @@ impl Command {
     /// The issuing player (GAME's issuer).
     #[must_use]
     pub const fn player(&self) -> PlayerId {
-        match self {
-            Self::Build(c) => c.player,
-            Self::BuildWall(c) => c.player,
-            Self::GatherPoint(c) => c.player,
-            Self::Queue(c) => c.player,
-            Self::Research(c) => c.player,
-            Self::Unmodelled(c) => c.player,
-            Self::Game(c) => c.issuer,
-            Self::CommandQueue(c) => c.player,
-            Self::GoBackToWork(c) => c.player,
-            Self::GoBackToWork2(c) => c.player,
-            Self::AllBackToWork(c) => c.player,
-            Self::TownBell(c) => c.player,
-            Self::Delete(c) => c.player,
-            Self::Flare(c) => c.player,
-            Self::Tribute(c) => c.player,
-            Self::Trade(c) => c.player,
-            Self::Gate(c) => c.player,
-            Self::Unload(c) => c.player,
-            Self::TransformObject(c) => c.player,
-            Self::Resign(c) => c.player,
-            Self::AutoScout(c) => c.player,
-            Self::Stop(c) => c.player,
-            Self::Patrol(c) => c.player,
-            Self::AttackMove(c) => c.player,
-            Self::SeekShelter(c) => c.player,
-            Self::UnitAiState(c) => c.player,
-            Self::UnitOrder(c) => c.player,
-            Self::Order(c) => c.player,
-        }
+        by_kind!(
+            self,
+            c => c.player,
+            g => g.issuer,
+            u => u.player,
+            t => t.player,
+        )
     }
 }
 

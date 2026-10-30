@@ -27,7 +27,6 @@ pub(crate) const fn unmodelled_command(p: &Packet) -> &'static str {
         Guard,
         Patrol,
         Scout,
-        FormFormation,
         BreakFormation,
         WheelFormation,
         AboutFaceFormation,
