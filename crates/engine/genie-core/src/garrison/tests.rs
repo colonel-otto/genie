@@ -4,6 +4,7 @@ use crate::map::Point;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -2348,7 +2349,7 @@ fn transport_task_world() -> (World, usize) {
         *m = Masters::new(all);
         if let Some(s) = m.get_mut(SHIP) {
             s.tasks.push(Task {
-                id: 7,
+                id: TaskId::test(7),
                 action_type: transport::TRANSPORT,
                 object_group: -1,
                 object_id: -1,
@@ -2402,7 +2403,7 @@ fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
         (
             transport::SAIL,
             -1,
-            Some(crate::objects::masters::TaskId(7)),
+            Some(TaskId::test(7)),
             [14.5, 10.5, 0.0],
             Some(MoveTo::Start)
         )

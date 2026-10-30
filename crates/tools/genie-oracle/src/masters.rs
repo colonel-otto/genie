@@ -86,7 +86,7 @@ fn sound_event(event: u32, sound: i16, sounds: &[genie_dat::de::Sound]) -> i32 {
 /// sound table its sound events read ([`sound_event`]).
 fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::Task {
     work::Task {
-        id: t.id,
+        id: genie_core::objects::masters::TaskId::of_task(t.id),
         action_type: t.action_type,
         object_group: t.class_id,
         object_id: t.unit_id,

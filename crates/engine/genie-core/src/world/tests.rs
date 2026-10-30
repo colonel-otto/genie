@@ -24,6 +24,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
@@ -1913,7 +1914,7 @@ fn repair_world() -> World {
         let builder = masters.get_mut(118).unwrap();
         builder.weapon_range = 0.5;
         builder.tasks.push(crate::objects::masters::Task {
-            id: 4,
+            id: TaskId::test(4),
             work_val1: 0.5,
             ..task(crate::construction::repair::REPAIR)
         });
@@ -1945,7 +1946,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
     let r = v.actions.repair().copied().unwrap();
     assert_eq!(
         (r.target, r.state, r.range, r.task.id, r.task.work_value),
-        (10028, 4, 0.5, 4, 0.5)
+        (10028, 4, 0.5, TaskId::test(4), 0.5)
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -2052,7 +2053,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
             work_value: 0.0,
             work_rate: 1.0,
             resource: -1,
-            id: 0,
+            id: TaskId::test(0),
             moving: None,
         }
     );
@@ -2333,7 +2334,7 @@ pub(crate) fn forage_world() -> World {
             capacity: 10,
             drop_sites: vec![109],
             tasks: vec![crate::objects::masters::Task {
-                id: 2,
+                id: TaskId::test(2),
                 action_type: crate::gathering::gather::GATHER,
                 object_group: 7,
                 attribute_type: 17,
@@ -2465,7 +2466,7 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
             g.move_to.map(|m| m.range),
             g.task.id
         ),
-        (600, -1, 4, [32.5, 89.5, 0.0], Some(0.25), 2)
+        (600, -1, 4, [32.5, 89.5, 0.0], Some(0.25), TaskId::test(2))
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -2508,7 +2509,7 @@ fn the_unit_ai_s_gather_command_starts_a_gather_or_retargets_its_own() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 120);
     let g = v.actions.gather().copied().unwrap();
-    assert_eq!((g.target, g.state, g.task.id), (600, 4, 2));
+    assert_eq!((g.target, g.state, g.task.id), (600, 4, TaskId::test(2)));
     assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(None));
     t.gather_command(1, 0, 601).unwrap();
     assert_eq!(
@@ -2729,7 +2730,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             .unwrap()
             .tasks
             .push(crate::objects::masters::Task {
-                id: 3,
+                id: TaskId::test(3),
                 action_type: crate::gathering::gather::GATHER,
                 object_group: 49,
                 attribute_type: 0,
@@ -2788,7 +2789,10 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
         .gather()
         .copied()
         .expect("the farm's Gather");
-    assert_eq!((g.target, g.task.id, g.point), (800, 3, [29.5, 89.5, 0.0]));
+    assert_eq!(
+        (g.target, g.task.id, g.point),
+        (800, TaskId::test(3), [29.5, 89.5, 0.0])
+    );
     assert_eq!(t.players[1].objects[3].workers, 1);
     let others = |t: &World| {
         t.players[1].objects[1..]
@@ -4596,7 +4600,7 @@ fn repairer_world(orders: Vec<crate::unit_ai::QueuedOrder>, repairer: bool) -> W
             m.id = 156;
             m.weapon_range = 0.5;
             m.tasks.push(crate::objects::masters::Task {
-                id: 4,
+                id: TaskId::test(4),
                 work_val1: 0.5,
                 ..task(crate::construction::repair::REPAIR)
             });
@@ -4632,7 +4636,10 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 156);
     let r = v.actions.repair().copied().expect("the Repair");
-    assert_eq!((r.target, r.state, r.range, r.task.id), (10028, 4, 0.5, 4));
+    assert_eq!(
+        (r.target, r.state, r.range, r.task.id),
+        (10028, 4, 0.5, TaskId::test(4))
+    );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.current_target),
@@ -4871,7 +4878,7 @@ fn livestock_enter_world() -> World {
         class: class::LIVESTOCK,
         radius: [0.2, 0.2],
         tasks: vec![crate::objects::masters::Task {
-            id: 1,
+            id: TaskId::test(1),
             action_type: crate::garrison::ENTER,
             object_group: 3,
             ..crate::objects::masters::Task::default()
@@ -8184,7 +8191,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             work_value: 0.0,
             work_rate: 1.0,
             resource: -1,
-            id: -1,
+            id: TaskId::of_task(-1),
             moving: None,
         },
         added: true,
@@ -8295,7 +8302,7 @@ fn deaths_world() -> World {
             work_value: 1.0,
             work_rate: 1.0,
             resource: -1,
-            id: -1,
+            id: TaskId::of_task(-1),
             moving: None,
         },
         added: true,
@@ -11189,7 +11196,7 @@ fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
 #[test]
 fn an_ai_move_hands_the_point_to_the_gather() {
     let task = crate::gathering::hunt::HuntTask {
-        id: 2,
+        id: TaskId::test(2),
         range: 0.25,
         resource: 17,
         sprites: [-1; 4],
@@ -12249,7 +12256,7 @@ fn farm_masters() -> Masters {
 /// ended; the player holds 100 wood.
 fn reseed_world() -> World {
     let task = crate::gathering::hunt::HuntTask {
-        id: 2,
+        id: TaskId::test(2),
         range: 0.25,
         resource: 15,
         sprites: [-1; 4],
@@ -14339,7 +14346,7 @@ fn worked(t: &mut World, site: i32, dt: u32) -> Result<(), GenieError> {
         work_value: 1.0,
         work_rate: 1.0,
         resource: -1,
-        id: -1,
+        id: TaskId::of_task(-1),
         moving: None,
     };
     t.players[1]

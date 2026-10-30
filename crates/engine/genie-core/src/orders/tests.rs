@@ -1,6 +1,7 @@
 use super::*;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -199,7 +200,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                     work_value: 1.0,
                     work_rate: 1.0,
                     resource: -1,
-                    id: -1,
+                    id: TaskId::of_task(-1),
                     moving: None,
                 },
             )
@@ -2186,7 +2187,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
                 work_value: 1.0,
                 work_rate: 1.0,
                 resource: -1,
-                id: -1,
+                id: TaskId::of_task(-1),
                 moving: None,
             },
             added: true,
@@ -3450,7 +3451,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         work_value: 1.0,
         work_rate: 1.0,
         resource: 1,
-        id: -1,
+        id: TaskId::of_task(-1),
         moving: None,
     };
     let v = &mut t.players[1].objects[0];
@@ -3608,7 +3609,7 @@ fn a_work_command_finds_its_master_and_task_on_a_target() {
         .expect("the Gather task");
     assert_eq!(
         (with, task.id, task.action_type),
-        (120, 2, crate::gathering::gather::GATHER)
+        (120, TaskId::test(2), crate::gathering::gather::GATHER)
     );
     assert_eq!(t.work_task(1, 0, (700, [1.0; 3]), -1).unwrap(), None);
 }
@@ -3700,7 +3701,10 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
     assert_eq!(t.retake_task(1, 0, at, &task, true), Ok(false));
     t.gather_command(1, 0, 600).unwrap();
     assert_eq!(t.retake_task(1, 0, at, &task, true), Ok(true));
-    let other = Task { id: 9, ..task };
+    let other = Task {
+        id: TaskId::test(9),
+        ..task
+    };
     assert_eq!(
         t.retake_task(1, 0, at, &other, true)
             .err()
@@ -3731,7 +3735,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         work_value: 1.0,
         work_rate: 1.0,
         resource: -1,
-        id: 3,
+        id: TaskId::test(3),
         moving: None,
     };
     t.players[1].objects[0]

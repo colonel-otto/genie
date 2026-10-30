@@ -213,6 +213,7 @@ mod tests {
     use super::*;
     use crate::construction::build::{BuildAction, BuildTask};
     use crate::movement::move_to::MoveToAction;
+    use crate::objects::masters::TaskId;
 
     /// A moving body, moving (its velocity and animation speed set).
     fn moving() -> Body {
@@ -233,7 +234,7 @@ mod tests {
             work_value: 1.0,
             work_rate: 1.0,
             resource: -1,
-            id: -1,
+            id: TaskId::of_task(-1),
             moving: None,
         };
         crate::construction::build::tests::started(10028, [30.0, 88.0, 0.0], 0.0, task)

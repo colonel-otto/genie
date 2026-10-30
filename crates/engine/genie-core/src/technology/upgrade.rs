@@ -7,6 +7,7 @@
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Task, master_type, player_master};
 use crate::objects::sprite::Graphic;
@@ -582,7 +583,7 @@ impl World {
                 })
                 .copied()
         };
-        let old_task = |id: i16| old.tasks.iter().find(|t| t.id == id).copied();
+        let old_task = |id: TaskId| old.tasks.iter().find(|t| t.id == id).copied();
         let graphics = &self.graphics;
         let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
         let sprites = crate::technology::effect::MasterSprites {
@@ -1003,19 +1004,20 @@ mod tests {
         let mut t = crate::world::tests::forage_world();
         t.gather_command(1, 0, 600).unwrap();
         let mut old = t.masters[1].get(120).unwrap().clone();
-        old.tasks.push(task(3, action_type::BUILD, 3, 0.25));
-        let make = task(4, crate::gathering::make::MAKE, -1, 0.0);
-        let waiting = task(9, 0x9a, 3, 0.0);
+        old.tasks
+            .push(task(TaskId::test(3), action_type::BUILD, 3, 0.25));
+        let make = task(TaskId::test(4), crate::gathering::make::MAKE, -1, 0.0);
+        let waiting = task(TaskId::test(9), 0x9a, 3, 0.0);
         let new = Master {
             id: 121,
             tasks: vec![
-                task(5, GATHER, 7, 0.5),
-                task(6, GATHER, 7, 0.75),
+                task(TaskId::test(5), GATHER, 7, 0.5),
+                task(TaskId::test(6), GATHER, 7, 0.75),
                 Task {
                     sprites: [12, -1, -1, -1],
-                    ..task(7, action_type::BUILD, 3, 1.5)
+                    ..task(TaskId::test(7), action_type::BUILD, 3, 1.5)
                 },
-                task(8, crate::gathering::make::MAKE, -1, 2.0),
+                task(TaskId::test(8), crate::gathering::make::MAKE, -1, 2.0),
             ],
             ..old.clone()
         };
@@ -1025,7 +1027,7 @@ mod tests {
             work_value: 0.5,
             work_rate: 1.0,
             resource: 17,
-            id: 3,
+            id: TaskId::test(3),
             moving: None,
         };
         u.actions
@@ -1061,7 +1063,7 @@ mod tests {
                 work_value: 3.0,
                 work_rate: 1.0,
                 resource: 17,
-                id: 7,
+                id: TaskId::test(7),
                 moving: Some(12),
             }
         );

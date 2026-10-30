@@ -246,6 +246,7 @@ mod tests {
     use crate::objects::actions::ActionList;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::masters::Master;
+    use crate::objects::masters::TaskId;
     use crate::pathing::Pathing;
     use crate::pathing::zones::ZoneMap;
     use crate::test_ids::object_id;
@@ -296,7 +297,7 @@ mod tests {
             work_value: 1.0,
             work_rate: 1.0,
             resource: -1,
-            id: -1,
+            id: TaskId::of_task(-1),
             moving: None,
         };
         Unit {

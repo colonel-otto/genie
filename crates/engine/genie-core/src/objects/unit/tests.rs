@@ -3,6 +3,7 @@ use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::actions::ActionList;
 use crate::objects::layers::{Animated, Body};
 use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::TaskId;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::test_ids::object_id;
@@ -270,7 +271,7 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
         work_value: 1.0,
         work_rate: 1.0,
         resource: -1,
-        id: -1,
+        id: TaskId::of_task(-1),
         moving: None,
     };
     let building = Unit {
@@ -332,7 +333,7 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
             work_value: 1.0,
             work_rate: 1.0,
             resource: -1,
-            id: -1,
+            id: TaskId::of_task(-1),
             moving: None,
         },
     );

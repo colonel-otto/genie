@@ -14,10 +14,12 @@ mod derived;
 mod dispatch;
 mod lookup;
 mod static_setters;
+mod task_id;
 mod tribe_setters;
 mod values;
 
 pub use self::lookup::player_master;
+pub use self::task_id::TaskId;
 pub use self::values::AttributeWorld;
 use self::values::{
     MISSILE_SPEED_CAP, PERCENT, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short, add_sprite,
@@ -28,17 +30,12 @@ use self::values::{
 #[cfg(test)]
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
 
-/// A task's id in its master's task list ([`Task::id`], `+0xa`), as an action keeps the task it
-/// works on (`+0x48`; the save writes the id, −1 for none).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Diff)]
-pub struct TaskId(pub i16);
-
 /// One task of a master's task list (`RGE_Task`), with the memory offsets the task finder reads
 /// (the save's names; the `.dat`'s in brackets where they differ).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Task {
     /// `+0xa`.
-    pub id: i16,
+    pub id: TaskId,
     /// `+0xe`.
     pub action_type: i16,
     /// `+0x10`: the target class the task is for, -1 for any.
@@ -93,7 +90,7 @@ pub struct Task {
 impl Default for Task {
     fn default() -> Self {
         Self {
-            id: 0,
+            id: TaskId::default(),
             action_type: 0,
             object_group: -1,
             object_id: -1,

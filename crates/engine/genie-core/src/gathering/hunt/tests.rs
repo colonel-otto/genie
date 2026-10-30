@@ -279,7 +279,7 @@ const ARMS: Arms = Arms {
 };
 
 const CHOP: HuntTask = HuntTask {
-    id: 0,
+    id: TaskId::test(0),
     range: 0.0,
     resource: 15,
     sprites: [-1, 1239, 1961, 1960],

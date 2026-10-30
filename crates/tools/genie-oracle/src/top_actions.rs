@@ -462,8 +462,7 @@ fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError
                 .transpose()?,
             retarget: false,
             // the save writes the task's id, −1 for none
-            task: (base.short_val != -1)
-                .then_some(genie_core::objects::masters::TaskId(base.short_val)),
+            task: genie_core::objects::masters::TaskId::of_field(base.short_val)?,
         }));
     Ok(())
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::{Master, Masters};
@@ -156,7 +157,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         t.players[1].objects.len() - 1
     };
     let task = crate::gathering::hunt::HuntTask {
-        id: 0,
+        id: TaskId::test(0),
         range: 0.25,
         resource: 17,
         sprites: [-1; 4],
@@ -193,7 +194,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         work_value: 1.0,
         work_rate: 1.0,
         resource: -1,
-        id: -1,
+        id: TaskId::of_task(-1),
         moving: None,
     };
     let build = add(Unit {
@@ -204,7 +205,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         ..Unit::default()
     });
     let repair_task = crate::construction::repair::RepairTask {
-        id: 0,
+        id: TaskId::test(0),
         work_value: 1.0,
         moving: None,
         proceeding: None,
@@ -305,7 +306,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             point: [-1.0; 3],
             target_class: None,
             task: HuntTask {
-                id: 0,
+                id: TaskId::test(0),
                 range: 0.0,
                 resource: -1,
                 sprites: [-1; 4],

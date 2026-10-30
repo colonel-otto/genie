@@ -10,7 +10,7 @@ use crate::orders::action_state::FAILED;
 use crate::test_ids::object_id;
 
 const TASK: RepairTask = RepairTask {
-    id: 7,
+    id: TaskId::test(7),
     work_value: 0.5,
     moving: None,
     proceeding: None,

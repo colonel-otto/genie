@@ -107,7 +107,7 @@ pub(super) const fn core_task(
     t: &genie_save::generated::world::Task,
 ) -> genie_core::objects::masters::Task {
     genie_core::objects::masters::Task {
-        id: t.id,
+        id: genie_core::objects::masters::TaskId::of_task(t.id),
         action_type: t.action_type,
         object_group: t.object_group,
         object_id: t.object_id,

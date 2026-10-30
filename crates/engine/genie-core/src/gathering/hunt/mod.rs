@@ -10,6 +10,7 @@
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::TaskId;
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
@@ -185,7 +186,7 @@ pub struct Herd {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct HuntTask {
     /// Its id in the master's task list (`+0xa`).
-    pub id: i16,
+    pub id: TaskId,
     /// The work range (`+0x30`).
     pub range: f32,
     /// The resource it gathers (`attribute_type`, `+0x20`).

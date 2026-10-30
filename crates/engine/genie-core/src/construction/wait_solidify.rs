@@ -139,10 +139,11 @@ impl UnitView<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::TaskId;
 
     fn task() -> Task {
         Task {
-            id: 3,
+            id: TaskId::test(3),
             action_type: 101,
             ..Task::default()
         }

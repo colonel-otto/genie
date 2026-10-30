@@ -6,6 +6,7 @@ use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
+use genie_core::objects::masters::TaskId;
 use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::masters::{Task, class};
 use genie_core::objects::sprite::Graphic;
@@ -21,7 +22,7 @@ use genie_save::generated::world::{
 /// The task of slot `id`, its work range `range`.
 fn task(id: i16, range: f32) -> Task {
     Task {
-        id,
+        id: TaskId::of_task(id),
         action_type: 0,
         object_group: 3,
         object_id: -1,
@@ -135,7 +136,7 @@ fn import_drawn(
                 work_value: 0.5,
                 work_rate: 2.0,
                 resource: -1,
-                id: 7,
+                id: TaskId::of_task(7),
                 moving: Some(9),
             })
         },
@@ -509,7 +510,7 @@ fn a_farms_make_takes_its_timers_and_task() {
         .make()
         .copied()
         .unwrap();
-    assert_eq!((m.state, m.task.id), (1, 3));
+    assert_eq!((m.state, m.task.id), (1, TaskId::of_task(3)));
     assert_eq!(
         (m.remaining.to_bits(), m.total.to_bits()),
         (1.5_f32.to_bits(), 9.0_f32.to_bits())
@@ -534,7 +535,10 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         .fly()
         .copied()
         .unwrap();
-    assert_eq!((f.state, f.move_to, f.task.id), (3, None, 8));
+    assert_eq!(
+        (f.state, f.move_to, f.task.id),
+        (3, None, TaskId::of_task(8))
+    );
     assert_eq!(f.home.map(f32::to_bits), [1.0_f32, 2.0].map(f32::to_bits));
     let f = imported(FLY, bird(with_sub(base(3), MOVE_TO, move_to(4, 0.5))))
         .unwrap()
@@ -675,7 +679,7 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     let walk = r.move_to.unwrap();
     assert_eq!(
         (r.task.id, walk.state, walk.quiet, r.range.to_bits()),
-        (2, MoveTo::Moving, true, 0)
+        (TaskId::of_task(2), MoveTo::Moving, true, 0)
     );
     assert!(r.counted && r.quiet);
     // a MoveTo without a target walks to its point, within its own range
@@ -726,7 +730,7 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         .unwrap();
     assert_eq!(
         (h.target_class, h.drop_site, h.task.id),
-        (Some(class::VILLAGER), 40, 0)
+        (Some(class::VILLAGER), 40, TaskId::of_task(0))
     );
     assert!(h.lead.moved && h.attack.is_none() && h.move_to.is_none());
     assert_eq!(
@@ -804,7 +808,10 @@ fn a_gather_takes_its_stops_and_move_to() {
         .gather()
         .copied()
         .unwrap();
-    assert_eq!((g.target_type, g.stops, g.task.id), (5, 2, 0));
+    assert_eq!(
+        (g.target_type, g.stops, g.task.id),
+        (5, 2, TaskId::of_task(0))
+    );
     assert!(g.worked && g.move_to.is_none());
     assert_eq!(g.farm[0].to_bits(), 3.0_f32.to_bits());
     let g = imported(
@@ -974,7 +981,7 @@ fn a_wait_solidify_waits_for_its_foundation() {
         .wait_solidify()
         .copied()
         .unwrap();
-    assert_eq!((w.state, w.target, w.task.id), (2, 40, 1));
+    assert_eq!((w.state, w.target, w.task.id), (2, 40, TaskId::of_task(1)));
     assert_eq!(
         imported(
             WAIT_SOLIDIFY,

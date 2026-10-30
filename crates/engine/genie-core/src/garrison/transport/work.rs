@@ -33,7 +33,7 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         self.notify_transport((p, i), (target, point), clears)?;
         self.clear_actions(p, i)?;
-        let mut t = TransportAction::on_task(Some(TaskId(task.id)), point);
+        let mut t = TransportAction::on_task(Some(task.id), point);
         let changed = self.with_shore(p, i, t.task, |ship, shore| t.start(true, ship, shore))?;
         self.players[p].objects[i].actions.set_transport(Some(t));
         self.transport_changed(p, i, changed)
@@ -59,7 +59,7 @@ impl crate::world::World {
     ) -> Result<bool, GenieError> {
         let unit = &self.players[p].objects[i];
         let on_task = unit.top_action_kind() == Some(TRANSPORT)
-            && unit.actions.transport().copied().and_then(|t| t.task) == Some(TaskId(task.id));
+            && unit.actions.transport().copied().and_then(|t| t.task) == Some(task.id);
         if !on_task || self.trade_at_own_market((p, i), target)? {
             return Ok(false);
         }

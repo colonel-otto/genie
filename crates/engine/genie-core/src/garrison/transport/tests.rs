@@ -521,27 +521,27 @@ fn a_transport_s_move_to_shows_its_task_s_or_its_master_s_sprite() {
         move_sprite: 7,
         tasks: vec![
             Task {
-                id: 4,
+                id: TaskId::test(4),
                 sprites: [3, -1, -1, -1],
                 ..Task::default()
             },
             Task {
-                id: 5,
+                id: TaskId::test(5),
                 ..Task::default()
             },
         ],
         ..Master::default()
     };
     let on = |task, master: &Master| TransportAction::given_sprite(task, master);
-    assert_eq!(on(Some(TaskId(4)), &master), Ok(Some(3)));
-    assert_eq!(on(Some(TaskId(5)), &master), Ok(None));
+    assert_eq!(on(Some(TaskId::test(4)), &master), Ok(Some(3)));
+    assert_eq!(on(Some(TaskId::test(5)), &master), Ok(None));
     assert_eq!(on(None, &master), Ok(Some(7)));
     let walkless = Master {
         move_sprite: -1,
         ..master.clone()
     };
     assert_eq!(on(None, &walkless), Ok(None));
-    assert!(on(Some(TaskId(6)), &master).is_err());
+    assert!(on(Some(TaskId::test(6)), &master).is_err());
 }
 
 fn rng() -> Well512 {

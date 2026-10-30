@@ -342,7 +342,7 @@ impl World {
                         "a work command on the unit's current task",
                     )
                     .with("action", format_args!("{top:?}"))
-                    .with("task", task.id)
+                    .with("task", task.id.get())
                     .with("target", target));
                 }
             },

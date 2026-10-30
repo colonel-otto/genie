@@ -5,6 +5,7 @@ use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, Mover};
+use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -167,7 +168,7 @@ impl Rig {
 /// A forager's task: food (kind 17, berries), range 0.25, work value 1 (the 4v4's 31139).
 fn task() -> HuntTask {
     HuntTask {
-        id: 2,
+        id: TaskId::test(2),
         range: 0.25,
         resource: 17,
         sprites: [-1; 4],

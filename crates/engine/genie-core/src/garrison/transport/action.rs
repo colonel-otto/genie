@@ -341,9 +341,10 @@ impl TransportAction {
     /// A task the unit's master (`master`) lacks.
     pub fn given_sprite(task: Option<TaskId>, master: &Master) -> Result<Option<i16>, GenieError> {
         Ok(match task {
-            Some(TaskId(id)) => {
+            Some(id) => {
                 let task = master.tasks.iter().find(|t| t.id == id).ok_or_else(|| {
-                    GenieError::missing_data("a Transport's task its master lacks").with("task", id)
+                    GenieError::missing_data("a Transport's task its master lacks")
+                        .with("task", id.get())
                 })?;
                 sprite_id(task.sprites[0])
             }

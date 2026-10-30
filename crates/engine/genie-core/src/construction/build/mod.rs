@@ -14,6 +14,7 @@
 
 use self::update::drop_done_orders;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use std::collections::BTreeMap;
 
@@ -108,7 +109,7 @@ pub struct BuildTask {
     pub resource: i16,
     /// The task's id in its master's list (`+0xa`), which a master's upgrade finds the new
     /// master's task by (−1 for none).
-    pub id: i16,
+    pub id: TaskId,
     /// The task's moving sprite (`+0x40`), which it gives its `MoveTo`s; None for none.
     pub moving: Option<i16>,
 }

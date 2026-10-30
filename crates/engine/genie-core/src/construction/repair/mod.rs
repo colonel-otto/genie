@@ -14,6 +14,7 @@ use crate::GenieError;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
+use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::sprite::sprite_id;
 use genie_diff::Diff;
@@ -75,7 +76,7 @@ pub const SHIP_REPAIR: GenieError =
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct RepairTask {
     /// The task's id.
-    pub id: i16,
+    pub id: TaskId,
     /// Its work value.
     pub work_value: f32,
     /// Its moving sprite (`+0x40`), which its `MoveTo`s take and its turn toward the target

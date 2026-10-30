@@ -345,7 +345,7 @@ pub(super) const TASK: BuildTask = BuildTask {
     work_value: 1.0,
     work_rate: 1.0,
     resource: -1,
-    id: -1,
+    id: TaskId::of_task(-1),
     moving: None,
 };
 
