@@ -25,6 +25,8 @@ pub(super) const RUN_LEASH: f32 = crate::math::image::unit_ai::RUN_LEASH;
 /// `evasiveMoveTo` (`FUN_140c4d140`): a coordinate that is not a number becomes the unit's own
 /// plus one, or minus one above this (`DAT_14330ebb8`).
 pub(super) const EVASIVE_NEAR: f32 = crate::math::image::unit_ai::EVASIVE_NEAR;
+/// `evasiveMoveTo` (`FUN_140c4d140`): a coordinate at or past the map's size goes this far in
+/// (`DAT_14330eb8c`).
 pub(super) const EVADE_EDGE: f32 = crate::math::image::unit_ai::EVADE_EDGE;
 
 /// The classes a hunted animal cares about (`+0x190`, the constructor's list).
