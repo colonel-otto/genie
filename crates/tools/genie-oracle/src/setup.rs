@@ -194,7 +194,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         if wp.is_scout_map_enabled.unwrap_or_default() == 0 {
             continue;
         }
-        if let Some(m) = wp.tribe_information_aimodule.as_deref() {
+        if let Some(m) = wp.scout_map.as_deref() {
             let width = m.x_size_value.max(0) as usize;
             let cells = m
                 .row_value

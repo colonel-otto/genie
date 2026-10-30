@@ -13,6 +13,7 @@
     clippy::derive_partial_eq_without_eq,
     clippy::doc_markdown,
     clippy::float_cmp,
+    clippy::identity_op,
     clippy::large_stack_frames,
     clippy::needless_collect,
     clippy::neg_cmp_op_on_partial_ord,
@@ -21,7 +22,7 @@
     clippy::unreadable_literal
 )]
 
-use super::super::{LenString16, LenString32, LenVec32, Positioned, SigString, Unsupported};
+use super::super::{LenString16, LenString32, LenVec32, Positioned, SigString};
 use binrw::binrw;
 
 /// Read by `FUN_140cba350` of the build.
@@ -1396,6 +1397,2002 @@ pub struct TribeInformationAIModule {
     pub row_value: Vec<TribeInformationAIModuleEntry1>,
 }
 
+/// Read by `FUN_140b43640` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct MainDecisionAIModule {
+    /// unnamed in the binary
+    /// read at 0x140b43817 into a local (local_50)
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_at_0x140b43817: u32,
+    /// unnamed in the binary
+    /// read at 0x140b438cd into a local (local_4c)
+    #[br(count = unnamed_at_0x140b43817 as usize)]
+    pub unnamed_at_0x140b438cd: Vec<u32>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct BuildAIModuleEntry1 {
+    /// unnamed in the binary
+    /// read at 0x140b27ea5 into a local (local_220)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140b27ea5: u32,
+    /// unnamed in the binary
+    /// read at 0x140b27f55
+    #[br(count = unnamed_at_0x140b27ea5 as usize)]
+    pub unnamed_at_0x140b27f55: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b28019 into a local (local_1fc)
+    pub unnamed_at_0x140b28019: u32,
+    /// unnamed in the binary
+    /// read at 0x140b280c2 into a local (local_1c8)
+    pub unnamed_at_0x140b280c2: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28171 into a local (local_200)
+    pub unnamed_at_0x140b28171: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28223 into a local (local_1c4)
+    pub unnamed_at_0x140b28223: u32,
+    /// unnamed in the binary
+    /// read at 0x140b282d5 into a local (local_1c0)
+    pub unnamed_at_0x140b282d5: u32,
+    /// unnamed in the binary
+    /// read at 0x140b2838b into a local (local_1bc)
+    pub unnamed_at_0x140b2838b: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28441 into a local (local_208)
+    pub unnamed_at_0x140b28441: u32,
+    /// unnamed in the binary
+    /// read at 0x140b284f7 into a local (local_20c)
+    pub unnamed_at_0x140b284f7: u32,
+    /// unnamed in the binary
+    /// read at 0x140b285ad into a local (local_210)
+    pub unnamed_at_0x140b285ad: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28663 into a local (local_1cc)
+    pub unnamed_at_0x140b28663: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28719 into a local (local_21c)
+    pub unnamed_at_0x140b28719: u32,
+    /// unnamed in the binary
+    /// read at 0x140b287cf into a local (local_1d4)
+    pub unnamed_at_0x140b287cf: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28885 into a local (local_1e8)
+    pub unnamed_at_0x140b28885: u32,
+    /// unnamed in the binary
+    /// read at 0x140b2893b into a local (local_1d0)
+    pub unnamed_at_0x140b2893b: u32,
+    /// unnamed in the binary
+    /// read at 0x140b289be into a local (local_204)
+    pub unnamed_at_0x140b289be: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28a41 into a local (local_214)
+    pub unnamed_at_0x140b28a41: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28ac4 into a local (local_218)
+    pub unnamed_at_0x140b28ac4: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28b47 into a local (local_1f4)
+    pub unnamed_at_0x140b28b47: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28bca into a local (local_1f8)
+    pub unnamed_at_0x140b28bca: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28c4d into a local (local_1b8)
+    pub unnamed_at_0x140b28c4d: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28cda into a local (local_1e4)
+    pub unnamed_at_0x140b28cda: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28d5d into a local (local_1b4)
+    pub unnamed_at_0x140b28d5d: u32,
+    /// unnamed in the binary
+    /// read at 0x140b28de0 into a local (local_1f0)
+    pub unnamed_at_0x140b28de0: u8,
+    /// unnamed in the binary
+    /// read at 0x140b28e74 into a local (local_1ef)
+    pub unnamed_at_0x140b28e74: u8,
+    /// unnamed in the binary
+    /// read at 0x140b29065 into a local (local_1e0)
+    pub unnamed_at_0x140b29065: u32,
+    /// unnamed in the binary
+    /// read at 0x140b290e8 into a local (local_1ee)
+    pub unnamed_at_0x140b290e8: u8,
+    /// unnamed in the binary
+    /// read at 0x140b2916b into a local (local_1ed)
+    pub unnamed_at_0x140b2916b: u8,
+}
+
+/// Read by `FUN_140b275c0` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct BuildAIModule {
+    /// unnamed in the binary
+    /// read into piVar3
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_at_0x140b27738: u32,
+    /// unnamed in the binary
+    /// read at 0x140b277d5 into a local (local_220)
+    pub unnamed_at_0x140b277d5: u32,
+    /// unnamed in the binary
+    /// read at 0x140b27877
+    #[br(count = unnamed_at_0x140b277d5 as usize)]
+    pub unnamed_at_0x140b27877: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b27901 into a local (local_220)
+    pub unnamed_at_0x140b27901: u32,
+    /// unnamed in the binary
+    /// read at 0x140b2797d
+    #[br(count = unnamed_at_0x140b27901 as usize)]
+    pub unnamed_at_0x140b2797d: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b27a07 into a local (local_220)
+    pub unnamed_at_0x140b27a07: u32,
+    /// unnamed in the binary
+    /// read at 0x140b27a83
+    #[br(count = unnamed_at_0x140b27a07 as usize)]
+    pub unnamed_at_0x140b27a83: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b27b0d into a local (local_220)
+    pub unnamed_at_0x140b27b0d: u32,
+    /// unnamed in the binary
+    /// read at 0x140b27b89
+    #[br(count = unnamed_at_0x140b27b0d as usize)]
+    pub unnamed_at_0x140b27b89: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b27c8e
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_0x578: u32,
+    /// game: `AiMarker1`
+    /// read at 0x140b27d11
+    pub ai_marker1: u32,
+    /// unnamed in the binary
+    /// a loop of 29 reads; unnamed in the binary
+    #[br(count = ai_marker1 as usize)]
+    pub unnamed_list_at_0x140b27df1: Vec<BuildAIModuleEntry1>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_140b45890` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TribeBuildAIModule {
+    /// read by 0x140b275c0
+    #[br(args(ver))]
+    pub build_aimodule: BuildAIModule,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+(longlong)iVar9*4+0x5c8
+    #[brw(magic = b"\x10\x0a")]
+    #[br(count = 9000)]
+    pub unnamed_at_0x140b45a99: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+(longlong)iVar9+0x9270
+    #[br(count = 9000)]
+    pub unnamed_at_0x140b45b68: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b45c2d
+    pub unnamed_0x9268: u32,
+    /// unnamed in the binary
+    /// read at 0x140b45cc1
+    pub unnamed_0x926c: u32,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for TribeBuildAIModule {
+    fn default() -> Self {
+        Self {
+            build_aimodule: Default::default(),
+            unnamed_at_0x140b45a99: vec![Default::default(); 9000],
+            unnamed_at_0x140b45b68: vec![Default::default(); 9000],
+            unnamed_0x9268: Default::default(),
+            unnamed_0x926c: Default::default(),
+            end_marker: Default::default(),
+        }
+    }
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct ConstructionAIModuleEntry1 {
+    /// unnamed in the binary
+    /// read at 0x140b3423c into a local (local_2f8)
+    pub unnamed_at_0x140b3423c: u32,
+    /// unnamed in the binary
+    /// read at 0x140b342f8
+    #[br(count = unnamed_at_0x140b3423c as usize)]
+    pub unnamed_at_0x140b342f8: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b343ce into a local (local_2f4)
+    pub unnamed_at_0x140b343ce: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34489 into a local (local_2b4)
+    pub unnamed_at_0x140b34489: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34544 into a local (local_2b0)
+    pub unnamed_at_0x140b34544: u32,
+    /// unnamed in the binary
+    /// read at 0x140b345fc into a local (local_2dc)
+    pub unnamed_at_0x140b345fc: u32,
+    /// unnamed in the binary
+    /// read at 0x140b346ae into a local (local_2e0)
+    pub unnamed_at_0x140b346ae: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34760 into a local (local_2e4)
+    pub unnamed_at_0x140b34760: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34814 into a local (local_2e8)
+    pub unnamed_at_0x140b34814: u32,
+    /// unnamed in the binary
+    /// read at 0x140b348c8 into a local (local_2ec)
+    pub unnamed_at_0x140b348c8: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34982 into a local (local_2f0)
+    pub unnamed_at_0x140b34982: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34a3f into a local (local_2ac)
+    pub unnamed_at_0x140b34a3f: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34afc into a local (local_2a8)
+    pub unnamed_at_0x140b34afc: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34bb9 into a local (local_2bc)
+    pub unnamed_at_0x140b34bb9: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34c76 into a local (local_2b8)
+    pub unnamed_at_0x140b34c76: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct ConstructionAIModuleEntry2 {
+    /// unnamed in the binary
+    /// read at 0x140b34fcc into a local (local_2f8)
+    pub unnamed_at_0x140b34fcc: u32,
+    /// unnamed in the binary
+    /// read at 0x140b35088
+    #[br(count = unnamed_at_0x140b34fcc as usize)]
+    pub unnamed_at_0x140b35088: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b3515e into a local (local_2d8)
+    pub unnamed_at_0x140b3515e: u32,
+    /// unnamed in the binary
+    /// read at 0x140b35219 into a local (local_298)
+    pub unnamed_at_0x140b35219: u32,
+    /// unnamed in the binary
+    /// read at 0x140b352d4 into a local (local_294)
+    pub unnamed_at_0x140b352d4: u32,
+    /// unnamed in the binary
+    /// read at 0x140b3538f into a local (local_2c4)
+    pub unnamed_at_0x140b3538f: u32,
+    /// unnamed in the binary
+    /// read at 0x140b3544a into a local (local_2c8)
+    pub unnamed_at_0x140b3544a: u32,
+    /// unnamed in the binary
+    /// read at 0x140b35505 into a local (local_2c0)
+    pub unnamed_at_0x140b35505: u32,
+    /// unnamed in the binary
+    /// read at 0x140b355c2 into a local (local_2cc)
+    pub unnamed_at_0x140b355c2: u32,
+    /// unnamed in the binary
+    /// read at 0x140b3567f into a local (local_2d0)
+    pub unnamed_at_0x140b3567f: u32,
+    /// unnamed in the binary
+    /// read at 0x140b3573c into a local (local_2d4)
+    pub unnamed_at_0x140b3573c: u32,
+    /// unnamed in the binary
+    /// read at 0x140b357f9 into a local (local_290)
+    pub unnamed_at_0x140b357f9: u32,
+    /// unnamed in the binary
+    /// read at 0x140b358b6 into a local (local_2a4)
+    pub unnamed_at_0x140b358b6: u32,
+    /// unnamed in the binary
+    /// read at 0x140b3590b into a local (local_2a0)
+    pub unnamed_at_0x140b3590b: u32,
+    /// unnamed in the binary
+    /// read at 0x140b35960 into a local (local_29c)
+    pub unnamed_at_0x140b35960: u32,
+}
+
+/// Read by `FUN_140b33b50` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct ConstructionAIModule {
+    /// unnamed in the binary
+    /// read at 0x140b33d43
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_0xb0: i32,
+    /// unnamed in the binary
+    /// read at 0x140b33de2 into a local (local_2f8)
+    pub unnamed_at_0x140b33de2: u32,
+    /// unnamed in the binary
+    /// read at 0x140b33e90
+    #[br(count = unnamed_at_0x140b33de2 as usize)]
+    pub unnamed_at_0x140b33e90: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b33f07
+    pub unnamed_0x1f8: u32,
+    /// unnamed in the binary
+    /// read at 0x140b33f7e
+    pub unnamed_0x1fc: u32,
+    /// unnamed in the binary
+    /// read at 0x140b33ffe
+    pub unnamed_0x200: u32,
+    /// unnamed in the binary
+    /// read at 0x140b34079
+    pub unnamed_0x204: u32,
+    /// unnamed in the binary
+    /// read at 0x140b340f4
+    pub unnamed_0x208: u32,
+    /// unnamed in the binary
+    /// a marker the game checks
+    #[brw(magic = b"\xa0\x0a")]
+    pub marker: (),
+    /// unnamed in the binary
+    /// a loop of 15 reads; unnamed in the binary
+    #[br(count = unnamed_0xb0.max(0) as usize)]
+    pub unnamed_list_at_0x140b3423c: Vec<ConstructionAIModuleEntry1>,
+    /// unnamed in the binary
+    /// read at 0x140b34f08
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_0x148: i32,
+    /// unnamed in the binary
+    /// a loop of 15 reads; unnamed in the binary
+    #[br(count = unnamed_0x148.max(0) as usize)]
+    pub unnamed_list_at_0x140b34fcc: Vec<ConstructionAIModuleEntry2>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct DiplomacyAIModuleEntry1 {
+    /// unnamed in the binary
+    /// read into puVar7+-5
+    pub unnamed_at_0x140b4096f: u32,
+    /// unnamed in the binary
+    /// read into puVar7
+    pub unnamed_at_0x140b40a0f: u32,
+    /// game: `AiMarker3`
+    /// read at 0x140b40ab9
+    pub ai_marker3: u8,
+}
+
+/// Read by `FUN_140b40830` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct DiplomacyAIModule {
+    /// a loop of 3 reads; named after its entries' only member (`AiMarker3`)
+    #[brw(magic = b"\x10\x0a")]
+    #[br(count = 10)]
+    pub ai_marker3: Vec<DiplomacyAIModuleEntry1>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for DiplomacyAIModule {
+    fn default() -> Self {
+        Self {
+            ai_marker3: vec![Default::default(); 10],
+            end_marker: Default::default(),
+        }
+    }
+}
+
+/// Read by `FUN_140b429b0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct EmotionalAIModule {
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar7+0x2e)*4
+    #[brw(magic = b"\x10\x0a")]
+    #[br(count = 6)]
+    pub unnamed_at_0x140b42ad1: Vec<u32>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for EmotionalAIModule {
+    fn default() -> Self {
+        Self {
+            unnamed_at_0x140b42ad1: vec![Default::default(); 6],
+            end_marker: Default::default(),
+        }
+    }
+}
+
+/// Read by `FUN_140c6f9e0` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Unnamed140c6f9e0 {
+    /// unnamed in the binary
+    /// read at 0x140c6fad7
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_0x8: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fb6d into a local (local_50)
+    pub unnamed_at_0x140c6fb6d: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fc00
+    pub unnamed_0xc: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fc6d
+    pub unnamed_0x10: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fcda
+    pub unnamed_0x14: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fd47
+    pub unnamed_0x18: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fdb7
+    pub unnamed_0x1c: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fe2d
+    pub unnamed_0x20: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6fea3
+    pub unnamed_0x24: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6ff19
+    pub unnamed_0x28: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6ff8f
+    pub unnamed_0x2c: u32,
+    /// unnamed in the binary
+    /// read at 0x140c70005
+    pub unnamed_0x30: u32,
+    /// unnamed in the binary
+    /// read at 0x140c70087
+    pub unnamed_0x34: u32,
+    /// unnamed in the binary
+    /// read at 0x140c70108
+    pub unnamed_0x38: u32,
+    /// unnamed in the binary
+    /// read at 0x140c7017e
+    pub unnamed_0x3c: u32,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_140c6d5d0` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Unnamed140c6d5d0 {
+    /// unnamed in the binary
+    /// read at 0x140c6d71c into a local (local_68)
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_at_0x140c6d71c: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6d888 into a local (local_64)
+    #[br(count = unnamed_at_0x140c6d71c as usize)]
+    pub unnamed_at_0x140c6d888: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140c6da75
+    pub unnamed_0x30: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6db06
+    pub unnamed_0x34: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6db97
+    pub unnamed_0x38: u32,
+    /// unnamed in the binary
+    /// read at 0x140c6dc03
+    pub unnamed_0x3c: u32,
+    /// unnamed in the binary
+    /// read by 0x140c6f9e0
+    #[br(args(ver))]
+    pub unnamed140c6f9e0: Unnamed140c6f9e0,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct Unnamed140c697e0Entry1 {
+    /// game: `&num`
+    /// read at 0x140c69be4
+    pub num: i32,
+    /// game: `&unitID`
+    /// read at 0x140c69d54
+    #[br(if(num > 0), count = num.max(0) as usize)]
+    pub unit_id: Option<Vec<u32>>,
+}
+
+/// Read by `FUN_140c697e0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Unnamed140c697e0 {
+    /// unnamed in the binary
+    /// read by 0x140c6f9e0
+    #[brw(magic = b"\x10\x0a")]
+    #[br(args(ver))]
+    pub unnamed140c6f9e0: Unnamed140c6f9e0,
+    /// unnamed in the binary
+    /// read by 0x140c6d5d0
+    #[br(count = 2, args { inner: (ver,) })]
+    pub unnamed140c6d5d0: Vec<Unnamed140c6d5d0>,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = 20)]
+    pub unnamed_list_at_0x140c69be4: Vec<Unnamed140c697e0Entry1>,
+    /// unnamed in the binary
+    /// read at 0x140c69f8f
+    pub unnamed_0x3c8: u32,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for Unnamed140c697e0 {
+    fn default() -> Self {
+        Self {
+            unnamed140c6f9e0: Default::default(),
+            unnamed140c6d5d0: vec![Default::default(); 2],
+            unnamed_list_at_0x140c69be4: vec![Default::default(); 20],
+            unnamed_0x3c8: Default::default(),
+            end_marker: Default::default(),
+        }
+    }
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry1 {
+    /// unnamed in the binary
+    /// read into (longlong)local_34f0+(longlong)iVar28*4+*plVar16
+    pub unnamed_at_0x140b4d3e2: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_34f0+(longlong)iVar28*4+local_3538\[0x20a0\]
+    pub unnamed_at_0x140b4d4a3: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry2 {
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = 4)]
+    pub unnamed_list_at_0x140b4d3e2: Vec<TribeInformationAiStateEntry1>,
+}
+
+impl Default for TribeInformationAiStateEntry2 {
+    fn default() -> Self {
+        Self {
+            unnamed_list_at_0x140b4d3e2: vec![Default::default(); 4],
+        }
+    }
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry3 {
+    /// unnamed in the binary
+    /// read at 0x140b4d74e into a local (local_378)
+    pub unnamed_at_0x140b4d74e: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4d810 into a local (local_348)
+    #[br(if(unnamed_at_0x140b4d74e > 0), count = unnamed_at_0x140b4d74e as usize)]
+    pub unnamed_at_0x140b4d810: Option<Vec<u32>>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry4 {
+    /// unnamed in the binary
+    /// read into local_3538\[0x20a5\]+(longlong)local_3548*4
+    pub unnamed_at_0x140b4dd9c: u32,
+    /// unnamed in the binary
+    /// read into local_3538\[0x20a9\]+(longlong)local_3520
+    pub unnamed_at_0x140b4de3e: u16,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+2
+    pub unnamed_at_0x140b4dedb: u16,
+    /// unnamed in the binary
+    /// read at 0x140b4e154 into a local (local_2d0)
+    pub unnamed_at_0x140b4e154: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4e1e2 into a local (local_2cc)
+    pub unnamed_at_0x140b4e1e2: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4e270 into a local (local_2c8)
+    pub unnamed_at_0x140b4e270: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x10
+    pub unnamed_at_0x140b4e347: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x12
+    pub unnamed_at_0x140b4e3e6: u16,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x14
+    pub unnamed_at_0x140b4e485: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x11
+    pub unnamed_at_0x140b4e4e3: u8,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x18
+    pub unnamed_at_0x140b4e541: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x1c
+    pub unnamed_at_0x140b4e59f: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x20
+    pub unnamed_at_0x140b4e5fd: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x24
+    pub unnamed_at_0x140b4e65b: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x28
+    pub unnamed_at_0x140b4e6c5: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x30
+    pub unnamed_at_0x140b4e756: u16,
+    /// unnamed in the binary
+    /// read into (longlong)local_3520+local_3538\[0x20a9\]+0x2c
+    pub unnamed_at_0x140b4e7b4: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry5 {
+    /// unnamed in the binary
+    /// read at 0x140b4f208 into a local (local_3540)
+    pub unnamed_at_0x140b4f208: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3540+4
+    pub unnamed_at_0x140b4f294: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3540+8
+    pub unnamed_at_0x140b4f330: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4f3c6 into a local (local_33f0)
+    pub unnamed_at_0x140b4f3c6: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4f46c into a local (local_33e8)
+    pub unnamed_at_0x140b4f46c: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4f517 into a local (local_34c0)
+    pub unnamed_at_0x140b4f517: u32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3540+0x18
+    pub unnamed_at_0x140b4f5a7: u64,
+    /// unnamed in the binary
+    /// read into (longlong)local_3540+0x20
+    pub unnamed_at_0x140b4f633: u64,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry6 {
+    /// unnamed in the binary
+    /// read into local_3520+-3
+    pub unnamed_at_0x140b4ebdb: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4ec6f into a local (local_3a4)
+    pub unnamed_at_0x140b4ec6f: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4ed31 into a local (local_33f8)
+    pub unnamed_at_0x140b4ed31: u32,
+    /// unnamed in the binary
+    /// read into local_3520+1
+    pub unnamed_at_0x140b4edbf: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4ee54 into a local (local_34f0)
+    pub unnamed_at_0x140b4ee54: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4eef9 into a local (local_3490)
+    pub unnamed_at_0x140b4eef9: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4ef94 into a local (local_3488)
+    pub unnamed_at_0x140b4ef94: u32,
+    /// unnamed in the binary
+    /// read into local_3520+5
+    pub unnamed_at_0x140b4f062: u32,
+    /// unnamed in the binary
+    /// read into local_3520+6
+    pub unnamed_at_0x140b4f0f0: u32,
+    /// unnamed in the binary
+    /// a loop of 8 reads; unnamed in the binary
+    #[br(if(!(unnamed_at_0x140b4ec6f < 1) && unnamed_at_0x140b4ec6f > 0), count = unnamed_at_0x140b4ec6f as usize)]
+    pub unnamed_list_at_0x140b4f208: Option<Vec<TribeInformationAiStateEntry5>>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry7 {
+    /// unnamed in the binary
+    /// read into *plVar16+(longlong)local_3540
+    pub unnamed_at_0x140b5085b: u32,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+4
+    pub unnamed_at_0x140b50a38: u32,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+8
+    pub unnamed_at_0x140b50ad0: u32,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0xc
+    pub unnamed_at_0x140b50b68: u8,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x10
+    pub unnamed_at_0x140b50c00: u32,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x14
+    pub unnamed_at_0x140b50c9a: u8,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x15
+    pub unnamed_at_0x140b50d34: u8,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x16
+    pub unnamed_at_0x140b50dce: u8,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x17
+    pub unnamed_at_0x140b50e68: u8,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x18
+    pub unnamed_at_0x140b50f02: u32,
+    /// unnamed in the binary
+    /// read into *local_3508+(longlong)local_3540+0x1c
+    pub unnamed_at_0x140b50f9c: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(count: i32))]
+pub struct InformationList {
+    /// unnamed in the binary
+    /// a loop of 11 reads; unnamed in the binary
+    #[br(if(!(count == 0)), count = count.max(0) as usize)]
+    pub unnamed_list_at_0x140b5085b: Option<Vec<TribeInformationAiStateEntry7>>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(read_count: i32))]
+pub struct TribeInformationAiStateEntry9 {
+    /// one row of read_count words per player (`(longlong)local_3a0 << 2` bytes at player * 0x1000)
+    #[br(count = read_count.max(0) as usize)]
+    pub unit_counts: Vec<u32>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry10 {
+    /// unnamed in the binary
+    /// read at 0x140b51c1a into a local (local_340)
+    pub unnamed_at_0x140b51c1a: u32,
+    /// unnamed in the binary
+    /// read at 0x140b51c5f into a local (local_33c)
+    pub unnamed_at_0x140b51c5f: [u8; 12],
+    /// unnamed in the binary
+    /// read at 0x140b51ca4 into a local (local_330)
+    pub unnamed_at_0x140b51ca4: u32,
+    /// unnamed in the binary
+    /// read at 0x140b51ce9 into a local (local_32c)
+    pub unnamed_at_0x140b51ce9: u32,
+    /// unnamed in the binary
+    /// read at 0x140b51d2e into a local (local_318)
+    pub unnamed_at_0x140b51d2e: u32,
+    /// unnamed in the binary
+    /// read at 0x140b51d83 into a local (local_328)
+    pub unnamed_at_0x140b51d83: u32,
+    /// unnamed in the binary
+    /// read at 0x140b51dc8 into a local (local_324)
+    pub unnamed_at_0x140b51dc8: [u8; 12],
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry11 {
+    /// unnamed in the binary
+    /// read at 0x140b51eae into a local (local_384)
+    pub unnamed_at_0x140b51eae: u16,
+    /// unnamed in the binary
+    /// read at 0x140b51ef3 into a local (local_344)
+    pub unnamed_at_0x140b51ef3: u32,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeInformationAiStateEntry12 {
+    /// unnamed in the binary
+    /// read at 0x140b520bc into a local (local_374)
+    pub unnamed_at_0x140b520bc: u32,
+    /// unnamed in the binary
+    /// read at 0x140b52101 into a local (local_36c)
+    pub unnamed_at_0x140b52101: u32,
+    /// unnamed in the binary
+    /// read at 0x140b52146 into a local (local_370)
+    pub unnamed_at_0x140b52146: u32,
+}
+
+/// Read by `FUN_140b4c880` (`TribeInformationAIModule.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct TribeInformationAiState {
+    /// unnamed in the binary
+    /// read at 0x140b4d040
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_0x4e0: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4d0d9
+    pub unnamed_0x104e4: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4d18d into a local (local_38c)
+    pub unnamed_at_0x140b4d18d: u32,
+    /// unnamed in the binary
+    /// read into (longlong)puVar23+uVar24*4+0x4e4
+    #[br(count = unnamed_at_0x140b4d18d as usize)]
+    pub unnamed_at_0x140b4d255: Vec<u32>,
+    /// unnamed in the binary
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(count = num_players)]
+    pub unnamed_list_at_0x140b4d3e2: Vec<TribeInformationAiStateEntry2>,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[brw(magic = b"\xa0\x0a")]
+    #[br(count = 4)]
+    pub unnamed_list_at_0x140b4d74e: Vec<TribeInformationAiStateEntry3>,
+    /// unnamed in the binary
+    /// read into local_3538+0x20a3
+    pub unnamed_at_0x140b4da14: u32,
+    /// unnamed in the binary
+    /// read into (longlong)puVar23+0x1051c
+    pub unnamed_at_0x140b4da65: u32,
+    /// unnamed in the binary
+    /// read into puVar23+0x20a4
+    pub unnamed_at_0x140b4dab6: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4db06 into a local (local_380)
+    pub unnamed_at_0x140b4db06: u32,
+    /// unnamed in the binary
+    /// a marker the game checks
+    #[brw(magic = b"\xa0\x0a")]
+    pub marker: (),
+    /// unnamed in the binary
+    /// a loop of 17 reads; unnamed in the binary
+    #[br(count = unnamed_at_0x140b4db06 as usize)]
+    pub unnamed_list_at_0x140b4dd9c: Vec<TribeInformationAiStateEntry4>,
+    /// the count read into +0x192fc of the information module: the records read next, 16 bytes each
+    #[brw(magic = b"\xa0\x0a")]
+    pub count_192fc: i32,
+    /// unnamed in the binary
+    /// read into (longlong)local_3548*0x10+puVar23\[0x3260\]
+    #[br(count = count_192fc.max(0) as usize)]
+    pub unnamed_at_0x140b4e9d2: Vec<[u8; 16]>,
+    /// unnamed in the binary
+    /// a loop of 10 reads; unnamed in the binary
+    #[brw(magic = b"\xa0\x0a")]
+    #[br(count = 2)]
+    pub unnamed_list_at_0x140b4ebdb: Vec<TribeInformationAiStateEntry6>,
+    /// the count read into puVar23\[0x326e\]: the 40-byte records read next
+    #[brw(magic = b"\xa0\x0a")]
+    pub count_326e: i32,
+    /// unnamed in the binary
+    /// read into local_3538\[0x326f\]+(longlong)local_3548*0x28
+    #[br(count = count_326e.max(0) as usize)]
+    pub unnamed_at_0x140b4f91e: Vec<[u8; 40]>,
+    /// unnamed in the binary
+    /// read at 0x140b4fb04 into a local (local_39c)
+    pub unnamed_at_0x140b4fb04: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4fb61 into a local (local_3a8)
+    #[br(count = unnamed_at_0x140b4fb04 as usize)]
+    pub unnamed_at_0x140b4fb61: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b4fbf3 into a local (local_39c)
+    pub unnamed_at_0x140b4fbf3: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4fc50 into a local (local_3a8)
+    #[br(count = unnamed_at_0x140b4fbf3 as usize)]
+    pub unnamed_at_0x140b4fc50: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b4fce2 into a local (local_39c)
+    pub unnamed_at_0x140b4fce2: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4fd4e into a local (local_3a8)
+    #[br(count = unnamed_at_0x140b4fce2 as usize)]
+    pub unnamed_at_0x140b4fd4e: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b4fde0 into a local (local_39c)
+    pub unnamed_at_0x140b4fde0: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4fe40 into a local (local_3a8)
+    #[br(count = unnamed_at_0x140b4fde0 as usize)]
+    pub unnamed_at_0x140b4fe40: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b4fed2 into a local (local_39c)
+    pub unnamed_at_0x140b4fed2: u32,
+    /// unnamed in the binary
+    /// read at 0x140b4ff2f into a local (local_3a8)
+    #[br(count = unnamed_at_0x140b4fed2 as usize)]
+    pub unnamed_at_0x140b4ff2f: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b4ffc1 into a local (local_39c)
+    pub unnamed_at_0x140b4ffc1: u32,
+    /// unnamed in the binary
+    /// read at 0x140b5001e into a local (local_3a8)
+    #[br(count = unnamed_at_0x140b4ffc1 as usize)]
+    pub unnamed_at_0x140b5001e: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)local_3538+(longlong)iVar30*4+0x10648
+    #[brw(magic = b"\xa0\x0a")]
+    #[br(count = 9000)]
+    pub unnamed_at_0x140b5017a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b5026b into a local (local_3448)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140b5026b: u32,
+    /// unnamed in the binary
+    /// read by 0x140f4c080
+    #[br(args(ver))]
+    pub tribe_information_aimodule: TribeInformationAIModule,
+    /// unnamed in the binary
+    /// read at 0x140b502e8 into a local (local_3408)
+    pub unnamed_at_0x140b502e8: u64,
+    /// unnamed in the binary
+    /// read at 0x140b50326 into a local (local_3420)
+    pub unnamed_at_0x140b50326: u64,
+    /// unnamed in the binary
+    /// read at 0x140b504c6 into a local (local_3418)
+    pub unnamed_at_0x140b504c6: u32,
+    /// unnamed in the binary
+    /// read at 0x140b5050a into a local (local_3a8)
+    pub unnamed_at_0x140b5050a: u32,
+    /// unnamed in the binary
+    /// read at 0x140b5054c
+    #[br(count = unnamed_at_0x140b5050a as usize)]
+    pub unnamed_at_0x140b5054c: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140b505f1 into a local (local_3440)
+    pub unnamed_at_0x140b505f1: [u8; 192],
+    /// 16 bytes: the entry count of each of the four lists below (`*local_34e8`, advanced by one per list)
+    #[brw(magic = b"\xa0\x0a")]
+    pub list_counts: [i32; 4],
+    /// 16 bytes read next to the counts, not used by the loops below
+    pub list_capacities: [i32; 4],
+    /// the four lists of `count` entries each
+    #[br(parse_with = binrw::helpers::args_iter(list_counts.iter().copied().map(|x| (x as i32,)).collect::<Vec<_>>()))]
+    pub lists: Vec<InformationList>,
+    /// unnamed in the binary
+    /// read at 0x140b510d4 into a local (local_2b8)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140b510d4: [u8; 64],
+    /// unnamed in the binary
+    /// read at 0x140b51126 into a local (local_3480)
+    pub unnamed_at_0x140b51126: [u8; 32],
+    /// unnamed in the binary
+    /// read at 0x140b51168 into a local (local_3478)
+    pub unnamed_at_0x140b51168: [u8; 32],
+    /// unnamed in the binary
+    /// read into local_3538+0x32b9
+    pub unnamed_at_0x140b51274: u32,
+    /// one byte per player (`pvVar26` = the player count bytes)
+    #[br(count = num_players)]
+    pub player_bytes_a: Vec<u8>,
+    /// one byte per player (`pvVar26` = the player count bytes)
+    #[br(count = num_players)]
+    pub player_bytes_b: Vec<u8>,
+    /// unnamed in the binary
+    /// read into puVar23+0x32e6
+    pub unnamed_at_0x140b51395: u32,
+    /// unnamed in the binary
+    /// read into (longlong)puVar23+0x19734
+    pub unnamed_at_0x140b513da: u32,
+    /// unnamed in the binary
+    /// read into puVar23+0x32e7
+    pub unnamed_at_0x140b5141f: u32,
+    /// unnamed in the binary
+    /// read into (longlong)puVar23+0x1973c
+    pub unnamed_at_0x140b51464: u32,
+    /// unnamed in the binary
+    /// read into puVar23+0x32e8
+    pub unnamed_at_0x140b514cb: u32,
+    /// game: `&mLastPlayerCountRefreshTime`
+    /// helper 0x140b4b760
+    #[brw(magic = b"\xa0\x0a")]
+    pub last_player_count_refresh_time: u32,
+    /// game: `&read_count`
+    /// `&read_count` (TribeInformationAIModule.cpp line 0x3bf): words per player in the table below
+    pub read_count: i32,
+    /// unnamed in the binary
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(count = num_players, args { inner: (read_count,) })]
+    pub unnamed_list_at_0x140b517c6: Vec<TribeInformationAiStateEntry9>,
+    /// one word per player (`(local_3510 - local_34f8) << 2` bytes)
+    #[br(count = num_players)]
+    pub player_words_0x140b51872: Vec<u32>,
+    /// one word per player (`(local_3510 - local_34f8) << 2` bytes)
+    #[br(count = num_players)]
+    pub player_words_0x140b518c4: Vec<u32>,
+    /// one word per player (`(local_3510 - local_34f8) << 2` bytes)
+    #[br(count = num_players)]
+    pub player_words_0x140b5190a: Vec<u32>,
+    /// unnamed in the binary
+    /// read into puVar23+0x32f5
+    pub unnamed_at_0x140b51967: u32,
+    /// unnamed in the binary
+    /// read into (longlong)puVar23+0x197ac
+    pub unnamed_at_0x140b51a6f: u32,
+    /// unnamed in the binary
+    /// read at 0x140b51b9f into a local (local_388)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140b51b9f: u32,
+    /// unnamed in the binary
+    /// a loop of 7 reads; unnamed in the binary
+    #[br(count = unnamed_at_0x140b51b9f as usize)]
+    pub unnamed_list_at_0x140b51c1a: Vec<TribeInformationAiStateEntry10>,
+    /// unnamed in the binary
+    /// read at 0x140b51e53 into a local (local_390)
+    pub unnamed_at_0x140b51e53: u16,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = unnamed_at_0x140b51e53 as usize)]
+    pub unnamed_list_at_0x140b51eae: Vec<TribeInformationAiStateEntry11>,
+    /// unnamed in the binary
+    /// read by 0x140c697e0
+    #[br(args(ver))]
+    pub unnamed140c697e0: Unnamed140c697e0,
+    /// unnamed in the binary
+    /// read into *puVar11+(longlong)iVar30*4
+    #[br(count = num_players)]
+    pub unnamed_at_0x140b51fe1: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140b52045 into a local (local_37c)
+    pub unnamed_at_0x140b52045: u32,
+    /// unnamed in the binary
+    /// a loop of 3 reads; unnamed in the binary
+    #[br(count = unnamed_at_0x140b52045 as usize)]
+    pub unnamed_list_at_0x140b520bc: Vec<TribeInformationAiStateEntry12>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for TribeInformationAiState {
+    fn default() -> Self {
+        Self {
+            unnamed_0x4e0: Default::default(),
+            unnamed_0x104e4: Default::default(),
+            unnamed_at_0x140b4d18d: Default::default(),
+            unnamed_at_0x140b4d255: Default::default(),
+            unnamed_list_at_0x140b4d3e2: Default::default(),
+            unnamed_list_at_0x140b4d74e: vec![Default::default(); 4],
+            unnamed_at_0x140b4da14: Default::default(),
+            unnamed_at_0x140b4da65: Default::default(),
+            unnamed_at_0x140b4dab6: Default::default(),
+            unnamed_at_0x140b4db06: Default::default(),
+            marker: Default::default(),
+            unnamed_list_at_0x140b4dd9c: Default::default(),
+            count_192fc: Default::default(),
+            unnamed_at_0x140b4e9d2: Default::default(),
+            unnamed_list_at_0x140b4ebdb: vec![Default::default(); 2],
+            count_326e: Default::default(),
+            unnamed_at_0x140b4f91e: Default::default(),
+            unnamed_at_0x140b4fb04: Default::default(),
+            unnamed_at_0x140b4fb61: Default::default(),
+            unnamed_at_0x140b4fbf3: Default::default(),
+            unnamed_at_0x140b4fc50: Default::default(),
+            unnamed_at_0x140b4fce2: Default::default(),
+            unnamed_at_0x140b4fd4e: Default::default(),
+            unnamed_at_0x140b4fde0: Default::default(),
+            unnamed_at_0x140b4fe40: Default::default(),
+            unnamed_at_0x140b4fed2: Default::default(),
+            unnamed_at_0x140b4ff2f: Default::default(),
+            unnamed_at_0x140b4ffc1: Default::default(),
+            unnamed_at_0x140b5001e: Default::default(),
+            unnamed_at_0x140b5017a: vec![Default::default(); 9000],
+            unnamed_at_0x140b5026b: Default::default(),
+            tribe_information_aimodule: Default::default(),
+            unnamed_at_0x140b502e8: Default::default(),
+            unnamed_at_0x140b50326: Default::default(),
+            unnamed_at_0x140b504c6: Default::default(),
+            unnamed_at_0x140b5050a: Default::default(),
+            unnamed_at_0x140b5054c: Default::default(),
+            unnamed_at_0x140b505f1: [Default::default(); 192],
+            list_counts: Default::default(),
+            list_capacities: Default::default(),
+            lists: Default::default(),
+            unnamed_at_0x140b510d4: [Default::default(); 64],
+            unnamed_at_0x140b51126: Default::default(),
+            unnamed_at_0x140b51168: Default::default(),
+            unnamed_at_0x140b51274: Default::default(),
+            player_bytes_a: Default::default(),
+            player_bytes_b: Default::default(),
+            unnamed_at_0x140b51395: Default::default(),
+            unnamed_at_0x140b513da: Default::default(),
+            unnamed_at_0x140b5141f: Default::default(),
+            unnamed_at_0x140b51464: Default::default(),
+            unnamed_at_0x140b514cb: Default::default(),
+            last_player_count_refresh_time: Default::default(),
+            read_count: Default::default(),
+            unnamed_list_at_0x140b517c6: Default::default(),
+            player_words_0x140b51872: Default::default(),
+            player_words_0x140b518c4: Default::default(),
+            player_words_0x140b5190a: Default::default(),
+            unnamed_at_0x140b51967: Default::default(),
+            unnamed_at_0x140b51a6f: Default::default(),
+            unnamed_at_0x140b51b9f: Default::default(),
+            unnamed_list_at_0x140b51c1a: Default::default(),
+            unnamed_at_0x140b51e53: Default::default(),
+            unnamed_list_at_0x140b51eae: Default::default(),
+            unnamed140c697e0: Default::default(),
+            unnamed_at_0x140b51fe1: Default::default(),
+            unnamed_at_0x140b52045: Default::default(),
+            unnamed_list_at_0x140b520bc: Default::default(),
+            end_marker: Default::default(),
+        }
+    }
+}
+
+/// Read by `FUN_140ba5a40` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TribeResourceAIModule {
+    /// unnamed in the binary
+    /// read at 0x140ba5b48
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_0xb8: u32,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_1409327a0` (`strings.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct AiStdString {
+    /// game: `&stringLength`
+    /// read at 0x140932838
+    pub string_length: u32,
+    /// game: `&s[0]`
+    /// helper 0x14092a340
+    #[br(count = (string_length & 4294967295) as usize)]
+    pub s: Vec<u8>,
+}
+
+/// Read by `FUN_140ba69b0` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TribeStrategyAiState {
+    /// unnamed in the binary
+    /// read at 0x140ba6b75
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_0xb8: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6c09
+    pub unnamed_0xd8: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6c9d
+    pub unnamed_0xe0: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6d0b
+    pub unnamed_0xe4: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6d79
+    pub unnamed_0xe8: [u8; 16],
+    /// unnamed in the binary
+    /// read at 0x140ba6dea
+    pub unnamed_0xf8: [u8; 16],
+    /// unnamed in the binary
+    /// read at 0x140ba6e61
+    pub unnamed_0x108: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6ed8
+    pub unnamed_0x10c: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6f4f
+    pub unnamed_0x110: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba6fd2
+    pub unnamed_0x968: u32,
+    /// read by 0x1409327a0
+    #[brw(magic = b"\xa0\x0a")]
+    #[br(args(ver))]
+    pub ai_std_string: AiStdString,
+    /// unnamed in the binary
+    /// read at 0x140ba7142 into a local (local_68)
+    pub unnamed_at_0x140ba7142: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba71cd into a local (local_64)
+    #[br(count = unnamed_at_0x140ba7142 as usize)]
+    pub unnamed_at_0x140ba71cd: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140ba728a into a local (local_68)
+    pub unnamed_at_0x140ba728a: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba731b into a local (local_64)
+    #[br(count = unnamed_at_0x140ba728a as usize)]
+    pub unnamed_at_0x140ba731b: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140ba73d8 into a local (local_68)
+    pub unnamed_at_0x140ba73d8: u32,
+    /// unnamed in the binary
+    /// read at 0x140ba746b into a local (local_64)
+    #[br(count = unnamed_at_0x140ba73d8 as usize)]
+    pub unnamed_at_0x140ba746b: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140ba7537
+    pub unnamed_0x978: u32,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_140f961e0` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct Path {
+    /// game: `mIDValue`
+    /// read at 0x140f96244
+    pub idvalue: i32,
+    /// game: `nWV`
+    /// read at 0x140f963e0
+    pub n_wv: i32,
+    /// game: `(m_waypoints[i])`
+    /// read at 0x140f96586 into the temporary `temp`; named by the save's write in the same place (0x140f98f00, write at 0x140f99313)
+    #[br(count = n_wv.max(0) as usize)]
+    pub m_waypoints: Vec<[u8; 12]>,
+    /// game: `mPathLengthValue`
+    /// read at 0x140f96640
+    pub path_length_value: f32,
+    /// game: `mCreationTimeValue`
+    /// read at 0x140f968df
+    pub creation_time_value: u32,
+    /// game: `mFlags.m_bits`
+    /// read at 0x140f96a72
+    pub flags_m_bits: u32,
+    /// game: `mReferenceCount`
+    /// read at 0x140f96c24
+    pub reference_count: i32,
+    /// game: `numberIgnoreUnits`
+    /// read at 0x140f96dec into the temporary `tempInt`; named by the save's write in the same place (0x140f98f00, write at 0x140f99b62)
+    pub number_ignore_units: i32,
+    /// game: `data[0]`
+    /// read at 0x140f97057; named by the save's write in the same place (0x140f98f00, write at 0x140f99e2b)
+    #[br(count = number_ignore_units.max(0) as usize)]
+    pub data: Vec<u32>,
+}
+
+/// Read by `FUN_140bd2ff0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TribeTacticalRecord {
+    /// game: `idValue`
+    /// read at 0x140bd305c
+    pub id_value: i32,
+    /// game: `inUseValue`
+    /// read at 0x140bd3148
+    pub in_use_value: u32,
+    /// game: `max_units`
+    /// read at 0x140bd32f3
+    pub max_units: i32,
+    /// game: `(unitsValue[i])`
+    /// read at 0x140bd347d
+    #[br(count = max_units.max(0) as usize)]
+    pub units_value: Vec<i32>,
+    /// game: `numberUnitsValue`
+    /// read at 0x140bd3947
+    pub number_units_value: i32,
+    /// game: `desiredNumberUnitsValue`
+    /// read at 0x140bd3c20
+    pub desired_number_units_value: i32,
+    /// game: `actionValue`
+    /// read at 0x140bd4470
+    pub action_value: i32,
+    /// game: `targetValue`
+    /// read at 0x140bd4622
+    pub target_value: i32,
+    /// game: `targetTypeValue`
+    /// read at 0x140bd47a0
+    pub target_type_value: i32,
+    /// game: `targetLocationValue`
+    /// read at 0x140bd4950
+    pub target_location_value: [u8; 16],
+    /// game: `gatherLocationValue`
+    /// read at 0x140bd4b00
+    pub gather_location_value: [u8; 16],
+    /// game: `priorityValue`
+    /// read at 0x140bd4dfb
+    pub priority_value: i32,
+    /// game: `assistGroupIDValue`
+    /// read at 0x140bd509a
+    pub assist_group_idvalue: i32,
+    /// game: `assistGroupTypeValue`
+    /// read at 0x140bd51ed
+    pub assist_group_type_value: i32,
+    /// game: `typeValue`
+    /// read at 0x140bd533d
+    pub type_value: i32,
+    /// game: `subTypeValue`
+    /// read at 0x140bd545b
+    pub sub_type_value: i32,
+    /// game: `mIdleTimer`
+    /// read at 0x140bd55ad
+    pub idle_timer: u32,
+    /// game: `consecutiveGatherAttemptsValue`
+    /// read at 0x140bd5c5c
+    pub consecutive_gather_attempts_value: u8,
+    /// game: `numberObjectsToDestroyValue`
+    /// read at 0x140bd5dc6
+    pub number_objects_to_destroy_value: i32,
+    /// game: `objectsToDestroyValue`
+    /// read at 0x140bd5f1b
+    pub objects_to_destroy_value: [u8; 80],
+    /// game: `objectsToDestroyOwnerValue`
+    /// read at 0x140bd608b
+    pub objects_to_destroy_owner_value: i32,
+    /// game: `lastAddedUnitTimeValue`
+    /// read at 0x140bd64ac
+    pub last_added_unit_time_value: u32,
+    /// game: `mCentroid`
+    /// read at 0x140bd65dc
+    pub centroid: [u8; 12],
+    /// game: `mFlags.m_bits`
+    /// read at 0x140bd674f
+    pub flags_m_bits: u32,
+    /// unnamed in the binary
+    /// read at 0x140bd68bc
+    #[br(count = max_units.max(0) as usize)]
+    pub unnamed_0x714: Vec<u32>,
+    /// game: `mRandomMovePoint`
+    /// read at 0x140bd6a1c
+    pub random_move_point: [u8; 12],
+    /// game: `mRandomMoveTime`
+    /// read at 0x140bd6b6d
+    pub random_move_time: u32,
+    /// game: `mRetreatUnitNumber`
+    /// read at 0x140bd6cf9
+    pub retreat_unit_number: i32,
+    /// game: `mWaypoints`
+    /// read by 0x140f961e0
+    #[br(args(ver))]
+    pub waypoints: Path,
+}
+
+impl Default for TribeTacticalRecord {
+    fn default() -> Self {
+        Self {
+            id_value: Default::default(),
+            in_use_value: Default::default(),
+            max_units: Default::default(),
+            units_value: Default::default(),
+            number_units_value: Default::default(),
+            desired_number_units_value: Default::default(),
+            action_value: Default::default(),
+            target_value: Default::default(),
+            target_type_value: Default::default(),
+            target_location_value: Default::default(),
+            gather_location_value: Default::default(),
+            priority_value: Default::default(),
+            assist_group_idvalue: Default::default(),
+            assist_group_type_value: Default::default(),
+            type_value: Default::default(),
+            sub_type_value: Default::default(),
+            idle_timer: Default::default(),
+            consecutive_gather_attempts_value: Default::default(),
+            number_objects_to_destroy_value: Default::default(),
+            objects_to_destroy_value: [Default::default(); 80],
+            objects_to_destroy_owner_value: Default::default(),
+            last_added_unit_time_value: Default::default(),
+            centroid: Default::default(),
+            flags_m_bits: Default::default(),
+            unnamed_0x714: Default::default(),
+            random_move_point: Default::default(),
+            random_move_time: Default::default(),
+            retreat_unit_number: Default::default(),
+            waypoints: Default::default(),
+        }
+    }
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct TribeTacticalAiStateEntry1 {
+    /// unnamed in the binary
+    /// read at 0x140bb47b7 into a local (local_238)
+    pub unnamed_at_0x140bb47b7: u16,
+    /// unnamed in the binary
+    /// read at 0x140bb481f into a local (local_228)
+    pub unnamed_at_0x140bb481f: u16,
+}
+
+/// Read by `FUN_140bb1040` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct TribeTacticalAiState {
+    /// unnamed in the binary
+    /// read at 0x140bb15be into a local (local_234)
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_at_0x140bb15be: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb167a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb15be as usize)]
+    pub unnamed_at_0x140bb167a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb173f into a local (local_234)
+    pub unnamed_at_0x140bb173f: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb180a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb173f as usize)]
+    pub unnamed_at_0x140bb180a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb1a4f
+    pub unnamed_0x2164: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb1af3
+    pub unnamed_0x2168: u32,
+    /// 250 records of 0x18 bytes at +0x9f4 (`lVar13 * 0x18`; the oracle reads 6000 bytes)
+    #[br(count = 6000)]
+    pub records: Vec<u8>,
+    /// unnamed in the binary
+    /// read at 0x140bb2042 into a local (local_234)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140bb2042: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb2111 into a local (local_230)
+    #[br(count = unnamed_at_0x140bb2042 as usize)]
+    pub unnamed_at_0x140bb2111: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb2358 into a local (local_234)
+    pub unnamed_at_0x140bb2358: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb2431 into a local (local_230)
+    #[br(count = unnamed_at_0x140bb2358 as usize)]
+    pub unnamed_at_0x140bb2431: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb267d into a local (local_234)
+    pub unnamed_at_0x140bb267d: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb273a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb267d as usize)]
+    pub unnamed_at_0x140bb273a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb27cc into a local (local_234)
+    pub unnamed_at_0x140bb27cc: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb283a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb27cc as usize)]
+    pub unnamed_at_0x140bb283a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb28cc into a local (local_234)
+    pub unnamed_at_0x140bb28cc: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb293a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb28cc as usize)]
+    pub unnamed_at_0x140bb293a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb29cc into a local (local_234)
+    pub unnamed_at_0x140bb29cc: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb2a3a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb29cc as usize)]
+    pub unnamed_at_0x140bb2a3a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb2acc into a local (local_234)
+    pub unnamed_at_0x140bb2acc: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb2b3a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb2acc as usize)]
+    pub unnamed_at_0x140bb2b3a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb2bdd into a local (local_234)
+    pub unnamed_at_0x140bb2bdd: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb2c4a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb2bdd as usize)]
+    pub unnamed_at_0x140bb2c4a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb2ced into a local (local_234)
+    pub unnamed_at_0x140bb2ced: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb2d5a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb2ced as usize)]
+    pub unnamed_at_0x140bb2d5a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb2e41 into a local (local_234)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140bb2e41: u32,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar29+0x7e)*4
+    #[br(count = unnamed_at_0x140bb2e41 as usize)]
+    pub unnamed_at_0x140bb2eb2: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb2fb5 into a local (local_234)
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_at_0x140bb2fb5: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb301a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb2fb5 as usize)]
+    pub unnamed_at_0x140bb301a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb30ac into a local (local_234)
+    pub unnamed_at_0x140bb30ac: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb311a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb30ac as usize)]
+    pub unnamed_at_0x140bb311a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb31ac into a local (local_234)
+    pub unnamed_at_0x140bb31ac: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb321a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb31ac as usize)]
+    pub unnamed_at_0x140bb321a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb32ac into a local (local_234)
+    pub unnamed_at_0x140bb32ac: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb33ca into a local (local_1f8)
+    #[br(count = unnamed_at_0x140bb32ac as usize)]
+    pub unnamed_at_0x140bb33ca: Vec<[u8; 24]>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar29+0xab2)*4
+    #[brw(magic = b"\xa0\x0a")]
+    #[br(count = 4)]
+    pub unnamed_at_0x140bb34b4: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar29+0xab6)*4
+    #[br(count = 4)]
+    pub unnamed_at_0x140bb3554: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar29+0xaae)*4
+    #[br(count = 4)]
+    pub unnamed_at_0x140bb35f4: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar29+0xabc)*4
+    #[br(count = 4)]
+    pub unnamed_at_0x140bb3734: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)iVar29+0xac0)*4
+    #[br(count = 4)]
+    pub unnamed_at_0x140bb37d4: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb3948
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_0x2990: u32,
+    /// the count read into +0x2994 of the tactical module: the records its elements load next
+    pub count_2994: i32,
+    /// read by 0x140bd2ff0
+    #[br(count = count_2994.max(0) as usize, args { inner: (ver,) })]
+    pub tribe_tactical_record: Vec<TribeTacticalRecord>,
+    /// unnamed in the binary
+    /// read at 0x140bb3a75
+    pub unnamed_0x2998: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3ace
+    pub unnamed_0x299c: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3b1b
+    pub unnamed_0x29a0: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3b68
+    pub unnamed_0x29a4: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3bb5
+    pub unnamed_0x29a8: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3c02
+    pub unnamed_0x29ac: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3c4f
+    pub unnamed_0x29b0: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3ca8
+    pub unnamed_0x2ae8: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3cf5
+    pub unnamed_0x2aec: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3d53
+    pub unnamed_0x2b10: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3da0
+    pub unnamed_0x2b14: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3ec9
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_0x2c88: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3f27
+    pub unnamed_0x2c8c: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3f74
+    pub unnamed_0x2c90: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb3fd2
+    pub unnamed_0x2c94: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb401f
+    pub unnamed_0x2c98: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb407d
+    pub unnamed_0x2c9c: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb40ca
+    pub unnamed_0x2ca0: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4117
+    pub unnamed_0x2ca4: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4171
+    pub unnamed_0x2ca8: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb41c8
+    pub unnamed_0x2cb0: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4219
+    pub unnamed_0x2cac: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb426a
+    pub unnamed_0x2cb4: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4309
+    #[brw(magic = b"\xa0\x0a")]
+    pub unnamed_0x2cb8: [u8; 44],
+    /// one word per player (`(longlong)iVar29 * 4` bytes, iVar29 = the player count)
+    #[br(count = num_players)]
+    pub player_words: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb442b
+    pub unnamed_0x2e70: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4481
+    pub unnamed_0x2e74: [u8; 12],
+    /// unnamed in the binary
+    /// read at 0x140bb44e6
+    pub unnamed_0x2e80: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4527
+    pub unnamed_0x2e84: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4568
+    pub unnamed_0x2e88: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb45c9
+    pub unnamed_0x2e8c: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb461f
+    pub unnamed_0x2e90: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4679
+    pub unnamed_0x2e9c: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb46ba
+    pub unnamed_0x2ea0: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb46fb
+    pub unnamed_0x2ea4: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb474c into a local (local_22c)
+    pub unnamed_at_0x140bb474c: u16,
+    /// unnamed in the binary
+    /// a loop of 2 reads; unnamed in the binary
+    #[br(count = unnamed_at_0x140bb474c as usize)]
+    pub unnamed_list_at_0x140bb47b7: Vec<TribeTacticalAiStateEntry1>,
+    /// unnamed in the binary
+    /// read at 0x140bb49b1 into a local (local_234)
+    pub unnamed_at_0x140bb49b1: u32,
+    /// unnamed in the binary
+    /// read at 0x140bb4a0a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb49b1 as usize)]
+    pub unnamed_at_0x140bb4a0a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb4aac into a local (local_234)
+    pub unnamed_at_0x140bb4aac: i32,
+    /// unnamed in the binary
+    /// read at 0x140bb4b0a into a local (local_230)
+    #[br(count = unnamed_at_0x140bb4aac.max(0) as usize)]
+    pub unnamed_at_0x140bb4b0a: Vec<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb4bb0 into a local (local_224)
+    #[br(if(ver >= 0x424ccd))]
+    pub unnamed_at_0x140bb4bb0: Option<u32>,
+    /// unnamed in the binary
+    /// read at 0x140bb4bed into a local (local_224)
+    #[br(if(ver >= 0x424ccd))]
+    pub unnamed_at_0x140bb4bed: Option<u32>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for TribeTacticalAiState {
+    fn default() -> Self {
+        Self {
+            unnamed_at_0x140bb15be: Default::default(),
+            unnamed_at_0x140bb167a: Default::default(),
+            unnamed_at_0x140bb173f: Default::default(),
+            unnamed_at_0x140bb180a: Default::default(),
+            unnamed_0x2164: Default::default(),
+            unnamed_0x2168: Default::default(),
+            records: vec![Default::default(); 6000],
+            unnamed_at_0x140bb2042: Default::default(),
+            unnamed_at_0x140bb2111: Default::default(),
+            unnamed_at_0x140bb2358: Default::default(),
+            unnamed_at_0x140bb2431: Default::default(),
+            unnamed_at_0x140bb267d: Default::default(),
+            unnamed_at_0x140bb273a: Default::default(),
+            unnamed_at_0x140bb27cc: Default::default(),
+            unnamed_at_0x140bb283a: Default::default(),
+            unnamed_at_0x140bb28cc: Default::default(),
+            unnamed_at_0x140bb293a: Default::default(),
+            unnamed_at_0x140bb29cc: Default::default(),
+            unnamed_at_0x140bb2a3a: Default::default(),
+            unnamed_at_0x140bb2acc: Default::default(),
+            unnamed_at_0x140bb2b3a: Default::default(),
+            unnamed_at_0x140bb2bdd: Default::default(),
+            unnamed_at_0x140bb2c4a: Default::default(),
+            unnamed_at_0x140bb2ced: Default::default(),
+            unnamed_at_0x140bb2d5a: Default::default(),
+            unnamed_at_0x140bb2e41: Default::default(),
+            unnamed_at_0x140bb2eb2: Default::default(),
+            unnamed_at_0x140bb2fb5: Default::default(),
+            unnamed_at_0x140bb301a: Default::default(),
+            unnamed_at_0x140bb30ac: Default::default(),
+            unnamed_at_0x140bb311a: Default::default(),
+            unnamed_at_0x140bb31ac: Default::default(),
+            unnamed_at_0x140bb321a: Default::default(),
+            unnamed_at_0x140bb32ac: Default::default(),
+            unnamed_at_0x140bb33ca: Default::default(),
+            unnamed_at_0x140bb34b4: vec![Default::default(); 4],
+            unnamed_at_0x140bb3554: vec![Default::default(); 4],
+            unnamed_at_0x140bb35f4: vec![Default::default(); 4],
+            unnamed_at_0x140bb3734: vec![Default::default(); 4],
+            unnamed_at_0x140bb37d4: vec![Default::default(); 4],
+            unnamed_0x2990: Default::default(),
+            count_2994: Default::default(),
+            tribe_tactical_record: Default::default(),
+            unnamed_0x2998: Default::default(),
+            unnamed_0x299c: Default::default(),
+            unnamed_0x29a0: Default::default(),
+            unnamed_0x29a4: Default::default(),
+            unnamed_0x29a8: Default::default(),
+            unnamed_0x29ac: Default::default(),
+            unnamed_0x29b0: Default::default(),
+            unnamed_0x2ae8: Default::default(),
+            unnamed_0x2aec: Default::default(),
+            unnamed_0x2b10: Default::default(),
+            unnamed_0x2b14: Default::default(),
+            unnamed_0x2c88: Default::default(),
+            unnamed_0x2c8c: Default::default(),
+            unnamed_0x2c90: Default::default(),
+            unnamed_0x2c94: Default::default(),
+            unnamed_0x2c98: Default::default(),
+            unnamed_0x2c9c: Default::default(),
+            unnamed_0x2ca0: Default::default(),
+            unnamed_0x2ca4: Default::default(),
+            unnamed_0x2ca8: Default::default(),
+            unnamed_0x2cb0: Default::default(),
+            unnamed_0x2cac: Default::default(),
+            unnamed_0x2cb4: Default::default(),
+            unnamed_0x2cb8: [Default::default(); 44],
+            player_words: Default::default(),
+            unnamed_0x2e70: Default::default(),
+            unnamed_0x2e74: Default::default(),
+            unnamed_0x2e80: Default::default(),
+            unnamed_0x2e84: Default::default(),
+            unnamed_0x2e88: Default::default(),
+            unnamed_0x2e8c: Default::default(),
+            unnamed_0x2e90: Default::default(),
+            unnamed_0x2e9c: Default::default(),
+            unnamed_0x2ea0: Default::default(),
+            unnamed_0x2ea4: Default::default(),
+            unnamed_at_0x140bb474c: Default::default(),
+            unnamed_list_at_0x140bb47b7: Default::default(),
+            unnamed_at_0x140bb49b1: Default::default(),
+            unnamed_at_0x140bb4a0a: Default::default(),
+            unnamed_at_0x140bb4aac: Default::default(),
+            unnamed_at_0x140bb4b0a: Default::default(),
+            unnamed_at_0x140bb4bb0: Some(Default::default()),
+            unnamed_at_0x140bb4bed: Some(Default::default()),
+            end_marker: Default::default(),
+        }
+    }
+}
+
+/// Read by `FUN_140b452e0` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TradeAIModule {
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b"\x10\x0a \x0a")]
+    pub end_marker: (),
+}
+
+/// Read by `FUN_140b9cae0` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32, num_players: usize))]
+pub struct TribeMainDecisionAi {
+    /// read by 0x140b43640
+    #[br(args(ver))]
+    pub main_decision_aimodule: MainDecisionAIModule,
+    /// read by 0x140b45890
+    #[br(args(ver))]
+    pub tribe_build_aimodule: TribeBuildAIModule,
+    /// read by 0x140b49f10
+    #[br(args(ver))]
+    pub tribe_construction_aimodule: ConstructionAIModule,
+    /// read by 0x140b40830
+    #[br(args(ver))]
+    pub diplomacy_aimodule: DiplomacyAIModule,
+    /// read by 0x140b429b0
+    #[br(args(ver))]
+    pub emotional_aimodule: EmotionalAIModule,
+    /// read by 0x140b4c880
+    #[br(args(ver, num_players))]
+    pub tribe_information_aimodule: TribeInformationAiState,
+    /// read by 0x140ba5a40
+    #[br(args(ver))]
+    pub tribe_resource_aimodule: TribeResourceAIModule,
+    /// read by 0x140ba69b0
+    #[br(args(ver))]
+    pub tribe_strategy_aimodule: TribeStrategyAiState,
+    /// read by 0x140bb1040
+    #[br(args(ver, num_players))]
+    pub tribe_tactical_aimodule: TribeTacticalAiState,
+    /// read by 0x140b452e0
+    #[br(args(ver))]
+    pub trade_aimodule: TradeAIModule,
+    /// unnamed in the binary
+    /// read at 0x140b9cf3d
+    #[brw(magic = b"\x10\x0a")]
+    pub unnamed_0x28f48: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d08d
+    pub unnamed_0x28f4c: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d0fb
+    pub unnamed_0x28f50: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d17d
+    pub unnamed_0x28f54: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d1f4
+    pub unnamed_0x28f58: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d26b
+    pub unnamed_0x28f5c: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d2e2
+    pub unnamed_0x28f60: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d359
+    pub unnamed_0x28f64: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d3d0
+    pub unnamed_0x28f68: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d49d
+    pub unnamed_0x28f6c: u32,
+    /// unnamed in the binary
+    /// read at 0x140b9d514
+    pub unnamed_0x28f70: u32,
+    /// one word per player (`local_3f0 * 4` bytes, local_3f0 = the player count)
+    #[br(count = num_players)]
+    pub player_words: Vec<u32>,
+    /// unnamed in the binary
+    /// read into (longlong)param_1+((longlong)(int)uVar11+0xa3e4)*4
+    #[brw(magic = b"\xa0\x0a")]
+    #[br(count = 10)]
+    pub unnamed_at_0x140b9d6b4: Vec<u32>,
+    /// unnamed in the binary
+    /// the routine's closing marker
+    #[brw(magic = b" \x0a")]
+    pub end_marker: (),
+}
+
+impl Default for TribeMainDecisionAi {
+    fn default() -> Self {
+        Self {
+            main_decision_aimodule: Default::default(),
+            tribe_build_aimodule: Default::default(),
+            tribe_construction_aimodule: Default::default(),
+            diplomacy_aimodule: Default::default(),
+            emotional_aimodule: Default::default(),
+            tribe_information_aimodule: Default::default(),
+            tribe_resource_aimodule: Default::default(),
+            tribe_strategy_aimodule: Default::default(),
+            tribe_tactical_aimodule: Default::default(),
+            trade_aimodule: Default::default(),
+            unnamed_0x28f48: Default::default(),
+            unnamed_0x28f4c: Default::default(),
+            unnamed_0x28f50: Default::default(),
+            unnamed_0x28f54: Default::default(),
+            unnamed_0x28f58: Default::default(),
+            unnamed_0x28f5c: Default::default(),
+            unnamed_0x28f60: Default::default(),
+            unnamed_0x28f64: Default::default(),
+            unnamed_0x28f68: Default::default(),
+            unnamed_0x28f6c: Default::default(),
+            unnamed_0x28f70: Default::default(),
+            player_words: Default::default(),
+            unnamed_at_0x140b9d6b4: vec![Default::default(); 10],
+            end_marker: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_1416b3320` of the build.
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -2670,9 +4667,9 @@ pub struct WorldPlayer {
     /// helper 0x140a91060
     #[br(if(type_ == 1))]
     pub is_scout_map_enabled: Option<i32>,
-    /// read by 0x140f4c080
+    /// read by 0x140f4c080; named by the save's write in the same place (0x141631420)
     #[br(if(type_ == 1 && is_scout_map_enabled.unwrap_or_default() != 0), args(ver))]
-    pub tribe_information_aimodule: Option<Box<TribeInformationAIModule>>,
+    pub scout_map: Option<Box<TribeInformationAIModule>>,
     /// game: `&mFinalBattleRoyalePosition`
     /// helper 0x140b4b760
     pub final_battle_royale_position: u32,
@@ -2693,10 +4690,9 @@ pub struct WorldPlayer {
     /// read at 0x1415f3df2; named by the save's write in the same place (0x141631420, write at 0x141635b45)
     #[br(if(type_ == 3))]
     pub temp: Option<i32>,
-    /// unnamed in the binary
-    /// not generated: computer player AI state (TribeMainDecisionAIModule) (0x140b9cae0)
-    #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1)), args("computer player AI state (TribeMainDecisionAIModule)",))]
-    pub unsupported_at_0x1415f3e84: Option<Unsupported>,
+    /// read by 0x140b9cae0
+    #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1)), args(ver, num_players))]
+    pub tribe_main_decision_aimodule: Option<Box<TribeMainDecisionAi>>,
     /// game: `usingXS`
     /// read at 0x1415f3f03; named by the save's write in the same place (0x141631420, write at 0x141635c9a)
     #[br(if(type_ == 3 && !(temp.unwrap_or_default() != 1)))]
@@ -2771,14 +4767,14 @@ impl Default for WorldPlayer {
             old_player_kills: vec![Default::default(); 9],
             tech_tree_help: Default::default(),
             is_scout_map_enabled: Default::default(),
-            tribe_information_aimodule: Default::default(),
+            scout_map: Default::default(),
             final_battle_royale_position: Default::default(),
             sharing_is_caring: Default::default(),
             is_first_update: Default::default(),
             d3_ktmilitary_unit_built: Default::default(),
             marker: Default::default(),
             temp: Default::default(),
-            unsupported_at_0x1415f3e84: Default::default(),
+            tribe_main_decision_aimodule: Default::default(),
             using_xs: Default::default(),
             bxs_runtime: Default::default(),
             end_marker: Default::default(),
@@ -6228,43 +8224,6 @@ impl Default for RgeCombatObject {
             processed_kill: Default::default(),
         }
     }
-}
-
-/// Read by `FUN_140f961e0` of the build.
-#[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
-#[brw(little)]
-#[br(import(ver: u32))]
-pub struct Path {
-    /// game: `mIDValue`
-    /// read at 0x140f96244
-    pub idvalue: i32,
-    /// game: `nWV`
-    /// read at 0x140f963e0
-    pub n_wv: i32,
-    /// game: `(m_waypoints[i])`
-    /// read at 0x140f96586 into the temporary `temp`; named by the save's write in the same place (0x140f98f00, write at 0x140f99313)
-    #[br(count = n_wv.max(0) as usize)]
-    pub m_waypoints: Vec<[u8; 12]>,
-    /// game: `mPathLengthValue`
-    /// read at 0x140f96640
-    pub path_length_value: f32,
-    /// game: `mCreationTimeValue`
-    /// read at 0x140f968df
-    pub creation_time_value: u32,
-    /// game: `mFlags.m_bits`
-    /// read at 0x140f96a72
-    pub flags_m_bits: u32,
-    /// game: `mReferenceCount`
-    /// read at 0x140f96c24
-    pub reference_count: i32,
-    /// game: `numberIgnoreUnits`
-    /// read at 0x140f96dec into the temporary `tempInt`; named by the save's write in the same place (0x140f98f00, write at 0x140f99b62)
-    pub number_ignore_units: i32,
-    /// game: `data[0]`
-    /// read at 0x140f97057; named by the save's write in the same place (0x140f98f00, write at 0x140f99e2b)
-    #[br(count = number_ignore_units.max(0) as usize)]
-    pub data: Vec<u32>,
 }
 
 #[binrw]
