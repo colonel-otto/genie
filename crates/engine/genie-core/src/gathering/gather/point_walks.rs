@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::gathering::gather::update::UNMOVING;
+use crate::gathering::gather::update::{QUIET_CODE, UNMOVING};
 use crate::gathering::gather::{
     FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE, NO_GATHER_POINT,
-    Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
+    Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK, Walks,
 };
 use crate::math::rng::Well512;
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::TargetMoved;
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
@@ -33,17 +33,19 @@ pub fn waits_for_a_farm(master: i16, target_type: i32) -> bool {
 impl GatherAction {
     /// `set_state(11)` (`0x140a8cd40` case 0xb) with its target's radius on x (`+0x5d8`; none
     /// for a stop farm, masters 50 and 1187): the sub-actions go, the timer clears and a quiet
-    /// `MoveTo` to the point within that radius plus the task's range starts (`FUN_140aa0d30`).
+    /// `MoveTo` to the point within that radius plus the task's range starts
+    /// ([`GatherAction::move_to_point`]).
     ///
     /// # Errors
     ///
-    /// A unit that cannot move (`set_state(13)`).
+    /// A sprite the table lacks.
     pub(super) fn set_walk_back(
         &mut self,
         radius: f32,
         mover: &mut Mover,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
-        self.walk_back(radius, mover)
+        self.walk_back(radius, mover, walks)
     }
 
     /// [`GatherAction::set_walk_back`] for the caller (state 8's end without a target: no
@@ -51,9 +53,14 @@ impl GatherAction {
     ///
     /// # Errors
     ///
-    /// A unit that cannot move (`set_state(13)`).
-    pub fn walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), GenieError> {
-        self.walk_to_point(WALK_BACK, radius, mover)
+    /// A sprite the table lacks.
+    pub fn walk_back(
+        &mut self,
+        radius: f32,
+        mover: &mut Mover,
+        walks: &Walks<'_>,
+    ) -> Result<(), GenieError> {
+        self.walk_to_point(WALK_BACK, radius, mover, walks)
     }
 
     /// `set_state(0xf2)` (`0x140a8cd40` case 0xf2): the point takes `mGatherX`, `mGatherY`
@@ -62,46 +69,42 @@ impl GatherAction {
     ///
     /// # Errors
     ///
-    /// A unit that cannot move (`set_state(13)`).
+    /// A sprite the table lacks.
     pub(super) fn begin_reseed_walk(
         &mut self,
         radius: f32,
         mover: &mut Mover,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         if self.gather_at[0] != NO_GATHER_POINT {
             self.point[0] = self.gather_at[0];
             self.point[1] = self.gather_at[1];
         }
-        self.walk_to_point(RESEED_WALK, radius, mover)
+        self.walk_to_point(RESEED_WALK, radius, mover, walks)
     }
 
     /// `set_state` in `state` 11 or 0xf2 (case 0xb's walk): the sub-actions go, the timer
     /// clears and a quiet `MoveTo` to the point within `radius` plus the task's range starts
-    /// (`FUN_140aa0d30`).
+    /// ([`GatherAction::move_to_point`], `+0x61` left 0).
     pub(super) fn walk_to_point(
         &mut self,
         state: u8,
         radius: f32,
         mover: &mut Mover,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = state;
         self.timer = 0.0;
-        if mover.stats.speed == 0.0 {
-            return Err(GenieError::unsupported(
-                "a MoveTo of a unit without speed (state 13)",
-            ));
-        }
-        self.move_wait = MoveWait::default();
-        self.walk_to = Some(self.point);
-        self.walk_range = radius + self.task.range;
-        self.move_to = Some(MoveTo::Start);
+        let range = radius + self.task.range;
+        self.move_to = self.move_to_point(self.point, range, TargetMoved::Follows, mover, walks)?;
         Ok(())
     }
 
-    /// State 11's update (`0x140a8e1d0` case 10): its `MoveTo` walks; once it ended, arrived or
-    /// failed (codes 1, 2, 3, 5), the gatherer searches from there (`set_state(3)`,
-    /// [`GatherAction::begin_search`]).
+    /// State 11's update (`0x140a8e1d0` case 10): the sub-action list's code: 0 walks on; once
+    /// it ended, arrived, failed or let its target go (1, 2, 3, 5) the gatherer searches from
+    /// there (`set_state(3)`, [`GatherAction::begin_search`]). A quiet `MoveTo` never gives 4,
+    /// which would walk back again.
     pub(super) fn update_walk_back(
         &mut self,
         c: &mut Step<'_>,
@@ -109,15 +112,10 @@ impl GatherAction {
         me: Me,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        match self.move_to {
-            Some(MoveTo::Arrived | MoveTo::Failed) => self.begin_search(c, unit, r),
-            Some(_) => {
-                self.step_move(c, unit, me, r)?;
-                Ok(Next::Stay)
-            }
-            None => Err(GenieError::unsupported(
-                "a Gather in state 11 without its MoveTo",
-            )),
+        match self.update_list(c, unit, me, r)? {
+            0 => Ok(Next::Stay),
+            1 | 2 | 3 | 5 => self.begin_search(c, unit, r),
+            code => Err(QUIET_CODE.with("code", code)),
         }
     }
 
@@ -166,8 +164,9 @@ impl GatherAction {
         });
         if !self.worked {
             if self.target_type == i32::from(class::FARM) && target.is_some_and(|t| 1 < t.workers) {
+                let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
-                self.set_walk_back(radius, mover)?;
+                self.set_walk_back(radius, mover, &walks)?;
                 self.target = -1;
                 return Ok(Next::Stay);
             }
@@ -175,16 +174,17 @@ impl GatherAction {
             self.set_idle(c, unit, r);
             return Ok(Next::Stay);
         }
+        let walks = r.walks(&c.w.graphics, unit);
         let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
-        self.begin_reseed_walk(radius, mover)?;
+        self.begin_reseed_walk(radius, mover, &walks)?;
         Ok(Next::Stay)
     }
 
-    /// State 0xf2's update (`0x140a8e1d0` case 0xf1): its `MoveTo` walks; once it arrived (codes
-    /// 1 and 2: the list drops it, its destructor stops the unit) a target in a state of 2 or
-    /// less, or 6, is faced again (`FUN_1411944f0` false: `set_state(6)`); else, and after a
-    /// failed walk (code 3), the caller reseeds ([`Next::Reseed`]). An empty list's update
-    /// answers none of the codes: nothing happens.
+    /// State 0xf2's update (`0x140a8e1d0` case 0xf1): the sub-action list's code: 0 walks on. Once
+    /// the walk arrived or its target went (1, 2, 5: the list drops it, its destructor stops the
+    /// unit) a target in a state of 2 or less, or 6, is faced again (`FUN_1411944f0` false:
+    /// `set_state(6)`); else, and after a failed walk (code 3), the caller reseeds
+    /// ([`Next::Reseed`]). A quiet `MoveTo` never gives 4, which would walk again.
     pub(super) fn update_reseed_walk(
         &mut self,
         c: &mut Step<'_>,
@@ -193,11 +193,10 @@ impl GatherAction {
         target: Option<&Victim>,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        match self.move_to {
-            Some(MoveTo::Arrived) => {
-                self.move_to = None;
-                self.walk_to = None;
-                unit.body.mover_mut().ok_or(UNMOVING)?.stop()?;
+        match self.update_list(c, unit, me, r)? {
+            0 => Ok(Next::Stay),
+            1 | 2 | 5 => {
+                self.tear_down(unit.body.mover_mut())?;
                 if let Some(t) = target
                     && !(2 < t.state && t.state != 6)
                 {
@@ -205,12 +204,8 @@ impl GatherAction {
                 }
                 Ok(Next::Reseed { arrived: true })
             }
-            Some(MoveTo::Failed) => Ok(Next::Reseed { arrived: false }),
-            Some(_) => {
-                self.step_move(c, unit, me, r)?;
-                Ok(Next::Stay)
-            }
-            None => Ok(Next::Stay),
+            3 => Ok(Next::Reseed { arrived: false }),
+            code => Err(QUIET_CODE.with("code", code)),
         }
     }
 
@@ -289,9 +284,10 @@ impl GatherAction {
         }
     }
 
-    /// State 15's update (`0x140a8e1d0` case 0xe): its `MoveTo` walks; once it ended (arrived,
-    /// codes 1 and 2) a computer player's gatherer is done (`set_state(1)`), a human's idles
-    /// (`set_state(2)`); a failed walk (code 3) idles both.
+    /// State 15's update (`0x140a8e1d0` case 0xe): the sub-action list's code: 0 walks on. Once
+    /// it ended or its target went (1, 2, 5) a computer player's gatherer is done
+    /// (`set_state(1)`), a human's idles (`set_state(2)`); a failed walk (code 3) idles both. A
+    /// quiet `MoveTo` never gives 4, which would walk again.
     pub(super) fn update_moved(
         &mut self,
         c: &mut Step<'_>,
@@ -299,26 +295,18 @@ impl GatherAction {
         me: Me,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        match self.move_to {
-            Some(MoveTo::Arrived | MoveTo::Failed) => {
-                let arrived = self.move_to == Some(MoveTo::Arrived);
-                self.move_to = None;
-                self.walk_to = None;
-                unit.body.mover_mut().ok_or(UNMOVING)?.stop()?;
-                if arrived && r.computer {
+        match self.update_list(c, unit, me, r)? {
+            0 => Ok(Next::Stay),
+            code @ (1 | 2 | 3 | 5) => {
+                self.tear_down(unit.body.mover_mut())?;
+                if code != 3 && r.computer {
                     self.set_done(c, unit, r);
                 } else {
                     self.set_idle(c, unit, r);
                 }
                 Ok(Next::Stay)
             }
-            Some(_) => {
-                self.step_move(c, unit, me, r)?;
-                Ok(Next::Stay)
-            }
-            None => Err(GenieError::unsupported(
-                "a Gather in state 15 without its MoveTo",
-            )),
+            code => Err(QUIET_CODE.with("code", code)),
         }
     }
 }

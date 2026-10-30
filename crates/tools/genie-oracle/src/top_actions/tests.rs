@@ -780,7 +780,7 @@ fn a_gather_takes_its_stops_and_move_to() {
         .copied()
         .unwrap();
     assert_eq!((g.target_type, g.stops, g.task.id), (5, 2, 0));
-    assert!(g.worked && g.move_to.is_none() && g.walk_to.is_none());
+    assert!(g.worked && g.move_to.is_none());
     assert_eq!(g.farm[0].to_bits(), 3.0_f32.to_bits());
     let g = imported(
         GATHER,
@@ -792,10 +792,12 @@ fn a_gather_takes_its_stops_and_move_to() {
     .copied()
     .unwrap();
     assert!(!g.worked);
-    assert_eq!(g.move_to, Some(MoveTo::Moving));
-    assert_eq!(g.walk_to.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    // every MoveTo of the Gather is quiet; one without a target walks to its point
+    let walk = g.move_to.unwrap();
+    assert_eq!((walk.state, walk.quiet), (MoveTo::Moving, true));
+    assert!(matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
     assert_eq!(
-        (g.walk_range.to_bits(), g.move_wait.state),
+        (walk.range.to_bits(), walk.wait.state),
         (0.75_f32.to_bits(), 2)
     );
     assert_eq!(

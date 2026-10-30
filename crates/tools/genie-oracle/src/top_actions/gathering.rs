@@ -1,7 +1,7 @@
 //! The gathering actions of a saved object's top action: the Hunt, the Gather and a farm's
 //! Make ([`crate::top_actions::saved_actions`]).
 
-use crate::top_actions::{Saved, TaskAt, move_to_state, sub_range, sub_state, walk_point};
+use crate::top_actions::{Saved, TaskAt, move_to_state, saved_move_to, sub_range, sub_state};
 use crate::{saved_attack, saved_move_wait, saved_reload, saved_sprite};
 use genie_core::GenieError;
 use genie_core::movement::move_to::MOVE_TO;
@@ -184,19 +184,15 @@ pub(super) fn import_gather(
         farm: [part.farm_x, part.farm_y],
         gather_at: [part.gather_x, part.gather_y],
         move_to: None,
-        walk_to: None,
-        walk_range: task.range,
-        move_wait: genie_core::movement::move_to::MoveWait::default(),
     };
-    if let Some(sub) = saved.move_to_sub(GenieError::unsupported(
-        "a saved Gather with another sub-action",
-    ))? {
-        gather.move_to = Some(sub_state(sub)?);
-        // a MoveTo without a target walks to its point (a farm's stop)
-        gather.walk_to = walk_point(sub);
-        gather.walk_range = sub_range(sub)?;
-        gather.move_wait = saved_move_wait(sub);
-    }
+    // every MoveTo of the Gather is quiet (`FUN_140a7a170` with 1): to the target, the drop
+    // site or a point
+    gather.move_to = saved
+        .move_to_sub(GenieError::unsupported(
+            "a saved Gather with another sub-action",
+        ))?
+        .map(|sub| saved_move_to(sub, saved.graphics, true))
+        .transpose()?;
     unit.actions.set_gather(Some(gather));
     Ok(())
 }

@@ -353,7 +353,7 @@ impl World {
         let result = if by == DropOffBy::Hunt {
             unit.drop_off_in(world, others)
         } else {
-            unit.gather_drop_off_in(world, others)
+            unit.gather_drop_off_in(world, others, &self.graphics)
         };
         let idx = self.put_back_own(p, unit)?;
         if let Some(site) = result? {

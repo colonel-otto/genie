@@ -8,6 +8,8 @@ point on the farm for each stop.
 - `mod.rs` holds the action's state and its constants.
 - `start.rs` builds and starts the action, and holds its retarget and its halt.
 - `update.rs` is one update in the walking, facing and gathering states.
+- `walks.rs` builds the quiet `MoveTo`s of `set_state`: the one component, `MoveToAction`, to an
+  object or to a point.
 - `work.rs` holds the face, the work, the drop-off's update and the random waits.
 - `point_walks.rs` holds the walks to a point, the searches and the waits for a farm.
 - `unit.rs` is the gatherer's part of its update: the drop-off, the search and the update in the
@@ -28,6 +30,7 @@ point on the farm for each stop.
 | [`tests.rs`](tests.rs) | Tests. |
 | [`unit.rs`](unit.rs) | A builder's and a gatherer's drop-off and a gatherer's update and search. |
 | [`update.rs`](update.rs) | One update (slot 6, `0x140a8e1d0`) in states 4, 6 and 7: the walk's `MoveTo`, the units in the way and the teardown. |
+| [`walks.rs`](walks.rs) | The `MoveTo`s the Gather's `set_state` makes (`0x140a8cd40`): what their constructors read of the unit, and the two the Gather uses, one to an object and one to a point. |
 | [`work.rs`](work.rs) | The face (state 6), the work (7), the drop-off's update (8) and a random wait. |
 <!-- /files -->
 

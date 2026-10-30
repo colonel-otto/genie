@@ -2,10 +2,14 @@
 
 use crate::GenieError;
 use crate::combat::victims::{readable, victim, write_back};
+use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
+use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
+use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
+use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
 use crate::unit_ai::ActionKind;
@@ -14,6 +18,7 @@ use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
+use std::collections::BTreeMap;
 
 /// The Gather's update, or what follows it, without the Gather its caller found.
 const NO_GATHER: GenieError = GenieError::unreachable("a Gather's update without its Gather");
@@ -87,6 +92,30 @@ impl Unit {
         Ok(())
     }
 
+    /// What the Gather's `MoveTo` constructors read of this gatherer (`player`'s, whose masters
+    /// are `every`): the sprites' table `graphics` with the defaults of its master and terrain
+    /// look, and what it carries now.
+    ///
+    /// # Errors
+    ///
+    /// A gatherer whose master the table lacks.
+    pub(crate) fn gather_walks<'g>(
+        &self,
+        every: &[Masters],
+        player: usize,
+        graphics: &'g BTreeMap<i16, Graphic>,
+    ) -> Result<Walks<'g>, GenieError> {
+        Ok(Walks {
+            sprites: SpriteReads::of(
+                self.master(every, player)?,
+                self.abilities.look.as_ref(),
+                graphics,
+            ),
+            held: (self.life.attribute_type, self.life.amount),
+            state: self.life.state,
+        })
+    }
+
     /// What the Gather's update reads of the gatherer and its player as it starts
     /// ([`crate::gathering::gather::GatherReads`]): the task's sprites and the master's standing
     /// one, the master's work rate (`+0x798`) plus the powerup (slot 0x6e8), its capacity and
@@ -121,6 +150,7 @@ impl Unit {
                 standing: g(master.standing_sprite),
             },
             class: master.class,
+            defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
             master: self.life.master_id,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             farm_stops: c.w.settings.walkable_farms,
@@ -222,6 +252,8 @@ impl Unit {
             return self.gather_after_drop(c);
         }
         crate::world::lets::release(c, self, gather.carry_to, by)?;
+        // the unit's load is gone (slot 0xf8 after the drop): its walking sprite is the moving one
+        let walks = self.gather_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
         gather.carry_to = -1;
         let t =
@@ -235,7 +267,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let rng = c.w.streams.get(Stream::Action);
         gather
-            .set_walk(t.position, t.radius, gap, mover, rng)
+            .set_walk(t.position, t.radius, gap, mover, rng, &walks)
             .map(|()| HeadCode::Keeps)
     }
 

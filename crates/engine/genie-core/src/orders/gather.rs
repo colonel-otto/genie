@@ -10,6 +10,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::release::Releaser;
 use crate::orders::GATHERED_BUILDING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -86,31 +87,48 @@ impl World {
                 &owner.attributes,
             ),
         };
+        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
+        let walks = unit.gather_walks(&self.masters, player, &self.graphics)?;
         let unit = self.players.live_mut(player, idx)?;
-        let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
-        let (old_target, old_second) = (gather.target, gather.carry_to);
+        let old = [gather.target, gather.carry_to];
         let rng = self.streams.get(Stream::Action);
         let took = gather.retarget(
             GatherRetarget {
                 target: &resource,
                 player,
                 computer,
-                held,
+                walks,
                 farm_stops,
                 rate,
             },
             mover,
             rng,
         )?;
-        let (new_target, new_second) = (gather.target, gather.carry_to);
+        let new = [gather.target, gather.carry_to];
         // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
-        let waits = gather.state == crate::gathering::gather::WALK_BACK && new_target == -1;
-        for (old, new) in [(old_target, new_target), (old_second, new_second)] {
+        let waits = gather.state == crate::gathering::gather::WALK_BACK && new[0] == -1;
+        self.exchange_gather_targets(old, new, by)?;
+        if waits && old[0] != target {
+            self.take(target, by)?;
+            self.release(target, by)?;
+        }
+        Ok(took)
+    }
+
+    /// The Gather's targets that changed (its target and its second target, `old` and `new`): the
+    /// old one is let go (slot 0x180) and the new one taken (slot 0x178), each pair in order.
+    fn exchange_gather_targets(
+        &mut self,
+        old: [i32; 2],
+        new: [i32; 2],
+        by: Releaser,
+    ) -> Result<(), GenieError> {
+        for (old, new) in old.into_iter().zip(new) {
             if old != new {
                 if old != -1 {
                     self.release(old, by)?;
@@ -120,11 +138,7 @@ impl World {
                 }
             }
         }
-        if waits && old_target != target {
-            self.take(target, by)?;
-            self.release(target, by)?;
-        }
-        Ok(took)
+        Ok(())
     }
 
     /// The Gather's slot 0x40 (`0x140a8b740`, [`crate::gathering::gather::GatherAction::take_move`]) on a
@@ -148,29 +162,21 @@ impl World {
             id: target,
             player: tp,
             drop_site: self.drops_at_main(player, idx, target)?,
+            position: at,
             gap: crate::movement::footprint_gap(unit.position(), me.radius, at, radius),
         });
         let by = self.releaser(player, idx);
+        let walks = unit.gather_walks(&self.masters, player, &self.graphics)?;
         let unit = self.players.live_mut(player, idx)?;
-        let held = unit.life.amount;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
-        let (old_target, old_second) = (gather.target, gather.carry_to);
-        gather.take_move(moved_to, point, player, held, mover)?;
-        let (new_target, new_second) = (gather.target, gather.carry_to);
-        for (old, new) in [(old_target, new_target), (old_second, new_second)] {
-            if old != new {
-                if old != -1 {
-                    self.release(old, by)?;
-                }
-                if new != -1 {
-                    self.take(new, by)?;
-                }
-            }
-        }
+        let old = [gather.target, gather.carry_to];
+        gather.take_move(moved_to, point, player, mover, &walks)?;
+        let new = [gather.target, gather.carry_to];
+        self.exchange_gather_targets(old, new, by)?;
         Ok(true)
     }
 
@@ -358,6 +364,7 @@ impl World {
         let computer = self.players.player(player)?.computer;
         let carry_rule = self.settings.carry_rule();
         let unit = self.players.live_mut(player, idx)?;
+        let walks = unit.gather_walks(&self.masters, player, &self.graphics)?;
         let mover = unit
             .body
             .mover_mut()
@@ -371,6 +378,7 @@ impl World {
                 computer,
                 carry_rule,
                 held: &mut held,
+                walks,
             },
             mover,
             rng,

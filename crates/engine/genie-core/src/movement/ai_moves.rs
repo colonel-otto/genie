@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::objects::masters::action_type;
 
+use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntMove;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{
@@ -174,7 +175,10 @@ impl Unit {
                 self.artifact_takes_point(point, &sprites)
             }
             Some(crate::gathering::hunt::HUNT) => self.hunt_takes_point(point, player),
-            Some(crate::gathering::gather::GATHER) => self.gather_takes_point(point, player),
+            Some(crate::gathering::gather::GATHER) => {
+                let sprites = self.point_sprites(masters, graphics)?;
+                self.gather_takes_point(point, player, sprites)
+            }
             // the Transport's (0x140aa3e40): the caller sails it there
             Some(crate::garrison::transport::TRANSPORT) => Ok(PointMove::Sails),
             Some(crate::construction::repair::REPAIR) => {
@@ -258,20 +262,26 @@ impl Unit {
         Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
     }
 
-    /// The Gather's slot 0x40 (its move to the point): the target it had is let go.
+    /// The Gather's slot 0x40 (its move to the point): the target it had is let go; the
+    /// `MoveTo` it makes takes `sprites`' default for a sprite the task lacks.
     fn gather_takes_point(
         &mut self,
         point: [f32; 3],
         player: usize,
+        sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
-        let held = self.life.amount;
+        let walks = Walks {
+            sprites,
+            held: (self.life.attribute_type, self.life.amount),
+            state: self.life.state,
+        };
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
         let old = gather.target;
-        gather.take_move(None, point, player, held, mover)?;
+        gather.take_move(None, point, player, mover, &walks)?;
         Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
     }
 

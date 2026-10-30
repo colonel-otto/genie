@@ -2426,10 +2426,10 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
             g.carry_to,
             g.state,
             g.point,
-            g.walk_range,
+            g.move_to.map(|m| m.range),
             g.task.id
         ),
-        (600, -1, 4, [32.5, 89.5, 0.0], 0.25, 2)
+        (600, -1, 4, [32.5, 89.5, 0.0], Some(0.25), 2)
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -2591,7 +2591,13 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     assert_eq!(t.move_to_object_with(1, 0, 601, point, false), Ok(true));
     let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!(
-        (g.target, g.carry_to, g.state, g.point, g.walk_to),
+        (
+            g.target,
+            g.carry_to,
+            g.state,
+            g.point,
+            g.move_to.and_then(|m| m.goal())
+        ),
         (-1, -1, 15, point, Some(point))
     );
     assert_eq!(
@@ -10968,7 +10974,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![28222]));
     let g = u.actions.gather().copied().expect("the Gather stays");
     assert_eq!(
-        (g.state, g.target, g.point, g.walk_to),
+        (g.state, g.target, g.point, g.move_to.and_then(|m| m.goal())),
         (
             crate::gathering::gather::MOVED,
             -1,
@@ -10976,7 +10982,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
             Some(AI_POINT)
         )
     );
-    assert_eq!(g.move_to, Some(MoveTo::Start));
+    assert_eq!(g.move_to.map(|m| m.state), Some(MoveTo::Start));
     assert_eq!(u.actions.move_to().copied(), None);
 }
 

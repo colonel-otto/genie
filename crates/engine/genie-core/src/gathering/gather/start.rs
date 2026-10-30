@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::gathering::gather::{
-    ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_STOPS, GatherAction, GatherReads, IDLE, MOVED,
-    Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
+    DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_STOPS, GatherAction, GatherReads, IDLE, MOVED, Resource,
+    SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, Walks, food,
 };
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::TargetMoved;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
@@ -30,6 +30,8 @@ pub struct GatherStart<'a> {
     pub carry_rule: bool,
     /// What the gatherer carries, its resource kind and amount.
     pub held: &'a mut (i16, f32),
+    /// What its `MoveTo`s' constructors read of the gatherer; its load is `held`'s.
+    pub walks: Walks<'a>,
 }
 
 /// What a gather's retarget takes besides its mover and stream ([`GatherAction::retarget`]'s
@@ -42,8 +44,8 @@ pub struct GatherRetarget<'a> {
     pub player: usize,
     /// The owner's type test (`FUN_141659cf0`).
     pub computer: bool,
-    /// What the gatherer carries.
-    pub held: f32,
+    /// What the gatherer carries and the sprites its `MoveTo`s take for none.
+    pub walks: Walks<'a>,
     /// The game's farm setting: a stop farm or a fish trap keeps its place as the farm's.
     pub farm_stops: bool,
     /// What times a farm's stops.
@@ -82,6 +84,8 @@ pub struct MoveTarget {
     /// The gatherer's master drops its loads there (its main building's master for an annex,
     /// `+0xbb8`; `FUN_14109d4f0`).
     pub drop_site: bool,
+    /// Its place.
+    pub position: [f32; 3],
     /// The footprint gap from the gatherer to it.
     pub gap: f32,
 }
@@ -176,9 +180,6 @@ impl GatherAction {
             farm,
             gather_at: [-1.0; 2],
             move_to: None,
-            walk_to: None,
-            walk_range: task.range,
-            move_wait: MoveWait::default(),
         })
     }
 
@@ -206,6 +207,7 @@ impl GatherAction {
             computer,
             carry_rule,
             held,
+            walks,
         } = start;
         let kind = self.task.resource;
         let both_food = food(kind) && food(held.0);
@@ -217,6 +219,10 @@ impl GatherAction {
         } else {
             *held = (kind, 0.0);
         }
+        let walks = Walks {
+            held: *held,
+            ..walks
+        };
         // a farm another farmer works (`+0x644` above 1 with this one, which the constructor
         // took): set_state(11) to its point, then the farm goes (slot 0x68 with none; the caller
         // lets it go)
@@ -226,7 +232,7 @@ impl GatherAction {
             } else {
                 target.radius[0]
             };
-            self.set_walk_back(radius, mover)?;
+            self.set_walk_back(radius, mover, &walks)?;
             self.target = -1;
             return Ok(());
         }
@@ -234,9 +240,16 @@ impl GatherAction {
             self.target = -1;
             self.point = [-1.0; 3];
             self.carry_to = target.id;
-            return self.set_drop(target.gap, mover);
+            return self.set_drop(target.position, target.gap, mover, &walks);
         }
-        self.set_walk(target.position, target.radius, target.gap, mover, rng)
+        self.set_walk(
+            target.position,
+            target.radius,
+            target.gap,
+            mover,
+            rng,
+            &walks,
+        )
     }
 
     /// Slot 0x48 (`0x140a903a0`) on the work command's new `target` (one the world holds that is
@@ -268,10 +281,11 @@ impl GatherAction {
             target,
             player,
             computer,
-            held,
+            walks,
             farm_stops,
             rate,
         } = retarget;
+        let held = walks.held.1;
         self.worked = false;
         if target.id == self.target {
             match self.state {
@@ -285,7 +299,7 @@ impl GatherAction {
             self.target = -1;
             self.point = [-1.0; 3];
             self.carry_to = target.id;
-            self.set_drop(target.gap, mover)?;
+            self.set_drop(target.position, target.gap, mover, &walks)?;
             return Ok(true);
         }
         // slot 0x68 takes the target: its workers count it once it is new
@@ -310,28 +324,35 @@ impl GatherAction {
             } else {
                 target.radius[0]
             };
-            self.set_walk_back(radius, mover)?;
+            self.set_walk_back(radius, mover, &walks)?;
             self.target = -1;
             self.carry_to = -1;
             return Ok(true);
         }
         self.carry_to = -1;
-        self.set_walk(target.position, target.radius, target.gap, mover, rng)?;
+        self.set_walk(
+            target.position,
+            target.radius,
+            target.gap,
+            mover,
+            rng,
+            &walks,
+        )?;
         Ok(true)
     }
 
     /// `set_state(4)` (`0x140a8cd40` case 4) with its target at `position` (its master's radii
     /// `radius`), `gap` from the unit: the sub-actions go (a `MoveTo`'s teardown stops the unit),
     /// the timer clears and the target's place becomes the point. With one stop a quiet `MoveTo`
-    /// to the target within the task's range starts (`FUN_140aa0df0`, its start `0x140aa2100`: a
-    /// unit within 0.01 of the target's footprint is there already, state 1; else state 3). A
+    /// to the target within the task's range starts ([`GatherAction::move_to_object`]). A
     /// farm's stops (the game's `+0xc14` being 0) walk to a point of the farm instead
     /// ([`stop_point`]), which becomes the last stop: a quiet `MoveTo` to it within the task's
-    /// range (`FUN_140aa0d30`, state 3).
+    /// range ([`GatherAction::move_to_point`], `+0x61` 1). `walks` is what the constructors read
+    /// of the unit.
     ///
     /// # Errors
     ///
-    /// A gather without its target (the `MoveTo`'s state 13); a unit that cannot move.
+    /// A gather without its target (the `MoveTo`'s state 13); a sprite the table lacks.
     pub fn set_walk(
         &mut self,
         position: [f32; 3],
@@ -339,6 +360,7 @@ impl GatherAction {
         gap: f32,
         mover: &mut Mover,
         rng: &mut Well512,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = WALK;
@@ -349,31 +371,33 @@ impl GatherAction {
             ));
         }
         self.point = position;
-        if 1 < self.stops {
+        let walk = if 1 < self.stops {
             let [x, y] = stop_point(position, radius, self.last_stop, rng);
             self.last_stop = [x, y];
-            self.move_wait = MoveWait::default();
-            if mover.stats.speed == 0.0 {
-                return Err(GenieError::unsupported(
-                    "a MoveTo of a unit without speed (state 13)",
-                ));
-            }
-            self.walk_to = Some([x, y, position[2]]);
-            self.walk_range = self.task.range;
-            self.move_to = Some(MoveTo::Start);
-            return Ok(());
-        }
-        self.start_move(gap, mover)
+            let to = [x, y, position[2]];
+            self.move_to_point(to, self.task.range, TargetMoved::AsksAgain, mover, walks)?
+        } else {
+            self.move_to_object(self.target, position, gap, mover, walks)?
+        };
+        self.move_to = walk;
+        Ok(())
     }
 
     /// `set_state(8)` (`0x140a8cd40` case 8) with a load and its drop site (`carry_to`, the
-    /// caller's search, `FUN_1411671e0`): the current stop clears, the sub-actions go and a quiet
-    /// `MoveTo` to the drop site within the task's range starts (`FUN_140aa0df0`).
+    /// caller's search, `FUN_1411671e0`) at `site`, `gap` from the unit: the current stop clears,
+    /// the sub-actions go and a quiet `MoveTo` to the drop site within the task's range starts
+    /// ([`GatherAction::move_to_object`]).
     ///
     /// # Errors
     ///
-    /// No drop site (the unit AI's part); a unit that cannot move.
-    pub fn set_drop(&mut self, gap: f32, mover: &mut Mover) -> Result<(), GenieError> {
+    /// No drop site (the unit AI's part); a sprite the table lacks.
+    pub fn set_drop(
+        &mut self,
+        site: [f32; 3],
+        gap: f32,
+        mover: &mut Mover,
+        walks: &Walks<'_>,
+    ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = DROP;
         self.current_stop = 0;
@@ -382,70 +406,54 @@ impl GatherAction {
                 "a gather's drop-off without a drop site (notify 0x203)",
             ));
         }
-        self.start_move(gap, mover)
-    }
-
-    /// A new quiet `MoveTo` within the task's range: arrived within 0.01 of its goal's footprint.
-    pub(super) fn start_move(&mut self, gap: f32, mover: &Mover) -> Result<(), GenieError> {
-        self.move_wait = MoveWait::default();
-        self.walk_to = None;
-        self.walk_range = self.task.range;
-        self.move_to = Some(if ARRIVED < gap {
-            if mover.stats.speed == 0.0 {
-                return Err(GenieError::unsupported(
-                    "a MoveTo of a unit without speed (state 13)",
-                ));
-            }
-            MoveTo::Start
-        } else {
-            MoveTo::Arrived
-        });
+        self.move_to = self.move_to_object(self.carry_to, site, gap, mover, walks)?;
         Ok(())
     }
 
     /// Slot 0x40 (`0x140a8b740`) on a move to `point`, `target` the object moved to, if any: a
-    /// loaded gatherer moved to one of its player's drop sites carries its load there (nothing
-    /// changes when that is already the drop site it walks to in state 8): the target goes (slot
-    /// 0x68 with none) with the point, the site becomes the second target (`FUN_140a7a190`) and
-    /// `set_state(8)` walks there. Any other move becomes the point: the target goes and
-    /// `set_state(15)` walks there ([`GatherAction::set_moved`]). Always taken (it returns 1); the
-    /// caller takes and lets go the targets that changed.
+    /// loaded gatherer (`walks`) moved to one of its player's drop sites carries its load there
+    /// (nothing changes when that is already the drop site it walks to in state 8): the target
+    /// goes (slot 0x68 with none) with the point, the site becomes the second target
+    /// (`FUN_140a7a190`) and `set_state(8)` walks there. Any other move becomes the point: the
+    /// target goes and `set_state(15)` walks there ([`GatherAction::set_moved`]). Always taken
+    /// (it returns 1); the caller takes and lets go the targets that changed.
     ///
     /// # Errors
     ///
-    /// A unit that cannot move.
+    /// A sprite the table lacks.
     pub fn take_move(
         &mut self,
         target: Option<MoveTarget>,
         point: [f32; 3],
         player: usize,
-        held: f32,
         mover: &mut Mover,
+        walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
+        let held = walks.held.1;
         match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
             Some(t) if t.id == self.carry_to && self.state == DROP => Ok(()),
             Some(t) => {
                 self.target = -1;
                 self.point = [-1.0; 3];
                 self.carry_to = t.id;
-                self.set_drop(t.gap, mover)
+                self.set_drop(t.position, t.gap, mover, walks)
             }
             None => {
                 self.point = point;
                 self.target = -1;
-                self.set_moved(mover)
+                self.set_moved(mover, walks)
             }
         }
     }
 
     /// `set_state(15)` (`0x140a8cd40` case 0xf, as 11): the sub-actions go, the timer clears and
-    /// a `MoveTo` to the point (`FUN_140aa0d30`, quiet: `+0x60`) within the target's radius plus
-    /// the task's range starts; with no target (a move lets it go) the radius is 0.
+    /// a quiet `MoveTo` to the point within the target's radius plus the task's range starts
+    /// ([`GatherAction::move_to_point`]); with no target (a move lets it go) the radius is 0.
     ///
     /// # Errors
     ///
-    /// A unit that cannot move.
-    pub fn set_moved(&mut self, mover: &mut Mover) -> Result<(), GenieError> {
+    /// A sprite the table lacks.
+    pub fn set_moved(&mut self, mover: &mut Mover, walks: &Walks<'_>) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = MOVED;
         self.timer = 0.0;
@@ -454,15 +462,8 @@ impl GatherAction {
                 "a gather's walk to a point with a target (its radius)",
             ));
         }
-        if mover.stats.speed == 0.0 {
-            return Err(GenieError::unsupported(
-                "a MoveTo of a unit without speed (state 13)",
-            ));
-        }
-        self.move_wait = MoveWait::default();
-        self.walk_to = Some(self.point);
-        self.walk_range = self.task.range;
-        self.move_to = Some(MoveTo::Start);
+        let range = self.task.range;
+        self.move_to = self.move_to_point(self.point, range, TargetMoved::Follows, mover, walks)?;
         Ok(())
     }
 

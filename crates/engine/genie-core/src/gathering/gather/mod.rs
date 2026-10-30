@@ -15,19 +15,21 @@
 //! walk or a drop-off out of reach (the Action stream's `"update"` draws) are in `work.rs`.
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use genie_diff::Diff;
 
 mod point_walks;
 mod start;
 pub(crate) mod unit;
 mod update;
+mod walks;
 mod work;
 
 pub use self::point_walks::waits_for_a_farm;
 pub use self::start::{
     GatherRetarget, GatherStart, MoveTarget, StopRate, productivity_of, stop_point,
 };
+pub use self::walks::Walks;
 use self::work::food;
 #[cfg(test)]
 use crate::GenieError;
@@ -77,8 +79,6 @@ const FARM_WAITERS: [i16; 4] = [259, 214, 1891, 1892];
 /// `0x60a9`, `0x69d0`, `0x6917` of the same cases).
 const TRAP_WAITERS: [i16; 3] = [13, 2356, 2171];
 
-/// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
-const ARRIVED: f32 = 0.01;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
 const REMAINDER: f32 = crate::math::image::gather::REMAINDER;
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
@@ -147,20 +147,10 @@ pub struct GatherAction {
     /// `+0x8c`, `+0x90`: `mGatherX`, `mGatherY`, where the gathering started (−1 while the
     /// game's farm setting holds them, [`GatherReads::farm_stops`]).
     pub gather_at: [f32; 2],
-    /// The sub-action of states 4 and 8: a `MoveTo` to the target or the drop site within the
-    /// task's range, quiet (its `+0x60` and `+0x61` set).
-    pub move_to: Option<MoveTo>,
-    /// The point that `MoveTo` walks to instead (a farm's stop, the point a move gave,
-    /// `FUN_140aa0d30`), None when it walks to the target or the drop site.
-    pub walk_to: Option<[f32; 3]>,
-    /// That `MoveTo`'s range (`+0x68`): the task's, or for a walk to a point (states 11, 15 and
-    /// 0xf2) the target's radius plus the task's.
-    #[diff(
-        gap = "the MoveTo's range (+0x68) is held per owning action; the save's sub-action holds one"
-    )]
-    pub walk_range: f32,
-    /// Its `MoveTo`'s wait after the motion step gave up.
-    pub move_wait: MoveWait,
+    /// The sub-action of states 4, 8, 11, 15 and 0xf2: the quiet `MoveTo` (the one component,
+    /// [`MoveToAction`]) to the target, the drop site or a point, which `set_state` makes
+    /// ([`GatherAction::set_walk`], [`GatherAction::set_drop`], [`GatherAction::walk_back`]).
+    pub move_to: Option<MoveToAction>,
 }
 
 /// What the gather reads of its target when it takes it.
@@ -201,6 +191,9 @@ pub(crate) struct GatherReads {
     pub(crate) sprites: HuntSprites,
     /// The unit's master's class: a villager's `MoveTo` waits once when the motion step gives up.
     pub(crate) class: i16,
+    /// What the `MoveTo`'s constructors take for a sprite when the task gives none
+    /// (`FUN_140aa0d30`, `FUN_140aa0df0`).
+    pub(crate) defaults: MoveDefaults,
     /// The unit's master: a farmer's gather without a target waits for another farm
     /// (`set_state(0xf3)`, [`FARM_WAITERS`]).
     pub(crate) master: i16,

@@ -2,9 +2,10 @@
 
 use crate::GenieError;
 use crate::gathering::drop_sites::{Seeker, drop_site_search};
-use crate::gathering::gather::GatherRetarget;
+use crate::gathering::gather::{GatherRetarget, Walks};
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
+use crate::movement::move_to::SpriteReads;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::masters::action_type;
 use crate::objects::release::Releaser;
@@ -110,6 +111,7 @@ impl Unit {
             self.life.master_id,
             self.actions.gather().map_or(-1, |g| g.target_type),
         );
+        let walks = self.gather_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.point[0] != -1.0 && gather.point[1] != -1.0 {
             if farm_waits {
@@ -122,7 +124,9 @@ impl Unit {
                 .body
                 .mover_mut()
                 .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
-            return gather.walk_back(0.0, mover).map(|()| HeadCode::Keeps);
+            return gather
+                .walk_back(0.0, mover, &walks)
+                .map(|()| HeadCode::Keeps);
         }
         if c.w.players[c.player].computer {
             return Ok(HeadCode::Deletes);
@@ -188,11 +192,8 @@ impl Unit {
         let (owner, resource) =
             self.found_resource(c, OthersRef::of(&c.w.players, c.player)?, found)?;
         let master = self.master(&c.w.masters, c.player)?;
-        let (computer, farm_stops, held) = (
-            c.w.players[c.player].computer,
-            c.w.settings.walkable_farms,
-            self.life.amount,
-        );
+        let (computer, farm_stops) = (c.w.players[c.player].computer, c.w.settings.walkable_farms);
+        let walks = self.gather_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
@@ -213,7 +214,7 @@ impl Unit {
                 target: &resource,
                 player: c.player,
                 computer,
-                held,
+                walks,
                 farm_stops,
                 rate,
             },
@@ -298,19 +299,22 @@ impl Unit {
             construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
-        if let Some(site) = self.gather_drop_off_in(w, OthersRef::of(&c.w.players, c.player)?)? {
+        let others = OthersRef::of(&c.w.players, c.player)?;
+        if let Some(site) = self.gather_drop_off_in(w, others, &c.w.graphics)? {
             let by = self.releaser(c);
             crate::world::lets::take(c, self, site, by)?;
         }
         Ok(())
     }
 
-    /// [`Unit::gather_drop_off`] in `w`, from the update or a command: the drop site it took
-    /// when it is a new second target (the caller's to take, slot 0x178).
+    /// [`Unit::gather_drop_off`] in `w`, from the update or a command, with the sprites' table
+    /// `graphics`: the drop site it took when it is a new second target (the caller's to take,
+    /// slot 0x178).
     pub(crate) fn gather_drop_off_in(
         &mut self,
         mut c: DropWorld<'_>,
         others: OthersRef<'_>,
+        graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     ) -> Result<Option<i32>, GenieError> {
         if self.life.amount <= 0.0 {
             return Err(GenieError::unsupported(
@@ -320,13 +324,23 @@ impl Unit {
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, state) = (gather.carry_to, gather.state);
         let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
+        let at = c.spatial.get_known(site)?.map_or([0.0; 3], |s| s.position);
+        let walks = Walks {
+            sprites: SpriteReads::of(
+                self.master_in(c.masters)?,
+                self.abilities.look.as_ref(),
+                graphics,
+            ),
+            held: (self.life.attribute_type, self.life.amount),
+            state: self.life.state,
+        };
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
         };
         gather.carry_to = site;
-        gather.set_drop(gap, mover)?;
+        gather.set_drop(at, gap, mover, &walks)?;
         Ok((site != carry_to && site != -1).then_some(site))
     }
 

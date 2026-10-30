@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::gathering::gather::update::UNMOVING;
+use crate::gathering::gather::update::QUIET_CODE;
 use crate::gathering::gather::{
     DROP_REACH, FACE, GatherAction, GatherReads, LAST_BIT, Next, REGATHERED, REMAINDER,
     SPECIAL_TARGETS, WAIT_SHIFT, WORK,
@@ -10,10 +10,7 @@ use crate::gathering::gather::{
 use crate::gathering::hunt::Dropped;
 use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::Stream;
-use crate::movement::move_to::TargetMoved;
-use crate::movement::move_to::walk_or_give_up;
-use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};
-use crate::movement::{Me, PathAsk};
+use crate::movement::Me;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
@@ -156,14 +153,16 @@ impl GatherAction {
         })
     }
 
-    /// State 8's update (case 7): the `MoveTo` to the drop site walks; once it ended (its update
-    /// in state 1 returns 1: the list deletes it and its destructor stops the unit) the load goes
+    /// State 8's update (case 7): the `MoveTo` to the drop site walks ([`GatherAction::update_list`]);
+    /// once it ended (its update in state 1 returns 1: the list deletes it and its destructor
+    /// stops the unit) the load goes
     /// to the player at a drop site that takes it (`site`) within `DROP_REACH` (squared): the
     /// resource of what the unit carries ([`crate::gathering::hunt::resource_kind`]), which the caller adds;
     /// the unit carries nothing after (`FUN_14119d310` with −1). Returns the resource and the
     /// amount; the caller lets the drop site go and walks back to the target (`set_state(4)`).
-    /// Not modelled: the timer's wait, a `MoveTo` that waits or failed (codes 3 to 5), a site that
-    /// does not take the load (`set_state` 2) or is out of reach (the wait).
+    /// A `MoveTo` that failed or let its target go (codes 3 to 5) waits at random
+    /// ([`GatherAction::random_wait`]). A site that does not take the load idles (`set_state` 2),
+    /// one out of reach waits at random.
     ///
     /// # Errors
     ///
@@ -172,7 +171,7 @@ impl GatherAction {
         &mut self,
         c: &mut Step<'_>,
         unit: &mut Unit,
-        mut me: Me,
+        me: Me,
         r: &GatherReads,
         site: Option<crate::gathering::hunt::DropOff>,
     ) -> Result<Dropped, GenieError> {
@@ -184,70 +183,15 @@ impl GatherAction {
             self.timer = 0.0;
             return Ok(Dropped::Again);
         }
-        match self.move_to {
-            Some(MoveTo::Start) => {
-                self.move_to = Some(MoveTo::Moving);
-                me.action_state = self.state;
-                let range = self.task.range;
-                let graphic = self.walk_sprite(unit, r);
-                let (walk, sprite_rng, _) = c.walk_sprites_action(&mut unit.body, me);
-                // the MoveTo's set_state(4) shows the walking sprite before the motion step
-                let shown = Shown {
-                    graphic,
-                    sprite: &mut unit.sprite,
-                    rng: sprite_rng,
-                };
-                let to = (Goal::Target(self.carry_to), range, true);
-                let walked = start_walk_shown(walk, to, PathAsk::default(), Some(shown))?;
-                match walked {
-                    Some(state) => self.move_to = Some(state),
-                    None => self.give_up(r),
-                }
-                return Ok(Dropped::Going);
-            }
-            Some(MoveTo::Moving) => {
-                if target_moved(
-                    &mut c.walk(&mut unit.body, me),
-                    self.carry_to,
-                    TargetMoved::AsksAgain,
-                )?
-                .again()
-                {
-                    self.move_to = Some(MoveTo::Start);
-                    return Ok(Dropped::Going);
-                }
-                me.action_state = self.state;
-                let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-                unit.post_in_the_way()?;
-                match walked {
-                    Some(m) => self.move_to = Some(m),
-                    None => self.give_up(r),
-                }
-                return Ok(Dropped::Going);
-            }
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += seconds(c.dt);
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                return Ok(Dropped::Going);
-            }
-            // codes 3 to 5: a wait of a random share of a second less a half (the Action
-            // stream's GetRandFloat0to1), the unit's animation stopped (FUN_141161850)
-            Some(MoveTo::Failed) => {
+        // the list's code: 0 walks or waits, 1 and 2 end it; 3 to 5 wait at random
+        match self.update_list(c, unit, me, r)? {
+            0 => return Ok(Dropped::Going),
+            3..=5 => {
                 self.random_wait(c, unit);
                 return Ok(Dropped::Going);
             }
-            Some(MoveTo::Arrived) => {
-                self.move_to = None;
-                unit.body.mover_mut().ok_or(UNMOVING)?.stop()?;
-            }
-            None => {
-                return Err(GenieError::unsupported(
-                    "a Gather in state 8 without its MoveTo",
-                ));
-            }
+            1 | 2 => self.tear_down(unit.body.mover_mut())?,
+            code => return Err(QUIET_CODE.with("code", code)),
         }
         // the drop site gone: set_state(8) again
         let Some(site) = site else {

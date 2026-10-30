@@ -10,19 +10,23 @@ use crate::gathering::gather::{
 };
 use crate::gathering::hunt::walk_sprite;
 use crate::math::rng::Stream;
-use crate::movement::move_to::TargetMoved;
-use crate::movement::move_to::walk_or_give_up;
-use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};
+use crate::movement::move_to::{GiveUp, MoveTo, Shown};
 use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 
 /// A gatherer without movement state, which the Gather's walks and turns need.
 pub(super) const UNMOVING: GenieError =
     GenieError::unsupported("a gatherer without movement state");
+
+/// A sub-action list's code that a quiet `MoveTo` does not give: 4 is its target let go when it
+/// is not quiet, and no code is above 5.
+pub(super) const QUIET_CODE: GenieError =
+    GenieError::unreachable("a quiet sub-action MoveTo's code that only a loud one gives");
 
 impl GatherAction {
     /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::gathering::hunt::asked_drop_off`] on the
@@ -40,7 +44,6 @@ impl GatherAction {
     ///
     /// The unit's stop that the motion step does not model.
     pub fn tear_down(&mut self, mover: Option<&mut Mover>) -> Result<(), GenieError> {
-        self.walk_to = None;
         if self.move_to.take().is_some()
             && let Some(m) = mover
         {
@@ -109,7 +112,7 @@ impl GatherAction {
             return self.update_without_target(c, unit, r);
         };
         match self.state {
-            WALK if self.timer < 0.0 => self.update_walk_wait(c, unit, target, dt),
+            WALK if self.timer < 0.0 => self.update_walk_wait(c, unit, target, dt, r),
             WALK => self.update_walk(c, unit, me, target, r),
             FACE => self.update_face(c, unit, target, r),
             WORK => self.update_work(c, unit, target, r),
@@ -164,12 +167,14 @@ impl GatherAction {
         unit: &mut Unit,
         target: &Victim,
         dt: f32,
+        r: &GatherReads,
     ) -> Result<Next, GenieError> {
         self.timer += dt;
         if self.timer < 0.0 {
             return Ok(Next::Stay);
         }
         self.timer = 0.0;
+        let walks = r.walks(&c.w.graphics, unit);
         let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
         if self.stops < 2 {
             let radius = if STOP_FARMS.contains(&target.master_id) {
@@ -177,10 +182,10 @@ impl GatherAction {
             } else {
                 target.radius[0]
             };
-            self.set_walk_back(radius, mover)?;
+            self.set_walk_back(radius, mover, &walks)?;
         } else {
             let rng = c.w.streams.get(Stream::Action);
-            self.set_walk(target.position, target.radius, 0.0, mover, rng)?;
+            self.set_walk(target.position, target.radius, 0.0, mover, rng, &walks)?;
         }
         Ok(Next::Stay)
     }
@@ -245,19 +250,22 @@ impl GatherAction {
                 if r.food_sold <= 0.0 {
                     self.current_stop += 1;
                 }
+                let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 let rng = c.w.streams.get(Stream::Action);
-                self.set_walk(target.position, target.radius, 0.0, mover, rng)?;
+                self.set_walk(target.position, target.radius, 0.0, mover, rng, &walks)?;
                 return Ok(Next::Stay);
             }
         }
         self.gather(c, unit, target, r)
     }
 
-    /// State 4's `MoveTo` (case 3): it starts, walks, waits after the motion step gave up (a
-    /// villager once) and ends: its update in state 1 returns 1 (the list deletes it and its
-    /// destructor stops the unit), then `set_state(6)`. A failed `MoveTo` (code 3) near a target
-    /// of more than 3 workers searches, else waits a random while.
+    /// State 4's sub-action list (case 3, [`GatherAction::update_list`]): its code 0 walks or
+    /// waits; 1 and 2 (it ended: the list drops it and its destructor stops the unit) are
+    /// `set_state(6)`. A failed `MoveTo` (3) near a target of more than 3 workers searches, else
+    /// waits a random while. Its target let go (4, 5) lets the Gather's target go and walks back
+    /// to its point (`set_state(11)` within the task's range). A quiet `MoveTo` never gives 4,
+    /// and none gives 6 (the game's `set_state(13)` with the search's notify).
     pub(super) fn update_walk(
         &mut self,
         c: &mut Step<'_>,
@@ -266,19 +274,15 @@ impl GatherAction {
         target: &Victim,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        match self.move_to {
-            Some(MoveTo::Start | MoveTo::Moving | MoveTo::Waiting) => {
-                self.step_move(c, unit, me, r).map(|()| Next::Stay)
-            }
-            Some(MoveTo::Arrived) => {
-                self.move_to = None;
-                self.walk_to = None;
-                unit.body.mover_mut().ok_or(UNMOVING)?.stop()?;
+        match self.update_list(c, unit, me, r)? {
+            0 => Ok(Next::Stay),
+            1 | 2 => {
+                self.tear_down(unit.body.mover_mut())?;
                 self.set_face(c, unit, target, r)
             }
             // code 3: near a target with more than 3 workers it searches (set_state 3), else it
             // waits a random while (LAB_140a8ef80)
-            Some(MoveTo::Failed) => {
+            3 => {
                 let mover = unit.body.mover().ok_or(UNMOVING)?;
                 let me = [mover.stats.radius[0], mover.stats.radius[1]];
                 let at = unit.body.position();
@@ -290,94 +294,63 @@ impl GatherAction {
                 }
                 self.begin_search(c, unit, r)
             }
-            None => Err(GenieError::unsupported(
-                "a Gather in state 4 without its MoveTo",
-            )),
+            // its target let go: the Gather's goes too (slot 0x68 with none; the caller lets it
+            // go), then `set_state(11)` with no target's radius
+            4 | 5 => {
+                self.target = -1;
+                let walks = r.walks(&c.w.graphics, unit);
+                let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
+                self.set_walk_back(0.0, mover, &walks)?;
+                Ok(Next::Stay)
+            }
+            code => Err(QUIET_CODE.with("code", code)),
         }
     }
 
-    /// A walking `MoveTo`'s update, its state 3, 4 or 2 (`FUN_140a992b0` on the sub-actions):
-    /// it starts (a target's or a point's, within [`GatherAction::walk_range`]), walks, waits
-    /// after the motion step gave up (a villager once); a `MoveTo` to the target asks again
-    /// when the target left its point. The units in the unit's way go to its unit AI at once
+    /// The Gather's sub-action list's update (`FUN_140a992b0`: its first action's, the quiet
+    /// `MoveTo`'s, [`MoveToAction::sub_update`]) and its code, which the state's case reads: 0
+    /// while it walks or waits, 1 once it ended, 3 once it failed, 5 once its target was let
+    /// go; 1 for an empty list ("There is no list."). The start shows the task's sprite and
+    /// the motion step gives up as a villager's does ([`MoveWait::give_up`]); a start or a move
+    /// posts the units in the unit's way to its unit AI at once
     /// ([`Unit::post_in_the_way`](crate::objects::unit::Unit::post_in_the_way)).
     ///
     /// # Errors
     ///
     /// The walk's and the notifies'.
-    pub(super) fn step_move(
+    ///
+    /// [`MoveToAction::sub_update`]: crate::movement::move_to::MoveToAction::sub_update
+    /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
+    pub(super) fn update_list(
         &mut self,
         c: &mut Step<'_>,
         unit: &mut Unit,
         mut me: Me,
         r: &GatherReads,
-    ) -> Result<(), GenieError> {
-        match self.move_to {
-            Some(MoveTo::Start) => {
-                if self.move_wait.state == 1 {
-                    self.move_wait.state = 2;
-                }
-                self.move_to = Some(MoveTo::Moving);
-                me.action_state = self.state;
-                let range = self.walk_range;
-                let goal = self.walk_to.map_or(Goal::Target(self.target), Goal::Point);
-                let graphic = self.walk_sprite(unit, r);
-                let (walk, sprite_rng, _) = c.walk_sprites_action(&mut unit.body, me);
-                // the MoveTo's set_state(4) shows the walking sprite before the motion step
-                let shown = Shown {
-                    graphic,
-                    sprite: &mut unit.sprite,
-                    rng: sprite_rng,
-                };
-                let to = (goal, range, true);
-                let walked = start_walk_shown(walk, to, PathAsk::default(), Some(shown))?;
-                unit.post_in_the_way()?;
-                match walked {
-                    Some(state) => self.move_to = Some(state),
-                    None => self.give_up(r),
-                }
-                Ok(())
-            }
-            Some(MoveTo::Moving) => {
-                // a MoveTo to a point has no target to follow
-                if self.walk_to.is_none()
-                    && target_moved(
-                        &mut c.walk(&mut unit.body, me),
-                        self.target,
-                        TargetMoved::AsksAgain,
-                    )?
-                    .again()
-                {
-                    self.move_to = Some(MoveTo::Start);
-                    return Ok(());
-                }
-                me.action_state = self.state;
-                let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-                unit.post_in_the_way()?;
-                match walked {
-                    Some(m) => self.move_to = Some(m),
-                    None => self.give_up(r),
-                }
-                Ok(())
-            }
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += seconds(c.dt);
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                Ok(())
-            }
-            _ => Ok(()),
+    ) -> Result<u8, GenieError> {
+        let Some(move_to) = &mut self.move_to else {
+            return Ok(1);
+        };
+        me.action_state = self.state;
+        let state = move_to.state;
+        let held = c.w.object_state(move_to.target);
+        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+        let shown = (state == MoveTo::Start).then_some(Shown {
+            sprite: &mut unit.sprite,
+            rng: beside.sprite_rng,
+            graphic: move_to.sprite,
+        });
+        // the computer player's test is not held: its villagers would fail at once
+        let gives_up = GiveUp {
+            waits: r.class == class::VILLAGER,
+            stance: r.stance,
+        };
+        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
+        let ask = PathAsk::default();
+        let code = move_to.sub_update(&mut walk, ask, gives_up, held, shown, &mut inbox)?;
+        if matches!(state, MoveTo::Start | MoveTo::Moving) {
+            unit.post_in_the_way()?;
         }
-    }
-
-    /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; quiet). The
-    /// computer player's test is not held: its villagers would fail at once.
-    ///
-    /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
-    pub(super) const fn give_up(&mut self, r: &GatherReads) {
-        let waits = r.class == class::VILLAGER;
-        self.move_to = Some(self.move_wait.give_up(waits, r.stance));
+        Ok(code)
     }
 }
