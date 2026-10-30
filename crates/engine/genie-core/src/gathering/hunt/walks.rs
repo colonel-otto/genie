@@ -5,10 +5,10 @@ use crate::GenieError;
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::{HuntAction, HuntReads};
 use crate::movement::move_to::{
-    GiveUp, MoveTo, MoveToAction, NO_TARGET_GAP, Shown, SpriteReads, TargetMoved,
+    GiveUp, MoveTo, MoveToAction, Shown, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, Mover, PathAsk};
-use crate::objects::sprite::Graphic;
+use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 use crate::unit_ai::Inbox;
 use crate::world::step::Step;
@@ -20,19 +20,16 @@ pub(super) const QUIET_CODE: GenieError =
 
 impl HuntReads {
     /// What the `MoveTo`s the update makes read of `unit`, with the sprites' table `graphics`.
-    pub(crate) const fn walks<'g>(
+    pub(crate) fn walks<'g>(
         &self,
         graphics: &'g std::collections::BTreeMap<i16, Graphic>,
         unit: &Unit,
     ) -> Walks<'g> {
-        Walks {
-            sprites: SpriteReads {
-                defaults: self.defaults,
-                graphics,
-            },
-            held: (unit.life.attribute_type, unit.life.amount),
-            state: unit.life.state,
-        }
+        let sprites = SpriteReads {
+            defaults: self.defaults,
+            graphics,
+        };
+        Walks::of(sprites, unit)
     }
 }
 
@@ -55,18 +52,21 @@ impl HuntAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let action = MoveToAction {
-            point: at,
-            target,
-            on_target_moved: TargetMoved::AsksAgain,
-            ..MoveToAction::sub_to_point(at, range, walks.to_object(&self.task)?)
+        let to = WalkTo {
+            id: target,
+            at,
+            gap,
+            state: None,
         };
-        Ok(action.added(walks.state, gap, mover.stats.speed))
+        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        walks
+            .live(mover)
+            .to_object(to, range, given, TargetMoved::AsksAgain)
     }
 
     /// The quiet `MoveTo` to the hunt's point within the task's range (`FUN_140aa0d30` with the
     /// task's walking sprite, `+0x61` 1), as the action list adds and starts it: the point's gap
-    /// is [`NO_TARGET_GAP`], so state 3, or 13 for a unit without speed. None for a unit whose
+    /// is far, so state 3, or 13 for a unit without speed. None for a unit whose
     /// state is 3 or more.
     ///
     /// # Errors
@@ -77,11 +77,14 @@ impl HuntAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let action = MoveToAction {
+        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        let walk = walks
+            .live(mover)
+            .to_point(self.point, self.task.range, given)?;
+        Ok(walk.map(|m| MoveToAction {
             on_target_moved: TargetMoved::AsksAgain,
-            ..MoveToAction::sub_to_point(self.point, self.task.range, walks.to_point(&self.task)?)
-        };
-        Ok(action.added(walks.state, NO_TARGET_GAP, mover.stats.speed))
+            ..m
+        }))
     }
 
     /// The Hunt's sub-action list's update (`FUN_140a992b0`: its first action's, the quiet

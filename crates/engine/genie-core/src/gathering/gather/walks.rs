@@ -3,66 +3,72 @@
 
 use crate::GenieError;
 use crate::gathering::gather::{GatherAction, GatherReads};
-use crate::gathering::hunt::HuntTask;
 use crate::movement::Mover;
-use crate::movement::move_to::{
-    MoveTo, MoveToAction, MoveWait, NO_TARGET_GAP, SpriteReads, TargetMoved,
-};
+use crate::movement::move_to::{MoveToAction, MoveToReads, SpriteReads, TargetMoved, WalkTo};
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 
-/// What the Gather's `MoveTo` constructors read of the unit as `set_state` makes the `MoveTo`:
-/// the sprites' table with the defaults of the unit's master, and what the unit carries. The
-/// task's walking sprite (`FUN_140a8b660`) depends on the load.
+/// What the Gather's and the Hunt's `MoveTo` constructors read of the unit as `set_state` makes
+/// the `MoveTo` ([`MoveToReads`]), and what the unit carries: the task's walking sprite
+/// (`FUN_140a8b660`) depends on the load.
 #[derive(Clone, Copy, Debug)]
 pub struct Walks<'a> {
-    /// The sprites a `MoveTo` takes when the task gives none.
-    pub sprites: SpriteReads<'a>,
+    /// What every new sub-action `MoveTo` reads of the unit.
+    pub reads: MoveToReads<'a>,
     /// What the unit carries: its resource kind (`+0x308`) and amount (`+0x310`).
     pub held: (i16, f32),
-    /// The unit's object state (`+0x640`): its action list adds a sub-action only while it is
-    /// below 3 (`FUN_140a977e0`).
-    pub state: u8,
 }
 
-impl Walks<'_> {
-    /// The sprite of a `MoveTo` to an object (`FUN_140aa0df0`) whose maker gives the task's
-    /// walking sprite ([`HuntTask::walk_sprite_id`]): the task's, else the constructor's
-    /// default.
-    ///
-    /// # Errors
-    ///
-    /// A sprite the table lacks.
-    pub fn to_object(&self, task: &HuntTask) -> Result<Option<Graphic>, GenieError> {
-        self.sprites
-            .to_object(sprite_id(task.walk_sprite_id(self.held.0, self.held.1)))
+impl<'a> Walks<'a> {
+    /// The reads of `unit` with the sprites `sprites`, and what it carries.
+    pub(crate) fn of(sprites: SpriteReads<'a>, unit: &Unit) -> Self {
+        Self {
+            reads: reads_of(sprites, unit),
+            held: (unit.life.attribute_type, unit.life.amount),
+        }
     }
 
-    /// The sprite of a `MoveTo` to a point (`FUN_140aa0d30`), as [`Walks::to_object`].
-    ///
-    /// # Errors
-    ///
-    /// A sprite the table lacks.
-    pub fn to_point(&self, task: &HuntTask) -> Result<Option<Graphic>, GenieError> {
-        self.sprites
-            .to_point(sprite_id(task.walk_sprite_id(self.held.0, self.held.1)))
+    /// The reads with the speed `mover` has now (slot 0x208, which a start reads as the
+    /// constructor runs).
+    pub(crate) const fn live(&self, mover: &Mover) -> MoveToReads<'a> {
+        MoveToReads {
+            speed: mover.stats.speed,
+            ..self.reads
+        }
+    }
+}
+
+/// What a new `MoveTo` reads of `unit` with the sprites `sprites`: its state, speed, place and
+/// the radii of its movement state (none for a unit that does not move).
+pub(crate) fn reads_of<'a>(sprites: SpriteReads<'a>, unit: &Unit) -> MoveToReads<'a> {
+    let mover = unit.body.mover();
+    MoveToReads {
+        sprites,
+        state: unit.life.state,
+        speed: mover.map_or(0.0, |m| m.stats.speed),
+        at: unit.position(),
+        ground: mover.map_or([0.0; 2], |m| [m.stats.radius[0], m.stats.radius[1]]),
     }
 }
 
 impl GatherReads {
     /// What the `MoveTo`s the update makes read of `unit`, with the sprites' table `graphics`.
-    pub(crate) const fn walks<'g>(
+    pub(crate) fn walks<'g>(
         &self,
         graphics: &'g std::collections::BTreeMap<i16, Graphic>,
         unit: &Unit,
     ) -> Walks<'g> {
-        Walks {
-            sprites: SpriteReads {
-                defaults: self.defaults,
-                graphics,
-            },
-            held: (unit.life.attribute_type, unit.life.amount),
-            state: unit.life.state,
+        Walks::of(self.sprites_of(graphics), unit)
+    }
+
+    /// The sprites a `MoveTo` takes when its maker gives none.
+    const fn sprites_of<'g>(
+        &self,
+        graphics: &'g std::collections::BTreeMap<i16, Graphic>,
+    ) -> SpriteReads<'g> {
+        SpriteReads {
+            defaults: self.defaults,
+            graphics,
         }
     }
 }
@@ -86,23 +92,22 @@ impl GatherAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let action = MoveToAction {
-            state: MoveTo::Start,
-            point: at,
-            target,
-            range: self.task.range,
-            sprite: walks.to_object(&self.task)?,
-            quiet: true,
-            on_target_moved: TargetMoved::AsksAgain,
-            wait: MoveWait::NEW,
+        let to = WalkTo {
+            id: target,
+            at,
+            gap,
+            state: None,
         };
-        Ok(action.added(walks.state, gap, mover.stats.speed))
+        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        walks
+            .live(mover)
+            .to_object(to, self.task.range, given, TargetMoved::AsksAgain)
     }
 
     /// The quiet `MoveTo` to `point` within `range` (`FUN_140aa0d30` with the task's walking
     /// sprite, `FUN_140a7a170` with 1), whose `+0x61` is `on_target_moved` (a farm's stop sets 1,
     /// the walks of states 11, 15 and 0xf2 leave 0), as the action list adds and starts it: the
-    /// point's gap is [`NO_TARGET_GAP`], so state 3, or 13 for a unit without speed. None for a
+    /// point's gap is far, so state 3, or 13 for a unit without speed. None for a
     /// unit whose state is 3 or more.
     ///
     /// # Errors
@@ -116,10 +121,11 @@ impl GatherAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let action = MoveToAction {
+        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        let walk = walks.live(mover).to_point(point, range, given)?;
+        Ok(walk.map(|m| MoveToAction {
             on_target_moved,
-            ..MoveToAction::sub_to_point(point, range, walks.to_point(&self.task)?)
-        };
-        Ok(action.added(walks.state, NO_TARGET_GAP, mover.stats.speed))
+            ..m
+        }))
     }
 }

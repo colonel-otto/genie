@@ -2,7 +2,7 @@ use super::*;
 use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{
-    MoveDefaults, MoveTo, MoveToAction, MoveWait, SpriteReads, TargetMoved,
+    MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved,
 };
 use crate::movement::{Me, Mover};
 use crate::objects::masters::class;
@@ -37,12 +37,17 @@ static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections:
 /// What the `MoveTo` constructors read of a villager that carries `held`: no sprites.
 fn walks(held: (i16, f32)) -> Walks<'static> {
     Walks {
-        sprites: SpriteReads {
-            defaults: MoveDefaults::default(),
-            graphics: &NO_GRAPHICS,
+        reads: MoveToReads {
+            sprites: SpriteReads {
+                defaults: MoveDefaults::default(),
+                graphics: &NO_GRAPHICS,
+            },
+            state: 2,
+            speed: 1.0,
+            at: [0.0; 3],
+            ground: [0.0; 2],
         },
         held,
-        state: 2,
     }
 }
 

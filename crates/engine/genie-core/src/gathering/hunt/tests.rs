@@ -1,6 +1,8 @@
 use super::*;
 use crate::gathering::gather::Walks;
-use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait, SpriteReads, TargetMoved};
+use crate::movement::move_to::{
+    MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved,
+};
 use crate::objects::masters::class;
 use crate::objects::sprite::Graphic;
 use crate::orders::action_state::DONE;
@@ -36,12 +38,17 @@ static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections:
 /// state 2.
 pub(crate) fn walks(held: (i16, f32)) -> Walks<'static> {
     Walks {
-        sprites: SpriteReads {
-            defaults: MoveDefaults::default(),
-            graphics: &NO_GRAPHICS,
+        reads: MoveToReads {
+            sprites: SpriteReads {
+                defaults: MoveDefaults::default(),
+                graphics: &NO_GRAPHICS,
+            },
+            state: 2,
+            speed: 1.0,
+            at: [0.0; 3],
+            ground: [0.0; 2],
         },
         held,
-        state: 2,
     }
 }
 
@@ -1580,10 +1587,8 @@ fn a_dying_hunter_makes_no_move_to() {
     let mut mover = walker();
     let mut h = hunting(-1);
     h.point = [5.0, 6.0, 0.0];
-    let dying = Walks {
-        state: 3,
-        ..walks((-1, 0.0))
-    };
+    let mut dying = walks((-1, 0.0));
+    dying.reads.state = 3;
     h.set_point_walk(WALK_SEARCH, &mut mover, &dying).unwrap();
     assert_eq!((h.state, h.move_to), (WALK_SEARCH, None));
     h.set_point_walk(WALK_SEARCH, &mut mover, &walks((-1, 0.0)))

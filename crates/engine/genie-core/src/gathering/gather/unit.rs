@@ -105,15 +105,12 @@ impl Unit {
         player: usize,
         graphics: &'g BTreeMap<i16, Graphic>,
     ) -> Result<Walks<'g>, GenieError> {
-        Ok(Walks {
-            sprites: SpriteReads::of(
-                self.master(every, player)?,
-                self.abilities.look.as_ref(),
-                graphics,
-            ),
-            held: (self.life.attribute_type, self.life.amount),
-            state: self.life.state,
-        })
+        let sprites = SpriteReads::of(
+            self.master(every, player)?,
+            self.abilities.look.as_ref(),
+            graphics,
+        );
+        Ok(Walks::of(sprites, self))
     }
 
     /// What the Gather's update reads of the gatherer and its player as it starts

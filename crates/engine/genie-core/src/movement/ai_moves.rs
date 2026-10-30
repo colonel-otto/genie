@@ -243,11 +243,7 @@ impl Unit {
         sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
         let my_pasture = self.my_pasture;
-        let walks = Walks {
-            sprites,
-            held: (self.life.attribute_type, self.life.amount),
-            state: self.life.state,
-        };
+        let walks = Walks::of(sprites, self);
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
@@ -279,11 +275,7 @@ impl Unit {
         player: usize,
         sprites: SpriteReads<'_>,
     ) -> Result<PointMove, GenieError> {
-        let walks = Walks {
-            sprites,
-            held: (self.life.attribute_type, self.life.amount),
-            state: self.life.state,
-        };
+        let walks = Walks::of(sprites, self);
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",

@@ -325,15 +325,12 @@ impl Unit {
         let (carry_to, state) = (gather.carry_to, gather.state);
         let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
         let at = c.spatial.get_known(site)?.map_or([0.0; 3], |s| s.position);
-        let walks = Walks {
-            sprites: SpriteReads::of(
-                self.master_in(c.masters)?,
-                self.abilities.look.as_ref(),
-                graphics,
-            ),
-            held: (self.life.attribute_type, self.life.amount),
-            state: self.life.state,
-        };
+        let sprites = SpriteReads::of(
+            self.master_in(c.masters)?,
+            self.abilities.look.as_ref(),
+            graphics,
+        );
+        let walks = Walks::of(sprites, self);
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
@@ -366,15 +363,12 @@ impl Unit {
             ));
         }
         let at = c.spatial.get_known(site)?.map_or([0.0; 3], |s| s.position);
-        let walks = Walks {
-            sprites: SpriteReads::of(
-                self.master_in(c.masters)?,
-                self.abilities.look.as_ref(),
-                graphics,
-            ),
-            held: (self.life.attribute_type, self.life.amount),
-            state: self.life.state,
-        };
+        let sprites = SpriteReads::of(
+            self.master_in(c.masters)?,
+            self.abilities.look.as_ref(),
+            graphics,
+        );
+        let walks = Walks::of(sprites, self);
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
