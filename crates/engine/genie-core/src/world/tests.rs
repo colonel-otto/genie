@@ -5285,7 +5285,11 @@ fn a_build_command_without_its_foundation_or_a_task_does_nothing() {
 #[test]
 fn a_world_routine_s_unit_ai_calls_run_on_the_unit_at_once() {
     let mut t = sent_off_world(vec![]);
-    let (explore, _) = crate::movement::explore::ExploreAction::new([10.0, 10.0, 0.0], None);
+    let (explore, _) = crate::movement::explore::ExploreAction::new(
+        [10.0, 10.0, 0.0],
+        &crate::movement::explore::bare_walk(),
+    )
+    .unwrap();
     t.players[1].objects[0].actions.set_explore(Some(explore));
     let seen = t
         .run_ai_calls((1, 0), |ai, side, rng| {
@@ -13858,7 +13862,11 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
     let mut t = forage_world();
     t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
     t.build_mesh();
-    let (mut explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0], None);
+    let (mut explore, _) = crate::movement::explore::ExploreAction::new(
+        [40.5, 89.5, 0.0],
+        &crate::movement::explore::bare_walk(),
+    )
+    .unwrap();
     set(&mut explore);
     t.players[1].objects[0].actions.set_explore(Some(explore));
     let r = in_update(&mut t, (1, 0), 50, |unit, c| {

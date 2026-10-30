@@ -9,7 +9,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToAction, Shown, graphic_of};
+use crate::movement::move_to::{
+    GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveToReads, Shown, SpriteReads,
+};
 use crate::movement::{Me, PathAsk};
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -22,6 +24,7 @@ use crate::unit_ai::Inbox;
 use crate::unit_ai::OrderKind;
 use crate::world::step::Step;
 use genie_diff::Diff;
+use std::collections::BTreeMap;
 
 /// The Explore action's type.
 pub const EXPLORE: i16 = 4;
@@ -32,6 +35,10 @@ pub const STOPPED: u8 = 2;
 pub const WAIT: u8 = 3;
 /// State 11: walking to the point.
 pub const WALK: u8 = 11;
+
+/// State 11 made without what its `MoveTo` reads of the unit.
+const WALK_WITHOUT_READS: GenieError =
+    GenieError::unreachable("an Explore's set_state(11) without the unit's reads");
 
 /// A point of −1 is no point (`DAT_14330ec20`).
 const NO_POINT: f32 = crate::math::image::explore::NO_POINT;
@@ -66,31 +73,63 @@ pub struct ExploreAction {
     pub move_to: Option<MoveToAction>,
 }
 
+/// What an Explore's `MoveTo` reads of its unit as `set_state(11)` makes it: [`MoveToReads`], and
+/// the sprite its maker gives (`FUN_140aa0d30` takes the task's moving sprite, an Explore has no
+/// task: the master's walking sprite, `+0x748`; none leaves the constructor's default).
+#[derive(Clone, Copy, Debug)]
+pub struct ExploreMove<'a> {
+    /// What every new sub-action `MoveTo` reads of the unit.
+    pub reads: MoveToReads<'a>,
+    /// The master's walking sprite (`+0x748`).
+    pub given: Option<i16>,
+}
+
+impl<'a> ExploreMove<'a> {
+    /// What the `MoveTo` of `unit` of `master` reads, with the sprites' table `graphics`.
+    #[must_use]
+    pub fn of(unit: &Unit, master: &Master, graphics: &'a BTreeMap<i16, Graphic>) -> Self {
+        Self {
+            reads: MoveToReads::of(unit, master, graphics),
+            given: sprite_id(master.move_sprite),
+        }
+    }
+}
+
 impl ExploreAction {
     /// `FUN_140a87d30`, then its first (slot 0x28, `0x140a87e10`) as the action list adds it:
-    /// state 3 without a point, else 11, whose `MoveTo` takes `sprite`
+    /// state 3 without a point, else 11, whose `MoveTo` is made from `walk`
     /// ([`ExploreAction::set_state`]).
-    #[must_use]
-    pub fn new(point: [f32; 3], sprite: Option<Graphic>) -> (Self, Owner) {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn new(point: [f32; 3], walk: &ExploreMove<'_>) -> Result<(Self, Owner), GenieError> {
         let mut a = Self {
             state: 0,
             point,
             move_to: None,
         };
         let state = if a.point[0] == NO_POINT { WAIT } else { WALK };
-        let owner = a.set_state(state, sprite);
-        (a, owner)
+        let owner = a.set_state(state, Some(walk))?;
+        Ok((a, owner))
     }
 
     /// `Set_state` (slot 0x80, `0x140a87e30`): its sub-actions go (`FUN_140a98620`), then by state:
-    /// 3 asks its unit AI for a point, 11 makes the `MoveTo` to the point with `sprite`, the one
-    /// [`ExploreAction::move_shown`] resolves (`FUN_140aa0d30` with range 0, made quiet by
-    /// `FUN_140a7a170`; the action list starts it, `FUN_140a977e0`: state 3 for a unit with a
-    /// speed). The other states read no sprite.
-    pub const fn set_state(&mut self, state: u8, sprite: Option<Graphic>) -> Owner {
+    /// 3 asks its unit AI for a point, 11 makes the `MoveTo` to the point from `walk`
+    /// ([`MoveToReads::to_point`]: `FUN_140aa0d30` with range 0, made quiet by `FUN_140a7a170`;
+    /// the action list starts it, `FUN_140a977e0`). The other states read nothing of the unit.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks, and state 11 without `walk`.
+    pub fn set_state(
+        &mut self,
+        state: u8,
+        walk: Option<&ExploreMove<'_>>,
+    ) -> Result<Owner, GenieError> {
         self.move_to = None;
         self.state = state;
-        match state {
+        Ok(match state {
             STOPPED => {
                 self.point = [-1.0; 3];
                 Owner::Stopped
@@ -99,28 +138,29 @@ impl ExploreAction {
             // State 13: failed.
             DONE | FAILED | 14 => Owner::Standing,
             WALK => {
-                self.move_to = Some(MoveToAction::sub_to_point(self.point, 0.0, sprite));
+                let walk = walk.ok_or(WALK_WITHOUT_READS)?;
+                self.move_to = walk.reads.to_point(self.point, 0.0, walk.given)?;
                 Owner::Nothing
             }
             _ => Owner::Nothing,
-        }
-    }
-
-    /// The sprite its `MoveTo` shows (`set_state(11)` gives `FUN_140aa0d30` its task's moving
-    /// sprite, `+0x40`, without one the master's walking sprite, `+0x748`; an Explore has no
-    /// task): the master's walking sprite, for none the constructor's default from `defaults`.
-    #[must_use]
-    pub const fn move_shown(master: &Master, defaults: MoveDefaults) -> Option<i16> {
-        defaults.to_point(sprite_id(master.move_sprite))
+        })
     }
 
     /// The point (slot 0x48, `0x140a881a0`): one on the map's quarter (both coordinates at least
-    /// 0) becomes its point and it walks there with `sprite` (`set_state` 11); any other makes it
+    /// 0) becomes its point and it walks there from `walk` (`set_state` 11); any other makes it
     /// wait for one (`set_state` 3).
-    pub fn take_point(&mut self, point: [f32; 3], sprite: Option<Graphic>) -> Owner {
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn take_point(
+        &mut self,
+        point: [f32; 3],
+        walk: &ExploreMove<'_>,
+    ) -> Result<Owner, GenieError> {
         if 0.0 <= point[0] && 0.0 <= point[1] {
             self.point = point;
-            return self.set_state(WALK, sprite);
+            return self.set_state(WALK, Some(walk));
         }
         self.set_state(WAIT, None)
     }
@@ -128,9 +168,9 @@ impl ExploreAction {
     /// What the update does after its `MoveTo`'s update returned `code` (`0x140a880c0` in state 11,
     /// `FUN_140a992b0`): 0 goes on; 1, 2, 3 and 5 make it wait for a new point (`set_state` 3); 4
     /// runs the action's slot 0x68 and walks again (`set_state` 11), which is not modelled.
-    pub const fn after_walk(&mut self, code: u8) -> Result<Owner, GenieError> {
+    pub fn after_walk(&mut self, code: u8) -> Result<Owner, GenieError> {
         match code {
-            1 | 2 | 3 | 5 => Ok(self.set_state(WAIT, None)),
+            1 | 2 | 3 | 5 => self.set_state(WAIT, None),
             4 => Err(GenieError::unsupported(
                 "an Explore whose MoveTo returned 4 (its slot 0x68)",
             )),
@@ -509,10 +549,10 @@ impl Unit {
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let at = [point[0], point[1], self.position()[2]];
-        let sprite = self.explore_sprite(c)?;
+        let walk = self.explore_move(c);
         let owner = if let Some(e) = self.actions.explore_mut() {
             let walked = e.move_to.is_some();
-            let owner = e.take_point(at, sprite);
+            let owner = e.take_point(at, &walk)?;
             if walked {
                 self.stop_mover()?;
             }
@@ -523,30 +563,34 @@ impl Unit {
                     "an Explore replacing another action",
                 ));
             }
-            let (e, owner) = ExploreAction::new(at, sprite);
+            let (e, owner) = ExploreAction::new(at, &walk)?;
             self.actions.set_explore(Some(e));
             owner
         };
         self.explore_owner(owner, c)
     }
 
-    /// The sprite an Explore's `MoveTo` takes (`set_state(11)`, [`ExploreAction::move_shown`]):
-    /// the master's walking sprite, else `FUN_140aa0d30`'s default, from the sprites' table; none
-    /// for a unit whose master the world lacks.
-    ///
-    /// # Errors
-    ///
-    /// A sprite the table lacks.
-    fn explore_sprite(&self, c: &Step<'_>) -> Result<Option<Graphic>, GenieError> {
-        let Ok(master) = object_master(
+    /// What an Explore's `MoveTo` reads of this unit ([`ExploreMove`]); a unit whose master the world
+    /// lacks reads no sprite defaults and gives none.
+    fn explore_move<'g>(&self, c: &'g Step<'_>) -> ExploreMove<'g> {
+        let master = object_master(
             self.own_master.as_deref(),
             (self.id, self.life.master_id),
             c.w.masters.get(c.player),
-        ) else {
-            return Ok(None);
-        };
-        let defaults = MoveDefaults::of(master, self.abilities.look.as_ref());
-        graphic_of(&c.w.graphics, ExploreAction::move_shown(master, defaults))
+        );
+        master.map_or_else(
+            |_| ExploreMove {
+                reads: MoveToReads::with_sprites(
+                    SpriteReads {
+                        defaults: MoveDefaults::default(),
+                        graphics: &c.w.graphics,
+                    },
+                    self,
+                ),
+                given: None,
+            },
+            |master| ExploreMove::of(self, master, &c.w.graphics),
+        )
     }
 
     /// What an Explore's `set_state` asks of its unit ([`crate::movement::explore::Owner`]): its notify 0x202
@@ -592,28 +636,75 @@ impl Unit {
     }
 }
 
+/// The sprites' table of a world without sprites.
+#[cfg(test)]
+static NO_GRAPHICS: BTreeMap<i16, Graphic> = BTreeMap::new();
+
+/// What an Explore's `MoveTo` reads of a unit in state 2 with speed 1 in a world without sprites,
+/// for tests that make an Explore.
+#[cfg(test)]
+pub(crate) fn bare_walk() -> ExploreMove<'static> {
+    ExploreMove {
+        reads: MoveToReads {
+            sprites: SpriteReads {
+                defaults: MoveDefaults::default(),
+                graphics: &NO_GRAPHICS,
+            },
+            state: 2,
+            speed: 1.0,
+            at: [0.0; 3],
+            ground: [0.0; 2],
+        },
+        given: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WALKING: Graphic = Graphic {
+        id: 7,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+
+    /// What an Explore's `MoveTo` reads of a unit in state 2 with speed 1: the sprites in
+    /// `graphics` with the point default 20, and the walking sprite `given`.
+    fn walk_of(graphics: &BTreeMap<i16, Graphic>, given: Option<i16>) -> ExploreMove<'_> {
+        let defaults = MoveDefaults {
+            point: Some(20),
+            object: Some(21),
+        };
+        ExploreMove {
+            reads: MoveToReads {
+                sprites: SpriteReads { defaults, graphics },
+                state: 2,
+                speed: 1.0,
+                at: [0.0; 3],
+                ground: [0.0; 2],
+            },
+            given,
+        }
+    }
 
     /// The sprite its `MoveTo` shows: the master's walking sprite, for none `FUN_140aa0d30`'s
     /// default.
     #[test]
     fn an_explore_s_move_to_shows_the_master_s_walking_sprite_else_the_default() {
-        let defaults = MoveDefaults {
-            point: Some(20),
-            object: Some(21),
+        let other = Graphic { id: 20, ..WALKING };
+        let table = BTreeMap::from([(7, WALKING), (20, other)]);
+        let sprite = |given| {
+            let walk = walk_of(&table, given);
+            let (a, _) = ExploreAction::new([5.0, 5.0, 0.0], &walk).unwrap();
+            a.move_to.and_then(|m| m.sprite).map(|g| g.id)
         };
-        let master = Master {
-            move_sprite: 7,
-            ..Master::default()
-        };
-        assert_eq!(ExploreAction::move_shown(&master, defaults), Some(7));
-        let walkless = Master {
-            move_sprite: -1,
-            ..master
-        };
-        assert_eq!(ExploreAction::move_shown(&walkless, defaults), Some(20));
+        assert_eq!(sprite(Some(7)), Some(7));
+        assert_eq!(sprite(None), Some(20));
     }
 
     /// The scout map (`FUN_140f4a240`, `FUN_140f4d5e0`): 480 by 480 from tile (0, 0), each
@@ -645,21 +736,12 @@ mod tests {
     /// 0, the sprite its maker resolved, a new wait), which a code of 1 drops again.
     #[test]
     fn an_explore_without_a_point_waits_for_one_then_walks() {
-        let (mut a, owner) = ExploreAction::new([-1.0, -1.0, 0.0], None);
+        let table = BTreeMap::from([(7, WALKING)]);
+        let walk = walk_of(&table, Some(7));
+        let (mut a, owner) = ExploreAction::new([-1.0, -1.0, 0.0], &walk).unwrap();
         assert_eq!((a.state, owner, a.move_to), (WAIT, Owner::WantsPoint, None));
-        let walking = Graphic {
-            id: 7,
-            frames: 10,
-            facets: 16,
-            speed_multiplier: 1.0,
-            frame_duration: 0.1,
-            replay_delay: 0.0,
-            flags: 1,
-        };
-        assert_eq!(
-            a.take_point([19.0, 84.0, 0.0], Some(walking)),
-            Owner::Nothing
-        );
+        let walking = WALKING;
+        assert_eq!(a.take_point([19.0, 84.0, 0.0], &walk), Ok(Owner::Nothing));
         let made = MoveToAction {
             state: MoveTo::Start,
             point: [19.0, 84.0, 0.0],
@@ -674,7 +756,15 @@ mod tests {
         assert_eq!(a.after_walk(0), Ok(Owner::Nothing));
         assert_eq!(a.after_walk(1), Ok(Owner::WantsPoint));
         assert_eq!((a.state, a.move_to), (WAIT, None));
-        assert_eq!(a.take_point([-1.0, 5.0, 0.0], None), Owner::WantsPoint);
+        assert_eq!(a.take_point([-1.0, 5.0, 0.0], &walk), Ok(Owner::WantsPoint));
+        // a unit without speed fails its MoveTo (13), one in state 3 or later adds none
+        let mut stuck = walk;
+        stuck.reads.speed = 0.0;
+        let (b, _) = ExploreAction::new([5.0, 5.0, 0.0], &stuck).unwrap();
+        assert_eq!(b.move_to.map(|m| m.state), Some(MoveTo::Failed));
+        stuck.reads.state = 3;
+        let (b, _) = ExploreAction::new([5.0, 5.0, 0.0], &stuck).unwrap();
+        assert_eq!(b.move_to, None);
     }
 
     /// An area where every point but the unexplored ones counts, at its distance from (20, 92).

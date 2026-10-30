@@ -1561,7 +1561,12 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
     };
     let mut exploring = shown(3, 0);
     exploring.actions.set_explore(Some(
-        crate::movement::explore::ExploreAction::new([5.0, 5.0, 0.0], None).0,
+        crate::movement::explore::ExploreAction::new(
+            [5.0, 5.0, 0.0],
+            &crate::movement::explore::bare_walk(),
+        )
+        .unwrap()
+        .0,
     ));
     let player = Player {
         objects: vec![shown(1, 0), shown(2, 1), exploring].into(),
