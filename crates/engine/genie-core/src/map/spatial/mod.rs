@@ -491,7 +491,9 @@ impl Tiles {
 /// reads the cells it visits ([`Spatial::visited_records`]) instead of testing every object.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct RecordCells {
-    cells: std::collections::HashMap<(i32, i32, i32), std::collections::BTreeSet<i32>>,
+    /// The ids by cell, in (level, x, y) order: a query that visits more cells than are held
+    /// walks one level's range of them.
+    cells: BTreeMap<(i32, i32, i32), std::collections::BTreeSet<i32>>,
     filed: std::collections::HashMap<i32, (i32, i32, i32)>,
 }
 

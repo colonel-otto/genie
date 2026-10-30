@@ -146,8 +146,9 @@ impl Spatial {
                     }
                 }
             } else {
-                for (&(l, cx, cy), c) in &self.records.cells {
-                    if l == level && x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1 {
+                let level_cells = self.records.cells.range((level, x0, y0)..=(level, x1, y1));
+                for (&(_, _, cy), c) in level_cells {
+                    if y0 <= cy && cy <= y1 {
                         ids.extend(c);
                     }
                 }

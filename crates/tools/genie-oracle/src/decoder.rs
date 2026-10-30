@@ -16,7 +16,7 @@ pub(super) struct Decoder {
     /// Each comm player's last own list of an INTERACT, WORK, MOVE or RETREAT (its count's
     /// ids), without the world's checks: what a run from a mid-game save starts its world's
     /// last commanded units with ([`Decoder::prime`]).
-    pub(super) last_commanded: std::collections::HashMap<usize, Vec<i32>>,
+    pub(super) last_commanded: std::collections::BTreeMap<usize, Vec<i32>>,
 }
 
 impl Decoder {

@@ -384,17 +384,29 @@ WebAssembly use the same code without assumptions. This section does not apply t
 
 genie gives the same bits as the game on every host, WebAssembly included.
 
-- Keep the game's float types and its order of operations. Round each sum and each product on
-  its own: no fused multiply-add. Compare floats exactly where the game does. genie-core turns
-  off clippy's float lints for this reason.
+- Keep the game's numeric type field by field: `f32` or `f64`, the integer's width and its
+  signedness (the save's layout in genie-save names them).
+- Keep the game's order of operations. Round each sum and each product on its own: no fused
+  multiply-add, and no rewrite of `a * b / c` as `a * (b / c)`. Compare floats exactly where
+  the game does. genie-core turns off clippy's float lints for this reason.
+- Write `wrapping_add` and its kin where the game's integer arithmetic wraps. A plain `+` is
+  only for values that cannot overflow: an overflow panics in a debug build (CI's tests) and
+  wraps in a release build (the census), and the two runs then differ.
+- Divide and take remainders with `/` and `%`: they truncate toward zero, as the game's C++
+  does. `div_euclid` and `rem_euclid` do not.
 - Convert a float to an integer with `math::conversions` (`cvttss2si`), as the x86 instruction
   does. Rust's `as` saturates, the instruction does not. An `as` cast that stands for `movsx`
   or `movzx` is correct.
 - Use the ported math functions of `math/fmath/`. The standard library's float functions can
   differ between hosts.
 - Draw from the same random stream as the game, in the same order (`math/rng.rs`).
-- Keep the game's list order. A removal swaps the last element into the free place. A sort uses
-  MSVC's introsort (`math/msvc.rs`). Never iterate a `HashMap` where the order matters.
+- Keep the game's list order. A removal swaps the last element into the free place, as the
+  game's lists do, so a generic "order-preserving removal" is wrong here. A sort uses MSVC's
+  introsort (`math/msvc.rs`), which is not stable: its ties fall as the game's do. Never iterate
+  a `HashMap` or a `HashSet`: clippy's `iter_over_hash_type` fails the build. A hash map is for
+  lookups. A map that is walked is a `BTreeMap` or a list.
+- Run parallel work outside a world: many worlds at once (the census's recordings), never
+  threads inside an update.
 - Check each change to the simulation against the recordings' checkpoints. No recording that
   holds can regress.
 
