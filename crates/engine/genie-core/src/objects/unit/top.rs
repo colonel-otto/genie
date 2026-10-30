@@ -193,7 +193,7 @@ impl Unit {
             })
         };
         match self.actions.head()? {
-            Action::Artifact(a) => walking(a.move_to).or_else(|| {
+            Action::Artifact(a) => walking(a.move_to.map(|m| m.state)).or_else(|| {
                 a.enter.map(|e| TopAction {
                     kind: crate::garrison::ENTER,
                     state: e.state,

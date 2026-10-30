@@ -309,7 +309,7 @@ fn artifact(b: RgeAction) -> Action {
 }
 
 /// An Artifact waits, or walks to its target: its `MoveTo`'s goal, a point or an object, with
-/// its range; another sub-action is refused.
+/// its range, quiet toward an object; another sub-action is refused.
 #[test]
 fn an_artifact_waits_or_walks_to_its_target() {
     let a = imported(ARTIFACT_TYPE, artifact(base(1)))
@@ -319,7 +319,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
         .copied()
         .unwrap();
     assert_eq!((a.state, a.target, a.move_to, a.goal), (1, -1, None, None));
-    assert!(a.gaia && a.walk_to.is_none());
+    assert!(a.gaia);
     let mut b = base(5);
     b.target_id = 9;
     b.target_x = 4.0;
@@ -332,11 +332,11 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .artifact()
     .copied()
     .unwrap();
-    assert_eq!(a.move_to, Some(MoveTo::Moving));
+    let walk = a.move_to.unwrap();
+    assert_eq!((walk.state, walk.quiet), (MoveTo::Moving, true));
     assert_eq!(a.goal.map(bits3), Some(bits3([4.0, 2.0, 0.0])));
-    let (goal, range) = a.walk_to.unwrap();
-    assert!(matches!(goal, Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
-    assert_eq!(range.to_bits(), 0.5_f32.to_bits());
+    assert!(matches!(walk.walks_to(), Ok(Goal::Point(p)) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
     let mut to_object = move_to(4, 0.5);
     to_object
         .rge_action_by_type
@@ -356,7 +356,10 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .artifact()
     .copied()
     .unwrap();
-    assert!(matches!(a.walk_to, Some((Goal::Target(9), _))));
+    assert!(matches!(
+        a.move_to.map(|m| m.walks_to()),
+        Some(Ok(Goal::Target(9)))
+    ));
     // the target's place is its goal however near the origin; an unset place (-1) is none
     let mut near = base(5);
     near.target_id = 9;
@@ -386,7 +389,8 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .copied()
     .unwrap();
     assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
-    assert!(a.walk_to.is_none());
+    // a move to the point: its MoveTo is not quiet, its AI hears the end
+    assert_eq!(a.move_to.map(|m| m.quiet), Some(false));
     assert_eq!(
         imported(
             ARTIFACT_TYPE,

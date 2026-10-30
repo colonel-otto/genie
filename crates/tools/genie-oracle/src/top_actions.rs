@@ -4,7 +4,7 @@ use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, save
 use genie_core::GenieError;
 use genie_core::construction::build::{BuildAction, BuildTask};
 use genie_core::movement::fly::{FLY, Fly};
-use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo, MoveToAction};
+use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction};
 use genie_core::objects::masters::Task;
 use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::sprite::Graphic;
@@ -191,13 +191,12 @@ fn import_artifact(
     let sub = saved.move_to_sub(GenieError::unsupported(
         "a saved Artifact action with another sub-action",
     ))?;
-    let move_to = sub.map(sub_state).transpose()?;
-    // a move to an object (set_state 5): the target, and its quiet MoveTo's goal, a
-    // town centre's point or the target, with its range
-    let walk_to = match sub {
-        Some(sub) if base.target_id != -1 => Some(artifact_walk(sub)?),
-        _ => None,
-    };
+    // a move to an object (set_state 5) holds the target and a quiet MoveTo (to the target,
+    // or to a town centre's point); a move to a point (set_state 4) a MoveTo that is not quiet
+    let quiet = base.target_id != -1;
+    let move_to = sub
+        .map(|s| saved_move_to(s, saved.graphics, quiet))
+        .transpose()?;
     unit.actions
         .set_artifact(Some(genie_core::ownership::artifact::Artifact {
             state: base.state,
@@ -211,24 +210,10 @@ fn import_artifact(
                 (base.target_x != -1.0).then_some(saved.point())
             },
             target: base.target_id,
-            walk_to,
             enter: None,
             moving,
         }));
     Ok(())
-}
-
-/// An Artifact's `MoveTo` to its target: the goal (a point or an object) and the range.
-fn artifact_walk(sub: &Action) -> Result<(Goal, f32), GenieError> {
-    let b = sub.base().ok_or(MOVE_TO_BASELESS)?;
-    let goal = if b.target_id == -1 {
-        Goal::Point(
-            target_point(b).ok_or(GenieError::unsupported("a saved MoveTo without its point"))?,
-        )
-    } else {
-        Goal::Target(b.target_id)
-    };
-    Ok((goal, sub_range(sub)?))
 }
 
 /// A `MoveTo` of its own (type 1): its state, goal, range, sprite and wait; not quiet.

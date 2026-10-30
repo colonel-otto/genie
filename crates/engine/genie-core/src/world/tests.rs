@@ -7961,10 +7961,13 @@ fn teardown_world() -> World {
             },
         ],
     );
+    // no sprites: a MoveTo the masters make shows none
     let master = |id, kind, class| Master {
         id,
         kind,
         class,
+        move_sprite: -1,
+        standing_sprite: -1,
         ..Master::default()
     };
     let table = Masters::new([
@@ -7991,8 +7994,12 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     t.players[1].objects[0].actions.set_artifact(Some(Artifact {
         target: 9149,
         goal: Some([20.0, 20.0, 0.0]),
-        walk_to: Some((crate::movement::move_to::Goal::Target(9149), 1.0)),
-        move_to: Some(MoveTo::Moving),
+        move_to: Some(MoveToAction {
+            goal: None,
+            target: 9149,
+            range: 1.0,
+            ..MoveToAction::sub_in(MoveTo::Moving)
+        }),
         ..Artifact::new(false, None)
     }));
     t.clear_actions(1, 0).unwrap();
@@ -10984,7 +10991,11 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
             crate::objects::masters::Task::default(),
             10028,
         )));
-    assert_eq!(u.head_takes_point(AI_POINT, 1), Ok(PointMove::Declined));
+    let none = std::collections::BTreeMap::new();
+    assert_eq!(
+        u.head_takes_point(AI_POINT, 1, None, &none),
+        Ok(PointMove::Declined)
+    );
     let mut u = mover_unit(7);
     u.unmodelled_action = Some(GenieError::unsupported("a test's action"));
     assert!(ai_move_of(&mut u, forced(false), 47).is_err());

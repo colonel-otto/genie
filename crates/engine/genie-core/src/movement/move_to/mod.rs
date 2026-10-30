@@ -267,7 +267,21 @@ pub struct SpriteReads<'a> {
     pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
 }
 
-impl SpriteReads<'_> {
+impl<'a> SpriteReads<'a> {
+    /// The defaults of a unit of `master` with the terrain look `look` ([`MoveDefaults::of`]),
+    /// and the sprites' table.
+    #[must_use]
+    pub fn of(
+        master: &crate::objects::masters::Master,
+        look: Option<&crate::combat::abilities::Look>,
+        graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+    ) -> Self {
+        Self {
+            defaults: MoveDefaults::of(master, look),
+            graphics,
+        }
+    }
+
     /// The sprite of a `MoveTo` to a point (`FUN_140aa0d30`) whose maker gives `given`.
     ///
     /// # Errors

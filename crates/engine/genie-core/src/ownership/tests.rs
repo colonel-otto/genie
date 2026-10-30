@@ -82,7 +82,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
 #[test]
 fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     let artifact = || Artifact {
-        move_to: Some(MoveTo::Moving),
+        move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         goal: Some([32.5, 89.5, 0.0]),
         target: 600,
         ..Artifact::new(false, None)

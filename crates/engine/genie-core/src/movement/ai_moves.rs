@@ -7,7 +7,9 @@ use crate::objects::masters::action_type;
 
 use crate::gathering::hunt::HuntMove;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveTo, MoveToAction, ai_sprite, object_sprite, point_sprite};
+use crate::movement::move_to::{
+    MoveTo, MoveToAction, SpriteReads, ai_sprite, object_sprite, point_sprite,
+};
 use crate::objects::masters::Masters;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
@@ -95,7 +97,7 @@ impl Unit {
         {
             return Ok(false);
         }
-        match self.head_takes_point(m.point, player)? {
+        match self.head_takes_point(m.point, player, masters, graphics)? {
             PointMove::Taken(released) => {
                 if let Some(t) = released {
                     releases.push((t, by));
@@ -151,6 +153,8 @@ impl Unit {
         &mut self,
         point: [f32; 3],
         player: usize,
+        masters: Option<&Masters>,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
     ) -> Result<PointMove, GenieError> {
         if self.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(
@@ -171,11 +175,16 @@ impl Unit {
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
             Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
-                let gone = self
-                    .actions
-                    .artifact_mut()
-                    .map(|a| a.take_point(point))
-                    .unwrap_or_default();
+                // the sprite its MoveTo's constructor takes for none (FUN_140aa0d30)
+                let sprites = SpriteReads::of(
+                    self.master_in(masters)?,
+                    self.abilities.look.as_ref(),
+                    graphics,
+                );
+                let gone = match self.actions.artifact_mut() {
+                    Some(a) => a.take_point(point, &sprites)?,
+                    None => crate::ownership::artifact::SubActionsGone::default(),
+                };
                 if gone.stops {
                     self.body
                         .mover_mut()

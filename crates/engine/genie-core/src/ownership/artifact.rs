@@ -10,9 +10,7 @@
 use crate::GenieError;
 use crate::movement::Me;
 use crate::movement::PathAsk;
-use crate::movement::move_to::{
-    Goal, MoveDefaults, MoveTo, Sprites, start_walk_shown, walk_or_give_up,
-};
+use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads};
 use crate::objects::actions::Action;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
@@ -37,9 +35,6 @@ pub struct Targets {
 /// What the Artifact's update reads of its unit ([`Artifact::update`]).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArtifactReads {
-    /// The sprites its `MoveTo`s' constructors take for none (`FUN_140aa0d30`, `FUN_140aa0df0`),
-    /// from the unit's master ([`MoveDefaults::of`]).
-    pub(crate) defaults: MoveDefaults,
     /// The animal may change hands: it is not of the combat type with `+0x924` 0
     /// (`FUN_14107cc90`).
     pub(crate) searches: bool,
@@ -83,16 +78,13 @@ pub struct Artifact {
     pub timer: f32,
     /// Gaia waits half as long between checks.
     pub gaia: bool,
-    /// The `MoveTo` sub-action of a move its player gave the animal, and the action's point
-    /// (`+0x38`..`+0x40`) it walks to.
-    pub move_to: Option<MoveTo>,
+    /// The `MoveTo` sub-action of a move its player gave the animal: to the point
+    /// ([`Artifact::take_point`]) or, quiet, to an object ([`Artifact::take_object`]).
+    pub move_to: Option<MoveToAction>,
     /// The action's point (`+0x38`..`+0x40`): where its `MoveTo` walks, or its target's place.
     pub goal: Option<[f32; 3]>,
     /// The target of a move to an object (`+0x20`, its id at `+0x30`), −1 for none.
     pub target: i32,
-    /// Its `MoveTo` to an object (`set_state(5)`): the goal, the range and that it is quiet
-    /// (`+0x60` set: its end posts no notify); None for a `MoveTo` to the point.
-    pub walk_to: Option<(Goal, f32)>,
     /// The Enter an enter command made its sub-action (`FUN_1410847e0` under an Artifact on
     /// top), which its update runs first ([`Artifact::hold_enter`]).
     pub enter: Option<crate::garrison::EnterAction>,
@@ -123,20 +115,8 @@ impl Artifact {
             move_to: None,
             goal: None,
             target: -1,
-            walk_to: None,
             enter: None,
             moving,
-        }
-    }
-
-    /// The sprite its `MoveTo` shows (`set_state`, `0x140aace30`, gives its constructor the
-    /// task's moving sprite): that, else the constructor's default from `defaults`
-    /// (`FUN_140aa0df0`'s toward an object, state 5; `FUN_140aa0d30`'s toward the point, 4).
-    #[must_use]
-    pub const fn move_shown(&self, defaults: MoveDefaults) -> Option<i16> {
-        match self.walk_to {
-            Some(_) => defaults.to_object(self.moving),
-            None => defaults.to_point(self.moving),
         }
     }
 
@@ -151,7 +131,6 @@ impl Artifact {
     /// if it walks, goes too. The stop and the release are the caller's.
     pub fn drop_sub_actions(&mut self) -> SubActionsGone {
         let walked = self.move_to.take().is_some();
-        self.walk_to = None;
         let enter = self.enter.take();
         SubActionsGone {
             stops: walked || enter.is_some_and(|e| e.move_to.is_some()),
@@ -204,46 +183,74 @@ impl Artifact {
     /// with `+0x60` 1) to the target starts, within 1 for livestock going to a building
     /// (`to_building`), else 0 (the unit's slot 0x268, 0); one of livestock to a town centre
     /// (master 109, `to_town_centre`) walks to the point 0.2 below the centre's on both axes
-    /// instead, without the target. Then the action checks again (`set_state(6)`). Returns the
-    /// targets let go and taken, then the sub-actions that went.
+    /// instead, without the target. The `MoveTo` takes the task's moving sprite, else
+    /// `FUN_140aa0df0`'s default (`sprites`). Then the action checks again (`set_state(6)`).
+    /// Returns the targets let go and taken, then the sub-actions that went.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
     pub fn take_object(
         &mut self,
         (target, alive): (i32, bool),
         at: [f32; 3],
         to_building: bool,
         to_town_centre: bool,
-    ) -> (Targets, SubActionsGone) {
+        sprites: &SpriteReads<'_>,
+    ) -> Result<(Targets, SubActionsGone), GenieError> {
+        let sprite = sprites.to_object(self.moving)?;
         let released = self.set_target(-1, false).released;
         let taken = self.set_target(target, alive).taken;
         let gone = self.drop_sub_actions();
         self.goal = Some(at);
         let range = if to_building { 1.0 } else { 0.0 };
-        let goal = if to_town_centre {
-            Goal::Point([
+        let (goal, walk_target) = if to_town_centre {
+            let point = [
                 at[0] - TOWN_CENTRE_OFFSET,
                 at[1] - TOWN_CENTRE_OFFSET,
                 at[2],
-            ])
+            ];
+            (Some(point), -1)
         } else {
-            Goal::Target(target)
+            (None, target)
         };
-        self.walk_to = Some((goal, range));
-        self.move_to = Some(MoveTo::Start);
+        self.move_to = Some(MoveToAction {
+            state: MoveTo::Start,
+            goal,
+            target: walk_target,
+            range,
+            sprite,
+            quiet: true,
+            wait: MoveWait::NEW,
+        });
         self.state = CHECK;
-        (Targets { released, taken }, gone)
+        Ok((Targets { released, taken }, gone))
     }
 
     /// Slot 8 (`FUN_140aaca30`) on a move to a point, which the action takes: the point, then
     /// `set_state(4)` (`0x140aace30`): its sub-actions go ([`Artifact::drop_sub_actions`]), a
     /// `MoveTo` to the point within 0 (`FUN_140aa0d30` with its task's sprite,
-    /// [`Artifact::move_shown`]) is added and starts (state 3 for an animal away from the point), and
-    /// the action checks again (`set_state` 6). Returns the sub-actions that went.
-    pub fn take_point(&mut self, point: [f32; 3]) -> SubActionsGone {
+    /// else its default from `sprites`; not quiet) is added and starts (state 3 for an animal
+    /// away from the point), and the action checks again (`set_state` 6). Returns the
+    /// sub-actions that went.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn take_point(
+        &mut self,
+        point: [f32; 3],
+        sprites: &SpriteReads<'_>,
+    ) -> Result<SubActionsGone, GenieError> {
+        let sprite = sprites.to_point(self.moving)?;
         self.goal = Some(point);
         let gone = self.drop_sub_actions();
-        self.move_to = Some(MoveTo::Start);
+        self.move_to = Some(MoveToAction {
+            quiet: false,
+            ..MoveToAction::sub_to_point(point, 0.0, sprite)
+        });
         self.state = CHECK;
-        gone
+        Ok(gone)
     }
 
     /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it (also before a
@@ -308,20 +315,19 @@ impl Artifact {
         Ok(new)
     }
 
-    /// The update's first part on the step: its `MoveTo` sub-action (`FUN_140a992b0`), whose
-    /// start shows its sprite ([`Artifact::move_shown`]) before the motion step; the units in
-    /// its way go to the unit AI at once (notify 0x215). A `MoveTo` whose motion step gave up
-    /// fails (`set_state` 13: an animal never waits as a villager may); the failed one's update
-    /// returns 3. Once it ended (codes 1 to 5) the Artifact drops it (`FUN_140a98620`: its
-    /// teardown stops the unit, slot 0x5d0), its point (−1) and its target (slot 0x68 with
-    /// none: let go), and the unit AI hears it, with the move action value, unless it was
-    /// quiet (to an object): its completion (0x1fa) from its update in state 1, or its failure
-    /// (0x1f9) from state 13; each at once. A waiting `MoveTo` is not modelled.
+    /// The update's first part on the step: its `MoveTo` sub-action (`FUN_140a992b0`,
+    /// [`MoveToAction::sub_update`]), whose start shows its sprite before the motion step; after
+    /// a start or a move the units in its way go to the unit AI at once (notify 0x215). A
+    /// `MoveTo` whose motion step gave up fails (`set_state` 13: an animal never waits as a
+    /// villager may); the failed one's update returns 3. Once it ended (codes 1 to 5) the
+    /// Artifact drops it (`FUN_140a98620`: its teardown stops the unit, slot 0x5d0), its point
+    /// (−1) and its target (slot 0x68 with none: let go), and the unit AI hears it, with the
+    /// move action value, unless it was quiet (to an object): its completion (0x1fa) from its
+    /// update in state 1, or its failure (0x1f9) from state 13; each at once.
     ///
     /// # Errors
     ///
-    /// A `MoveTo` to the point without it, a sprite the table lacks, what the motion step does
-    /// not model, and the release's and the notify's.
+    /// What the motion step does not model, and the release's and the notify's.
     pub(crate) fn walk(
         &mut self,
         c: &mut Step<'_>,
@@ -329,49 +335,28 @@ impl Artifact {
         me: Me,
         r: &ArtifactReads,
     ) -> Result<(), GenieError> {
-        let notify = match self.move_to {
-            Some(MoveTo::Start) => {
-                let (goal, range, quiet) = match self.walk_to {
-                    Some((goal, range)) => (goal, range, true),
-                    None => (
-                        Goal::Point(self.goal.ok_or(GenieError::unsupported(
-                            "an Artifact MoveTo without its point",
-                        ))?),
-                        0.0,
-                        false,
-                    ),
-                };
-                self.move_to = Some(MoveTo::Moving);
+        let Some(move_to) = &mut self.move_to else {
+            return Ok(());
+        };
+        let notify = match move_to.state {
+            MoveTo::Arrived => crate::unit_ai::ACTION_COMPLETED,
+            MoveTo::Failed => crate::unit_ai::ACTION_FAILED,
+            state => {
                 // a motion step that gives up in the start's update fails the MoveTo, as in
                 // its moving state
-                let (walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-                let mut sprites = Sprites {
+                let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
+                let shown = (state == MoveTo::Start).then_some(Shown {
                     sprite: &mut unit.sprite,
                     rng: beside.sprite_rng,
-                    graphics: beside.graphics,
-                };
-                let shown = sprites.shown(self.move_shown(r.defaults))?;
+                    graphic: move_to.sprite,
+                });
                 let ask = PathAsk::default();
-                let started = start_walk_shown(walk, (goal, range, quiet), ask, Some(shown))?;
-                unit.post_in_the_way()?;
-                self.move_to = Some(started.unwrap_or(MoveTo::Failed));
+                let _ = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown)?;
+                if state != MoveTo::Waiting {
+                    unit.post_in_the_way()?;
+                }
                 return Ok(());
             }
-            Some(MoveTo::Moving) => {
-                let (walk, _) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-                let state = walk_or_give_up(walk)?;
-                unit.post_in_the_way()?;
-                self.move_to = Some(state.unwrap_or(MoveTo::Failed));
-                return Ok(());
-            }
-            Some(MoveTo::Arrived) => crate::unit_ai::ACTION_COMPLETED,
-            Some(MoveTo::Failed) => crate::unit_ai::ACTION_FAILED,
-            Some(MoveTo::Waiting) => {
-                return Err(GenieError::unsupported(
-                    "an Artifact's waiting MoveTo (state 2)",
-                ));
-            }
-            None => return Ok(()),
         };
         let (quiet, released) = self.end_walk();
         if let Some(m) = unit.body.mover_mut() {
@@ -389,10 +374,10 @@ impl Artifact {
     /// The `MoveTo` ended (codes 1 to 5): it goes with the point and the target (slot 0x68 with
     /// none); true when it was quiet, and the target let go.
     fn end_walk(&mut self) -> (bool, Option<i32>) {
-        self.move_to = None;
+        let quiet = self.move_to.take().is_some_and(|m| m.quiet);
         self.goal = None;
         let released = self.set_target(-1, false).released;
-        (self.walk_to.take().is_some(), released)
+        (quiet, released)
     }
 
     /// The update's second part after `dt_ms`: the state's step ([`Handover`]): the check's new
@@ -520,8 +505,8 @@ impl Unit {
 
     /// The Artifact's walk and its check for a new owner ([`Artifact::update`] on the step, the
     /// action copied out of its list and written back after): what it reads of the unit
-    /// ([`ArtifactReads`]: its master's `MoveTo` defaults; whether it may change hands, the
-    /// combat objects whose sight's capture flag is 0 never do). The handover found, if any;
+    /// ([`ArtifactReads`]: whether it may change hands, the combat objects whose sight's capture
+    /// flag is 0 never do). The handover found, if any;
     /// none without an Artifact.
     pub(crate) fn artifact_walk_and_check(
         &mut self,
@@ -532,11 +517,6 @@ impl Unit {
         let Some(mut artifact) = self.actions.artifact().copied() else {
             return Ok(None);
         };
-        // the sprites its MoveTos' constructors take for none (FUN_140aa0d30, FUN_140aa0df0)
-        let defaults = self.master(&c.w.masters, c.player).map_or_else(
-            |_| MoveDefaults::default(),
-            |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
-        );
         let capture =
             c.w.spatial
                 .sight
@@ -544,7 +524,6 @@ impl Unit {
                 .and_then(|v| v.seer(self.id))
                 .map(|s| s.capture);
         let r = ArtifactReads {
-            defaults,
             searches: !(self.combat && capture == Some(0)),
             by,
         };
@@ -596,6 +575,9 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::combat::attack::tests::Rig;
+    use crate::movement::move_to::MoveDefaults;
+    use crate::objects::sprite::Graphic;
+    use std::collections::BTreeMap;
 
     #[test]
     fn a_check_finds_no_owner_and_waits_one_second() {
@@ -612,27 +594,39 @@ mod tests {
             timer: 0.4,
             ..Artifact::new(false, None)
         };
-        assert_eq!(a.take_point([28.5, 93.5, 0.0]), SubActionsGone::default());
         assert_eq!(
-            (a.state, a.timer, a.move_to, a.goal),
-            (6, 0.4, Some(MoveTo::Start), Some([28.5, 93.5, 0.0]))
+            a.take_point([28.5, 93.5, 0.0], &sprites()),
+            Ok(SubActionsGone::default())
         );
+        assert_eq!(
+            (a.state, a.timer, a.goal),
+            (6, 0.4, Some([28.5, 93.5, 0.0]))
+        );
+        // a MoveTo to the point within 0 that is not quiet: the action's AI hears its end
+        let to_point = MoveToAction {
+            quiet: false,
+            ..MoveToAction::sub_to_point([28.5, 93.5, 0.0], 0.0, None)
+        };
+        assert_eq!(a.move_to, Some(to_point));
         // a second move while the first walks: its MoveTo goes, which stops the unit (the
         // sheep 9520 in 768)
         let mut walking = Artifact {
-            move_to: Some(MoveTo::Moving),
+            move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
             ..a
         };
         assert_eq!(
-            walking.take_point([28.5, 94.5, 0.0]),
-            SubActionsGone {
+            walking.take_point([28.5, 94.5, 0.0], &sprites()),
+            Ok(SubActionsGone {
                 stops: true,
                 released: None
-            }
+            })
         );
-        assert_eq!(walking.move_to, Some(MoveTo::Start));
+        assert_eq!(walking.move_to.map(|m| m.state), Some(MoveTo::Start));
         // a MoveTo that ended goes with the point, then the check waits again
-        a.move_to = Some(MoveTo::Arrived);
+        a.move_to = Some(MoveToAction {
+            state: MoveTo::Arrived,
+            ..to_point
+        });
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         let found = rig.run(50, |c, u, _, _| a.update(c, u, me(), &reads()));
         assert_eq!(found, Ok(None));
@@ -659,9 +653,12 @@ mod tests {
         };
         let mut a = Artifact::new(false, None);
         a.enter = Some(walking_enter());
-        assert_eq!(a.take_point([32.854_168, 120.729_164, 0.0]), by_enter);
         assert_eq!(
-            (a.enter, a.move_to, a.goal),
+            a.take_point([32.854_168, 120.729_164, 0.0], &sprites()),
+            Ok(by_enter)
+        );
+        assert_eq!(
+            (a.enter, a.move_to.map(|m| m.state), a.goal),
             (
                 None,
                 Some(MoveTo::Start),
@@ -671,12 +668,17 @@ mod tests {
         // to an object: the old target goes and the new one comes first, then the Enter
         let mut b = Artifact::new(false, None);
         b.enter = Some(walking_enter());
-        let (targets, gone) = b.take_object((9149, true), [5.0, 6.0, 0.0], true, false);
+        let (targets, gone) = b
+            .take_object((9149, true), [5.0, 6.0, 0.0], true, false, &sprites())
+            .unwrap();
         assert_eq!(
             (targets.released, targets.taken, gone),
             (None, Some(9149), by_enter)
         );
-        assert_eq!((b.enter, b.move_to), (None, Some(MoveTo::Start)));
+        assert_eq!(
+            (b.enter, b.move_to.map(|m| m.state)),
+            (None, Some(MoveTo::Start))
+        );
         // an Enter that does not walk stops nothing
         let mut c = Artifact::new(false, None);
         c.enter = Some(crate::garrison::EnterAction::new(
@@ -685,11 +687,11 @@ mod tests {
             &crate::garrison::tests::enter_task(0.0, 20),
         ));
         assert_eq!(
-            c.take_point([3.0, 4.0, 0.0]),
-            SubActionsGone {
+            c.take_point([3.0, 4.0, 0.0], &sprites()),
+            Ok(SubActionsGone {
                 stops: false,
                 released: Some(11970)
-            }
+            })
         );
     }
 
@@ -760,10 +762,9 @@ mod tests {
         assert_eq!(a.hold_enter(enter(7935)), gone(false, Some(7934)));
         // the Artifact's own MoveTo goes with its goal and stops the unit
         a.enter = None;
-        a.move_to = Some(MoveTo::Moving);
-        a.walk_to = Some((Goal::Point([3.0, 4.0, 0.0]), 0.0));
+        a.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
         assert_eq!(a.hold_enter(enter(7934)), gone(true, None));
-        assert_eq!((a.move_to, a.walk_to), (None, None));
+        assert_eq!(a.move_to, None);
     }
 
     #[test]
@@ -811,7 +812,7 @@ mod tests {
         assert_eq!(b.state, 6);
         // a walking animal's MoveTo goes (its teardown stops the unit), and its target is let go
         let mut walking = Artifact::new(false, None);
-        let _ = walking.take_point([28.5, 94.5, 0.0]);
+        let _ = walking.take_point([28.5, 94.5, 0.0], &sprites()).unwrap();
         walking.target = 9149;
         assert_eq!(
             walking.stop(),
@@ -845,8 +846,7 @@ mod tests {
         let mut a = Artifact::new(true, None);
         a.goal = Some([5.0, 6.0, 0.0]);
         a.target = 9149;
-        a.walk_to = Some((Goal::Target(9149), 1.0));
-        a.move_to = Some(MoveTo::Moving);
+        a.move_to = Some(to_object(9149, MoveTo::Moving));
         let found = a.step(50, Some(1)).unwrap();
         assert_eq!(
             found,
@@ -859,8 +859,8 @@ mod tests {
             })
         );
         assert_eq!(
-            (a.move_to, a.walk_to, a.goal, a.target),
-            (None, None, Some([5.0, 6.0, 0.0]), 9149)
+            (a.move_to, a.goal, a.target),
+            (None, Some([5.0, 6.0, 0.0]), 9149)
         );
         assert_eq!(a.stop(), (SubActionsGone::default(), None));
         assert_eq!(a.target, 9149);
@@ -884,7 +884,9 @@ mod tests {
     #[test]
     fn a_move_to_an_object_lets_the_old_target_go_and_takes_the_new() {
         let mut a = Artifact::new(false, None);
-        let (t, gone) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
+        let (t, gone) = a
+            .take_object((9149, true), [10.0, 12.0, 0.0], true, false, &sprites())
+            .unwrap();
         assert_eq!(
             (t, gone),
             (
@@ -895,8 +897,14 @@ mod tests {
                 SubActionsGone::default()
             )
         );
-        assert_eq!((a.target, a.move_to), (9149, Some(MoveTo::Start)));
-        let (t, gone) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
+        // a quiet MoveTo to the target within 1 (a building)
+        assert_eq!(
+            (a.target, a.move_to),
+            (9149, Some(to_object(9149, MoveTo::Start)))
+        );
+        let (t, gone) = a
+            .take_object((9149, true), [10.0, 12.0, 0.0], true, false, &sprites())
+            .unwrap();
         assert!(gone.stops);
         assert_eq!(
             t,
@@ -905,7 +913,9 @@ mod tests {
                 taken: Some(9149)
             }
         );
-        let (t, _) = a.take_object((300, false), [1.0, 2.0, 0.0], false, false);
+        let (t, _) = a
+            .take_object((300, false), [1.0, 2.0, 0.0], false, false, &sprites())
+            .unwrap();
         assert_eq!(
             t,
             Targets {
@@ -913,7 +923,11 @@ mod tests {
                 taken: None
             }
         );
-        assert_eq!(a.target, -1);
+        // not a building: within 0
+        assert_eq!(
+            (a.target, a.move_to.map(|m| (m.target, m.range))),
+            (-1, Some((300, 0.0)))
+        );
         a.target = 9149;
         assert_eq!(
             a.tear_down(),
@@ -925,7 +939,7 @@ mod tests {
                 }
             )
         );
-        assert_eq!((a.target, a.move_to, a.walk_to), (-1, None, None));
+        assert_eq!((a.target, a.move_to), (-1, None));
         assert_eq!(a.tear_down(), (None, SubActionsGone::default()));
     }
 
@@ -936,12 +950,15 @@ mod tests {
     #[test]
     fn a_walk_the_motion_step_gives_up_at_its_start_fails() {
         let mut a = Artifact::new(false, None);
-        let _ = a.take_point([35.5, 88.5, 0.0]);
+        let _ = a.take_point([35.5, 88.5, 0.0], &sprites()).unwrap();
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         rig.mover_mut().stats.speed = 0.0;
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
-        assert_eq!((a.move_to, rig.posted()), (Some(MoveTo::Failed), vec![]));
+        assert_eq!(
+            (a.move_to.map(|m| m.state), rig.posted()),
+            (Some(MoveTo::Failed), vec![])
+        );
         rig.mover_mut().animated.speed = 1.0;
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
@@ -953,11 +970,9 @@ mod tests {
         assert_eq!(rig.mover().animated.speed, 0.0);
     }
 
-    /// The Artifact's reads in [`Rig`]'s world: no defaults, a searching animal, released by
-    /// itself.
+    /// The Artifact's reads in [`Rig`]'s world: a searching animal, released by itself.
     fn reads() -> ArtifactReads {
         ArtifactReads {
-            defaults: MoveDefaults::default(),
             searches: true,
             by: by(),
         }
@@ -981,21 +996,89 @@ mod tests {
         }
     }
 
+    /// The `MoveTo`s' sprites without defaults or a table: a `MoveTo` shows none.
+    fn sprites() -> SpriteReads<'static> {
+        static NONE: BTreeMap<i16, Graphic> = BTreeMap::new();
+        SpriteReads {
+            defaults: MoveDefaults::default(),
+            graphics: &NONE,
+        }
+    }
+
+    /// The quiet `MoveTo` in `state` to the building `target` within 1, without a sprite.
+    fn to_object(target: i32, state: MoveTo) -> MoveToAction {
+        MoveToAction {
+            goal: None,
+            target,
+            range: 1.0,
+            ..MoveToAction::sub_in(state)
+        }
+    }
+
+    /// A sprite `id` of 10 frames in 16 facets.
+    const fn graphic(id: i16) -> Graphic {
+        Graphic {
+            id,
+            frames: 10,
+            facets: 16,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        }
+    }
+
     /// The sprite its `MoveTo` shows: the task's moving sprite, else the default of its
     /// constructor, toward an object (`FUN_140aa0df0`) or the point (`FUN_140aa0d30`).
     #[test]
     fn an_artifact_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
-        let defaults = MoveDefaults {
-            point: Some(20),
-            object: Some(21),
+        let graphics = [3, 20, 21].map(|id| (id, graphic(id))).into();
+        let sprites = SpriteReads {
+            defaults: MoveDefaults {
+                point: Some(20),
+                object: Some(21),
+            },
+            graphics: &graphics,
         };
+        let shown = |a: &Artifact| a.move_to.and_then(|m| m.sprite).map(|g| g.id);
         let mut a = Artifact::new(false, None);
-        let _ = a.take_point([28.5, 93.5, 0.0]);
-        assert_eq!(a.move_shown(defaults), Some(20));
-        let _ = a.take_object((9149, true), [1.0, 1.0, 0.0], false, false);
-        assert_eq!(a.move_shown(defaults), Some(21));
+        let _ = a.take_point([28.5, 93.5, 0.0], &sprites).unwrap();
+        assert_eq!(shown(&a), Some(20));
+        let _ = a
+            .take_object((9149, true), [1.0, 1.0, 0.0], false, false, &sprites)
+            .unwrap();
+        assert_eq!(shown(&a), Some(21));
         a.moving = Some(3);
-        assert_eq!(a.move_shown(defaults), Some(3));
+        let _ = a.take_point([28.5, 93.5, 0.0], &sprites).unwrap();
+        assert_eq!(shown(&a), Some(3));
+        // a sprite the table lacks fails the move before it changes anything
+        let before = Artifact {
+            moving: Some(4),
+            ..a
+        };
+        let mut lacking = before;
+        assert!(lacking.take_point([1.0, 1.0, 0.0], &sprites).is_err());
+        assert!(
+            lacking
+                .take_object((9149, true), [1.0, 1.0, 0.0], false, false, &sprites)
+                .is_err()
+        );
+        assert_eq!(lacking, before);
+    }
+
+    /// A move to a town centre's object by livestock (`FUN_140aa0df0` with master 109) walks to
+    /// the point 0.2 below the centre's on both axes, without the target.
+    #[test]
+    fn livestock_moved_to_a_town_centre_walks_to_the_point_below_it() {
+        let mut a = Artifact::new(false, None);
+        let _ = a
+            .take_object((9149, true), [10.0, 12.0, 0.0], true, true, &sprites())
+            .unwrap();
+        assert_eq!(
+            a.move_to.map(|m| (m.goal, m.target, m.range, m.quiet)),
+            Some((Some([9.8, 11.8, 0.0]), -1, 1.0, true))
+        );
+        assert_eq!(a.target, 9149);
     }
 
     /// The walk's start shows its sprite (`0x140aa29e0`'s `set_state(4)`) before the motion
@@ -1004,47 +1087,79 @@ mod tests {
     #[test]
     fn an_artifact_s_walk_shows_its_sprite_as_it_starts() {
         let mut a = Artifact::new(false, Some(3));
-        let _ = a.take_point([35.5, 88.5, 0.0]);
+        let graphics = BTreeMap::from([(3, graphic(3))]);
+        let with_3 = SpriteReads {
+            defaults: MoveDefaults::default(),
+            graphics: &graphics,
+        };
+        let _ = a.take_point([35.5, 88.5, 0.0], &with_3).unwrap();
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         // the top speed derives from the base and the sprite shown
         (rig.mover_mut().stats.speed, rig.mover_mut().stats.base) = (0.0, 0.0);
-        let graphic = crate::objects::sprite::Graphic {
-            id: 3,
-            frames: 10,
-            facets: 16,
-            speed_multiplier: 1.0,
-            frame_duration: 0.1,
-            replay_delay: 0.0,
-            flags: 1,
-        };
-        assert_eq!(rig.t.graphics.insert(3, graphic), None);
+        assert_eq!(rig.t.graphics.insert(3, graphic(3)), None);
         rig.mover_mut().in_the_way = vec![77];
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         let in_the_way = (crate::unit_ai::IN_THE_WAY, [77, -1, -1]);
-        assert_eq!((a.move_to, rig.sprite()), (Some(MoveTo::Failed), Some(3)));
+        assert_eq!(
+            (a.move_to.map(|m| m.state), rig.sprite()),
+            (Some(MoveTo::Failed), Some(3))
+        );
         assert_eq!(rig.posted(), vec![in_the_way]);
         let mut walking = Artifact::new(false, None);
-        let _ = walking.take_point([35.5, 88.5, 0.0]);
-        walking.move_to = Some(MoveTo::Moving);
+        let _ = walking.take_point([35.5, 88.5, 0.0], &sprites()).unwrap();
+        let start = walking.move_to.unwrap();
+        walking.move_to = Some(MoveToAction {
+            state: MoveTo::Moving,
+            ..start
+        });
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         rig.mover_mut().in_the_way = vec![77];
         rig.run(50, |c, u, _, _| walking.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
-            (walking.move_to, rig.posted()),
+            (walking.move_to.map(|m| m.state), rig.posted()),
             (Some(MoveTo::Moving), vec![in_the_way])
         );
-        // a MoveTo to the point without its point, and a waiting one, are not modelled
-        let mut lost = Artifact {
-            move_to: Some(MoveTo::Start),
+        // a waiting MoveTo counts the update's time and posts no unit in the way; at its delay
+        // it asks again
+        let mut waiting = Artifact {
+            move_to: Some(MoveToAction {
+                state: MoveTo::Waiting,
+                wait: MoveWait {
+                    state: 1,
+                    timer: 0.92,
+                    delay: 1.0,
+                },
+                ..start
+            }),
             ..Artifact::new(false, None)
         };
-        assert!(
-            rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
-                .is_err()
+        let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
+        rig.mover_mut().in_the_way = vec![77];
+        rig.run(50, |c, u, _, _| waiting.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!(
+            (
+                waiting.move_to.map(|m| (m.state, m.wait.timer)),
+                rig.posted()
+            ),
+            (Some((MoveTo::Waiting, 0.92 + 0.05)), vec![])
         );
-        lost.move_to = Some(MoveTo::Waiting);
+        rig.run(50, |c, u, _, _| waiting.walk(c, u, me(), &reads()))
+            .unwrap();
+        assert_eq!(
+            waiting.move_to.map(|m| (m.state, m.wait.timer)),
+            Some((MoveTo::Start, 0.0))
+        );
+        // a MoveTo of its own without its point is not modelled
+        let mut lost = Artifact {
+            move_to: Some(MoveToAction {
+                goal: None,
+                ..MoveToAction::sub_in(MoveTo::Start)
+            }),
+            ..Artifact::new(false, None)
+        };
         assert!(
             rig.run(50, |c, u, _, _| lost.walk(c, u, me(), &reads()))
                 .is_err()
@@ -1061,8 +1176,7 @@ mod tests {
         let mut a = Artifact::new(false, None);
         a.target = 9149;
         a.goal = Some([1.0, 1.0, 0.0]);
-        a.walk_to = Some((Goal::Target(9149), 1.0));
-        a.move_to = Some(MoveTo::Arrived);
+        a.move_to = Some(to_object(9149, MoveTo::Arrived));
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
@@ -1071,7 +1185,10 @@ mod tests {
         );
         assert_eq!(rig.posted(), vec![]);
         a.target = 77;
-        a.move_to = Some(MoveTo::Failed);
+        a.move_to = Some(MoveToAction {
+            quiet: false,
+            ..MoveToAction::sub_in(MoveTo::Failed)
+        });
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         let failed = (

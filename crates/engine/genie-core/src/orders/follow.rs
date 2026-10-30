@@ -447,16 +447,20 @@ impl World {
         point: [f32; 3],
     ) -> Result<bool, GenieError> {
         let by = self.releaser(player, idx);
-        let (released, left) =
-            match self.players[player].objects[idx].head_takes_point(point, player)? {
-                crate::movement::ai_moves::PointMove::Declined => return Ok(false),
-                crate::movement::ai_moves::PointMove::Taken(released) => (released, None),
-                crate::movement::ai_moves::PointMove::Repairs(released, left) => (released, left),
-                crate::movement::ai_moves::PointMove::Sails => {
-                    self.transport_move(player, idx, point)?;
-                    return Ok(true);
-                }
-            };
+        let (released, left) = match self.players[player].objects[idx].head_takes_point(
+            point,
+            player,
+            self.masters.get(player),
+            &self.graphics,
+        )? {
+            crate::movement::ai_moves::PointMove::Declined => return Ok(false),
+            crate::movement::ai_moves::PointMove::Taken(released) => (released, None),
+            crate::movement::ai_moves::PointMove::Repairs(released, left) => (released, left),
+            crate::movement::ai_moves::PointMove::Sails => {
+                self.transport_move(player, idx, point)?;
+                return Ok(true);
+            }
+        };
         if let Some(t) = left {
             self.leave_builders(t)?;
         }

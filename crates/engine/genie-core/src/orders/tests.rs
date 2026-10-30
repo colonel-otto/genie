@@ -640,10 +640,13 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
             },
         ],
     );
+    // no sprites: a MoveTo the masters make shows none
     let master = |id, formation_category| Master {
         id,
         kind: 70,
         formation_category,
+        move_sprite: -1,
+        standing_sprite: -1,
         ..Master::default()
     };
     t.masters = vec![

@@ -361,7 +361,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
         u.top_sub_action()
     };
     let mut artifact = crate::ownership::artifact::Artifact::new(false, None);
-    artifact.move_to = Some(MoveTo::Moving);
+    artifact.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Artifact(artifact)), walking);
     let mut enter = crate::garrison::EnterAction::new(
         7,

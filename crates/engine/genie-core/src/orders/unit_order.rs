@@ -44,12 +44,18 @@ impl World {
             .ok_or(GenieError::unsupported(
                 "an Artifact's move to an object without a place",
             ))?;
+        let unit = &self.players[player].objects[idx];
+        // the sprite its MoveTo's constructor takes for none (FUN_140aa0df0)
+        let sprites = crate::movement::move_to::SpriteReads::of(
+            unit.master(&self.masters, player)?,
+            unit.abilities.look.as_ref(),
+            &self.graphics,
+        );
         let unit = &mut self.players[player].objects[idx];
-        let (targets, gone) = unit
-            .actions
-            .artifact_mut()
-            .map(|a| a.take_object((target, alive), at, to_building, to_town_centre))
-            .unwrap_or_default();
+        let (targets, gone) = match unit.actions.artifact_mut() {
+            Some(a) => a.take_object((target, alive), at, to_building, to_town_centre, &sprites)?,
+            None => Default::default(),
+        };
         if let Some(t) = targets.released {
             self.release(t, by)?;
         }
