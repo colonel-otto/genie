@@ -94,7 +94,7 @@ pub(crate) fn new_sprite(
         *sprite = Some(ActiveSprite::start(g, rng));
     }
     if let Some(stats) = stats {
-        stats.speed = top_speed(stats.base, Some(&g));
+        stats.show(Some(&g));
     }
 }
 

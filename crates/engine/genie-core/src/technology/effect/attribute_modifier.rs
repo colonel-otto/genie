@@ -453,7 +453,7 @@ impl World {
                 master.follow_moving(&mut m.stats, attribute, &self.graphics, terrain);
                 // the top speed the unit reads with the sprite it shows, from the new base
                 if let Some(shown) = u.sprite.as_ref().map(|s| &s.graphic) {
-                    m.stats.speed = crate::objects::sprite::top_speed(m.stats.base, Some(shown));
+                    m.stats.show(Some(shown));
                 }
             }
             match attribute {

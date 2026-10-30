@@ -803,6 +803,7 @@ fn dying_animal(kind: u8, factor: f32) -> Unit {
     let animal = t.players[1].objects[1].id;
     t.players[1].objects[1].life.hp = 0.0;
     if let Some(m) = t.players[1].objects[1].body.mover_mut() {
+        m.stats.base = 0.737;
         m.stats.speed = 1.4003;
     }
     for _ in 0..2 {

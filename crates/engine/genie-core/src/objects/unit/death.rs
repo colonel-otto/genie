@@ -93,7 +93,7 @@ impl Unit {
                 && self.life.dying_sprite.is_some()
                 && let Some(id) = crate::objects::sprite::dying(master, None)
             {
-                self.show_dying(c, master, id)?;
+                self.show_dying(c, id)?;
             }
             return Ok(());
         }
@@ -124,7 +124,7 @@ impl Unit {
             crate::objects::sprite::dying(master, look)
         };
         if let Some(id) = shown {
-            self.show_dying(c, master, id)?;
+            self.show_dying(c, id)?;
         }
         Ok(())
     }
@@ -133,7 +133,7 @@ impl Unit {
     /// ([`crate::objects::sprite::top_speed`]: the deer 9655 of MarvinBlue/426048731, running at
     /// 1.4003 when the spears kill it in update 3147, moves at its master's 0.737 with its
     /// dying sprite).
-    fn show_dying(&mut self, c: &mut Step<'_>, master: &Master, id: i16) -> Result<(), GenieError> {
+    fn show_dying(&mut self, c: &mut Step<'_>, id: i16) -> Result<(), GenieError> {
         let g = c.w.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
         crate::objects::sprite::new_sprite(
             &mut self.sprite,
@@ -141,9 +141,6 @@ impl Unit {
             g,
             c.w.streams.get(Stream::Sprite),
         );
-        if let Some(m) = self.body.mover_mut() {
-            m.stats.speed = crate::objects::sprite::top_speed(master.max_speed, Some(&g));
-        }
         Ok(())
     }
 

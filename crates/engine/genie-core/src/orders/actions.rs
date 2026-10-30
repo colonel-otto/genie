@@ -389,7 +389,7 @@ pub(crate) fn switch_master(
             ))?;
             // the top speed the unit reads with the sprite it shows, from the new master's base
             if let Some(shown) = unit.sprite.as_ref().map(|s| &s.graphic) {
-                m.stats.speed = crate::objects::sprite::top_speed(m.stats.base, Some(shown));
+                m.stats.show(Some(shown));
             }
         }
         let id = unit.id;

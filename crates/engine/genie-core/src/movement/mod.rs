@@ -198,6 +198,16 @@ pub struct MoveStats {
     pub weapon_range: f32,
 }
 
+impl MoveStats {
+    /// The top speed with the sprite `shown` (None: none): the master's speed [`MoveStats::base`]
+    /// times the sprite's factor ([`crate::objects::sprite::top_speed`]). The one writer of
+    /// [`MoveStats::speed`] for a unit: a new sprite ([`crate::objects::sprite::new_sprite`]), a
+    /// standing show ([`Mover::shows`]) and a change of the base call it.
+    pub(crate) fn show(&mut self, shown: Option<&crate::objects::sprite::Graphic>) {
+        self.speed = crate::objects::sprite::top_speed(self.base, shown);
+    }
+}
+
 /// The moving object's own layer (`RGE_Moving_Object`, types 30 and up) with the animated layer
 /// below it ([`crate::objects::layers`]): a moving unit's movement state.
 #[derive(Clone, Debug, PartialEq, Diff)]
