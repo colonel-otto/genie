@@ -2,6 +2,7 @@
 //! and gather point, and the default task an object's first update starts.
 
 use crate::masters::{DefaultAction, MasterTable};
+use crate::top_actions::saved_move_to;
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
 use genie_core::movement::move_to::TargetMoved;
@@ -78,7 +79,6 @@ pub(super) fn saved_sprite(
 pub(super) fn saved_attack(
     sub: &genie_save::generated::world::Action,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>>,
-    move_to_state: &dyn Fn(u8) -> Result<genie_core::movement::move_to::MoveTo, GenieError>,
 ) -> Result<genie_core::combat::attack::Attack, GenieError> {
     use genie_core::movement::move_to::MOVE_TO;
     let b = sub
@@ -98,29 +98,10 @@ pub(super) fn saved_attack(
         let id = id as i16;
         (0 <= id).then(|| graphics.get(&id).copied()).flatten()
     };
-    // states 5 and 11 walk their MoveTo to a point: its own (`+0x38`..`+0x40`)
-    let goto = match b.sub_actions.entries().next() {
-        Some((MOVE_TO, s2)) if matches!(b.state, 5 | 11) => s2
-            .base()
-            .map_or([-1.0; 3], |m| [m.target_x, m.target_y, m.target_z]),
-        _ => [-1.0; 3],
-    };
-    let (move_to, move_wait) = match b.sub_actions.entries().next() {
-        None => (None, genie_core::movement::move_to::MoveWait::default()),
-        Some((MOVE_TO, s2)) => (
-            Some(move_to_state(s2.base().map_or(0, |b| b.state))?),
-            // its wait (`+0x6c`, `+0x70`, `+0x74`)
-            s2.rge_action_by_type
-                .as_deref()
-                .and_then(|t| t.rge_action_move_to.as_deref())
-                .map_or_else(genie_core::movement::move_to::MoveWait::default, |m| {
-                    genie_core::movement::move_to::MoveWait {
-                        state: m.movement_wait_state,
-                        timer: m.timer,
-                        delay: f32::from_bits(m.k_default_wait_time),
-                    }
-                }),
-        ),
+    // every MoveTo of the Attack is quiet (`FUN_140a7a170` with 1)
+    let move_to = match b.sub_actions.entries().next() {
+        None => None,
+        Some((MOVE_TO, s2)) => Some(saved_move_to(s2, Some(graphics), true)?),
         Some(_) => {
             return Err(GenieError::unsupported(
                 "a saved Attack with another sub-action",
@@ -141,8 +122,6 @@ pub(super) fn saved_attack(
             a.last_target_position_z,
         ],
         move_to,
-        move_wait,
-        goto,
         pending: a.need_to_attack != 0,
         swing: 0.0,
         rest: 0.0,

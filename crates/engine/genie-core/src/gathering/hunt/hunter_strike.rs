@@ -166,10 +166,13 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
         let (me_at, them) = (at(self.id)?, at(action.target)?);
-        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
+        let walker = crate::combat::attack::Walker {
+            state: self.life.state,
+            speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
+        };
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
-            speed,
+            walker,
             master,
             me_at,
             them,

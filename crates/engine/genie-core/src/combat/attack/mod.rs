@@ -15,7 +15,7 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveTo, MoveWait, TargetMoved};
+use crate::movement::move_to::{MoveToAction, TargetMoved};
 use crate::objects::layers::Body;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
@@ -33,6 +33,7 @@ mod unit;
 mod unit_ai_side;
 mod update;
 mod walk_and_swing;
+mod walks;
 mod work_slots;
 
 pub use self::constructor::{arms, arms_looking, engagement, gaps};
@@ -44,6 +45,7 @@ use self::sprites::{NO_OBJECT_STREAM, set_attack_timer};
 pub use self::sprites::{SwingSprites, swing_sprites};
 pub(crate) use self::sprites::{face_target, reset_sprite, show_arrived, volleys};
 use self::update::squared_reach;
+pub use self::walks::Walker;
 pub use self::work_slots::{Mark, Wielder, Worked};
 #[cfg(test)]
 use crate::combat::damage;
@@ -62,8 +64,6 @@ const HALF: f32 = 0.5;
 /// The squared reach of an attack without a range (`DAT_142ed48e4`): `0x3c23d70b`, which is
 /// `0.1f * 0.1f`, one ULP above `0.01f`.
 const TOUCH: f32 = crate::math::image::attack::TOUCH;
-/// A `MoveTo` starts arrived within this gap (`DAT_142eb99cc`).
-const ARRIVED: f32 = crate::math::image::attack::ARRIVED;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::math::image::attack::EPSILON;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
@@ -136,13 +136,9 @@ pub struct Attack {
     pub point: [f32; 3],
     /// `+0xa4`..`+0xac`: where it last saw its target.
     pub seen: [f32; 3],
-    /// The point its `MoveTo` of states 5 and 11 walks to (that `MoveTo`'s `+0x38`..`+0x40`):
-    /// where it saw its target when it took the state; −1 for none.
-    pub goto: [f32; 3],
-    /// The `MoveTo` sub-action to the target, its range the attack's.
-    pub move_to: Option<MoveTo>,
-    /// Its `MoveTo`'s wait after the motion step gave up.
-    pub move_wait: MoveWait,
+    /// The `MoveTo` sub-action (quiet) of states 4, 5 and 11: to the target within the attack's
+    /// range, to where it saw its target within it, or onto that point.
+    pub move_to: Option<MoveToAction>,
     /// `+0x9e`: a hit is still to land in this swing.
     pub pending: bool,
     /// `+0xb0` and `+0xb4`: the time of a swing past its sprite's length; a melee swing counts
@@ -220,6 +216,9 @@ struct Begun {
 /// What the Attack reads of its unit and its target when it starts.
 #[derive(Clone, Copy, Debug)]
 pub struct Engagement {
+    /// The unit's object state (`+0x640`), which its action list adds a `MoveTo` below 3 of
+    /// (`FUN_140a977e0`).
+    pub unit_state: u8,
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
     pub gap_squared: f32,
     /// The gap's root (`FUN_14118f680`).
@@ -445,6 +444,10 @@ const QUIET_SWINGS: [i16; 2] = [73, 559];
 
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
 const CLASS_60: i16 = 60;
+
+/// An Attack in a state that walks to its target object, without one.
+const ATTACK_WITHOUT_TARGET: GenieError =
+    GenieError::unreachable("an Attack's set_state(4) without its target");
 
 /// What readyToAttack answers: ready to swing, waiting for the attack timer, or the target out of
 /// reach at this gap (the unit follows it).

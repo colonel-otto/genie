@@ -1,5 +1,6 @@
 //! State 4's walk to the target and state 7's swing with its hit and its trample.
 
+use crate::combat::attack::walks::QUIET_CODE;
 use crate::combat::attack::{
     AfterHit, Attack, AttackReads, DRAW_SCALE, EPSILON, Fight, HALF, Hit, KILLED, MOVE, Readiness,
     after_hit, blast_so_far, reset_sprite, set_attack_timer, set_walker_anim, squared_reach,
@@ -9,10 +10,8 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::write_strike_back;
 use crate::combat::volley::Aimed;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{
-    Follow, MoveTo, Shown, follow_path_end, start_walk_shown, target_moved, walk_or_give_up,
-};
-use crate::movement::{Me, PathAsk, footprint_gap_squared};
+use crate::movement::move_to::GiveUp;
+use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
@@ -23,11 +22,18 @@ use crate::world::step::Step;
 use crate::{GenieError, combat::damage};
 
 impl Attack {
-    /// State 4 (cases 3, 4, 10): the `MoveTo` walks (`FUN_140a992b0`) to the target at `to`
-    /// (its place and radii); a unit still farther than its reach goes on (code 0), one within
-    /// it turns ready (`set_state` 6). The squared reach of a unit without a range is 0.01. A
-    /// `MoveTo` that arrived returns 1: the list deletes it (its destructor, `0x140aa1f30`,
-    /// stops the unit) and the unit turns ready (`set_state` 6).
+    /// States 4, 5 and 11 (cases 3, 4, 10): the sub-action list's update (`FUN_140a992b0`,
+    /// [`Attack::update_list`]) walks the quiet `MoveTo` to the target at `to` (its place and
+    /// radii) or to where it was seen, and its code decides. 0 (it walks or waits): a unit
+    /// still farther than its reach goes on, one within it turns ready (`set_state` 6); the
+    /// squared reach of a unit without a range is 0.01. 1 and 2 (it ended: the list deletes it,
+    /// its destructor, `0x140aa1f30`, stops the unit): ready for state 4, else
+    /// [`Attack::arrived_at_seen`]. 3 (it failed): [`Attack::walk_failed`]. 5 (its target
+    /// was let go) and the codes above 5 do nothing; 4 is a loud `MoveTo`'s.
+    ///
+    /// # Errors
+    ///
+    /// The walk's, and a unit that does not move.
     pub(super) fn walk(
         &mut self,
         c: &mut Step<'_>,
@@ -37,55 +43,36 @@ impl Attack {
         r: &AttackReads,
         (target, radius): ([f32; 3], [f32; 2]),
     ) -> Result<u8, GenieError> {
-        let code = match self.move_to {
-            Some(MoveTo::Start) => {
-                if !self.walk_start(c, unit, me, f, r)? {
-                    return Ok(0);
-                }
-                0
-            }
-            Some(MoveTo::Moving) => {
-                self.walk_on(c, unit, me, f, r)?;
-                0
-            }
-            // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += seconds(c.dt);
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                0
-            }
-            Some(MoveTo::Arrived) => {
-                self.move_to = None;
-                unit.body
-                    .mover_mut()
-                    .ok_or(crate::world::ATTACKER_UNMOVING)?
-                    .stop()?;
+        let gives_up = GiveUp {
+            waits: !r.computer && f.own.class == class::VILLAGER,
+            stance: r.stance,
+        };
+        match self.update_list(c, unit, me, r, gives_up)? {
+            0 => self.within_reach(c, unit, f, r, (target, radius)),
+            1 | 2 => {
+                self.delete_move_to(unit)?;
                 if self.state != MOVE {
                     return self.arrived_at_seen(c, unit, f, r, target);
                 }
                 self.ready(unit, &mut c.w.attack_ground(), f, r)?;
-                return Ok(0);
+                Ok(0)
             }
-            None => {
-                return Err(GenieError::unsupported(
-                    "an Attack in state 4 without its MoveTo",
-                ));
-            }
-            // case 3, the quiet MoveTo's failure (its update returns 3 without a notify):
-            // set_state(13); a unit's own Attack (`+0x60` 0) posts 0x1f9 with 600; the update
-            // returns 3 and the list removes the Attack
-            Some(MoveTo::Failed) => {
-                self.move_to = None;
-                self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
-                if !self.sub_action {
-                    unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
-                }
-                return Ok(3);
-            }
-        };
+            3 => self.walk_failed(c, unit),
+            4 => Err(QUIET_CODE),
+            _ => Ok(0),
+        }
+    }
+
+    /// The `MoveTo` that walks or waits (code 0): a unit more than its squared reach from the
+    /// target at `to` goes on, one within it turns ready (`set_state` 6).
+    fn within_reach(
+        &mut self,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        f: &Fight,
+        r: &AttackReads,
+        (target, radius): ([f32; 3], [f32; 2]),
+    ) -> Result<u8, GenieError> {
         let ground = unit
             .body
             .mover()
@@ -94,123 +81,26 @@ impl Attack {
         let at = unit.body.position();
         let reach = squared_reach(self.range);
         if reach.abs() <= EPSILON || reach < footprint_gap_squared(at, ground, target, radius) {
-            return Ok(code);
+            return Ok(0);
         }
         self.ready(unit, &mut c.w.attack_ground(), f, r)?;
-        Ok(code)
+        Ok(0)
     }
 
-    /// State 4's `MoveTo` start (case 3): after a wait `+0x6c` goes from 1 to 2 as it asks again;
-    /// it asks for its path and moves (`set_state` 4), which shows its sprite (the Attack's
-    /// `+0x68`, [`Arms::move_sprite`]; slot 0x68 takes the master's standing one for none) before
-    /// the motion step ([`start_walk_shown`]); the units in the way are posted at once. In range
-    /// at once it arrives, showing the idle sprite with `+0x7b8` cleared. False when the motion
-    /// step gave up ([`Attack::give_up`]; a `MoveTo` that fails at once shows the idle sprite
-    /// too).
-    ///
-    /// [`Arms::move_sprite`]: crate::combat::attack::Arms::move_sprite
-    pub(super) fn walk_start(
+    /// The failed `MoveTo` (its update returns 3 without a notify, it being quiet):
+    /// `set_state(13)`; a unit's own Attack (`+0x60` 0) posts 0x1f9 with 600; the update returns
+    /// 3 and the list removes the Attack.
+    pub(super) fn walk_failed(
         &mut self,
         c: &mut Step<'_>,
         unit: &mut Unit,
-        me: Me,
-        f: &Fight,
-        r: &AttackReads,
-    ) -> Result<bool, GenieError> {
-        // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
-        if self.move_wait.state == 1 {
-            self.move_wait.state = 2;
+    ) -> Result<u8, GenieError> {
+        self.move_to = None;
+        self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
+        if !self.sub_action {
+            unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
         }
-        self.move_to = Some(MoveTo::Moving);
-        let (goal, range) = self.goal();
-        // the MoveTo's set_state(4) shows its sprite (`+0x58`, the Attack's `+0x68`)
-        let graphic = self.arms.move_sprite.or(r.standing);
-        let (walk, sprite_rng, _) = c.walk_sprites_action(&mut unit.body, me);
-        let shown = Shown {
-            sprite: &mut unit.sprite,
-            rng: sprite_rng,
-            graphic,
-        };
-        let ask = PathAsk::default();
-        let walked = start_walk_shown(walk, (goal, range, false), ask, Some(shown))?;
-        unit.post_in_the_way()?;
-        let Some(state) = walked else {
-            // the motion step gave up in the update set_state(4) ran; a MoveTo that fails
-            // at once (set_state 13, not quiet: 0x140aa29e0) shows the idle sprite and
-            // clears `+0x7b8` as an arrived one does
-            self.give_up(r, f.own.class);
-            if self.move_to == Some(MoveTo::Failed) {
-                self.show_idle(unit, c.w.streams.get(Stream::Sprite))?;
-            }
-            return Ok(false);
-        };
-        if state == MoveTo::Arrived {
-            // in range at its start: the MoveTo, not quiet, shows the idle sprite and
-            // clears `+0x7b8`
-            self.show_idle(unit, c.w.streams.get(Stream::Sprite))?;
-        }
-        self.move_to = Some(state);
-        Ok(true)
-    }
-
-    /// The `MoveTo`'s idle sprite (slot 0x68 with the Attack's `+0x80`) with `+0x7b8` cleared, as
-    /// a `MoveTo` that is not quiet shows it when it arrives or fails at its start.
-    fn show_idle(&self, unit: &mut Unit, rng: &mut Well512) -> Result<(), GenieError> {
-        let g = self
-            .arms
-            .idle_sprite
-            .ok_or(crate::world::NO_STANDING_SPRITE)?;
-        new_sprite(&mut unit.sprite, unit.body.move_stats_mut(), g, rng);
-        set_walker_anim(&mut unit.body, 0.0);
-        Ok(())
-    }
-
-    /// State 4's `MoveTo` walking (case 4): it takes the Attack's `+0x61` (`0x140a824ac`, which
-    /// the Hunt's `set_state(12)` sets): a target that left its point asks for a path again (with
-    /// `+0x61` only `set_state` 3; without it notify 0x1fc, `set_state` 3 and the motion step), a
-    /// walker on its path's last stretch follows it; else the motion step alone. A motion step
-    /// that gives up gives the Attack up ([`Attack::give_up`]); the units in the way are posted
-    /// at once.
-    pub(super) fn walk_on(
-        &mut self,
-        c: &mut Step<'_>,
-        unit: &mut Unit,
-        me: Me,
-        f: &Fight,
-        r: &AttackReads,
-    ) -> Result<(), GenieError> {
-        // a MoveTo to a point follows nothing
-        let follow = if self.state == MOVE {
-            target_moved(
-                &mut c.walk(&mut unit.body, me),
-                self.target,
-                self.on_target_moved,
-            )?
-        } else {
-            Follow::Stays
-        };
-        if let Follow::PathEnd(p) = follow {
-            follow_path_end(&mut c.walk(&mut unit.body, me), p)?;
-        }
-        if follow.again() {
-            // with `+0x61` at 1 the MoveTo only turns to state 3 (`LAB_140aa3a59`)
-            self.move_to = Some(MoveTo::Start);
-            return Ok(());
-        }
-        let blocked = follow == Follow::Blocked;
-        if blocked {
-            // at 0 the MoveTo tells the unit (notify 0x1fc), turns to state 3 and runs the
-            // motion step (`LAB_140aa320c`): moving on, it stays in state 3
-            unit.post_own(crate::unit_ai::TARGET_MOVED, [0; 3])?;
-        }
-        let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
-        unit.post_in_the_way()?;
-        match walked {
-            Some(MoveTo::Moving) if blocked => self.move_to = Some(MoveTo::Start),
-            Some(m) => self.move_to = Some(m),
-            None => self.give_up(r, f.own.class),
-        }
-        Ok(())
+        Ok(3)
     }
 
     /// State 7 (case 6). A melee swing counts down and lands its hit when its sprite reaches the

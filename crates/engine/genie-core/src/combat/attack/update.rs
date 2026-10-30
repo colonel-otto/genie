@@ -2,12 +2,13 @@
 //! the target was seen.
 
 use crate::GenieError;
+use crate::combat::attack::walks::QUIET_CODE;
 use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SEEN_RANGE, SWING, TOUCH, set_walker_anim,
+    READY, Readiness, SEEN_RANGE, SWING, TOUCH, Walker, set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{Goal, MoveTo};
+use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap};
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::seconds;
@@ -43,6 +44,45 @@ impl Attack {
         }
         body.set_anim_speed(0.0);
         Ok((1, false))
+    }
+
+    /// The update (`0x140a82ae0`) of an Attack in state 5 or 11 whose target is gone (its target
+    /// null, which [`Attack::lost`] leaves a mover of stance 0 waiting where it saw it): the
+    /// timer runs and the checks of the target are skipped; the sub-action list's update
+    /// ([`Attack::update_list`]) walks the `MoveTo` to where it was seen. Code 0 goes on; 1
+    /// and 2 (it ended, the list deleting it) end the Attack (`set_state` 1, a unit's own Attack
+    /// posting 0x1fb with 600 and 0x202 first) and return 1; 3 fails it
+    /// ([`Attack::walk_failed`]); 5 and above do nothing. `master_class` is the unit's master's.
+    ///
+    /// # Errors
+    ///
+    /// The walk's and the notifies'.
+    pub(crate) fn update_gone(
+        &mut self,
+        c: &mut Step<'_>,
+        unit: &mut Unit,
+        me: Me,
+        r: &AttackReads,
+        master_class: i16,
+    ) -> Result<u8, GenieError> {
+        self.timer += seconds(c.dt);
+        let gives_up = GiveUp {
+            waits: !r.computer && master_class == class::VILLAGER,
+            stance: r.stance,
+        };
+        match self.update_list(c, unit, me, r, gives_up)? {
+            1 | 2 => {
+                self.delete_move_to(unit)?;
+                if !self.sub_action {
+                    unit.post_own(0x1fb, [600, 0, 0x202])?;
+                }
+                self.finish(unit, c.w.streams.get(Stream::Sprite))?;
+                Ok(1)
+            }
+            3 => self.walk_failed(c, unit),
+            4 => Err(QUIET_CODE),
+            _ => Ok(0),
+        }
     }
 
     /// The end of a building's Attack that cannot attack (`0x140a82ae0` at `LAB_140a83711`):
@@ -315,42 +355,24 @@ impl Attack {
         Ok(2)
     }
 
-    /// Where the `MoveTo` of the state goes and within what: state 4's to the target within the
-    /// range, state 5's to [`Attack::goto`] within the range, state 11's onto it.
-    pub(super) const fn goal(&self) -> (Goal, f32) {
-        match self.state {
-            MOVE => (Goal::Target(self.target), self.range),
-            GOTO_POINT => (Goal::Point(self.goto), 0.0),
-            _ => (Goal::Point(self.goto), self.range),
-        }
-    }
-
     /// `set_state(5)` (`0x140a820c0` case 5): the sub-actions go, the range is slot 0x238's
     /// again, and a `MoveTo` to where the target was seen within it starts
     /// ([`Attack::goto_point`]).
     pub(super) fn wait_at_seen(&mut self, unit: &mut Unit, f: &Fight) -> Result<(), GenieError> {
         self.enter(GOTO_SEEN, unit)?;
         self.range = f.own.source.weapon_range;
-        self.goto_point(&unit.body)
+        self.goto_point(unit)
     }
 
-    /// The `MoveTo` to a point of states 5 and 11 (`FUN_140aa0d30` to `+0xa4`..`+0xac`, quiet:
-    /// `FUN_140a7a170` with 1): the timer is 0, and its start (`FUN_140aa2100` with 1) finds no
-    /// target object to be near (`FUN_14118f680` answers `FLT_MAX`), so a unit with a top speed
-    /// (`UCOMISS`: not 0) asks for a path (state 3), any other fails (state 13).
-    pub(super) fn goto_point(&mut self, body: &Body) -> Result<(), GenieError> {
-        self.goto = self.seen;
-        self.timer = 0.0;
-        let speed = body
-            .mover()
-            .ok_or(crate::world::ATTACKER_UNMOVING)?
-            .stats
-            .speed;
-        self.move_to = Some(if speed == 0.0 {
-            MoveTo::Failed
-        } else {
-            MoveTo::Start
-        });
+    /// The `MoveTo` to a point of states 5 and 11 ([`Attack::walk_to_seen`]) of `unit`: its start
+    /// finds no target object to be near (`FUN_14118f680` answers `FLT_MAX`), so a unit with a
+    /// top speed (`UCOMISS`: not 0) asks for a path (state 3), any other fails (state 13).
+    ///
+    /// # Errors
+    ///
+    /// A unit that does not move.
+    pub(super) fn goto_point(&mut self, unit: &Unit) -> Result<(), GenieError> {
+        self.walk_to_seen(Walker::of(unit)?);
         Ok(())
     }
 
@@ -376,7 +398,7 @@ impl Attack {
         if self.state == GOTO_SEEN && f.own.player != 0 && SEEN_RANGE <= self.range && !r.computer {
             self.enter(GOTO_POINT, unit)?;
             self.range = f.own.source.weapon_range;
-            self.goto_point(&unit.body)?;
+            self.goto_point(unit)?;
             return Ok(0);
         }
         let target = std::mem::replace(&mut self.target, -1);
@@ -388,15 +410,6 @@ impl Attack {
             unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
         }
         Ok(3)
-    }
-
-    /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]) for a unit of
-    /// `class`.
-    ///
-    /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
-    pub(super) const fn give_up(&mut self, r: &AttackReads, class: i16) {
-        let waits = !r.computer && class == class::VILLAGER;
-        self.move_to = Some(self.move_wait.give_up(waits, r.stance));
     }
 }
 

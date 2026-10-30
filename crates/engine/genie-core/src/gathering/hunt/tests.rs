@@ -226,6 +226,7 @@ fn tree() -> Quarry {
 
 fn engagement() -> Engagement {
     Engagement {
+        unit_state: 0,
         gap_squared: 3.726 * 3.726,
         gap: 3.726,
         position: [20.774, 97.5, 0.0],
@@ -285,7 +286,10 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
     .unwrap();
     assert_eq!(hunt.state, ATTACK);
     let attack = hunt.attack.unwrap();
-    assert_eq!((attack.state, attack.move_to), (4, Some(MoveTo::Start)));
+    assert_eq!(
+        (attack.state, attack.move_to.map(|m| m.state)),
+        (4, Some(MoveTo::Start))
+    );
     // the first MoveTo's teardown stopped the unit
     let v = mover.velocity.unwrap();
     assert_eq!(
@@ -353,7 +357,12 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
     assert_eq!(retarget(&mut hunt, &beside, &close, &mut mover), Some(true));
     let attack = hunt.attack.unwrap();
     assert_eq!(
-        (hunt.target, hunt.state, attack.state, attack.move_to),
+        (
+            hunt.target,
+            hunt.state,
+            attack.state,
+            attack.move_to.map(|m| m.state)
+        ),
         (9366, ATTACK, 4, Some(MoveTo::Arrived))
     );
 }

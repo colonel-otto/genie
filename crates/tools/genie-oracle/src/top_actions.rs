@@ -215,7 +215,7 @@ fn import_move_to(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
 
 /// A saved `MoveTo` (type 1), of its own or an action's sub-action: its state, goal, target,
 /// range, sprite and wait. The save does not hold `+0x60`: `quiet` is its maker's.
-fn saved_move_to(
+pub(crate) fn saved_move_to(
     action: &Action,
     graphics: Option<&BTreeMap<i16, Graphic>>,
     quiet: bool,
@@ -497,11 +497,8 @@ fn import_explore(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
 
 /// The Attack (9) of its own; it reads and changes the unit's sprite from here on.
 fn import_attack(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
-    unit.actions.set_attack(Some(saved_attack(
-        saved.action,
-        saved.graphics,
-        &move_to_state,
-    )?));
+    unit.actions
+        .set_attack(Some(saved_attack(saved.action, saved.graphics)?));
     unit.sprite = saved.graphics.and_then(|g| saved_sprite(saved.s, g));
     Ok(())
 }

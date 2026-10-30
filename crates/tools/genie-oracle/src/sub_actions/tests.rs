@@ -186,6 +186,7 @@ fn move_to() -> Action {
                     state: 4,
                     target_x: 3.0,
                     target_y: 4.0,
+                    short_val_2: -1,
                     ..RgeAction::default()
                 },
                 ..RgeActionMoveTo::default()
@@ -196,32 +197,24 @@ fn move_to() -> Action {
     }
 }
 
-fn moving(state: u8) -> Result<MoveTo, genie_core::GenieError> {
-    match state {
-        4 => Ok(MoveTo::Moving),
-        _ => Err(genie_core::GenieError::unsupported("a state")),
-    }
-}
-
 /// The Attack's target, state and range; in states 5 and 11 its `MoveTo`'s point is where it
 /// walks, and the `MoveTo` comes with its state.
 #[test]
 fn a_saved_attack_reads_its_target_range_and_move_to() {
     let graphics = std::collections::BTreeMap::new();
-    let a = saved_attack(&attack(5, vec![(1, move_to())]), Some(&graphics), &moving).unwrap();
+    let a = saved_attack(&attack(5, vec![(1, move_to())]), Some(&graphics)).unwrap();
     assert_eq!((a.target, a.state), (700, 5));
-    assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());
-    let plain = saved_attack(&attack(2, vec![]), Some(&graphics), &moving).unwrap();
-    assert_eq!(plain.state, 2);
-    assert!(
-        saved_attack(
-            &attack(2, vec![(9, attack(1, vec![]))]),
-            Some(&graphics),
-            &moving
-        )
-        .is_err()
+    // the MoveTo is quiet and holds its own state, point and range
+    let m = a.move_to.unwrap();
+    assert_eq!(
+        (m.state, m.point[0], m.point[1], m.quiet),
+        (MoveTo::Moving, 3.0, 4.0, true)
     );
-    assert!(saved_attack(&attack(2, vec![]), None, &moving).is_err());
-    assert!(saved_attack(&move_to(), Some(&graphics), &moving).is_err());
-    assert!(saved_attack(&Action::default(), Some(&graphics), &moving).is_err());
+    assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());
+    let plain = saved_attack(&attack(2, vec![]), Some(&graphics)).unwrap();
+    assert_eq!(plain.state, 2);
+    assert!(saved_attack(&attack(2, vec![(9, attack(1, vec![]))]), Some(&graphics)).is_err());
+    assert!(saved_attack(&attack(2, vec![]), None).is_err());
+    assert!(saved_attack(&move_to(), Some(&graphics)).is_err());
+    assert!(saved_attack(&Action::default(), Some(&graphics)).is_err());
 }

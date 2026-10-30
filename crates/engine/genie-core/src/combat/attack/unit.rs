@@ -2,7 +2,7 @@
 //! follows.
 
 use crate::GenieError;
-use crate::combat::attack::{AttackReads, Fight};
+use crate::combat::attack::{AttackReads, Fight, GOTO_POINT, GOTO_SEEN};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{KillLeft, file_kill, victim, victim_of};
 use crate::combat::volley::armed;
@@ -33,7 +33,7 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         match self.actions.attack().map(|a| a.target) {
             None => Ok(HeadCode::Keeps),
-            Some(-1) => self.attack_lost_part(c),
+            Some(-1) => self.attack_lost_part(c, me),
             Some(_) => self.attack_strike_part(c, me, own),
         }
     }
@@ -41,9 +41,17 @@ impl Unit {
     /// The unit's own Attack after its target went
     /// ([`crate::combat::attack::Attack::lost`]): its update without a target, the notify its
     /// disarm posts to the unit AI; codes 1 and 3 delete it.
-    fn attack_lost_part(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
+    fn attack_lost_part(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
         let armed = armed(master, self.firepower);
+        let master_class = master.class;
+        let walking = self
+            .actions
+            .attack()
+            .is_some_and(|a| matches!(a.state, GOTO_SEEN | GOTO_POINT));
+        if walking && armed {
+            return self.attack_walks_unseen(c, me, master_class);
+        }
         let attack = self.actions.attack_mut().ok_or(NO_ATTACK)?;
         let (code, disarmed) = attack.update_targetless(seconds(c.dt), armed, &mut self.body)?;
         if disarmed {
@@ -57,6 +65,31 @@ impl Unit {
             }
         }
         Ok(HeadCode::of(code))
+    }
+
+    /// The unit's own Attack without a target, walking to where it saw it (state 5 or 11): its
+    /// update ([`crate::combat::attack::Attack::update_gone`]); codes 1 and 3 delete it.
+    fn attack_walks_unseen(
+        &mut self,
+        c: &mut Step<'_>,
+        me: Me,
+        master_class: i16,
+    ) -> Result<HeadCode, GenieError> {
+        let mut attack = *self.actions.attack().ok_or(NO_ATTACK)?;
+        let master = self.master(&c.w.masters, c.player)?;
+        let computer = c.w.players.get(c.player).is_some_and(|q| q.computer);
+        let r = AttackReads::of(
+            self,
+            master,
+            (c.w.masters.get(c.player), &c.w.graphics),
+            self.ai.as_ref(),
+            (computer, c.w.world_time),
+        );
+        let code = attack.update_gone(c, self, me, &r, master_class);
+        if let Some(a) = self.actions.attack_mut() {
+            *a = attack;
+        }
+        Ok(HeadCode::of(code?))
     }
 
     /// The unit's own Attack's update (slot 6, `0x140a82ae0`) on the step: what it reads of the

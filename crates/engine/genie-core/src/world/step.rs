@@ -247,36 +247,6 @@ impl Step<'_> {
         )
     }
 
-    /// A walk with the Sprite and the Action streams (a farmer's stops draw from the second).
-    pub(crate) fn walk_sprites_action<'b>(
-        &'b mut self,
-        body: &'b mut crate::objects::layers::Body,
-        me: Me,
-    ) -> (Walk<'b>, &'b mut Well512, &'b mut Well512) {
-        let [object, sprite, action] =
-            self.w
-                .streams
-                .three(Stream::Object, Stream::Sprite, Stream::Action);
-        (
-            Walk {
-                body,
-                me,
-                dt: seconds(self.dt),
-                world: &mut self.w.spatial,
-                plan: Some(Planning {
-                    pathing: &mut self.w.pathing,
-                    now: self.w.world_time,
-                    computer: self.w.players[self.player].computer,
-                    object,
-                    construction_rate: self.w.players[self.player].construction_rate,
-                    groups: &self.w.groups,
-                }),
-            },
-            sprite,
-            action,
-        )
-    }
-
     /// What an object's walking action needs from the tick.
     pub(crate) fn walk<'b>(
         &'b mut self,

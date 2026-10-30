@@ -360,7 +360,11 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     let unit = &t.players[1].objects[0];
     let attack = unit.actions.attack().expect("the soldier's Attack");
     assert_eq!(
-        (attack.state, attack.move_to, attack.target2),
+        (
+            attack.state,
+            attack.move_to.map(|m| m.state),
+            attack.target2
+        ),
         (
             crate::combat::attack::MOVE,
             Some(crate::movement::move_to::MoveTo::Arrived),

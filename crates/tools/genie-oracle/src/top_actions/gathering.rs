@@ -1,7 +1,7 @@
 //! The gathering actions of a saved object's top action: the Hunt, the Gather and a farm's
 //! Make ([`crate::top_actions::saved_actions`]).
 
-use crate::top_actions::{Saved, TaskAt, move_to_state, saved_move_to};
+use crate::top_actions::{Saved, TaskAt, saved_move_to};
 use crate::{saved_attack, saved_reload, saved_sprite};
 use genie_core::GenieError;
 use genie_core::movement::move_to::MOVE_TO;
@@ -119,7 +119,7 @@ fn hunt_attack(
     saved: &Saved<'_>,
     sub: &Action,
 ) -> Result<genie_core::combat::attack::Attack, GenieError> {
-    let mut attack = saved_attack(sub, saved.graphics, &move_to_state)?;
+    let mut attack = saved_attack(sub, saved.graphics)?;
     if attack.state == genie_core::combat::attack::SWING && !attack.pending {
         let reload = saved_reload(saved.object, saved.s, saved.objects).ok_or(
             GenieError::unsupported("a saved swing without its unit's reload"),

@@ -210,7 +210,7 @@ impl Unit {
             Action::Repair(r) => walking(r.move_to.map(|m| m.state)),
             Action::Fly(f) => walking(f.move_to.map(|m| m.state)),
             Action::Gather(g) => walking(g.move_to.map(|m| m.state)),
-            Action::Attack(a) => walking(a.move_to),
+            Action::Attack(a) => walking(a.move_to.map(|m| m.state)),
             Action::Explore(e) => walking(e.move_to.map(|m| m.state)),
             Action::Enter(e) => walking(e.move_to.map(|m| m.state)),
             Action::Transport(t) => walking(t.move_to.map(|m| m.state)),

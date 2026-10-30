@@ -10,7 +10,9 @@ The files follow the action's life:
 - `constructor.rs` builds the action and starts it.
 - `update.rs` is one update of the action.
 - `states.rs` is the action's `set_state`: the walk, the teardown, a lost target, the end.
-- `walk_and_swing.rs` holds the walk to the target and the swing with its hit.
+- `walk_and_swing.rs` holds the codes of the walk to the target and the swing with its hit.
+- `walks.rs` holds the `MoveTo`s `set_state` makes (states 4, 5 and 11) and the update of the
+  sub-action list that runs them.
 - `ready_to_attack.rs` tests the range and the sight, and turns the unit to its target.
 - `hits.rs` holds the hit itself, and `sprites.rs` the swing's sprites and the attack timer.
 - `work_slots.rs` holds the slots that set a target and run the work.
@@ -41,6 +43,7 @@ The damage of the hit is in `combat/damage/`.
 | [`unit_ai_side.rs`](unit_ai_side.rs) | The attack the unit AI commands while it runs (`crate::unit_ai::UnitSide::attack` through its view, `UnitView`): the new Attack, a forced attack again on the unit's own target, the target as a hit reads it, the start's readiness, the target's sight and a villager's swap. |
 | [`update.rs`](update.rs) | One update (slot 6, `0x140a82ae0`): a target gone, a disarmed building, the walks to where the target was seen. |
 | [`walk_and_swing.rs`](walk_and_swing.rs) | State 4's walk to the target and state 7's swing with its hit and its trample. |
+| [`walks.rs`](walks.rs) | The `MoveTo`s the Attack's `set_state` makes (`0x140a820c0`, cases 4, 5 and 11) and the update of its sub-action list (`FUN_140a992b0`). |
 | [`work_slots.rs`](work_slots.rs) | The swing's state (7), slot 9 (`RGE_Action_Attack::work`) and slot 0x68 (`set_target_obj`). |
 <!-- /files -->
 

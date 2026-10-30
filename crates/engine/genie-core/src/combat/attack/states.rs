@@ -4,12 +4,11 @@
 use crate::GenieError;
 use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
-    ARRIVED, AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE,
+    AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE, Walker,
     set_walker_anim,
 };
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
-use crate::movement::move_to::MoveTo;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
@@ -49,8 +48,7 @@ impl Attack {
 
     /// `set_state(4)` (`0x140a820c0` case 4): the sub-actions go (a `MoveTo`'s teardown stops the unit,
     /// slot 0x5d0), the range is slot 0x238's again, and a `MoveTo` to the target with that range
-    /// starts (`FUN_140aa0df0`, start `FUN_140aa2100`): arrived within 0.01, else in state 3 for a
-    /// unit with speed. True when it arrived.
+    /// starts ([`Attack::moving`]). True when it arrived.
     pub(super) fn set_move(
         &mut self,
         e: &Engagement,
@@ -60,21 +58,29 @@ impl Attack {
             mover.stop()?;
         }
         self.state = MOVE;
-        Ok(self.moving(e.range, e.gap))
+        let walker = Walker {
+            state: e.unit_state,
+            speed: e.speed,
+        };
+        self.moving(e.range, e.target_position, e.gap, walker)
     }
 
-    /// `set_state(4)`'s own part: the range (slot 0x238's), the timer, the `MoveTo` to the target,
-    /// which starts arrived (state 1, true) within 0.01 of a `gap` away.
-    pub(super) fn moving(&mut self, range: f32, gap: f32) -> bool {
+    /// `set_state(4)`'s own part: the range (slot 0x238's), the timer, the `MoveTo` to the target
+    /// at `at`, which starts arrived (state 1, true) within 0.01 of a `gap` away
+    /// ([`Attack::walk_to_target`]).
+    ///
+    /// # Errors
+    ///
+    /// An Attack without a target.
+    pub(super) fn moving(
+        &mut self,
+        range: f32,
+        at: [f32; 3],
+        gap: f32,
+        walker: Walker,
+    ) -> Result<bool, GenieError> {
         self.range = range;
-        self.timer = 0.0;
-        let arrived = gap <= ARRIVED;
-        self.move_to = Some(if arrived {
-            MoveTo::Arrived
-        } else {
-            MoveTo::Start
-        });
-        arrived
+        self.walk_to_target(at, gap, walker)
     }
 
     /// The teardown of the sub-actions (`FUN_140a73fc0` on the action list): a `MoveTo` stops the
@@ -106,9 +112,11 @@ impl Attack {
     /// target goes (slot 0x68 with none: let go at once) and the point; a human player's unit
     /// whose unit AI has an order and an empty queue (or no unit AI) posts 0x1fa with 600 (the
     /// action completed), any other with a unit AI whose queue is empty 0x1fb with 600 and
-    /// 0x202; it ends (`set_state` 1) and returns 5, which keeps it in the list. A dead tree
-    /// (class 15) up to state 5, which keeps a non-villager at it, and a mover of stance 0 that
-    /// waits instead (`set_state` 5) are not modelled.
+    /// 0x202; it ends (`set_state` 1) and returns 5, which keeps it in the list. A mover of
+    /// stance 0 that is not a villager waits instead where it saw the target (`set_state` 5,
+    /// [`Attack::wait_at_seen`]; a unit's own Attack posts 0x1fb with 600 and 0x202 first) and
+    /// returns 5 too; its next update has no target ([`Attack::update_gone`]). A dead tree
+    /// (class 15) up to state 5, which keeps a non-villager at it, is not modelled.
     pub(super) fn lost(
         &mut self,
         c: &mut Step<'_>,
@@ -132,9 +140,13 @@ impl Attack {
         if human && waits {
             let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
             if r.stance == 0 && 0.0 < speed && f.own.class != class::VILLAGER {
-                return Err(GenieError::unsupported(
-                    "an Attack whose target died waiting for another (set_state 5)",
-                ));
+                // a mover of stance 0 that is not a villager waits where it saw the target:
+                // 0x1fb with 600 and 0x202 for a unit's own Attack, then `set_state(5)`
+                if !self.sub_action {
+                    unit.post_own(0x1fb, [600, 0, 0x202])?;
+                }
+                self.wait_at_seen(unit, f)?;
+                return Ok(5);
             }
             unit.post_own(0x1fa, [600, 0, 0])?;
         } else if r.ai_order.has_ai() && r.queue_empty {

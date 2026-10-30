@@ -3920,7 +3920,10 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
     let v = &t.players[1].objects[0];
     let h = v.actions.hunt().copied().unwrap();
     assert_eq!(
-        (h.state, h.attack.map(|a| (a.state, a.move_to))),
+        (
+            h.state,
+            h.attack.map(|a| (a.state, a.move_to.map(|m| m.state)))
+        ),
         (ATTACK, Some((4, Some(MoveTo::Moving))))
     );
     assert!(v.body.mover().is_some_and(|m| !m.paths.is_empty()));
@@ -10847,9 +10850,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::At
         min_range: 0.0,
         point: [-1.0; 3],
         seen: [0.0; 3],
-        goto: [-1.0; 3],
         move_to: None,
-        move_wait: crate::movement::move_to::MoveWait::default(),
         pending: false,
         swing: 0.0,
         rest: 0.0,

@@ -4,10 +4,10 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, GOTO_SEEN, Ground,
-    LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
+    LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, Walker, face_target,
 };
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveTo, MoveWait, TargetMoved};
+use crate::movement::move_to::TargetMoved;
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
@@ -23,7 +23,7 @@ impl Attack {
     /// sprites and frames of `arms`, whether the target is its unit's player's (`+0x9f`); a
     /// unit's own Attack (`+0x60` 0), its `MoveTo` not repathing at once (`+0x61` 0) and running
     /// (slot 0x7d0's sprite).
-    pub(crate) fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
+    pub(crate) const fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
         Self {
             target,
             target2: -1,
@@ -33,9 +33,7 @@ impl Attack {
             min_range: e.min_range,
             point: [NONE; 3],
             seen: e.target_position,
-            goto: [NONE; 3],
             move_to: None,
-            move_wait: MoveWait::default(),
             pending: false,
             swing: 0.0,
             rest: 0.0,
@@ -232,8 +230,10 @@ impl Attack {
             if e.stance == 0 && 0.0 < e.speed && e.can_move {
                 self.state = GOTO_SEEN;
                 self.range = e.range;
-                self.timer = 0.0;
-                self.move_to = Some(MoveTo::Start);
+                self.walk_to_seen(Walker {
+                    state: e.unit_state,
+                    speed: e.speed,
+                });
             } else {
                 failed_first = true;
             }
@@ -371,7 +371,7 @@ pub fn arms_looking(
 /// its target (placed at `them`).
 pub fn engagement(
     ai: Option<&crate::unit_ai::UnitAi>,
-    speed: f32,
+    walker: Walker,
     master: &crate::objects::masters::Master,
     me: &crate::map::spatial::Placed,
     them: &crate::map::spatial::Placed,
@@ -383,7 +383,9 @@ pub fn engagement(
         ));
     }
     let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
+    let Walker { state, speed } = walker;
     Ok(Engagement {
+        unit_state: state,
         gap_squared,
         gap,
         position: me.position,
