@@ -435,12 +435,12 @@ impl World {
         if master.class == class::VILLAGER {
             // the attacker's class as the hit saw it: the attacker may be out for its update
             if matches!(kill.attacker_class, class::PREY | class::PREDATOR) {
-                self.players[q.index()].add_attribute(AttributeId::numbered(227), 1.0)?;
+                self.players[q.index()].add_attribute(attribute::VILLAGER_KILLED_BY_ANIMAL, 1.0)?;
             }
             let by_kind = match self.players[ap].kind {
-                1 => Some(AttributeId::numbered(229)),
-                2 => Some(AttributeId::numbered(226)),
-                3 => Some(AttributeId::numbered(228)),
+                1 => Some(attribute::VILLAGER_KILLED_BY_TYPE_1),
+                2 => Some(attribute::VILLAGER_KILLED_BY_TYPE_2),
+                3 => Some(attribute::VILLAGER_KILLED_BY_TYPE_3),
                 _ => None,
             };
             if let Some(kind) = by_kind {

@@ -242,6 +242,12 @@ impl Player {
     /// Attribute `i` (`player+0x100`, decoded; the first four are [`Player::resources`]), None
     /// past its count (`+0x90`, the saved attributes').
     #[must_use]
+    pub fn attribute_of(&self, attribute: i16) -> Option<f32> {
+        AttributeId::of_data(attribute).and_then(|a| self.attribute(a))
+    }
+
+    /// [`Player::attribute_of`] for an [`AttributeId`].
+    #[must_use]
     pub fn attribute(&self, attribute: AttributeId) -> Option<f32> {
         let i = attribute.index();
         let value = self.attributes.get(i).copied()?;

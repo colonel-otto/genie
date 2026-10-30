@@ -40,17 +40,19 @@ impl AttributeId {
     /// The attribute `by` places on: a table of attributes that run by player or by kind from this
     /// one (the trickle rates, the gathered totals).
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// A number past the table's `i16` range: a bug in the caller's offset.
-    #[must_use]
-    pub const fn offset(self, by: usize) -> Self {
-        let value = self.0 as i64 + by as i64;
-        assert!(
-            value <= i16::MAX as i64,
-            "an attribute number past the table"
-        );
-        Self(value as i16)
+    /// A number past the `i16` range.
+    pub fn offset(self, by: usize) -> Result<Self, GenieError> {
+        i16::try_from(by)
+            .ok()
+            .and_then(|by| self.0.checked_add(by))
+            .map(Self)
+            .ok_or_else(|| {
+                GenieError::invalid_input("an attribute number past the table")
+                    .with("attribute", self.0)
+                    .with("offset", by)
+            })
     }
 
     /// The attribute of a table place (a number of `usize`, as a command or a loop holds it).
@@ -183,6 +185,15 @@ pub const TRICKLES: AttributeId = AttributeId::named(230);
 /// The food a minute of the livestock in the player's mills.
 pub const MILL_FOOD: AttributeId = AttributeId::named(254);
 
+/// A villager's death by a hunted animal (a prey or predator attacker).
+pub const VILLAGER_KILLED_BY_ANIMAL: AttributeId = AttributeId::named(227);
+/// A villager's death by a player of type 1.
+pub const VILLAGER_KILLED_BY_TYPE_1: AttributeId = AttributeId::named(229);
+/// A villager's death by a player of type 2.
+pub const VILLAGER_KILLED_BY_TYPE_2: AttributeId = AttributeId::named(226);
+/// A villager's death by a player of type 3.
+pub const VILLAGER_KILLED_BY_TYPE_3: AttributeId = AttributeId::named(228);
+
 #[cfg(test)]
 mod tests {
     use super::{AttributeId, FOOD, GOLD, POPULATION};
@@ -197,5 +208,12 @@ mod tests {
         assert_eq!(AttributeId::field(Some(GOLD)), 3);
         assert_eq!(AttributeId::field(None), -1);
         assert!(AttributeId::try_from(-2).is_err());
+    }
+
+    #[test]
+    fn an_offset_past_the_range_is_an_error_not_a_panic() {
+        assert_eq!(FOOD.offset(3).unwrap(), GOLD);
+        assert!(AttributeId::numbered(i16::MAX).offset(1).is_err());
+        assert!(FOOD.offset(usize::MAX).is_err());
     }
 }

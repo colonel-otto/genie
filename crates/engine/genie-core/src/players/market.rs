@@ -9,7 +9,7 @@ use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
 use crate::players::PlayerId;
-use crate::players::attribute::{self, AttributeId};
+use crate::players::attribute;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -166,7 +166,7 @@ impl World {
             let held = self
                 .players
                 .player(p)?
-                .attribute(AttributeId::numbered(i16::from(attribute)))
+                .attribute_of(i16::from(attribute))
                 .unwrap_or(0.0);
             if below_or_unordered(held, volume as f32) {
                 return Ok(());

@@ -20,7 +20,7 @@ impl World {
         for kind in 0..4 {
             let rate = get(
                 &self.players.player(p)?.attributes,
-                attribute::TRICKLES.offset(kind).index(),
+                attribute::TRICKLES.offset(kind)?.index(),
             );
             if at_most_or_unordered(rate, 0.0) {
                 continue;
@@ -86,7 +86,7 @@ impl World {
         } else if stat == 1 {
             self.add_attribute_base(
                 p,
-                attribute::GATHERED.offset(kind).index(),
+                attribute::GATHERED.offset(kind)?.index(),
                 amount,
                 1,
                 share,
