@@ -15,6 +15,7 @@
     clippy::float_cmp,
     clippy::large_stack_frames,
     clippy::needless_collect,
+    clippy::neg_cmp_op_on_partial_ord,
     clippy::nonminimal_bool,
     clippy::unnecessary_cast,
     clippy::unreadable_literal
@@ -7740,6 +7741,216 @@ pub struct WorldPlayerBase {
     pub end_marker: (),
 }
 
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+pub struct AiString {
+    /// the string's length: the next read takes that many bytes
+    pub length: i32,
+    /// AIStringTable::string\[i\]: length bytes
+    #[br(count = length.max(0) as usize)]
+    pub text: Vec<u8>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(script_debugging: u8))]
+pub struct AiRule {
+    /// a rule of 0x18 bytes (`&list->ruleElements[list->ruleElementsPtr]`, line 0x106)
+    pub rule: [u8; 24],
+    /// game: `&list->ruleElements[list->ruleElementsPtr]`
+    /// helper 0x140af4a90
+    #[br(count = rule[13] as usize)]
+    pub list_rule_elements: Vec<[u8; 24]>,
+    /// game: `&stringLengthByte`
+    /// `&stringLengthByte` (line 0x11d), only with scriptDebugging
+    #[br(if(script_debugging == 1))]
+    pub rule_name_length: Option<u8>,
+    /// game: `buffer`
+    /// helper 0x14092a340
+    #[br(if(script_debugging == 1), count = (rule_name_length.unwrap_or_default() + 1) as usize)]
+    pub buffer: Option<Vec<u8>>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(script_debugging: u8))]
+pub struct AiList {
+    /// HD AIListInfo::inUse (int32), +0
+    pub in_use: i32,
+    /// HD AIListInfo::id (int32), +4
+    pub id: i32,
+    /// HD AIListInfo::maxRules (int16), +8
+    pub max_rules: u16,
+    /// HD AIListInfo::numRules (int16), +10
+    pub num_rules: u16,
+    /// read into a local after the list's header, not stored
+    pub list_marker: u32,
+    /// HD AIListInfo::rule\[i\] and its rule elements
+    #[br(if(!(in_use == 0)), count = num_rules as usize)]
+    pub rules: Option<Vec<AiRule>>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(in_use: i32))]
+pub struct AiGroupTable {
+    /// HD AIGroupTable::maxGroups (int16)
+    pub max_groups: u16,
+    /// HD AIGroupTable::numGroups (int16)
+    pub num_groups: u16,
+    /// read into a local, not stored
+    pub group_marker: u32,
+    /// HD AIGroupTable::group (int16 per group), `numGroups * 2` bytes
+    #[br(if(!(in_use == 0)), count = num_groups as usize)]
+    pub groups: Option<Vec<i16>>,
+}
+
+/// Read by `FUN_140af5c60` (`AIExpertEngine.cpp`) of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct AIExpertEngine {
+    /// HD AIExpertEngine::AIStringTable::maxStrings (int16), first of the table
+    pub max_strings: u16,
+    /// HD AIStringTable::numStrings (int16)
+    pub num_strings: u16,
+    /// read into a local, after the string counts and before the strings
+    pub string_table_size: u32,
+    /// AIStringTable::string\[i\]: a length and its bytes
+    #[br(count = num_strings as usize)]
+    pub strings: Vec<AiString>,
+    /// HD AIFactTable::maxFacts (int16): the table of 0x20-byte facts allocated from it
+    pub max_facts: u16,
+    /// HD AIActionTable::maxActions (int16): the table of 0x18-byte actions allocated from it
+    pub max_actions: u16,
+    /// game: `&scriptDebugging`
+    /// `&scriptDebugging` (AIExpertEngine.cpp line 0xbf)
+    pub script_debugging: u8,
+    /// HD AIExpertEngine::maxLists (int16)
+    pub max_lists: u16,
+    /// HD AIExpertEngine::listInfo\[i\]
+    #[br(parse_with = binrw::helpers::args_iter(std::iter::repeat_n(script_debugging, usize::from(max_lists)).map(|x| (x as u8,)).collect::<Vec<_>>()))]
+    pub lists: Vec<AiList>,
+    /// HD AIExpertEngine::groupTable\[i\]
+    #[br(parse_with = binrw::helpers::args_iter(lists.iter().map(|l| l.in_use).map(|x| (x as i32,)).collect::<Vec<_>>()))]
+    pub group_tables: Vec<AiGroupTable>,
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct Unnamed140b0ce60Entry1 {
+    /// game: `triggerTime[i][j]`
+    /// read at 0x140b0cee3; named by the save's write in the same place (0x140b0d410, write at 0x140b0d495)
+    #[br(count = 50)]
+    pub trigger_time: Vec<u32>,
+}
+
+impl Default for Unnamed140b0ce60Entry1 {
+    fn default() -> Self {
+        Self {
+            trigger_time: vec![Default::default(); 50],
+        }
+    }
+}
+
+/// Read by `FUN_140b0ce60` of the build.
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct TimerManager {
+    /// a loop of 1 reads; named after the member its entries index (`triggerTime`)
+    #[br(count = 8)]
+    pub trigger_time: Vec<Unnamed140b0ce60Entry1>,
+}
+
+impl Default for TimerManager {
+    fn default() -> Self {
+        Self {
+            trigger_time: vec![Default::default(); 8],
+        }
+    }
+}
+
+#[binrw]
+#[derive(Debug, Clone, PartialEq)]
+#[brw(little)]
+pub struct AiExpertStateEntry1 {
+    /// `&DAT_143e5b870 + j + i * 0x100`: 8 rows of 0x100 bytes
+    #[br(count = 256)]
+    pub table_b870: Vec<u8>,
+}
+
+impl Default for AiExpertStateEntry1 {
+    fn default() -> Self {
+        Self {
+            table_b870: vec![Default::default(); 256],
+        }
+    }
+}
+
+/// Read by `FUN_140b0e060` of the build.
+#[binrw]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[brw(little)]
+#[br(import(ver: u32))]
+pub struct AiExpertState {
+    /// `&DAT_143e5b064`: the version every later part compares with (0.02 when the save predates the read)
+    pub ai_version: f32,
+    /// `&DAT_143e5b060`, read from version 0.13 on
+    #[br(if(ai_version >= 0.13))]
+    pub ai_version_2: Option<f32>,
+    /// `&DAT_143e5c470`, the first of nine u32 statistics
+    #[br(if(ai_version >= 0.14))]
+    pub stat_0: Option<u32>,
+    /// `&DAT_143e5c474`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_1: Option<u32>,
+    /// `&DAT_143e5c478`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_2: Option<u32>,
+    /// `&DAT_143e5c47c`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_3: Option<u32>,
+    /// `&DAT_143e5c480`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_4: Option<u32>,
+    /// `&DAT_143e5c484`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_5: Option<u32>,
+    /// `&DAT_143e5c488`, read when the save version is above 0xc4ccb
+    #[br(if(ai_version >= 0.14))]
+    pub stat_6: Option<u32>,
+    /// `&DAT_143e5c48c`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_7: Option<u32>,
+    /// `&DAT_143e5c490`
+    #[br(if(ai_version >= 0.14))]
+    pub stat_8: Option<u32>,
+    /// read by 0x140b0ce60; named by the save's write in the same place (0x140b24a90)
+    #[br(if(!(ai_version < 0.12)), args(ver))]
+    pub timer_manager: Option<Box<TimerManager>>,
+    /// `&DAT_143e5c070 + i * 4`, 0x100 entries, read below version 0.09's cut
+    #[br(if(!(ai_version < 0.09)), count = 256)]
+    pub table_c070: Option<Vec<u32>>,
+    /// `&DAT_143e5b070 + i * 4`, 0x100 entries
+    #[br(if(!(ai_version < 0.08)), count = 256)]
+    pub table_b070: Option<Vec<u32>>,
+    /// `&DAT_143e5b470 + i * 4`, 0x100 entries
+    #[br(if(!(ai_version < 0.08)), count = 256)]
+    pub table_b470: Option<Vec<u32>>,
+    /// unnamed in the binary
+    /// a loop of 1 reads; unnamed in the binary
+    #[br(if(!(ai_version < 0.08)), count = 8)]
+    pub unnamed_list_at_0x140b0eaad: Option<Vec<AiExpertStateEntry1>>,
+}
+
 /// Read by `FUN_141410870` of the build.
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
@@ -9937,14 +10148,12 @@ pub struct World {
     /// game: `loadAIRules`
     /// read at 0x1415d0549
     pub load_airules: u32,
-    /// unnamed in the binary
-    /// not generated: the world's AI scripts (AIExpert) (0x140aed180)
-    #[br(if(!(load_airules == 0)), args("the world's AI scripts (AIExpert)",))]
-    pub unsupported_at_0x1415d0732: Option<Unsupported>,
-    /// unnamed in the binary
-    /// not generated: the world's AI scripts' state (FUN_140b0e060) (0x140b0e060)
-    #[br(if(!(load_airules == 0)), args("the world's AI scripts' state (FUN_140b0e060)",))]
-    pub unsupported_at_0x1415d09bb: Option<Unsupported>,
+    /// the world's AI scripts: `FUN_140aed180` builds an AIExpert from the save ("Creating AIExpert system via load game"), when `load_airules` is not 0
+    #[br(if(!(load_airules == 0)), args(ver))]
+    pub ai_scripts: Option<Box<AIExpertEngine>>,
+    /// the AI state `FUN_140b0e060` loads right after the scripts: the AI version float and the tables it enables
+    #[br(if(!(load_airules == 0)), args(ver))]
+    pub ai_state: Option<Box<AiExpertState>>,
     /// unnamed in the binary
     /// read by 0x141537e30
     #[br(args(ver))]
@@ -10178,8 +10387,8 @@ impl Default for World {
     fn default() -> Self {
         Self {
             load_airules: Default::default(),
-            unsupported_at_0x1415d0732: Default::default(),
-            unsupported_at_0x1415d09bb: Default::default(),
+            ai_scripts: Default::default(),
+            ai_state: Default::default(),
             base_world: Default::default(),
             victory_type: Default::default(),
             artifact_count: Default::default(),

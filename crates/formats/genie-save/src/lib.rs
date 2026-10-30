@@ -259,6 +259,7 @@ fn read_error(e: &binrw::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generated::world::AiExpertState;
 
     #[test]
     fn the_save_version_rounds_its_fraction_to_hundredths() {
@@ -363,22 +364,109 @@ mod tests {
         assert_eq!(e.context().next(), Some(("type", "4")));
     }
 
-    /// The world's AI scripts are a part the reader does not derive yet: an unsupported error
-    /// with its place.
-    #[test]
-    fn a_part_the_reader_does_not_derive_is_unsupported() {
+    /// The state a version `v` AI writes: each part the version enables, zeroed.
+    fn ai_state(v: f32) -> AiExpertState {
+        use crate::generated::world::{AiExpertStateEntry1, TimerManager};
+        let zeroed = |n: usize| Some(vec![0u32; n]);
+        let nine = (v >= 0.14).then_some(0u32);
+        AiExpertState {
+            ai_version: v,
+            ai_version_2: (v >= 0.13).then_some(0.0),
+            stat_0: nine,
+            stat_1: nine,
+            stat_2: nine,
+            stat_3: nine,
+            stat_4: nine,
+            stat_5: nine,
+            stat_6: nine,
+            stat_7: nine,
+            stat_8: nine,
+            timer_manager: (v >= 0.12).then(|| Box::new(TimerManager::default())),
+            table_c070: if v >= 0.09 { zeroed(256) } else { None },
+            table_b070: if v >= 0.08 { zeroed(256) } else { None },
+            table_b470: if v >= 0.08 { zeroed(256) } else { None },
+            unnamed_list_at_0x140b0eaad: (v >= 0.08)
+                .then(|| vec![AiExpertStateEntry1::default(); 8]),
+        }
+    }
+
+    /// A world with AI scripts: one string, one list with one rule and its elements, and the
+    /// state a version-0.14 AI writes.
+    fn save_with_ai_scripts() -> Header {
+        use crate::generated::world::{AIExpertEngine, AiGroupTable, AiList, AiRule, AiString};
         let mut h = default_save();
         h.world.load_airules = 1;
-        let save = bytes(&h);
-        let e = parse(&save).unwrap_err();
-        assert_eq!(
-            e,
-            GenieError::unsupported("the world's AI scripts (AIExpert)")
-        );
-        let lobby = written_len(&h.file_header).unwrap();
-        assert_eq!(
-            e.context().next(),
-            Some(("at", &*format!("{:#x}", lobby + 4)))
-        );
+        h.world.ai_scripts = Some(Box::new(AIExpertEngine {
+            max_strings: 2,
+            num_strings: 1,
+            strings: vec![AiString {
+                length: 3,
+                text: b"abc".to_vec(),
+            }],
+            max_lists: 2,
+            lists: vec![
+                AiList {
+                    in_use: 1,
+                    num_rules: 1,
+                    rules: Some(vec![AiRule {
+                        // byte 13 counts the rule elements that follow
+                        rule: [
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                        ],
+                        list_rule_elements: vec![[3; 24]],
+                        ..AiRule::default()
+                    }]),
+                    ..AiList::default()
+                },
+                AiList::default(),
+            ],
+            group_tables: vec![
+                AiGroupTable {
+                    num_groups: 2,
+                    groups: Some(vec![7, 9]),
+                    ..AiGroupTable::default()
+                },
+                AiGroupTable::default(),
+            ],
+            ..AIExpertEngine::default()
+        }));
+        h.world.ai_state = Some(Box::new(ai_state(0.14)));
+        h
+    }
+
+    /// The world's AI scripts (`AIExpertEngine::load`) and their state read back byte for byte,
+    /// each in-use list with its rules and its group ids.
+    #[test]
+    fn the_worlds_ai_scripts_read_back_byte_for_byte() {
+        let save = bytes(&save_with_ai_scripts());
+        let read = parse(&save).unwrap();
+        assert_eq!(bytes(&read), save);
+        let ai = read.world.ai_scripts.as_deref().unwrap();
+        assert_eq!(ai.strings[0].text, b"abc");
+        assert_eq!(ai.lists[0].rules.as_ref().map(Vec::len), Some(1));
+        assert_eq!(ai.lists[1].rules, None);
+        assert_eq!(ai.group_tables[0].groups.as_deref(), Some(&[7, 9][..]));
+        assert_eq!(read.world.ai_state.as_deref().unwrap().ai_version, 0.14);
+    }
+
+    /// An AI state older than 0.14 has none of the nine statistics, and one older than 0.08 none
+    /// of the tables: the state is as long as its version says.
+    #[test]
+    fn the_ai_states_parts_follow_its_version() {
+        let state_len = |v: f32| {
+            let mut h = save_with_ai_scripts();
+            h.world.ai_state = Some(Box::new(ai_state(v)));
+            let with = bytes(&h).len();
+            h.world.ai_state = None;
+            with - bytes(&h).len()
+        };
+        // the version alone, then each part: 0.08 two word tables and the byte table, 0.09 a
+        // fourth table, 0.12 the timer manager (8 x 50 words), 0.13 a float, 0.14 nine words
+        assert_eq!(state_len(0.02), 4);
+        assert_eq!(state_len(0.08), 4 + 2 * 1024 + 8 * 256);
+        assert_eq!(state_len(0.09), state_len(0.08) + 1024);
+        assert_eq!(state_len(0.12), state_len(0.09) + 8 * 50 * 4);
+        assert_eq!(state_len(0.13), state_len(0.12) + 4);
+        assert_eq!(state_len(0.14), state_len(0.13) + 9 * 4);
     }
 }
