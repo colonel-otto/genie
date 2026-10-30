@@ -181,7 +181,7 @@ pub(crate) fn built_death(
         CASTLE => Some(CASTLES),
         _ => None,
     };
-    let tech = (0 <= building.tech).then_some((master.id, building.tech));
+    let tech = building.tech.map(|t| (master.id, t));
     Ok(BuiltDeath {
         adds,
         unlink,

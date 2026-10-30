@@ -11,6 +11,7 @@ use crate::players::attribute;
 use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::players::tracker::Key;
 use crate::production::{Making, refund, refund_research};
+use crate::technology::TechId;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -33,7 +34,7 @@ impl World {
         };
         let entries = production.queue.entries().to_vec();
         for e in &entries {
-            if e.tech == -1 {
+            if e.tech.is_none() {
                 self.cancel_units(p, e, e.count)?;
                 self.players.player_mut(p)?.tracker.count_queued(-e.count);
             } else if !self.players.player(p)?.techs.is_empty() {
@@ -95,7 +96,7 @@ impl World {
     ) -> Result<(), GenieError> {
         // the entry's technology is one of the tree: RESEARCH queued it, the load read it
         let tree = self.players.player(p)?.techs.len();
-        let Some(t) = usize::try_from(e.tech).ok().filter(|&t| t < tree) else {
+        let Some(t) = e.tech.map(TechId::index).filter(|&t| t < tree) else {
             return Ok(());
         };
         let owner = self.players.player_mut(p)?;
@@ -114,8 +115,8 @@ impl World {
                 }
             }
         }
-        if let Some(production) = building.production.as_mut() {
-            production.enable_tech(e.tech);
+        if let (Some(production), Some(tech)) = (building.production.as_mut(), e.tech) {
+            production.enable_tech(tech);
         }
         let pending = &mut owner.techs.checked_mut(t)?.pending;
         *pending = pending.wrapping_sub(count);
@@ -149,7 +150,7 @@ impl World {
             return Ok(());
         };
         let entry = *production.queue.slots.checked(e)?;
-        if entry.tech == -1 {
+        if entry.tech.is_none() {
             if all {
                 return self.cancel_five(p, idx, index, e);
             }
@@ -164,10 +165,7 @@ impl World {
                         // the game writes the make action's +0x70, its unique id
                         Making::Unit(m) => m.unique_id = 0,
                     }
-                    if let Some(state) = usize::try_from(entry.tech)
-                        .ok()
-                        .and_then(|t| owner.techs.get_mut(t))
-                    {
+                    if let Some(state) = entry.tech.and_then(|t| owner.techs.get_mut(t.index())) {
                         state.research_done = 0.0;
                     }
                 }
@@ -270,7 +268,7 @@ impl World {
             else {
                 return Ok(());
             };
-            if slot.tech != -1 || slot.count == 0 {
+            if slot.tech.is_some() || slot.count == 0 {
                 return Ok(());
             }
             // The villager's masters, whose two sexes a cancel of five counts as one kind
@@ -279,12 +277,12 @@ impl World {
                 return Ok(());
             }
             let take = if left <= slot.count { left } else { slot.count };
-            self.cancel_some(p, idx, (master, take), index as i32, -1)?;
+            self.cancel_some(p, idx, (master, take), index as i32, None)?;
             gone = gone.wrapping_add(take as u16);
             let q = queue(self, p, idx)?;
             let at = *q.slots.checked(e as usize)?;
             n = q.count;
-            if at.tech != -1 || i32::from(n) - 1 < e {
+            if at.tech.is_some() || i32::from(n) - 1 < e {
                 e -= 1;
             }
             if 0 < n {
@@ -322,7 +320,7 @@ impl World {
         idx: usize,
         (master, count): (Option<MasterId>, i16),
         from: i32,
-        tech: i16,
+        tech: Option<TechId>,
     ) -> Result<(), GenieError> {
         let Some(production) = self.players.live(p, idx)?.production.as_ref() else {
             return Ok(());
@@ -335,7 +333,7 @@ impl World {
         if start < 0 {
             return Ok(());
         }
-        let found = if tech == -1 {
+        let found = if tech.is_none() {
             (0..=start as usize)
                 .rev()
                 .find(|&i| q.slots.get(i).is_some_and(|s| s.master == master))
@@ -347,7 +345,7 @@ impl World {
         };
         let entry = *q.slots.checked(i)?;
         let take = count.min(entry.count);
-        if tech == -1 {
+        if tech.is_none() {
             self.cancel_units(p, &entry, take)?;
             self.players.player_mut(p)?.tracker.count_queued(-take);
         } else {
@@ -370,15 +368,15 @@ impl World {
         }
         let villager = |m: Option<MasterId>| m == Some(VILLAGER_MALE) || m == Some(VILLAGER_FEMALE);
         // the game reads the next slot before the move; it matters for the first entry alone
-        let pair = tech == -1
+        let pair = tech.is_none()
             && i == 0
             && villager(queue.slots.checked(0)?.master)
             && queue.slots.get(1).is_some_and(|s| villager(s.master));
-        queue.close(i, tech == -1);
+        queue.close(i, tech.is_none());
         if i != 0 {
             return Ok(());
         }
-        if tech == -1 && start != 0 && pair && 0 < queue.slots.checked(0)?.count {
+        if tech.is_none() && start != 0 && pair && 0 < queue.slots.checked(0)?.count {
             return Ok(());
         }
         self.end_production_action(p, idx)

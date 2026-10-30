@@ -46,6 +46,7 @@ use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::opt_master;
 use crate::test_ids::player_id;
+use crate::test_ids::tech_id;
 use crate::test_ids::unit_list;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
@@ -389,7 +390,7 @@ pub(crate) fn builder_masters() -> Masters {
             building: Some(crate::objects::masters::BuildingMaster {
                 stack_unit: None,
                 foundation_terrain: -1,
-                tech: -1,
+                tech: None,
                 annexes: [None; 4],
                 head_unit: None,
                 transform_unit: None,
@@ -3568,7 +3569,7 @@ fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
         hit_points: 4800,
         storage: vec![(4, 20.0, 4)],
         building: Some(crate::objects::masters::BuildingMaster {
-            tech: -1,
+            tech: None,
             foundation_terrain: -1,
             stack_unit: None,
             head_unit: None,
@@ -6832,7 +6833,7 @@ fn gate_world() -> World {
             stack_unit: None,
             head_unit: None,
             foundation_terrain: -1,
-            tech: -1,
+            tech: None,
             annexes: [None; 4],
             ..crate::objects::masters::BuildingMaster::default()
         }),
@@ -9575,7 +9576,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: None,
             foundation_terrain: -1,
-            tech: -1,
+            tech: None,
             head_unit: None,
             transform_unit: None,
             ..crate::objects::masters::BuildingMaster::default()
@@ -11174,7 +11175,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: None,
             foundation_terrain: -1,
-            tech: -1,
+            tech: None,
             head_unit: None,
             transform_unit: None,
             ..crate::objects::masters::BuildingMaster::default()
@@ -11278,7 +11279,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: None,
             foundation_terrain: -1,
-            tech: -1,
+            tech: None,
             head_unit: None,
             transform_unit: None,
             destruction_sprite,
@@ -16132,7 +16133,7 @@ fn a_completion_s_parts_reach_their_owner() {
             .map_err(|e| e.reason().to_owned());
         (t, r)
     };
-    let (t, r) = completed(|b| b.tech = 0);
+    let (t, r) = completed(|b| b.tech = Some(tech_id(0)));
     assert_eq!(r, Ok(()));
     assert_eq!(t.players[1].techs[0].state, 3);
     let (t, r) = completed(|b| b.disappears_when_built = true);
@@ -16167,7 +16168,7 @@ fn a_built_building_s_death_reaches_its_owner_within_its_update() {
                 ..masters.get(ids::HOUSE).unwrap().clone()
             };
             let b = castle.building.as_mut().unwrap();
-            (b.tech, b.destruction_sprite) = (0, -1);
+            (b.tech, b.destruction_sprite) = (Some(tech_id(0)), -1);
             *masters = Masters::new(masters.iter().cloned().chain([castle]));
         }
         t.players[1].objects[1].life.master_id = ids::CASTLE;

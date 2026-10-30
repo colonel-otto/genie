@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::technology::RESEARCHED;
+use crate::technology::TechId;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -67,10 +68,10 @@ impl World {
         location: i16,
     ) -> Result<(), GenieError> {
         let tree = self.players.player(p)?.techs.len();
-        let Some(t) = usize::try_from(tech).ok().filter(|&t| t < tree) else {
+        let Some(tech_id) = TechId::of_data(tech).filter(|t| t.index() < tree) else {
             return Ok(());
         };
-        let Some((at, building)) = self.tech_location(p, t, location)? else {
+        let Some((at, building)) = self.tech_location(p, tech_id, location)? else {
             return Ok(());
         };
         if let Some((resource, cost_mode)) = tech_cost_mode(mode) {
@@ -79,9 +80,9 @@ impl World {
         }
         if let Some(time_mode) = tech_time_mode(mode) {
             self.research_time(p, tech, v, time_mode, building)?;
-            return self.update_dependents(p, t);
+            return self.update_dependents(p, tech_id);
         }
-        self.set_tech_field(p, t, (mode, v), at)
+        self.set_tech_field(p, tech_id, (mode, v), at)
     }
 
     /// The location a modify command names of player `p`'s technology `t` (`location` above 0:
@@ -90,9 +91,10 @@ impl World {
     fn tech_location(
         &mut self,
         p: PlayerId,
-        t: usize,
+        t: TechId,
         location: i16,
     ) -> Result<Option<LocationAt>, GenieError> {
+        let t = t.index();
         let (mut at, mut building) = (None, None);
         if 0 < location {
             let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
@@ -123,13 +125,14 @@ impl World {
     fn set_tech_field(
         &mut self,
         p: PlayerId,
-        t: usize,
+        t: TechId,
         (mode, v): (i16, f32),
         at: Option<usize>,
     ) -> Result<(), GenieError> {
+        let (tech, t) = (t, t.index());
         let short = crate::math::conversions::cvttss2si(v) as i16;
         match mode {
-            4 => self.set_tech_building(p, t, v, at)?,
+            4 => self.set_tech_building(p, tech, v, at)?,
             5 => {
                 let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
                 for (i, l) in state.locations.iter_mut().enumerate() {
@@ -146,7 +149,7 @@ impl World {
                     .checked_mut(t)?
                     .research_cap = short;
             }
-            12 => self.set_tech_state(p, t, v)?,
+            12 => self.set_tech_state(p, tech, v)?,
             18 => {
                 let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
                 state.effect_override = short;
@@ -166,10 +169,11 @@ impl World {
     fn set_tech_building(
         &mut self,
         p: PlayerId,
-        t: usize,
+        t: TechId,
         v: f32,
         at: Option<usize>,
     ) -> Result<(), GenieError> {
+        let t = t.index();
         let short = MasterId::of_data(crate::math::conversions::cvttss2si(v) as i16);
         if let Some(short) = short
             && self
@@ -189,7 +193,8 @@ impl World {
 
     /// Mode 12: the state of player `p`'s technology `t` (`v` 0 none, then unavailable,
     /// available, or researched, which researches it).
-    fn set_tech_state(&mut self, p: PlayerId, t: usize, v: f32) -> Result<(), GenieError> {
+    fn set_tech_state(&mut self, p: PlayerId, t: TechId, v: f32) -> Result<(), GenieError> {
+        let (tech, t) = (t, t.index());
         let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
         if v == 0.0 {
             state.state = -1;
@@ -199,7 +204,7 @@ impl World {
             state.state = 1;
             state.enabled = true;
         } else if v == STATE_RESEARCHED {
-            let _ = self.force_research(p, t)?;
+            let _ = self.force_research(p, tech)?;
         }
         Ok(())
     }
@@ -208,16 +213,17 @@ impl World {
     /// state 0 to 2 completes as [`World::complete_research`] (the civ's disabled technologies are
     /// not asked); any other gives its effect again and counts in attributes 0x15 and 0x63 (its
     /// listed costs) whatever its location, its state left.
-    pub(super) fn force_research(&mut self, p: PlayerId, t: usize) -> Result<bool, GenieError> {
+    pub(super) fn force_research(&mut self, p: PlayerId, t: TechId) -> Result<bool, GenieError> {
+        let (tech, t) = (t, t.index());
         if (0..=2).contains(&self.players.player(p)?.techs.checked(t)?.state) {
-            return self.complete_research(p, t, None);
+            return self.complete_research(p, tech, None);
         }
         let def = self.techs.checked(t)?.clone();
-        self.research_effect_known(p, t)?;
+        self.research_effect_known(p, tech)?;
         self.do_effect(p, &def.effect, None)?;
         let owner = self.players.player(p)?;
         let get = |k: i16| crate::technology::Attributes::get(owner, k);
-        let factors = crate::technology::factors(t as i16, &get)?;
+        let factors = crate::technology::factors(tech, &get)?;
         let listed = owner.techs.checked(t)?.listed_costs(&def, factors)?;
         let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
         let owner = self.players.player_mut(p)?;
@@ -243,9 +249,10 @@ impl World {
         location: Option<MasterId>,
     ) -> Result<(), GenieError> {
         let tree = self.players.player(p)?.techs.len();
-        let Some(t) = usize::try_from(tech).ok().filter(|&t| t < tree) else {
+        let Some(tech_id) = TechId::of_data(tech).filter(|t| t.index() < tree) else {
             return Ok(());
         };
+        let t = tech_id.index();
         let buildings: Vec<Option<MasterId>> = if location.is_none() {
             self.players
                 .player(p)?
@@ -304,7 +311,7 @@ impl World {
                 && adjustment + time <= state.research_done
                 && (mode != 0 || v != NO_TIME);
             if done {
-                let _ = self.complete_research(p, t, None)?;
+                let _ = self.complete_research(p, tech_id, None)?;
             }
         }
         Ok(())

@@ -593,7 +593,7 @@ fn built_master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
             disappears_when_built: false,
             stack_unit: None,
             foundation_terrain: -1,
-            tech: -1,
+            tech: None,
             garrison_type: 0,
             garrison_heal_rate: 0.0,
             garrison_repair_rate: 0.0,

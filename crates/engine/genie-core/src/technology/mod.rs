@@ -13,19 +13,22 @@ use crate::players::attribute;
 use crate::world::slots::CheckedIndex;
 
 pub mod effect;
+mod tech_id;
 pub mod upgrade;
+
+pub use self::tech_id::TechId;
 
 /// The age technologies (`FUN_1413cc3c0`: 101 to 103), whose costs the research cost modifier
 /// leaves alone.
 #[must_use]
-pub fn is_age(tech: i16) -> bool {
-    (101..104).contains(&tech)
+pub fn is_age(tech: TechId) -> bool {
+    (TechId::FIRST_AGE..=TechId::LAST_AGE).contains(&tech)
 }
 
 /// Spies (0x198), whose cost grows with the enemies' villagers (`FUN_1413cbd80`).
-const SPIES: i16 = 0x198;
+const SPIES: TechId = TechId::SPIES;
 /// The technology whose cost adjustments scale by attribute 38 (0x2f3) instead of 1.
-const SCALED_BY_38: i16 = 0x2f3;
+const SCALED_BY_38: TechId = TechId::SCALED_BY_38;
 /// The attribute 0x2f3's cost adjustments scale by (`+0x130`).
 const ATTRIBUTE_38: i16 = 38;
 /// The resource a cost the player cannot meet takes the rest from (`+0x18`: gold).
@@ -180,7 +183,7 @@ pub struct TechState {
 /// for the age technologies), which scales the costs above 0, and the scale of the cost
 /// adjustments (1; attribute 38 for 0x2f3). Spies is not modelled.
 pub fn factors(
-    tech: i16,
+    tech: TechId,
     attribute: &dyn Fn(i16) -> Result<f32, GenieError>,
 ) -> Result<(f32, i16), GenieError> {
     if tech == SPIES {

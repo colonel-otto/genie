@@ -51,6 +51,26 @@ impl World {
         self.produce(p, i, dt_seconds)
     }
 
+    /// `FUN_1411e7dc0` after the first entry's research completed: a technology of the shared
+    /// kind that the player's tree holds joins the building's lists
+    /// ([`crate::production::Production::note_shared_research`]).
+    fn note_shared_research(&mut self, p: PlayerId, i: usize) {
+        if let Some(tech) = self.players[p.index()].objects[i]
+            .production
+            .as_ref()
+            .and_then(|q| q.queue.first())
+            .and_then(|e| e.tech)
+            && self
+                .techs
+                .get(tech.index())
+                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
+            && tech.index() < self.players[p.index()].techs.len()
+            && let Some(production) = self.players[p.index()].objects[i].production.as_mut()
+        {
+            production.note_shared_research(tech);
+        }
+    }
+
     /// The building update's production step (`FUN_1411e7dc0`, after its combat update) for the
     /// building at `i` of player `p`. A disabled queue (`+0xbf6`) or an empty one does nothing.
     /// For a player not of type 3 a top action of the building's own (`FUN_141227a00`) that is a
@@ -101,7 +121,7 @@ impl World {
             .ok_or(NO_QUEUE)?;
         if production.action.is_none() {
             let first = *production.queue.first().ok_or(EMPTY_QUEUE)?;
-            let making = if first.tech == -1 {
+            let making = if first.tech.is_none() {
                 let pop = first
                     .master
                     .and_then(|m| player_master(&self.masters, p, m))
@@ -117,7 +137,7 @@ impl World {
                 }
                 Making::Unit(MakeObj::for_entry(&first))
             } else {
-                Self::make_research(&first)
+                Self::make_research(&first)?
             };
             self.start_production_action(p, i, making)?;
         }
@@ -125,21 +145,8 @@ impl World {
         if !matches!(code, 1..=3) {
             return Ok(());
         }
-        if code == 1
-            && let Some(tech) = self.players[p.index()].objects[i]
-                .production
-                .as_ref()
-                .and_then(|q| q.queue.first())
-                .map(|e| e.tech)
-                .filter(|&t| 0 <= t)
-            && self
-                .techs
-                .get(tech as usize)
-                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
-            && (tech as usize) < self.players[p.index()].techs.len()
-            && let Some(production) = self.players[p.index()].objects[i].production.as_mut()
-        {
-            production.note_shared_research(tech);
+        if code == 1 {
+            self.note_shared_research(p, i);
         }
         self.end_production_action(p, i)?;
         let Some(first) = self.players[p.index()].objects[i]
@@ -149,7 +156,7 @@ impl World {
         else {
             return Ok(());
         };
-        if first.tech == -1 {
+        if first.tech.is_none() {
             let pop = first
                 .master
                 .and_then(|m| player_master(&self.masters, p, m))

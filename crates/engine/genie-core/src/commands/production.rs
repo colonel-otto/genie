@@ -12,11 +12,12 @@ use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Masters, player_master};
+use crate::orders::NO_QUEUE;
 use crate::orders::Place;
-use crate::orders::{NO_QUEUE, tech_outside};
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::production::Production;
+use crate::technology::TechId;
 use crate::world::{
     COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER_ANY, World, villager,
 };
@@ -168,7 +169,7 @@ impl World {
                         "QUEUE at a sleeping object the unit trains at",
                     ));
                 };
-                let _ = self.queue_at(p, i, Some(unit_id), counts[k], -1, q.button)?;
+                let _ = self.queue_at(p, i, Some(unit_id), counts[k], None, q.button)?;
             }
         }
         Ok(())
@@ -245,10 +246,9 @@ impl World {
                     .and_then(|m| m.train_locations.first())
                     .map_or(0, |l| l.time);
                 queued += (i32::from(e.count) * i32::from(time)) as f32;
-            } else if e.tech != -1 {
+            } else if let Some(tech) = e.tech {
                 // a queued research has its locations (the queue checked them)
-                let (time, adjustment) = usize::try_from(e.tech)
-                    .ok()
+                let (time, adjustment) = Some(tech.index())
                     .and_then(|t| owner.techs.get(t))
                     .and_then(|t| t.location(building.life.master_id))
                     .map_or((0, 0.0), |l| (l.time as i16, l.adjustment));
@@ -280,7 +280,7 @@ impl World {
         i: usize,
         unit: Option<MasterId>,
         count: u16,
-        tech: i16,
+        tech: Option<TechId>,
         button: i32,
     ) -> Result<bool, GenieError> {
         let mut master = if unit == Some(VILLAGER_ANY) {
@@ -292,7 +292,7 @@ impl World {
         if master == Some(VILLAGER_MALE) {
             master = Some(villager(self.streams.get(Stream::Action).raw64()));
             if 0 < count.wrapping_sub(1) as i16 {
-                let _ = self.queue_at(player, i, Some(VILLAGER_MALE), count - 1, -1, button)?;
+                let _ = self.queue_at(player, i, Some(VILLAGER_MALE), count - 1, None, button)?;
             }
             count = 1;
         }
@@ -308,13 +308,13 @@ impl World {
         } else {
             crate::production::ROOM - total
         };
-        if tech == -1 {
+        if let Some(tech) = tech {
+            self.queue_techs(player, i, (master, tech), n, button)
+        } else {
             let master = master.ok_or(GenieError::invalid_input(
                 "a unit queue entry that names no master",
             ))?;
             self.queue_units(player, i, master, n, button)
-        } else {
-            self.queue_techs(player, i, (master, tech), n, button)
         }
     }
 
@@ -384,7 +384,7 @@ impl World {
         let time = made
             .filter(|m| COMBAT <= m.kind)
             .map(|m| crate::production::train_time(&m.train_locations, building, button));
-        self.new_entry(player, i, (Some(master), -1), n, button, time)?;
+        self.new_entry(player, i, (Some(master), None), n, button, time)?;
         Ok(true)
     }
 
@@ -400,11 +400,11 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        (master, tech): (Option<MasterId>, i16),
+        (master, tech): (Option<MasterId>, TechId),
         count: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
-        let t = usize::try_from(tech).map_err(|_| tech_outside(tech))?;
+        let t = tech.index();
         let def = self.techs.get(t).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
@@ -446,7 +446,7 @@ impl World {
             .production
             .get_or_insert_with(Production::default);
         if let Some(last) = production.queue.last()
-            && last.tech == tech
+            && last.tech == Some(tech)
             && crate::production::same_costs(&last.costs, &costs)
         {
             let queue = &mut production.queue;
@@ -457,7 +457,7 @@ impl World {
             owner.techs[t].pending = owner.techs[t].pending.wrapping_add(n);
             return Ok(true);
         }
-        self.new_entry(player, i, (master, tech), n, button, None)?;
+        self.new_entry(player, i, (master, Some(tech)), n, button, None)?;
         let pending = &mut self.players[player.index()].techs[t].pending;
         *pending = pending.wrapping_add(n);
         Ok(true)
@@ -473,7 +473,7 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        (master, tech): (Option<MasterId>, i16),
+        (master, tech): (Option<MasterId>, Option<TechId>),
         n: i16,
         button: i32,
         time: Option<i16>,
@@ -521,7 +521,7 @@ impl World {
     pub(crate) fn entry_costs(
         &self,
         player: PlayerId,
-        tech: i16,
+        tech: Option<TechId>,
         master: Option<MasterId>,
     ) -> Result<[(i32, f32); 3], GenieError> {
         use crate::production::{NO_COSTS, as_entry_costs, master_costs};
@@ -531,9 +531,9 @@ impl World {
             let masters = self.masters.get(player.index()).unwrap_or(&empty);
             return Ok(as_entry_costs(master_costs(masters, master, owner)?));
         }
-        let Some(t) = usize::try_from(tech)
-            .ok()
-            .filter(|&t| t < owner.techs.len())
+        let Some((tech, t)) = tech
+            .map(|tech| (tech, tech.index()))
+            .filter(|&(_, t)| t < owner.techs.len())
         else {
             return Ok(NO_COSTS);
         };

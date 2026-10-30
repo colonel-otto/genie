@@ -8,6 +8,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::players::attribute;
 use crate::production::{POPULATION_CAP, QUEUED};
+use crate::technology::TechId;
 
 /// `FUN_141630530`: a queued unit's refund. For a master of type 70 and up each of its cost
 /// entries with an attribute and a paid flag gives back what the queue entry's `costs` paid
@@ -87,7 +88,7 @@ pub fn refund_master(
 pub fn refund_tech(
     state: &mut crate::technology::TechState,
     def: &crate::technology::TechDef,
-    tech: i16,
+    tech: TechId,
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
     use crate::math::conversions::cvttss2si;

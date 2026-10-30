@@ -316,7 +316,7 @@ impl World {
                 .map_or(Position::ORIGIN, |(_, u)| u.position());
             self.remains(owner, stack, at, None)?;
         }
-        if let Some(tech) = building.map(|b| b.tech).filter(|&t| 0 <= t) {
+        if let Some(tech) = building.and_then(|b| b.tech) {
             self.research_built(owner, tech)?;
         }
         Ok(())

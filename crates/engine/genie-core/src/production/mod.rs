@@ -21,6 +21,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, TrainLocation};
 use crate::players::attribute;
+use crate::technology::TechId;
 use genie_diff::Diff;
 
 mod costs;
@@ -40,7 +41,7 @@ pub struct Entry {
     /// `+0x2`, `mUnitCount`: how many.
     pub count: i16,
     /// `+0x4`, `mTechId`: the technology it researches; −1 for a unit.
-    pub tech: i16,
+    pub tech: Option<TechId>,
     /// `+0x8`, `mCosts`: what each of its units or researches paid, three (attribute, amount)
     /// pairs (`FUN_1411c3190`), which a cancel gives back.
     #[diff(
@@ -65,7 +66,7 @@ impl Default for Entry {
         Self {
             master: Some(MasterId::default()),
             count: 0,
-            tech: 0,
+            tech: Some(TechId::default()),
             costs: [(0, 0.0); 3],
             serial: 0,
             button: 0,
@@ -222,7 +223,13 @@ impl Queue {
     /// master, count, technology, button and serial (`+0xcd8`, which grows), and `costs`; its
     /// train time is the caller's. The count, the total and the change counter are the
     /// caller's too. Returns the slot.
-    pub fn open(&mut self, master: Option<MasterId>, count: i16, tech: i16, button: i32) -> usize {
+    pub fn open(
+        &mut self,
+        master: Option<MasterId>,
+        count: i16,
+        tech: Option<TechId>,
+        button: i32,
+    ) -> usize {
         let i = usize::try_from(self.count).unwrap_or(0);
         let serial = self.next_serial;
         self.next_serial += 1;
@@ -346,7 +353,7 @@ pub struct MakeTech {
     /// destructor gives nothing back (`FUN_1413ccc00` runs only while it is clear).
     pub paid: bool,
     /// `+0x68`, `tech_id`.
-    pub tech: i16,
+    pub tech: TechId,
     /// `+0x6c`, `unique_id`: the entry's master (−1).
     pub master: i32,
     /// `+0x70`, `m_researchProgress`: the work done.
@@ -384,10 +391,10 @@ pub struct Production {
     /// `+0xd00`, `localDisabledTechs`: technologies the building may not research again; a
     /// research of the shared kind joins it (`FUN_1411e7dc0`), a cancel of a technology drops
     /// it (`FUN_1411c5250`).
-    pub disabled_techs: Vec<i16>,
+    pub disabled_techs: Vec<TechId>,
     /// `+0xd18`, `localResearchedTechs`: the technologies of the shared kind this building
     /// researched (`FUN_1411e7dc0`).
-    pub researched_techs: Vec<i16>,
+    pub researched_techs: Vec<TechId>,
     /// `+0xd30`, `localAvailableUnits`: masters QUEUE takes at this building though they are
     /// not available to the player (`FUN_1411c8fd0`).
     pub available_units: Vec<MasterId>,
@@ -399,14 +406,14 @@ impl Production {
 
     /// `FUN_1411c5250`: technology `tech` leaves the building's disabled list, every time it
     /// is there (`std::remove` and `erase`, the order of the rest kept).
-    pub fn enable_tech(&mut self, tech: i16) {
+    pub fn enable_tech(&mut self, tech: TechId) {
         self.disabled_techs.retain(|&t| t != tech);
     }
 
     /// `FUN_1411e7dc0` after a research of the shared kind: the technology joins the
     /// building's researched list, and its disabled list, each unless it holds it; once the
     /// researched list holds it the disabled one is left alone.
-    pub fn note_shared_research(&mut self, tech: i16) {
+    pub fn note_shared_research(&mut self, tech: TechId) {
         if self.researched_techs.contains(&tech) {
             return;
         }
@@ -457,12 +464,13 @@ mod tests {
     use crate::objects::masters::master_type;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
+    use crate::test_ids::tech_id;
 
     fn unit(master: MasterId, count: i16, food: f32) -> Entry {
         Entry {
             master: Some(master),
             count,
-            tech: -1,
+            tech: None,
             costs: [(0, food), (-1, 0.0), (-1, 0.0)],
             serial: 0,
             button: -1,
@@ -475,7 +483,10 @@ mod tests {
     #[test]
     fn a_zeroed_slot_holds_master_0() {
         let e = Entry::default();
-        assert_eq!((MasterId::field(e.master), e.count, e.tech), (0, 0, 0));
+        assert_eq!(
+            (MasterId::field(e.master), e.count, TechId::field(e.tech)),
+            (0, 0, 0)
+        );
         assert_eq!((e.costs, e.button, e.train_time), ([(0, 0.0); 3], 0, 0));
     }
 
@@ -554,7 +565,10 @@ mod tests {
             .iter()
             .map(|s| {
                 [
-                    (i32::from(MasterId::field(s.master)), f32::from(s.tech)),
+                    (
+                        i32::from(MasterId::field(s.master)),
+                        f32::from(TechId::field(s.tech)),
+                    ),
                     NO_COSTS[1],
                     NO_COSTS[2],
                 ]
@@ -569,7 +583,7 @@ mod tests {
         );
         assert_eq!(q.slots[15], Entry::default());
         // a new entry takes the next serial and no costs
-        let i = q.open(Some(master_id(5)), 2, -1, 3);
+        let i = q.open(Some(master_id(5)), 2, None, 3);
         assert_eq!((i, q.slots[1].serial, q.slots[1].costs), (1, 10, NO_COSTS));
         assert_eq!(q.next_serial, 11);
     }
@@ -710,20 +724,23 @@ mod tests {
             (r, held.0[0], held.0[1])
         };
         let mut s = state(2);
-        assert_eq!(refunded(&mut s, 22, 0.0), (Ok(true), 90.0, 0.0));
+        assert_eq!(refunded(&mut s, tech_id(22), 0.0), (Ok(true), 90.0, 0.0));
         assert_eq!((s.state, s.research_done), (1, 0.0));
         let mut s = state(4);
-        assert_eq!(refunded(&mut s, 22, 0.75), (Ok(true), 67.0, 0.0));
+        assert_eq!(refunded(&mut s, tech_id(22), 0.75), (Ok(true), 67.0, 0.0));
         let mut s = state(4);
-        assert_eq!(refunded(&mut s, 101, 0.75), (Ok(true), 90.0, 0.0));
+        assert_eq!(refunded(&mut s, tech_id(101), 0.75), (Ok(true), 90.0, 0.0));
         // the scaled amount wraps at 16 bits: 40000 is -25536
         let mut s = TechState {
             cost_adj: [19_900, 0, 0],
             ..state(2)
         };
-        assert_eq!(refunded(&mut s, 22, 2.0), (Ok(true), -25_536.0, 0.0));
+        assert_eq!(
+            refunded(&mut s, tech_id(22), 2.0),
+            (Ok(true), -25_536.0, 0.0)
+        );
         let mut s = state(3);
-        assert_eq!(refunded(&mut s, 22, 0.0), (Ok(false), 0.0, 0.0));
+        assert_eq!(refunded(&mut s, tech_id(22), 0.0), (Ok(false), 0.0, 0.0));
         assert_eq!((s.state, s.research_done), (3, 7.5));
     }
 
@@ -883,15 +900,15 @@ mod tests {
     #[test]
     fn a_shared_research_joins_both_lists_once_and_a_cancel_drops_it() {
         let mut p = Production::default();
-        p.note_shared_research(7);
-        p.note_shared_research(7);
+        p.note_shared_research(tech_id(7));
+        p.note_shared_research(tech_id(7));
         assert_eq!(
             (p.researched_techs.as_slice(), p.disabled_techs.as_slice()),
-            (&[7][..], &[7][..])
+            (&[tech_id(7)][..], &[tech_id(7)][..])
         );
-        p.disabled_techs.extend([3, 7]);
-        p.enable_tech(7);
-        assert_eq!(p.disabled_techs, [3]);
+        p.disabled_techs.extend([tech_id(3), tech_id(7)]);
+        p.enable_tech(tech_id(7));
+        assert_eq!(p.disabled_techs, [tech_id(3)]);
         assert!(p.queue.enabled);
     }
 }

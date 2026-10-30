@@ -262,7 +262,7 @@ pub(super) fn production(
             Entry {
                 master: MasterId::of_data(e.production_queue_master_unit_id),
                 count: e.production_queue_unit_count,
-                tech: e.production_queue_tech_id,
+                tech: genie_core::technology::TechId::of_data(e.production_queue_tech_id),
                 costs: [cost(0), cost(1), cost(2)],
                 serial: k as i64,
                 button: e.production_queue_button_location_id,
@@ -305,7 +305,7 @@ pub(super) fn production(
             Some(Making::Research(MakeTech {
                 state: base.state,
                 paid: base.sub_action_value != 0,
-                tech: tech.tech_id,
+                tech: genie_core::technology::TechId::try_from(tech.tech_id)?,
                 master: tech.unique_id,
                 progress: tech.m_research_progress,
             }))
@@ -337,8 +337,14 @@ pub(super) fn production(
             next_serial,
         },
         action,
-        disabled_techs: disabled.clone(),
-        researched_techs: researched.clone(),
+        disabled_techs: disabled
+            .iter()
+            .filter_map(|&t| genie_core::technology::TechId::of_data(t))
+            .collect(),
+        researched_techs: researched
+            .iter()
+            .filter_map(|&t| genie_core::technology::TechId::of_data(t))
+            .collect(),
         available_units: available
             .iter()
             .filter_map(|&m| MasterId::of_data(m))

@@ -5,6 +5,7 @@ use crate::commands::UnitList;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::technology::TechId;
 
 /// The object id `value` (not −1).
 pub(crate) fn object_id(value: i32) -> ObjectId {
@@ -29,6 +30,11 @@ pub(crate) fn master_id(value: i16) -> MasterId {
 /// The master `value`, or none for −1 (a field the game fills with −1).
 pub(crate) fn opt_master(value: i16) -> Option<MasterId> {
     MasterId::of_data(value)
+}
+
+/// The technology `value` (0 or more).
+pub(crate) fn tech_id(value: i16) -> TechId {
+    TechId::try_from(value).expect("a test's technology is 0 or more")
 }
 
 /// The unit list of `ids`, its count theirs (fewer than `0xffff`).

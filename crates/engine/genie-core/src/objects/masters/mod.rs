@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::map::Offset;
 use crate::movement::MoveStats;
+use crate::technology::TechId;
 use crate::unit_ai::UnitAiType;
 use genie_diff::Diff;
 
@@ -172,7 +173,7 @@ pub struct BuildingMaster {
     /// `+0x988`, `foundation_terrain_id` (the save's `on_build_make_tile`; −1 for none).
     pub foundation_terrain: i16,
     /// `+0x98c`, `tech_id`: the technology its completion researches (−1 for none).
-    pub tech: i16,
+    pub tech: Option<TechId>,
     /// `+0x9bc`, `garrison_type`: the kinds of units it takes in (bit 0 villagers, `FUN_14120eb10`).
     pub garrison_type: u8,
     /// `+0x9c0`, `garrison_heal_rate`: the hit points a second it gives the units inside.

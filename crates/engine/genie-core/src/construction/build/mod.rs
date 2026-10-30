@@ -449,7 +449,7 @@ mod stack_tests {
             building: Some(BuildingMaster {
                 stack_unit: None,
                 foundation_terrain: -1,
-                tech: -1,
+                tech: None,
                 annexes: slots,
                 annex_offsets: offsets,
                 head_unit: opt_master(head),

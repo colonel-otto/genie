@@ -15,6 +15,7 @@ use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
+use crate::test_ids::tech_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
@@ -25,7 +26,7 @@ fn villager(master: Option<MasterId>, count: i16, food: f32) -> Entry {
     Entry {
         master,
         count,
-        tech: -1,
+        tech: None,
         costs: [(0, food), (-1, 0.0), (4, 1.0)],
         serial: 0,
         button: -1,
@@ -548,7 +549,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let mut t = game();
     let research = Entry {
         master: None,
-        tech: 22,
+        tech: Some(tech_id(22)),
         costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
         ..villager(None, 1, 0.0)
     };
@@ -559,7 +560,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
     assert_eq!(
         (q.count, q.slots[0].tech, t.players[1].resources[0]),
-        (1, 22, 92.0)
+        (1, Some(tech_id(22)), 92.0)
     );
 }
 
@@ -571,7 +572,7 @@ fn researching(progress: f32) -> World {
     let mut t = game();
     let entry = Entry {
         master: None,
-        tech: 22,
+        tech: Some(tech_id(22)),
         costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
         ..villager(None, 3, 0.0)
     };
@@ -580,11 +581,11 @@ fn researching(progress: f32) -> World {
     tc.action = Some(Making::Research(MakeTech {
         state: MakeObj::MAKING,
         paid: true,
-        tech: 22,
+        tech: tech_id(22),
         master: -1,
         progress,
     }));
-    tc.disabled_techs = vec![22, 5];
+    tc.disabled_techs = vec![tech_id(22), tech_id(5)];
     let mut techs = vec![TechState::default(); 23];
     techs[22] = TechState {
         state: 2,
@@ -634,7 +635,7 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
     let tc = &p.objects[0];
     assert_eq!(tc.store, [(1, 20.0)]);
     let production = tc.production.as_ref().unwrap();
-    assert_eq!(production.disabled_techs, [5]);
+    assert_eq!(production.disabled_techs, [tech_id(5)]);
     assert_eq!((production.queue.count, production.queue.total), (0, 0));
     assert!(production.action.is_none());
     assert_eq!(tc.ai.as_ref().unwrap().notifies.len(), 1);

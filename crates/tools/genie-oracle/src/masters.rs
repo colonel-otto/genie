@@ -227,7 +227,7 @@ fn dat_work(
             disappears_when_built: b.disappears_when_built != 0,
             stack_unit: MasterId::of_data(b.stack_unit_id),
             foundation_terrain: b.foundation_terrain_id,
-            tech: b.tech_id,
+            tech: genie_core::technology::TechId::of_data(b.tech_id),
             garrison_type: b.garrison_type,
             garrison_heal_rate: b.garrison_heal_rate,
             garrison_repair_rate: b.garrison_repair_rate,

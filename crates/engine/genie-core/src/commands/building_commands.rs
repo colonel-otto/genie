@@ -10,6 +10,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::tech_outside;
 use crate::players::PlayerId;
+use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::{BLOCKS_RESEARCH, World};
@@ -277,15 +278,19 @@ impl World {
     ) -> Result<(), GenieError> {
         let player = r.player;
         let owner = &self.players[player.index()];
-        if r.q_id != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
+        let Some(tech_id) = TechId::of_data(r.tech).filter(|t| t.index() < owner.techs.len())
+        else {
+            return Ok(());
+        };
+        if r.q_id != -1 {
             return Ok(());
         }
-        let tech = r.tech as usize;
+        let tech = tech_id.index();
         let def = self.techs.get(tech).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
         let get = |i: i16| crate::technology::Attributes::get(owner, i);
-        let factors = crate::technology::factors(r.tech, &get)?;
+        let factors = crate::technology::factors(tech_id, &get)?;
         let listed = owner.techs[tech].listed_costs(def, factors)?;
         let mut sums = [0i16; 4];
         for (attribute, amount) in listed {
@@ -357,7 +362,12 @@ impl World {
         if BLOCKS_RESEARCH.contains(&top) {
             return Ok(());
         }
-        if self.queue_research(player, i, r.tech, r.shift)? {
+        if self.queue_research(
+            player,
+            i,
+            TechId::try_from(r.tech).map_err(|_| tech_outside(r.tech))?,
+            r.shift,
+        )? {
             // Castle Age queued in game mode 16 marks the world's treaty monitor (`+0x820`, its
             // `+0x17`), which the slice does not hold; any other game mode leaves it
             if r.tech == CASTLE_AGE && self.settings.game_mode == CASTLE_AGE_MODE {
@@ -382,14 +392,14 @@ impl World {
         &mut self,
         player: PlayerId,
         i: usize,
-        tech: i16,
+        tech: TechId,
         shift: bool,
     ) -> Result<bool, GenieError> {
-        let t = usize::try_from(tech).map_err(|_| tech_outside(tech))?;
+        let t = tech.index();
         let def = &self.techs[t];
         let state = &self.players[player.index()].techs[t];
         let one = !state.allow_multiple || def.upgrades();
         let count: u16 = if !shift || one { 1 } else { 5 };
-        self.queue_at(player, i, None, count, tech, -1)
+        self.queue_at(player, i, None, count, Some(tech), -1)
     }
 }

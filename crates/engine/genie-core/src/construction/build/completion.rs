@@ -68,8 +68,8 @@ impl crate::world::World {
             u.life.hp = 0.0;
         }
         self.spatial.sight_state(id, 2)?;
-        if 0 <= building.tech {
-            self.research_built(p, building.tech)?;
+        if let Some(tech) = building.tech {
+            self.research_built(p, tech)?;
         }
         if building.disappears_when_built {
             self.destroy(p, id)?;

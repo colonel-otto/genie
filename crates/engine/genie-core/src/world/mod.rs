@@ -41,6 +41,7 @@ use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
+use crate::technology::TechId;
 use crate::unit_ai::task_finder::DropSite;
 pub(crate) use crate::world::player::NO_ATTRIBUTE;
 pub use crate::world::player::{AiSettings, Formations, Player};
@@ -160,7 +161,7 @@ pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuildingDeath {
     pub(crate) count: Option<i16>,
-    pub(crate) tech: Option<(MasterId, i16)>,
+    pub(crate) tech: Option<(MasterId, TechId)>,
 }
 
 pub(crate) const RICE_FARM: MasterId = MasterId::named(1187);

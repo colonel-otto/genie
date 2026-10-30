@@ -832,7 +832,7 @@ mod clearing_tests {
                 building: Some(crate::objects::masters::BuildingMaster {
                     stack_unit: None,
                     foundation_terrain: -1,
-                    tech: -1,
+                    tech: None,
                     annexes: [None; 4],
                     head_unit: None,
                     transform_unit: None,

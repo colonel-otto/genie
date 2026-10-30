@@ -10,6 +10,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::test_ids::tech_id;
 use crate::world::Player;
 
 /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
@@ -36,7 +37,7 @@ fn an_object_has_actions_while_it_holds_one() {
         crate::production::MakeTech {
             state: 6,
             paid: false,
-            tech: 22,
+            tech: tech_id(22),
             master: -1,
             progress: 0.0,
         },
@@ -1308,12 +1309,21 @@ fn a_research_whose_effect_needs_its_building_stops() {
         def(vec![attribute(204, 82, -1, 0, 1500.0)]),
         def(vec![attribute(4, -1, 4, 0, 15.0)]),
     ];
-    assert!(t.complete_research(PlayerId::new(0), 0, None).is_err());
+    assert!(
+        t.complete_research(PlayerId::new(0), tech_id(0), None)
+            .is_err()
+    );
     assert_eq!(t.players[0].techs[0].state, 2);
     t.players[0].techs[1].effect_override = 9;
-    assert!(t.complete_research(PlayerId::new(0), 1, None).is_err());
+    assert!(
+        t.complete_research(PlayerId::new(0), tech_id(1), None)
+            .is_err()
+    );
     t.players[0].techs[1].effect_override = 7;
-    assert_eq!(t.complete_research(PlayerId::new(0), 1, None), Ok(true));
+    assert_eq!(
+        t.complete_research(PlayerId::new(0), tech_id(1), None),
+        Ok(true)
+    );
 }
 
 /// An age (101 to 103) completes as any research and adds its event (0 to 2) to the
@@ -1341,9 +1351,15 @@ fn an_age_adds_its_event_to_the_history() {
     ];
     t.world_time = 612_345;
     t.players[0].history.entries = vec![[3, 0]; 20];
-    assert_eq!(t.complete_research(PlayerId::new(0), 100, None), Ok(true));
+    assert_eq!(
+        t.complete_research(PlayerId::new(0), tech_id(100), None),
+        Ok(true)
+    );
     assert_eq!(t.players[0].history.events, []);
-    assert_eq!(t.complete_research(PlayerId::new(0), 102, None), Ok(true));
+    assert_eq!(
+        t.complete_research(PlayerId::new(0), tech_id(102), None),
+        Ok(true)
+    );
     assert_eq!(t.players[0].techs[102].state, 3);
     assert_eq!(
         t.players[0].history.events,
@@ -1381,7 +1397,10 @@ fn a_dependent_technology_done_already_completes_with_its_requirement() {
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![def(-1, 0), def(0, 1), def(1, 1), def(0, 2)];
-    assert_eq!(t.complete_research(PlayerId::new(0), 0, None), Ok(true));
+    assert_eq!(
+        t.complete_research(PlayerId::new(0), tech_id(0), None),
+        Ok(true)
+    );
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
     assert_eq!(states, [3, 3, 3, 0]);
 }
@@ -1414,7 +1433,10 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
             def(0, 7, 0),
             def(0, 0, 0),
         ];
-        assert_eq!(t.complete_research(PlayerId::new(0), 0, None), Ok(true));
+        assert_eq!(
+            t.complete_research(PlayerId::new(0), tech_id(0), None),
+            Ok(true)
+        );
         t.players[0]
             .techs
             .iter()
@@ -1591,11 +1613,11 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         required: [-1; 6],
         ..TechDef::default()
     }];
-    t.withdraw_tech(PlayerId::new(0), master_id(1640), 0)
+    t.withdraw_tech(PlayerId::new(0), master_id(1640), tech_id(0))
         .unwrap();
     assert_eq!(t.players[0].techs[0].state, 3);
     t.players[0].objects.truncate(1);
-    t.withdraw_tech(PlayerId::new(0), master_id(1640), 0)
+    t.withdraw_tech(PlayerId::new(0), master_id(1640), tech_id(0))
         .unwrap();
     assert_eq!(t.players[0].techs[0].state, 0);
 }

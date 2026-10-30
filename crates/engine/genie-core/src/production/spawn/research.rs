@@ -6,6 +6,7 @@ use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
+use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
@@ -22,14 +23,17 @@ impl World {
     /// readers, the object search `FUN_1411650e0` and the masters' slot 0xc0, are not
     /// modelled); the human player's sound is the interface's. Not held: the start time
     /// (`+0x74`).
-    pub(super) const fn make_research(first: &crate::production::Entry) -> Making {
-        Making::Research(MakeTech {
+    pub(super) fn make_research(first: &crate::production::Entry) -> Result<Making, GenieError> {
+        let tech = first.tech.ok_or(GenieError::missing_data(
+            "a research entry without a technology",
+        ))?;
+        Ok(Making::Research(MakeTech {
             state: 0,
             paid: true,
-            tech: first.tech,
-            master: MasterId::field(first.master) as i32,
+            tech,
+            master: i32::from(MasterId::field(first.master)),
             progress: 0.0,
-        })
+        }))
     }
 
     /// The technology `tech` of a research at player `p`'s building: its index in the player's
@@ -37,10 +41,9 @@ impl World {
     pub(super) fn research_tech(
         &self,
         p: PlayerId,
-        tech: i16,
+        tech: TechId,
     ) -> Result<(usize, &crate::technology::TechDef), GenieError> {
-        let t = usize::try_from(tech)
-            .ok()
+        let t = Some(tech.index())
             .filter(|&t| t < self.players[p.index()].techs.len())
             .ok_or(GenieError::unsupported(
                 "a research of a technology the tree has not got",
@@ -123,7 +126,7 @@ impl World {
                     "a research done 0x100 times (set_state 1)",
                 ));
             }
-            self.research_done(p, i, t, master, repeatable)?;
+            self.research_done(p, i, r.tech, master, repeatable)?;
             return Ok(1);
         }
         Ok(0)
@@ -145,11 +148,12 @@ impl World {
         &mut self,
         p: PlayerId,
         i: usize,
-        t: usize,
+        t: TechId,
         master: MasterId,
         repeat: bool,
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
+        let (tech, t) = (t, t.index());
         let owner = &self.players[p.index()];
         let state = &owner.techs[t];
         let def = &self.techs[t];
@@ -160,12 +164,12 @@ impl World {
                 .find(|l| l.0 == master.get())
                 .map_or(-1.0, |l| f32::from(l.1));
             let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
-            if !crate::technology::is_age(t as i16) && 0.0 < modifier {
+            if !crate::technology::is_age(tech) && 0.0 < modifier {
                 time *= modifier;
             }
             let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
             if repeat || time + adjustment <= state.research_done {
-                let _ = self.complete_research(p, t, Some(master))?;
+                let _ = self.complete_research(p, tech, Some(master))?;
             }
         }
         let building = &mut self.players[p.index()].objects[i];

@@ -77,7 +77,9 @@ fn a_research_is_a_production_action_too() {
     };
     building_mut(&mut university).production_queue_actions = action_list(vec![(103, research)]);
     let p = production(&university).unwrap().unwrap();
-    assert!(matches!(p.action, Some(Making::Research(r)) if r.tech == 22 && !r.paid));
+    assert!(
+        matches!(p.action, Some(Making::Research(r)) if r.tech == genie_core::technology::TechId::try_from(22).unwrap() && !r.paid)
+    );
 }
 
 /// No building, or one without slots, action or local lists, has no production; its local
@@ -89,7 +91,10 @@ fn a_building_without_anything_to_make_has_no_production() {
     assert!(production(&house).unwrap().is_none());
     building_mut(&mut house).value = vec![3];
     let p = production(&house).unwrap().unwrap();
-    assert_eq!(p.disabled_techs, [3]);
+    assert_eq!(
+        p.disabled_techs,
+        [genie_core::technology::TechId::try_from(3).unwrap()]
+    );
 }
 
 /// A make or research action without its part, or another action, is not modelled.
