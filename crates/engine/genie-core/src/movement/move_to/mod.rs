@@ -722,6 +722,48 @@ mod tests {
         assert!(code.is_err());
     }
 
+    /// `0x140aa2a70` in state 1 posts notify 0x1fa and in state 13 notify 0x1f9, each with the
+    /// move action value (0x262) and 0, 0, unless the `MoveTo` is quiet; the codes stay 1 and 3.
+    #[test]
+    fn a_not_quiet_move_to_posts_its_end_and_a_quiet_one_does_not() {
+        let mut rig = crate::movement::tests::WalkRig::on_the_path();
+        let mut update = |quiet: bool, state: MoveTo| {
+            let mut m = MoveToAction {
+                quiet,
+                ..MoveToAction::sub_in(state)
+            };
+            let mut ai = Some(crate::unit_ai::UnitAi {
+                current_action: Some(crate::unit_ai::ActionKind::Move),
+                ..crate::unit_ai::UnitAi::default()
+            });
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            let code = m
+                .sub_update(
+                    &mut rig.walk(4),
+                    PathAsk::default(),
+                    GiveUp::default(),
+                    None,
+                    None,
+                    &mut inbox,
+                )
+                .unwrap();
+            let posted: Vec<(i32, [i32; 3])> = ai.map_or(vec![], |ai| {
+                ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
+            });
+            (code, posted)
+        };
+        assert_eq!(update(true, MoveTo::Arrived), (1, vec![]));
+        assert_eq!(update(true, MoveTo::Failed), (3, vec![]));
+        assert_eq!(
+            update(false, MoveTo::Arrived),
+            (1, vec![(crate::unit_ai::ACTION_COMPLETED, [0x262, 0, 0])])
+        );
+        assert_eq!(
+            update(false, MoveTo::Failed),
+            (3, vec![(crate::unit_ai::ACTION_FAILED, [0x262, 0, 0])])
+        );
+    }
+
     /// A sub-action `MoveTo` as its owner adds it (`FUN_140a977e0`, then `0x140aa2100`): a unit
     /// in state 3 or later adds none; within 0.01 of its target it arrived (a NaN gap is far);
     /// farther it starts with speed (a NaN speed too) and fails without; one to a point is far.

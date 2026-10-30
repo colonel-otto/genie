@@ -8,7 +8,7 @@ use crate::movement::move_to::{
     Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, ask_walk, walk_or_give_up,
 };
 use crate::objects::sprite::Graphic;
-use crate::unit_ai::{Inbox, TARGET_MOVED};
+use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, ActionKind, Inbox, TARGET_MOVED};
 
 /// A sub-action `MoveTo` that is not quiet letting its target go: its release (slot 0x180) would
 /// be its owner's, and no owner makes one.
@@ -143,9 +143,24 @@ impl MoveToAction {
                 }
                 0
             }
-            MoveTo::Failed => 3,
-            MoveTo::Arrived => 1,
+            MoveTo::Failed => {
+                self.post_end(inbox, ACTION_FAILED)?;
+                3
+            }
+            MoveTo::Arrived => {
+                self.post_end(inbox, ACTION_COMPLETED)?;
+                1
+            }
         })
+    }
+
+    /// A `MoveTo` that is not quiet tells its unit's AI how it ended (`0x140aa2a70` in state 1
+    /// and 13: notify `kind`, 0x1fa or 0x1f9, with the move action value and 0, 0).
+    fn post_end(&self, inbox: &mut Inbox<'_>, kind: i32) -> Result<(), GenieError> {
+        if self.quiet {
+            return Ok(());
+        }
+        inbox.post(kind, [ActionKind::Move.value(), 0, 0])
     }
 
     /// A quiet sub-action `MoveTo` in `state` to (0, 0, 0) without a sprite, for a test that

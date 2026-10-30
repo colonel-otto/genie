@@ -13,7 +13,6 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
-use crate::unit_ai::ActionKind;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -153,13 +152,6 @@ impl Fly {
                     update_sub_actions(&mut self.move_to, c, bird, me, ListUpdate::default())?;
                 if code == 0 {
                     return Ok(());
-                }
-                // the failed MoveTo's update posts notify 0x1f9: it is not quiet
-                if code == 3 {
-                    bird.post_own(
-                        crate::unit_ai::ACTION_FAILED,
-                        [ActionKind::Move.value(), 0, 0],
-                    )?;
                 }
                 if EPSILON < rest {
                     self.timer += rest;
