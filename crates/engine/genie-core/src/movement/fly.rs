@@ -6,10 +6,11 @@
 use crate::GenieError;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{GiveUp, MoveToAction};
+use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, Shown, graphic_of};
 use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
+use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::world::step::Step;
@@ -47,6 +48,16 @@ pub struct Fly {
     /// The action's task (`+0x48`): its leash (`+0x19`, tiles), rest (`+0x1c`), distance factor
     /// (`+0x28`), avoided class and range (`+0x2c`, `+0x30`), terrain (`+0x16`) and sprites.
     pub task: Task,
+}
+
+/// The sprites a flight's `MoveTo` takes (`0x140a84b40` state 3): the master's walking sprite
+/// (`+0x748`) for a task without one, and the sprites' table.
+#[derive(Clone, Copy, Debug)]
+pub struct FlightSprites<'a> {
+    /// The bird's master's walking sprite, None for none.
+    pub walking: Option<i16>,
+    /// The sprites' table.
+    pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
 }
 
 /// The height a bird of fly mode 1 flies at once its Fly starts (`FUN_140a84900`).
@@ -118,8 +129,12 @@ impl Fly {
             }
             CHOOSING => {
                 let mover = bird.body.mover().ok_or(NO_MOVER)?;
+                let sprites = FlightSprites {
+                    walking: sprite_id(bird.master(&c.w.masters, c.player)?.move_sprite),
+                    graphics: &c.w.graphics,
+                };
                 let action = c.w.streams.get(Stream::Action);
-                let dropped = self.choose(mover, c.w.spatial.map, action)?;
+                let dropped = self.choose(mover, c.w.spatial.map, action, &sprites)?;
                 stop_if(bird, dropped)
             }
             FLYING => {
@@ -135,13 +150,15 @@ impl Fly {
                 let code = match &mut self.move_to {
                     None => 1,
                     Some(move_to) => {
-                        let mut walk = c.walk(&mut bird.body, me);
-                        move_to.sub_update(
-                            &mut walk,
-                            PathAsk::default(),
-                            GiveUp::default(),
-                            None,
-                        )?
+                        // its set_state(4) shows its sprite (+0x58) before the motion step
+                        let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut bird.body, me);
+                        let shown = (move_to.state == MoveTo::Start).then_some(Shown {
+                            sprite: &mut bird.sprite,
+                            rng: beside.sprite_rng,
+                            graphic: move_to.sprite,
+                        });
+                        let gives_up = GiveUp::default();
+                        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)?
                     }
                 };
                 if code == 0 {
@@ -183,14 +200,16 @@ impl Fly {
     /// far along the angle (the y axis turned by it), tried at most 12 times, 80° on each time:
     /// it must lie inside the map and, with a leash, the bird must be within it of its centre or
     /// the point nearer the centre than the bird. A terrain the point must have and objects of a
-    /// class to keep away from are not modelled. A task with sprites draws which one the flight
-    /// takes (`r % 3`, not held). The `MoveTo` to the point at the bird's height within 0 starts
-    /// (state 3) and the bird flies (`set_state` 4); with no distance or no point it rests.
+    /// class to keep away from are not modelled. The flight's sprite ([`Fly::flight_sprite`]):
+    /// a task with sprites draws one, else the master's walking sprite. The `MoveTo` to the point
+    /// at the bird's height within 0 with that sprite starts (state 3) and the bird flies
+    /// (`set_state` 4); with no distance or no point it rests.
     fn choose(
         &mut self,
         mover: &Mover,
         map: [i32; 2],
         action: &mut Well512,
+        sprites: &FlightSprites<'_>,
     ) -> Result<bool, GenieError> {
         let t = self.task;
         let (speed, position) = (mover.stats.speed, mover.position());
@@ -241,23 +260,43 @@ impl Fly {
                 "a flight's animation speed (+0x7b8)",
             ));
         }
-        let [moving, proceeding, working, carrying] = t.sprites;
-        if moving != -1 || carrying != -1 || proceeding != -1 {
-            // the moving, working or proceeding sprite, the first there from r % 3 on
-            let _ = action.rand15();
-            if moving == -1 && working == -1 && proceeding == -1 {
-                return Err(GenieError::unsupported(
-                    "a flight whose task has only a carrying sprite",
-                ));
-            }
-        }
-        // FUN_140aa0d30 to the point within 0, not quiet; the sprite drawn is not held
+        let sprite = graphic_of(sprites.graphics, Self::flight_sprite(t, action, sprites)?)?;
+        // FUN_140aa0d30 to the point within 0 with the flight's sprite, not quiet
         self.move_to = Some(MoveToAction {
             quiet: false,
-            ..MoveToAction::sub_to_point([point[0], point[1], z], 0.0, None)
+            ..MoveToAction::sub_to_point([point[0], point[1], z], 0.0, sprite)
         });
         let _ = self.set_state(FLYING, action);
         Ok(false)
+    }
+
+    /// The sprite of state 3's `MoveTo`: a task with a moving (`+0x40`), proceeding (`+0x48`) or
+    /// carrying (`+0x58`) sprite draws `r % 3` from the Action stream and takes the first there
+    /// from that index on among its moving, working (`+0x50`) and proceeding sprites; a task with
+    /// none of the three takes the master's walking sprite (`+0x748`).
+    ///
+    /// # Errors
+    ///
+    /// A task with only a carrying sprite (the game's draw loops on).
+    fn flight_sprite(
+        t: Task,
+        action: &mut Well512,
+        sprites: &FlightSprites<'_>,
+    ) -> Result<Option<i16>, GenieError> {
+        let [moving, proceeding, working, carrying] = t.sprites;
+        if moving == -1 && carrying == -1 && proceeding == -1 {
+            return Ok(sprites.walking);
+        }
+        let first = action.rand15() % 3;
+        let drawn = [moving, working, proceeding]
+            .into_iter()
+            .cycle()
+            .skip(first as usize)
+            .take(3)
+            .find(|&s| s != -1);
+        drawn.map(Some).ok_or(GenieError::unsupported(
+            "a flight whose task has only a carrying sprite",
+        ))
     }
 
     /// The leash test of state 3: the bird within it of the centre (the squared footprint
@@ -399,7 +438,34 @@ mod tests {
         let mut t = World::new(0, 1, 0, vec![0], vec![gaia]);
         t.spatial = crate::map::spatial::Spatial::new([120, 120]);
         t.streams.get(Stream::Action).set_seed(seed);
+        t.graphics = hawk_graphics();
+        t.masters = vec![crate::objects::masters::Masters::new([
+            crate::objects::masters::Master {
+                id: 96,
+                move_sprite: 846,
+                ..crate::objects::masters::Master::default()
+            },
+        ])];
         t
+    }
+
+    /// The hawk's sprites: 846 (its task's moving and working one, its master's walking one)
+    /// and 1595 (the task's proceeding one).
+    fn hawk_graphics() -> std::collections::BTreeMap<i16, Graphic> {
+        [(846, 0.0625), (1595, 0.0625)]
+            .map(|(id, frame_duration)| {
+                let g = Graphic {
+                    id,
+                    frames: 60,
+                    facets: 16,
+                    speed_multiplier: 1.0,
+                    frame_duration,
+                    replay_delay: 0.0,
+                    flags: 3,
+                };
+                (id, g)
+            })
+            .into()
     }
 
     /// The hawk's update of 21 ms through its step: its Fly after it.
@@ -457,7 +523,12 @@ mod tests {
         let choose = |fly: &mut Fly, map: [i32; 2]| {
             let mut r = Well512::default();
             r.set_seed(7);
-            let got = fly.choose(mover, map, &mut r);
+            let graphics = hawk_graphics();
+            let sprites = FlightSprites {
+                walking: None,
+                graphics: &graphics,
+            };
+            let got = fly.choose(mover, map, &mut r, &sprites);
             (got, r.draws)
         };
         let mut fly = hawk(CHOOSING, 0.0);
@@ -501,6 +572,48 @@ mod tests {
         }
     }
 
+    /// State 3's sprite (`0x140a84b40`): `r % 3` picks among the moving, working and proceeding
+    /// sprites and takes the first there from that index on; a task with no moving, proceeding
+    /// or carrying sprite takes the master's walking one without a draw; only a carrying sprite
+    /// is not modelled (the game's draw loops on).
+    #[test]
+    fn a_flight_s_sprite_is_the_first_of_the_task_s_from_the_drawn_index_on() {
+        let graphics = hawk_graphics();
+        let sprites = FlightSprites {
+            walking: Some(846),
+            graphics: &graphics,
+        };
+        let with = |s: [i16; 4]| Task {
+            sprites: s,
+            ..hawk(CHOOSING, 0.0).task
+        };
+        // the draw for each seed, then the sprite it gives: [moving, proceeding, working, carrying]
+        for seed in 1..40 {
+            let mut r = Well512::default();
+            r.set_seed(seed);
+            let first = r.clone().rand15() % 3;
+            // moving 1, working 3, proceeding 2: index 0 → 1, 1 → 3, 2 → 2
+            let task = with([1, 2, 3, -1]);
+            let got = Fly::flight_sprite(task, &mut r, &sprites).unwrap();
+            assert_eq!(got, Some([1, 3, 2][first as usize]));
+            assert_eq!(r.draws, 1);
+            // only the proceeding sprite: every index comes round to it
+            let mut r2 = Well512::default();
+            r2.set_seed(seed);
+            assert_eq!(
+                Fly::flight_sprite(with([-1, 2, -1, -1]), &mut r2, &sprites),
+                Ok(Some(2))
+            );
+        }
+        let mut r = Well512::default();
+        assert_eq!(
+            Fly::flight_sprite(with([-1, -1, 5, -1]), &mut r, &sprites),
+            Ok(Some(846))
+        );
+        assert_eq!(r.draws, 0);
+        assert!(Fly::flight_sprite(with([-1, -1, -1, 7]), &mut r, &sprites).is_err());
+    }
+
     #[test]
     fn a_choice_flies_speed_times_time_along_a_drawn_angle() {
         // update 718: 10 s left less dt, 1.32 a second: 13.17 tiles at the drawn angle, then
@@ -515,10 +628,19 @@ mod tests {
         let point = [(c * 0.0 - s) * d + AT[0], (s * 0.0 + c) * d + AT[1]];
         let inside = |p: [f32; 2]| 0.0 < p[0] && p[0] <= 119.0 && 0.0 < p[1] && p[1] <= 119.0;
         assert!(inside(point), "the seed's first angle lands on the map");
+        // the sprite draw: the task's moving 846, working 846, proceeding 1595 from r % 3 on
+        let drawn = [846, 846, 1595][e.rand15() as usize % 3];
         let to = [point[0], point[1], 9.0];
+        let sprite = hawk_graphics().get(&drawn).copied();
         assert_eq!(
             (fly.state, fly.move_to),
-            (FLYING, Some(flight(MoveTo::Start, to)))
+            (
+                FLYING,
+                Some(MoveToAction {
+                    sprite,
+                    ..flight(MoveTo::Start, to)
+                })
+            )
         );
         assert_eq!(t.streams.get(Stream::Action).draws, 2);
         assert!(!stopped(&t));
