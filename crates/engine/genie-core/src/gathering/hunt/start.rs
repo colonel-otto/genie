@@ -242,7 +242,7 @@ impl HuntAction {
         // A building whose top action is an Unpack takes a hunt sent to it to `set_state` 15.
         if target.kind == BUILDING && target.top_action == Some(action_type::UNPACK) {
             return Err(GenieError::unsupported(
-                "a hunt sent to a farm at work (set_state 15)",
+                "a hunt sent to a building whose top action is an Unpack (set_state 15)",
             ));
         }
         if target.player == player && drops_here && 0.0 < held {
