@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::math::rng::Well512;
 use crate::movement::explore::Area;
@@ -15,7 +16,7 @@ fn module() -> AiModule {
         info: InfoModule {
             width: 4,
             height: 3,
-            path_map: InfluenceMap::new([4, 3], 0xff),
+            path_map: InfluenceMap::new(GridSize::new(4, 3), 0xff),
             quadrants: [[0; 3]; 16],
             explorer: None,
             search: Vec::new(),
@@ -101,7 +102,7 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     let mut m = module();
     m.info.width = 16;
     m.info.height = 16;
-    m.info.path_map = InfluenceMap::new([16, 16], 0xff);
+    m.info.path_map = InfluenceMap::new(GridSize::new(16, 16), 0xff);
     t.ai.set(PlayerId::new(1), m);
     assert!(t.take_sight_unsupported().is_none());
     assert_eq!(
@@ -181,7 +182,7 @@ fn info(size: i32, fill: u8) -> InfoModule {
     InfoModule {
         width: size,
         height: size,
-        path_map: InfluenceMap::new([size, size], fill),
+        path_map: InfluenceMap::new(GridSize::new(size, size), fill),
         quadrants: [[0; 3]; 16],
         explorer: None,
         search: Vec::new(),
@@ -202,7 +203,7 @@ fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
             &unit(true),
             Point::new(0.5, 0.5),
             &mut area,
-            ([6, 6], &mut rng),
+            (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
     assert_eq!(picked, Some([3, 0]));
@@ -221,7 +222,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
             &unit(false),
             Point::new(0.5, 0.5),
             &mut Grid::new(6),
-            ([6, 6], &mut rng),
+            (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
     assert_eq!(picked, Some([2, 0]));
@@ -232,7 +233,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
             &unit(true),
             Point::new(0.5, 0.5),
             &mut Grid::new(6),
-            ([6, 6], &mut rng),
+            (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
     assert_eq!(none, None);
@@ -254,7 +255,7 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
             &unit(true),
             Point::new(0.5, 0.5),
             &mut area,
-            ([4, 1], &mut rng),
+            (GridSize::new(4, 1), &mut rng),
         )
         .unwrap()
     };
@@ -272,7 +273,7 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
             &unit(true),
             Point::new(0.5, 0.5),
             &mut area,
-            ([4, 1], &mut rng),
+            (GridSize::new(4, 1), &mut rng),
         )
         .unwrap();
     assert_eq!(picked, Some([3, 0]));
@@ -285,7 +286,12 @@ fn the_start_tile_is_met_twice() {
     let area = &mut Grid::new(3);
     let mut rng = Well512::default();
     let _ = m
-        .closest_unexplored_tile(&unit(true), Point::new(1.5, 1.5), area, ([3, 3], &mut rng))
+        .closest_unexplored_tile(
+            &unit(true),
+            Point::new(1.5, 1.5),
+            area,
+            (GridSize::new(3, 3), &mut rng),
+        )
         .unwrap();
     // the flood found nothing, so the dead ends' pass met every tile once more
     let visits = area.visits.borrow();
@@ -310,7 +316,7 @@ fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
             &unit(true),
             Point::new(3.5, 3.5),
             &mut area,
-            ([6, 6], &mut rng),
+            (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
     assert_eq!(m.path_map.get(2, 2), Some(PUNTED));
@@ -337,7 +343,7 @@ fn a_punt_from_the_units_place_picks_a_corner_of_the_lowest_scored_quadrant() {
             &unit(true),
             Point::new(0.5, 0.5),
             &mut area,
-            ([8, 8], &mut rng),
+            (GridSize::new(8, 8), &mut rng),
         )
         .unwrap()
         .unwrap();
@@ -368,7 +374,7 @@ fn an_exhausted_flood_marks_the_dead_ends() {
             &unit(true),
             Point::new(0.5, 0.5),
             &mut area,
-            ([3, 3], &mut rng),
+            (GridSize::new(3, 3), &mut rng),
         )
         .unwrap();
     assert_eq!(picked, None);

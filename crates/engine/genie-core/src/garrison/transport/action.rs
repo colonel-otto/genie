@@ -8,6 +8,7 @@ use crate::garrison::transport::{
     UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
@@ -411,7 +412,7 @@ impl TransportAction {
     ) -> Result<bool, GenieError> {
         let (ux, uy) = (ship.position.x(), ship.position.y());
         let (rx, ry) = (ship.radius.x(), ship.radius.y());
-        let [w, h] = ship.map;
+        let (w, h) = (ship.map.width(), ship.map.height());
         let x0 = cvttss2si((ux - rx) - SHORE_MARGIN).max(0);
         let y0 = cvttss2si((uy - ry) - SHORE_MARGIN).max(0);
         let x1 = cvttss2si((ux + rx) + SHORE_MARGIN).min(w - 1);
@@ -480,7 +481,7 @@ impl<'a> Ship<'a> {
     pub(crate) fn of_unit(
         unit: &Unit,
         master: &Master,
-        map: [i32; 2],
+        map: GridSize,
         graphics: &'a std::collections::BTreeMap<i16, Graphic>,
         task: Option<TaskId>,
     ) -> Result<Self, GenieError> {
@@ -495,7 +496,7 @@ impl<'a> Ship<'a> {
     pub(crate) const fn of(
         unit: &Unit,
         radius: Footprint,
-        map: [i32; 2],
+        map: GridSize,
         walk: MoveToReads<'a>,
         given: Option<i16>,
     ) -> Self {

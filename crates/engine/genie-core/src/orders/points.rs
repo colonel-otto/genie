@@ -1,5 +1,6 @@
 //! Where the units of an order go: their centroid, offsets, spreads and grid points.
 
+use crate::map::GridSize;
 use crate::map::Point;
 
 /// The box of an order's units (`0x140e68b90`, the loop after the splitter): the least and the
@@ -59,10 +60,10 @@ impl Spread {
 
 /// A unit's point in an order to several (`0x140e68b90`): its offset from their centroid added to
 /// the order's point, `EDGE` inside the map where it falls off it.
-pub(super) fn offset_point(position: Point, centroid: Point, point: Point, map: [i32; 2]) -> Point {
+pub(super) fn offset_point(position: Point, centroid: Point, point: Point, map: GridSize) -> Point {
     Point::new(
-        inside_map(position.x() - centroid.x() + point.x(), map[0]),
-        inside_map(position.y() - centroid.y() + point.y(), map[1]),
+        inside_map(position.x() - centroid.x() + point.x(), map.width()),
+        inside_map(position.y() - centroid.y() + point.y(), map.height()),
     )
 }
 
@@ -143,7 +144,7 @@ pub(super) fn follow_axis(v: f32, size: i32) -> f32 {
 /// The cell of the `i`th of `n` units in MOVE's grid (`FUN_140e67800`): `side` cells a row, the
 /// root of `n` times `GRID_AREA` truncated; the unit's column and row, less half the side, a
 /// `GRID_STEP` each from the order's point, kept on the map ([`inside_map`]).
-pub(super) fn grid_point(i: usize, n: usize, point: Point, map: [i32; 2]) -> Point {
+pub(super) fn grid_point(i: usize, n: usize, point: Point, map: GridSize) -> Point {
     /// `DAT_142eb4838`.
     const GRID_AREA: f32 = crate::math::image::order::GRID_AREA;
     /// `DAT_142e7f384`.
@@ -152,5 +153,5 @@ pub(super) fn grid_point(i: usize, n: usize, point: Point, map: [i32; 2]) -> Poi
     let (i, half) = (i as i32, side / 2);
     let x = (i % side - half) as f32 * GRID_STEP + point.x();
     let y = (i / side - half) as f32 * GRID_STEP + point.y();
-    Point::new(inside_map(x, map[0]), inside_map(y, map[1]))
+    Point::new(inside_map(x, map.width()), inside_map(y, map.height()))
 }

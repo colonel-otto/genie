@@ -123,7 +123,7 @@ impl Unit {
         missile.flying = flying;
         let old = self.position();
         let to = old.moved(step);
-        let [w, h] = c.w.spatial.map;
+        let (w, h) = (c.w.spatial.map.width(), c.w.spatial.map.height());
         if to.x() < 0.0 || w as f32 <= to.x() || to.y() < 0.0 || h as f32 <= to.y() {
             self.life.hp = 0.0;
         }
@@ -131,7 +131,7 @@ impl Unit {
             .body
             .mover_mut()
             .ok_or(GenieError::unsupported("a missile without its moving part"))?;
-        let mut at = mover.set_position(to, [w, h]);
+        let mut at = mover.set_position(to, c.w.spatial.map);
         let ground =
             c.w.spatial
                 .terrain
@@ -249,7 +249,7 @@ impl Unit {
         old: Position,
         c: &mut Step<'_>,
     ) -> Result<Vec<(i32, PlayerId, MasterKind, u8)>, GenieError> {
-        let [w, h] = c.w.spatial.map;
+        let (w, h) = (c.w.spatial.map.width(), c.w.spatial.map.height());
         let hold = |v: f32, size: i32| {
             if v < 0.0 {
                 0.0

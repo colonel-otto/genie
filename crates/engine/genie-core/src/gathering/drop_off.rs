@@ -475,7 +475,7 @@ impl Unit {
             .body
             .mover()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
-        let [w, h] = c.spatial.map;
+        let (w, h) = (c.spatial.map.width(), c.spatial.map.height());
         let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
             "the map's zones without its terrain",
         ))?;

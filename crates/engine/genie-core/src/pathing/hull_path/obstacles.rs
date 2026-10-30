@@ -202,7 +202,7 @@ impl HullPather<'_> {
         area: [i32; 4],
         hull: Option<usize>,
     ) -> Result<(), GenieError> {
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         if x < 0 || y < 0 || w <= x || h <= y {
             return Ok(());
         }
@@ -246,7 +246,7 @@ impl HullPather<'_> {
     /// its own place. Then the cliffs about the area.
     pub(super) fn build_hulls(&mut self) -> Result<(), GenieError> {
         self.hulls.clear();
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         self.area[0] = self.area[0].max(0);
         self.area[1] = self.area[1].max(0);
         self.area[2] = self.area[2].min(w - 1);
@@ -291,7 +291,7 @@ impl HullPather<'_> {
     /// `MShortPather::processCliffs` (`FUN_140f8e020`): the objects of the cliff tiles (a static
     /// record of class 6) within two tiles about the area.
     pub(super) fn process_cliffs(&mut self) -> Result<(), GenieError> {
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         let [x0, y0, x1, y1] = self.area;
         let (ex0, ey0) = ((x0 - 2).max(0), (y0 - 2).max(0));
         let (ex1, ey1) = ((x1 + 2).min(w - 1), (y1 + 2).min(h - 1));
@@ -340,7 +340,7 @@ impl HullPather<'_> {
     /// Whether `p` lies on the map, `r` from its edge.
     pub(super) fn on_map(&self, p: Point) -> bool {
         let r = self.radius;
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         !(p.x() < r || w as f32 - r < p.x() || p.y() < r || h as f32 - r < p.y())
     }
 }

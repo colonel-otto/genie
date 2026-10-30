@@ -1,6 +1,7 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Rect;
 use crate::objects::masters::ClassId;
@@ -161,8 +162,9 @@ pub(crate) fn clearing_objects(world: &Spatial, at: Point) -> Vec<i32> {
 
 /// [`footprint_clearing`]'s tiles: from 4 before the place to 4 past it on each axis
 /// (CVTTSS2SI to 16 bits), held on the map; none when a range is empty.
-pub(super) fn clearing_tiles(at: Point, [w, h]: [i32; 2]) -> Option<([i16; 2], [i16; 2])> {
+pub(super) fn clearing_tiles(at: Point, map: GridSize) -> Option<([i16; 2], [i16; 2])> {
     use crate::math::conversions::cvttss2si;
+    let (w, h) = (map.width(), map.height());
     let range = |v: f32, size: i32| {
         let low = cvttss2si(v - CLEARING_REACH) as i16;
         let high = cvttss2si(v + CLEARING_REACH) as i16;

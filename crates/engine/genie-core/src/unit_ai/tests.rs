@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -1928,7 +1929,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
         class: Some(class::VILLAGER),
         player: PlayerId::new(1),
         state: 2,
-        map: [100, 100],
+        map: GridSize::new(100, 100),
         anim_speed: Some(1.0),
         action_state: Some(5),
         units: vec![foe(30, class::CLASS_6)],
@@ -5048,7 +5049,7 @@ fn a_deer_that_sees_an_object_evades_it() {
     let mut r = wander_seed(false);
     let place = Surroundings {
         speed: 1.2,
-        map: [120, 120],
+        map: GridSize::new(120, 120),
         ..deer_at(Position::new(31.5, 106.5, 0.0))
     };
     let enemy = |_: &Search<'_>| {
@@ -7458,7 +7459,7 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
     let mut r = wander_seed(false);
     let place = Surroundings {
         speed: 1.2,
-        map: [120, 120],
+        map: GridSize::new(120, 120),
         ..deer_at(Position::new(31.5, 106.5, 0.0))
     };
     let on_top = |_: &Search<'_>| {
@@ -7479,7 +7480,7 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
     assert_eq!(moved.point, Position::new(30.5, 105.5, 0.0));
     let near_edge = Surroundings {
         speed: 1.2,
-        map: [120, 120],
+        map: GridSize::new(120, 120),
         ..deer_at(Position::new(3.5, 4.5, 0.0))
     };
     let mut u = deer();
@@ -7563,7 +7564,7 @@ impl UnitSide for StandSide {
 fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
     let at = Surroundings {
         position: Position::new(10.0, 20.0, 1.5),
-        map: [64, 64],
+        map: GridSize::new(64, 64),
         ..Surroundings::default()
     };
     let mut busy = UnitAi {
@@ -7899,7 +7900,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
         id: 500,
         position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
-        map: [64, 64],
+        map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::KING),
         state: 2,
@@ -7975,7 +7976,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         id: 500,
         position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
-        map: [64, 64],
+        map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::CLASS_6),
         state: 2,
@@ -8758,7 +8759,7 @@ fn attacked_transport() -> (UnitAi, Surroundings) {
         id: 500,
         position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
-        map: [64, 64],
+        map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
         state: 2,
@@ -9133,7 +9134,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
         id: 500,
         position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
-        map: [64, 64],
+        map: GridSize::new(64, 64),
         los: 4.0,
         player: PlayerId::new(1),
         class: Some(class::FISHING_SHIP),
@@ -10682,7 +10683,7 @@ fn run_order(
     let at = Surroundings {
         id: 9,
         position: Position::new(5.0, 6.0, 0.25),
-        map: [100, 100],
+        map: GridSize::new(100, 100),
         class: Some(class),
         master: master_id(4),
         player: PlayerId::new(1),

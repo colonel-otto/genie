@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -188,7 +189,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
             ..Player::default()
         }],
     );
-    t.spatial = crate::map::spatial::Spatial::new([10, 10]);
+    t.spatial = crate::map::spatial::Spatial::new(GridSize::new(10, 10));
     for id in 1..=3 {
         t.spatial.insert(
             object_id(id),
@@ -1724,7 +1725,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             ..Master::default()
         },
     ])];
-    t.spatial = crate::map::spatial::Spatial::new([10, 10]);
+    t.spatial = crate::map::spatial::Spatial::new(GridSize::new(10, 10));
     t.spatial.insert(
         object_id(1),
         crate::map::spatial::Placed {

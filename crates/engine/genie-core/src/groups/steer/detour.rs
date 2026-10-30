@@ -7,6 +7,7 @@ use crate::groups::steer::{
     ROUND_STILL, ROUND_TIMER,
 };
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::{BVector, at_most_or_unordered};
@@ -462,7 +463,7 @@ pub(super) fn one_step_toward(
     r: &Rounder<'_>,
     to: BVector,
     forward: BVector,
-    map: [i32; 2],
+    map: GridSize,
 ) -> BVector {
     let d = fmath::sub(to, r.at);
     let mut dir = if d.x().abs() <= ROUND_STILL && d.y().abs() <= ROUND_STILL {
@@ -474,7 +475,7 @@ pub(super) fn one_step_toward(
     let len = fmath::sqrt(dir.x() * dir.x() + 0.0 + dir.y() * dir.y());
     let dir = BVector::new(dir.x() / len, dir.height() / len, dir.y() / len);
     let mut step = fmath::add(r.at, fmath::scale(1.0, dir));
-    let [w, h] = map;
+    let (w, h) = (map.width(), map.height());
     let (top_x, top_y) = (w as f32 - r.radius.x(), h as f32 - r.height);
     if r.radius.x() > step.x() {
         step = step.with_x(r.radius.x());

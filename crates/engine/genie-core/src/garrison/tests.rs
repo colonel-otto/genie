@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
@@ -247,8 +248,8 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     // tested) asks the tiles about the two: on a walled map a reach that skips them is in
     let masters = [Masters::default(), garrison_masters()];
     let blocked = [(10, 11), (11, 10)];
-    let (mut walled, stats) = walled_map([100, 100], &blocked, &blocked, &[(10, 11)]);
-    let (mut open, _) = walled_map([100, 100], &[(10, 11)], &blocked, &[]);
+    let (mut walled, stats) = walled_map(GridSize::new(100, 100), &blocked, &blocked, &[(10, 11)]);
+    let (mut open, _) = walled_map(GridSize::new(100, 100), &[(10, 11)], &blocked, &[]);
     let mut reach = |range, gap, speed| {
         EnterAction::in_reach(range, gap, speed, &mut walls(&mut walled, &masters, &stats))
     };
@@ -741,13 +742,13 @@ fn the_landing_walk_steps_twice_per_tile_of_the_longer_axis() {
 /// (bit 1), with a town centre (a building) on each tile of `buildings` and a villager (no
 /// building) on each of `others`, and the walker (id 1, x radius 0.2, mask 1).
 fn walled_map(
-    size: [i32; 2],
+    size: GridSize,
     blocked: &[(i32, i32)],
     buildings: &[(i32, i32)],
     others: &[(i32, i32)],
 ) -> (crate::map::spatial::Spatial, crate::movement::MoveStats) {
     use crate::map::spatial::{Placed, Spatial, Tiles};
-    let [w, h] = size;
+    let (w, h) = (size.width(), size.height());
     let mut words = vec![0u8; (w * h) as usize];
     for &(x, y) in blocked {
         words[(y * w + x) as usize] = 0x02;
@@ -802,7 +803,7 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
         walled_off(me, them, spatial, &masters, (1, stats))
     };
     let blocked = [(10, 11), (11, 10)];
-    let (mut spatial, stats) = walled_map([100, 100], &blocked, &blocked, &[(10, 11)]);
+    let (mut spatial, stats) = walled_map(GridSize::new(100, 100), &blocked, &blocked, &[(10, 11)]);
     assert_eq!(
         walled(
             &mut spatial,
@@ -813,7 +814,12 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
         Ok(true)
     );
     // the unit's and the target's own tiles do not count, nor what is not a building
-    let (mut spatial, stats) = walled_map([100, 100], &blocked, &[(10, 10), (10, 11)], &[(11, 10)]);
+    let (mut spatial, stats) = walled_map(
+        GridSize::new(100, 100),
+        &blocked,
+        &[(10, 10), (10, 11)],
+        &[(11, 10)],
+    );
     assert_eq!(
         walled(
             &mut spatial,
@@ -824,7 +830,7 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
         Ok(false)
     );
     // a tile the unit could stand on does not count
-    let (mut spatial, stats) = walled_map([100, 100], &[(10, 11)], &blocked, &[]);
+    let (mut spatial, stats) = walled_map(GridSize::new(100, 100), &[(10, 11)], &blocked, &[]);
     assert_eq!(
         walled(
             &mut spatial,
@@ -836,7 +842,7 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
     );
     // far apart: the first tile of the box and the next, within the map
     let far = [(95, 2), (96, 3)];
-    let (mut spatial, stats) = walled_map([97, 100], &far, &far, &[]);
+    let (mut spatial, stats) = walled_map(GridSize::new(97, 100), &far, &far, &[]);
     assert_eq!(
         walled(
             &mut spatial,
@@ -846,7 +852,7 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
         ),
         Ok(true)
     );
-    let (mut spatial, stats) = walled_map([97, 100], &far, &[(95, 2), (95, 4)], &[]);
+    let (mut spatial, stats) = walled_map(GridSize::new(97, 100), &far, &[(95, 2), (95, 4)], &[]);
     assert_eq!(
         walled(
             &mut spatial,
@@ -858,7 +864,7 @@ fn the_reach_tile_test_counts_buildings_where_the_unit_cannot_stand() {
     );
     // a master the slice lacks on a counted tile fails
     let masters = [Masters::default(), Masters::default()];
-    let (mut spatial, stats) = walled_map([100, 100], &blocked, &blocked, &[]);
+    let (mut spatial, stats) = walled_map(GridSize::new(100, 100), &blocked, &blocked, &[]);
     assert!(
         walled_off(
             Point::new(10.5, 10.5),
@@ -1375,7 +1381,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
     }
     t.masters = (0..4).map(|_| masters.clone()).collect();
     let n = (w * h) as usize;
-    t.spatial = crate::map::spatial::Spatial::new([w, h]);
+    t.spatial = crate::map::spatial::Spatial::new(GridSize::new(w, h));
     let mut terrain = crate::map::terrain::Terrain::new(
         w,
         h,
@@ -2334,7 +2340,7 @@ fn coast_world(ship: Point) -> World {
     );
     terrain.set_elevations(vec![0; 30 * 20]);
     t.spatial.terrain = Some(terrain);
-    t.pathing = crate::pathing::Pathing::new([30, 20], kinds, restrictions, 0);
+    t.pathing = crate::pathing::Pathing::new(GridSize::new(30, 20), kinds, restrictions, 0);
     t.streams.seed_all(7);
     ship_at(&mut t, ship);
     let mut mover = crate::gathering::hunt::tests::walker();

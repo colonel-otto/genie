@@ -15,6 +15,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
@@ -114,7 +115,7 @@ pub struct Ship<'a> {
     /// An object is inside it (`+0x2f8` holds one).
     pub loaded: bool,
     /// The map's size in tiles (the owner's world's map, `+0x18`, `+0x1c`).
-    pub map: [i32; 2],
+    pub map: GridSize,
     /// What a `MoveTo` that `set_state` makes reads of the unit ([`MoveToReads`]): its speed
     /// (slot 0x208: without one the `MoveTo` starts failed) and the sprites' defaults.
     pub walk: MoveToReads<'a>,

@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     Shore, WATER,
 };
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
@@ -21,11 +22,11 @@ use crate::math::rng::Well512;
 /// the water with more than one draw to spare: the 99th and 100th never count.
 pub(crate) fn retry_point(
     point: Point,
-    map: [i32; 2],
+    map: GridSize,
     terrain: &Terrain,
     rng: &mut Well512,
 ) -> (Point, bool) {
-    let [w, h] = map;
+    let (w, h) = (map.width(), map.height());
     let mut seen = DEEP_WATER;
     let mut at = point;
     let mut left = RETRIES;
@@ -70,7 +71,7 @@ pub struct Around {
 pub(crate) struct DropDraws<'a> {
     around: Around,
     unit_radius: Footprint,
-    map: [i32; 2],
+    map: GridSize,
     last: &'a mut Option<Point>,
     rng: &'a mut Well512,
     left: u16,
@@ -82,7 +83,7 @@ impl<'a> DropDraws<'a> {
     pub(crate) const fn new(
         around: Around,
         unit_radius: Footprint,
-        map: [i32; 2],
+        map: GridSize,
         last: &'a mut Option<Point>,
         rng: &'a mut Well512,
     ) -> Self {
@@ -103,7 +104,7 @@ impl<'a> DropDraws<'a> {
     ///
     /// [`STACK_PLACE`].
     pub(crate) fn next_on_map(&mut self) -> Result<Option<Point>, GenieError> {
-        let (w, h) = (self.map[0] as f32, self.map[1] as f32);
+        let (w, h) = (self.map.width() as f32, self.map.height() as f32);
         while 0 < self.left {
             self.left -= 1;
             let (x, y) = {
@@ -186,7 +187,7 @@ pub(crate) struct MapShore<'a> {
     pub(super) zones: &'a mut crate::pathing::zones::Zones,
     pub(super) pathing: &'a mut crate::pathing::Pathing,
     pub(super) tiles: &'a crate::map::spatial::Tiles,
-    pub(super) map: [i32; 2],
+    pub(super) map: GridSize,
     pub(super) restriction: Option<usize>,
     pub(super) tile: [i32; 2],
 }
@@ -231,7 +232,7 @@ impl<'a> MapShore<'a> {
             .restrictions
             .get(r)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let [w, h] = self.map;
+        let (w, h) = (self.map.width(), self.map.height());
         Ok(Some(self.zones.of(w, h, &self.terrain.kinds, values)?))
     }
 }

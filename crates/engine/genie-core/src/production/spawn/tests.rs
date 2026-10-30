@@ -1,5 +1,6 @@
 use super::*;
 use crate::commands::GatherPoint;
+use crate::map::GridSize;
 use crate::map::GroundOffset;
 use crate::map::Radii;
 use crate::objects::masters::class;
@@ -93,8 +94,8 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
 struct Hill(u8, u8);
 
 impl PlaceMap for Hill {
-    fn size(&self) -> [i32; 2] {
-        [10, 10]
+    fn size(&self) -> GridSize {
+        GridSize::new(10, 10)
     }
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
@@ -231,8 +232,8 @@ fn livestock_stays_alive_a_tree_only_once_dead() {
 struct Fogged(Vec<Near>, [u64; 2]);
 
 impl PlaceMap for Fogged {
-    fn size(&self) -> [i32; 2] {
-        [120, 120]
+    fn size(&self) -> GridSize {
+        GridSize::new(120, 120)
     }
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
@@ -325,8 +326,8 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
 struct Flat(Vec<Near>);
 
 impl PlaceMap for Flat {
-    fn size(&self) -> [i32; 2] {
-        [120, 120]
+    fn size(&self) -> GridSize {
+        GridSize::new(120, 120)
     }
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)
@@ -918,8 +919,8 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
 struct Dark;
 
 impl PlaceMap for Dark {
-    fn size(&self) -> [i32; 2] {
-        [120, 120]
+    fn size(&self) -> GridSize {
+        GridSize::new(120, 120)
     }
     fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
         Ok(0)

@@ -17,6 +17,7 @@ use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
@@ -144,13 +145,13 @@ pub fn tiles(from: [i32; 2], to: [i32; 2]) -> Result<Vec<[i32; 2]>, GenieError> 
 /// [`MAP_MARGIN`]), then each coordinate snapped: to the nearest whole one for a whole radius, to
 /// the tile's centre for another.
 #[must_use]
-pub fn snap(radius: Footprint, map: [i32; 2], at: Point) -> Point {
+pub fn snap(radius: Footprint, map: GridSize, at: Point) -> Point {
     let (mut x, mut y) = (at.x(), at.y());
     let (rx, ry) = (radius.x(), radius.y());
     let (low_x, mut high_x) = (x - rx, rx + x);
     let (low_y, mut high_y) = (y - ry, ry + y);
-    let far_x = map[0] as f32 - MAP_MARGIN;
-    let far_y = map[1] as f32 - MAP_MARGIN;
+    let far_x = map.width() as f32 - MAP_MARGIN;
+    let far_y = map.height() as f32 - MAP_MARGIN;
     if low_x < 0.0 {
         let d = 0.0 - low_x;
         high_x += d;
@@ -466,21 +467,37 @@ mod tests {
     #[test]
     fn a_half_tile_footprint_snaps_to_the_tile_centre() {
         assert_eq!(
-            snap(Footprint::new(0.5, 0.5), [120, 120], Point::new(10.0, 20.0)),
+            snap(
+                Footprint::new(0.5, 0.5),
+                GridSize::new(120, 120),
+                Point::new(10.0, 20.0)
+            ),
             Point::new(10.5, 20.5)
         );
         // a whole radius rounds to the nearest whole point
         assert_eq!(
-            snap(Footprint::new(1.0, 1.0), [120, 120], Point::new(10.0, 20.0)),
+            snap(
+                Footprint::new(1.0, 1.0),
+                GridSize::new(120, 120),
+                Point::new(10.0, 20.0)
+            ),
             Point::new(10.0, 20.0)
         );
         // the map's edges push the footprint in
         assert_eq!(
-            snap(Footprint::new(0.5, 0.5), [120, 120], Point::new(0.0, 119.0)),
+            snap(
+                Footprint::new(0.5, 0.5),
+                GridSize::new(120, 120),
+                Point::new(0.0, 119.0)
+            ),
             Point::new(0.5, 119.5)
         );
         assert_eq!(
-            snap(Footprint::new(1.0, 1.0), [120, 120], Point::new(0.0, 119.0)),
+            snap(
+                Footprint::new(1.0, 1.0),
+                GridSize::new(120, 120),
+                Point::new(0.0, 119.0)
+            ),
             Point::new(1.0, 119.0)
         );
     }

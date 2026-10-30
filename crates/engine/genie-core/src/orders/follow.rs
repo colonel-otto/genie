@@ -258,8 +258,8 @@ impl World {
         let (p, idx) = self.follower_start(loose, i)?;
         let map = self.spatial.map;
         let at = Position::new(
-            follow_axis(x - mean.x() + followed.place.x(), map[0]),
-            follow_axis(y - mean.y() + followed.place.y(), map[1]),
+            follow_axis(x - mean.x() + followed.place.x(), map.width()),
+            follow_axis(y - mean.y() + followed.place.y(), map.height()),
             0.0,
         );
         match followed.class {

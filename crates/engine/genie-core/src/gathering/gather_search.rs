@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::msvc;
@@ -82,7 +83,7 @@ pub struct Builder {
 pub fn more_work(
     entry: Option<&DropSite>,
     builder: &Builder,
-    map: [i32; 2],
+    map: GridSize,
     blocked: Option<&dyn Fn(i32, i32) -> bool>,
     objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
 ) -> Result<Option<Candidate>, GenieError> {
@@ -101,11 +102,11 @@ pub fn more_work(
     let y0 = by.wrapping_sub(r).max(0);
     let mut x1 = bx.wrapping_add(r);
     let mut y1 = by.wrapping_add(r);
-    if map[0] <= i32::from(x1) {
-        x1 = map[0] as i16 - 1;
+    if map.width() <= i32::from(x1) {
+        x1 = map.width() as i16 - 1;
     }
-    if map[1] <= i32::from(y1) {
-        y1 = map[1] as i16 - 1;
+    if map.height() <= i32::from(y1) {
+        y1 = map.height() as i16 - 1;
     }
     let (w, h) = (i32::from(x1 - x0) + 1, i32::from(y1 - y0) + 1);
     let start = [
@@ -113,7 +114,7 @@ pub fn more_work(
         builder.position.y() as i32 - i32::from(y0),
     ];
     let grid = blocked.and_then(|b| {
-        reached(start, [w, h], &|x, y| {
+        reached(start, GridSize::new(w, h), &|x, y| {
             b(i32::from(x0) + x, i32::from(y0) + y)
         })
     });
@@ -189,10 +190,10 @@ pub fn more_work(
 #[must_use]
 pub fn reached(
     start: [i32; 2],
-    size: [i32; 2],
+    size: GridSize,
     blocked: &dyn Fn(i32, i32) -> bool,
 ) -> Option<Vec<bool>> {
-    let [w, h] = size;
+    let (w, h) = (size.width(), size.height());
     let [sx, sy] = start;
     if sx < 0 || sy < 0 || w <= sx || h <= sy {
         return None;
@@ -286,7 +287,7 @@ pub type Reaches<'a, W> = dyn FnMut(&mut W, i32) -> Result<bool, GenieError> + '
 /// arguments past the unit, the site and the kind).
 pub struct ResourceWorld<'a, W> {
     /// The map's size.
-    pub map: [i32; 2],
+    pub map: GridSize,
     /// The spatial index the reads take, which the reachability check writes scratch in.
     pub world: &'a mut W,
     /// Whether the player has explored a tile.
@@ -426,7 +427,7 @@ pub fn closest_resource_at<W>(
                 continue;
             }
             let d = pass_distance(pass.origin, x, y);
-            if pass.max_steps < d || x < 0 || y < 0 || map[0] <= x || map[1] <= y {
+            if pass.max_steps < d || x < 0 || y < 0 || map.width() <= x || map.height() <= y {
                 continue;
             }
             if passable(world, x, y) {
@@ -468,7 +469,7 @@ pub fn closest_resource_at<W>(
 /// unit's tile alone (a single tile's pass within the line of sight `los` plus 5).
 fn search_passes(
     site: Option<&SearchSite>,
-    map: [i32; 2],
+    map: GridSize,
     passable: &dyn Fn(i32, i32) -> bool,
     unit_tile: (i32, i32),
     los: i32,
@@ -509,13 +510,13 @@ fn push_neighbours(
     seen: &mut [bool],
     at: &impl Fn(i32, i32) -> usize,
     Cell { x, y, steps }: Cell,
-    map: [i32; 2],
+    map: GridSize,
 ) {
     for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
         let c = at(nx, ny);
         if !seen[c] {
             seen[c] = true;
-            if 0 <= nx && nx < map[0] && 0 <= ny && ny < map[1] {
+            if 0 <= nx && nx < map.width() && 0 <= ny && ny < map.height() {
                 queue.push(Cell {
                     x: nx,
                     y: ny,
@@ -561,15 +562,15 @@ fn sort_point_and_side(at: Point, los: i32, site: Option<&SearchSite>) -> ((f32,
 /// the site's x plus its radius, truncated, at most the map's last column; y alike), row by row.
 fn footprint_seeds(
     s: &SearchSite,
-    map: [i32; 2],
+    map: GridSize,
     passable: &dyn Fn(i32, i32) -> bool,
 ) -> Vec<Cell> {
     let (sx, sy) = (s.position.x(), s.position.y());
     let (rx, ry) = (s.radius.x(), s.radius.y());
     let x0 = ((sx - rx) as i32).max(1) - 1;
-    let x1 = ((sx + rx) as i32).min(map[0] - 1);
+    let x1 = ((sx + rx) as i32).min(map.width() - 1);
     let y0 = ((sy - ry) as i32).max(1) - 1;
-    let y1 = ((sy + ry) as i32).min(map[1] - 1);
+    let y1 = ((sy + ry) as i32).min(map.height() - 1);
     let mut seeds = Vec::new();
     for y in y0..=y1 {
         for x in x0..=x1 {
@@ -685,7 +686,7 @@ mod tests {
     fn a_flood_enters_the_blocked_cells_next_to_what_it_reaches_but_not_past_them() {
         // a wall at x = 2 in a 5 x 3 box: the flood from (0, 1) reaches x 0..=1 and enters the
         // wall's cells, never x 3 or 4
-        let seen = reached([0, 1], [5, 3], &|x, _| x == 2).unwrap();
+        let seen = reached([0, 1], GridSize::new(5, 3), &|x, _| x == 2).unwrap();
         let col = |x: i32| {
             (0..3)
                 .map(|y| seen[(x * 3 + y) as usize])
@@ -694,7 +695,7 @@ mod tests {
         assert_eq!(col(1), [true; 3]);
         assert_eq!(col(2), [true; 3]);
         assert_eq!(col(3), [false; 3]);
-        assert!(reached([5, 0], [5, 3], &|_, _| false).is_none());
+        assert!(reached([5, 0], GridSize::new(5, 3), &|_, _| false).is_none());
     }
 
     #[test]
@@ -717,12 +718,12 @@ mod tests {
                 .copied()
                 .collect())
         };
-        let found = more_work(Some(&entry), &b, [40, 40], None, &objects).unwrap();
+        let found = more_work(Some(&entry), &b, GridSize::new(40, 40), None, &objects).unwrap();
         assert_eq!(found.map(|o| o.id), Some(4));
         let mut off = lumber_camp();
         off.auto_work = false;
         assert_eq!(
-            more_work(Some(&off), &b, [40, 40], None, &objects).unwrap(),
+            more_work(Some(&off), &b, GridSize::new(40, 40), None, &objects).unwrap(),
             None
         );
     }
@@ -754,7 +755,7 @@ mod tests {
                 .collect())
         };
         // the wood (2 tiles) is nearer than the gold (4 tiles): it takes over
-        let found = more_work(Some(&entry), &b, [40, 40], None, &objects).unwrap();
+        let found = more_work(Some(&entry), &b, GridSize::new(40, 40), None, &objects).unwrap();
         assert_eq!(found.map(|o| o.id), Some(8));
     }
 
@@ -779,7 +780,7 @@ mod tests {
                     .copied()
                     .collect())
             };
-            more_work(Some(&entry), &b, [40, 40], None, &objects)
+            more_work(Some(&entry), &b, GridSize::new(40, 40), None, &objects)
                 .unwrap()
                 .map(|o| o.id)
         };
@@ -818,7 +819,7 @@ mod tests {
             0,
             2,
             ResourceWorld {
-                map: [40, 40],
+                map: GridSize::new(40, 40),
                 world: &mut (),
                 explored: &|&(), _, _| Ok(true),
                 passable: &|&(), x, y| !tree_at(x, y),
@@ -841,7 +842,7 @@ mod tests {
             0,
             2,
             ResourceWorld {
-                map: [40, 40],
+                map: GridSize::new(40, 40),
                 world: &mut (),
                 explored: &|&(), _, _| Ok(true),
                 passable: &|&(), x, y| !tree_at(x, y),
@@ -891,7 +892,7 @@ mod tests {
                 0,
                 2,
                 ResourceWorld {
-                    map: [40, 40],
+                    map: GridSize::new(40, 40),
                     world: &mut (),
                     explored: &|&(), _, _| Ok(true),
                     passable: &|&(), x, y| !blocked(x, y),
@@ -957,7 +958,7 @@ mod tests {
             0,
             max_workers,
             ResourceWorld {
-                map: [40, 40],
+                map: GridSize::new(40, 40),
                 world: &mut (),
                 explored,
                 passable: &|&(), _, _| true,

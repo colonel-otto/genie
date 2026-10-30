@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
@@ -179,7 +180,8 @@ pub(super) fn side_terrains(
 /// [`placement_terrains`]'s tiles beside the box `b` (x0, y0, x1, y1) on a map of `size`: the
 /// row below, the column right, the row above (right to left) and the column left (top to
 /// bottom), each where the map holds it.
-pub(super) fn tiles_beside([x0, y0, x1, y1]: [i32; 4], [w, h]: [i32; 2]) -> Vec<(i32, i32)> {
+pub(super) fn tiles_beside([x0, y0, x1, y1]: [i32; 4], map: GridSize) -> Vec<(i32, i32)> {
+    let (w, h) = (map.width(), map.height());
     let mut beside = Vec::new();
     if 0 < y0 {
         beside.extend((x0..=x1).map(|x| (x, y0 - 1)));

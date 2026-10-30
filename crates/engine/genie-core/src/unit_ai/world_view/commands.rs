@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
@@ -209,13 +210,13 @@ impl UnitView<'_, '_> {
     }
 
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
-    pub(crate) fn scout_area(&mut self) -> Result<(ScoutArea<'_>, [i32; 2], f32), GenieError> {
+    pub(crate) fn scout_area(&mut self) -> Result<(ScoutArea<'_>, GridSize, f32), GenieError> {
         let unit = &*self.unit;
         let master = unit.master(&self.c.w.masters, self.player)?;
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "an auto scout without movement state",
         ))?;
-        let [w, h] = self.c.w.spatial.map;
+        let map = self.c.w.spatial.map;
         let terrain = self
             .c
             .w
@@ -229,7 +230,11 @@ impl UnitView<'_, '_> {
             .restrictions
             .get(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let zones = self.c.w.zones.of(w, h, &terrain.kinds, values)?;
+        let zones = self
+            .c
+            .w
+            .zones
+            .of(map.width(), map.height(), &terrain.kinds, values)?;
         let me = Me {
             id: unit.id.get(),
             group: unit.group.id,
@@ -254,7 +259,7 @@ impl UnitView<'_, '_> {
             reach: master.line_of_sight - LOS_MARGIN,
             scouted: false,
         };
-        Ok((area, [w, h], master.line_of_sight))
+        Ok((area, map, master.line_of_sight))
     }
 }
 

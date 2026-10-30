@@ -499,6 +499,7 @@ impl MoveToAction {
 mod tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::spatial::Placed;
     use crate::movement::move_to::tests::sheep;
     use crate::test_ids::object_id;
@@ -782,7 +783,7 @@ mod tests {
 
     #[test]
     fn a_move_to_an_object_at_hand_starts_arrived_and_shows_the_standing_sprite() {
-        let mut world = Spatial::new([120, 120]);
+        let mut world = Spatial::new(GridSize::new(120, 120));
         world.insert(object_id(9185), sheep(30.4, 40.0));
         world.insert(object_id(9186), sheep(35.0, 40.0));
         let mut walker = crate::gathering::hunt::tests::walker();
@@ -803,7 +804,7 @@ mod tests {
     /// the start is state 3, or 13 for a unit without speed.
     #[test]
     fn a_move_to_an_object_holds_it_unless_it_is_gone_or_a_town_centre_for_livestock() {
-        let mut world = Spatial::new([120, 120]);
+        let mut world = Spatial::new(GridSize::new(120, 120));
         world.insert(object_id(9186), sheep(35.0, 40.0));
         world.insert(
             object_id(9149),
@@ -880,7 +881,7 @@ mod tests {
     /// standing sprite as an arrival does.
     #[test]
     fn a_move_to_an_object_holds_its_place_and_a_unit_without_speed_fails_standing() {
-        let mut world = Spatial::new([120, 120]);
+        let mut world = Spatial::new(GridSize::new(120, 120));
         world.insert(object_id(9186), sheep(35.0, 40.0));
         let me = Position::new(30.0, 40.0, 0.0);
         let mut walker = crate::gathering::hunt::tests::walker();

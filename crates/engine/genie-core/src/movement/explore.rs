@@ -8,6 +8,7 @@
 //! is done it goes back to state 3.
 
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -250,7 +251,7 @@ pub const SCOUT_MAP_SIZE: i32 = 0x1e0;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InfluenceMap {
     /// Its width and height.
-    pub size: [i32; 2],
+    pub size: GridSize,
     /// The tile its first byte stands for.
     pub origin: [i32; 2],
     /// `unchangeableLimitValue` (`+0x18`), which the save keeps.
@@ -262,8 +263,8 @@ pub struct InfluenceMap {
 impl InfluenceMap {
     /// `FUN_140f4a240`: `size` wide and high, every byte `fill`, from tile (0, 0).
     #[must_use]
-    pub fn new(size: [i32; 2], fill: u8) -> Self {
-        let n = (size[0].max(0) * size[1].max(0)) as usize;
+    pub fn new(size: GridSize, fill: u8) -> Self {
+        let n = (size.width().max(0) * size.height().max(0)) as usize;
         Self {
             size,
             origin: [0, 0],
@@ -274,8 +275,8 @@ impl InfluenceMap {
 
     fn index(&self, x: i32, y: i32) -> Option<usize> {
         let (dx, dy) = (x - self.origin[0], y - self.origin[1]);
-        (0 <= dx && 0 <= dy && dx < self.size[0] && dy < self.size[1])
-            .then(|| (dy * self.size[0] + dx) as usize)
+        (0 <= dx && 0 <= dy && dx < self.size.width() && dy < self.size.height())
+            .then(|| (dy * self.size.width() + dx) as usize)
     }
 
     /// The byte of tile (`x`, `y`), None off the map (`FUN_140c4b130` reads it unchecked).
@@ -336,7 +337,7 @@ pub trait Area {
 /// in the slice: the base notify makes it only when no point is found, which it does not model.
 pub fn unexplored_area(
     tc: Option<[i32; 2]>,
-    map: [i32; 2],
+    map: GridSize,
     area: &mut dyn Area,
 ) -> Result<Option<[i32; 2]>, GenieError> {
     let Some([cx, cy]) = tc else {
@@ -347,7 +348,7 @@ pub fn unexplored_area(
     for ring in RINGS {
         for [ax, ay] in AROUND {
             let (x, y) = (cx + ax * ring, cy + ay * ring);
-            if x < 0 || y < 0 || map[0] <= x || map[1] <= y {
+            if x < 0 || y < 0 || map.width() <= x || map.height() <= y {
                 continue;
             }
             if area.explored(x, y)? {
@@ -398,7 +399,7 @@ pub struct Seeker {
 pub fn closest_undiscovered(
     area: &mut dyn Area,
     seeker: Seeker,
-    map: [i32; 2],
+    map: GridSize,
     ai: &mut crate::math::rng::Well512,
 ) -> Result<Option<[i32; 2]>, GenieError> {
     if seeker.computer {
@@ -420,7 +421,7 @@ pub fn closest_undiscovered(
         );
     }
     let (x0, y0) = (x0.max(0), y0.max(0));
-    let (x1, y1) = (x1.min(map[0] - 1), y1.min(map[1] - 1));
+    let (x1, y1) = (x1.min(map.width() - 1), y1.min(map.height() - 1));
     let slack = (ai.rand15() % 3) as i32;
     let own = area.own_zone();
     let (tx, ty) = (ux as i32, uy as i32);
@@ -465,11 +466,11 @@ pub fn beyond_sight(
     area: &mut dyn Area,
     at: Position,
     line_of_sight: f32,
-    map: [i32; 2],
+    map: GridSize,
     ai: &mut crate::math::rng::Well512,
 ) -> Result<Option<[i32; 2]>, GenieError> {
     let own = area.own_zone();
-    let [w, h] = map;
+    let (w, h) = (map.width(), map.height());
     let r = line_of_sight as i32 + SQUARE_PAST_SIGHT;
     let (ux, uy) = (at.x() as i32, at.y() as i32);
     let (x0, x1, y0, y1) = (ux - r, ux + r, uy - r, uy + r);
@@ -694,7 +695,7 @@ mod tests {
     /// byte the fill; a set off the map is let be, a read off it is none.
     #[test]
     fn an_influence_map_holds_a_byte_per_tile_from_its_reference_point() {
-        let mut m = InfluenceMap::new([SCOUT_MAP_SIZE, SCOUT_MAP_SIZE], 0);
+        let mut m = InfluenceMap::new(GridSize::new(SCOUT_MAP_SIZE, SCOUT_MAP_SIZE), 0);
         assert_eq!(
             (m.get(0, 0), m.get(479, 479), m.get(480, 0)),
             (Some(0), Some(0), None)
@@ -707,7 +708,7 @@ mod tests {
         // a reference point shifts the grid
         let shifted = InfluenceMap {
             origin: [10, 20],
-            ..InfluenceMap::new([4, 4], 7)
+            ..InfluenceMap::new(GridSize::new(4, 4), 7)
         };
         assert_eq!(
             (shifted.get(10, 20), shifted.get(9, 20), shifted.get(13, 23)),
@@ -809,7 +810,7 @@ mod tests {
             &mut area,
             Position::new(20.5, 92.5, 0.0),
             2.0,
-            [120, 120],
+            GridSize::new(120, 120),
             &mut rng(),
         );
         assert_eq!(found, Ok(Some([24, 90])));
@@ -822,7 +823,7 @@ mod tests {
             &mut area,
             Position::new(20.5, 92.5, 0.0),
             2.0,
-            [120, 120],
+            GridSize::new(120, 120),
             &mut rng(),
         );
         assert_eq!(found, Ok(Some([15, 92])));
@@ -836,21 +837,24 @@ mod tests {
             unreachable: vec![],
         };
         assert_eq!(
-            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
             Ok(Some([19, 94]))
         );
         area.explored = vec![[19, 94], [19, 104]];
         assert_eq!(
-            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
             Ok(Some([14, 94]))
         );
         area.explored.push([14, 94]);
         area.unreachable = vec![[19, 84]];
         assert_eq!(
-            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
             Ok(Some([9, 94]))
         );
-        assert_eq!(unexplored_area(None, [120, 120], &mut area), Ok(None));
+        assert_eq!(
+            unexplored_area(None, GridSize::new(120, 120), &mut area),
+            Ok(None)
+        );
     }
 
     /// [`Open`] with every tile in zone `zone`, the unit's own 1.
@@ -892,7 +896,7 @@ mod tests {
             zone: 0x101,
         };
         assert_eq!(
-            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
             Ok(Some([19, 94]))
         );
         let mut area = Zoned {
@@ -900,7 +904,7 @@ mod tests {
             zone: 0x102,
         };
         assert_eq!(
-            unexplored_area(Some([29, 94]), [120, 120], &mut area),
+            unexplored_area(Some([29, 94]), GridSize::new(120, 120), &mut area),
             Ok(None)
         );
     }
@@ -952,7 +956,7 @@ mod tests {
             unreachable: vec![],
         };
         let mut ai = seeded();
-        let found = closest_undiscovered(&mut area, seeker, [120, 120], &mut ai);
+        let found = closest_undiscovered(&mut area, seeker, GridSize::new(120, 120), &mut ai);
         assert_eq!(found, Ok(Some([16, 92])));
         // one draw of the AI stream
         let mut once = seeded();
@@ -961,7 +965,7 @@ mod tests {
         // the best is the only one tested for reach
         area.unreachable.push([16, 92]);
         assert_eq!(
-            closest_undiscovered(&mut area, seeker, [120, 120], &mut seeded()),
+            closest_undiscovered(&mut area, seeker, GridSize::new(120, 120), &mut seeded()),
             Ok(None)
         );
         // a computer player's unit searches nothing
@@ -971,7 +975,7 @@ mod tests {
         };
         let mut untouched = seeded();
         assert_eq!(
-            closest_undiscovered(&mut area, computer, [120, 120], &mut untouched),
+            closest_undiscovered(&mut area, computer, GridSize::new(120, 120), &mut untouched),
             Ok(None)
         );
         assert_eq!(untouched.rand15(), seeded().rand15());

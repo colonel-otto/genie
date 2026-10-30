@@ -57,7 +57,7 @@ impl Spatial {
             x1 -= 0.001;
             y1 -= 0.001;
         }
-        let [w, h] = self.map;
+        let (w, h) = (self.map.width(), self.map.height());
         let tile = |v: f32, n: i32| (v as i32).clamp(0, n - 1);
         let (tx0, ty0, tx1, ty1) = (tile(x0, w), tile(y0, h), tile(x1, w), tile(y1, h));
         let level = self
@@ -88,7 +88,7 @@ impl Spatial {
     /// ([`Spatial::visits_cell`]): x and y from, then x and y to, each inclusive.
     pub(super) fn visited_cells(&self, level: i32, rect: Rect) -> [i32; 4] {
         let shift = self.grid.shift(level);
-        let [w, h] = self.map;
+        let (w, h) = (self.map.width(), self.map.height());
         let (qx0, qy0) = ((rect.x0() as i32).max(0), (rect.y0() as i32).max(0));
         let (qx1, qy1) = ((rect.x1() as i32).min(w), (rect.y1() as i32).min(h));
         [qx0 >> shift, qy0 >> shift, qx1 >> shift, qy1 >> shift]

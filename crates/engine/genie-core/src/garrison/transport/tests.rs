@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::GridSize;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, SpriteReads};
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
@@ -141,7 +142,7 @@ fn ship(loaded: bool) -> Ship<'static> {
         position: Position::new(12.5, 8.5, 0.0),
         radius: Footprint::new(0.5, 0.5),
         loaded,
-        map: [40, 30],
+        map: GridSize::new(40, 30),
         walk: MoveToReads {
             sprites: SpriteReads {
                 defaults: MoveDefaults::default(),
@@ -613,19 +614,24 @@ fn a_retry_draws_about_the_old_point_until_it_leaves_the_water() {
     // land (terrain 0) everywhere: the first draw leaves the water
     let mut r = rng();
     assert_eq!(
-        retry_point(point, [40, 40], &terrain(40, 0, &[]), &mut r),
+        retry_point(point, GridSize::new(40, 40), &terrain(40, 0, &[]), &mut r),
         (at(0), true)
     );
     // water 22, 23 and 1 keep drawing: the third draw's tile is land
     let first = [at(0), at(1)].map(|p| [p.x() as i16, p.y() as i16]);
     let wet = terrain(40, 0, &[(first[0], 0x17), (first[1], 1)]);
     let mut r = rng();
-    let (found, sails) = retry_point(point, [40, 40], &wet, &mut r);
+    let (found, sails) = retry_point(point, GridSize::new(40, 40), &wet, &mut r);
     assert_eq!((found, sails), (at(2), true));
     assert_eq!(r, copy);
     // off the map the last terrain stays: all water, 100 draws, the last one taken
     let mut r = rng();
-    let (_, sails) = retry_point(point, [40, 40], &terrain(40, 0x16, &[]), &mut r);
+    let (_, sails) = retry_point(
+        point,
+        GridSize::new(40, 40),
+        &terrain(40, 0x16, &[]),
+        &mut r,
+    );
     assert!(!sails);
     assert_eq!(r.draws, rng().draws + 200);
 }
@@ -642,7 +648,13 @@ fn the_99th_draw_leaving_the_water_comes_too_late() {
         let mut r = Well512::default();
         r.set_seed(seed);
         assert_eq!(
-            retry_point(Point::new(20.0, 20.0), [400, 400], &shore, &mut r).1,
+            retry_point(
+                Point::new(20.0, 20.0),
+                GridSize::new(400, 400),
+                &shore,
+                &mut r
+            )
+            .1,
             sails,
             "{n}"
         );
@@ -672,7 +684,7 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let first = DropDraws::new(
         around,
         Footprint::new(0.5, 0.5),
-        [40, 40],
+        GridSize::new(40, 40),
         &mut last,
         &mut r,
     )
@@ -685,7 +697,7 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let mut draws = DropDraws::new(
         around,
         Footprint::new(0.5, 0.5),
-        [40, 40],
+        GridSize::new(40, 40),
         &mut last,
         &mut r,
     );
@@ -701,7 +713,13 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
         radius: Footprint::new(5.0, 5.0),
     };
     let mut none = None;
-    let mut draws = DropDraws::new(edge, Footprint::new(0.5, 0.5), [4, 4], &mut none, &mut r);
+    let mut draws = DropDraws::new(
+        edge,
+        Footprint::new(0.5, 0.5),
+        GridSize::new(4, 4),
+        &mut none,
+        &mut r,
+    );
     let mut on_map = 0;
     while let Some(p) = draws.next_on_map().unwrap() {
         on_map += 1;
@@ -721,7 +739,7 @@ fn a_drop_location_is_drawn_on_a_side_past_both_footprints() {
     let mut draws = DropDraws::new(
         around,
         Footprint::new(0.5, 0.5),
-        [40, 40],
+        GridSize::new(40, 40),
         &mut none,
         &mut stack,
     );

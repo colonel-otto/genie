@@ -1,6 +1,7 @@
 use super::*;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
@@ -106,7 +107,7 @@ fn world() -> World {
     for (id, factor) in [(6, 0.0), (7, 1.125), (8, 1.875)] {
         let _ = t.graphics.insert(id, graphic(id, factor));
     }
-    t.spatial = Spatial::with_tiles([32, 32], Tiles::new(32, 32, vec![2; 32 * 32]));
+    t.spatial = Spatial::with_tiles(GridSize::new(32, 32), Tiles::new(32, 32, vec![2; 32 * 32]));
     let mut g = UnitGroup::new(1);
     g.owner = 1;
     g.flags = 0;
@@ -621,7 +622,7 @@ fn rounder(at: BVector) -> detour::Rounder<'static> {
 #[test]
 fn the_way_round_s_step_goes_one_tile_toward_the_slot_inside_the_map() {
     use detour::one_step_toward;
-    let (map, forward) = ([32, 32], BVector::new(0.0, 0.0, 1.0));
+    let (map, forward) = (GridSize::new(32, 32), BVector::new(0.0, 0.0, 1.0));
     let step = |at, to| one_step_toward(&rounder(at), to, forward, map);
     assert_eq!(
         step(BVector::new(5.0, 0.0, 5.0), BVector::new(9.0, 0.0, 5.0)),

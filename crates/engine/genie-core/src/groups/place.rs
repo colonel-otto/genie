@@ -385,6 +385,7 @@ fn ground_squared(p: BVector, q: BVector) -> f32 {
 mod tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::Position;
     use crate::objects::masters::class;
     use crate::test_ids::master_id;
@@ -446,7 +447,7 @@ mod tests {
                 ..crate::objects::masters::Master::default()
             },
         ])];
-        t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![1; 400]));
+        t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![1; 400]));
         let kind = TerrainKind {
             shown: true,
             flags: 1,

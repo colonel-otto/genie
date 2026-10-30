@@ -13,6 +13,7 @@
 //! unsynced stream.
 
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{cos, sin};
@@ -148,7 +149,7 @@ impl InfoModule {
         unit: &SearchUnit,
         start: Point,
         area: &mut dyn SearchArea,
-        (map, rng): ([i32; 2], &mut Well512),
+        (map, rng): (GridSize, &mut Well512),
     ) -> Result<Option<[i32; 2]>, GenieError> {
         let own = area.own_zone() as u8;
         let mut start = start;
@@ -172,11 +173,11 @@ impl InfoModule {
         start: Point,
         own: u8,
         area: &mut dyn SearchArea,
-        (map, rng): ([i32; 2], &mut Well512),
+        (map, rng): (GridSize, &mut Well512),
     ) -> Result<Flood, GenieError> {
         let mut first = [cvttss2si(start.x()), cvttss2si(start.y())];
         let _ = self.clamp(&mut first);
-        let mut visited = vec![false; (map[0].max(0) * map[1].max(0)) as usize];
+        let mut visited = vec![false; (map.width().max(0) * map.height().max(0)) as usize];
         let mut queue = vec![first];
         let mut i = 0;
         while let Some(&[x, y]) = queue.get(i) {
@@ -241,10 +242,10 @@ impl InfoModule {
         &mut self,
         own: u8,
         area: &mut dyn SearchArea,
-        map: [i32; 2],
+        map: GridSize,
     ) -> Result<(), GenieError> {
-        for y in 0..map[1] {
-            for x in 0..map[0] {
+        for y in 0..map.height() {
+            for x in 0..map.width() {
                 let cell = self.cell(x, y)?;
                 if cell != UNEXPLORED
                     && cell != DEAD_END
@@ -261,13 +262,13 @@ impl InfoModule {
 
 /// `FUN_140b6c2d0`: the tile's neighbours on the map that the flood has not met join the queue
 /// (left, right, up, down).
-fn push_neighbours(queue: &mut Vec<[i32; 2]>, visited: &mut [bool], at: [i32; 2], map: [i32; 2]) {
+fn push_neighbours(queue: &mut Vec<[i32; 2]>, visited: &mut [bool], at: [i32; 2], map: GridSize) {
     let [x, y] = at;
     for [nx, ny] in [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] {
-        if nx < 0 || ny < 0 || map[0] <= nx || map[1] <= ny {
+        if nx < 0 || ny < 0 || map.width() <= nx || map.height() <= ny {
             continue;
         }
-        let index = (ny * map[0] + nx) as usize;
+        let index = (ny * map.width() + nx) as usize;
         if let Some(met) = visited.get_mut(index)
             && !*met
         {

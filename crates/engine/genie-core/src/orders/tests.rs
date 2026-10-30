@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::math::fmath::BVector;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
@@ -724,7 +725,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
         unknown: None,
         obstruction: None,
     };
-    t.spatial = crate::map::spatial::Spatial::new([120, 120]);
+    t.spatial = crate::map::spatial::Spatial::new(GridSize::new(120, 120));
     t.spatial.insert(
         object_id(11),
         placed(10.0, class::CLASS_0, PlayerId::new(1), master_id(4)),
@@ -1394,7 +1395,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         unit.body.put_mover(Some(walker));
         (unit.pasture, unit.my_pasture) = (-1, -1);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
-        t.spatial.map = [100, 100];
+        t.spatial.map = GridSize::new(100, 100);
         t
     };
     let mut t = mover();
@@ -1753,7 +1754,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         standing_sprite: -1,
         ..Master::default()
     };
-    let mut spatial = crate::map::spatial::Spatial::new([10, 10]);
+    let mut spatial = crate::map::spatial::Spatial::new(GridSize::new(10, 10));
     spatial.insert(
         object_id(7),
         crate::map::spatial::Placed {
@@ -1811,7 +1812,7 @@ fn switched_in_the_open(
     next: &Master,
     shown: &[i16],
 ) -> Result<(actions::Switched, Unit, crate::map::spatial::Placed), GenieError> {
-    let mut spatial = crate::map::spatial::Spatial::new([10, 10]);
+    let mut spatial = crate::map::spatial::Spatial::new(GridSize::new(10, 10));
     spatial.insert(
         unit.id,
         crate::map::spatial::Placed {
@@ -2128,7 +2129,7 @@ fn followers() -> World {
     ];
     let mut t = soldiers(&units, &[]);
     t.players[1].formations.auto = false;
-    t.spatial.map = [120, 120];
+    t.spatial.map = GridSize::new(120, 120);
     let walker = crate::gathering::hunt::tests::walker();
     t.masters[1] = crate::objects::masters::Masters::new([Master {
         id: master_id(4),
@@ -2597,7 +2598,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
 fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let units = [(11, 4, Point::new(30.0, 30.0))];
     let mut t = soldiers(&units, &[]);
-    t.spatial = crate::map::spatial::Spatial::new([40, 40]);
+    t.spatial = crate::map::spatial::Spatial::new(GridSize::new(40, 40));
     let sight = crate::vision::visibility::Visibility::new(
         40,
         40,
@@ -2861,28 +2862,28 @@ fn the_splitter_splits_an_order_to_more_than_60_units_in_runs_of_60() {
 fn units_of_a_move_take_the_cells_of_a_grid() {
     let point = Point::new(29.78125, 92.489_586);
     assert_eq!(
-        grid_point(0, 2, point, [120, 120]),
+        grid_point(0, 2, point, GridSize::new(120, 120)),
         Point::new(29.78125, 92.489_586)
     );
     assert_eq!(
-        grid_point(1, 2, point, [120, 120]),
+        grid_point(1, 2, point, GridSize::new(120, 120)),
         Point::new(29.78125, 92.989_586)
     );
     // nine units: three a row around the point; off the map an axis keeps a tile inside
     assert_eq!(
-        grid_point(0, 9, Point::new(10.0, 10.0), [120, 120]),
+        grid_point(0, 9, Point::new(10.0, 10.0), GridSize::new(120, 120)),
         Point::new(9.5, 9.5)
     );
     assert_eq!(
-        grid_point(4, 9, Point::new(10.0, 10.0), [120, 120]),
+        grid_point(4, 9, Point::new(10.0, 10.0), GridSize::new(120, 120)),
         Point::new(10.0, 10.0)
     );
     assert_eq!(
-        grid_point(8, 9, Point::new(119.75, 0.25), [120, 120]),
+        grid_point(8, 9, Point::new(119.75, 0.25), GridSize::new(120, 120)),
         Point::new(119.0, 0.75)
     );
     assert_eq!(
-        grid_point(0, 9, Point::new(0.25, 0.25), [120, 120]),
+        grid_point(0, 9, Point::new(0.25, 0.25), GridSize::new(120, 120)),
         Point::new(1.0, 1.0)
     );
 }
@@ -2898,11 +2899,11 @@ fn units_of_an_order_take_their_offsets_from_their_centroid() {
     let c = centroid(&[a, b]).unwrap();
     let point = Point::new(108.37596, 43.91338);
     assert_eq!(
-        offset_point(a, c, point, [120, 120]),
+        offset_point(a, c, point, GridSize::new(120, 120)),
         Point::new(108.700_745, 43.91338)
     );
     assert_eq!(
-        offset_point(b, c, point, [120, 120]),
+        offset_point(b, c, point, GridSize::new(120, 120)),
         Point::new(108.05117, 43.91338)
     );
 }
@@ -2987,7 +2988,12 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
 fn a_point_off_the_map_stays_inside_its_edge() {
     let c = Point::new(10.0, 10.0);
     assert_eq!(
-        offset_point(Point::new(5.0, 15.0), c, Point::new(2.0, 118.0), [120, 120]),
+        offset_point(
+            Point::new(5.0, 15.0),
+            c,
+            Point::new(2.0, 118.0),
+            GridSize::new(120, 120)
+        ),
         Point::new(1.0, 119.0)
     );
 }
@@ -3503,7 +3509,7 @@ fn two_patrollers() -> World {
 fn searchable(mut t: World) -> World {
     // the group's statistics search the members' surroundings
     let mut s = crate::map::spatial::Spatial::with_tiles(
-        [60, 60],
+        GridSize::new(60, 60),
         crate::map::spatial::Tiles::new(60, 60, vec![1; 3600]),
     );
     let kind = crate::map::terrain::TerrainKind {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
@@ -265,11 +266,11 @@ fn a_step_falls_short_of_reaches_or_passes_its_waypoint() {
 #[test]
 fn a_querys_ends_stay_inside_the_map() {
     assert_eq!(
-        hold(BVector::new(-1.0, 5.0, 3.0), [10, 20]),
+        hold(BVector::new(-1.0, 5.0, 3.0), GridSize::new(10, 20)),
         Point::new(0.0, 3.0)
     );
     assert_eq!(
-        hold(BVector::new(10.0, 0.0, 25.0), [10, 20]),
+        hold(BVector::new(10.0, 0.0, 25.0), GridSize::new(10, 20)),
         Point::new(10.0 - NEAR, 20.0 - NEAR)
     );
 }
@@ -342,7 +343,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         Self {
-            spatial: Spatial::new([40, 40]),
+            spatial: Spatial::new(GridSize::new(40, 40)),
             pathing: Pathing::default(),
             object: Well512::default(),
             groups: UnitGroups::default(),
@@ -644,7 +645,7 @@ fn a_near_target_takes_the_straight_way() {
 fn open_fixture() -> Fixture {
     let mut fx = Fixture::new();
     fx.spatial = Spatial::with_tiles(
-        [40, 40],
+        GridSize::new(40, 40),
         crate::map::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
     );
     fx

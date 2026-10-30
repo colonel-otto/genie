@@ -13,6 +13,7 @@
 //! manager's callback `FUN_140f7d4b0` -> `FUN_140f7e4b0`).
 
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Placed, Tiles};
 use crate::pathing::mesh::{Mesh, ONE, Rect};
@@ -32,7 +33,7 @@ pub mod zones;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pathing {
     /// The map's size in tiles.
-    pub size: [i32; 2],
+    pub size: GridSize,
     /// Each tile's terrain, row by row.
     pub terrain: Vec<u8>,
     /// Each terrain restriction's value per terrain (above 0 passes), by restriction id.
@@ -150,7 +151,7 @@ impl Pathing {
     /// The planners and the pather for a map, without a mesh yet.
     #[must_use]
     pub fn new(
-        size: [i32; 2],
+        size: GridSize,
         terrain: Vec<u8>,
         restrictions: Vec<Vec<f32>>,
         game_type: u8,

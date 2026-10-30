@@ -7,6 +7,7 @@ use crate::groups::formation::{
 };
 use crate::groups::group_list::NO_FORMATION;
 use crate::groups::{Formation, UnitGroup};
+use crate::map::GridSize;
 use crate::math::fmath::{BVector, Rotation, add, sub};
 use crate::movement::PathData;
 use crate::world::World;
@@ -210,14 +211,14 @@ pub(super) const MAP_EDGE: f32 = crate::math::image::group::MAP_EDGE;
 
 /// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
 /// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
-pub(in crate::groups) fn on_map(mut p: BVector, map: [i32; 2]) -> BVector {
+pub(in crate::groups) fn on_map(mut p: BVector, map: GridSize) -> BVector {
     if p.x() < 0.0 {
         p = p.with_x(0.0);
     }
     if p.y() < 0.0 {
         p = p.with_y(0.0);
     }
-    let (w, h) = (map[0] as f32, map[1] as f32);
+    let (w, h) = (map.width() as f32, map.height() as f32);
     if w <= p.x() {
         p = p.with_x(w - MAP_EDGE);
     }
@@ -237,7 +238,7 @@ pub(super) fn transform_slot(
     point: BVector,
     index: i32,
     transform_type: i32,
-    (world_time, map): (u32, [i32; 2]),
+    (world_time, map): (u32, GridSize),
 ) -> Result<bool, GenieError> {
     if index < 0 || formation.slots.len() as i32 <= index {
         return Ok(false);

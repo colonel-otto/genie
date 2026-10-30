@@ -1,16 +1,17 @@
 use super::*;
+use crate::map::GridSize;
 use crate::map::Point;
 
 #[test]
 fn a_search_leaves_the_grid_as_it_was() {
     let terrain = vec![0u8; 64];
     let open = |_: i32, _: i32| false;
-    let built = Planner::new([8, 8], terrain.clone(), vec![1.0], &open);
+    let built = Planner::new(GridSize::new(8, 8), terrain.clone(), vec![1.0], &open);
     let mut searched = built.clone();
     searched.goal = [3, 4];
     searched.goal_marked = true;
     assert!(searched != built && searched.same_grid(&built));
-    let other = Planner::new([8, 8], terrain, vec![0.0], &open);
+    let other = Planner::new(GridSize::new(8, 8), terrain, vec![0.0], &open);
     assert!(!other.same_grid(&built));
 }
 
@@ -22,7 +23,7 @@ fn open_map(_: i32, _: i32) -> bool {
 /// goal: a start off the map ends the search there, without the tile search.
 #[test]
 fn a_plan_from_off_the_map_reads_no_start_cell() {
-    let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+    let mut p = Planner::new(GridSize::new(16, 8), vec![0; 128], vec![1.0], &open_map);
     let req = Request {
         from: Point::new(-3.0, 2.0),
         to: Point::new(5.5, 2.5),
@@ -40,7 +41,7 @@ fn a_plan_from_off_the_map_reads_no_start_cell() {
 fn the_last_open_point_walks_the_path_back_to_a_tile_with_an_edge() {
     // water (terrain 0) left of x = 10, land (1, impassable) right of it
     let terrain: Vec<u8> = (0..128).map(|i| u8::from(10 <= i % 16)).collect();
-    let mut p = Planner::new([16, 8], terrain, vec![1.0, 0.0], &open_map);
+    let mut p = Planner::new(GridSize::new(16, 8), terrain, vec![1.0, 0.0], &open_map);
     // a goal on the water: the path's end
     assert_eq!(
         p.last_open_point(Point::new(2.5, 4.5), Point::new(7.5, 4.5)),
@@ -62,7 +63,7 @@ fn the_last_open_point_walks_the_path_back_to_a_tile_with_an_edge() {
 /// downward while strictly nearer; neither: none.
 #[test]
 fn the_nearest_tile_with_the_edge_is_found_up_then_nearer_down() {
-    let p = Planner::new([8, 8], vec![0; 64], vec![1.0], &open_map);
+    let p = Planner::new(GridSize::new(8, 8), vec![0; 64], vec![1.0], &open_map);
     let edges = |bits: [u8; 8]| move |s: i16| [bits[s as usize], 0];
     // above at 7 (2 off), below at 4 (1 off): the nearer below
     assert_eq!(
@@ -92,7 +93,7 @@ fn the_nearest_tile_with_the_edge_is_found_up_then_nearer_down() {
 /// `FUN_140f76840`) reaches the goal, and the path runs from the start to the goal point.
 #[test]
 fn the_tile_search_reaches_a_goal_on_an_open_map() {
-    let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+    let mut p = Planner::new(GridSize::new(16, 8), vec![0; 128], vec![1.0], &open_map);
     let req = Request {
         from: Point::new(1.5, 2.5),
         to: Point::new(6.5, 5.5),
@@ -116,7 +117,7 @@ fn the_tile_search_reaches_a_goal_on_an_open_map() {
 #[test]
 fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
     let wall = |x: i32, _: i32| x == 3;
-    let mut p = Planner::new([8, 8], vec![0; 64], vec![1.0], &wall);
+    let mut p = Planner::new(GridSize::new(8, 8), vec![0; 64], vec![1.0], &wall);
     let req = Request {
         from: Point::new(1.5, 2.5),
         to: Point::new(6.5, 2.5),
@@ -136,7 +137,7 @@ fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
 /// (`shorter_start`); either way the path runs from the start to the goal.
 #[test]
 fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
-    let mut p = Planner::new([64, 8], vec![0; 512], vec![1.0], &open_map);
+    let mut p = Planner::new(GridSize::new(64, 8), vec![0; 512], vec![1.0], &open_map);
     for to in [Point::new(6.5, 5.5), Point::new(60.5, 5.5)] {
         let req = Request {
             from: Point::new(1.5, 2.5),
@@ -155,7 +156,7 @@ fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
 
 #[test]
 fn an_open_map_is_one_node_cell_per_eight_tiles() {
-    let p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+    let p = Planner::new(GridSize::new(16, 8), vec![0; 128], vec![1.0], &open_map);
     assert_eq!(p.level_sizes(), ([16, 8, 4, 2], [8, 4, 2, 1]));
     // level 3: two uniform node cells, joined across their shared edge only
     assert_eq!(p.level(3), &[[E, NODE], [W, NODE]]);
@@ -167,7 +168,7 @@ fn an_open_map_is_one_node_cell_per_eight_tiles() {
 
 #[test]
 fn padding_tiles_of_a_map_that_is_not_a_multiple_of_eight_lie_off_the_map() {
-    let p = Planner::new([6, 6], vec![0; 36], vec![1.0], &open_map);
+    let p = Planner::new(GridSize::new(6, 6), vec![0; 36], vec![1.0], &open_map);
     assert_eq!(p.level_sizes(), ([8, 4, 2, 1], [8, 4, 2, 1]));
     let tile = |x: usize, y: usize| p.level(0)[y * 8 + x];
     assert_eq!(tile(6, 0), [0, 0xf]);
@@ -180,7 +181,7 @@ fn padding_tiles_of_a_map_that_is_not_a_multiple_of_eight_lie_off_the_map() {
 fn a_wall_splits_its_level_three_cell_into_its_children() {
     // a blocked column at x = 3 cuts the first 8 × 8 cell in two
     let wall = |x: i32, _: i32| x == 3;
-    let p = Planner::new([8, 8], vec![0; 64], vec![1.0], &wall);
+    let p = Planner::new(GridSize::new(8, 8), vec![0; 64], vec![1.0], &wall);
     assert_eq!(p.level(3)[0][1] & (NODE | MIXED), MIXED);
     assert_eq!(p.level(0)[3], [0, 0]);
     assert_eq!(p.level(0)[2][0], W | S);
@@ -318,7 +319,7 @@ fn a_closed_rectangle_closes_the_node_cells_under_it() {
     // tile (0, 0) has no passable neighbour: its level-3, 2 and 1 cells are mixed, and the
     // four tiles of the level-1 cell are nodes
     let walls = |x: i32, y: i32| (x, y) == (1, 0) || (x, y) == (0, 1);
-    let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &walls);
+    let mut p = Planner::new(GridSize::new(16, 8), vec![0; 128], vec![1.0], &walls);
     let open = p.clone();
     assert_eq!(p.level(1)[0][1] & (NODE | MIXED), MIXED);
     assert_eq!(p.level(0)[0][1] & NODE, NODE);

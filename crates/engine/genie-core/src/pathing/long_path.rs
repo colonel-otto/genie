@@ -29,6 +29,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Tiles};
 use crate::math::fmath::BVector;
@@ -240,7 +241,7 @@ enum Searched {
 }
 
 /// `FUN_140f9eb70` for a goal point without a path to write: whether the unit reaches it.
-pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, GenieError> {
+pub fn reaches(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<bool, GenieError> {
     Ok(match search(tiles, map, req)? {
         Searched::Refused => false,
         Searched::InRange => true,
@@ -258,7 +259,7 @@ pub fn reaches(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<bool, 
 /// What the search does not model.
 pub fn path(
     tiles: &Tiles,
-    map: [i32; 2],
+    map: GridSize,
     req: &LongRequest,
     z: f32,
 ) -> Result<(bool, Path), GenieError> {
@@ -269,7 +270,7 @@ pub fn path(
             reached,
             end,
             entered,
-        } => trace(req.from, end, &entered, map[0], z)
+        } => trace(req.from, end, &entered, map.width(), z)
             .map_or_else(|| (false, Path::default()), |path| (reached, path)),
     })
 }
@@ -317,8 +318,8 @@ fn trace(
 /// included) is refused; a target within range, or without a target a goal within a range
 /// above [`REACHED`] (`gap2` the ends' squared gap), is in range; a unit that does not move is
 /// refused. None: the search runs.
-fn search_refused(map: [i32; 2], req: &LongRequest, gap2: i32) -> Option<Searched> {
-    let [w, _] = map;
+fn search_refused(map: GridSize, req: &LongRequest, gap2: i32) -> Option<Searched> {
+    let (w, _) = (map.width(), map.height());
     let held = |v: i32| 0 <= v && v <= w;
     let [x0, y0] = req.from;
     let [x1, y1] = req.to;
@@ -388,7 +389,8 @@ struct Grid<'a> {
 }
 
 impl<'a> Grid<'a> {
-    fn new(tiles: &'a Tiles, [w, h]: [i32; 2], req: &LongRequest) -> Self {
+    fn new(tiles: &'a Tiles, map: GridSize, req: &LongRequest) -> Self {
+        let (w, h) = (map.width(), map.height());
         let blocked_terrain = u64::from(req.mask ^ 0xff);
         let mut lowered = vec![0u8; (w.max(0) * h.max(0)) as usize];
         for &[x, y] in &req.lowered {
@@ -498,7 +500,7 @@ struct Origin {
 struct Relax<'a> {
     grid: Grid<'a>,
     req: &'a LongRequest,
-    map: [i32; 2],
+    map: GridSize,
     goal: [i32; 2],
     rect: [i32; 4],
 }
@@ -515,7 +517,7 @@ impl Relax<'_> {
     ) -> Result<Option<[i32; 2]>, GenieError> {
         let [nx, ny] = to;
         let [x1, y1] = self.req.to;
-        let i = (ny * self.map[0] + nx) as usize;
+        let i = (ny * self.map.width() + nx) as usize;
         let new_cost = step_cost(from.cost, from.at, to, [x1, y1]);
         let seen = *front.entered.checked(i)?;
         let old = *front.cost.checked(i)?;
@@ -553,8 +555,8 @@ impl Relax<'_> {
 }
 
 /// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
-fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, GenieError> {
-    let [w, h] = map;
+fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, GenieError> {
+    let (w, h) = (map.width(), map.height());
     let [x0, y0] = req.from;
     let [x1, y1] = req.to;
     let (dx, dy) = (x1 - x0, y1 - y0);
@@ -661,7 +663,7 @@ mod tests {
 
     /// A map of `rows` ('#' a blocked tile, 'T' a tall object, 'G' player 4's gate record, '.'
     /// open), class 1 everywhere.
-    fn tiles(rows: &[&str]) -> (Tiles, [i32; 2]) {
+    fn tiles(rows: &[&str]) -> (Tiles, GridSize) {
         let (w, h) = (rows[0].len() as i32, rows.len() as i32);
         let mut classes = Vec::new();
         for r in rows {
@@ -680,7 +682,7 @@ mod tests {
                 }
             }
         }
-        (t, [w, h])
+        (t, GridSize::new(w, h))
     }
 
     fn request(from: [i32; 2], to: [i32; 2]) -> LongRequest {

@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
@@ -275,7 +276,8 @@ struct Grid {
 }
 
 impl Grid {
-    fn new([w, h]: [i32; 2]) -> Self {
+    fn new(map: GridSize) -> Self {
+        let (w, h) = (map.width(), map.height());
         let longer = w.max(h);
         let mut top = 0x1000;
         while longer * 2 < top {
@@ -532,7 +534,7 @@ struct RecordCells {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Spatial {
     /// The map's size in tiles.
-    pub map: [i32; 2],
+    pub map: GridSize,
     /// The obstruction manager's ignore list (`+0x2c` set, `+0x30` count, `+0x38` ids) as the
     /// last `FUN_1410562e0` left it: the queries that set it before they ask
     /// ([`Spatial::set_manager_ignore`]) leave it to the ones that do not (the motion step's

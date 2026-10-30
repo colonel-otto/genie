@@ -1,6 +1,7 @@
 //! A terrain restriction's planner ([`Planner`]) and its four-level grid: built, read and
 //! rebuilt over a changed rectangle.
 
+use crate::map::GridSize;
 use crate::math::fmath::BVector;
 use crate::pathing::tile_path::{E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, S, W};
 
@@ -68,8 +69,8 @@ impl Planner {
     /// every tile's edges and the levels above them (`FUN_140f7e4b0` over the whole map).
     /// `terrain` holds each tile's terrain row by row, `passable` the restriction's value per
     /// terrain (above 0 passes).
-    pub fn new(size: [i32; 2], terrain: Vec<u8>, passable: Vec<f32>, map: &impl Blocked) -> Self {
-        let (w, h) = (size[0] as i16, size[1] as i16);
+    pub fn new(size: GridSize, terrain: Vec<u8>, passable: Vec<f32>, map: &impl Blocked) -> Self {
+        let (w, h) = (size.width() as i16, size.height() as i16);
         let w0 = (w.wrapping_add(7)) & !7;
         let h0 = (h.wrapping_add(7)) & !7;
         let widths = [w0, w0 >> 1, w0 >> 2, w0 >> 3];

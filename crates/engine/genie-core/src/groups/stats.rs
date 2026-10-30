@@ -676,6 +676,7 @@ mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::Point;
     use crate::map::Position;
     use crate::objects::masters::{ClassId, class};
@@ -774,7 +775,7 @@ mod tests {
             ]);
             4
         ];
-        let mut s = crate::map::spatial::Spatial::new([20, 20]);
+        let mut s = crate::map::spatial::Spatial::new(GridSize::new(20, 20));
         s.relations = vec![
             vec![0, 3, 3, 3],
             vec![0, 0, 3, 1],

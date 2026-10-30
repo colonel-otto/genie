@@ -1,6 +1,7 @@
 //! The map as the placement test reads it from the world ([`WorldMap`]).
 
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::players::PlayerId;
 use crate::production::spawn::{Near, PlaceMap};
@@ -30,7 +31,7 @@ impl PlaceMap for WorldMap<'_> {
             .map_or(0, |m| m.terrains.len())
     }
 
-    fn size(&self) -> [i32; 2] {
+    fn size(&self) -> GridSize {
         self.turns.spatial.map
     }
 
@@ -63,7 +64,10 @@ impl PlaceMap for WorldMap<'_> {
 
     fn elevation(&self, x: i32, y: i32) -> Option<u8> {
         let t = self.turns.spatial.terrain.as_ref()?;
-        let [w, h] = self.turns.spatial.map;
+        let (w, h) = (
+            self.turns.spatial.map.width(),
+            self.turns.spatial.map.height(),
+        );
         (0 <= x && 0 <= y && x < w && y < h)
             .then(|| t.elevations.get((y * w + x) as usize).copied())
             .flatten()
@@ -71,7 +75,10 @@ impl PlaceMap for WorldMap<'_> {
 
     fn shape(&self, x: i32, y: i32) -> Option<u8> {
         let t = self.turns.spatial.terrain.as_ref()?;
-        let [w, h] = self.turns.spatial.map;
+        let (w, h) = (
+            self.turns.spatial.map.width(),
+            self.turns.spatial.map.height(),
+        );
         (0 <= x && 0 <= y && x < w && y < h)
             .then(|| t.shapes.get((y * w + x) as usize).copied())
             .flatten()

@@ -299,7 +299,7 @@ impl crate::world::World {
             .terrain
             .as_ref()
             .ok_or(crate::pathing::zones::NO_TERRAIN)?;
-        let [w, h] = self.spatial.map;
+        let (w, h) = (self.spatial.map.width(), self.spatial.map.height());
         let zone_map = match usize::try_from(restriction) {
             Ok(r) if zone != u32::MAX => {
                 let values = terrain
@@ -335,7 +335,7 @@ impl crate::world::World {
         );
         let zone_map = zone_map.map(|k| self.zones.map(k)).transpose()?;
         let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
-        let mut draws = DropDraws::new(around, made.radius, [w, h], last, &mut rng);
+        let mut draws = DropDraws::new(around, made.radius, self.spatial.map, last, &mut rng);
         let mut found = None;
         // the place's tests, each only after the one before passed
         while let Some(spot) = draws.next_on_map()? {

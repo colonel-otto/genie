@@ -122,7 +122,7 @@ impl World {
             crate::math::conversions::cvttss2si(at.x()),
             crate::math::conversions::cvttss2si(at.y()),
         );
-        let [w, h] = self.spatial.map;
+        let (w, h) = (self.spatial.map.width(), self.spatial.map.height());
         let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });
         let (y0, y1) = ((y - 3).max(0), if y + 3 < h { y + 3 } else { h - 1 });
         for tx in x0..=x1 {

@@ -1,6 +1,7 @@
 //! The old short pather's queries, the map's edge records and the segment tests.
 
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
 use crate::map::{Rect, Segment};
@@ -167,7 +168,7 @@ impl Spatial {
         use crate::math::conversions::cvttss2si;
         let (x0, y0, x1, y1) = (rect.x0(), rect.y0(), rect.x1(), rect.y1());
         // the manager's map size as floats (+0xa8, +0xac)
-        let (w, h) = (self.map[0] as f32, self.map[1] as f32);
+        let (w, h) = (self.map.width() as f32, self.map.height() as f32);
         let (dx, dy) = (x1 - x0, y1 - y0);
         let (dy0, dx0) = (y0 - 0.0, x0 - 0.0);
         let at = |t: f32| {
@@ -282,7 +283,7 @@ pub(super) struct WalkTest {
 impl WalkTest {
     /// The walk from `a` to `b` of a unit `grow` wide; None when its grown box leaves a map of
     /// `map` tiles (the query then counts as met).
-    pub(super) fn new(a: Point, b: Point, grow: f32, map: [i32; 2]) -> Option<Self> {
+    pub(super) fn new(a: Point, b: Point, grow: f32, map: GridSize) -> Option<Self> {
         let lo = Point::new(
             if b.x() <= a.x() { b.x() } else { a.x() },
             if b.y() <= a.y() { b.y() } else { a.y() },

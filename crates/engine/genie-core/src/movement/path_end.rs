@@ -65,7 +65,7 @@ impl Mover {
         } = ask;
         // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
         let (x, y, height_at) = (self.moved_at.x(), self.moved_at.y(), self.moved_at.z());
-        let [w, h] = world.map;
+        let (w, h) = (world.map.width(), world.map.height());
         // COMISS 0, v; JA and COMISS v, size; JNC (0x140fa03f1..0x140fa0459): a NaN passes
         let on_map = |px: f32, py: f32| {
             fmath::at_most_or_unordered(0.0, px)

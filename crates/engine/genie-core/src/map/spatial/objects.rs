@@ -2,6 +2,7 @@
 //! moves inside and out, and the segment tests.
 
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
@@ -15,14 +16,14 @@ use std::collections::BTreeMap;
 impl Spatial {
     /// A map without terrain: every tile's class is 0.
     #[must_use]
-    pub fn new(map: [i32; 2]) -> Self {
-        let n = (map[0].max(0) * map[1].max(0)) as usize;
-        Self::with_tiles(map, Tiles::new(map[0], map[1], vec![0; n]))
+    pub fn new(map: GridSize) -> Self {
+        let n = (map.width().max(0) * map.height().max(0)) as usize;
+        Self::with_tiles(map, Tiles::new(map.width(), map.height(), vec![0; n]))
     }
 
     /// A map with the given tiles.
     #[must_use]
-    pub fn with_tiles(map: [i32; 2], tiles: Tiles) -> Self {
+    pub fn with_tiles(map: GridSize, tiles: Tiles) -> Self {
         Self {
             map,
             manager_ignore: Vec::new(),
@@ -546,7 +547,7 @@ impl Spatial {
             if b.y() <= a.y() { b.y() } else { a.y() },
             if a.y() <= b.y() { b.y() } else { a.y() },
         );
-        let [w, h] = self.map;
+        let (w, h) = (self.map.width(), self.map.height());
         let (lo_x, lo_y, hi_x, hi_y) = (
             cvttss2si(lo_x - grow),
             cvttss2si(lo_y - grow),

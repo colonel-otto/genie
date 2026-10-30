@@ -167,8 +167,8 @@ impl UnitAi {
                 v
             }
         };
-        let mut x = held(near(point.x(), at.position.x()), at.map[0]);
-        let mut y = held(near(point.y(), at.position.y()), at.map[1]);
+        let mut x = held(near(point.x(), at.position.x()), at.map.width());
+        let mut y = held(near(point.y(), at.position.y()), at.map.height());
         if tries {
             for _ in 0..5 {
                 if side.can_stand(Point::new(x, y))? {
@@ -181,8 +181,8 @@ impl UnitAi {
                 };
                 x = step(ai, x);
                 y = step(ai, y);
-                x = held(x, at.map[0]);
-                y = held(y, at.map[1]);
+                x = held(x, at.map.width());
+                y = held(y, at.map.height());
             }
         }
         let m = self.move_to(AiMove {

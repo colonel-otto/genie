@@ -1,5 +1,6 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
@@ -76,7 +77,7 @@ fn world() -> World {
         ..Master::default()
     };
     t.masters = vec![Masters::new([master]); 4];
-    let mut s = crate::map::spatial::Spatial::new([8, 8]);
+    let mut s = crate::map::spatial::Spatial::new(GridSize::new(8, 8));
     s.relations = vec![
         vec![0, 3, 3, 3],
         vec![0, 0, 3, 0],

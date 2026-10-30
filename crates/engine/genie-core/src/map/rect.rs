@@ -1,6 +1,7 @@
 //! A box on the map's ground as one type ([`Rect`]): two corners, x0 and y0 then x1 and y1, apart
 //! from a point ([`crate::map::Point`]) and a walk between two points ([`Segment`]).
 
+use crate::map::GridSize;
 use crate::map::Point;
 
 /// A box on the map's ground, x0, y0, x1 and y1 in tiles: an obstruction record's box
@@ -107,7 +108,8 @@ impl Rect {
     /// Whether it leaves a map of `size` tiles (width, height): a low corner below 0 or a high
     /// one beyond the size (`COMISS`: a NaN does not leave).
     #[must_use]
-    pub fn leaves_map(self, [w, h]: [i32; 2]) -> bool {
+    pub fn leaves_map(self, map: GridSize) -> bool {
+        let (w, h) = (map.width(), map.height());
         self.x0() < 0.0 || self.y0() < 0.0 || (w as f32) < self.x1() || (h as f32) < self.y1()
     }
 
@@ -151,7 +153,7 @@ pub struct Segment {
 
 #[cfg(test)]
 mod tests {
-    use crate::map::{Point, Rect};
+    use crate::map::{GridSize, Point, Rect};
 
     /// A box keeps its corners' bits in their order, grows the low corner by subtracting first,
     /// overlaps another with the edges included but not with a NaN, and orders its corners.
@@ -191,9 +193,10 @@ mod tests {
             Rect::spanning(Point::new(3.0, 2.0), Point::new(1.0, 4.0)),
             Rect::new(1.0, 2.0, 3.0, 4.0)
         );
-        assert!(!r.leaves_map([3, 4]));
-        assert!(r.leaves_map([2, 4]) && r.leaves_map([3, 3]));
-        assert!(Rect::new(-0.5, 2.0, 3.0, 4.0).leaves_map([9, 9]));
-        assert!(!Rect::new(f32::NAN, 2.0, 3.0, 4.0).leaves_map([3, 4]));
+        let map = GridSize::new;
+        assert!(!r.leaves_map(map(3, 4)));
+        assert!(r.leaves_map(map(2, 4)) && r.leaves_map(map(3, 3)));
+        assert!(Rect::new(-0.5, 2.0, 3.0, 4.0).leaves_map(map(9, 9)));
+        assert!(!Rect::new(f32::NAN, 2.0, 3.0, 4.0).leaves_map(map(3, 4)));
     }
 }

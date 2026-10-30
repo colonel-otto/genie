@@ -119,7 +119,7 @@ impl World {
                     (p.x(), p.y())
                 };
                 let (tx, ty) = (cvttss2si(x), cvttss2si(y));
-                let on_map = 0 <= tx && tx < map[0] && 0 <= ty && ty < map[1];
+                let on_map = 0 <= tx && tx < map.width() && 0 <= ty && ty < map.height();
                 if on_map && !self.holds_livestock_of(id, tx, ty) {
                     break;
                 }

@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::{cos, sin};
@@ -193,7 +194,7 @@ impl Fly {
     fn choose(
         &mut self,
         mover: &Mover,
-        map: [i32; 2],
+        map: GridSize,
         action: &mut Well512,
         sprites: &FlightSprites<'_>,
     ) -> Result<bool, GenieError> {
@@ -209,7 +210,7 @@ impl Fly {
         };
         let distance = speed * self.timer * factor;
         let (x, y, z) = (position.x(), position.y(), position.z());
-        let [w, h] = map;
+        let (w, h) = (map.width(), map.height());
         let mut tries = 0;
         let point = loop {
             if distance < EPSILON {
@@ -427,7 +428,7 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![gaia]);
-        t.spatial = crate::map::spatial::Spatial::new([120, 120]);
+        t.spatial = crate::map::spatial::Spatial::new(GridSize::new(120, 120));
         t.streams.get(Stream::Action).set_seed(seed);
         t.graphics = hawk_graphics();
         t.masters = vec![crate::objects::masters::Masters::new([
@@ -514,7 +515,7 @@ mod tests {
     fn a_choice_without_a_distance_or_a_point_rests() {
         let mover = Body::new(AT, None, Some(wings(1.32)));
         let mover = mover.mover().unwrap();
-        let choose = |fly: &mut Fly, map: [i32; 2]| {
+        let choose = |fly: &mut Fly, map: GridSize| {
             let mut r = Well512::default();
             r.set_seed(7);
             let graphics = hawk_graphics();
@@ -526,10 +527,10 @@ mod tests {
             (got, r.draws)
         };
         let mut fly = hawk(CHOOSING, 0.0);
-        let _ = choose(&mut fly, [120, 120]).0.unwrap();
+        let _ = choose(&mut fly, GridSize::new(120, 120)).0.unwrap();
         assert_eq!(fly.state, RESTING);
         let mut fly = hawk(CHOOSING, 10.0);
-        let _ = choose(&mut fly, [1, 1]).0.unwrap();
+        let _ = choose(&mut fly, GridSize::new(1, 1)).0.unwrap();
         assert_eq!((fly.state, fly.move_to), (RESTING, None));
         let plain = |task: Task| Fly {
             task,
@@ -540,7 +541,7 @@ mod tests {
             ..hawk(CHOOSING, 10.0).task
         };
         let mut fly = plain(unsprited);
-        let (got, draws) = choose(&mut fly, [120, 120]);
+        let (got, draws) = choose(&mut fly, GridSize::new(120, 120));
         assert_eq!((got, draws), (Ok(false), 1));
         assert_eq!(fly.state, FLYING);
         for task in [
@@ -562,7 +563,7 @@ mod tests {
                 ..unsprited
             },
         ] {
-            assert!(choose(&mut plain(task), [120, 120]).0.is_err());
+            assert!(choose(&mut plain(task), GridSize::new(120, 120)).0.is_err());
         }
     }
 

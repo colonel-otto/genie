@@ -157,8 +157,8 @@ pub fn walled_off(
     let (x0, y0) = (mx.min(tx), my.min(ty));
     let (mut x1, mut y1) = (mx.max(tx), my.max(ty));
     if 1 < x1.wrapping_sub(x0) || 1 < y1.wrapping_sub(y0) {
-        x1 = (x0 + 1).min(map[0] - 1);
-        y1 = (y0 + 1).min(map[1] - 1);
+        x1 = (x0 + 1).min(map.width() - 1);
+        y1 = (y0 + 1).min(map.height() - 1);
     }
     let mut count = 0usize;
     for x in x0..=x1 {
@@ -311,7 +311,7 @@ fn shore(
         .restrictions
         .get(stats.restriction)
         .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-    let [w, h] = spatial.map;
+    let (w, h) = (spatial.map.width(), spatial.map.height());
     let map = zones.of(w, h, &terrain.kinds, values)?;
     let own = map.zone(cvttss2si(ux), cvttss2si(uy));
     let from = [cvttss2si(t.position.x()), cvttss2si(t.position.y())];

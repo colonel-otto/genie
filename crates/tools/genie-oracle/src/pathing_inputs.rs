@@ -1,6 +1,8 @@
 //! What the pathing reads of a save and its dumps: the shape mesh and its owners, a unit's
 //! terrain and the tile pathfinder's planner.
 
+use genie_core::map::GridSize;
+
 use crate::masters::TerrainTable;
 use crate::{Error, live, spatial};
 use genie_rec::de;
@@ -128,7 +130,7 @@ pub fn planner_from_save(
     let tiles = spatial.tiles();
     let blocked = |x: i32, y: i32| tiles.word(x, y).is_some_and(|w| w & BLOCKED != 0);
     Ok(genie_core::pathing::tile_path::Planner::new(
-        [map.map_width, map.map_height],
+        GridSize::new(map.map_width, map.map_height),
         terrain_ids,
         passable,
         &blocked,

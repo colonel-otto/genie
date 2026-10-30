@@ -8,6 +8,7 @@
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
@@ -408,8 +409,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     /// every tile the player sees now (its visible map's `FUN_141285350` 0xf) with 1.
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         let size = crate::movement::explore::SCOUT_MAP_SIZE;
-        let mut m = crate::movement::explore::InfluenceMap::new([size, size], 0);
-        let [w, h] = self.c.w.spatial.map;
+        let mut m = crate::movement::explore::InfluenceMap::new(GridSize::new(size, size), 0);
+        let (w, h) = (self.c.w.spatial.map.width(), self.c.w.spatial.map.height());
         for y in 0..h {
             for x in 0..w {
                 if self.c.w.spatial.scout_sight(self.player, x, y) == Some(0xf) {

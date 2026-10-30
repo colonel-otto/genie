@@ -1,6 +1,8 @@
 //! The Build's update on the step ([`BuildAction::update`] through [`Unit::build_part`]), on
 //! World fixtures: the state of the builder, its foundation and the world after each update.
 
+use crate::map::GridSize;
+
 use super::tests::{MOVING_TASK, TASK, started};
 use super::*;
 use crate::map::Footprint;
@@ -181,7 +183,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         (TASK_SPRITE, graphic(TASK_SPRITE)),
         (7, graphic(7)),
     ]);
-    t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+    t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
     t.spatial.insert(
         object_id(HOUSE),
         placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE),
@@ -196,7 +198,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
 
 /// The world's planners for its 20 × 20 tiles and their shape mesh.
 fn plan(t: &mut World) {
-    t.pathing = Pathing::new([20, 20], vec![0; 400], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(GridSize::new(20, 20), vec![0; 400], vec![vec![1.0]; 8], 0);
     t.pathing.start_mesh(20);
 }
 
@@ -533,7 +535,10 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
         site: -1,
     };
     let mut t = site_world(class::VILLAGER, Position::new(30.0, 89.0, 0.0), b);
-    t.spatial = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
+    t.spatial = Spatial::with_tiles(
+        GridSize::new(40, 120),
+        Tiles::new(40, 120, vec![4; 40 * 120]),
+    );
     t.spatial.insert(
         object_id(HOUSE),
         placed(
@@ -1536,7 +1541,7 @@ fn an_annex_s_test_sends_its_units_off_or_halts_the_build() {
 #[test]
 fn a_builder_on_an_annex_walks_off_it() {
     let mut t = site_world(class::VILLAGER, Position::new(12.4, 10.5, 0.0), placing());
-    t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+    t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
     t.spatial.insert(
         object_id(HOUSE),
         placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE),

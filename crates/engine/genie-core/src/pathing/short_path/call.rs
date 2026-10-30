@@ -2,6 +2,7 @@
 //! ([`Pather`]): the terrain's shapes, the start test and the core.
 
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::pathing::mesh::{Mesh, ONE};
@@ -109,7 +110,7 @@ pub struct Call {
     /// The objects it ignores.
     pub listed: Vec<Listed>,
     /// The map's size in tiles.
-    pub map: [i32; 2],
+    pub map: GridSize,
     /// The terrain classes the unit can cross (its restriction's mask).
     pub mask: u8,
 }
@@ -157,8 +158,8 @@ impl Call {
             let (x, y) = (p.x(), p.y());
             fmath::at_most_or_unordered(0.0, x)
                 && fmath::at_most_or_unordered(0.0, y)
-                && fmath::below_or_unordered(x, self.map[0] as f32)
-                && fmath::below_or_unordered(y, self.map[1] as f32)
+                && fmath::below_or_unordered(x, self.map.width() as f32)
+                && fmath::below_or_unordered(y, self.map.height() as f32)
         };
         if !on_map(self.from) || !on_map(self.to) {
             return Entry::Invalid;

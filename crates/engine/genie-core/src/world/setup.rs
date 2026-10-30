@@ -107,7 +107,7 @@ impl World {
     ///
     /// An object of a master its owner lacks.
     pub fn build_mesh(&mut self) -> Result<(), GenieError> {
-        let width = u32::try_from(self.spatial.map[0]).unwrap_or(0);
+        let width = u32::try_from(self.spatial.map.width()).unwrap_or(0);
         self.pathing.start_mesh(width);
         for (q, p) in PlayerId::each(self.players.len()).zip(&self.players) {
             for u in p.objects.iter().chain(&p.sleeping) {

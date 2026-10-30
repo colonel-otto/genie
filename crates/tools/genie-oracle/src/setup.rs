@@ -1,6 +1,8 @@
 //! The slice set up from the header save ([`slice`]): the players' technologies, wonder
 //! times, ghosts, AI settings and history, and the garrisons' firepower.
 
+use genie_core::map::GridSize;
+
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
 use genie_core::map::Position;
@@ -223,7 +225,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
             turns.spatial.set_scout_map(
                 i,
                 genie_core::movement::explore::InfluenceMap {
-                    size: [m.x_size_value, m.y_size_value],
+                    size: GridSize::new(m.x_size_value, m.y_size_value),
                     origin: [m.x_reference_point_value, m.y_reference_point_value],
                     limit: m.unchangeable_limit_value,
                     cells,
@@ -239,7 +241,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     }
     let map = &world.map;
     turns.pathing = genie_core::pathing::Pathing::new(
-        [map.map_width, map.map_height],
+        GridSize::new(map.map_width, map.map_height),
         map.rows
             .iter()
             .flat_map(|r| r.tiles.iter().map(|t| t.terrain_type))
@@ -590,7 +592,7 @@ pub fn ai_module(
             width: info.map_width,
             height: info.map_height,
             path_map: genie_core::movement::explore::InfluenceMap {
-                size: [grid.x_size_value, grid.y_size_value],
+                size: GridSize::new(grid.x_size_value, grid.y_size_value),
                 origin: [grid.x_reference_point_value, grid.y_reference_point_value],
                 limit: grid.unchangeable_limit_value,
                 cells,

@@ -409,6 +409,7 @@ pub(crate) const DROPPED_ORDERS: [OrderKind; 3] =
 mod stack_tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::GroundOffset;
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
@@ -552,7 +553,10 @@ mod stack_tests {
                 },
             ],
         );
-        t.spatial = Spatial::with_tiles([200, 200], Tiles::new(200, 200, vec![0; 200 * 200]));
+        t.spatial = Spatial::with_tiles(
+            GridSize::new(200, 200),
+            Tiles::new(200, 200, vec![0; 200 * 200]),
+        );
         t.spatial.terrain = Some(crate::map::terrain::Terrain::new(
             200,
             200,

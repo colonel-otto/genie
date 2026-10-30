@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
@@ -136,7 +137,7 @@ pub struct Placing<'a> {
 /// What the placement test reads of the map.
 pub trait PlaceMap {
     /// The map's size in tiles.
-    fn size(&self) -> [i32; 2];
+    fn size(&self) -> GridSize;
     /// A tile's terrain (the map tile's `+0x9`).
     fn terrain(&self, x: i32, y: i32) -> Result<u8, GenieError>;
     /// Terrain `t`'s flags (the `.dat`'s `is_water` byte, the map's terrain record `+2`), None
@@ -169,12 +170,12 @@ pub trait PlaceMap {
 
 /// The tiles within `REACH` of a point, clamped to the map (`(int)` of each bound, then the map's
 /// edges), row by row.
-pub(super) fn reach(map: [i32; 2], at: Point) -> impl Iterator<Item = (i32, i32)> {
+pub(super) fn reach(map: GridSize, at: Point) -> impl Iterator<Item = (i32, i32)> {
     let (x, y) = (at.x(), at.y());
     let x0 = ((x - REACH) as i32 as i16).max(0);
-    let x1 = ((x + REACH) as i32 as i16).min((map[0] - 1) as i16);
+    let x1 = ((x + REACH) as i32 as i16).min((map.width() - 1) as i16);
     let y0 = ((y - REACH) as i32 as i16).max(0);
-    let y1 = ((y + REACH) as i32 as i16).min((map[1] - 1) as i16);
+    let y1 = ((y + REACH) as i32 as i16).min((map.height() - 1) as i16);
     (y0..=y1).flat_map(move |ty| (x0..=x1).map(move |tx| (i32::from(tx), i32::from(ty))))
 }
 
@@ -235,7 +236,8 @@ pub fn build_placement(
         return Ok(6);
     }
     // FUN_14123aee0's scan
-    let [w, h] = map.size();
+    let size = map.size();
+    let (w, h) = (size.width(), size.height());
     let ((x0, x1), (y0, y1)) = (build_scan_range(p.x(), w), build_scan_range(p.y(), h));
     let player = site.player;
     for ty in y0..=y1 {
@@ -310,7 +312,8 @@ pub(super) fn build_static_test(
 ) -> Result<Option<u8>, GenieError> {
     let (x, y) = (p.x(), p.y());
     let (rx, ry) = (site.radius.x(), site.radius.y());
-    let [w, h] = map.size();
+    let size = map.size();
+    let (w, h) = (size.width(), size.height());
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
     if x - rx < 0.0 || w as f32 <= far_x || y - ry < 0.0 || h as f32 <= far_y {
         return Ok(Some(7));
@@ -492,7 +495,8 @@ pub fn placement(
 ) -> Result<Tested, GenieError> {
     let (x, y) = (p.x(), p.y());
     let (rx, ry) = (me.radius.x(), me.radius.y());
-    let [w, h] = map.size();
+    let size = map.size();
+    let (w, h) = (size.width(), size.height());
     let (far_x, far_y) = ((x + rx) - INSIDE, (y + ry) - INSIDE);
     // FUN_141123f80's own result: 0 free; the objects of its scan report the blocker (6)
     let mut base_blocker = None;

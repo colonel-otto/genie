@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::GridSize;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -643,7 +644,7 @@ fn the_scout_map_takes_the_new_tiles() {
     t.world_player_tail(PlayerId::new(1)).unwrap();
     t.spatial.set_scout_map(
         PlayerId::new(1),
-        crate::movement::explore::InfluenceMap::new([10, 10], 0),
+        crate::movement::explore::InfluenceMap::new(GridSize::new(10, 10), 0),
     );
     t.world_time = 4999;
     t.world_player_tail(PlayerId::new(1)).unwrap();

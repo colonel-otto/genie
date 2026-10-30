@@ -241,7 +241,7 @@ impl Mover {
             self.stats.radius.y(),
             self.stats.radius.z(),
         );
-        let [w, h] = world.map;
+        let (w, h) = (world.map.width(), world.map.height());
         let (x, y) = (p.x(), p.y());
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
@@ -280,7 +280,7 @@ impl Mover {
             self.stats.radius.y(),
             self.stats.radius.z(),
         );
-        let [w, h] = world.map;
+        let (w, h) = (world.map.width(), world.map.height());
         let (x, y) = (p.x(), p.y());
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);

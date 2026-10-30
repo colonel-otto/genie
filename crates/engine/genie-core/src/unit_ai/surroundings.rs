@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
@@ -122,7 +123,7 @@ pub struct Surroundings {
     /// size in tiles and the world's dt in seconds (`world+0x164`).
     pub speed: f32,
     /// The map's size in tiles.
-    pub map: [i32; 2],
+    pub map: GridSize,
     /// The world's dt in seconds (`world+0x164`).
     pub dt_seconds: f32,
     /// The game's setting at `+0x680` (`FUN_140ec0cd0`) is 1: boars stay put.

@@ -16,6 +16,7 @@ use self::path_points::{
 };
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::spatial::{Placed, Spatial};
@@ -564,9 +565,9 @@ fn pause_rank(
 /// [`Mover::reached`]'s waypoints too near the map's edge for the unit (`FUN_140f98d50`): from
 /// the level's waypoint on, each whose x or y lies within the unit's radius (`radius`) of an
 /// edge of the map (`map`) goes, until one lies inside.
-fn drop_edge_waypoints(level: &mut PathData, radius: Radii, map: [i32; 2]) {
+fn drop_edge_waypoints(level: &mut PathData, radius: Radii, map: GridSize) {
     let (rx, ry) = (radius.x(), radius.y());
-    let [w, h] = map;
+    let (w, h) = (map.width(), map.height());
     while level.waypoint < level.points.len() as i32 {
         let [x, _, y] = level.point(level.waypoint).get();
         if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {

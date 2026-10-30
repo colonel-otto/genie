@@ -80,7 +80,7 @@ pub(crate) fn closest_resource_of(
                 ))?
                 .stats
                 .restriction;
-            let [w, h] = c.spatial.map;
+            let (w, h) = (c.spatial.map.width(), c.spatial.map.height());
             let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
                 "the map's zones without its terrain",
             ))?;

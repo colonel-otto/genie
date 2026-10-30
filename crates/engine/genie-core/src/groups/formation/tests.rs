@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Rect;
 use crate::objects::masters::MasterId;
@@ -71,7 +72,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
     for &(x, y) in blocked {
         classes[y * 20 + x] = 2;
     }
-    t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     let kinds = vec![
         TerrainKind {
             shown: true,

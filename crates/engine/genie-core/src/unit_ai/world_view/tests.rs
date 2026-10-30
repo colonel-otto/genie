@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -60,7 +61,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         Masters::default(),
         Masters::new([master]),
     ];
-    let spatial = Spatial::new([120, 120]);
+    let spatial = Spatial::new(GridSize::new(120, 120));
     let attacker = crate::unit_ai::Attacker {
         ai_type: UnitAiType::CIVILIAN,
         player: PlayerId::new(1),
@@ -296,7 +297,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         Masters::new([master(master_id(4), class::CLASS_6, vec![(4, 6)])]),
         Masters::new([master(master_id(5), class::CLASS_6, vec![(4, 3)])]),
     ];
-    let spatial = Spatial::new([120, 120]);
+    let spatial = Spatial::new(GridSize::new(120, 120));
     let attacker = crate::unit_ai::Attacker {
         ai_type: UnitAiType::SOLDIER,
         player: PlayerId::new(1),

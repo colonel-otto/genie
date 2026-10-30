@@ -72,8 +72,8 @@ impl Spatial {
             (y as i32 as i16).wrapping_add(reach),
         );
         let (x0, y0) = (i32::from(x0.max(0)), i32::from(y0.max(0)));
-        let x1 = i32::from(x1).min(self.map[0] - 1);
-        let y1 = i32::from(y1).min(self.map[1] - 1);
+        let x1 = i32::from(x1).min(self.map.width() - 1);
+        let y1 = i32::from(y1).min(self.map.height() - 1);
         let out = |o: usize| {
             players
                 .get(o)

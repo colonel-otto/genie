@@ -158,7 +158,7 @@ impl HullPather<'_> {
     /// takes it.
     fn off_map(&mut self, from: Point, to: Point, target_id: i32) -> Result<bool, GenieError> {
         let r = self.radius;
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         self.bounds = Rect::new(r, r, w as f32 - r, h as f32 - r);
         let (bx1, by1) = (self.bounds.x1(), self.bounds.y1());
         // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
@@ -259,7 +259,7 @@ impl HullPather<'_> {
         if keep && self.area[0] != -1 {
             return true;
         }
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         let tile = |v: f32, d: i32| cvttss2si(v).wrapping_add(d);
         let x0 = tile(minss(from.x(), to.x()), -2);
         let y0 = tile(minss(from.y(), to.y()), -2);

@@ -677,6 +677,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::Position;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
@@ -1336,7 +1337,7 @@ mod tests {
             u.place_for_test(Position::new(5.5, 5.5, 0.0));
             u.life.inside = inside;
             let mut t = one_player(vec![u], vec![old.clone()], &[]);
-            t.spatial = crate::map::spatial::Spatial::new([20, 20]);
+            t.spatial = crate::map::spatial::Spatial::new(GridSize::new(20, 20));
             t.spatial.insert(
                 object_id(10),
                 crate::map::spatial::Placed {

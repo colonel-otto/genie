@@ -71,7 +71,7 @@ impl HullPather<'_> {
             return Ok(false);
         }
         let r = self.radius;
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         self.bounds = Rect::new(0.0, 0.0, w as f32 - 0.0, h as f32 - 0.0);
         let b = self.bounds;
         let (bx0, by0, bx1, by1) = (b.x0(), b.y0(), b.x1(), b.y1());
@@ -118,7 +118,7 @@ impl HullPather<'_> {
     /// The area grows by two tiles each way on the map (its new tiles' obstructions, then the
     /// cliffs about it); false when it would hold more than [`MOST_AREA`] tiles.
     pub(super) fn grow_area(&mut self) -> Result<bool, GenieError> {
-        let [w, h] = self.world.map;
+        let (w, h) = (self.world.map.width(), self.world.map.height());
         let x0 = (self.area[0] - 2).max(0);
         let y0 = (self.area[1] - 2).max(0);
         let x1 = (self.area[2] + 2).min(w - 1);

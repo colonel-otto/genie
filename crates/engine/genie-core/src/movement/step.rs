@@ -1,6 +1,7 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
@@ -98,7 +99,7 @@ impl Mover {
         &mut self,
         position: Position,
         dt: f32,
-        map: [i32; 2],
+        map: GridSize,
         terrain: Option<&crate::map::terrain::Terrain>,
         (now, group): (u32, Option<GroupSpeed>),
     ) -> Position {
@@ -188,7 +189,7 @@ impl Mover {
     /// `moveForward` (slot 182, `FUN_141158490`): `distance × factor` along the forward vector
     /// from where the unit last moved to (`+0x824`, [`Mover::moved_at`]), through the position
     /// setter; a distance below 1e-7 moves nothing.
-    pub(super) fn move_forward(&self, distance: f32, map: [i32; 2]) -> Option<Position> {
+    pub(super) fn move_forward(&self, distance: f32, map: GridSize) -> Option<Position> {
         let d = distance * self.factor;
         if d.abs() < EPSILON {
             return None;
@@ -236,7 +237,7 @@ impl Mover {
 
     /// The position setter (slot 11 -> `FUN_141161950` -> `0x1411a58b0`): a unit that can move
     /// keeps its footprint 0.01 inside the map, then any position stays 0.001 below the map's size.
-    pub(crate) fn set_position(&self, at: Position, map: [i32; 2]) -> Position {
+    pub(crate) fn set_position(&self, at: Position, map: GridSize) -> Position {
         let (x, y) = (at.x(), at.y());
         let inside = |v: f32, radius: f32, size: i32| {
             let low = radius + EDGE_GAP;
@@ -252,8 +253,8 @@ impl Mover {
         // square the y clamp takes the width
         let (x, y) = if EPSILON < self.stats.speed {
             (
-                inside(x, self.stats.radius.x(), map[0]),
-                inside(y, self.stats.radius.y(), map[0]),
+                inside(x, self.stats.radius.x(), map.width()),
+                inside(y, self.stats.radius.y(), map.width()),
             )
         } else {
             (x, y)
@@ -266,7 +267,7 @@ impl Mover {
                 v
             }
         };
-        Position::new(on_map(x, map[0]), on_map(y, map[1]), at.z())
+        Position::new(on_map(x, map.width()), on_map(y, map.height()), at.z())
     }
 
     /// The motion step (object slot 193 -> `0x141150f00`, `doIntelligentMovementUpdate`) along the

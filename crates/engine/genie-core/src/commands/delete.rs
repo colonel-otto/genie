@@ -114,7 +114,7 @@ impl World {
         };
         let (x, y) = (site.position.x(), site.position.y());
         let (rx, ry) = (site.radius.x(), site.radius.y());
-        let [w, h] = self.spatial.map;
+        let (w, h) = (self.spatial.map.width(), self.spatial.map.height());
         let (x0, y0) = (
             (((x - rx) as i32) - AROUND).max(0),
             (((y - ry) as i32) - AROUND).max(0),
@@ -754,6 +754,7 @@ mod tests {
 mod clearing_tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::Point;
     use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
@@ -883,7 +884,7 @@ mod clearing_tests {
                 },
             ],
         );
-        t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
         for p in PlayerId::each(2) {
             let all: Vec<Unit> = t.players[p.index()]
                 .objects

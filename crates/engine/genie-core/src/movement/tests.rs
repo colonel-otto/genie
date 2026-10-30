@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
@@ -196,7 +197,7 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
 /// radius, class, player), each of the master numbered as its class.
 fn drop_off_world(class: u8, near: &[(i32, Point, f32, ClassId, PlayerId)]) -> Spatial {
     let mut w = Spatial::with_tiles(
-        [16, 16],
+        GridSize::new(16, 16),
         crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
     );
     let placed = |at: Point, r: f32, class, player| Placed {
@@ -353,7 +354,7 @@ fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
 fn the_drop_off_walker_s_start_is_blocked_in_terrain_its_mask_lacks() {
     let test = |class: u8| {
         let world = Spatial::with_tiles(
-            [16, 16],
+            GridSize::new(16, 16),
             crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
         );
         let mut pathing = Pathing::default();
@@ -390,7 +391,10 @@ fn walled(radius: f32) -> Spatial {
     for y in 4..=6 {
         classes[y * 20 + 6] = 1;
     }
-    let mut w = Spatial::with_tiles([20, 20], crate::map::spatial::Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        crate::map::spatial::Tiles::new(20, 20, classes),
+    );
     w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
@@ -674,7 +678,7 @@ fn kept_hits_join_the_include_list_up_to_its_room() {
 #[test]
 fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
     let mut w = Spatial::with_tiles(
-        [20, 20],
+        GridSize::new(20, 20),
         crate::map::spatial::Tiles::new(20, 20, vec![4; 400]),
     );
     let unit = |x: f32, r: f32| Placed {
@@ -764,7 +768,7 @@ fn world_target() -> Placed {
 #[test]
 fn the_reach_test_starts_where_the_unit_last_moved_to() {
     let mut world = Spatial::with_tiles(
-        [40, 40],
+        GridSize::new(40, 40),
         crate::map::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
     );
     world.insert(
@@ -941,14 +945,14 @@ fn a_far_waypoint_or_a_target_of_master_45_takes_the_long_pather() {
 fn the_position_setter_holds_y_by_the_map_s_width() {
     let m = builder_9177();
     // a map 40 wide and 120 high: y 100 lies beyond the width less the radius and the gap
-    let at = m.set_position(Position::new(10.0, 100.0, 0.0), [40, 120]);
+    let at = m.set_position(Position::new(10.0, 100.0, 0.0), GridSize::new(40, 120));
     assert_eq!(at.y(), (40.0f32 - 0.2) - EDGE_GAP);
     // a unit that does not move is not held
     let mut still = builder_9177();
     still.stats.speed = 0.0;
     assert_eq!(
         still
-            .set_position(Position::new(10.0, 100.0, 0.0), [40, 120])
+            .set_position(Position::new(10.0, 100.0, 0.0), GridSize::new(40, 120))
             .y(),
         100.0
     );
@@ -1026,7 +1030,7 @@ fn a_loop_s_reached_waypoint_moves_on_and_its_first_ends_the_step() {
         l.flags = 1;
         m
     };
-    let mut world = Spatial::new([120, 120]);
+    let mut world = Spatial::new(GridSize::new(120, 120));
     let me = Me {
         id: 9177,
         group: -1,
@@ -1076,7 +1080,7 @@ fn a_walk_whose_target_is_gone_walks_as_to_a_point() {
             group: -1,
             action_state: 0,
         };
-        let motion = m.motion(&me, DT, &mut Spatial::new([120, 120]), None);
+        let motion = m.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None);
         (motion, m.forward, m.velocity)
     };
     assert_eq!(walk(77), walk(-1));
@@ -1088,7 +1092,7 @@ fn a_walk_whose_target_is_gone_walks_as_to_a_point() {
 /// target's is its own.
 #[test]
 fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
-    let mut world = Spatial::new([40, 40]);
+    let mut world = Spatial::new(GridSize::new(40, 40));
     let wall = |x: f32, class: ClassId| Placed {
         position: Position::new(x, 10.0, 0.0),
         radius: Footprint::new(0.5, 0.5),
@@ -1308,7 +1312,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
     };
     // land of a terrain class the unit's mask (6) has
     let mut w = Spatial::with_tiles(
-        [120, 120],
+        GridSize::new(120, 120),
         crate::map::spatial::Tiles::new(120, 120, vec![2; 14400]),
     );
     // on open ground: waypoint 3 is beyond 10 tiles, waypoint 2 within, so it takes 2
@@ -1408,7 +1412,7 @@ fn the_long_pather_lowers_the_walker_or_its_groups_units_and_the_target() {
 }
 
 pub(crate) fn world() -> Spatial {
-    let mut s = Spatial::new([120, 120]);
+    let mut s = Spatial::new(GridSize::new(120, 120));
     let unit = |x, y| Placed {
         position: Position::new(x, y, 0.0),
         radius: Footprint::new(0.2, 0.2),
@@ -1448,7 +1452,7 @@ pub(crate) fn world() -> Spatial {
 pub(crate) fn tiled_world(classes: Vec<u8>) -> Spatial {
     let objects = world();
     let tiles = crate::map::spatial::Tiles::new(120, 120, classes);
-    let mut s = Spatial::with_tiles([120, 120], tiles);
+    let mut s = Spatial::with_tiles(GridSize::new(120, 120), tiles);
     for id in [9175, 9177, 10028] {
         s.insert(object_id(id), *objects.get(id).expect("in the world"));
     }
@@ -1888,7 +1892,7 @@ fn the_velocity_step_of_a_paused_member_on_its_own_move_stands() {
     let at = m.step_velocity(
         Position::new(28.0, 89.0, 0.0),
         DT,
-        [120, 120],
+        GridSize::new(120, 120),
         None,
         (0, Some(GroupSpeed::OwnMove(1.2))),
     );
@@ -1910,7 +1914,7 @@ fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
     let at = m.step_velocity(
         Position::new(40.0, 40.0, 0.0),
         1.0,
-        [120, 120],
+        GridSize::new(120, 120),
         None,
         (0, None),
     );
@@ -1978,7 +1982,7 @@ fn a_walk_to_a_point_goes_on_until_its_range() {
         action_state: 0,
     };
     assert_eq!(
-        hawk.motion(&me, DT, &mut Spatial::new([120, 120]), None),
+        hawk.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None),
         Ok(Motion::Moving)
     );
     // a deer's walk with range 0.5 whose top path ends within it
@@ -1990,7 +1994,7 @@ fn a_walk_to_a_point_goes_on_until_its_range() {
     deer.paths[1].points = vec![BVector::new(28.0, 0.0, 89.0), BVector::new(28.6, 0.0, 89.0)];
     deer.velocity.as_mut().unwrap().velocity = BVector::new(0.0, 0.0, 0.8);
     assert_eq!(
-        deer.motion(&me, DT, &mut Spatial::new([120, 120]), None),
+        deer.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None),
         Ok(Motion::Arrived)
     );
     // the walk ends: one level, reset, and the deer stops
@@ -2033,7 +2037,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
         m
     };
     let run = |m: &mut Mover, last_move: u32, target_player: PlayerId, target_id: i32| {
-        let mut world = Spatial::new([120, 120]);
+        let mut world = Spatial::new(GridSize::new(120, 120));
         let placed = Placed {
             position: Position::new(40.0, 88.0, 0.0),
             radius: Footprint::new(0.5, 0.5),
@@ -2124,7 +2128,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
         l.flags = 1;
         m
     };
-    let mut world = Spatial::new([120, 120]);
+    let mut world = Spatial::new(GridSize::new(120, 120));
     world.insert(
         object_id(500),
         Placed {
@@ -2193,7 +2197,7 @@ fn a_reached_waypoint_ends_the_walk_at_the_end_of_the_path() {
         std::f32::consts::FRAC_1_SQRT_2,
     );
     m.velocity.as_mut().unwrap().velocity = BVector::new(0.0, 0.0, 0.8);
-    let mut world = Spatial::new([120, 120]);
+    let mut world = Spatial::new(GridSize::new(120, 120));
     m.moved_at = Position::new(29.51, 89.49, 0.0);
     m.place_for_test(Position::new(29.51, 89.49, 0.0));
     let me = Me {
@@ -2244,7 +2248,7 @@ fn a_path_request_makes_the_top_level_from_the_unit_to_its_goal() {
         action_state: 0,
     };
     assert_eq!(
-        m.motion(&me, DT, &mut Spatial::new([120, 120]), None),
+        m.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None),
         Err(GenieError::unsupported(
             "a path request without the world's planners"
         ))

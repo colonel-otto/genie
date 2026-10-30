@@ -1,5 +1,6 @@
 use super::*;
 use crate::combat::damage::Victim;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
@@ -210,18 +211,22 @@ fn the_movement_damage_timer_runs_down_to_0_and_then_hits() {
 #[test]
 fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
     assert_eq!(
-        reach(Position::new(10.7, 20.2, 0.0), 2.9, [120, 120]),
+        reach(Position::new(10.7, 20.2, 0.0), 2.9, GridSize::new(120, 120)),
         ([8, 18], [12, 22])
     );
     // from 0, and up to the map's size itself
     assert_eq!(
-        reach(Position::new(1.5, 118.9, 0.0), 3.0, [120, 120]),
+        reach(Position::new(1.5, 118.9, 0.0), 3.0, GridSize::new(120, 120)),
         ([0, 115], [4, 120])
     );
     // a NaN range is the integer indefinite
     // (5 less it wraps to a negative value, 0; 5 plus it stays below the map's size): no
     // tile
-    let (low, high) = reach(Position::new(5.0, 5.0, 0.0), f32::NAN, [120, 120]);
+    let (low, high) = reach(
+        Position::new(5.0, 5.0, 0.0),
+        f32::NAN,
+        GridSize::new(120, 120),
+    );
     assert_eq!(low, [0, 0]);
     assert_eq!(high, [i32::MIN + 5; 2]);
 }
@@ -480,7 +485,7 @@ fn world() -> World {
     ];
     let mut t = World::new(0, 1, PlayerId::new(0), vec![0; 3], players);
     t.dt_seconds = 0.5;
-    t.spatial = Spatial::new([20, 20]);
+    t.spatial = Spatial::new(GridSize::new(20, 20));
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
     t.masters = vec![Masters::default(), Masters::default(), Masters::default()];
     t

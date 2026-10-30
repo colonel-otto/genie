@@ -311,6 +311,7 @@ impl Body {
 mod tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::spatial::Placed;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
@@ -323,7 +324,7 @@ mod tests {
 
     /// A small map with object 7 indexed at `at`.
     fn indexed(at: Position) -> Spatial {
-        let mut world = Spatial::new([10, 10]);
+        let mut world = Spatial::new(GridSize::new(10, 10));
         world.insert(
             object_id(7),
             Placed {

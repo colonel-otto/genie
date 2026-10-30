@@ -1,6 +1,8 @@
 //! The map and the players' sight: the terrain and its differences, the objects as movement
 //! sees them, the visible maps and resources against the game's.
 
+use genie_core::map::GridSize;
+
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
 use genie_core::map::Position;
@@ -148,7 +150,7 @@ pub(super) fn spatial(
         .flat_map(|r| r.tiles.iter().map(|t| terrain.class(t.terrain_type)))
         .collect();
     let tiles = Tiles::new(map.map_width, map.map_height, classes);
-    let mut out = Spatial::with_tiles([map.map_width, map.map_height], tiles);
+    let mut out = Spatial::with_tiles(GridSize::new(map.map_width, map.map_height), tiles);
     out.terrain = Some(map_terrain(header, terrain));
     // what each player's queries make of the others' objects (player +0x278, the load's
     // unit_diplomacy)

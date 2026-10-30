@@ -14,6 +14,7 @@ use crate::construction::gates::gate_units;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Offset;
 use crate::map::Point;
 use crate::map::Position;
@@ -443,13 +444,14 @@ pub(crate) fn builder_masters() -> Masters {
 /// A flat map of terrain 0 that the first terrain restriction lets anything stand on, every
 /// tile seen by every player: BUILD's placement test passes anywhere free.
 pub(crate) fn placeable(t: &mut World) {
-    placeable_on(t, [120, 120]);
+    placeable_on(t, GridSize::new(120, 120));
 }
 
 /// [`placeable`]'s terrain and sight on a map of `w` × `h` tiles.
-pub(crate) fn placeable_on(t: &mut World, [w, h]: [i32; 2]) {
+pub(crate) fn placeable_on(t: &mut World, map: GridSize) {
+    let (w, h) = (map.width(), map.height());
     let n = (w * h) as usize;
-    t.spatial.map = [w, h];
+    t.spatial.map = GridSize::new(w, h);
     let mut terrain = crate::map::terrain::Terrain::new(
         w,
         h,
@@ -663,7 +665,7 @@ fn pasture_game(at: Position, livestock: f32, livestock_masters: &[MasterId]) ->
         ..Player::default()
     };
     let mut t = World::new(0, 1, PlayerId::new(0), vec![0, 0], vec![player(), player()]);
-    t.spatial = Spatial::new([120, 120]);
+    t.spatial = Spatial::new(GridSize::new(120, 120));
     placeable(&mut t);
     t.players[1].attributes[289] = livestock;
     t.players[1].attributes[288] = 300.0;
@@ -1171,7 +1173,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
         Masters::default(),
     ];
     t.spatial = Spatial::with_tiles(
-        [120, 120],
+        GridSize::new(120, 120),
         crate::map::spatial::Tiles::new(120, 120, vec![0; 120 * 120]),
     );
     placeable(&mut t);
@@ -2031,7 +2033,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
     };
     t.players[1].objects.push(annex);
     t.spatial = Spatial::with_tiles(
-        [120, 120],
+        GridSize::new(120, 120),
         crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
     );
     for (id, x) in [(10028, 30.0), (10031, 32.0)] {
@@ -2487,7 +2489,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
 /// lets a unit stand anywhere: the spatial table starts empty.
 pub(crate) fn open_map(t: &mut World) {
     t.spatial = Spatial::with_tiles(
-        [120, 120],
+        GridSize::new(120, 120),
         crate::map::spatial::Tiles::new(120, 120, vec![4; 120 * 120]),
     );
     placeable(t);
@@ -3743,7 +3745,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
         master(ids::HOUSE, 2),
         master(master_id(71), 0),
     ])];
-    t.spatial = Spatial::new([40, 40]);
+    t.spatial = Spatial::new(GridSize::new(40, 40));
     for id in [1, 2, 3, 4, 6] {
         t.spatial.insert(
             object_id(id),
@@ -5143,7 +5145,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         .body
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     t.spatial = Spatial::with_tiles(
-        [120, 120],
+        GridSize::new(120, 120),
         crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
     );
     t.spatial.insert(
@@ -5332,7 +5334,12 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
 fn an_enter_s_move_to_shows_its_sprite_as_it_starts() {
     for (moving, shown) in [(Some(30), 30), (None, 31)] {
         let mut t = enter_world(vec![], 5);
-        t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+        t.pathing = Pathing::new(
+            GridSize::new(120, 120),
+            vec![0; 120 * 120],
+            vec![vec![1.0]; 8],
+            0,
+        );
         t.build_mesh().unwrap();
         for id in [30, 31] {
             let g = Graphic {
@@ -6802,7 +6809,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
     };
     t.masters = (0..4).map(|_| Masters::new([master.clone()])).collect();
     t.spatial = Spatial::with_tiles(
-        [20, 20],
+        GridSize::new(20, 20),
         crate::map::spatial::Tiles::new(20, 20, vec![1; 400]),
     );
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
@@ -6864,7 +6871,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
 #[test]
 fn a_gate_counts_the_moving_units_between_its_posts() {
     let mut s = Spatial::with_tiles(
-        [40, 40],
+        GridSize::new(40, 40),
         crate::map::spatial::Tiles::new(40, 40, vec![1; 1600]),
     );
     s.relations = vec![vec![0, 3, 3], vec![3, 0, 3], vec![3, 3, 0]];
@@ -6993,7 +7000,7 @@ fn gate_world() -> World {
         ]),
     ];
     t.spatial = Spatial::with_tiles(
-        [40, 40],
+        GridSize::new(40, 40),
         crate::map::spatial::Tiles::new(40, 40, vec![1; 1600]),
     );
     t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
@@ -8037,7 +8044,7 @@ fn hands_masters() -> Vec<Masters> {
 /// list, its sight on.
 fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32) -> Spatial {
     let n = 40 * 40;
-    let mut s = Spatial::new([40, 40]);
+    let mut s = Spatial::new(GridSize::new(40, 40));
     let mut v = crate::vision::visibility::Visibility::new(
         40,
         40,
@@ -11231,7 +11238,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial = crate::map::spatial::Spatial::new([200, 200]);
+    t.spatial = crate::map::spatial::Spatial::new(GridSize::new(200, 200));
     t.spatial.insert(
         object_id(7948),
         placed(101.5, class::CLASS_35, PlayerId::new(0), master_id(706)),
@@ -12308,7 +12315,7 @@ fn scout_attack_on(
         unknown: None,
         obstruction: None,
     };
-    let mut spatial = Spatial::new([120, 120]);
+    let mut spatial = Spatial::new(GridSize::new(120, 120));
     spatial.insert(
         object_id(123),
         placed(10.0, class::CLASS_47, PlayerId::new(1), ids::ID_448),
@@ -12434,7 +12441,7 @@ fn attack_by(
         unknown: None,
         obstruction: None,
     };
-    let mut spatial = Spatial::new([120, 120]);
+    let mut spatial = Spatial::new(GridSize::new(120, 120));
     spatial.insert(
         object_id(123),
         placed(10.0, class::CLASS_47, PlayerId::new(1), ids::ID_448),
@@ -12592,7 +12599,7 @@ fn help_view<R>(
         unknown: None,
         obstruction: None,
     };
-    let mut spatial = Spatial::new([120, 120]);
+    let mut spatial = Spatial::new(GridSize::new(120, 120));
     spatial.insert(
         object_id(123),
         placed(10.0, class::CLASS_47, PlayerId::new(1), ids::ID_448),
@@ -13701,7 +13708,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
     players[0].relations = vec![0, 3];
     players[1].relations = vec![3, 0];
     let mut t = World::new(0, 29910, PlayerId::new(1), vec![0; 2], players);
-    t.spatial = Spatial::new([40, 40]);
+    t.spatial = Spatial::new(GridSize::new(40, 40));
     let mut terrain = crate::map::terrain::Terrain::new(
         40,
         40,
@@ -14615,7 +14622,12 @@ fn drop_site_sought(
             ..p
         },
     );
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     setup(&mut t);
     let mut world = DropWorld {
@@ -14675,7 +14687,12 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
 /// [`forage_world`]'s villager 9175 with its own `MoveTo` `m` on a map with a tile planner.
 fn own_move_world(m: MoveToAction) -> World {
     let mut t = forage_world();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     t.players[1].objects[0].actions.set_move_to(Some(m));
     t
@@ -14830,7 +14847,12 @@ fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
 /// ([`Unit::explore_part`]): the result, the Explore after it and what its unit AI heard.
 fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> Explored {
     let mut t = forage_world();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     let (mut explore, _) = crate::movement::explore::ExploreAction::new(
         Position::new(40.5, 89.5, 0.0),
@@ -14860,7 +14882,12 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
 #[test]
 fn an_explore_s_move_to_shows_the_master_s_walking_sprite_as_it_starts() {
     let mut t = forage_world();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     let walking = Graphic {
         id: 31,
@@ -15133,7 +15160,12 @@ fn a_building_s_own_completion_completes_its_annexes_first() {
 /// caller's after the update) and the notifies its unit AI heard.
 fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
     let mut t = house_builder();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     for masters in &mut t.masters {
         let bush = masters.get_mut(master_id(59)).unwrap();
@@ -15928,7 +15960,12 @@ fn more_repairers_repair_faster_but_not_in_proportion_and_pay_by_the_hit_point()
 #[test]
 fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
     let mut t = house_builder();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     let v = &mut t.players[1].objects[0];
     let here = v.position();
@@ -15981,7 +16018,12 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
 #[test]
 fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
     let mut t = house_builder();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = (17, 6.0);
@@ -16410,7 +16452,12 @@ fn a_built_building_s_death_reaches_its_owner_within_its_update() {
 #[test]
 fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
     let mut t = house_builder();
-    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.pathing = Pathing::new(
+        GridSize::new(120, 120),
+        vec![0; 120 * 120],
+        vec![vec![1.0]; 8],
+        0,
+    );
     t.build_mesh().unwrap();
     let v = &mut t.players[1].objects[0];
     let here = v.position();
@@ -17094,7 +17141,7 @@ fn explorer_world(open: &[[i32; 2]], slots: Vec<i32>) -> World {
     use crate::players::ai_module::{AiModule, InfoModule, TacticalModule};
     let mut t = forage_world();
     t.players[1].computer = true;
-    let mut path_map = crate::movement::explore::InfluenceMap::new([120, 120], 0);
+    let mut path_map = crate::movement::explore::InfluenceMap::new(GridSize::new(120, 120), 0);
     for &[x, y] in open {
         path_map.set(x, y, 0xff);
     }

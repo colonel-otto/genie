@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::Rect;
@@ -191,7 +192,7 @@ fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
 
 #[test]
 fn the_quick_path_goes_around_one_square_obstruction() {
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
     // a villager, a tree in its way and its target past the tree
     w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
     w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
@@ -216,7 +217,7 @@ fn the_quick_path_goes_around_one_square_obstruction() {
 /// hull merges into it.
 #[test]
 fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
     let mut pather = HullPather::new(&mut w, -1, -1, 6, 0.2);
     // a thin strip across the box's corner at (0, 0), a vertex of neither inside the other
     let strip = Hull {
@@ -259,7 +260,7 @@ fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
 /// length, a target the world does not hold none.
 #[test]
 fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
     w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
     w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
     w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
@@ -295,7 +296,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
     for y in 0..20 {
         classes[y * 20 + 8] = 1;
     }
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
@@ -327,7 +328,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
 }
 
 fn open_world() -> Spatial {
-    Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]))
+    Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]))
 }
 
 /// List `l`'s open nodes from its head, each linked back to the one before.
@@ -885,7 +886,7 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
     }
     // not a cliff: another class's bits
     tiles.mark_for_test(4, 6, 0x700);
-    let mut w = Spatial::with_tiles([20, 20], tiles);
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), tiles);
     for (id, (x, y)) in (1..).zip(cliffs.into_iter().chain([(4, 6)])) {
         let class = if (x, y) == (9, 6) {
             class::GATE
@@ -919,7 +920,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     let mut classes = vec![4; 400];
     classes[9 * 20 + 9] = 1;
     classes[3 * 20 + 3] = 1;
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     let mut v = crate::vision::visibility::Visibility::new(
         20,
         20,
@@ -977,7 +978,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     // a gate's tile (class 5) is open, another static record's is not
     tiles.mark_for_test(7, 5, 0x4000 | 0x500);
     tiles.mark_for_test(8, 5, 0x4000 | 0x200);
-    let mut w = Spatial::with_tiles([20, 20], tiles);
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), tiles);
     w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
@@ -1036,7 +1037,7 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
     let mut classes = vec![4; 400];
     // blocks the walk (8, 5) -> (2, 2) alone
     classes[3 * 20 + 4] = 1;
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     let mut p = HullPather::new(&mut w, -1, -1, 6, 0.2);
     let n0 = p
         .add_unrefused(UnrefusedNode {
@@ -1253,7 +1254,7 @@ fn walled(wall_x: usize, unit: Point) -> Spatial {
     for y in 4..=6 {
         classes[y * 20 + wall_x] = 1;
     }
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
@@ -1644,7 +1645,7 @@ fn a_node_beyond_the_area_grows_it_once() {
     for y in 3..=8 {
         classes[y * 20 + 6] = 1;
     }
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
@@ -1687,7 +1688,7 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
     let mut classes = vec![4; 400];
     classes[3 * 20 + 3] = 1;
     classes[7 * 20 + 7] = 1;
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
     w.insert(object_id(1), placed(3.5, 3.5, 0.5, 2));
     w.insert(object_id(2), placed(5.5, 5.5, 0.5, 2));
     w.insert(object_id(3), placed(3.5, 3.6, 0.5, 2));
@@ -1869,7 +1870,7 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
 
 #[test]
 fn a_unit_within_range_needs_no_path() {
-    let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]));
+    let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
     w.insert(object_id(9171), placed(9.75, 5.5, 0.2, 5));
     w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
     let mut pather = HullPather::new(&mut w, 9171, 9149, 6, 0.2);
