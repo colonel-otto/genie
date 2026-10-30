@@ -257,6 +257,36 @@ pub fn graphic_of(
     .transpose()
 }
 
+/// What a `MoveTo`'s constructor reads for its sprite (`+0x58`) when its maker gives none: the
+/// defaults of the unit's master and terrain look, and the sprites' table that holds them.
+#[derive(Clone, Copy, Debug)]
+pub struct SpriteReads<'a> {
+    /// The constructors' defaults ([`MoveDefaults::of`]).
+    pub defaults: MoveDefaults,
+    /// The sprites' table.
+    pub graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+}
+
+impl SpriteReads<'_> {
+    /// The sprite of a `MoveTo` to a point (`FUN_140aa0d30`) whose maker gives `given`.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn to_point(&self, given: Option<i16>) -> Result<Option<Graphic>, GenieError> {
+        graphic_of(self.graphics, self.defaults.to_point(given))
+    }
+
+    /// The sprite of a `MoveTo` to an object (`FUN_140aa0df0`) whose maker gives `given`.
+    ///
+    /// # Errors
+    ///
+    /// A sprite the table lacks.
+    pub fn to_object(&self, given: Option<i16>) -> Result<Option<Graphic>, GenieError> {
+        graphic_of(self.graphics, self.defaults.to_object(given))
+    }
+}
+
 /// The unit's sprite, the Sprite stream and the sprites' table: an action that holds its
 /// `MoveTo`'s sprite as an id shows it through them ([`Sprites::shown`]).
 #[derive(Debug)]

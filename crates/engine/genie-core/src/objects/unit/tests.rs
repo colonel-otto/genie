@@ -377,7 +377,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
             state: enter.state,
         })
     );
-    enter.move_to = Some(MoveTo::Moving);
+    enter = enter.walking(MoveTo::Moving);
     assert_eq!(of(Action::Enter(enter)), walking);
     let mut fly = crate::movement::fly::Fly::start(
         crate::objects::masters::Task::default(),

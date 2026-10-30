@@ -58,6 +58,10 @@ fn garrison_masters() -> Masters {
             class: 4,
             copy_id: VILLAGER,
             tasks: vec![task(GARRISON, 3), task(GARRISON, 20)],
+            // no walking or standing sprite: a MoveTo the villager makes takes none (the
+            // world's sprites' table holds none)
+            move_sprite: -1,
+            standing_sprite: -1,
             ..Master::default()
         },
         Master {
@@ -178,14 +182,17 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
         t.enter_walk_again(1, v, &mut far, &tc, start(3.5)),
         Ok(Walking::Walk(None))
     );
-    assert_eq!((far.state, far.move_to), (WALK, Some(MoveTo::Start)));
+    assert_eq!(
+        (far.state, far.move_to.map(|m| m.state)),
+        (WALK, Some(MoveTo::Start))
+    );
     // within ARRIVED of its footprint the MoveTo starts arrived (state 1)
     let mut close = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
     assert_eq!(
         t.enter_walk_again(1, v, &mut close, &tc, start(0.0)),
         Ok(Walking::Walk(None))
     );
-    assert_eq!(close.move_to, Some(MoveTo::Arrived));
+    assert_eq!(close.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     // 10049 of update 4409 stands within the task's range: it enters at once
     let mut near = EnterAction::new(100, [104.0, 47.0, 0.0], &enter_task(1.0, 3));
     let in_reach = EnterTarget {
@@ -246,7 +253,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
         Ok(Walking::Walk(Some([5.5, 17.5, 0.25])))
     );
     assert_eq!(
-        (enter.point, enter.move_to),
+        (enter.point, enter.move_to.map(|m| m.state)),
         ([5.5, 17.5, 0.0], Some(MoveTo::Start))
     );
     assert_eq!(enter.walk_range(false), 0.0);
@@ -307,10 +314,12 @@ fn entering(at: [f32; 2], ship: [f32; 2], enter: EnterAction) -> World {
 
 /// An Enter on ship 200 at `point` whose `MoveTo` is in `state`.
 fn ship_enter(point: [f32; 3], state: MoveTo) -> EnterAction {
-    EnterAction {
-        move_to: Some(state),
-        ..EnterAction::new(200, point, &enter_task(1.0, 20))
+    let mut e = EnterAction::new(200, point, &enter_task(1.0, 20)).walking(state);
+    // a transport's MoveTo walks to it within 0
+    if let Some(m) = e.move_to.as_mut() {
+        m.range = 0.0;
     }
+    e
 }
 
 /// One update of `dt` ms of villager 1000's Enter (its part of the unit's update,
@@ -435,23 +444,35 @@ fn an_enter_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
 #[test]
 fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     let mut e = ship_enter([5.5, 30.5, 0.0], MoveTo::Waiting);
-    e.move_wait = crate::movement::move_to::MoveWait {
-        state: 1,
-        timer: 0.0,
-        delay: 1.0,
-    };
+    if let Some(m) = e.move_to.as_mut() {
+        m.wait = crate::movement::move_to::MoveWait {
+            state: 1,
+            timer: 0.0,
+            delay: 1.0,
+        };
+    }
     let mut t = entering([5.5, 12.5], [5.5, 30.5], e);
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
     assert_eq!(
-        (e.state, e.move_to, e.move_wait.timer),
-        (WALK, Some(MoveTo::Waiting), 0.5)
+        (e.state, e.move_to.map(|m| (m.state, m.wait.timer))),
+        (WALK, Some((MoveTo::Waiting, 0.5)))
     );
     let v = t.object_mut(1000).unwrap().1;
-    v.actions.enter_mut().unwrap().move_wait.timer = 1.0;
+    v.actions
+        .enter_mut()
+        .unwrap()
+        .move_to
+        .as_mut()
+        .unwrap()
+        .wait
+        .timer = 1.0;
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
-    assert_eq!((e.move_to, e.move_wait.timer), (Some(MoveTo::Start), 0.0));
+    assert_eq!(
+        e.move_to.map(|m| (m.state, m.wait.timer)),
+        Some((MoveTo::Start, 0.0))
+    );
 }
 
 #[test]
@@ -483,19 +504,23 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
 fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     // code 3: +0x68 lets one set_state(4); the next waits a second (set_state(2)), whose end
     // walks again; the town centre is a building: no meeting
-    let failed = EnterAction {
-        move_to: Some(MoveTo::Failed),
-        ..EnterAction::new(100, [10.0, 10.0, 0.0], &enter_task(1.0, 3))
-    };
+    let failed =
+        EnterAction::new(100, [10.0, 10.0, 0.0], &enter_task(1.0, 3)).walking(MoveTo::Failed);
     let mut t = entering([5.5, 5.5], [5.5, 30.5], failed);
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
     assert_eq!(
-        (e.retry, e.move_to, e.state),
+        (e.retry, e.move_to.map(|m| m.state), e.state),
         (false, Some(MoveTo::Start), WALK)
     );
     let v = t.object_mut(1000).unwrap().1;
-    v.actions.enter_mut().unwrap().move_to = Some(MoveTo::Failed);
+    v.actions
+        .enter_mut()
+        .unwrap()
+        .move_to
+        .as_mut()
+        .unwrap()
+        .state = MoveTo::Failed;
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
     assert_eq!((e.state, e.move_to, e.timer), (WAIT, None, 1.0));
@@ -504,7 +529,10 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     assert_eq!((enter_of(&t).state, enter_of(&t).timer), (WAIT, 0.5));
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
-    assert_eq!((e.state, e.move_to), (WALK, Some(MoveTo::Start)));
+    assert_eq!(
+        (e.state, e.move_to.map(|m| m.state)),
+        (WALK, Some(MoveTo::Start))
+    );
 }
 
 /// A transport target, room for the unit, 1.0 tiles off its point on y.
@@ -2002,7 +2030,12 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
     );
     let enter = t.object(1000).unwrap().1.actions.enter().copied().unwrap();
     assert_eq!(
-        (enter.target, enter.point, enter.state, enter.move_to),
+        (
+            enter.target,
+            enter.point,
+            enter.state,
+            enter.move_to.map(|m| m.state)
+        ),
         (200, [5.5, 17.5, 0.0], WALK, Some(MoveTo::Start))
     );
     // the unit AI holds the enter order and action, the ship its target
@@ -2038,7 +2071,7 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
     .unwrap();
     let enter = t.object(1000).unwrap().1.actions.enter().copied().unwrap();
     assert_eq!(
-        (enter.point, enter.move_to),
+        (enter.point, enter.move_to.map(|m| m.state)),
         ([9.5, 19.5, 0.0], Some(MoveTo::Start))
     );
     assert_eq!(
@@ -2097,7 +2130,7 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
     .unwrap();
     let enter = t.object(1000).unwrap().1.actions.enter().copied().unwrap();
     assert_eq!(
-        (enter.point, enter.move_to),
+        (enter.point, enter.move_to.map(|m| m.state)),
         ([9.5, 19.5, 0.0], Some(MoveTo::Start))
     );
 }

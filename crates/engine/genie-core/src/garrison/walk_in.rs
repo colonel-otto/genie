@@ -5,8 +5,10 @@ use crate::GenieError;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
 use crate::math::rng::Stream;
-use crate::movement::Me;
-use crate::movement::move_to::{Goal, MoveDefaults, MoveTo, Sprites, sub_move_to_update};
+use crate::movement::move_to::{
+    GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads,
+};
+use crate::movement::{Me, PathAsk};
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
@@ -54,8 +56,9 @@ pub struct EnterAction {
     pub target: i32,
     /// The action state (`+0x18`).
     pub state: u8,
-    /// Its `MoveTo` sub-action's state.
-    pub move_to: Option<MoveTo>,
+    /// Its `MoveTo` sub-action to the target: quiet, within [`EnterAction::walk_range`], with
+    /// the sprite [`EnterAction::move_shown`] gives ([`EnterAction::walk_again`]).
+    pub move_to: Option<MoveToAction>,
     /// `+0x38`..`+0x40`: where it meets the target ([`meeting`]: a building's place; for a
     /// transport where the two meet, its height the target's at the constructor), which a
     /// target that moves leaves.
@@ -71,8 +74,6 @@ pub struct EnterAction {
     pub retry: bool,
     /// `+0x6c`: the task's class (its `+0x10`).
     pub task_class: i16,
-    /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
-    pub move_wait: crate::movement::move_to::MoveWait,
     /// The task's moving sprite (`+0x40`), which its `MoveTo`s take; None for none.
     pub moving: Option<i16>,
 }
@@ -149,7 +150,6 @@ impl EnterAction {
             timer: 0.0,
             retry: true,
             task_class: task.object_group,
-            move_wait: crate::movement::move_to::MoveWait::NEW,
             moving: sprite_id(task.sprites[0]),
         }
     }
@@ -177,11 +177,13 @@ impl EnterAction {
     /// the transport: its state 3 goes to the transport's place; a point below 0 would make
     /// `FUN_140aa0df0` with the unit's slot 0x268, 0, alike), and code 1 asks the transport to
     /// move to the point. Both `MoveTo`s are quiet (`FUN_140a7a170` with 1) and leave a target
-    /// that moves (`+0x61` 2); their start is [`EnterAction::walk_start`]'s.
+    /// that moves (`+0x61` 2); each starts with a new wait, takes the sprite
+    /// [`EnterAction::move_shown`] gives from `sprites`, and starts as
+    /// [`EnterAction::walk_start`] says.
     ///
     /// # Errors
     ///
-    /// The meeting's and the start's.
+    /// The meeting's, the sprite's and the start's.
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting_point
     pub(crate) fn walk_again(
@@ -189,6 +191,7 @@ impl EnterAction {
         t: &EnterTarget,
         start: WalkStart,
         meeting: Meeting<'_>,
+        sprites: &SpriteReads<'_>,
     ) -> Result<Walking, GenieError> {
         self.move_to = None;
         self.state = WALK;
@@ -202,7 +205,19 @@ impl EnterAction {
             self.point[..2].copy_from_slice(&point);
             code
         };
-        self.move_to = Some(Self::walk_start(start)?);
+        let sprite = crate::movement::move_to::graphic_of(
+            sprites.graphics,
+            self.move_shown(t.building, sprites.defaults),
+        )?;
+        self.move_to = Some(MoveToAction {
+            state: Self::walk_start(start)?,
+            goal: None,
+            target: self.target,
+            range: self.walk_range(t.building),
+            sprite,
+            quiet: true,
+            wait: MoveWait::NEW,
+        });
         Ok(Walking::Walk((code == 1).then_some([
             self.point[0],
             self.point[1],
@@ -225,6 +240,22 @@ impl EnterAction {
             return Ok(MoveTo::Start);
         }
         Ok(MoveTo::Arrived)
+    }
+
+    /// The Enter with a `MoveTo` in `state` to its target within the task's range, as
+    /// [`EnterAction::walk_again`] makes it toward a building (without a sprite), for a test.
+    #[cfg(test)]
+    pub(crate) const fn walking(mut self, state: MoveTo) -> Self {
+        self.move_to = Some(MoveToAction {
+            state,
+            goal: None,
+            target: self.target,
+            range: self.range,
+            sprite: None,
+            quiet: true,
+            wait: MoveWait::NEW,
+        });
+        self
     }
 
     /// The range its `MoveTo` stops within: the task's for a building, 0 for a transport.
@@ -310,8 +341,8 @@ impl EnterAction {
     }
 
     /// State 4: a target off the action's point ([`EnterAction::target_moved`]) walks it again;
-    /// then the `MoveTo` updates ([`sub_move_to_update`] within the task's range, quiet, with
-    /// the reads' give-up; its start shows [`EnterAction::move_shown`]): codes 1 and 2 enter in
+    /// then the `MoveTo` updates ([`MoveToAction::sub_update`] with the reads' give-up): codes
+    /// 1 and 2 enter in
     /// reach, a unit that entered in the walk again enters again ([`Unit::entered_again`]), else
     /// they wait (`set_state(2)`); code 3 (a `MoveTo` that failed) walks again once (`+0x68`),
     /// then waits; codes 4 and 5 let the target go (state 11), which is not modelled.
@@ -329,7 +360,7 @@ impl EnterAction {
     ) -> Result<(), GenieError> {
         let walked_again = self.target_moved(t);
         let entered = walked_again && self.again(c, unit, t, reads)?;
-        let code = self.move_to_update(c, unit, me, t, reads)?;
+        let code = self.move_to_update(c, unit, me, reads)?;
         match code {
             // the walk again's enter put the unit inside, at the target's place: still in reach,
             // it enters again
@@ -345,39 +376,33 @@ impl EnterAction {
         }
     }
 
-    /// The `MoveTo`'s update ([`sub_move_to_update`]) toward the target within
-    /// [`EnterAction::walk_range`], quiet, its start showing [`EnterAction::move_shown`]; its
-    /// code.
+    /// The `MoveTo`'s update ([`MoveToAction::sub_update`]) with the reads' give-up, its start
+    /// showing its sprite; its code, 1 without one.
     ///
     /// # Errors
     ///
-    /// The walk's and the sprite's.
+    /// The walk's.
     fn move_to_update(
         &mut self,
         c: &mut Step<'_>,
         unit: &mut Unit,
         me: Me,
-        t: &EnterTarget,
         reads: &EnterReads,
     ) -> Result<u8, GenieError> {
-        let range = self.walk_range(t.building);
-        let id = (self.move_to == Some(MoveTo::Start))
-            .then(|| self.move_shown(t.building, reads.defaults));
+        let Some(move_to) = &mut self.move_to else {
+            return Ok(1);
+        };
+        let gives_up = GiveUp {
+            waits: reads.waits,
+            stance: reads.stance,
+        };
         let (mut walk, beside) = c.w.walk_beside(c.pace(), &mut unit.body, me);
-        let mut sprites = Sprites {
+        let shown = (move_to.state == MoveTo::Start).then_some(Shown {
             sprite: &mut unit.sprite,
             rng: beside.sprite_rng,
-            graphics: beside.graphics,
-        };
-        let shown = id.map(|id| sprites.shown(id)).transpose()?;
-        sub_move_to_update(
-            (&mut self.move_to, &mut self.move_wait),
-            &mut walk,
-            Goal::Target(self.target),
-            (range, true),
-            (reads.waits, reads.stance),
-            shown,
-        )
+            graphic: move_to.sprite,
+        });
+        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)
     }
 
     /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or
@@ -454,7 +479,11 @@ impl EnterAction {
                 room: t.room,
                 unit,
             };
-            self.walk_again(t, reads.start, meeting)?
+            let sprites = SpriteReads {
+                defaults: reads.defaults,
+                graphics: &w.graphics,
+            };
+            self.walk_again(t, reads.start, meeting, &sprites)?
         };
         match walking {
             Walking::Enter => {

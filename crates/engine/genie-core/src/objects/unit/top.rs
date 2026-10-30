@@ -211,7 +211,7 @@ impl Unit {
             Action::Gather(g) => walking(g.move_to),
             Action::Attack(a) => walking(a.move_to),
             Action::Explore(e) => walking(e.move_to.map(|m| m.state)),
-            Action::Enter(e) => walking(e.move_to),
+            Action::Enter(e) => walking(e.move_to.map(|m| m.state)),
             Action::Transport(t) => walking(t.move_to.map(|m| m.state)),
             Action::MoveTo(_) | Action::Missile(_) | Action::Make(_) | Action::WaitSolidify(_) => {
                 None

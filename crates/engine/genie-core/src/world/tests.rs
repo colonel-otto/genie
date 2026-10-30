@@ -4801,6 +4801,10 @@ fn livestock_enter_world() -> World {
             ..crate::objects::masters::Task::default()
         }],
         moving: Some(crate::gathering::hunt::tests::walker().stats),
+        // no walking or standing sprite: its Enter's MoveTo takes none (the world's sprites'
+        // table holds none)
+        move_sprite: -1,
+        standing_sprite: -1,
         ..Master::default()
     };
     for masters in &mut t.masters {
@@ -4866,16 +4870,28 @@ fn an_enter_s_move_to_shows_its_sprite_as_it_starts() {
         let here = v.position();
         v.body.mover_mut().unwrap().moved_at = here;
         let task = crate::garrison::tests::enter_task(0.0, 3);
+        // waiting at its end: the update's walk again makes the MoveTo with its sprite, the
+        // next update starts it and shows the sprite
         v.actions.set_enter(Some(crate::garrison::EnterAction {
-            move_to: Some(MoveTo::Start),
+            state: 2,
+            timer: 0.0,
             moving,
             ..crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], &task)
         }));
         let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
+        let made = t.players[1].objects[0]
+            .actions
+            .enter()
+            .and_then(|e| e.move_to);
+        assert_eq!(
+            made.map(|m| (m.state, m.sprite.map(|g| g.id))),
+            Some((MoveTo::Start, Some(shown)))
+        );
+        let _ = in_update(&mut t, (1, 0), 50, Unit::update).unwrap();
         let v = &t.players[1].objects[0];
         assert_eq!(
-            v.actions.enter().map(|e| e.move_to),
-            Some(Some(MoveTo::Moving))
+            v.actions.enter().and_then(|e| e.move_to).map(|m| m.state),
+            Some(MoveTo::Moving)
         );
         assert_eq!(v.sprite.map(|s| s.graphic.id), Some(shown));
     }
@@ -4894,7 +4910,7 @@ fn livestock_s_second_enter_command_stops_the_walk_and_lets_the_old_enter_s_targ
         [30.0, 88.0, 0.0],
         &crate::garrison::tests::enter_task(0.0, 3),
     );
-    walking.move_to = Some(MoveTo::Moving);
+    walking = walking.walking(MoveTo::Moving);
     let v = &mut t.players[1].objects[0];
     v.actions.artifact_mut().unwrap().enter = Some(walking);
     v.body.mover_mut().unwrap().velocity = Some(crate::movement::Velocity {
@@ -4962,7 +4978,7 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
             [30.0, 88.0, 0.0],
             &crate::garrison::tests::enter_task(2.0, 3),
         );
-        e.move_to = Some(MoveTo::Arrived);
+        e = e.walking(MoveTo::Arrived);
         let v = &mut t.players[1].objects[0];
         v.place_for_test([29.5, 89.5, 0.0]);
         v.actions.set_enter(Some(e));
@@ -5003,7 +5019,7 @@ fn an_enter_s_unit_leaves_its_group_inside_the_update() {
         [30.0, 88.0, 0.0],
         &crate::garrison::tests::enter_task(2.0, 3),
     );
-    e.move_to = Some(MoveTo::Arrived);
+    e = e.walking(MoveTo::Arrived);
     let v = &mut t.players[1].objects[0];
     v.place_for_test([29.5, 89.5, 0.0]);
     v.actions.set_enter(Some(e));
@@ -8020,7 +8036,6 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             timer: 0.0,
             retry: true,
             task_class: 0,
-            move_wait: crate::movement::move_to::MoveWait::default(),
             moving: None,
         }));
     // a walking villager: an Enter without a MoveTo does not stop it
@@ -12349,7 +12364,9 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     // its walk arrived at the house's edge: the next update of the Enter gets it in
     place(&mut t, [30.0, 89.1, 0.0]);
     let art = t.players[1].objects[0].actions.artifact_mut().unwrap();
-    art.enter.as_mut().unwrap().move_to = Some(MoveTo::Arrived);
+    if let Some(m) = art.enter.as_mut().and_then(|e| e.move_to.as_mut()) {
+        m.state = MoveTo::Arrived;
+    }
     t.tick(50);
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.inside, Some(10028));

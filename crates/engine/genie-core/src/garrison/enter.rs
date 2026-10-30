@@ -7,6 +7,7 @@ use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, UNPLACED, UNREACHED, WalkStart,
     Walking, enter_view, ship_reaches,
 };
+use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
 use crate::unit_ai::ActionKind;
@@ -323,15 +324,24 @@ impl World {
         let (tp, target) = self.object(action.target).ok_or(UNPLACED)?;
         let master = target.master(&self.masters, tp)?.clone();
         let target = placed_object(&self.players, self.place(action.target))?;
+        let unit = &self.players[player].objects[idx];
+        let defaults = MoveDefaults::of(
+            unit.master(&self.masters, player)?,
+            unit.abilities.look.as_ref(),
+        );
         let meeting = Meeting {
             spatial: &mut self.spatial,
             zones: &mut self.zones,
             target,
             master: &master,
             room: t.room,
-            unit: &self.players[player].objects[idx],
+            unit,
         };
-        action.walk_again(t, start, meeting)
+        let sprites = SpriteReads {
+            defaults,
+            graphics: &self.graphics,
+        };
+        action.walk_again(t, start, meeting, &sprites)
     }
 
     /// `FUN_140a85f30` ([`meeting`], [`Meeting::point`]) for unit `idx` of `player` and its

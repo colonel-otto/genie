@@ -821,15 +821,13 @@ fn an_enter_takes_its_task_and_retry() {
         .enter()
         .copied()
         .unwrap();
+    let m = e.move_to.unwrap();
     assert_eq!(
-        (e.state, e.move_to, e.task_class),
-        (ENTERED, Some(MoveTo::Moving), 3)
+        (e.state, m.state, m.quiet, e.task_class),
+        (ENTERED, MoveTo::Moving, true, 3)
     );
     assert!(e.retry);
-    assert_eq!(
-        (e.range.to_bits(), e.move_wait.state),
-        (2.0_f32.to_bits(), 2)
-    );
+    assert_eq!((e.range.to_bits(), m.wait.state), (2.0_f32.to_bits(), 2));
     assert_eq!(
         imported(ENTER, enter(with_sub(b, 4, explore(base(3))))).unwrap_err(),
         GenieError::unsupported("a saved Enter with another sub-action")

@@ -646,13 +646,12 @@ mod tests {
     #[test]
     fn a_move_deletes_the_held_enter_letting_its_transport_go() {
         let walking_enter = || {
-            let mut e = crate::garrison::EnterAction::new(
+            crate::garrison::EnterAction::new(
                 11970,
                 [34.125, 123.333, 0.0],
                 &crate::garrison::tests::enter_task(0.0, 20),
-            );
-            e.move_to = Some(MoveTo::Moving);
-            e
+            )
+            .walking(MoveTo::Moving)
         };
         let by_enter = SubActionsGone {
             stops: true,
@@ -704,7 +703,7 @@ mod tests {
             [1.0, 2.0, 0.0],
             &crate::garrison::tests::enter_task(0.0, 20),
         );
-        e.move_to = Some(MoveTo::Moving);
+        e = e.walking(MoveTo::Moving);
         let by_enter = SubActionsGone {
             stops: true,
             released: Some(11970),
@@ -753,7 +752,8 @@ mod tests {
         // nothing held: nothing to let go, nothing walking
         assert_eq!(a.hold_enter(enter(7934)), gone(false, None));
         // the held Enter walks: its MoveTo's teardown stops the unit
-        a.enter.as_mut().unwrap().move_to = Some(MoveTo::Moving);
+        let held = a.enter.take().unwrap();
+        a.enter = Some(held.walking(MoveTo::Moving));
         assert_eq!(a.hold_enter(enter(7934)), gone(true, Some(7934)));
         assert_eq!(a.enter.map(|e| (e.target, e.move_to)), Some((7934, None)));
         // an Enter not walking only lets its target go
@@ -1100,7 +1100,7 @@ mod tests {
             [1.0, 2.0, 0.0],
             &crate::garrison::tests::enter_task(0.0, 20),
         );
-        e.move_to = Some(MoveTo::Moving);
+        e = e.walking(MoveTo::Moving);
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default()).holding(11970, 1);
         rig.mover_mut().animated.speed = 1.0;
         let mut b = Artifact::new(false, None);

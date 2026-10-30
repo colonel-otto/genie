@@ -456,7 +456,10 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
     let sub = saved.move_to_sub(GenieError::unsupported(
         "a saved Enter with another sub-action",
     ))?;
-    let move_to = sub.map(sub_state).transpose()?;
+    // its quiet MoveTo to the target (`FUN_140a87320` case 4: `FUN_140a7a170` with 1)
+    let move_to = sub
+        .map(|s| saved_move_to(s, saved.graphics, true))
+        .transpose()?;
     if !matches!(base.state, ENTERED | 2 | 4 | genie_core::garrison::FAILED) {
         return Err(GenieError::unsupported(
             "a saved Enter in a state the slice does not model",
@@ -472,10 +475,6 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
         timer: base.timer,
         retry: first_time != 0,
         task_class: task.object_group,
-        move_wait: sub.map_or_else(
-            genie_core::movement::move_to::MoveWait::default,
-            saved_move_wait,
-        ),
         moving: (0 <= task.sprites[0]).then_some(task.sprites[0]),
     }));
     Ok(())
