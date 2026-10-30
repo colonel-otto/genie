@@ -12,6 +12,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::footprint_gap;
 use crate::movement::move_to::WalkTo;
+use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
@@ -59,7 +60,7 @@ impl HuntAction {
         let ground = mover.stats.radius.ground();
         let gap = footprint_gap(body.position(), ground, t.position, t.radius);
         let to = WalkTo {
-            id: self.target,
+            id: ObjectId::field(self.target),
             at: t.position,
             gap,
             state: Some(victim.state),
@@ -106,7 +107,7 @@ impl HuntAction {
                     if HERD_REACH < gap_squared && (self.lead.moved || gap_squared < HERD_FAR) {
                         if !self.lead.moved && herd.idle {
                             let (player, sheep) = (c.player, self.target);
-                            c.lend(unit, |w| w.lead_herd(player, sheep, site))?;
+                            c.lend(unit, |w| w.lead_herd(player, ObjectId::field(sheep), site))?;
                         }
                         self.lead.moved = true;
                         self.set_lead(c, unit, f, r, &herd)?;

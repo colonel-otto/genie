@@ -19,6 +19,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
@@ -134,10 +135,10 @@ pub(crate) const FARM_FOOD_SOLD: usize = 96;
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct GatherAction {
     /// The target object (`+0x20`, its id at `+0x30`), −1 for none.
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site the load goes to in state 8,
     /// −1 for none.
-    pub carry_to: i32,
+    pub carry_to: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     /// `+0x38`..`+0x40`: where the target stood.

@@ -169,7 +169,7 @@ impl Unit {
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
-        let (me_at, them) = (at(self.id.get())?, at(action.target)?);
+        let (me_at, them) = (at(self.id.get())?, at(ObjectId::field(action.target))?);
         let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
@@ -215,7 +215,7 @@ impl Unit {
                 .transpose()?
         };
         // the animal's top action without a target or a point (slots 0x190, 0x288)
-        let animal = others.get(action.target);
+        let animal = others.get(ObjectId::field(action.target));
         let idle = match animal {
             Some(u) => u.top_action_idle()?,
             None => false,
@@ -242,8 +242,8 @@ impl Unit {
 /// Attack reads none (state 7's end without a target): a stand-in no object holds.
 fn hunt_victim(c: &Step<'_>, action: &HuntAction) -> Result<Victim, GenieError> {
     let target = match action.target {
-        -1 => action.attack.map_or(-1, |a| ObjectId::field(a.target)),
-        t => t,
+        None => action.attack.map_or(-1, |a| ObjectId::field(a.target)),
+        t => ObjectId::field(t),
     };
     match target {
         -1 => Ok(Victim {

@@ -8,6 +8,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::move_to::SpriteReads;
 use crate::movement::{Me, Planning, footprint_gap};
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
@@ -139,8 +140,8 @@ impl Unit {
         gather.tear_down(self.body.mover_mut())?;
         gather.state = crate::gathering::gather::IDLE;
         gather.timer = 0.0;
-        gather.target = -1;
-        gather.carry_to = -1;
+        gather.target = None;
+        gather.carry_to = None;
         gather.point = Position::from([-1.0; 3]);
         if let Some(g) = shows {
             crate::objects::sprite::new_sprite(
@@ -150,8 +151,8 @@ impl Unit {
                 c.w.streams.get(Stream::Sprite),
             );
         }
-        if carry_to != -1 {
-            crate::world::lets::release(c, self, carry_to, by)?;
+        if carry_to.is_some() {
+            crate::world::lets::release(c, self, ObjectId::field(carry_to), by)?;
         }
         Ok(HeadCode::Keeps)
     }
@@ -231,13 +232,13 @@ impl Unit {
             if old == new {
                 continue;
             }
-            if old != -1 {
-                crate::world::lets::release(c, self, old, by)?;
+            if old.is_some() {
+                crate::world::lets::release(c, self, ObjectId::field(old), by)?;
             }
-            if new == -1 {
+            if new.is_none() {
                 continue;
             }
-            if owner == c.player.index() && new == found {
+            if owner == c.player.index() && new == ObjectId::of_field(found) {
                 // one of its own player's: allied, never listed
                 let u =
                     c.w.players
@@ -248,7 +249,7 @@ impl Unit {
                 u.taken(false, by.id);
             } else {
                 let by = self.releaser(c)?;
-                crate::world::lets::take(c, self, new, by)?;
+                crate::world::lets::take(c, self, ObjectId::field(new), by)?;
             }
         }
         Ok(())
@@ -331,7 +332,7 @@ impl Unit {
         }
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, state) = (gather.carry_to, gather.state);
-        let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
+        let (site, gap) = self.drop_site(&mut c, others, ObjectId::field(carry_to), state)?;
         let at = c
             .spatial
             .get_known(site)?
@@ -347,9 +348,9 @@ impl Unit {
                 "a gatherer without its gather or movement state",
             ));
         };
-        gather.carry_to = site;
+        gather.carry_to = ObjectId::of_field(site);
         gather.set_drop(at, gap, mover, &walks)?;
-        Ok((site != carry_to && site != -1).then_some(site))
+        Ok((site != ObjectId::field(carry_to) && site != -1).then_some(site))
     }
 
     /// [`Unit::hunt_drop_off`] in `w`, from the update or a command, with the sprites' table
@@ -367,7 +368,7 @@ impl Unit {
         }
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, state) = (hunt.carry_to, hunt.state);
-        let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
+        let (site, gap) = self.drop_site(&mut c, others, ObjectId::field(carry_to), state)?;
         if site == -1 {
             return Err(GenieError::unsupported(
                 "a hunt without a drop site (notify 0x203, set_state 2)",
@@ -388,9 +389,9 @@ impl Unit {
                 "a hunter without its hunt or movement state",
             ));
         };
-        hunt.carry_to = site;
+        hunt.carry_to = ObjectId::of_field(site);
         hunt.set_drop(at, gap, mover, &walks)?;
-        Ok((site != carry_to).then_some(site))
+        Ok((site != ObjectId::field(carry_to)).then_some(site))
     }
 
     /// The drop site a gatherer's `set_state(8)` walks to, its second target `carry_to` or, with

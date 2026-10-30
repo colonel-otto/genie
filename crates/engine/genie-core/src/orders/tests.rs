@@ -3714,7 +3714,7 @@ fn a_gather_takes_a_farm_but_no_other_building() {
     let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!(
         (g.target, g.state, g.point),
-        (800, 4, Position::new(26.5, 89.5, 0.0))
+        (Some(object_id(800)), 4, Position::new(26.5, 89.5, 0.0))
     );
     assert_eq!(
         (
@@ -3774,7 +3774,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         ask(DropOffBy::Gather, false, false)
     );
     let g = t.players[1].objects[0].actions.gather_mut().unwrap();
-    (g.target, g.point) = (-1, Position::new(NO_POINT, NO_POINT, 0.0));
+    (g.target, g.point) = (None, Position::new(NO_POINT, NO_POINT, 0.0));
     assert_eq!(
         t.drop_off_ask(PlayerId::new(1), 0, (true, true)).unwrap(),
         ask(DropOffBy::Gather, false, true)
@@ -3835,7 +3835,7 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
         .gather()
         .copied()
         .expect("the Gather");
-    assert_eq!((g.carry_to, g.state), (700, 8));
+    assert_eq!((g.carry_to, g.state), (Some(object_id(700)), 8));
     assert_eq!(t.players[1].objects[2].workers, 1);
     let mut t = foraging();
     t.players[1].objects[0].life.attribute_type = 1;
@@ -3853,12 +3853,12 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
     );
     let mut t = foraging();
     let g = t.players[1].objects[0].actions.gather_mut().unwrap();
-    (g.target, g.point) = (-1, Position::new(NO_POINT, NO_POINT, 0.0));
+    (g.target, g.point) = (None, Position::new(NO_POINT, NO_POINT, 0.0));
     t.unit_order(player_id(1), &object_ids([9175]), 8).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(
         v.actions.gather().map(|g| (g.carry_to, g.state)),
-        Some((700, 8))
+        Some((Some(object_id(700)), 8))
     );
     assert_eq!(v.ai.as_ref().map(|ai| ai.orders.len()), Some(1));
 }
@@ -3881,7 +3881,7 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
         .hunt()
         .copied()
         .expect("the Hunt");
-    assert_eq!((h.carry_to, h.state), (700, 8));
+    assert_eq!((h.carry_to, h.state), (Some(object_id(700)), 8));
     assert_eq!(t.players[1].objects[2].workers, 1);
 }
 
@@ -4000,7 +4000,7 @@ fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
     let v = &t.players[1].objects[0];
     assert_eq!(
         (took, v.actions.gather().map(|g| g.target)),
-        (true, Some(601))
+        (true, Some(Some(object_id(601))))
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -4016,7 +4016,10 @@ fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
     )
     .unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.actions.hunt().map(|h| h.target), Some(501));
+    assert_eq!(
+        v.actions.hunt().map(|h| h.target),
+        Some(Some(object_id(501)))
+    );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
@@ -4183,7 +4186,7 @@ fn a_work_command_s_factory_starts_the_task_s_action() {
             .actions
             .gather()
             .map(|g| (g.target, g.state)),
-        Some((600, 4))
+        Some((Some(object_id(600)), 4))
     );
     let unknown = Task {
         action_type: 0x55,

@@ -8,6 +8,7 @@ use crate::combat::victims::readable;
 use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -28,8 +29,13 @@ impl Unit {
     /// table is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its
     /// `+0x60` being 0) and dropped; then the second target ([`second_target_checked`]).
     pub(crate) fn hunt_targets(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        if let Some(target) = self.actions.hunt().map(|h| h.target).filter(|&t| t != -1) {
-            let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
+        if let Some(target) = self
+            .actions
+            .hunt()
+            .map(|h| h.target)
+            .filter(|&t| t.is_some())
+        {
+            let state = readable(c, ObjectId::field(target))?.map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.w.spatial.get(target).is_some() => {
@@ -42,7 +48,7 @@ impl Unit {
             if gone {
                 if state.is_some() {
                     let by = self.releaser(c)?;
-                    crate::world::lets::release(c, self, target, by)?;
+                    crate::world::lets::release(c, self, ObjectId::field(target), by)?;
                 }
                 if let Some(h) = self.actions.hunt_mut() {
                     h.set_target(-1);
@@ -52,12 +58,15 @@ impl Unit {
         if let Some(site) = self.actions.hunt().map(|h| h.carry_to) {
             let held = c.w.spatial.get(site).is_some();
             let (kept, let_go) = second_target_checked(
-                site,
+                ObjectId::field(site),
                 held,
-                state_of(site, OthersRef::of(&c.w.players, c.player)?),
+                state_of(
+                    ObjectId::field(site),
+                    OthersRef::of(&c.w.players, c.player)?,
+                ),
             );
             if let Some(h) = self.actions.hunt_mut() {
-                h.carry_to = kept;
+                h.carry_to = ObjectId::of_field(kept);
             }
             if let Some(t) = let_go {
                 self.hunt_release(c, [t])?;
@@ -106,10 +115,9 @@ impl Unit {
         tree_lost: bool,
     ) -> Result<HeadCode, GenieError> {
         use crate::gathering::hunt::{DROP, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
-        let (state, timer, target) = self
-            .actions
-            .hunt()
-            .map_or((None, 0.0, -1), |h| (Some(h.state), h.timer, h.target));
+        let (state, timer, target) = self.actions.hunt().map_or((None, 0.0, -1), |h| {
+            (Some(h.state), h.timer, ObjectId::field(h.target))
+        });
         match state {
             Some(DROP) if timer < 0.0 => self.hunt_drop_wait(c)?,
             Some(DROP) => return self.hunt_drop_walk(c, me),
@@ -140,8 +148,8 @@ impl Unit {
         hunt.timer += seconds(c.dt);
         if 0.0 <= hunt.timer {
             hunt.timer = 0.0;
-            let site = std::mem::replace(&mut hunt.carry_to, -1);
-            self.hunt_release(c, [site])?;
+            let site = hunt.carry_to.take();
+            self.hunt_release(c, [ObjectId::field(site)])?;
             self.hunt_drop_off(c)?;
         }
         Ok(())
@@ -220,8 +228,8 @@ impl Unit {
             crate::gathering::hunt::Dropped::Again => {
                 // the drop site goes (FUN_140a7a190 with none), then set_state(8)
                 let hunt = self.actions.hunt_mut().ok_or(NO_HUNT)?;
-                let site = std::mem::replace(&mut hunt.carry_to, -1);
-                self.hunt_release(c, [site])?;
+                let site = hunt.carry_to.take();
+                self.hunt_release(c, [ObjectId::field(site)])?;
                 self.hunt_drop_off(c)?;
             }
             crate::gathering::hunt::Dropped::Idle => {

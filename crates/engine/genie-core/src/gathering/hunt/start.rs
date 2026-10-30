@@ -13,6 +13,7 @@ use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -127,7 +128,7 @@ impl HuntAction {
             walks,
         } = start;
         let mut hunt = Self {
-            target: target.id,
+            target: ObjectId::of_field(target.id),
             state: 0,
             point: target.position,
             target_class: Some(target.class),
@@ -135,7 +136,7 @@ impl HuntAction {
             attack: None,
             move_to: None,
             drop_site: -1,
-            carry_to: -1,
+            carry_to: None,
             timer: 0.0,
             lead: Lead::NEW,
         };
@@ -164,7 +165,7 @@ impl HuntAction {
             hunt.set_target(-1);
             hunt.point = Position::from([-1.0; 3]);
             hunt.target_class = None;
-            hunt.carry_to = target.id;
+            hunt.carry_to = ObjectId::of_field(target.id);
             hunt.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok((hunt, false));
         }
@@ -257,17 +258,17 @@ impl HuntAction {
             self.set_target(-1);
             self.timer = 0.0;
             self.point = Position::from([-1.0; 3]);
-            self.carry_to = target.id;
+            self.carry_to = ObjectId::of_field(target.id);
             self.target_class = Some(target.class);
             self.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok(Some(false));
         }
-        if target.id == self.target {
+        if target.id == ObjectId::field(self.target) {
             return Ok(None);
         }
         self.set_target(target.id);
         self.target_class = Some(target.class);
-        self.carry_to = -1;
+        self.carry_to = None;
         self.chase(target, player, attack, arms, mover, &walks)
             .map(Some)
     }
@@ -302,13 +303,13 @@ impl HuntAction {
             ));
         }
         if let Some(t) = target.filter(|t| t.player == player && drops_here && 0.0 < held) {
-            if t.id == self.carry_to && self.state == DROP {
+            if t.id == ObjectId::field(self.carry_to) && self.state == DROP {
                 return Ok(true);
             }
             self.set_target(-1);
             self.point = Position::from([-1.0; 3]);
             self.target_class = Some(t.class);
-            self.carry_to = t.id;
+            self.carry_to = ObjectId::of_field(t.id);
             self.set_drop(t.position, gap, mover, &walks)?;
             return Ok(true);
         }
@@ -420,10 +421,10 @@ impl HuntAction {
     /// to release), the point clears and the timer.
     pub fn set_done(&mut self) -> [i32; 2] {
         self.state = IDLE;
-        let target = std::mem::replace(&mut self.target, -1);
-        let second = std::mem::replace(&mut self.carry_to, -1);
+        let target = self.target.take();
+        let second = self.carry_to.take();
         self.point = Position::from([-1.0; 3]);
         self.timer = 0.0;
-        [target, second]
+        [ObjectId::field(target), ObjectId::field(second)]
     }
 }

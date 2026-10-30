@@ -12,6 +12,7 @@ use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
 use crate::world::slots::PlayerSlots;
@@ -51,14 +52,14 @@ impl HuntAction {
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = DROP;
-        if self.carry_to == -1 {
+        if self.carry_to.is_none() {
             return Err(GenieError::unsupported(
                 "a drop-off without its drop site (its search)",
             ));
         }
         let range = self.task.range;
         let to = WalkTo {
-            id: self.carry_to,
+            id: ObjectId::field(self.carry_to),
             at: site,
             gap,
             state: None,
@@ -151,14 +152,14 @@ impl HuntAction {
     pub const fn let_go(&mut self) -> i32 {
         let target = self.target;
         self.set_target(-1);
-        target
+        ObjectId::field(target)
     }
 
     /// Slot 0x68 (`FUN_140ac7980`): the base's change of target (`FUN_140a7a230`, whose release
     /// and take are the caller's), then the lead clears ([`Lead::NEW`]: `moved_sheep` and
     /// `sheep_still_time` 0, the start −1).
     pub const fn set_target(&mut self, target: i32) {
-        self.target = target;
+        self.target = ObjectId::of_field(target);
         self.lead = Lead::NEW;
     }
 

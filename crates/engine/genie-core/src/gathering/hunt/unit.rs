@@ -7,6 +7,7 @@ use crate::gathering::hunt::HuntRetarget;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -31,8 +32,8 @@ impl Unit {
     pub(crate) fn hunt_set_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.target_class != Some(class::PREDATOR) {
-            let target = std::mem::replace(&mut hunt.target, -1);
-            self.hunt_release(c, [target])?;
+            let target = hunt.target.take();
+            self.hunt_release(c, [ObjectId::field(target)])?;
         }
         self.hunt_search_state(c)
     }
@@ -115,8 +116,8 @@ impl Unit {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(ClassId::field(hunt.target_class)));
         let master = self.master(&c.w.masters, c.player)?;
-        let site = if carry_to != -1 {
-            carry_to
+        let site = if let Some(carry) = carry_to {
+            carry.get()
         } else if master.drop_sites.is_empty() {
             -1
         } else {
@@ -166,7 +167,13 @@ impl Unit {
     /// [`HuntAction::search_walk`]: crate::gathering::hunt::HuntAction::search_walk
     pub(crate) fn hunt_after_drop(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
         let _ = self.master(&c.w.masters, c.player)?;
-        if self.actions.hunt().expect("the caller's hunt").target != -1 {
+        if self
+            .actions
+            .hunt()
+            .expect("the caller's hunt")
+            .target
+            .is_some()
+        {
             return self.hunt_back_to_target(c).map(|()| HeadCode::Keeps);
         }
         if self.hunt_drop_orders(c)? {
@@ -186,7 +193,7 @@ impl Unit {
     fn hunt_back_to_target(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let master = self.master(&c.w.masters, c.player)?;
-        let v = victim(c, hunt.target)?.ok_or(GenieError::unsupported(
+        let v = victim(c, ObjectId::field(hunt.target))?.ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold live",
         ))?;
         let quarry = crate::gathering::hunt::Quarry {
@@ -223,10 +230,10 @@ impl Unit {
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
         let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        let site = std::mem::replace(&mut hunt.carry_to, -1);
+        let site = hunt.carry_to.take();
         let by = self.releaser(c)?;
-        if site != -1 {
-            crate::world::lets::release(c, self, site, by)?;
+        if site.is_some() {
+            crate::world::lets::release(c, self, ObjectId::field(site), by)?;
         }
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {

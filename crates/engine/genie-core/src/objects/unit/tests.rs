@@ -199,7 +199,7 @@ fn the_actions_update_runs_the_action_held() {
     let captured = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions).unwrap();
     assert!(captured.is_none());
     let after = t.players[1].objects[0].actions.gather().copied();
-    assert_eq!(after.map(|g| g.target), Some(600));
+    assert_eq!(after.map(|g| g.target), Some(Some(object_id(600))));
     assert_ne!(before, after);
 }
 

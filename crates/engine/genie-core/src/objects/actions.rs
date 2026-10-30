@@ -174,8 +174,8 @@ impl Action {
             Self::Build(a) => a.target,
             Self::Repair(a) => a.target,
             Self::MoveTo(a) => ObjectId::field(a.target),
-            Self::Hunt(a) => a.target,
-            Self::Gather(a) => a.target,
+            Self::Hunt(a) => ObjectId::field(a.target),
+            Self::Gather(a) => ObjectId::field(a.target),
             Self::Attack(a) => ObjectId::field(a.target),
             Self::Enter(a) => a.target,
             Self::Missile(a) => a.target,
@@ -193,8 +193,8 @@ impl Action {
     #[must_use]
     pub const fn second_target(&self) -> i32 {
         match self {
-            Self::Hunt(h) => h.carry_to,
-            Self::Gather(g) => g.carry_to,
+            Self::Hunt(h) => ObjectId::field(h.carry_to),
+            Self::Gather(g) => ObjectId::field(g.carry_to),
             Self::Build(b) => b.site,
             Self::Missile(m) => m.fired_from,
             Self::Attack(a) => ObjectId::field(a.target2),

@@ -266,7 +266,11 @@ impl World {
             .iter()
             .any(|&d| Some(d) == target_master);
         let unit = self.players.live_mut(player, idx)?;
-        let old = unit.actions.hunt().map(|h| h.target).filter(|&t| t != -1);
+        let old = unit
+            .actions
+            .hunt()
+            .map(|h| h.target)
+            .filter(|&t| t.is_some());
         let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -295,7 +299,13 @@ impl World {
             }
             // the hunt's slot 0x68 (FUN_140ac7980): FUN_140a7a230 on the new target, which the
             // work command's task finder took below state 3
-            let _ = self.retarget_action(player, idx, old.unwrap_or(-1), target, false)?;
+            let _ = self.retarget_action(
+                player,
+                idx,
+                ObjectId::field(old.unwrap_or(None)),
+                target,
+                false,
+            )?;
         }
         Ok(())
     }

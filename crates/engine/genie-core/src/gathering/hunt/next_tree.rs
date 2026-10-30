@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HuntRetarget;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::world::others::OthersRef;
@@ -40,7 +41,7 @@ impl Unit {
             return Ok(false);
         }
         let site = hunt.carry_to;
-        let found = self.resource_search_from(c, 0, 2, site)?;
+        let found = self.resource_search_from(c, 0, 2, ObjectId::field(site))?;
         if found == -1 {
             return Ok(false);
         }
@@ -129,7 +130,7 @@ impl Unit {
                 )?;
             }
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
-            self.hunt_release(c, [old])?;
+            self.hunt_release(c, [ObjectId::field(old)])?;
             let by = self.releaser(c)?;
             crate::world::lets::take(c, self, found, by)?;
         }

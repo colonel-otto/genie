@@ -120,7 +120,7 @@ impl GatherAction {
             SEARCH => return Ok(self.update_search(dt)),
             _ => {}
         }
-        let Some(target) = target.filter(|_| self.target != -1) else {
+        let Some(target) = target.filter(|_| self.target.is_some()) else {
             return self.update_without_target(c, unit, r);
         };
         match self.state {
@@ -315,7 +315,7 @@ impl GatherAction {
             // its target let go: the Gather's goes too (slot 0x68 with none; the caller lets it
             // go), then `set_state(11)` with no target's radius
             4 | 5 => {
-                self.target = -1;
+                self.target = None;
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 self.set_walk_back(0.0, mover, &walks)?;

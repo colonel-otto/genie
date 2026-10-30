@@ -321,7 +321,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             ..UnitAi::default()
         }),
         actions: ActionList::default().with_hunt(Some(HuntAction {
-            target: -1,
+            target: None,
             state: 4,
             point: Position::from([-1.0; 3]),
             target_class: None,
@@ -337,7 +337,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             attack: None,
             move_to: None,
             drop_site: -1,
-            carry_to: -1,
+            carry_to: None,
             timer: 0.0,
             lead: Lead {
                 moved: true,

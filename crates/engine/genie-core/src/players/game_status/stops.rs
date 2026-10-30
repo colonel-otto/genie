@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
@@ -163,7 +164,7 @@ impl World {
         // the target, then the second target
         let released = [hunt.target, hunt.carry_to];
         hunt.set_target(-1);
-        hunt.carry_to = -1;
+        hunt.carry_to = None;
         hunt.point = Position::from([-1.0; 3]);
         hunt.timer = 0.0;
         if let Some(g) = sprite {
@@ -180,8 +181,8 @@ impl World {
             ));
         }
         for t in released {
-            if t != -1 {
-                self.release(t, by)?;
+            if t.is_some() {
+                self.release(ObjectId::field(t), by)?;
             }
         }
         Ok(true)
@@ -255,8 +256,8 @@ impl World {
             self.streams.get(Stream::Sprite),
         )?;
         for t in released {
-            if t != -1 {
-                self.release(t, by)?;
+            if t.is_some() {
+                self.release(ObjectId::field(t), by)?;
             }
         }
         Ok(())

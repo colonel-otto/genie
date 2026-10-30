@@ -13,6 +13,7 @@ use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{TargetMoved, WalkTo};
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::sprite::ActiveSprite;
@@ -164,8 +165,8 @@ impl GatherAction {
                 (1, 0.0)
             };
         Ok(Self {
-            target: target.id,
-            carry_to: -1,
+            target: ObjectId::of_field(target.id),
+            carry_to: None,
             state: 0,
             point: target.position,
             timer: 0.0,
@@ -233,13 +234,13 @@ impl GatherAction {
                 target.radius.x()
             };
             self.set_walk_back(radius, mover, &walks)?;
-            self.target = -1;
+            self.target = None;
             return Ok(());
         }
         if target.player == player && target.drop_site && 0.0 < held.1 {
-            self.target = -1;
+            self.target = None;
             self.point = Position::from([-1.0; 3]);
-            self.carry_to = target.id;
+            self.carry_to = ObjectId::of_field(target.id);
             return self.set_drop(target.position, target.gap, mover, &walks);
         }
         self.set_walk(target.walk_to(), target.radius, mover, rng, &walks)
@@ -280,7 +281,7 @@ impl GatherAction {
         } = retarget;
         let held = walks.held.1;
         self.worked = false;
-        if target.id == self.target {
+        if target.id == ObjectId::field(self.target) {
             match self.state {
                 FACE | WORK | 15 => return Ok(true),
                 WALK | 11 if computer => return Ok(true),
@@ -289,15 +290,15 @@ impl GatherAction {
         }
         if target.player == player && target.drop_site && 0.0 < held {
             self.timer = 0.0;
-            self.target = -1;
+            self.target = None;
             self.point = Position::from([-1.0; 3]);
-            self.carry_to = target.id;
+            self.carry_to = ObjectId::of_field(target.id);
             self.set_drop(target.position, target.gap, mover, &walks)?;
             return Ok(true);
         }
         // slot 0x68 takes the target: its workers count it once it is new
-        let workers = target.workers + i32::from(target.id != self.target);
-        self.target = target.id;
+        let workers = target.workers + i32::from(target.id != ObjectId::field(self.target));
+        self.target = ObjectId::of_field(target.id);
         self.point = target.position;
         self.target_type = i32::from(target.class.get());
         if farm_stops {
@@ -318,11 +319,11 @@ impl GatherAction {
                 target.radius.x()
             };
             self.set_walk_back(radius, mover, &walks)?;
-            self.target = -1;
-            self.carry_to = -1;
+            self.target = None;
+            self.carry_to = None;
             return Ok(true);
         }
-        self.carry_to = -1;
+        self.carry_to = None;
         self.set_walk(target.walk_to(), target.radius, mover, rng, &walks)?;
         Ok(true)
     }
@@ -351,7 +352,7 @@ impl GatherAction {
         self.tear_down(Some(mover))?;
         self.state = WALK;
         self.timer = 0.0;
-        if self.target == -1 {
+        if self.target.is_none() {
             return Err(GenieError::unsupported(
                 "a gather's walk without its target (set_state 13)",
             ));
@@ -390,13 +391,13 @@ impl GatherAction {
         self.tear_down(Some(mover))?;
         self.state = DROP;
         self.current_stop = 0;
-        if self.carry_to == -1 {
+        if self.carry_to.is_none() {
             return Err(GenieError::unsupported(
                 "a gather's drop-off without a drop site (notify 0x203)",
             ));
         }
         let to = WalkTo {
-            id: self.carry_to,
+            id: ObjectId::field(self.carry_to),
             at: site,
             gap,
             state: None,
@@ -426,16 +427,16 @@ impl GatherAction {
     ) -> Result<(), GenieError> {
         let held = walks.held.1;
         match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
-            Some(t) if t.id == self.carry_to && self.state == DROP => Ok(()),
+            Some(t) if t.id == ObjectId::field(self.carry_to) && self.state == DROP => Ok(()),
             Some(t) => {
-                self.target = -1;
+                self.target = None;
                 self.point = Position::from([-1.0; 3]);
-                self.carry_to = t.id;
+                self.carry_to = ObjectId::of_field(t.id);
                 self.set_drop(t.position, t.gap, mover, walks)
             }
             None => {
                 self.point = point;
-                self.target = -1;
+                self.target = None;
                 self.set_moved(mover, walks)
             }
         }
@@ -452,7 +453,7 @@ impl GatherAction {
         self.tear_down(Some(mover))?;
         self.state = MOVED;
         self.timer = 0.0;
-        if self.target != -1 {
+        if self.target.is_some() {
             return Err(GenieError::unsupported(
                 "a gather's walk to a point with a target (its radius)",
             ));
@@ -469,8 +470,8 @@ impl GatherAction {
         self.state = IDLE;
         self.timer = 0.0;
         Self::show(c, unit, self.stand_sprite(unit, r));
-        self.target = -1;
-        self.carry_to = -1;
+        self.target = None;
+        self.carry_to = None;
         self.point = Position::from([-1.0; 3]);
     }
 
@@ -489,7 +490,7 @@ impl GatherAction {
         stand: Option<crate::objects::sprite::Graphic>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
-    ) -> Result<[i32; 2], GenieError> {
+    ) -> Result<[Option<ObjectId>; 2], GenieError> {
         let mut mover = mover;
         self.tear_down(mover.as_deref_mut())?;
         self.state = IDLE;
@@ -498,8 +499,8 @@ impl GatherAction {
             new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);
         }
         let released = [self.target, self.carry_to];
-        self.target = -1;
-        self.carry_to = -1;
+        self.target = None;
+        self.carry_to = None;
         self.point = Position::from([-1.0; 3]);
         Ok(released)
     }

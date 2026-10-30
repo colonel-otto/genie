@@ -10,6 +10,7 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
@@ -65,8 +66,8 @@ impl Unit {
     /// second target ([`second_target_checked`]) alike.
     fn gather_check_targets(&mut self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
         let target = self.actions.gather().ok_or(NO_GATHER)?.target;
-        if target != -1 {
-            let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
+        if target.is_some() {
+            let state = readable(c, ObjectId::field(target))?.map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.w.spatial.get(target).is_some() => {
@@ -78,19 +79,22 @@ impl Unit {
             };
             if gone {
                 if state.is_some() {
-                    crate::world::lets::release(c, self, target, by)?;
+                    crate::world::lets::release(c, self, ObjectId::field(target), by)?;
                 }
-                self.actions.gather_mut().ok_or(NO_GATHER)?.target = -1;
+                self.actions.gather_mut().ok_or(NO_GATHER)?.target = None;
             }
         }
         let site = self.actions.gather().ok_or(NO_GATHER)?.carry_to;
         let held = c.w.spatial.get(site).is_some();
         let (kept, let_go) = second_target_checked(
-            site,
+            ObjectId::field(site),
             held,
-            state_of(site, OthersRef::of(&c.w.players, c.player)?),
+            state_of(
+                ObjectId::field(site),
+                OthersRef::of(&c.w.players, c.player)?,
+            ),
         );
-        self.actions.gather_mut().ok_or(NO_GATHER)?.carry_to = kept;
+        self.actions.gather_mut().ok_or(NO_GATHER)?.carry_to = ObjectId::of_field(kept);
         if let Some(t) = let_go {
             crate::world::lets::release(c, self, t, by)?;
         }
@@ -186,7 +190,7 @@ impl Unit {
                 .get_known(self.id)?
                 .map(|p| (p.position, p.radius))
                 .ok_or(GenieError::unsupported("a gatherer without a place"))?;
-        let site = self.gather_site(c, gather.carry_to, (position, radius))?;
+        let site = self.gather_site(c, ObjectId::field(gather.carry_to), (position, radius))?;
         let before = [gather.target, gather.carry_to];
         let dropped = gather.update_drop(c, self, me, reads, site);
         self.put_gather(gather);
@@ -197,8 +201,8 @@ impl Unit {
             Dropped::Again => self.gather_drop_off(c).map(|()| HeadCode::Keeps),
             // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
             Dropped::Idle => {
-                for id in before.into_iter().filter(|&id| id != -1) {
-                    crate::world::lets::release(c, self, id, by)?;
+                for id in before.into_iter().flatten() {
+                    crate::world::lets::release(c, self, id.get(), by)?;
                 }
                 Ok(HeadCode::Keeps)
             }
@@ -253,14 +257,14 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         c.give_load(kind, amount)?;
         let gather = self.actions.gather().ok_or(NO_GATHER)?;
-        if gather.target == -1 {
+        if gather.target.is_none() {
             return self.gather_after_drop(c);
         }
-        crate::world::lets::release(c, self, gather.carry_to, by)?;
+        crate::world::lets::release(c, self, ObjectId::field(gather.carry_to), by)?;
         // the unit's load is gone (slot 0xf8 after the drop): its walking sprite is the moving one
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().ok_or(NO_GATHER)?;
-        gather.carry_to = -1;
+        gather.carry_to = None;
         let t =
             c.w.spatial
                 .get_known(gather.target)?
@@ -273,7 +277,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let rng = c.w.streams.get(Stream::Action);
         let to = WalkTo {
-            id: gather.target,
+            id: ObjectId::field(gather.target),
             at: t.position,
             gap,
             state,
@@ -295,7 +299,7 @@ impl Unit {
         reads: &crate::gathering::gather::GatherReads,
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
-        let mut victim = victim(c, gather.target)?;
+        let mut victim = victim(c, ObjectId::field(gather.target))?;
         let old = (gather.target, gather.carry_to);
         let next = gather.update(c, self, me, victim.as_mut(), reads);
         self.put_gather(gather);
@@ -321,7 +325,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         next: crate::gathering::gather::Next,
-        (old_target, old_second): (i32, i32),
+        (old_target, old_second): (Option<ObjectId>, Option<ObjectId>),
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
         use crate::gathering::gather::Next;
@@ -330,8 +334,8 @@ impl Unit {
         }
         if let Some(g) = self.actions.gather() {
             for (old, new) in [(old_target, g.target), (old_second, g.carry_to)] {
-                if old != new && old != -1 {
-                    crate::world::lets::release(c, self, old, by)?;
+                if let Some(old) = old.filter(|_| old != new) {
+                    crate::world::lets::release(c, self, old.get(), by)?;
                 }
             }
         }
@@ -339,7 +343,10 @@ impl Unit {
             Next::Drop => self.gather_drop_off(c)?,
             Next::Search => self.gather_search(c)?,
             Next::Build => {
-                let target = self.actions.gather().map_or(-1, |g| g.target);
+                let target = self
+                    .actions
+                    .gather()
+                    .map_or(-1, |g| ObjectId::field(g.target));
                 c.lend_at(self, |w, p, i| w.build_command(p, i, target).map(drop))?;
             }
             Next::Reseed { arrived } => {
@@ -360,8 +367,8 @@ impl Unit {
         let gather = self.actions.gather().ok_or(NO_GATHER)?;
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
         let master = self.master(&c.w.masters, c.player)?;
-        let site = if carry_to != -1 {
-            carry_to
+        let site = if let Some(carry) = carry_to {
+            carry.get()
         } else if !master.drop_sites.is_empty() {
             let mut w = DropWorld {
                 masters: c.w.masters.get(c.player.index()),

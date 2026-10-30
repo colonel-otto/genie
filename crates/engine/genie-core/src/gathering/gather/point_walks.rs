@@ -12,6 +12,7 @@ use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::{Me, Mover};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -171,7 +172,7 @@ impl GatherAction {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 self.set_walk_back(radius, mover, &walks)?;
-                self.target = -1;
+                self.target = None;
                 return Ok(Next::Stay);
             }
             self.tear_down(unit.body.mover_mut())?;
@@ -230,7 +231,7 @@ impl GatherAction {
         stand: Option<crate::objects::sprite::Graphic>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
-    ) -> Result<[i32; 2], GenieError> {
+    ) -> Result<[Option<ObjectId>; 2], GenieError> {
         let mut mover = mover;
         self.tear_down(mover.as_deref_mut())?;
         self.timer = 0.0;
@@ -240,12 +241,12 @@ impl GatherAction {
         if arrived && computer {
             // State 1: done; its update returns 1 and the action list removes it.
             self.state = DONE;
-            return Ok([-1; 2]);
+            return Ok([None; 2]);
         }
         self.state = IDLE;
         let released = [self.target, self.carry_to];
-        self.target = -1;
-        self.carry_to = -1;
+        self.target = None;
+        self.carry_to = None;
         self.point = Position::from([-1.0; 3]);
         Ok(released)
     }

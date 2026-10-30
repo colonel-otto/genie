@@ -9,6 +9,7 @@
 //! ([`crate::production::refund_master`]).
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FARM;
@@ -249,8 +250,8 @@ impl World {
         // the farm's scan passes over the old target and, for a building, its annexes; the fish
         // trap's over nothing
         let mut own = Vec::new();
-        if queue == Queue::Farms && gather.target != -1 {
-            own.push(gather.target);
+        if queue == Queue::Farms && gather.target.is_some() {
+            own.push(ObjectId::field(gather.target));
             let is_building = match self.object(gather.target) {
                 Some((q, t)) => {
                     t.master(&self.masters, q)?.kind
@@ -261,7 +262,10 @@ impl World {
             if is_building {
                 let mut k = 0;
                 while k < own.len() {
-                    own.extend(self.spatial.annexes_of(own[k]));
+                    own.extend(
+                        self.spatial
+                            .annexes_of(ObjectId::field(ObjectId::of_field(own[k]))),
+                    );
                     k += 1;
                 }
             }
@@ -385,8 +389,8 @@ impl World {
             self.streams.get(crate::math::rng::Stream::Sprite),
         )?;
         for t in released {
-            if t != -1 {
-                self.release(t, by)?;
+            if t.is_some() {
+                self.release(ObjectId::field(t), by)?;
             }
         }
         Ok(())

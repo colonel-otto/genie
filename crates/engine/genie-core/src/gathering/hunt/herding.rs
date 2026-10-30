@@ -77,7 +77,7 @@ impl HuntAction {
         f: &Fight,
         r: &HuntReads,
     ) -> Result<HuntNext, GenieError> {
-        if self.target == -1 {
+        if self.target.is_none() {
             self.state = SEARCH;
             return Ok(HuntNext::Search);
         }

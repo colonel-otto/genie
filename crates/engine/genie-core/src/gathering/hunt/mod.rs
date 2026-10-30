@@ -11,6 +11,7 @@ use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
@@ -106,7 +107,7 @@ const OWN_LIVESTOCK_RANGE: f32 = crate::math::image::hunt::OWN_LIVESTOCK_RANGE;
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct HuntAction {
     /// The target object (`+0x20`, its id at `+0x30`).
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     /// `+0x38`..`+0x40`: where the target stood when the hunt took it.
@@ -125,7 +126,7 @@ pub struct HuntAction {
     pub drop_site: i32,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site the load goes to in state 8,
     /// −1 for none.
-    pub carry_to: i32,
+    pub carry_to: Option<ObjectId>,
     /// `+0x44`: the state's timer (state 8 waits with it below 0 before it tries again).
     pub timer: f32,
     /// What it keeps of the livestock it leads to its drop site.

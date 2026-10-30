@@ -11,6 +11,7 @@ use crate::gathering::hunt::{
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -57,7 +58,7 @@ impl HuntAction {
             FACE => self.update_face(c, unit, f, r),
             // case 6 without a target (or a task): set_state(8) to carry the load off, set_state(3)
             // with none
-            GATHER if self.target == -1 => Ok(if self.ends_without_target(unit.life.amount) {
+            GATHER if self.target.is_none() => Ok(if self.ends_without_target(unit.life.amount) {
                 HuntNext::Drop
             } else {
                 HuntNext::Search
@@ -94,7 +95,7 @@ impl HuntAction {
         ))?;
         match attack.update(c, unit, me, f, &r.attack)? {
             0 | 6.. => Ok(HuntNext::Stay),
-            1 | 2 | 5 if self.target == -1 => {
+            1 | 2 | 5 if self.target.is_none() => {
                 self.tear_down(unit.body.mover_mut())?;
                 self.state = SEARCH;
                 Ok(HuntNext::Search)
@@ -179,7 +180,7 @@ impl HuntAction {
         self.tear_down(unit.body.mover_mut())?;
         // a target the hunt let go (the `MoveTo`'s went from the world): `FUN_140ac44b0` does
         // nothing, and `set_state(6)` without a target only shows the walking sprite
-        if self.target == -1 {
+        if self.target.is_none() {
             self.begin_face(c, unit, r);
             return Ok(HuntNext::Stay);
         }
@@ -256,7 +257,13 @@ impl HuntAction {
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.move_to = None;
         self.state = ATTACK;
-        let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover, &reads)?;
+        let (a, arrived) = Attack::start(
+            ObjectId::field(self.target),
+            &herd.engagement,
+            herd.arms,
+            mover,
+            &reads,
+        )?;
         if arrived {
             a.arrived_sprite(unit, c.w.streams.get(Stream::Sprite))?;
         }

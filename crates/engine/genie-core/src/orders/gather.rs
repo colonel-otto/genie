@@ -6,6 +6,7 @@ use crate::gathering::gather::{GatherRetarget, GatherStart};
 use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE;
@@ -114,9 +115,9 @@ impl World {
         )?;
         let new = [gather.target, gather.carry_to];
         // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
-        let waits = gather.state == crate::gathering::gather::WALK_BACK && new[0] == -1;
+        let waits = gather.state == crate::gathering::gather::WALK_BACK && new[0].is_none();
         self.exchange_gather_targets(old, new, by)?;
-        if waits && old[0] != target {
+        if waits && old[0] != ObjectId::of_field(target) {
             self.take(target, by)?;
             self.release(target, by)?;
         }
@@ -127,17 +128,17 @@ impl World {
     /// old one is let go (slot 0x180) and the new one taken (slot 0x178), each pair in order.
     fn exchange_gather_targets(
         &mut self,
-        old: [i32; 2],
-        new: [i32; 2],
+        old: [Option<ObjectId>; 2],
+        new: [Option<ObjectId>; 2],
         by: Releaser,
     ) -> Result<(), GenieError> {
         for (old, new) in old.into_iter().zip(new) {
             if old != new {
-                if old != -1 {
-                    self.release(old, by)?;
+                if let Some(old) = old {
+                    self.release(old.get(), by)?;
                 }
-                if new != -1 {
-                    self.take(new, by)?;
+                if let Some(new) = new {
+                    self.take(new.get(), by)?;
                 }
             }
         }
@@ -253,14 +254,14 @@ impl World {
             return Ok(false);
         }
         let new_second = hunt.carry_to;
-        if old_target != -1 && hunt.target == -1 {
-            self.release(old_target, by)?;
+        if old_target.is_some() && hunt.target.is_none() {
+            self.release(ObjectId::field(old_target), by)?;
         }
-        if new_second != old_second && new_second != -1 {
-            if old_second != -1 {
-                self.release(old_second, by)?;
+        if new_second != old_second && new_second.is_some() {
+            if old_second.is_some() {
+                self.release(ObjectId::field(old_second), by)?;
             }
-            self.take(new_second, by)?;
+            self.take(ObjectId::field(new_second), by)?;
         }
         Ok(true)
     }
@@ -389,9 +390,9 @@ impl World {
             rng,
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
-        let drops = gather.target == -1 && gather.carry_to == target;
+        let drops = gather.target.is_none() && gather.carry_to == ObjectId::of_field(target);
         // a farm another farmer works: the start let it go (set_state 11, then slot 0x68)
-        let waits = gather.target == -1 && gather.carry_to != target;
+        let waits = gather.target.is_none() && gather.carry_to != ObjectId::of_field(target);
         unit.actions.set_gather(Some(gather));
         if drops {
             self.take(target, self.releaser(player, idx)?)?;
@@ -575,7 +576,7 @@ impl World {
             );
             unit.body.set_anim_speed(0.0);
         }
-        let drops = hunt.target == -1 && hunt.carry_to == target;
+        let drops = hunt.target.is_none() && hunt.carry_to == ObjectId::of_field(target);
         unit.actions.set_hunt(Some(hunt));
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
         // go as the first (slot 0x68 with none)

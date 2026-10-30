@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::action_type;
 use crate::players::PlayerId;
@@ -265,7 +266,7 @@ impl Unit {
         )? {
             return Ok(PointMove::Declined);
         }
-        Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+        Ok(PointMove::Taken(old.map(ObjectId::get)))
     }
 
     /// The Gather's slot 0x40 (its move to the point): the target it had is let go; the
@@ -284,7 +285,7 @@ impl Unit {
         };
         let old = gather.target;
         gather.take_move(None, point, player, mover, &walks)?;
-        Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+        Ok(PointMove::Taken(old.map(ObjectId::get)))
     }
 
     /// The Repair's slot 0x40 (`FUN_140ad9700`, [`RepairAction::take_point`]): its point, slot

@@ -66,8 +66,13 @@ impl Unit {
     pub(crate) fn attack_target(&self) -> Option<i32> {
         self.actions
             .hunt()
-            .map(|h| h.target)
-            .or_else(|| self.actions.gather().map(|g| g.target).filter(|&t| t != -1))
+            .map(|h| ObjectId::field(h.target))
+            .or_else(|| {
+                self.actions
+                    .gather()
+                    .and_then(|g| g.target)
+                    .map(ObjectId::get)
+            })
             .or_else(|| self.actions.attack().map(|a| ObjectId::field(a.target)))
             .or_else(|| {
                 self.actions

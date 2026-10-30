@@ -105,13 +105,13 @@ impl Action {
             Self::Explore(e) => stop_if_moving(body, e.move_to.is_some())?,
             Self::Hunt(mut h) => {
                 h.tear_down(body.mover_mut())?;
-                torn.release(h.target);
-                torn.release(h.carry_to);
+                torn.release(ObjectId::field(h.target));
+                torn.release(ObjectId::field(h.carry_to));
             }
             Self::Gather(mut g) => {
                 g.tear_down(body.mover_mut())?;
-                torn.release(g.target);
-                torn.release(g.carry_to);
+                torn.release(ObjectId::field(g.target));
+                torn.release(ObjectId::field(g.carry_to));
             }
             Self::Attack(mut a) => {
                 a.tear_down(body.mover_mut())?;

@@ -273,18 +273,26 @@ impl World {
         let unit = self.players.live(p, idx)?;
         let top = if asks { unit.top_action_kind() } else { None };
         let found = match top {
-            Some(crate::gathering::gather::GATHER) => unit
-                .actions
-                .gather()
-                .map(|g| (DropOffBy::Gather, g.target, g.point, g.task.resource)),
+            Some(crate::gathering::gather::GATHER) => unit.actions.gather().map(|g| {
+                (
+                    DropOffBy::Gather,
+                    ObjectId::field(g.target),
+                    g.point,
+                    g.task.resource,
+                )
+            }),
             Some(action_type::BUILD) => unit
                 .actions
                 .build()
                 .map(|b| (DropOffBy::Build, b.target, b.point, b.task.resource)),
-            Some(HUNT) => unit
-                .actions
-                .hunt()
-                .map(|h| (DropOffBy::Hunt, h.target, h.point, h.task.resource)),
+            Some(HUNT) => unit.actions.hunt().map(|h| {
+                (
+                    DropOffBy::Hunt,
+                    ObjectId::field(h.target),
+                    h.point,
+                    h.task.resource,
+                )
+            }),
             _ => None,
         };
         let Some((by, target, point, resource)) = found else {

@@ -6,6 +6,7 @@ use crate::{saved_attack, saved_reload, saved_sprite};
 use genie_core::GenieError;
 use genie_core::map::Point;
 use genie_core::movement::move_to::MOVE_TO;
+use genie_core::objects::ObjectId;
 use genie_core::objects::masters::{ClassId, Task};
 use genie_core::objects::unit::Unit;
 use genie_save::generated::world::Action;
@@ -75,7 +76,7 @@ pub(super) fn import_hunt(
     }
     let task = hunt_task(&saved.task(task_at)?);
     let mut hunt = HuntAction {
-        target: base.target_id,
+        target: ObjectId::of_field(base.target_id),
         state: base.state,
         point: saved.point(),
         target_class: ClassId::of_target_type(part.target_type),
@@ -83,7 +84,7 @@ pub(super) fn import_hunt(
         attack: None,
         move_to: None,
         drop_site: part.sheep_drop_site_id as i32,
-        carry_to: base.target2_id,
+        carry_to: ObjectId::of_field(base.target2_id),
         timer: base.timer,
         lead: genie_core::gathering::hunt::Lead {
             moved: part.moved_sheep != 0,
@@ -164,8 +165,8 @@ pub(super) fn import_gather(
     }
     let task = hunt_task(&saved.task(task_at)?);
     let mut gather = GatherAction {
-        target: base.target_id,
-        carry_to: base.target2_id,
+        target: ObjectId::of_field(base.target_id),
+        carry_to: ObjectId::of_field(base.target2_id),
         state: base.state,
         point: saved.point(),
         timer: base.timer,
