@@ -377,7 +377,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
             interrupt_frame: -1,
         },
         sub_action: false,
-        repaths: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         same_owner: false,
     };
     for (state, free) in [(2, false), (3, true), (13, true), (14, true), (4, false)] {

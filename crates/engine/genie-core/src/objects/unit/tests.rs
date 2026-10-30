@@ -111,6 +111,7 @@ fn an_object_past_state_2_loses_its_actions() {
         target: -1,
         range: 0.0,
         quiet: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: MoveWait::default(),
     }));
     in_update(&mut t, (1, 0), 50, Unit::actions_past_life).unwrap();

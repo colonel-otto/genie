@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
 use crate::math::rng::Stream;
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
     GiveUp, MoveDefaults, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads,
 };
@@ -16,6 +17,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::unit_ai::Inbox;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -210,6 +212,7 @@ impl EnterAction {
             range: self.walk_range(t.building),
             sprite,
             quiet: true,
+            on_target_moved: TargetMoved::Ignores,
             wait: MoveWait::NEW,
         });
         Ok(Walking::Walk((code == 1).then_some([
@@ -247,6 +250,7 @@ impl EnterAction {
             range: self.range,
             sprite: None,
             quiet: true,
+            on_target_moved: TargetMoved::Ignores,
             wait: MoveWait::NEW,
         });
         self
@@ -399,7 +403,8 @@ impl EnterAction {
             rng: beside.sprite_rng,
             graphic: move_to.sprite,
         });
-        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)
+        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
+        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown, &mut inbox)
     }
 
     /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or

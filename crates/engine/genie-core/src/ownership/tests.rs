@@ -22,6 +22,7 @@ fn walking_forager() -> World {
         target: -1,
         range: 0.0,
         quiet: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: MoveWait::default(),
     }));
     let ai = u.ai.as_mut().unwrap();

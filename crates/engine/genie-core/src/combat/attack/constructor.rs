@@ -7,7 +7,7 @@ use crate::combat::attack::{
     LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveTo, MoveWait, TargetMoved};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
@@ -41,7 +41,7 @@ impl Attack {
             rest: 0.0,
             arms,
             sub_action: false,
-            repaths: false,
+            on_target_moved: TargetMoved::Follows,
             same_owner: e.same_owner,
         }
     }
@@ -68,7 +68,7 @@ impl Attack {
     ) -> Result<(Self, bool), GenieError> {
         let mut a = Self {
             sub_action: true,
-            repaths: true,
+            on_target_moved: TargetMoved::AsksAgain,
             ..Self::own(target, e, arms)
         };
         // The gate class, whose parts' gaps readyToAttack measures.

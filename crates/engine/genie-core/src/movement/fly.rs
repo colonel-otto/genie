@@ -13,6 +13,7 @@ use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -158,7 +159,14 @@ impl Fly {
                             graphic: move_to.sprite,
                         });
                         let gives_up = GiveUp::default();
-                        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)?
+                        let mut inbox = Inbox::of(&mut bird.ai, bird.id, bird.life.state);
+                        move_to.sub_update(
+                            &mut walk,
+                            PathAsk::default(),
+                            gives_up,
+                            shown,
+                            &mut inbox,
+                        )?
                     }
                 };
                 if code == 0 {

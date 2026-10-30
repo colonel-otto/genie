@@ -8,6 +8,7 @@ use crate::gathering::hunt::{
     WALK, WALK_SEARCH, walk_sprite,
 };
 use crate::math::rng::Stream;
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{Goal, MoveTo, start_walk_shown, target_moved, walk_or_give_up};
 use crate::movement::{Me, Mover, PathAsk};
 use crate::objects::lifecycle::seconds;
@@ -213,7 +214,13 @@ impl HuntAction {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<(), GenieError> {
-        if target_moved(&mut c.walk(&mut unit.body, me), self.target, true)?.again() {
+        if target_moved(
+            &mut c.walk(&mut unit.body, me),
+            self.target,
+            TargetMoved::AsksAgain,
+        )?
+        .again()
+        {
             self.move_to = Some(MoveTo::Start);
             return Ok(());
         }

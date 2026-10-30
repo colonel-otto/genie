@@ -4,7 +4,7 @@ use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, save
 use genie_core::GenieError;
 use genie_core::construction::build::{BuildAction, BuildTask};
 use genie_core::movement::fly::{FLY, Fly};
-use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction};
+use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction, TargetMoved};
 use genie_core::objects::masters::Task;
 use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::sprite::Graphic;
@@ -239,6 +239,8 @@ fn saved_move_to(
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)
         sprite: saved_move_to_sprite(base.short_val_2, graphics)?,
         quiet,
+        // what it does when its target moves (`+0x61`)
+        on_target_moved: TargetMoved::try_from(base.target_moved_state)?,
         // its wait (`+0x6c`, `+0x70`, `+0x74`)
         wait: saved_move_wait(action),
     })

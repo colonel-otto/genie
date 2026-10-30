@@ -10,6 +10,7 @@ use crate::gathering::gather::{
 use crate::gathering::hunt::Dropped;
 use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::Stream;
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::walk_or_give_up;
 use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};
 use crate::movement::{Me, PathAsk};
@@ -205,7 +206,13 @@ impl GatherAction {
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Moving) => {
-                if target_moved(&mut c.walk(&mut unit.body, me), self.carry_to, true)?.again() {
+                if target_moved(
+                    &mut c.walk(&mut unit.body, me),
+                    self.carry_to,
+                    TargetMoved::AsksAgain,
+                )?
+                .again()
+                {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(Dropped::Going);
                 }

@@ -181,27 +181,32 @@ impl Attack {
     ) -> Result<(), GenieError> {
         // a MoveTo to a point follows nothing
         let follow = if self.state == MOVE {
-            target_moved(&mut c.walk(&mut unit.body, me), self.target, self.repaths)?
+            target_moved(
+                &mut c.walk(&mut unit.body, me),
+                self.target,
+                self.on_target_moved,
+            )?
         } else {
             Follow::Stays
         };
         if let Follow::PathEnd(p) = follow {
             follow_path_end(&mut c.walk(&mut unit.body, me), p)?;
         }
-        if follow.again() && self.repaths {
-            // with `+0x61` the MoveTo only turns to state 3 (`LAB_140aa3a59`)
+        if follow.again() {
+            // with `+0x61` at 1 the MoveTo only turns to state 3 (`LAB_140aa3a59`)
             self.move_to = Some(MoveTo::Start);
             return Ok(());
         }
-        if follow.again() {
-            // without it the MoveTo tells the unit (notify 0x1fc), turns to state 3 and runs
-            // the motion step (`LAB_140aa320c`): moving on, it stays in state 3
-            unit.post_own(0x1fc, [0; 3])?;
+        let blocked = follow == Follow::Blocked;
+        if blocked {
+            // at 0 the MoveTo tells the unit (notify 0x1fc), turns to state 3 and runs the
+            // motion step (`LAB_140aa320c`): moving on, it stays in state 3
+            unit.post_own(crate::unit_ai::TARGET_MOVED, [0; 3])?;
         }
         let walked = walk_or_give_up(c.walk(&mut unit.body, me))?;
         unit.post_in_the_way()?;
         match walked {
-            Some(MoveTo::Moving) if follow.again() => self.move_to = Some(MoveTo::Start),
+            Some(MoveTo::Moving) if blocked => self.move_to = Some(MoveTo::Start),
             Some(m) => self.move_to = Some(m),
             None => self.give_up(r, f.own.class),
         }

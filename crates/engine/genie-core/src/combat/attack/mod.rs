@@ -15,7 +15,7 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveTo, MoveWait, TargetMoved};
 use crate::objects::layers::Body;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
@@ -161,9 +161,9 @@ pub struct Attack {
     /// `+0x60`, `subActionValue`: the action is another's sub-action (the Hunt's) and posts no
     /// notifies; a unit's own Attack posts them to its unit AI (slot 0x328).
     pub sub_action: bool,
-    /// `+0x61`, `mTargetMovedState`, which its `MoveTo` takes: a target that leaves the
-    /// `MoveTo`'s point makes it ask for a path at once (the Hunt's `set_state` 12 sets it).
-    pub repaths: bool,
+    /// `+0x61`, `mTargetMovedState`, which its `MoveTo` takes ([`TargetMoved`]): a unit's own
+    /// Attack's follows, the Hunt's asks for a path at once (its `set_state` 12 sets it).
+    pub on_target_moved: TargetMoved,
     /// `+0x9f`, `was_same_owner` (saved): its target was its unit's player's when the
     /// constructor (`FUN_140a7c210`) took it; the update's ally test spares such a livestock or
     /// farm target ([`Attack::update`]).

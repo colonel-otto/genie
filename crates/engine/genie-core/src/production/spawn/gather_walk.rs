@@ -91,6 +91,7 @@ impl World {
                 target: -1,
                 range: 0.0,
                 quiet: false,
+                on_target_moved: crate::movement::move_to::TargetMoved::Follows,
                 wait: crate::movement::move_to::MoveWait::default(),
             }));
         Ok(())

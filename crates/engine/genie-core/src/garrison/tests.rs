@@ -267,6 +267,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
             target: -1,
             range: 0.0,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
         },
     ));
@@ -2060,6 +2061,7 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
             target: -1,
             range: 0.0,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     t.garrison_order(

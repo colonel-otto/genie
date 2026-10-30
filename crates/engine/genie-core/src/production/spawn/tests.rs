@@ -609,6 +609,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
             target: -1,
             range: 0.0,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: MoveWait::default(),
         })
     );

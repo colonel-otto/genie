@@ -79,7 +79,7 @@ pub(crate) fn own_attack(target: i32, state: u8, range: f32) -> Attack {
             interrupt_frame: -1,
         },
         sub_action: false,
-        repaths: false,
+        on_target_moved: TargetMoved::Follows,
         same_owner: false,
     }
 }
@@ -1331,7 +1331,7 @@ fn a_disarmed_building_s_targetless_attack_ends_with_its_notify() {
             interrupt_frame: -1,
         },
         sub_action: false,
-        repaths: false,
+        on_target_moved: TargetMoved::Follows,
         same_owner: false,
     };
     let mut body = Body::Animated(Animated::new(0.5));
@@ -2047,26 +2047,26 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
 /// without it tells the unit (notify 0x1fc) and runs the motion step first.
 #[test]
 fn an_attack_s_move_to_follows_a_target_that_left_its_point() {
-    let walk_on = |point: [f32; 3], repaths| {
+    let walk_on = |point: [f32; 3], mode| {
         let mut rig = Rig::on_the_path(Victim::default());
         rig.mover_mut().move_to_point = Some(point);
         rig.mover_mut().paths[0].waypoint = 0;
         let mut a = own_attack(10028, MOVE, 0.1);
-        (a.move_to, a.repaths) = (Some(MoveTo::Moving), repaths);
+        (a.move_to, a.on_target_moved) = (Some(MoveTo::Moving), mode);
         rig.run(100, |c, u, f, r| a.walk_on(c, u, me(9177, 4), f, r))
             .unwrap();
         (a.move_to, rig.posted())
     };
     assert_eq!(
-        walk_on([30.0, 88.0, 0.0], false),
+        walk_on([30.0, 88.0, 0.0], TargetMoved::Follows),
         (Some(MoveTo::Moving), vec![])
     );
     assert_eq!(
-        walk_on([36.0, 88.0, 0.0], true),
+        walk_on([36.0, 88.0, 0.0], TargetMoved::AsksAgain),
         (Some(MoveTo::Start), vec![])
     );
     assert_eq!(
-        walk_on([36.0, 88.0, 0.0], false),
+        walk_on([36.0, 88.0, 0.0], TargetMoved::Follows),
         (Some(MoveTo::Start), vec![(0x1fc, [0; 3])])
     );
 }

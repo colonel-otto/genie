@@ -1798,6 +1798,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
             target: -1,
             range: 0.0,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     assert_eq!(t.head_takes_move(1, 0, Some(11), point), Ok(false));
@@ -3550,6 +3551,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
             target: -1,
             range: 0.0,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     let moving = Task {

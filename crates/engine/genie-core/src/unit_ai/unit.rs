@@ -8,7 +8,6 @@ use crate::objects::masters::Master;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
-use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView, changed_view};
 use crate::unit_ai::{AfterOrder, Surroundings, UnitAi};
 use crate::world::others::OthersRef;
@@ -508,10 +507,13 @@ impl Unit {
 
     /// A notify the unit posts to its own unit AI (slot 0x328).
     pub(crate) fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), GenieError> {
-        let (id, state) = (self.id, self.life.state);
-        self.ai
-            .as_mut()
-            .map_or(Ok(()), |ai| ai.post(Notify::own(id, kind, p), state))
+        self.inbox().post(kind, p)
+    }
+
+    /// The unit's notifies to itself ([`crate::unit_ai::Inbox`]); an action that walks borrows
+    /// its fields beside the unit's body instead.
+    pub(crate) const fn inbox(&mut self) -> crate::unit_ai::Inbox<'_> {
+        crate::unit_ai::Inbox::of(&mut self.ai, self.id, self.life.state)
     }
 
     /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`],

@@ -93,6 +93,7 @@ use self::ids::{
 };
 pub use self::ids::{HUMAN_ORDER_CAP, NewObject, factory_type};
 pub(crate) use self::ids::{alert_owner, helper_answers};
+pub use self::notifies::Inbox;
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
 pub use self::side::{

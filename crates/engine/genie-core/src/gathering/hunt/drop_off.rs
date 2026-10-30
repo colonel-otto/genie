@@ -7,6 +7,7 @@ use crate::gathering::hunt::{
     ARRIVED, DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, Shown, asked_drop_off,
     resource_kind,
 };
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
     Goal, MoveTo, MoveWait, start_walk_shown, target_moved, walk_or_give_up,
 };
@@ -118,7 +119,13 @@ impl HuntAction {
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Moving) => {
-                if target_moved(&mut c.walk(&mut unit.body, me), self.carry_to, true)?.again() {
+                if target_moved(
+                    &mut c.walk(&mut unit.body, me),
+                    self.carry_to,
+                    TargetMoved::AsksAgain,
+                )?
+                .again()
+                {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(Dropped::Going);
                 }

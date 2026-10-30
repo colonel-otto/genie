@@ -4,6 +4,7 @@
 use crate::masters::{DefaultAction, MasterTable};
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
+use genie_core::movement::move_to::TargetMoved;
 use genie_core::objects::masters::ACTION_FACTORY_TYPES;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
@@ -156,7 +157,7 @@ pub(super) fn saved_attack(
             interrupt_frame: a.interrupt_animation_at_frame,
         },
         sub_action: b.sub_action_value != 0,
-        repaths: b.target_moved_state != 0,
+        on_target_moved: TargetMoved::try_from(b.target_moved_state)?,
         same_owner: a.was_same_owner != 0,
     })
 }

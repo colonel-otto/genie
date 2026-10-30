@@ -4,9 +4,11 @@
 use crate::GenieError;
 use crate::movement::PathAsk;
 use crate::movement::move_to::{
-    MoveTo, MoveToAction, MoveWait, Shown, Walk, start_walk_shown, walk_or_give_up,
+    Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, start_walk_shown,
+    walk_or_give_up,
 };
 use crate::objects::sprite::Graphic;
+use crate::unit_ai::{Inbox, TARGET_MOVED};
 
 /// What the motion step's giving up reads of the unit ([`MoveWait::give_up`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -31,6 +33,7 @@ impl MoveToAction {
             range,
             sprite,
             quiet: true,
+            on_target_moved: TargetMoved::Follows,
             wait: MoveWait::NEW,
         }
     }
@@ -40,20 +43,26 @@ impl MoveToAction {
     /// its target or point within its range by what the unit's AI asks (`ask`; a `MoveTo` that
     /// waited once, `+0x6c` 1, counts as having asked again, 2), shows its sprite (`shown`,
     /// [`start_walk_shown`]) and walks; a
-    /// move runs the motion step ([`walk_or_give_up`]). The motion step giving up makes it wait
-    /// or fail ([`MoveWait::give_up`] with `gives_up`). A wait adds the walk's dt onto its timer
-    /// and at its delay asks again (`set_state(3)`; `COMISS`, `JC`: a NaN timer waits on). The
-    /// code: 0 while it walks or waits, 1 once it ended, 3 once it failed.
+    /// move checks its target ([`MoveToAction::check_target`]: a `MoveTo` that asks again ends
+    /// its update there, one whose path's end could not follow tells the unit at once through
+    /// `inbox`, notify 0x1fc, whether quiet or not) and runs the motion step
+    /// ([`walk_or_give_up`]), which moving on leaves it in the state the check left. The motion
+    /// step giving up makes it wait or fail ([`MoveWait::give_up`] with `gives_up`). A wait adds
+    /// the walk's dt onto its timer and at its delay asks again (`set_state(3)`; `COMISS`, `JC`: a
+    /// NaN timer waits on). The code: 0 while it walks or waits, 1 once it ended, 3 once it
+    /// failed.
     ///
     /// # Errors
     ///
-    /// A `MoveTo` without a goal, and what the path request and the motion step do not model.
+    /// A `MoveTo` without a goal, a target the world lacks, and what the path request and the
+    /// motion step do not model.
     pub fn sub_update(
         &mut self,
         walk: &mut Walk<'_>,
         ask: PathAsk,
         gives_up: GiveUp,
         shown: Option<Shown<'_>>,
+        inbox: &mut Inbox<'_>,
     ) -> Result<u8, GenieError> {
         let GiveUp { waits, stance } = gives_up;
         Ok(match self.state {
@@ -69,8 +78,16 @@ impl MoveToAction {
                 0
             }
             MoveTo::Moving => {
-                let walked = walk_or_give_up(walk.reborrow())?;
-                self.state = walked.unwrap_or_else(|| self.wait.give_up(waits, stance));
+                match self.check_target(walk)? {
+                    Follow::Again => return Ok(0),
+                    Follow::Blocked => inbox.post(TARGET_MOVED, [0, 0, 0])?,
+                    Follow::Stays | Follow::PathEnd(_) => {}
+                }
+                match walk_or_give_up(walk.reborrow())? {
+                    Some(MoveTo::Moving) => {}
+                    Some(other) => self.state = other,
+                    None => self.state = self.wait.give_up(waits, stance),
+                }
                 0
             }
             MoveTo::Waiting => {

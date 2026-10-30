@@ -17,6 +17,7 @@ use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::unit_ai::Inbox;
 use crate::unit_ai::{ActionKind, UnitAi};
 use crate::world::World;
 use crate::world::step::Step;
@@ -351,7 +352,8 @@ impl TransportAction {
             rng: beside.sprite_rng,
             graphic: move_to.sprite,
         });
-        let code = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown)?;
+        let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
+        let code = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown, &mut inbox)?;
         if walks {
             unit.post_in_the_way()?;
         }

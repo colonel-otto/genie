@@ -7,8 +7,8 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::move_to::Shown;
 use crate::movement::move_to::{
-    Follow, Goal, MoveTo, MoveWait, Walk, follow_path_end, start_walk_shown, target_moved,
-    walk_or_give_up,
+    Follow, Goal, MoveTo, MoveWait, TargetMoved, Walk, follow_path_end, start_walk_shown,
+    target_moved, walk_or_give_up,
 };
 use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::masters::Master;
@@ -39,6 +39,10 @@ pub struct MoveToAction {
     /// posts no notify 0x1fa, 0x1f9 or 0x1fb (`0x140aa2a70`). A `MoveTo` of its own is not quiet.
     /// The save does not hold it: the import takes its maker's.
     pub quiet: bool,
+    /// `+0x61`: what it does when its target object left its point ([`TargetMoved`]); 0
+    /// ([`TargetMoved::Follows`]) from its constructors (`FUN_140a73e90`), which an Enter sets
+    /// to 2 and a drop-off's, a hunt's and its Attack's maker to 1.
+    pub on_target_moved: TargetMoved,
     /// Its wait after the motion step gave up.
     pub wait: MoveWait,
 }
@@ -225,6 +229,7 @@ impl MoveToAction {
             range,
             sprite,
             quiet: false,
+            on_target_moved: TargetMoved::Follows,
             wait: MoveWait::default(),
         })
     }
@@ -294,6 +299,7 @@ impl MoveToAction {
             range,
             sprite,
             quiet: false,
+            on_target_moved: TargetMoved::Follows,
             wait: MoveWait::default(),
         }
     }
@@ -378,9 +384,10 @@ impl MoveToAction {
         Ok(step)
     }
 
-    /// The update's walk (state 4): a target that left its point makes the `MoveTo` follow it
-    /// (the top path's end, [`follow_path_end`]) and turn to state 3 before the motion step
-    /// (`LAB_140aa320c`), which moving on leaves it in state 3; else the motion step alone. A
+    /// The update's walk (state 4): the check of its target ([`MoveToAction::check_target`]),
+    /// then the motion step (`LAB_140aa320c`), which moving on leaves the `MoveTo` in the state the
+    /// check left. A `MoveTo` that asks again ends its update at the check; one whose path's end
+    /// could not follow tells the unit (notify 0x1fc, the caller's [`MoveStep::target_moved`]). A
     /// motion step that gives up leaves the wait or the failure to the caller.
     fn update_moving(
         &mut self,
@@ -388,33 +395,39 @@ impl MoveToAction {
         step: &mut MoveStep,
         shows: &mut Shows<'_>,
     ) -> Result<(), GenieError> {
-        let follow = if self.target == -1 {
-            Follow::Stays
-        } else {
-            target_moved(walk, self.target, false)?
-        };
-        if let Follow::PathEnd(p) = follow {
-            follow_path_end(walk, p)?;
+        match self.check_target(walk)? {
+            Follow::Again => return Ok(()),
+            Follow::Blocked => step.target_moved = true,
+            Follow::Stays | Follow::PathEnd(_) => {}
         }
-        if follow.again() {
-            step.target_moved = true;
-            match walk_or_give_up(walk.reborrow())? {
-                Some(MoveTo::Moving) => self.state = MoveTo::Start,
-                Some(other) => self.state = other,
-                // the motion step gave up: the wait or the failure, as below
-                None => {
-                    self.state = MoveTo::Start;
-                    step.gave_up = true;
-                }
-            }
-        } else {
-            match walk_or_give_up(walk.reborrow())? {
-                Some(state) => self.state = state,
-                None => step.gave_up = true,
-            }
+        match walk_or_give_up(walk.reborrow())? {
+            Some(MoveTo::Moving) => {}
+            Some(other) => self.state = other,
+            None => step.gave_up = true,
         }
         self.ended(walk, shows);
         Ok(())
+    }
+
+    /// A moving `MoveTo`'s check of its target object (`0x140aa2a70` in state 4, before the
+    /// motion step; none for a `MoveTo` to a point) by its `+0x61` ([`target_moved`]): the path's
+    /// end follows the target ([`follow_path_end`]), or the `MoveTo` turns to state 3 (the
+    /// slice's [`MoveTo::Start`]) when it asks again or its path's end could not follow.
+    ///
+    /// # Errors
+    ///
+    /// [`target_moved`]'s.
+    pub(crate) fn check_target(&mut self, walk: &mut Walk<'_>) -> Result<Follow, GenieError> {
+        if self.target == -1 {
+            return Ok(Follow::Stays);
+        }
+        let follow = target_moved(walk, self.target, self.on_target_moved)?;
+        match follow {
+            Follow::PathEnd(p) => follow_path_end(walk, p)?,
+            Follow::Again | Follow::Blocked => self.state = MoveTo::Start,
+            Follow::Stays => {}
+        }
+        Ok(follow)
     }
 
     /// The update's start (state 3): after a wait `+0x6c` goes from 1 to 2 as it asks again; the
@@ -485,6 +498,7 @@ mod tests {
             target,
             range: 0.1,
             quiet: false,
+            on_target_moved: TargetMoved::Follows,
             wait: MoveWait {
                 state: 1,
                 timer: 0.0,

@@ -7,6 +7,7 @@ use crate::construction::repair::{
     RepairReads, RepairTask, Repairee, SHIP_REPAIR, SHIPS, WAIT, WALK_POINT, WORK,
 };
 use crate::math::rng::Stream;
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
     GiveUp, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads, Sprites,
 };
@@ -18,6 +19,7 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's
@@ -104,6 +106,7 @@ impl RepairAction {
             range: self.range,
             sprite: sprites.to_object(self.task.moving)?,
             quiet: true,
+            on_target_moved: TargetMoved::Follows,
             wait: MoveWait::NEW,
         })
     }
@@ -314,7 +317,8 @@ impl RepairAction {
             waits: reads.waits,
             stance: reads.stance,
         };
-        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)
+        let mut inbox = Inbox::of(&mut repairer.ai, repairer.id, repairer.life.state);
+        move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown, &mut inbox)
     }
 
     /// The reach test of states 4 and 10: the footprints' gap (`FUN_14118f680`) less

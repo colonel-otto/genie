@@ -10,6 +10,7 @@ use crate::gathering::gather::{
 };
 use crate::gathering::hunt::walk_sprite;
 use crate::math::rng::Stream;
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::walk_or_give_up;
 use crate::movement::move_to::{Goal, MoveTo, Shown, start_walk_shown, target_moved};
 use crate::movement::{Me, Mover, PathAsk};
@@ -340,7 +341,12 @@ impl GatherAction {
             Some(MoveTo::Moving) => {
                 // a MoveTo to a point has no target to follow
                 if self.walk_to.is_none()
-                    && target_moved(&mut c.walk(&mut unit.body, me), self.target, true)?.again()
+                    && target_moved(
+                        &mut c.walk(&mut unit.body, me),
+                        self.target,
+                        TargetMoved::AsksAgain,
+                    )?
+                    .again()
                 {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(());

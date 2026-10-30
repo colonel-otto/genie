@@ -5,6 +5,7 @@ use crate::construction::build::{
     ARRIVED, BUILDER_UNMOVING, BuildAction, BuildReads, DROP, DROP_REACH, DROP_WAIT,
     DROPPED_ORDERS, NO_TARGET_POINT,
 };
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
     Goal, MoveTo, MoveWait, Sprites, start_walk_shown, walk_or_give_up,
 };
@@ -321,8 +322,12 @@ impl BuildAction {
             Some(MoveTo::Moving) => {
                 let mut walk = c.walk(&mut builder.body, me);
                 if self.walk_target != -1
-                    && crate::movement::move_to::target_moved(&mut walk, self.walk_target, true)?
-                        .again()
+                    && crate::movement::move_to::target_moved(
+                        &mut walk,
+                        self.walk_target,
+                        TargetMoved::AsksAgain,
+                    )?
+                    .again()
                 {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(true);

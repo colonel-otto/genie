@@ -8435,6 +8435,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
             range: 0.0,
             sprite: None,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
         })),
         pasture: -1,
@@ -10084,6 +10085,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             range: 0.0,
             sprite: None,
             quiet: false,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
         })),
         ..Unit::default()
@@ -10774,7 +10776,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::At
             interrupt_frame: -1,
         },
         sub_action: false,
-        repaths: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         same_owner: false,
     }
 }
@@ -13521,6 +13523,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
         range: 0.25,
         sprite: None,
         quiet: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: crate::movement::move_to::MoveWait::default(),
     };
     let mut t = own_move_world(to_bush(MoveTo::Start));

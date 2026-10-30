@@ -327,6 +327,7 @@ fn a_repair_s_move_tos_are_quiet() {
         range: 1.5,
         sprite: Some(g[&21]),
         quiet: true,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: MoveWait::NEW,
     };
     assert_eq!(r.move_to, Some(to_target));

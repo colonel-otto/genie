@@ -10,6 +10,7 @@
 use crate::GenieError;
 use crate::movement::Me;
 use crate::movement::PathAsk;
+use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveWait, Shown, SpriteReads};
 use crate::objects::actions::Action;
 use crate::objects::release::Releaser;
@@ -17,6 +18,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Inbox;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -221,6 +223,7 @@ impl Artifact {
             range,
             sprite,
             quiet: true,
+            on_target_moved: TargetMoved::Follows,
             wait: MoveWait::NEW,
         });
         self.state = CHECK;
@@ -351,7 +354,8 @@ impl Artifact {
                     graphic: move_to.sprite,
                 });
                 let ask = PathAsk::default();
-                let _ = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown)?;
+                let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
+                let _ = move_to.sub_update(&mut walk, ask, GiveUp::default(), shown, &mut inbox)?;
                 if state != MoveTo::Waiting {
                     unit.post_in_the_way()?;
                 }

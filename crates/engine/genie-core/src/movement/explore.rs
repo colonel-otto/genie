@@ -18,6 +18,7 @@ use crate::objects::unit::{Unit, object_master};
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Inbox;
 use crate::unit_ai::OrderKind;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -194,7 +195,8 @@ impl ExploreAction {
                     rng: beside.sprite_rng,
                     graphic: move_to.sprite,
                 });
-                move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown)?
+                let mut inbox = Inbox::of(&mut explorer.ai, explorer.id, explorer.life.state);
+                move_to.sub_update(&mut walk, PathAsk::default(), gives_up, shown, &mut inbox)?
             }
             None => 1,
         };
@@ -660,6 +662,7 @@ mod tests {
             range: 0.0,
             sprite: Some(walking),
             quiet: true,
+            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::NEW,
         };
         assert_eq!((a.state, a.move_to), (WALK, Some(made)));

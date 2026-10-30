@@ -588,7 +588,7 @@ fn keshik(t: &mut World) {
             interrupt_frame: -1,
         },
         sub_action: false,
-        repaths: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         same_owner: false,
     };
     t.players[1].objects[0].actions.set_attack(Some(attack));

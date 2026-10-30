@@ -8,6 +8,42 @@ use crate::unit_ai::{
     Surroundings, UnitAi, UnitSide,
 };
 
+/// A unit's notifies to itself (its slot 0x328, [`UnitAi::post`]), borrowed beside its body: its
+/// unit AI (None for a unit without one), its id and its state.
+#[derive(Debug)]
+pub struct Inbox<'a> {
+    /// The unit's AI.
+    pub ai: Option<&'a mut UnitAi>,
+    /// The unit's id: the notify's caller and its recipient.
+    pub id: i32,
+    /// The unit's state, which the AI's acceptance reads ([`UnitAi::accept`]).
+    pub state: u8,
+}
+
+impl<'a> Inbox<'a> {
+    /// The inbox of the unit `id` in `state` with its AI `ai`, borrowed beside its body.
+    pub const fn of(ai: &'a mut Option<UnitAi>, id: i32, state: u8) -> Self {
+        Self {
+            ai: ai.as_mut(),
+            id,
+            state,
+        }
+    }
+
+    /// Posts the notify `kind` with `p` to the unit itself ([`Notify::own`]); a unit without an
+    /// AI takes none.
+    ///
+    /// # Errors
+    ///
+    /// The post's.
+    pub fn post(&mut self, kind: i32, p: [i32; 3]) -> Result<(), GenieError> {
+        match self.ai.as_deref_mut() {
+            Some(ai) => ai.post(Notify::own(self.id, kind, p), self.state),
+            None => Ok(()),
+        }
+    }
+}
+
 impl UnitAi {
     /// The notify processing of the full update: while notifies are queued and the last handler
     /// said go on, each runs through slot 0x238 ([`UnitAi::handle`]); a pass that went through
