@@ -23,6 +23,27 @@ impl PlayerId {
     }
 }
 
+impl PlayerId {
+    /// The first `count` players in their order, Gaia first: the world's players. A table past a
+    /// command's byte (256) keeps only the players a command can name.
+    pub fn each(count: usize) -> impl Iterator<Item = Self> + Clone {
+        (0..count).filter_map(|index| Self::try_from(index).ok())
+    }
+}
+
+impl std::fmt::Display for PlayerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl genie_diff::Diff for PlayerId {
+    /// By equality: a player is one value.
+    fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
+        d.equal(self, other);
+    }
+}
+
 impl From<u8> for PlayerId {
     /// The player of number `number`, as a command's byte holds it.
     fn from(number: u8) -> Self {
@@ -58,6 +79,26 @@ mod tests {
             assert_eq!((p.get(), p.index()), (number, usize::from(number)));
             assert_eq!(PlayerId::try_from(p.index()), Ok(p));
         }
+    }
+
+    /// The players of a table of `count` are its indexes in order; a table past a byte keeps
+    /// the first 256.
+    #[test]
+    fn each_gives_the_players_in_order() {
+        let players: Vec<usize> = PlayerId::each(3).map(PlayerId::index).collect();
+        assert_eq!(players, [0, 1, 2]);
+        assert_eq!(PlayerId::each(300).count(), 256);
+        assert_eq!(PlayerId::each(0).count(), 0);
+    }
+
+    /// A player prints as its number and differs by equality.
+    #[test]
+    fn a_player_prints_as_its_number_and_differs_by_equality() {
+        use genie_diff::{Scope, differences};
+        let (one, two) = (PlayerId::from(1), PlayerId::from(2));
+        assert_eq!(PlayerId::from(7).to_string(), "7");
+        assert_eq!(differences(&one, &one, Scope::All).len(), 0);
+        assert_eq!(differences(&one, &two, Scope::All).len(), 1);
     }
 
     /// An index past a byte is no player.
