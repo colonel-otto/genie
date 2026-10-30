@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::{
-    Attacker, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim,
+    Attacker, ElevationBonus, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim,
 };
 use crate::map::Position;
 use crate::objects::masters::ClassId;
@@ -10,16 +10,16 @@ use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 
-/// Slot 0x1f0 of a combat object (`FUN_14120d780`) at height `z` whose player has `up_down` as
+/// Slot 0x1f0 of a combat object (`FUN_14120d780`) at height `z` whose player has `own` as
 /// attributes 211 and 212: a hit from higher up gains 25% and attributes 211 and the target's
 /// 272, one from lower down 75% and attributes 212 and 273.
 #[must_use]
-pub fn elevation_factor(z: f32, up_down: [f32; 2], to: &Victim) -> f32 {
+pub fn elevation_factor(z: f32, own: ElevationBonus, to: &Victim) -> f32 {
     let tz = to.position.z();
     if tz < z {
-        up_down[0] + HIGHER + to.elevation[0]
+        own.higher + HIGHER + to.elevation.higher
     } else if z < tz {
-        up_down[1] + LOWER + to.elevation[1]
+        own.lower + LOWER + to.elevation.lower
     } else {
         1.0
     }

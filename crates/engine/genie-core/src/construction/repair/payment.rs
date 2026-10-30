@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::construction::repair::ONE;
+use crate::objects::HpPowerup;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -47,14 +48,16 @@ pub struct Repaired {
     pub master_hp: i16,
     /// Its hit points (`+0x278`).
     pub hp: f32,
-    /// Its hit point powerup and its room (`+0xa38`, `+0xa3c`).
-    pub hp_powerups: [f32; 2],
+    /// Its hit point powerup (`+0xa38`, `+0xa3c`).
+    pub hp_powerup: HpPowerup,
     /// An annex's main building (`+0xbb8`).
     pub main: Option<i32>,
     /// A main building's annexes (`+0xbc0`, its four slots in their order).
     pub annexes: Vec<i32>,
-    /// Its owner's attributes 270 and 271 ([`UNIT_REPAIR_COST`], [`BUILDING_REPAIR_COST`]).
-    pub cost_rates: [f32; 2],
+    /// Its owner's attribute 270 ([`UNIT_REPAIR_COST`]): a unit's repair cost rate.
+    pub unit_repair_cost: f32,
+    /// Its owner's attribute 271 ([`BUILDING_REPAIR_COST`]): a building's repair cost rate.
+    pub building_repair_cost: f32,
 }
 
 /// What a repair pays with: the repairer's player's masters and attributes (`FUN_14162fb60`
@@ -125,7 +128,7 @@ pub fn repair_building(
     if most < o.hp + amount {
         amount = most - o.hp;
     }
-    let share = o.cost_rates[1] * amount / most;
+    let share = o.building_repair_cost * amount / most;
     if crate::production::pay(payer.masters, o.master, share, &mut *payer.attributes)? {
         return repair_unit(set, idx, amount, payer);
     }
@@ -150,17 +153,17 @@ pub fn repair_unit(
     let o = &mut set[idx];
     let mut amount = amount;
     if COSTED.contains(&o.class) {
-        let [up, room] = o.hp_powerups;
-        let most = f32::from(o.master_hp) + room;
-        if most < ((room - up) + o.hp) + amount {
-            amount = most - ((room - up) + o.hp);
+        let most = f32::from(o.master_hp) + o.hp_powerup.max;
+        let now = o.hp_powerup.room() + o.hp;
+        if most < now + amount {
+            amount = most - now;
         }
-        let share = o.cost_rates[0] * amount / most;
+        let share = o.unit_repair_cost * amount / most;
         if !crate::production::pay(payer.masters, o.master, share, &mut *payer.attributes)? {
             return Ok(2);
         }
     }
-    let full = crate::combat::damage::heal_hp(&mut o.hp, &mut o.hp_powerups, o.master_hp, amount);
+    let full = crate::combat::damage::heal_hp(&mut o.hp, &mut o.hp_powerup, o.master_hp, amount);
     Ok(u8::from(full))
 }
 

@@ -16,4 +16,5 @@ pub mod sprite;
 pub(crate) mod teardown;
 pub mod unit;
 
+pub use self::hit_points::HpPowerup;
 pub use self::object_id::{ObjectId, ObjectKey};

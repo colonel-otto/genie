@@ -24,6 +24,7 @@ use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::{MoveTo, MoveToAction};
+use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
@@ -6625,15 +6626,21 @@ fn a_unit_inside_heals_up_to_its_hit_points() {
     assert_eq!(v.life.hp, 11.1);
     // a heal past the hit points stops at them, the powerup's room taking the rest
     v.life.hp = 24.95;
-    v.hp_powerups = [1.0, 2.0];
+    v.hp_powerup = HpPowerup {
+        taken: 1.0,
+        max: 2.0,
+    };
     v.heal(master.class, master.hit_points, 0.1).unwrap();
-    assert_eq!((v.life.hp, v.hp_powerups), (24.95f32 + 0.1, [1.0, 2.0]));
+    assert_eq!(
+        (v.life.hp, v.hp_powerup.taken, v.hp_powerup.max),
+        (24.95f32 + 0.1, 1.0, 2.0)
+    );
     // past them with the room: the overflow comes off the powerup, then a full unit holds
     // exactly its master's hit points
     v.life.hp = 26.95;
     v.heal(master.class, master.hit_points, 0.1).unwrap();
     assert_eq!(v.life.hp, 25.0);
-    assert_eq!(v.hp_powerups[0], 1.0 - (26.95f32 + 0.1 - 27.0));
+    assert_eq!(v.hp_powerup.taken, 1.0 - (26.95f32 + 0.1 - 27.0));
     // a paid class heals at a cost: not modelled
     let ship = Master {
         class: class::WARSHIP,
@@ -11584,7 +11591,8 @@ fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
         ..berserk.clone()
     };
     let mut powered = unit(10.0);
-    powered.regen_powerups = [5.0, 5.0];
+    powered.regen_powerup = 5.0;
+    powered.regen_stinger = 5.0;
     assert_eq!(regeneration_rate(&hero, &powered), 60.0);
     let not_hero = Master {
         hero_flag: 0x84,
@@ -11619,21 +11627,28 @@ fn a_hit_point_powerup_above_its_room_comes_off_the_hit_points() {
             hp,
             ..Lifecycle::default()
         },
-        hp_powerups: [up, room],
+        hp_powerup: HpPowerup {
+            taken: up,
+            max: room,
+        },
         ..Unit::default()
     };
     let mut u = with(100.0, 10.0, 4.0);
     u.clamp_hp_powerup();
-    assert_eq!((u.life.hp, u.hp_powerups), (94.0, [4.0, 4.0]));
+    let at_room = HpPowerup {
+        taken: 4.0,
+        max: 4.0,
+    };
+    assert_eq!((u.life.hp, u.hp_powerup), (94.0, at_room));
     let mut low = with(3.0, 10.0, 4.0);
     low.clamp_hp_powerup();
-    assert_eq!((low.life.hp, low.hp_powerups), (1.0, [4.0, 4.0]));
+    assert_eq!((low.life.hp, low.hp_powerup), (1.0, at_room));
     let mut nan = with(f32::NAN, 10.0, 4.0);
     nan.clamp_hp_powerup();
     assert_eq!(nan.life.hp, 1.0);
     let mut kept = with(100.0, 4.0, 4.0);
     kept.clamp_hp_powerup();
-    assert_eq!((kept.life.hp, kept.hp_powerups), (100.0, [4.0, 4.0]));
+    assert_eq!((kept.life.hp, kept.hp_powerup), (100.0, at_room));
 }
 
 /// `RGE_Combat_Object::update`: the attack timer runs down by dt times the object's rate

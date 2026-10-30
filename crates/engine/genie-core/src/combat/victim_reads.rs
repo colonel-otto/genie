@@ -1,6 +1,6 @@
 //! What a hit reads of its victim: the object's values and its relations to the attacker.
 
-use crate::combat::damage::Victim;
+use crate::combat::damage::{ElevationBonus, Victim};
 use crate::combat::victims::{is_trebuchet, paid_cost};
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
@@ -47,9 +47,12 @@ pub(crate) fn victim_of(
     let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
     let kind = master.kind;
     let attack_elevation = if 212 < attributes.len() {
-        [attributes[211], attributes[212]]
+        ElevationBonus {
+            higher: at(211),
+            lower: at(212),
+        }
     } else {
-        [0.0; 2]
+        ElevationBonus::default()
     };
     let defense = if master.terrain_bonus < 0 || u.life.inside.is_some() {
         Some(1.0)
@@ -84,7 +87,10 @@ pub(crate) fn victim_of(
         goto_sleep: u.life.goto_sleep,
         decay: u.life.master.map_or(0.0, |m| m.decay),
         player: p,
-        elevation: [at(272), at(273)],
+        elevation: ElevationBonus {
+            higher: at(272),
+            lower: at(273),
+        },
         attack_elevation,
         allied: [false; 2],
         uncertain: false,
@@ -135,7 +141,7 @@ pub(crate) fn victim_of(
             terrain: defense,
             armor_powerups: u.armor_powerups,
             armor_removed: u.armor_removed,
-            hp_powerups: u.hp_powerups,
+            hp_powerup: u.hp_powerup,
             kill_tasks: master
                 .tasks
                 .iter()

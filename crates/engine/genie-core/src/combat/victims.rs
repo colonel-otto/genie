@@ -266,7 +266,7 @@ pub(crate) fn write_back(c: &mut Step<'_>, v: &mut Victim) -> Result<Option<Kill
         m.decay = v.decay;
     }
     if let Some(a) = v.armored.as_ref() {
-        u.hp_powerups = a.hp_powerups;
+        u.hp_powerup = a.hp_powerup;
     }
     // a shield spends its charge
     u.charge = v.source.charge;

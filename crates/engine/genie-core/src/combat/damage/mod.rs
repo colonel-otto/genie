@@ -45,6 +45,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 #[cfg(test)]
 use crate::math::fmath;
+use crate::objects::HpPowerup;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -75,6 +76,17 @@ const RETALIATION_SCALE: f32 = crate::math::image::damage::RETALIATION_SCALE;
 /// A melee attacker (weapon range below 0.99, `DAT_142eb569c`) with an area effect tramples:
 /// its blast goes about itself (`FUN_1412115e0`).
 pub const BLAST_RANGE: f32 = crate::math::image::damage::BLAST_RANGE;
+/// What a player's attributes add to the elevation factor of a hit ([`elevation_factor`]): from
+/// higher up (attribute 211 for its own hits, 272 for the hits it takes) or from lower down (212,
+/// 273).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ElevationBonus {
+    /// What a hit from higher up adds.
+    pub higher: f32,
+    /// What a hit from lower down adds.
+    pub lower: f32,
+}
+
 /// A cone blast (its level's bit 7) reaches objects within half a facet of where its attacker
 /// faces (`DAT_142e7f384`, `DAT_142eb6e58`), or within 1.67 facets (`DAT_142f4fea8`) for a wide
 /// one (bit 5).
@@ -159,9 +171,9 @@ pub struct Victim {
     /// add them) and 211 and 212 (its own hits from higher or lower up add them).
     pub player: PlayerId,
     /// Its player's attributes 272 and 273: what a higher or lower attacker's hits add.
-    pub elevation: [f32; 2],
+    pub elevation: ElevationBonus,
     /// Its player's attributes 211 and 212: what its own hits from higher or lower up add.
-    pub attack_elevation: [f32; 2],
+    pub attack_elevation: ElevationBonus,
     /// The attacker's player counts its player as its own or allied (`FUN_141663d90` with the
     /// ally flag), and the other way round: a blast spares the first and scales its damage on
     /// the second by `friendly_fire_damage`.
@@ -290,13 +302,12 @@ pub struct Armored {
     /// (the terrain to restore, else the terrain; 0 counts as 1), 1 off the map; None when the
     /// slice lacks the map or the restriction.
     pub terrain: Option<f32>,
-    /// The object's armor powerups and armor removed (melee, pierce) and its hit point powerups
-    /// (`+0xa38`, `+0xa3c`, which absorb damage first).
+    /// The object's armor powerups (melee, pierce).
     pub armor_powerups: [i16; 2],
     /// The melee and pierce armor taken off it.
     pub armor_removed: [i16; 2],
-    /// Its hit point powerups (`+0xa38`, `+0xa3c`), which absorb damage first.
-    pub hp_powerups: [f32; 2],
+    /// Its hit point powerup (`+0xa38`, `+0xa3c`), which absorbs damage first.
+    pub hp_powerup: HpPowerup,
     /// Its master has a task of action type 0xa1 with a work value (a kill reward,
     /// `FUN_14120b5f0`).
     pub kill_tasks: bool,

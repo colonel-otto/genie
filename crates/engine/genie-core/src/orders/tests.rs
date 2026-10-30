@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Footprint;
 use crate::math::fmath::BVector;
+use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ClassId;
@@ -2007,7 +2008,10 @@ fn a_master_change_clears_the_powerups_but_the_hit_points_one() {
         reload_powerup: 0.5,
         reload_stinger: 0.25,
         work_rate_powerup: 0.15,
-        hp_powerups: [10.0, 20.0],
+        hp_powerup: HpPowerup {
+            taken: 10.0,
+            max: 20.0,
+        },
         armor_powerups: [1, 2],
         ..Unit::default()
     };
@@ -2021,8 +2025,14 @@ fn a_master_change_clears_the_powerups_but_the_hit_points_one() {
         (0.0, 0.0, 0.0)
     );
     assert_eq!(
-        (unit.hp_powerups, unit.armor_powerups),
-        ([10.0, 0.0], [0, 0])
+        (unit.hp_powerup, unit.armor_powerups),
+        (
+            HpPowerup {
+                taken: 10.0,
+                max: 0.0
+            },
+            [0, 0]
+        )
     );
     assert_eq!(unit.reload_stinger, 0.25);
 }

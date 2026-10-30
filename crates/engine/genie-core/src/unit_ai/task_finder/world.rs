@@ -107,15 +107,14 @@ pub(crate) fn task_target_with<'a>(
         return Ok(None);
     };
     let master = u.master(every, player)?;
-    let [powerup, max_powerup] = u.hp_powerups;
     Ok(Some(TaskTarget {
         id,
         master,
         player,
         state: u.life.state,
         held: (u.life.attribute_type, u.life.amount),
-        hp: u.life.hp + (max_powerup - powerup),
-        max_hp: f32::from(master.hit_points) + max_powerup,
+        hp: u.life.hp + u.hp_powerup.room(),
+        max_hp: f32::from(master.hit_points) + u.hp_powerup.max,
         attackable: u.attackable,
         pasture: u.pasture,
         top_action: u.top_action_kind(),

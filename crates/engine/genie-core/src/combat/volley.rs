@@ -63,7 +63,7 @@ impl Unit {
     ) -> Result<Option<crate::combat::damage::Kill>, GenieError> {
         self.life.hp = own.hp;
         if let Some(a) = own.armored.as_ref() {
-            self.hp_powerups = a.hp_powerups;
+            self.hp_powerup = a.hp_powerup;
         }
         self.charge = own.source.charge;
         self.charge_hit = own.source.charge_hit;

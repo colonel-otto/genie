@@ -401,15 +401,14 @@ impl World {
             .object(id)
             .ok_or(GenieError::unsupported("a target the slice does not hold"))?;
         let master = u.master(&self.masters, player)?;
-        let [powerup, max_powerup] = u.hp_powerups;
         Ok(TaskTarget {
             id,
             master,
             player,
             state: u.life.state,
             held: (u.life.attribute_type, u.life.amount),
-            hp: u.life.hp + (max_powerup - powerup),
-            max_hp: f32::from(master.hit_points) + max_powerup,
+            hp: u.life.hp + u.hp_powerup.room(),
+            max_hp: f32::from(master.hit_points) + u.hp_powerup.max,
             attackable: u.attackable,
             pasture: u.pasture,
             top_action: u.top_action_kind(),
@@ -446,7 +445,7 @@ const fn clear_powerups(unit: &mut Unit) {
     unit.range_powerup = 0.0;
     unit.reload_powerup = 0.0;
     unit.work_rate_powerup = 0.0;
-    unit.hp_powerups[1] = 0.0;
+    unit.hp_powerup.max = 0.0;
     unit.armor_powerups = [0; 2];
 }
 

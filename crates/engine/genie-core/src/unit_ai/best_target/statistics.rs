@@ -94,13 +94,13 @@ pub struct Candidate {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Statistics {
     /// `+0`, `+4`: the least and the most distance.
-    pub distance: [f32; 2],
+    pub distance: Bounds,
     /// `+8`, `+0xc`: the least and the most kill time.
-    pub kill_time: [f32; 2],
+    pub kill_time: Bounds,
     /// `+0x10`, `+0x14`: the moving objects' least and most distance.
-    pub moving_distance: [f32; 2],
+    pub moving_distance: Bounds,
     /// `+0x18`, `+0x1c`: the moving objects' least and most kill time.
-    pub moving_kill_time: [f32; 2],
+    pub moving_kill_time: Bounds,
     /// `+0x20`: the objects other than the current target.
     pub others: i32,
     /// `+0x24`: the moving objects.
@@ -124,10 +124,10 @@ impl Default for Statistics {
     /// −1, the counts 0, no closest moving object (−1 at the largest float).
     fn default() -> Self {
         Self {
-            distance: [f32::MAX, -1.0],
-            kill_time: [f32::MAX, -1.0],
-            moving_distance: [f32::MAX, -1.0],
-            moving_kill_time: [f32::MAX, -1.0],
+            distance: Bounds::RESET,
+            kill_time: Bounds::RESET,
+            moving_distance: Bounds::RESET,
+            moving_kill_time: Bounds::RESET,
             others: 0,
             moving: 0,
             armed: 0,
@@ -140,17 +140,37 @@ impl Default for Statistics {
     }
 }
 
-/// `low` takes `v` when above it (`COMISS low, v`, `JBE`: a NaN changes nothing).
-pub(super) fn least(low: &mut f32, v: f32) {
-    if *low > v {
-        *low = v;
-    }
+/// The least and the most of a value over the table's entries.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Bounds {
+    /// The least.
+    pub least: f32,
+    /// The most.
+    pub most: f32,
 }
 
-/// `high` takes `v` when below it (`COMISS v, high`, `JBE`).
-pub(super) fn most(high: &mut f32, v: f32) {
-    if v > *high {
-        *high = v;
+impl Bounds {
+    /// `bestUnitToAttack`'s reset: the least the largest float, the most −1.
+    pub const RESET: Self = Self {
+        least: f32::MAX,
+        most: -1.0,
+    };
+
+    /// `v` joins the bounds: the least takes it when above it (`COMISS least, v`, `JBE`: a NaN
+    /// changes nothing), then the most when below it (`COMISS v, most`, `JBE`).
+    pub fn take(&mut self, v: f32) {
+        if self.least > v {
+            self.least = v;
+        }
+        if v > self.most {
+            self.most = v;
+        }
+    }
+
+    /// The most less the least.
+    #[must_use]
+    pub fn span(self) -> f32 {
+        self.most - self.least
     }
 }
 
@@ -199,8 +219,7 @@ impl Statistics {
         if !(c.reach < c.distance || c.reach.is_nan() || c.distance.is_nan()) {
             self.in_reach += 1;
         }
-        least(&mut self.distance[0], c.distance);
-        most(&mut self.distance[1], c.distance);
+        self.distance.take(c.distance);
         e.kill_time = if crate::math::fmath::below_or_unordered(EPSILON, c.damage) {
             (c.hp / c.damage) / c.reload
         } else if c.workable {
@@ -208,14 +227,11 @@ impl Statistics {
         } else {
             NEVER
         };
-        least(&mut self.kill_time[0], e.kill_time);
-        most(&mut self.kill_time[1], e.kill_time);
+        self.kill_time.take(e.kill_time);
         e.bonus = if c.current { NO_DAMAGE_KILL } else { 0.0 };
         if 0.0 < c.speed {
-            least(&mut self.moving_distance[0], c.distance);
-            most(&mut self.moving_distance[1], c.distance);
-            least(&mut self.moving_kill_time[0], e.kill_time);
-            most(&mut self.moving_kill_time[1], e.kill_time);
+            self.moving_distance.take(c.distance);
+            self.moving_kill_time.take(e.kill_time);
         }
         self.entries.push(e);
     }
@@ -239,13 +255,13 @@ impl Statistics {
         (mode, factor): (i32, i32),
         armored: &mut dyn FnMut(i32) -> Result<bool, crate::GenieError>,
     ) -> Result<(), crate::GenieError> {
-        let kill_span = self.kill_time[1] - self.kill_time[0];
-        let distance_span = self.distance[1] - self.distance[0];
-        let moving_kill_span = self.moving_kill_time[1] - self.moving_kill_time[0];
-        let moving_distance_span = self.moving_distance[1] - self.moving_distance[0];
-        let (kill_low, distance_low) = (self.kill_time[0], self.distance[0]);
+        let kill_span = self.kill_time.span();
+        let distance_span = self.distance.span();
+        let moving_kill_span = self.moving_kill_time.span();
+        let moving_distance_span = self.moving_distance.span();
+        let (kill_low, distance_low) = (self.kill_time.least, self.distance.least);
         let (moving_kill_low, moving_distance_low) =
-            (self.moving_kill_time[0], self.moving_distance[0]);
+            (self.moving_kill_time.least, self.moving_distance.least);
         for e in &mut self.entries {
             let top = if mode == 1 {
                 factor as f32 * PER_CENT
@@ -378,4 +394,23 @@ pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: u32) -> [f32;
         }
     }
     w
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::unit_ai::best_target::Bounds;
+
+    /// The bounds start reset, take a value as both least and most, widen by each value beyond
+    /// them, pass over a NaN, and span the most less the least.
+    #[test]
+    fn bounds_widen_by_each_value_beyond_them_and_pass_over_a_nan() {
+        let mut b = Bounds::RESET;
+        assert_eq!((b.least, b.most), (f32::MAX, -1.0));
+        b.take(3.0);
+        assert_eq!((b.least, b.most), (3.0, 3.0));
+        b.take(1.0);
+        b.take(7.0);
+        b.take(f32::NAN);
+        assert_eq!((b.least, b.most, b.span()), (1.0, 7.0, 6.0));
+    }
 }

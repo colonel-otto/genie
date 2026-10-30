@@ -6,6 +6,7 @@ use crate::construction::build::Construction;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
@@ -302,9 +303,10 @@ impl World {
             capture_flag: 0,
             annex_of: None,
             group: crate::groups::GroupLink::default(),
-            hp_powerups: [0.0; 2],
+            hp_powerup: HpPowerup::default(),
             regen_timer: 0.0,
-            regen_powerups: [0.0; 2],
+            regen_powerup: 0.0,
+            regen_stinger: 0.0,
             missile: None,
             attack_count: 0,
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire

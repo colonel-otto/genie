@@ -29,7 +29,7 @@ impl Victim {
         self.armored
             .as_ref()
             .filter(|_| self.tribe())
-            .map_or(self.hp, |a| (a.hp_powerups[1] - a.hp_powerups[0]) + self.hp)
+            .map_or(self.hp, |a| a.hp_powerup.room() + self.hp)
     }
 
     /// Slot 0xc8, its most hit points: a combat unit's or building's (`FUN_141202bb0`) hit point
@@ -43,7 +43,7 @@ impl Victim {
         self.armored
             .as_ref()
             .filter(|_| self.tribe())
-            .map_or(hp, |a| hp + a.hp_powerups[1])
+            .map_or(hp, |a| hp + a.hp_powerup.max)
     }
 
     /// `FUN_141188880`: the share of its most hit points it has (slot 0xc0, at most slot 0xc8 by

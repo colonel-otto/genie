@@ -1,6 +1,7 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
 use crate::map::Position;
+use crate::objects::HpPowerup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::ids::WONDER;
@@ -92,15 +93,20 @@ pub struct Unit {
     pub group: crate::groups::GroupLink,
     /// `mHitpointsPowerup` and `mHitpointsMaxPowerup` (`+0xa38`, `+0xa3c`), which the task finder
     /// adds to the hit points.
-    pub hp_powerups: [f32; 2],
+    pub hp_powerup: HpPowerup,
     /// `berserker_timer` (`+0xa10`): the seconds the regeneration holds back toward its next
     /// whole hit point ([`Unit::regenerate`]).
     pub regen_timer: f32,
-    /// `mRegenerationRatePowerup` and `mRegenerationStinger` (`+0xa34`, `+0xb3c`), which the
-    /// regeneration rate adds to its master's ([`regeneration_rate`]).
+    /// `mRegenerationRatePowerup` (`+0xa34`), which the regeneration rate adds to its master's
+    /// ([`regeneration_rate`]).
     ///
     /// [`regeneration_rate`]: crate::objects::hit_points::regeneration_rate
-    pub regen_powerups: [f32; 2],
+    pub regen_powerup: f32,
+    /// `mRegenerationStinger` (`+0xb3c`), which the regeneration rate adds last
+    /// ([`regeneration_rate`]).
+    ///
+    /// [`regeneration_rate`]: crate::objects::hit_points::regeneration_rate
+    pub regen_stinger: f32,
     /// A missile's own part with its action ([`crate::combat::missile`]).
     pub missile: Option<crate::combat::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`); a missile's

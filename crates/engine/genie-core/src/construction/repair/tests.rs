@@ -3,6 +3,7 @@ use crate::movement::Me;
 use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, WalkTo,
 };
+use crate::objects::HpPowerup;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -138,10 +139,11 @@ fn house(id: i32, hp: f32) -> Repaired {
         master: ids::HOUSE,
         master_hp: 550,
         hp,
-        hp_powerups: [0.0; 2],
+        hp_powerup: HpPowerup::default(),
         main: None,
         annexes: Vec::new(),
-        cost_rates: [0.5, 0.15],
+        unit_repair_cost: 0.5,
+        building_repair_cost: 0.15,
     }
 }
 

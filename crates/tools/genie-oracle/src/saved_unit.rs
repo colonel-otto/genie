@@ -9,6 +9,7 @@ use crate::{
 use genie_core::GenieError;
 use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
+use genie_core::objects::HpPowerup;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
 use genie_core::objects::unit::Unit;
@@ -72,18 +73,18 @@ pub(super) fn unit(
             .map(|b| b.mupt_linked_object_references_linked_owner_id)
             .filter(|&owner| owner != -1),
         group: group_link(s),
-        hp_powerups: object
-            .combat()
-            .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
+        hp_powerup: object.combat().map_or(HpPowerup::NONE, |c| HpPowerup {
+            taken: c.hitpoints_powerup,
+            max: c.hitpoints_max_powerup,
+        }),
         regen_timer: object.combat().map_or(0.0, |c| c.berserker_timer),
         // a building's +0x9e8 is its construction's
         builders: object
             .combat()
             .filter(|_| object.tribe_building_object.is_none())
             .map_or(0, |c| c.num_builders),
-        regen_powerups: object.combat().map_or([0.0; 2], |c| {
-            [c.regeneration_rate_powerup, c.regeneration_stinger]
-        }),
+        regen_powerup: object.combat().map_or(0.0, |c| c.regeneration_rate_powerup),
+        regen_stinger: object.combat().map_or(0.0, |c| c.regeneration_stinger),
         workers: s.worker_num,
         last_human_order: s.last_human_order_time,
         town_bell,

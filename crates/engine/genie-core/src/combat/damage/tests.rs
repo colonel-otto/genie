@@ -32,6 +32,7 @@ fn a_building_s_relics_scale_its_elevation_factor() {
 
 use super::*;
 use crate::combat::damage::armor::class_armor;
+use crate::objects::HpPowerup;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -222,7 +223,10 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
     );
     assert_eq!(v.hp_share(true), 0.0);
     v.hp = 10.0;
-    v.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
+    v.armored.as_mut().unwrap().hp_powerup = HpPowerup {
+        taken: 2.0,
+        max: 5.0,
+    };
     assert_eq!((v.shown_hp(), v.most_hp()), (13.0, 30.0));
     assert_eq!(v.hp_share(false), 13.0 / 30.0);
     assert_eq!(v.hp_share(true), 1.0 - 13.0 / 30.0);
@@ -231,13 +235,19 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
     let mut rge = hunter();
     rge.kind = master_type::RGE_COMBAT;
     rge.hp = 10.0;
-    rge.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
+    rge.armored.as_mut().unwrap().hp_powerup = HpPowerup {
+        taken: 2.0,
+        max: 5.0,
+    };
     assert_eq!((rge.shown_hp(), rge.most_hp()), (10.0, 25.0));
     let mut none = hunter();
     none.master_hp = 0;
     assert_eq!((none.hp_share(false), none.hp_share(true)), (0.0, 0.0));
     let mut nan = hunter();
-    nan.armored.as_mut().unwrap().hp_powerups = [0.0, f32::NAN];
+    nan.armored.as_mut().unwrap().hp_powerup = HpPowerup {
+        taken: 0.0,
+        max: f32::NAN,
+    };
     assert!(nan.hp_share(false).is_nan());
 }
 
@@ -1067,26 +1077,31 @@ fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
     assert_eq!(all.map(|t| t.id), [5, 7, 3]);
 }
 
+/// A hit point powerup that took `taken` of its most `max`.
+const fn pu(taken: f32, max: f32) -> HpPowerup {
+    HpPowerup { taken, max }
+}
+
 /// `FUN_141203be0`: hit points gain up to the master's plus the powerup room; the overflow
 /// comes off the powerup, never below 0; a powerup above its room first takes the room; at
 /// its most a gain only takes off the powerup.
 #[test]
 fn a_gain_fills_hit_points_and_its_overflow_takes_off_the_powerup() {
     let mut hp = 50.0;
-    let mut ups = [0.0, 0.0];
+    let mut ups = pu(0.0, 0.0);
     gain_hp(&mut hp, &mut ups, 60, 5.0);
-    assert_eq!((hp, ups), (55.0, [0.0, 0.0]));
+    assert_eq!((hp, ups), (55.0, pu(0.0, 0.0)));
     gain_hp(&mut hp, &mut ups, 60, 10.0);
-    assert_eq!((hp, ups), (60.0, [0.0, 0.0]));
+    assert_eq!((hp, ups), (60.0, pu(0.0, 0.0)));
     let mut hp = 65.0;
-    let mut ups = [8.0, 10.0];
+    let mut ups = pu(8.0, 10.0);
     gain_hp(&mut hp, &mut ups, 60, 10.0);
-    assert_eq!((hp, ups), (70.0, [3.0, 10.0]));
+    assert_eq!((hp, ups), (70.0, pu(3.0, 10.0)));
     gain_hp(&mut hp, &mut ups, 60, 5.0);
-    assert_eq!((hp, ups), (70.0, [0.0, 10.0]));
-    let mut ups = [12.0, 10.0];
+    assert_eq!((hp, ups), (70.0, pu(0.0, 10.0)));
+    let mut ups = pu(12.0, 10.0);
     gain_hp(&mut hp, &mut ups, 60, 0.0);
-    assert_eq!(ups, [10.0, 10.0]);
+    assert_eq!(ups, pu(10.0, 10.0));
 }
 
 /// `FUN_141193b30`: a loss leaves at least 1 hit point; full hit points (room less powerup
@@ -1095,7 +1110,7 @@ fn a_gain_fills_hit_points_and_its_overflow_takes_off_the_powerup() {
 #[test]
 fn a_heal_to_full_holds_the_master_s_hit_points() {
     let mut hp = 30.0;
-    let mut ups = [0.0; 2];
+    let mut ups = HpPowerup::default();
     assert!(!heal_hp(&mut hp, &mut ups, 60, 10.0));
     assert_eq!(hp, 40.0);
     assert!(heal_hp(&mut hp, &mut ups, 60, 25.0));
@@ -1104,11 +1119,11 @@ fn a_heal_to_full_holds_the_master_s_hit_points() {
     assert!(!heal_hp(&mut hp, &mut ups, 60, -3.0));
     assert_eq!(hp, 1.0);
     let mut hp = 55.0;
-    let mut ups = [5.0, 5.0];
+    let mut ups = pu(5.0, 5.0);
     assert!(!heal_hp(&mut hp, &mut ups, 60, 4.0));
     assert_eq!(hp, 59.0);
     let mut hp = f32::NAN;
-    assert!(!heal_hp(&mut hp, &mut [0.0; 2], 60, 1.0));
+    assert!(!heal_hp(&mut hp, &mut HpPowerup::default(), 60, 1.0));
 }
 
 /// The blast's ledger (`+0xbb8`): an annex keeps its damage on its main building among the

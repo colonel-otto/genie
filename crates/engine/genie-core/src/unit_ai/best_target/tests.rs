@@ -43,10 +43,11 @@ fn the_statistics_count_bound_and_time_each_object() {
         armed: false,
         ..candidate(3, 7.0, 2.0)
     });
-    assert_eq!(st.distance, [0.5, 7.0]);
-    assert_eq!(st.kill_time, [5.0, f32::MAX]);
-    assert_eq!(st.moving_distance, [3.0, 7.0]);
-    assert_eq!(st.moving_kill_time, [5.0, f32::MAX]);
+    let bounds = |least, most| Bounds { least, most };
+    assert_eq!(st.distance, bounds(0.5, 7.0));
+    assert_eq!(st.kill_time, bounds(5.0, f32::MAX));
+    assert_eq!(st.moving_distance, bounds(3.0, 7.0));
+    assert_eq!(st.moving_kill_time, bounds(5.0, f32::MAX));
     assert_eq!((st.others, st.moving, st.armed, st.in_reach), (2, 2, 2, 1));
     assert_eq!(st.by_category[1], 2);
     assert_eq!(st.closest_moving, (3.0, 1));

@@ -328,17 +328,15 @@ fn repaired(
         master: om.id,
         master_hp: om.hit_points,
         hp: o.life.hp,
-        hp_powerups: o.hp_powerups,
+        hp_powerup: o.hp_powerup,
         main: if om.kind == BUILDING {
             o.annex_of
         } else {
             None
         },
         annexes,
-        cost_rates: [
-            rate(crate::construction::repair::UNIT_REPAIR_COST),
-            rate(crate::construction::repair::BUILDING_REPAIR_COST),
-        ],
+        unit_repair_cost: rate(crate::construction::repair::UNIT_REPAIR_COST),
+        building_repair_cost: rate(crate::construction::repair::BUILDING_REPAIR_COST),
     })
 }
 
@@ -355,7 +353,7 @@ fn repair_write_back(
         }
         if let Some((_, u)) = w.object_mut(now.id) {
             u.life.hp = now.hp;
-            u.hp_powerups = now.hp_powerups;
+            u.hp_powerup = now.hp_powerup;
         }
     }
 }

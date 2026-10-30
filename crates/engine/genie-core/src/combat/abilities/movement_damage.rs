@@ -279,7 +279,7 @@ impl World {
         u.life.hp = v.hp;
         u.life.amount = v.amount;
         if let Some(a) = v.armored.as_ref() {
-            u.hp_powerups = a.hp_powerups;
+            u.hp_powerup = a.hp_powerup;
         }
         if killed && b.kind == COMBAT {
             self.count_kill(b.id, owner.index())?;
