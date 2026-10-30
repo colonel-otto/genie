@@ -211,7 +211,7 @@ pub(crate) fn scan_livestock(
             if !c.w.spatial.sees_tile(new, x, y) {
                 continue;
             }
-            match livestock_on(c, (x, y), taken)[..] {
+            match livestock_on(c, (x, y), taken)?[..] {
                 [] => {}
                 [id] => {
                     if let Some(position) = take_livestock(c, id, new)? {
@@ -232,8 +232,8 @@ pub(crate) fn scan_livestock(
 
 /// The scan's finds on tile (`x`, `y`): Gaia's livestock in state 2 of the updating object's
 /// player's list whose centre is on the tile, not yet `taken`.
-fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
-    OthersRef::of(&c.w.players, c.player)
+fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Result<Vec<i32>, GenieError> {
+    Ok(OthersRef::of(&c.w.players, c.player)?
         .own_iter()
         .filter(|u| {
             let [ux, uy, _] = u.position();
@@ -247,7 +247,7 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
                     .is_some_and(|p| p.class == class::LIVESTOCK && p.player == 0)
         })
         .map(|u| u.id)
-        .collect()
+        .collect())
 }
 
 /// The scan takes livestock `id` for `new`: out of its slot while its stop reaches the view, as

@@ -78,7 +78,7 @@ impl Unit {
         let (kept, let_go) = second_target_checked(
             site,
             held,
-            state_of(site, OthersRef::of(&c.w.players, c.player)),
+            state_of(site, OthersRef::of(&c.w.players, c.player)?),
         );
         self.actions.gather_mut().ok_or(NO_GATHER)?.carry_to = kept;
         if let Some(t) = let_go {
@@ -251,7 +251,7 @@ impl Unit {
         reads: &crate::gathering::gather::GatherReads,
         by: Releaser,
     ) -> Result<HeadCode, GenieError> {
-        let mut victim = victim(c, gather.target);
+        let mut victim = victim(c, gather.target)?;
         let old = (gather.target, gather.carry_to);
         let next = gather.update(c, self, me, victim.as_mut(), reads);
         self.put_gather(gather);
@@ -312,7 +312,7 @@ impl Unit {
     /// with drop sites (`+0x7a0`) the one `FUN_1411671e0` finds from the unit (inside others too:
     /// [`Unit::drop_site_from`]), 0 when it finds none; −1 for a master without.
     pub(crate) fn gather_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let others = OthersRef::of(&c.w.players, c.player);
+        let others = OthersRef::of(&c.w.players, c.player)?;
         let gather = self.actions.gather().ok_or(NO_GATHER)?;
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
         let master = self.master(&c.w.masters, c.player)?;

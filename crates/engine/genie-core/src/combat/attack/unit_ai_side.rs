@@ -119,7 +119,7 @@ impl UnitView<'_, '_> {
             arms,
             visible,
             target_owner: t.player,
-            ready: self.ready_reads(target, master, ai),
+            ready: self.ready_reads(target, master, ai)?,
         };
         let unit = &mut *self.unit;
         let (attack, posted) = crate::combat::attack::Attack::command(self.c, unit, &cmd)?;
@@ -199,7 +199,7 @@ impl UnitView<'_, '_> {
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
         let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
-            let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)
+            let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)?
                 .get(id)
                 .ok_or(NOT_HELD)?;
             let m = player_master(&self.c.w.masters, p.player, p.master).ok_or(NOT_HELD)?;
@@ -213,7 +213,7 @@ impl UnitView<'_, '_> {
             })
         };
         let target_mark = mark(target, t)?;
-        let main = match owner_view(&self.c.w.players, self.c.player, self.new_owner)
+        let main = match owner_view(&self.c.w.players, self.c.player, self.new_owner)?
             .get(target)
             .and_then(|u| u.annex_of)
         {
@@ -254,33 +254,35 @@ impl UnitView<'_, '_> {
     /// objects or another player's; None for an object the view does not hold (the owner's
     /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
     /// it does not hold).
-    fn victim_of_target(&self, id: i32) -> Option<Victim> {
-        let (q, t) = owner_view(&self.c.w.players, self.c.player, self.new_owner).find(id)?;
-        let attributes = if owner_view(&self.c.w.players, self.c.player, self.new_owner)
-            .own(id)
-            .is_some()
-        {
+    fn victim_of_target(&self, id: i32) -> Result<Option<Victim>, GenieError> {
+        let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
+        let Some((q, t)) = view.find(id) else {
+            return Ok(None);
+        };
+        let attributes = if view.own(id).is_some() {
             &self.c.w.players[self.player].attributes
         } else {
-            &owner_view(&self.c.w.players, self.c.player, self.new_owner)
-                .players()
-                .player(q)?
-                .attributes[..]
+            let Some(owner) = view.players().player(q) else {
+                return Ok(None);
+            };
+            &owner.attributes[..]
         };
-        let master = t.master(&self.c.w.masters, q).ok()?;
+        let Ok(master) = t.master(&self.c.w.masters, q) else {
+            return Ok(None);
+        };
         let dip = SideWorld {
             player: self.player,
             relations: &self.c.w.players[self.player].relations,
-            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            foreign: view.players(),
             drop_sites: &self.c.w.drop_sites,
         };
-        Some(victim_in(
+        Ok(Some(victim_in(
             t,
             (q, master, attributes),
             (self.player, &dip),
             &self.c.w.spatial,
             self.c.w.mode_680,
-        ))
+        )))
     }
 
     /// What the start's `set_state(6)` of the unit's new Attack on `target` reads
@@ -293,8 +295,10 @@ impl UnitView<'_, '_> {
         target: i32,
         master: &crate::objects::masters::Master,
         ai: &UnitAi,
-    ) -> Option<crate::combat::attack::ReadyReads> {
-        let victim = self.victim_of_target(target)?;
+    ) -> Result<Option<crate::combat::attack::ReadyReads>, GenieError> {
+        let Some(victim) = self.victim_of_target(target)? else {
+            return Ok(None);
+        };
         let unit = &*self.unit;
         let own = victim_of(
             unit,
@@ -311,10 +315,10 @@ impl UnitView<'_, '_> {
             Some(ai),
             (self.computer, self.c.w.world_time),
         );
-        Some(crate::combat::attack::ReadyReads {
+        Ok(Some(crate::combat::attack::ReadyReads {
             reads,
             fight: Fight { victim, own },
-        })
+        }))
     }
 
     /// The attack command's sight of its target `t` (of master `t_master`): its tile seen by the

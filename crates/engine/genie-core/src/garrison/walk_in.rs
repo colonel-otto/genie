@@ -462,7 +462,7 @@ impl EnterAction {
         }
         let walking = {
             let w = &mut *c.w;
-            let (tp, target) = OthersRef::of(&w.players, c.player)
+            let (tp, target) = OthersRef::of(&w.players, c.player)?
                 .find(self.target)
                 .ok_or(GenieError::unreachable(
                     "an Enter's held target gone in its update",

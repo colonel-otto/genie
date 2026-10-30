@@ -81,7 +81,7 @@ impl Unit {
         c: &Step<'_>,
         action: BuildAction,
     ) -> Result<BuildReads, GenieError> {
-        let others = OthersRef::of(&c.w.players, c.player);
+        let others = OthersRef::of(&c.w.players, c.player)?;
         let target = action.target;
         let foundation = others.own(target);
         let site = foundation

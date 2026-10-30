@@ -53,7 +53,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
         let target_state = readable(c, action.target).map(|(_, u, _)| u.life.state);
-        let shooter_state = OthersRef::of(&c.w.players, c.player)
+        let shooter_state = OthersRef::of(&c.w.players, c.player)?
             .own(action.fired_from)
             .map(|u| u.life.state);
         if action.target != -1 && target_state.is_none() {
@@ -315,7 +315,7 @@ impl Unit {
         if action.fired_from == -1 {
             return self.own_strike(action, fired.by, c);
         }
-        let mut victim = victim(c, action.target);
+        let mut victim = victim(c, action.target)?;
         let (p, mode_680) = (c.player, c.w.mode_680);
         let World {
             players,
@@ -401,7 +401,7 @@ impl Unit {
         );
         // the missile's own part is out of the unit while it flies
         own.source.fired_from = fired_from;
-        let mut victim = victim(c, action.target).ok_or(GenieError::unsupported(
+        let mut victim = victim(c, action.target)?.ok_or(GenieError::unsupported(
             "a missile's target the slice does not hold live",
         ))?;
         let victim = &mut victim;
@@ -450,7 +450,7 @@ impl Unit {
         }
         if action.result != 2 {
             let blaster = if !charge && action.fired_from != -1 {
-                OthersRef::of(&c.w.players, c.player)
+                OthersRef::of(&c.w.players, c.player)?
                     .own(action.fired_from)
                     .map(|u| u.life.master_id)
             } else {
@@ -486,7 +486,7 @@ impl Unit {
         if action.state == DONE || action.target == -1 || action.met.contains(&action.target) {
             return Ok(());
         }
-        let v = victim(c, action.target).ok_or(GenieError::unsupported(
+        let v = victim(c, action.target)?.ok_or(GenieError::unsupported(
             "a missile's target the slice does not hold live",
         ))?;
         let mode = stats.hit_mode;

@@ -83,7 +83,7 @@ impl Unit {
             self.ai.as_ref(),
             (computer, c.w.world_time),
         );
-        let victim = victim(c, attack.target).ok_or(GenieError::unsupported(
+        let victim = victim(c, attack.target)?.ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
         let own = own.ok_or(crate::world::ATTACKER_MASTER)?;

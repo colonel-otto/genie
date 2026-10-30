@@ -139,7 +139,10 @@ fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
     mover.pauses = vec![(600, 0.5), (601, 0.5), (4242, 0.5)];
     let paused = in_update(&mut t, (1, 0), 50, |u, c| {
         u.after_actions(c)?;
-        let (_, bush) = OthersRef::of(&c.w.players, c.player).find(600).unwrap();
+        let (_, bush) = OthersRef::of(&c.w.players, c.player)
+            .unwrap()
+            .find(600)
+            .unwrap();
         let level = bush.body.mover().unwrap().paths[0].pause_time;
         Ok((level, c.w.spatial.gait(600).and_then(|g| g.pause)))
     })

@@ -44,7 +44,7 @@ impl Unit {
         let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;
         let herd = self.herd_for(
             c,
-            OthersRef::of(&c.w.players, c.player),
+            OthersRef::of(&c.w.players, c.player)?,
             &hunt,
             master,
             &victim,
@@ -245,7 +245,7 @@ fn hunt_victim(c: &Step<'_>, action: &HuntAction) -> Result<Victim, GenieError> 
             id: -1,
             ..Victim::default()
         }),
-        t => victim(c, t).ok_or(GenieError::unsupported(
+        t => victim(c, t)?.ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         )),
     }

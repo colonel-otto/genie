@@ -186,7 +186,7 @@ impl Unit {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let (owner, resource) =
-            self.found_resource(c, OthersRef::of(&c.w.players, c.player), found)?;
+            self.found_resource(c, OthersRef::of(&c.w.players, c.player)?, found)?;
         let master = self.master(&c.w.masters, c.player)?;
         let (computer, farm_stops, held) = (
             c.w.players[c.player].computer,
@@ -298,7 +298,7 @@ impl Unit {
             construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
-        if let Some(site) = self.gather_drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {
+        if let Some(site) = self.gather_drop_off_in(w, OthersRef::of(&c.w.players, c.player)?)? {
             let by = self.releaser(c);
             crate::world::lets::take(c, self, site, by);
         }

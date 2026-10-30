@@ -344,7 +344,7 @@ impl World {
             construction_rate: player.construction_rate,
             groups: &self.groups,
         };
-        let others = crate::world::others::OthersRef::of(&self.players, p);
+        let others = crate::world::others::OthersRef::of(&self.players, p)?;
         let result = if by == DropOffBy::Hunt {
             unit.drop_off_in(world, others)
         } else {

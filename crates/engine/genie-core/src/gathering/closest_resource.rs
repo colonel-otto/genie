@@ -193,7 +193,7 @@ impl UnitView<'_, '_> {
             player: self.player,
             spatial: &mut self.c.w.spatial,
             zones: &mut self.c.w.zones,
-            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             every: &self.c.w.masters,
             masters: self.c.w.masters.get(self.player),
             plan: Planning {
@@ -208,14 +208,14 @@ impl UnitView<'_, '_> {
         let (id, _) = closest_resource_of(
             self.unit,
             &mut w,
-            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             (search.kind, search.cap, search.site),
             (search.current, search.min_state, search.point),
         )?;
         if id == -1 {
             return Ok(None);
         }
-        let (owner, u) = owner_view(&self.c.w.players, self.c.player, self.new_owner)
+        let (owner, u) = owner_view(&self.c.w.players, self.c.player, self.new_owner)?
             .find(id)
             .ok_or(GenieError::unsupported(
                 "a resource found that the slice does not hold",
@@ -255,7 +255,7 @@ impl Unit {
         cap: i32,
         site: i32,
     ) -> Result<i32, GenieError> {
-        let others = OthersRef::of(&c.w.players, c.player);
+        let others = OthersRef::of(&c.w.players, c.player)?;
         let current = self
             .ai
             .as_ref()

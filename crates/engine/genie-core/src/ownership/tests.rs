@@ -39,6 +39,7 @@ fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
     let released = in_update(&mut t, (1, 0), 50, |u, c| {
         u.capture_stop(c, class)?;
         let gone = OthersRef::of(&c.w.players, c.player)
+            .unwrap()
             .foreign_iter()
             .filter(|(_, b)| b.workers == 0);
         Ok(gone.map(|(_, b)| b.id).collect())

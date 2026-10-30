@@ -11,14 +11,17 @@ use crate::unit_ai::world_view::{UnitView, WorldPicker};
 impl UnitView<'_, '_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit
     /// ([`WorldPicker`]), with `seeker` and without a terrain restriction.
-    pub(super) fn picker(&self, seeker: Option<crate::unit_ai::Seeker>) -> WorldPicker<'_> {
-        WorldPicker {
+    pub(super) fn picker(
+        &self,
+        seeker: Option<crate::unit_ai::Seeker>,
+    ) -> Result<WorldPicker<'_>, GenieError> {
+        Ok(WorldPicker {
             attacker: &self.attacker,
             seeker,
             me: self.unit.id,
             player: self.player,
-            others: owner_view(&self.c.w.players, self.c.player, self.new_owner),
-            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            others: owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             every: &self.c.w.masters,
             restriction: -1,
             unit: &*self.unit,
@@ -27,7 +30,31 @@ impl UnitView<'_, '_> {
             ai_settings: self.ai_settings,
             now: self.c.w.world_time,
             mode_680: self.c.w.mode_680,
-        }
+        })
+    }
+
+    /// The attack test of `may_attack` on a target the view holds: its class and place when
+    /// `seeker` can attack it.
+    pub(super) fn attack_check(
+        &self,
+        target: i32,
+        seeker: &crate::unit_ai::Seeker,
+    ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+        let picker = self.picker(Some(*seeker))?;
+        let (t, _) = picker.target(&self.c.w.spatial, target)?;
+        Ok(
+            crate::unit_ai::can_attack(&self.attacker, seeker, &t)?
+                .then_some((t.class, t.position)),
+        )
+    }
+
+    /// Whether the unit's view of the world (live objects, owner-first) holds object `id`.
+    pub(super) fn view_holds(&self, id: i32) -> Result<bool, GenieError> {
+        Ok(
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)?
+                .get(id)
+                .is_some(),
+        )
     }
 
     /// `AskForHelp`'s tests of a helper `u` (of player `owner`, master `m`) that passed its
@@ -47,7 +74,7 @@ impl UnitView<'_, '_> {
         m: &crate::objects::masters::Master,
         attacker: i32,
     ) -> Result<bool, GenieError> {
-        let others = owner_view(&self.c.w.players, self.c.player, self.new_owner);
+        let others = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
         let find = |id: i32| others.find(id);
         let Some(ai) = u.ai.as_ref() else {
             return Ok(false);
@@ -81,7 +108,7 @@ impl UnitView<'_, '_> {
         let computer = if owner == self.player {
             self.computer
         } else {
-            owner_view(&self.c.w.players, self.c.player, self.new_owner)
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)?
                 .players()
                 .player(owner)
                 .is_some_and(|q| q.computer)
@@ -108,7 +135,7 @@ impl UnitView<'_, '_> {
                     .map(|tm| tm.kind)
             })
             .flatten();
-        let picker = self.picker(None);
+        let picker = self.picker(None)?;
         let (target, _) = picker.target(&self.c.w.spatial, attacker)?;
         crate::unit_ai::can_attack(&me, &ai.seeker_with(target_kind), &target)
     }

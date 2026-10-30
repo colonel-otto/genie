@@ -142,7 +142,7 @@ impl Unit {
             attack_listed: self.actions.attack().is_some(),
             units: self.named_units(
                 c,
-                changed_view(OthersRef::of(&c.w.players, c.player), view.new_owner),
+                changed_view(OthersRef::of(&c.w.players, c.player)?, view.new_owner),
                 view,
                 master,
             )?,
@@ -157,7 +157,7 @@ impl Unit {
                     moving: g.motion.moving(),
                     member_moving: self.body.mover().is_some_and(Mover::is_moving),
                 }),
-            top_target: self.top_target_seen(c, OthersRef::of(&c.w.players, c.player)),
+            top_target: self.top_target_seen(c, OthersRef::of(&c.w.players, c.player)?),
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.body.mover().is_some_and(|m| m.attack_moving),
             moved_at: {

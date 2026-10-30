@@ -10,6 +10,7 @@ use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
 use crate::unit_ai::world_view::owner_view;
+use crate::world::others::OthersRef;
 
 impl UnitView<'_, '_> {
     /// Slot 0x380's answer (forced) on `foundation` without its effects, which `BuildObject`
@@ -17,7 +18,8 @@ impl UnitView<'_, '_> {
     /// foundation the world does not hold (`FUN_1415417a0`), 1 with a Build on top (its slot
     /// 0x48), else whether slot 0x820 finds a task ([`UnitView::build_found`]).
     pub(crate) fn builds_on(&self, foundation: i32) -> Result<bool, GenieError> {
-        if self.find_object(foundation).is_none() {
+        let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
+        if self.find_in(view, foundation).is_none() {
             return Ok(false);
         }
         // The Build action's type, which word 9 adds.
@@ -30,18 +32,19 @@ impl UnitView<'_, '_> {
     /// Object `id` as slot 0x380 finds it (`FUN_1415417a0`): the unit, the player's live list,
     /// another player's ([`crate::unit_ai::world_view::Foreign::find`]). The owner's sleeping
     /// list holds only objects of a type below 30, never a building.
-    fn find_object(&self, id: i32) -> Option<(usize, &Unit)> {
+    fn find_in<'v>(&'v self, view: OthersRef<'v>, id: i32) -> Option<(usize, &'v Unit)> {
         if id == self.unit.id {
             return Some((self.player, &*self.unit));
         }
-        owner_view(&self.c.w.players, self.c.player, self.new_owner).find(id)
+        view.find(id)
     }
 
     /// Slot 0x380's search without a Build on top: the foundation (false when the world does not
     /// hold it), then slot 0x820 with any action type and the switch ([`task_search`] on the
     /// foundation and its main building); false without a task.
     fn build_found(&self, foundation: i32) -> Result<bool, GenieError> {
-        let find = |id: i32| self.find_object(id);
+        let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
+        let find = |id: i32| self.find_in(view, id);
         let Some((_, f)) = find(foundation) else {
             return Ok(false);
         };
@@ -74,7 +77,7 @@ impl UnitView<'_, '_> {
         let dip = SideWorld {
             player: self.player,
             relations: &self.c.w.players[self.player].relations,
-            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             drop_sites: &self.c.w.drop_sites,
         };
         // slot 0x820's point: the foundation's place
@@ -97,7 +100,7 @@ impl UnitView<'_, '_> {
         let (ux, uy) = (unit.position()[0] as i32, unit.position()[1] as i32);
         let (player, others, every, spatial) = (
             self.player,
-            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             &self.c.w.masters,
             &self.c.w.spatial,
         );
@@ -128,7 +131,7 @@ impl UnitView<'_, '_> {
         let master = unit.master(&self.c.w.masters, self.player)?;
         let (player, others) = (
             self.player,
-            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
         );
         let named = |id: i32| {
             let found = if id == unit.id {

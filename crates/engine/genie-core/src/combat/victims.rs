@@ -179,13 +179,18 @@ pub(crate) fn readable<'o>(c: &'o Step<'_>, id: i32) -> Option<(usize, &'o Unit,
 
 /// What a hit of the updating unit reads of object `id` ([`World::victim`] from the update):
 /// an object [`readable`] by the hit.
-pub(crate) fn victim(c: &Step<'_>, id: i32) -> Option<Victim> {
-    let (p, u, master) = readable(c, id)?;
-    let view = OthersRef::of(&c.w.players, c.player);
+pub(crate) fn victim(c: &Step<'_>, id: i32) -> Result<Option<Victim>, GenieError> {
+    let Some((p, u, master)) = readable(c, id) else {
+        return Ok(None);
+    };
+    let view = OthersRef::of(&c.w.players, c.player)?;
     let attributes = if p == c.player {
         &c.w.players[c.player].attributes[..]
     } else {
-        &view.players().player(p)?.attributes[..]
+        let Some(owner) = view.players().player(p) else {
+            return Ok(None);
+        };
+        &owner.attributes[..]
     };
     let sides = SideWorld {
         player: c.player,
@@ -193,13 +198,13 @@ pub(crate) fn victim(c: &Step<'_>, id: i32) -> Option<Victim> {
         foreign: view.players(),
         drop_sites: &c.w.drop_sites,
     };
-    Some(victim_in(
+    Ok(Some(victim_in(
         u,
         (p, master, attributes),
         (c.player, &sides),
         &c.w.spatial,
         c.w.mode_680,
-    ))
+    )))
 }
 
 /// The hit's changes on its victim `v`, written back to the world where the hit ran. An object asleep (a tree a blast reached) takes its hit points and what it

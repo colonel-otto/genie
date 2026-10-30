@@ -108,7 +108,7 @@ impl Unit {
     /// the closest (`FUN_1411671e0` as `set_state(8)` searches, [`Unit::drop_site`]), with none
     /// found 0, and the hunt's class goes (−1).
     pub(crate) fn hunt_search_notify(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let others = OthersRef::of(&c.w.players, c.player);
+        let others = OthersRef::of(&c.w.players, c.player)?;
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
         let master = self.master(&c.w.masters, c.player)?;
@@ -183,7 +183,7 @@ impl Unit {
     fn hunt_back_to_target(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let master = self.master(&c.w.masters, c.player)?;
-        let v = victim(c, hunt.target).ok_or(GenieError::unsupported(
+        let v = victim(c, hunt.target)?.ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold live",
         ))?;
         let quarry = crate::gathering::hunt::Quarry {
@@ -313,7 +313,7 @@ impl Unit {
     /// follows the enemies found. A unit in a pasture (`FUN_1411c7670`) and a class-10 searcher
     /// are not modelled. The object found, -1 for none.
     fn hunt_closest_object(&mut self, c: &mut Step<'_>, class: i32) -> Result<i32, GenieError> {
-        let others = OthersRef::of(&c.w.players, c.player);
+        let others = OthersRef::of(&c.w.players, c.player)?;
         if self.my_pasture != -1 {
             return Err(GenieError::unsupported(
                 "a hunter tending a pasture (FUN_1411c7670)",
@@ -412,7 +412,7 @@ impl Unit {
     fn hunt_take_found(&mut self, c: &mut Step<'_>, found: i32) -> Result<(), GenieError> {
         let master = self.master(&c.w.masters, c.player)?;
         let (owner, t) =
-            OthersRef::of(&c.w.players, c.player)
+            OthersRef::of(&c.w.players, c.player)?
                 .find(found)
                 .ok_or(GenieError::unsupported(
                     "a hunt's new target the slice does not hold",
@@ -543,7 +543,7 @@ impl Unit {
             construction_rate: c.w.players[c.player].construction_rate,
             groups: &c.w.groups,
         };
-        if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player))? {
+        if let Some(site) = self.drop_off_in(w, OthersRef::of(&c.w.players, c.player)?)? {
             let by = self.releaser(c);
             crate::world::lets::take(c, self, site, by);
         }

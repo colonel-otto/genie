@@ -1,6 +1,7 @@
 //! The views a unit's update and its unit AI read the world through ([`UnitView`],
 //! [`Step`], [`Foreign`], [`OwnerView`], the pickers).
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::masters::Masters;
@@ -149,8 +150,12 @@ impl OwnerView {
 /// The objects as the unit AI of player `p`'s updating unit reads them: the update's view of
 /// `players`, or for a unit player `new` took over in its update, that player's live list as its
 /// own and the old owner's among the others' ([`OthersRef::changed_hands`]).
-pub(crate) fn owner_view(players: &[Player], p: usize, new: Option<usize>) -> OthersRef<'_> {
-    changed_view(OthersRef::of(players, p), new)
+pub(crate) fn owner_view(
+    players: &[Player],
+    p: usize,
+    new: Option<usize>,
+) -> Result<OthersRef<'_>, GenieError> {
+    Ok(changed_view(OthersRef::of(players, p)?, new))
 }
 
 /// `view` as the unit AI of a unit player `new` took over reads it ([`owner_view`]).

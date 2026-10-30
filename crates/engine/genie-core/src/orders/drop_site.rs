@@ -109,7 +109,7 @@ impl World {
             construction_rate: player.construction_rate,
             groups: &self.groups,
         };
-        let others = crate::world::others::OthersRef::of(&self.players, p);
+        let others = crate::world::others::OthersRef::of(&self.players, p)?;
         player.objects[idx].drop_site_with(&mut world, others, state, (false, false, -1))
     }
 

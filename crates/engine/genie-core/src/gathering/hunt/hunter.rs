@@ -52,7 +52,7 @@ impl Unit {
             let (kept, let_go) = second_target_checked(
                 site,
                 held,
-                state_of(site, OthersRef::of(&c.w.players, c.player)),
+                state_of(site, OthersRef::of(&c.w.players, c.player)?),
             );
             if let Some(h) = self.actions.hunt_mut() {
                 h.carry_to = kept;

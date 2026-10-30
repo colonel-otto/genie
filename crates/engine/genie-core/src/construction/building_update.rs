@@ -43,7 +43,7 @@ impl Unit {
     /// or runs it down by the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height
     /// of at most 0).
     pub(crate) fn gate_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let others = OthersRef::of(&c.w.players, c.player);
+        let others = OthersRef::of(&c.w.players, c.player)?;
         let Ok(master) = self.master(&c.w.masters, c.player) else {
             return Ok(());
         };
@@ -253,7 +253,7 @@ impl Unit {
             ));
         }
         for &id in self.garrison.iter().rev() {
-            let Some(u) = OthersRef::of(&c.w.players, c.player).own(id) else {
+            let Some(u) = OthersRef::of(&c.w.players, c.player)?.own(id) else {
                 continue;
             };
             let kind = u.master(&c.w.masters, c.player).ok().map(|m| m.kind);

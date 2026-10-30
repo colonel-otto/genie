@@ -53,18 +53,21 @@ impl<'a> OthersRef<'a> {
 
     /// Player `p`'s view of the world's `players`.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When `players` holds no player `p`.
-    pub(crate) const fn of(players: &'a [Player], p: usize) -> Self {
-        let (before, rest) = players.split_at(p);
-        let (player, after) = rest.split_first().expect("the view's player");
+    pub(crate) fn of(players: &'a [Player], p: usize) -> Result<Self, GenieError> {
+        let no_player = || {
+            GenieError::unreachable("a view of a player the world does not hold").with("player", p)
+        };
+        let (before, rest) = players.split_at_checked(p).ok_or_else(no_player)?;
+        let (player, after) = rest.split_first().ok_or_else(no_player)?;
         let foreign = Foreign {
             before,
             after,
             left: None,
         };
-        Self::new(p, &player.objects, foreign)
+        Ok(Self::new(p, &player.objects, foreign))
     }
 
     /// The view of player `new`, which took the updating object over in its update, with its

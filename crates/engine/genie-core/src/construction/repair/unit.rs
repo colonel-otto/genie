@@ -48,7 +48,8 @@ impl Unit {
     ) -> Result<RepairReads, GenieError> {
         let own = repair_master(&c.w.masters, c.player, self)
             .ok_or(GenieError::missing_data("a repairer's master"))?;
-        let (repairee, counted_in) = repairee_of(c, OthersRef::of(&c.w.players, c.player), target)?;
+        let (repairee, counted_in) =
+            repairee_of(c, OthersRef::of(&c.w.players, c.player)?, target)?;
         Ok(RepairReads {
             target: repairee,
             counted_in,
@@ -226,7 +227,7 @@ pub(crate) fn repair_target(
 ) -> Result<(u8, u8), GenieError> {
     let player = c.player;
     let mut set = Vec::new();
-    let others = OthersRef::of(&c.w.players, player);
+    let others = OthersRef::of(&c.w.players, player)?;
     if let Some((q, t)) = others.find(target).filter(|_| target != -1) {
         let tm = repair_master(&c.w.masters, q, t)
             .ok_or(GenieError::missing_data("a repaired object's master"))?;

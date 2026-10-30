@@ -3958,6 +3958,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
         let code = unit.hunt_part(c, me, &mut own, tree_lost)?;
         unit.end_head_update(c, code)?;
         Ok(OthersRef::of(&c.w.players, c.player)
+            .unwrap()
             .find(500)
             .map(|(_, deer)| deer.life.amount))
     });
@@ -4448,6 +4449,7 @@ fn a_unit_ai_s_stop_lets_its_target_go_within_the_update() {
     let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
         unit.stop_action(c)?;
         let bush = OthersRef::of(&c.w.players, c.player)
+            .unwrap()
             .find(600)
             .map(|(_, b)| b.workers);
         Ok((bush, unit.actions.gather().is_some()))
@@ -4991,7 +4993,10 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
             };
             let code = unit.enter_part(c, me)?;
             unit.end_head_update(c, code)?;
-            let (_, house) = OthersRef::of(&c.w.players, c.player).find(10028).unwrap();
+            let (_, house) = OthersRef::of(&c.w.players, c.player)
+                .unwrap()
+                .find(10028)
+                .unwrap();
             Ok((unit.life.inside, house.garrison.clone()))
         })
     };
@@ -11537,6 +11542,7 @@ fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups
             .unwrap()
             .clone();
         let helper = OthersRef::of(&side.c.w.players, 1)
+            .unwrap()
             .own_iter()
             .next()
             .unwrap();
@@ -12714,6 +12720,7 @@ fn a_fired_missile_joins_its_owner_s_list_at_its_making() {
         let _ = unit.update(c)?;
         let k = crate::players::tracker::key(c.w.masters.get(c.player), &c.w.lines, 363);
         let listed = OthersRef::of(&c.w.players, c.player)
+            .unwrap()
             .own(-1)
             .map(|m| m.life.master_id);
         Ok((
@@ -13235,6 +13242,7 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
                 .into_iter()
                 .filter(|&id| {
                     OthersRef::of(&c.w.players, c.player)
+                        .unwrap()
                         .find(id)
                         .is_some_and(|(_, u)| u.workers == 0)
                 })
@@ -13415,7 +13423,7 @@ fn drop_site_sought(
         construction_rate: 1.0,
         groups: &t.groups,
     };
-    let objects = OthersRef::of(&t.players, 1);
+    let objects = OthersRef::of(&t.players, 1).unwrap();
     t.players[1].objects[0].drop_site_with(&mut world, objects, 0, args)
 }
 
@@ -14790,7 +14798,10 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
     let seen = in_update(&mut t, (1, 1), 0, |unit, c| {
         unit.life.hp = 3.0;
         unit.died(c, 1)?;
-        let (_, annex) = OthersRef::of(&c.w.players, c.player).find(700).unwrap();
+        let (_, annex) = OthersRef::of(&c.w.players, c.player)
+            .unwrap()
+            .find(700)
+            .unwrap();
         Ok((annex.annex_of, annex.life.hp, c.w.spatial.annexes_of(10028)))
     });
     assert_eq!(
@@ -14825,6 +14836,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
             let g = unit.actions.gather().copied().unwrap();
             let _ = unit.gather_next(c, next, (g.target, g.carry_to), by)?;
             let bush = OthersRef::of(&c.w.players, 0)
+                .unwrap()
                 .find(600)
                 .map(|(_, b)| b.workers);
             let gather = unit.actions.gather().map(|g| (g.target, g.state));

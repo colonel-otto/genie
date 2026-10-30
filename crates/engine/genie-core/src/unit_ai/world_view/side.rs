@@ -27,11 +27,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             .map(|m| m.class)
             .ok_or(crate::world::OBJECT_MASTER)?;
         let at = [self.unit.position()[0], self.unit.position()[1]];
-        let look = |id: i32| {
-            owner_view(&self.c.w.players, self.c.player, self.new_owner)
-                .own(id)
-                .map(|u| (u.life.state, u.position()))
-        };
+        let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
+        let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
         Ok(crate::orders::nearest_table_site(
             (
                 &self.c.w.drop_sites,
@@ -86,7 +83,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let lists = self.c.w.spatial.searched().ok_or(GenieError::unsupported(
             "a search that reads the registry's last answer (before any query)",
         ))?;
-        let others = owner_view(&self.c.w.players, self.c.player, self.new_owner);
+        let others = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
         let find = |id: i32| others.find(id);
         let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == 0);
         let me = self.unit.id;
@@ -132,22 +129,22 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn duel(&mut self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
-        self.picker(None).duel(&self.c.w.spatial, other)
+        self.picker(None)?.duel(&self.c.w.spatial, other)
     }
 
     fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
-        self.picker(None).harmless(&self.c.w.spatial, attacker)
+        self.picker(None)?.harmless(&self.c.w.spatial, attacker)
     }
 
     fn defended_attacker(&mut self, target: i32) -> Result<Option<i32>, GenieError> {
-        Ok(self.picker(None).nearest_attacker_of(target))
+        Ok(self.picker(None)?.nearest_attacker_of(target))
     }
 
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
         let Some(p) = self.c.w.spatial.get(id) else {
             return Ok(None);
         };
-        let (owner, u) = crate::world::others::OthersRef::of(&self.c.w.players, self.c.player)
+        let (owner, u) = crate::world::others::OthersRef::of(&self.c.w.players, self.c.player)?
             .find(id)
             .ok_or(GenieError::unsupported("an object the slice does not hold"))?;
         let m = u.master(&self.c.w.masters, owner)?;
@@ -236,8 +233,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             seeker,
             me: self.unit.id,
             player: self.player,
-            others: owner_view(&self.c.w.players, self.c.player, self.new_owner),
-            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner).players(),
+            others: owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
+            foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             every: &self.c.w.masters,
             restriction: self
                 .unit
@@ -251,7 +248,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             mode_680: self.c.w.mode_680,
         };
         let (others, every) = (
-            owner_view(&self.c.w.players, self.c.player, self.new_owner),
+            owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             &self.c.w.masters,
         );
         // ClosestObject's reachability check (slot 0x3d0) walks the unit's paths
@@ -303,18 +300,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         target: i32,
         seeker: &crate::unit_ai::Seeker,
     ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
-        let picker = self.picker(Some(*seeker));
-        let held = owner_view(&self.c.w.players, self.c.player, self.new_owner)
-            .get(target)
-            .is_some();
-        if !held {
+        if !self.view_holds(target)? {
             return Ok(None);
         }
-        let (t, _) = picker.target(&self.c.w.spatial, target)?;
-        Ok(
-            crate::unit_ai::can_attack(&self.attacker, seeker, &t)?
-                .then_some((t.class, t.position)),
-        )
+        self.attack_check(target, seeker)
     }
 
     fn attack(
@@ -375,7 +364,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         ai: &UnitAi,
         rng: &mut Well512,
     ) -> Result<Option<[i32; 2]>, GenieError> {
-        let tc = town_centre(owner_view(&self.c.w.players, self.c.player, self.new_owner))?;
+        let tc = town_centre(owner_view(
+            &self.c.w.players,
+            self.c.player,
+            self.new_owner,
+        )?)?;
         let (at, computer) = (self.unit.position(), self.computer);
         // the search about the town centre only while the player has no scout map
         let scout_map = self.c.w.spatial.scout_map(self.player).is_some();
@@ -489,7 +482,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let Some(seen) = self.seen_unit(id)? else {
             return Ok(None);
         };
-        let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)
+        let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)?
             .get(id)
             .ok_or_else(|| object_gone(id))?;
         let kind = u.master(&self.c.w.masters, seen.owner)?.kind;

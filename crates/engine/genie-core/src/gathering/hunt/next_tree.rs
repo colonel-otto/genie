@@ -44,7 +44,7 @@ impl Unit {
             return Ok(false);
         }
         let (tp, t) =
-            OthersRef::of(&c.w.players, c.player)
+            OthersRef::of(&c.w.players, c.player)?
                 .find(found)
                 .ok_or(GenieError::unsupported(
                     "a hunt's next tree the slice does not hold",
