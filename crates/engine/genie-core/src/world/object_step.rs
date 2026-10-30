@@ -27,16 +27,14 @@ impl World {
         let watch = crate::trace::Watch::of(&unit);
         // the objects a hit's blast may reach about its target (one a hit can read), or about
         // the unit for its blast at death (TRIBE_Combat_Object::update)
-        let target = unit
-            .attack_target()
-            .filter(|&t| self.victim(t, p).is_some());
+        let target = match unit.attack_target() {
+            Some(t) if self.victim(t, p)?.is_some() => Some(t),
+            _ => None,
+        };
         let blasted = match target {
-            Some(t) => self.blasted(&unit, p, t),
-            None if unit
-                .master(&self.masters, p)
-                .is_ok_and(|m| blasts_at_death(m, &unit.life)) =>
-            {
-                self.blasted(&unit, p, -1)
+            Some(t) => self.blasted(&unit, p, t)?,
+            None if blasts_at_death(unit.master(&self.masters, p)?, &unit.life) => {
+                self.blasted(&unit, p, -1)?
             }
             None => Vec::new(),
         };

@@ -134,7 +134,7 @@ impl World {
         // the sprites its MoveTo's constructor takes for none (FUN_140aa0df0)
         let move_reads = crate::movement::move_to::MoveToReads::of(unit, builder, &self.graphics);
         let build = crate::construction::build::BuildAction::start(to, build_task, &move_reads)?;
-        self.take(target, self.releaser(player, idx))?;
+        self.take(target, self.releaser(player, idx)?)?;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
@@ -191,7 +191,7 @@ impl World {
             master.weapon_range,
             &move_reads,
         )?;
-        self.take(target, self.releaser(player, idx))?;
+        self.take(target, self.releaser(player, idx)?)?;
         Ok((repair, class))
     }
 

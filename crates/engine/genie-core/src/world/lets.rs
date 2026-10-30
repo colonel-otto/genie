@@ -193,7 +193,7 @@ impl Lets<'_> {
     ) -> Result<(), GenieError> {
         if let Some(u) = me.filter(|u| u.id.get() == id) {
             let allied = self.allied(others.view(), by.player, self.player);
-            self.taken_live(u, (self.player, allied), by);
+            self.taken_live(u, (self.player, allied), by)?;
             return Ok(());
         }
         let Some((p, _, sleeps)) = others.locate(id) else {
@@ -209,18 +209,21 @@ impl Lets<'_> {
         }
         let allied = self.allied(others.view(), by.player, p);
         let (_, u) = others.get_mut(id).ok_or_else(|| object_gone(id))?;
-        self.taken_live(u, (p, allied), by);
-        Ok(())
+        self.taken_live(u, (p, allied), by)
     }
 
     /// Slot 0x178 on the live object `u` of player `p`, `allied` to the taker's player: it counts
     /// its worker ([`crate::objects::unit::Unit::taken`]; a building first lists an unallied
     /// taker of a foundation with a stack unit).
-    fn taken_live(&self, u: &mut Unit, (p, allied): (PlayerId, bool), by: Releaser) {
-        let listed = u
-            .master(self.masters, p)
-            .is_ok_and(|m| u.lists_taker(m, allied));
+    fn taken_live(
+        &self,
+        u: &mut Unit,
+        (p, allied): (PlayerId, bool),
+        by: Releaser,
+    ) -> Result<(), GenieError> {
+        let listed = u.lists_taker(u.master(self.masters, p)?, allied);
         u.taken(listed, by.id);
+        Ok(())
     }
 
     /// Slot 0x180 on object `id`, which an action of `by` lets go ([`World::release`] through

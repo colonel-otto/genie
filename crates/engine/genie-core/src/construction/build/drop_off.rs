@@ -14,6 +14,7 @@ use crate::orders::action_state::DONE;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// What the drop-off's search gives `set_state(8)` ([`BuildAction::set_drop`]).
@@ -81,8 +82,8 @@ impl BuildAction {
         let found = crate::orders::nearest_table_site(
             (
                 &c.w.drop_sites,
-                c.w.players[c.player.index()].civ,
-                &c.w.players[c.player.index()].tracker,
+                c.w.players.player(c.player)?.civ,
+                &c.w.players.player(c.player)?.tracker,
             ),
             (at, builder.life.attribute_type, own.class),
             look,
@@ -110,16 +111,19 @@ impl BuildAction {
                     master: own,
                     player,
                     held: (builder.life.attribute_type, builder.life.amount),
-                    attribute_95: c.w.players[c.player.index()]
+                    attribute_95: c
+                        .w
+                        .players
+                        .player(c.player)?
                         .attributes
                         .get(95)
                         .copied()
                         .unwrap_or(0.0),
-                    civ: c.w.players[c.player.index()].civ,
+                    civ: c.w.players.player(c.player)?.civ,
                 };
                 let dip = SideWorld {
                     player,
-                    relations: &c.w.players[c.player.index()].relations,
+                    relations: &c.w.players.player(c.player)?.relations,
                     foreign,
                     drop_sites: &c.w.drop_sites,
                 };
@@ -245,7 +249,7 @@ impl BuildAction {
             builder.body.set_anim_speed(0.0);
             return Ok(HeadCode::Keeps);
         }
-        let attributes = c.w.players[c.player.index()].attributes.len();
+        let attributes = c.w.players.player(c.player)?.attributes.len();
         let kind = crate::gathering::hunt::resource_kind(builder.life.attribute_type, attributes);
         let amount = builder.life.amount;
         Self::drop_load(c, builder, kind, amount)?;
@@ -287,7 +291,7 @@ impl BuildAction {
         }
         // UCOMISS against −1 (DAT_14330ec20): a NaN is not
         if self.point.x() == -1.0 || self.point.y() == -1.0 {
-            if c.w.players[c.player.index()].computer {
+            if c.w.players.player(c.player)?.computer {
                 self.end(c, builder, DONE)?;
             } else {
                 self.halt_in(c, builder, reads)?;

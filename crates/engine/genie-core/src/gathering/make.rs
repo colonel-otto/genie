@@ -21,6 +21,7 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::orders::action_state::DONE;
 use crate::players::attribute::AttributeId;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -147,7 +148,8 @@ impl MakeAction {
                         farm.life.amount = capacity;
                     }
                 } else {
-                    c.w.players[c.player.index()]
+                    c.w.players
+                        .player_mut(c.player)?
                         .add_attribute(AttributeId::try_from(self.task.attribute_type)?, rate)?;
                 }
                 self.remaining -= farm.life.amount - before;

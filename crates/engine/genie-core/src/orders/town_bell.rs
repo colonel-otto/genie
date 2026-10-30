@@ -121,17 +121,19 @@ pub struct RecordTarget {
 /// that is built ends the record (no object, both targets −1 in the copy returned).
 fn record_object(
     record: BackToWork,
-    lookup: &dyn Fn(i32) -> Option<RecordTarget>,
-) -> (Option<RecordTarget>, BackToWork) {
+    lookup: &dyn Fn(i32) -> Result<Option<RecordTarget>, GenieError>,
+) -> Result<(Option<RecordTarget>, BackToWork), GenieError> {
     let mut out = record;
-    let mut found = (0 <= record.target)
-        .then(|| lookup(record.target))
-        .flatten();
+    let mut found = if 0 <= record.target {
+        lookup(record.target)?
+    } else {
+        None
+    };
     if found.is_none() {
         if record.target2 < 0 {
-            return (None, out);
+            return Ok((None, out));
         }
-        found = lookup(record.target2);
+        found = lookup(record.target2)?;
     }
     if let Some(o) = found
         && record
@@ -144,9 +146,9 @@ fn record_object(
     {
         out.target = -1;
         out.target2 = -1;
-        return (None, out);
+        return Ok((None, out));
     }
-    (found, out)
+    Ok((found, out))
 }
 
 impl TownBell {
@@ -155,26 +157,30 @@ impl TownBell {
     /// second cleared); else no object and the first record as it is, or the second when the
     /// first has no point. The record returned keeps the point of the one whose object was
     /// found.
+    ///
+    /// # Errors
+    ///
+    /// The lookup's: an object whose master the world lacks.
     pub fn back_to_work(
         &mut self,
-        lookup: &dyn Fn(i32) -> Option<RecordTarget>,
-    ) -> (Option<RecordTarget>, BackToWork) {
-        let (found, out) = record_object(self.work, lookup);
+        lookup: &dyn Fn(i32) -> Result<Option<RecordTarget>, GenieError>,
+    ) -> Result<(Option<RecordTarget>, BackToWork), GenieError> {
+        let (found, out) = record_object(self.work, lookup)?;
         if found.is_some() {
-            return (found, out);
+            return Ok((found, out));
         }
         let before = self.before_building;
-        let (found, out) = record_object(before, lookup);
+        let (found, out) = record_object(before, lookup)?;
         if found.is_some() {
             self.work = before;
             self.before_building = BackToWork::NONE;
-            return (found, out);
+            return Ok((found, out));
         }
         let none = [-1.0, -1.0];
         if self.work.point == none {
-            (None, before)
+            Ok((None, before))
         } else {
-            (None, self.work)
+            Ok((None, self.work))
         }
     }
 }
@@ -620,29 +626,44 @@ mod tests {
             target2: 7,
             ..work(10, Some(ActionKind::Gather), [5.0, 6.0])
         };
-        assert_eq!(record_object(shepherd, &object), (object(10), shepherd));
+        assert_eq!(
+            record_object(shepherd, &|id| Ok(object(id))).unwrap(),
+            (object(10), shepherd)
+        );
         // a target the world no longer holds: the second target, unless it is below 0
         let gone = BackToWork {
             target2: 10,
             ..work(11, Some(ActionKind::Hunt), [5.0, 6.0])
         };
-        assert_eq!(record_object(gone, &object), (object(10), gone));
+        assert_eq!(
+            record_object(gone, &|id| Ok(object(id))).unwrap(),
+            (object(10), gone)
+        );
         let none = BackToWork {
             target2: -1,
             ..gone
         };
-        assert_eq!(record_object(none, &object), (None, none));
+        assert_eq!(
+            record_object(none, &|id| Ok(object(id))).unwrap(),
+            (None, none)
+        );
         let lost = BackToWork {
             target2: 12,
             ..gone
         };
-        assert_eq!(record_object(lost, &object), (None, lost));
+        assert_eq!(
+            record_object(lost, &|id| Ok(object(id))).unwrap(),
+            (None, lost)
+        );
         // a target below 0 is not looked up: the second target is
         let second = BackToWork {
             target2: 10,
             ..work(-1, Some(ActionKind::Build), [5.0, 6.0])
         };
-        assert_eq!(record_object(second, &object), (object(10), second));
+        assert_eq!(
+            record_object(second, &|id| Ok(object(id))).unwrap(),
+            (object(10), second)
+        );
         // building, gathering and hunting (mask 0x881 over 0x25a..0x265) on a built building
         // other than a farm end the record: no object, both targets −1 in the copy
         for action in [ActionKind::Build, ActionKind::Gather, ActionKind::Hunt].map(Some) {
@@ -655,7 +676,10 @@ mod tests {
                 target2: -1,
                 ..on_house
             };
-            assert_eq!(record_object(on_house, &object), (None, ended));
+            assert_eq!(
+                record_object(on_house, &|id| Ok(object(id))).unwrap(),
+                (None, ended)
+            );
             // reached through the second target, too
             let through_second = BackToWork {
                 target2: 7,
@@ -666,11 +690,17 @@ mod tests {
                 target2: -1,
                 ..through_second
             };
-            assert_eq!(record_object(through_second, &object), (None, ended));
+            assert_eq!(
+                record_object(through_second, &|id| Ok(object(id))).unwrap(),
+                (None, ended)
+            );
             // a house not built yet and a built farm stay
             for kept in [8, 9] {
                 let r = work(kept, action, [5.0, 6.0]);
-                assert_eq!(record_object(r, &object), (object(kept), r));
+                assert_eq!(
+                    record_object(r, &|id| Ok(object(id))).unwrap(),
+                    (object(kept), r)
+                );
             }
         }
         // the actions between them, and any other, keep a built building
@@ -683,7 +713,10 @@ mod tests {
             None,
         ] {
             let r = work(7, action, [5.0, 6.0]);
-            assert_eq!(record_object(r, &object), (object(7), r));
+            assert_eq!(
+                record_object(r, &|id| Ok(object(id))).unwrap(),
+                (object(7), r)
+            );
         }
     }
 
@@ -832,12 +865,18 @@ mod tests {
             work: first,
             before_building: second,
         };
-        assert_eq!(bell.back_to_work(&object), (object(10), first));
+        assert_eq!(
+            bell.back_to_work(&|id| Ok(object(id))).unwrap(),
+            (object(10), first)
+        );
         assert_eq!((bell.work, bell.before_building), (first, second));
         // the first's object gone: the second's object, and the second becomes the first
         let gone = work(11, Some(ActionKind::Gather), [5.0, 6.0]);
         bell.work = gone;
-        assert_eq!(bell.back_to_work(&object), (object(8), second));
+        assert_eq!(
+            bell.back_to_work(&|id| Ok(object(id))).unwrap(),
+            (object(8), second)
+        );
         assert_eq!(
             (bell.work, bell.before_building),
             (second, BackToWork::NONE)
@@ -850,7 +889,10 @@ mod tests {
             work: ended,
             before_building: work(12, Some(ActionKind::Gather), [1.0, 2.0]),
         };
-        assert_eq!(bell.back_to_work(&object), (None, ended));
+        assert_eq!(
+            bell.back_to_work(&|id| Ok(object(id))).unwrap(),
+            (None, ended)
+        );
         assert_eq!(bell.work, ended);
         // ... or the second when the first has no point (−1, −1 on both axes)
         let pointless = work(11, Some(ActionKind::Gather), [-1.0, -1.0]);
@@ -860,11 +902,17 @@ mod tests {
             work: pointless,
             before_building: before,
         };
-        assert_eq!(bell.back_to_work(&object), (None, before));
+        assert_eq!(
+            bell.back_to_work(&|id| Ok(object(id))).unwrap(),
+            (None, before)
+        );
         // one axis at −1 is a point
         let half = work(11, Some(ActionKind::Gather), [-1.0, 3.0]);
         bell.work = half;
-        assert_eq!(bell.back_to_work(&object), (None, half));
+        assert_eq!(
+            bell.back_to_work(&|id| Ok(object(id))).unwrap(),
+            (None, half)
+        );
         assert_eq!((bell.work, bell.before_building), (half, before));
     }
 }

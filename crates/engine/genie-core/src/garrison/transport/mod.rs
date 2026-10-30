@@ -78,10 +78,6 @@ pub const UNLOAD: u8 = 6;
 /// Sailing.
 pub const SAIL: u8 = 11;
 
-/// A Transport's unit of a master the slice does not have.
-pub const NO_MASTER: GenieError =
-    GenieError::unsupported("a Transport's unit of a master the slice does not have");
-
 /// A drop location's first draw of side 4 (a draw of `0x7fff`), which keeps the place the
 /// stack holds: not modelled.
 pub const STACK_PLACE: GenieError =

@@ -13,6 +13,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use crate::{GenieError, math::fmath};
 
 /// A movement damage task's timer (`+0x9a4`, `0x141207758`): above 0 (not a NaN) it runs down by
@@ -212,14 +213,8 @@ impl World {
         id: i32,
         owner: PlayerId,
     ) -> Result<Option<Bystander>, GenieError> {
-        let allied = |q: PlayerId| {
-            crate::unit_ai::task_finder::allied(
-                &self.players[owner.index()].relations,
-                owner,
-                q,
-                true,
-            )
-        };
+        let relations = &self.players.player(owner)?.relations;
+        let allied = |q: PlayerId| crate::unit_ai::task_finder::allied(relations, owner, q, true);
         if let Some((q, u)) = self.object(id) {
             let m = u.master(&self.masters, q)?;
             return Ok(Some(Bystander {
@@ -271,7 +266,7 @@ impl World {
         let mut v = crate::combat::victims::victim_of(
             u,
             m,
-            &self.players[q.index()].attributes,
+            &self.players.player(q)?.attributes,
             q,
             self.spatial.terrain.as_ref(),
             self.mode_680,

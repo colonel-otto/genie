@@ -52,26 +52,6 @@ impl World {
         self.produce(p, i, dt_seconds)
     }
 
-    /// `FUN_1411e7dc0` after the first entry's research completed: a technology of the shared
-    /// kind that the player's tree holds joins the building's lists
-    /// ([`crate::production::Production::note_shared_research`]).
-    fn note_shared_research(&mut self, p: PlayerId, i: usize) {
-        if let Some(tech) = self.players[p.index()].objects[i]
-            .production
-            .as_ref()
-            .and_then(|q| q.queue.first())
-            .and_then(|e| e.tech)
-            && self
-                .techs
-                .get(tech.index())
-                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
-            && tech.index() < self.players[p.index()].techs.len()
-            && let Some(production) = self.players[p.index()].objects[i].production.as_mut()
-        {
-            production.note_shared_research(tech);
-        }
-    }
-
     /// The building update's production step (`FUN_1411e7dc0`, after its combat update) for the
     /// building at `i` of player `p`. A disabled queue (`+0xbf6`) or an empty one does nothing.
     /// For a player not of type 3 a top action of the building's own (`FUN_141227a00`) that is a
@@ -99,58 +79,37 @@ impl World {
         i: usize,
         dt_seconds: f32,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[p.index()].objects[i];
+        let unit = &self.players.live(p, i)?;
         let Some(production) = unit.production.as_ref() else {
             return Ok(());
         };
         if !production.queue.enabled || production.queue.count == 0 {
             return Ok(());
         }
-        let busy = !self.players[p.index()].computer
+        let busy = !self.players.player(p)?.computer
             && unit
                 .top_action_kind()
                 .is_some_and(|k| matches!(k, MAKE_OBJ | MAKE_TECH | 0x7b..=0x7d));
-        if let Some(production) = self.players[p.index()].objects[i].production.as_mut() {
+        if let Some(production) = self.players.live_mut(p, i)?.production.as_mut() {
             production.queue.waiting = busy;
         }
         if busy {
             return Ok(());
         }
-        let production = self.players[p.index()].objects[i]
-            .production
-            .as_ref()
-            .ok_or(NO_QUEUE)?;
-        if production.action.is_none() {
-            let first = *production.queue.first().ok_or(EMPTY_QUEUE)?;
-            let making = if first.tech.is_none() {
-                let pop = first
-                    .master
-                    .and_then(|m| player_master(&self.masters, p, m))
-                    .map_or(0.0, |m| population(&m.storage));
-                if housed(&self.players[p.index()].attributes, pop)? {
-                    if self.players[p.index()].computer {
-                        return self.cancel_queue(p, i);
-                    }
-                    return Ok(());
-                }
-                if let Some(ai) = self.players[p.index()].objects[i].ai.as_mut() {
-                    ai.set_action(Some(ActionKind::Make));
-                }
-                Making::Unit(MakeObj::for_entry(&first))
-            } else {
-                Self::make_research(&first)?
-            };
-            self.start_production_action(p, i, making)?;
+        if !self.begin_production(p, i)? {
+            return Ok(());
         }
         let code = self.update_production_action(p, i, dt_seconds)?;
         if !matches!(code, 1..=3) {
             return Ok(());
         }
         if code == 1 {
-            self.note_shared_research(p, i);
+            self.note_shared_research(p, i)?;
         }
         self.end_production_action(p, i)?;
-        let Some(first) = self.players[p.index()].objects[i]
+        let Some(first) = self
+            .players
+            .live(p, i)?
             .production
             .as_ref()
             .and_then(|q| q.queue.first().copied())
@@ -162,10 +121,70 @@ impl World {
                 .master
                 .and_then(|m| player_master(&self.masters, p, m))
                 .map_or(0.0, |m| population(&m.storage));
-            self.players[p.index()].add_attribute(AttributeId::try_from(QUEUED)?, -pop)?;
+            self.players
+                .player_mut(p)?
+                .add_attribute(AttributeId::try_from(QUEUED)?, -pop)?;
         }
-        if let Some(production) = self.players[p.index()].objects[i].production.as_mut() {
+        if let Some(production) = self.players.live_mut(p, i)?.production.as_mut() {
             production.queue.release_first();
+        }
+        Ok(())
+    }
+
+    /// The first queue entry's action starts when the list has none ([`World::produce`]): a unit
+    /// waits housed (a computer player's entry is cancelled), else it starts. False when the
+    /// production stops for this update.
+    fn begin_production(&mut self, p: PlayerId, i: usize) -> Result<bool, GenieError> {
+        let production = self
+            .players
+            .live(p, i)?
+            .production
+            .as_ref()
+            .ok_or(NO_QUEUE)?;
+        if production.action.is_none() {
+            let first = *production.queue.first().ok_or(EMPTY_QUEUE)?;
+            let making = if first.tech.is_none() {
+                let pop = first
+                    .master
+                    .and_then(|m| player_master(&self.masters, p, m))
+                    .map_or(0.0, |m| population(&m.storage));
+                if housed(&self.players.player(p)?.attributes, pop)? {
+                    if self.players.player(p)?.computer {
+                        self.cancel_queue(p, i)?;
+                        return Ok(false);
+                    }
+                    return Ok(false);
+                }
+                if let Some(ai) = self.players.live_mut(p, i)?.ai.as_mut() {
+                    ai.set_action(Some(ActionKind::Make));
+                }
+                Making::Unit(MakeObj::for_entry(&first))
+            } else {
+                Self::make_research(&first)?
+            };
+            self.start_production_action(p, i, making)?;
+        }
+        Ok(true)
+    }
+
+    /// A finished shared-kind research of the building at `i` of player `p` is noted on its
+    /// production list (`FUN_141616a40`'s shared technology), when the tree holds it.
+    fn note_shared_research(&mut self, p: PlayerId, i: usize) -> Result<(), GenieError> {
+        if let Some(tech) = self
+            .players
+            .live(p, i)?
+            .production
+            .as_ref()
+            .and_then(|q| q.queue.first())
+            .and_then(|e| e.tech)
+            && self
+                .techs
+                .get(tech.index())
+                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
+            && tech.index() < self.players.player(p)?.techs.len()
+            && let Some(production) = self.players.live_mut(p, i)?.production.as_mut()
+        {
+            production.note_shared_research(tech);
         }
         Ok(())
     }
@@ -186,7 +205,7 @@ impl World {
         i: usize,
         making: Making,
     ) -> Result<(), GenieError> {
-        if 3 <= self.players[p.index()].objects[i].life.state {
+        if 3 <= self.players.live(p, i)?.life.state {
             return self.destroy_action(p, i, making);
         }
         let mut making = making;
@@ -194,13 +213,15 @@ impl World {
             Making::Unit(make) => {
                 if let Some(m) = make.master.and_then(|m| player_master(&self.masters, p, m)) {
                     let pop = population(&m.storage);
-                    self.players[p.index()].add_attribute(IN_PRODUCTION, pop)?;
+                    self.players
+                        .player_mut(p)?
+                        .add_attribute(IN_PRODUCTION, pop)?;
                     make.state = MakeObj::MAKING;
                 }
             }
             Making::Research(r) => self.start_research(p, i, r)?,
         }
-        if let Some(production) = self.players[p.index()].objects[i].production.as_mut() {
+        if let Some(production) = self.players.live_mut(p, i)?.production.as_mut() {
             production.action = Some(making);
         }
         Ok(())
@@ -215,7 +236,7 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
         let (t, def) = self.research_tech(p, r.tech)?;
-        let owner = &self.players[p.index()];
+        let owner = self.players.player(p)?;
         let get = |k: i16| owner.get(AttributeId::try_from(k)?);
         let factors = crate::technology::factors(r.tech, &get)?;
         let paid = owner.objects[i]
@@ -229,7 +250,7 @@ impl World {
             ));
         }
         let master = owner.objects[i].life.master_id;
-        let state = &mut self.players[p.index()].techs[t];
+        let state = &mut self.players.player_mut(p)?.techs[t];
         state.state = 2;
         state.building_master = Some(master);
         r.state = MakeObj::MAKING;
@@ -245,7 +266,9 @@ impl World {
         i: usize,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
-        let action = self.players[p.index()].objects[i]
+        let action = self
+            .players
+            .live(p, i)?
             .production
             .as_ref()
             .and_then(|q| q.action);
@@ -271,7 +294,7 @@ impl World {
         i: usize,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
-        let building = &self.players[p.index()].objects[i];
+        let building = &self.players.live(p, i)?;
         let Some(Some(Making::Unit(make))) = building.production.as_ref().map(|q| q.action) else {
             return Err(NO_MAKE_ACTION);
         };
@@ -285,7 +308,9 @@ impl World {
         let made = make.master.and_then(|m| player_master(&self.masters, p, m));
         let time = f32::from(make.time(made, building.life.master_id));
         let progress = rate * dt_seconds + make.progress;
-        if let Some(Some(Making::Unit(m))) = self.players[p.index()].objects[i]
+        if let Some(Some(Making::Unit(m))) = self
+            .players
+            .live_mut(p, i)?
             .production
             .as_mut()
             .map(|q| q.action.as_mut())
@@ -304,7 +329,9 @@ impl World {
             ))?,
             pop,
         )?;
-        if let Some(Some(Making::Unit(m))) = self.players[p.index()].objects[i]
+        if let Some(Some(Making::Unit(m))) = self
+            .players
+            .live_mut(p, i)?
             .production
             .as_mut()
             .map(|q| q.action.as_mut())
@@ -322,7 +349,9 @@ impl World {
         p: PlayerId,
         i: usize,
     ) -> Result<(), GenieError> {
-        let Some(making) = self.players[p.index()].objects[i]
+        let Some(making) = self
+            .players
+            .live_mut(p, i)?
             .production
             .as_mut()
             .and_then(|q| q.action.take())
@@ -352,13 +381,13 @@ impl World {
             let made = make.master.and_then(|m| player_master(&self.masters, p, m));
             let pop = made.map_or(0.0, |m| population(&m.storage));
             let refund = (!make.paid).then(|| made.cloned()).flatten();
-            let owner = &mut self.players[p.index()];
+            let owner = self.players.player_mut(p)?;
             owner.add_attribute(IN_PRODUCTION, -pop)?;
             if let Some(m) = refund {
                 crate::production::refund_master(&m, 1, owner)?;
             }
         }
-        let building = &mut self.players[p.index()].objects[i];
+        let building = self.players.live_mut(p, i)?;
         let (id, state) = (building.id, building.life.state);
         if let Some(ai) = building.ai.as_mut() {
             ai.post(

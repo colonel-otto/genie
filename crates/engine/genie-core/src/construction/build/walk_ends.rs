@@ -8,6 +8,7 @@ use crate::construction::build::{
 };
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl BuildAction {
@@ -78,7 +79,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         if self.target != -1 {
-            let s = Self::site_unit(c, reads).ok_or(FOREIGN_SITE)?;
+            let s = Self::site_unit(c, reads)?.ok_or(FOREIGN_SITE)?;
             let desolid = s.construction.is_some_and(|k| k.desolid);
             let placed = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
             if desolid && c.w.spatial.foreign_marks(&placed) {
@@ -102,9 +103,10 @@ impl BuildAction {
         let mut code = 3;
         // the foundation's place and its master's radius, read before the planner's borrow
         let known = c.w.spatial.get_known(self.target).map(Option::<&_>::copied);
-        let master_radius = Self::site_unit(c, reads)
-            .and_then(|s| s.master(&c.w.masters, c.player).ok())
-            .map(|m| m.radius.x());
+        let master_radius = match Self::site_unit(c, reads)? {
+            Some(s) => Some(s.master(&c.w.masters, c.player)?.radius.x()),
+            None => None,
+        };
         if self.target != -1
             && let Some(planner) = c.w.pathing.planner(restriction, c.w.spatial.tiles())
         {
@@ -138,7 +140,7 @@ impl BuildAction {
     /// What the removal does not model.
     pub(super) fn remove_marked(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if let Some((q, _)) = c.w.object(self.target)
-            && !c.w.players[q.index()].computer
+            && !c.w.players.player(q)?.computer
         {
             c.w.remove_building(q, self.target)?;
         }

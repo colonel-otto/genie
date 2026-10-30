@@ -37,7 +37,7 @@ impl Unit {
         c: &mut Step<'_>,
         (captured, leaves): (Option<Captured>, Outcome),
     ) -> Result<Outcome, GenieError> {
-        self.refresh_pathing(c);
+        self.refresh_pathing(c)?;
         // RGE_Combat_Object::update after the actions: the object's sight mask; a changed mask of
         // an object others take over by seeing it (`+0x924` 1) gives it to the first player that
         // sees it ([`crate::vision::visibility::sight_taker`]) when that one has its master
@@ -162,7 +162,7 @@ impl Unit {
                     moving: g.motion.moving(),
                     member_moving: self.body.mover().is_some_and(Mover::is_moving),
                 }),
-            top_target: self.top_target_seen(c, OthersRef::of(&c.w.players, c.player)?),
+            top_target: self.top_target_seen(c, OthersRef::of(&c.w.players, c.player)?)?,
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.body.mover().is_some_and(|m| m.attack_moving),
             moved_at: self
@@ -272,7 +272,7 @@ impl Unit {
             ));
         };
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
-        let master = self.master(&c.w.masters, c.player).ok();
+        let master = Some(self.master(&c.w.masters, c.player)?);
         let class = master.map(|ms| ms.class);
         let (player, computer) = (c.player, c.w.players.player(c.player)?.computer);
         let view = OwnerView::of(c, None)?;
@@ -312,7 +312,7 @@ impl Unit {
                 "a unit AI's run of a unit without one",
             ));
         };
-        let master = self.master(&c.w.masters, c.player).ok();
+        let master = Some(self.master(&c.w.masters, c.player)?);
         let (player, computer) = (c.player, c.w.players.player(c.player)?.computer);
         let view = OwnerView::of(c, None)?;
         let attacker = self.attacker_of(

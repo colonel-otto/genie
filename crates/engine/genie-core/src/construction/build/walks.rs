@@ -69,7 +69,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<u8, GenieError> {
         let how = ListUpdate {
-            gives_up: Self::gives_up(c, builder, reads),
+            gives_up: Self::gives_up(c, builder, reads)?,
             ..ListUpdate::default()
         };
         update_sub_actions(&mut self.move_to, c, builder, me, how)

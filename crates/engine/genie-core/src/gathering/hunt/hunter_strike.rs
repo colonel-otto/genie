@@ -19,6 +19,7 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::world::TREE_NEAR;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
@@ -51,7 +52,7 @@ impl Unit {
             master,
             &victim,
         )?;
-        let r = self.hunt_reads(c, master, &hunt, herd, tree_lost);
+        let r = self.hunt_reads(c, master, &hunt, herd, tree_lost)?;
         let mut f = Fight { victim, own };
         // written back before an error too: the stop's context reads the list
         let next = hunt.update(c, self, me, &mut f, &r);
@@ -83,8 +84,8 @@ impl Unit {
         hunt: &HuntAction,
         herd: Option<Herd>,
         tree_lost: bool,
-    ) -> HuntReads {
-        let owner = &c.w.players[c.player.index()];
+    ) -> Result<HuntReads, GenieError> {
+        let owner = c.w.players.player(c.player)?;
         let productivity = usize::try_from(hunt.task.productivity)
             .ok()
             .and_then(|i| owner.attributes.get(i))
@@ -92,7 +93,7 @@ impl Unit {
             .filter(|&v| 0.0 < v)
             .unwrap_or(1.0);
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
-        HuntReads {
+        Ok(HuntReads {
             defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
             attack: AttackReads::of(
                 self,
@@ -115,7 +116,7 @@ impl Unit {
                 standing: g(master.standing_sprite),
             },
             herd,
-        }
+        })
     }
 
     /// The hunt's end of an Attack that failed (`FUN_140ac4670` with -1 and 5): a hunter whose
@@ -191,7 +192,7 @@ impl Unit {
                 (action.drop_site, d)
             })
         } else {
-            if c.w.players[c.player.index()].computer {
+            if c.w.players.player(c.player)?.computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunt of its livestock (its drop-site search)",
                 ));

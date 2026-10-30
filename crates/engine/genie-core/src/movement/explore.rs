@@ -599,11 +599,10 @@ impl Unit {
             Owner::WantsPoint => self.post_own(WANTS_POINT, [ActionKind::Explore.value(), 0, 0])?,
             Owner::Standing => {}
         }
-        let standing = self
-            .master(&c.w.masters, c.player)
-            .ok()
-            .map(|m| m.standing_sprite)
-            .and_then(|id| c.w.graphics.get(&id).copied());
+        let standing =
+            c.w.graphics
+                .get(&self.master(&c.w.masters, c.player)?.standing_sprite)
+                .copied();
         if let Some(m) = self.body.mover_mut() {
             m.shows(standing.as_ref());
         }

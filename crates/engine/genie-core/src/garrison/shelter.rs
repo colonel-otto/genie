@@ -21,6 +21,7 @@ use crate::orders::{GARRISON, Work};
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A shelter index that the count list of the callers does not cover.
 const NO_COUNT: GenieError = GenieError::unreachable("a shelter without a count");
@@ -132,7 +133,7 @@ impl World {
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         let ids: &[i32] = &ObjectId::fields(ids);
-        let cap = if self.players[player.index()].computer {
+        let cap = if self.players.player(player)?.computer {
             COMPUTER_IDS
         } else {
             HUMAN_IDS
@@ -157,7 +158,7 @@ impl World {
             }
         }
         let mut buildings = Vec::new();
-        for b in &self.players[player.index()].objects {
+        for b in &self.players.player(player)?.objects {
             let m = b.master(&self.masters, player)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
             if b.life.state == 2 && b.life.inside.is_none() && m.kind == BUILDING && takes_villagers
@@ -371,7 +372,7 @@ impl World {
                     "a garrison of a unit the slice does not hold live",
                 ));
             };
-            let unit = &self.players[p.index()].objects[idx];
+            let unit = &self.players.player(p)?.objects[idx];
             let kind = unit.master(&self.masters, p)?.kind;
             if (2 < unit.life.state && unit.life.state != 6) || kind < COMBAT {
                 continue;
@@ -390,7 +391,7 @@ impl World {
                     ready: true,
                     target_type: i32::from(master.get()),
                 };
-                let ai = self.players[p.index()].objects[idx]
+                let ai = self.players.player_mut(p)?.objects[idx]
                     .ai
                     .as_mut()
                     .ok_or(NO_UNIT_AI)?;

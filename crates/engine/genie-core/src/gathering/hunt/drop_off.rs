@@ -14,6 +14,7 @@ use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// What a drop-off's update did ([`HuntAction::update_drop`],
@@ -129,7 +130,7 @@ impl HuntAction {
             set_walker_anim(&mut unit.body, 0.0);
             return Ok(Dropped::Going);
         }
-        let attributes = c.w.players[c.player.index()].attributes.len();
+        let attributes = c.w.players.player(c.player)?.attributes.len();
         let kind = resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
         unit.life.attribute_type = -1;

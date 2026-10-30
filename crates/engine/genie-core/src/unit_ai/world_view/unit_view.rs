@@ -133,13 +133,10 @@ impl UnitView<'_, '_> {
             self.attacker.scenario,
             capture,
         );
-        let target_kind = (ai.current_target != -1)
-            .then(|| {
-                find(ai.current_target)
-                    .and_then(|(q, o)| o.master(&self.c.w.masters, q).ok())
-                    .map(|tm| tm.kind)
-            })
-            .flatten();
+        let target_kind = match find(ai.current_target).filter(|_| ai.current_target != -1) {
+            Some((q, o)) => Some(o.master(&self.c.w.masters, q)?.kind),
+            None => None,
+        };
         let picker = self.picker(None)?;
         let (target, _) = picker.target(&self.c.w.spatial, attacker)?;
         crate::unit_ai::can_attack(&me, &ai.seeker_with(target_kind), &target)

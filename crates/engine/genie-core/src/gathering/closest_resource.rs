@@ -13,6 +13,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{Foreign, UnitView};
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
@@ -276,9 +277,9 @@ impl Unit {
             plan: Planning {
                 pathing: &mut c.w.pathing,
                 now: c.w.world_time,
-                computer: c.w.players[c.player.index()].computer,
+                computer: c.w.players.player(c.player)?.computer,
                 object: c.w.streams.get(Stream::Object),
-                construction_rate: c.w.players[c.player.index()].construction_rate,
+                construction_rate: c.w.players.player(c.player)?.construction_rate,
                 groups: &c.w.groups,
             },
         };

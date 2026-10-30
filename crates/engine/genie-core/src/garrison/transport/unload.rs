@@ -11,6 +11,7 @@ use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::world::slots::PlayerSlots;
 
 /// An unloading ship whose top action is no Transport where it was read as one.
 const NO_TRANSPORT: GenieError = GenieError::unreachable("an unloading ship without a Transport");
@@ -36,22 +37,22 @@ impl crate::world::World {
         i: usize,
         to: Position,
     ) -> Result<(), GenieError> {
-        let existing = self.players[p.index()].objects[i].top_action_kind() == Some(TRANSPORT);
+        let existing = self.players.player(p)?.objects[i].top_action_kind() == Some(TRANSPORT);
         if !existing {
             self.clear_actions(p, i)?;
         }
         // a new Transport has no task (`TransportAction::new`)
-        let task = self.players[p.index()].objects[i]
+        let task = self.players.player(p)?.objects[i]
             .actions
             .transport()
             .filter(|_| existing)
             .and_then(|t| t.task);
         let ship = {
-            let unit = &self.players[p.index()].objects[i];
+            let unit = &self.players.player(p)?.objects[i];
             let master = unit.master(&self.masters, p)?;
             Ship::of_unit(unit, master, self.spatial.map, &self.graphics, task)?
         };
-        let restriction = self.players[p.index()].objects[i]
+        let restriction = self.players.player(p)?.objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;
         let mut shore = MapShore::new(
@@ -61,7 +62,7 @@ impl crate::world::World {
             restriction,
             ship.position,
         )?;
-        let unit = &mut self.players[p.index()].objects[i];
+        let unit = &mut self.players.player_mut(p)?.objects[i];
         let changes = if let Some(t) = unit.actions.transport_mut().filter(|_| existing) {
             vec![t.work(ship.position, true, &ship, &mut shore)?]
         } else {
@@ -90,7 +91,7 @@ impl crate::world::World {
         point: Position,
     ) -> Result<(), GenieError> {
         let rng = self.streams.get(crate::math::rng::Stream::Sprite);
-        self.players[p.index()].objects[i].transport_sail(
+        self.players.player_mut(p)?.objects[i].transport_sail(
             point,
             (&self.spatial, &mut self.zones, &mut self.pathing),
             (self.masters.get(p.index()), &self.graphics, rng),
@@ -106,7 +107,7 @@ impl crate::world::World {
         i: usize,
         c: Changed,
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[p.index()].objects[i];
+        let unit = &mut self.players.player_mut(p)?.objects[i];
         if c.stopped
             && let Some(m) = unit.body.mover_mut()
         {
@@ -136,7 +137,7 @@ impl crate::world::World {
     ///
     /// [`Updated::Unload`]: crate::garrison::transport::Updated::Unload
     pub(crate) fn transport_unload(&mut self, p: PlayerId, i: usize) -> Result<(), GenieError> {
-        let unit = &self.players[p.index()].objects[i];
+        let unit = &self.players.player(p)?.objects[i];
         let t = unit
             .actions
             .transport()
@@ -157,9 +158,9 @@ impl crate::world::World {
             u32::from(shore.zone(cvttss2si(x), cvttss2si(y))?)
         };
         let count = self.unload_all(p, i, zone)?;
-        let computer = self.players[p.index()].computer;
+        let computer = self.players.player(p)?.computer;
         let ship = {
-            let unit = &self.players[p.index()].objects[i];
+            let unit = &self.players.player(p)?.objects[i];
             let master = unit.master(&self.masters, p)?;
             Ship::of_unit(unit, master, self.spatial.map, &self.graphics, t.task)?
         };
@@ -179,7 +180,7 @@ impl crate::world::World {
                 restriction,
                 ship.position,
             )?;
-            let t = self.players[p.index()].objects[i]
+            let t = self.players.player_mut(p)?.objects[i]
                 .actions
                 .transport_mut()
                 .ok_or(NO_TRANSPORT)?;
@@ -201,7 +202,7 @@ impl crate::world::World {
             restriction,
             ship.position,
         )?;
-        let t = self.players[p.index()].objects[i]
+        let t = self.players.player_mut(p)?.objects[i]
             .actions
             .transport_mut()
             .ok_or(NO_TRANSPORT)?;
@@ -226,7 +227,7 @@ impl crate::world::World {
         zone: u32,
     ) -> Result<u8, GenieError> {
         const SPOTS: usize = 0x1d;
-        let ship = &self.players[p.index()].objects[i];
+        let ship = &self.players.player(p)?.objects[i];
         let radius = ship.master(&self.masters, p)?.radius;
         let mut spots = [Around {
             center: [0.0; 2],
@@ -243,7 +244,7 @@ impl crate::world::World {
         let mut j = ship.garrison.len();
         while 0 < j {
             j -= 1;
-            let Some(&id) = self.players[p.index()].objects[i].garrison.get(j) else {
+            let Some(&id) = self.players.player(p)?.objects[i].garrison.get(j) else {
                 continue;
             };
             // the game skips a null entry; an id the world no longer holds is one
@@ -289,7 +290,7 @@ impl crate::world::World {
         zone: u32,
         last: &mut Option<[f32; 2]>,
     ) -> Result<Option<[f32; 2]>, GenieError> {
-        let ship = &self.players[p.index()].objects[i];
+        let ship = &self.players.player(p)?.objects[i];
         let restriction = ship.master(&self.masters, p)?.terrain_restriction;
         let terrain = self
             .spatial
@@ -387,13 +388,13 @@ impl crate::world::World {
         made: &crate::objects::masters::Master,
         spot: [f32; 2],
     ) -> Result<(), GenieError> {
-        let ship = &self.players[p.index()].objects[i];
+        let ship = &self.players.player(p)?.objects[i];
         let at = ship.position();
         if ship.master(&self.masters, p)?.class == class::SIEGE {
             return Err(crate::garrison::SIEGE_UNLOAD);
         }
         let (up, ui) = self.live_inside(id)?;
-        let unit = &mut self.players[up.index()].objects[ui];
+        let unit = &mut self.players.player_mut(up)?.objects[ui];
         let inner_id = unit.id;
         unit.body
             .base_mut()
@@ -404,7 +405,7 @@ impl crate::world::World {
             made,
             Position::new(spot[0], spot[1], at.z()),
         )?;
-        if let Some(ai) = self.players[up.index()].objects[ui].ai.as_mut() {
+        if let Some(ai) = self.players.player_mut(up)?.objects[ui].ai.as_mut() {
             ai.state_position = spot;
         }
         Ok(())

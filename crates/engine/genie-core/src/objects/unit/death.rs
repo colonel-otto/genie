@@ -59,15 +59,7 @@ impl Unit {
     /// master's dying sprite. Not held: the particles and the sounds.
     pub(crate) fn died(&mut self, c: &mut Step<'_>, before: u8) -> Result<(), GenieError> {
         // its master as the death starts: the world's calls below change other objects
-        let Some(master) = self.master(&c.w.masters, c.player).ok().cloned() else {
-            if self.life.dying_sprite.is_some() {
-                return Err(GenieError::unsupported(
-                    "a dying object of a master the slice does not have",
-                ));
-            }
-            return Ok(());
-        };
-        let master = &master;
+        let master = &self.master(&c.w.masters, c.player)?.clone();
         // the last building of a master with a technology withdraws it, after the combat part
         let mut tech = None;
         if master.kind == BUILDING {

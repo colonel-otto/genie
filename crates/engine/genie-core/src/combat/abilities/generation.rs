@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use crate::{GenieError, math::fmath};
 
 /// What a generation task's test reads of the object's top action (`FUN_140a986f0`): its type
@@ -129,20 +130,23 @@ impl World {
             if let Some(e) = unit.unmodelled_action.clone() {
                 return Err(e);
             }
-            unit.top_action().map(|a| {
-                // FUN_140a78450: an id below 0 names no object; the target only matters to an
-                // action of the test's at work
-                let works = WORKING_ACTIONS.contains(&a.kind) && a.state == WORKING;
-                let target = unit
-                    .top_target()
-                    .filter(|&t| works && 0 <= t)
-                    .and_then(|t| self.work_target(t));
-                TopWork {
-                    kind: a.kind,
-                    state: a.state,
-                    target,
+            match unit.top_action() {
+                Some(a) => {
+                    // FUN_140a78450: an id below 0 names no object; the target only matters
+                    // to an action of the test's at work
+                    let works = WORKING_ACTIONS.contains(&a.kind) && a.state == WORKING;
+                    let target = match unit.top_target().filter(|&t| works && 0 <= t) {
+                        Some(t) => self.work_target(t)?,
+                        None => None,
+                    };
+                    Some(TopWork {
+                        kind: a.kind,
+                        state: a.state,
+                        target,
+                    })
                 }
-            })
+                None => None,
+            }
         };
         let built = master.kind == BUILDING
             && self
@@ -155,7 +159,7 @@ impl World {
         if !generates(task, master.kind, master.kind, top, built) {
             return Ok(());
         }
-        let player = &mut self.players[owner.index()];
+        let player = self.players.player_mut(owner)?;
         let multiplier = AttributeId::of_data(task.attribute_type2)
             .and_then(|a| player.attribute(a))
             .unwrap_or(0.0);
@@ -173,20 +177,24 @@ impl World {
             give,
         )?;
         for (kind, amount) in adds {
-            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
+            self.players
+                .player_mut(owner)?
+                .add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         Ok(())
     }
 
     /// What a generation task's test reads of the object `id` its top action works on, as the
     /// world holds it; None for an object the world does not hold.
-    pub(super) fn work_target(&self, id: i32) -> Option<WorkTarget> {
-        let (q, u) = self.object(id)?;
-        let m = u.master(&self.masters, q).ok()?;
-        Some(WorkTarget {
+    pub(super) fn work_target(&self, id: i32) -> Result<Option<WorkTarget>, GenieError> {
+        let Some((q, u)) = self.object(id) else {
+            return Ok(None);
+        };
+        let m = u.master(&self.masters, q)?;
+        Ok(Some(WorkTarget {
             hp: u.life.hp,
             storage: m.storage.first().map_or(0.0, |s| s.1),
             class: m.class,
-        })
+        }))
     }
 }

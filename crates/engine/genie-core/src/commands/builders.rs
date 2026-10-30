@@ -19,6 +19,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{TaskWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
+use crate::world::slots::PlayerSlots;
 use crate::world::{STATIC_TYPES_END, World};
 
 /// `work_master` returns a master the player has; one it lacks is a broken world.
@@ -72,31 +73,58 @@ impl World {
                 // nothing
                 continue;
             };
-            if to_queue {
-                self.queue_build(q, idx, site, position)?;
-                if commits && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut() {
-                    // the readiness pass with 0: every queued order is ready
-                    crate::orders::readiness(&mut ai.orders, false);
-                }
-            } else if STATIC_TYPES_END <= kind && q == player {
-                let task = self.build_task(q, id, site, position)?;
-                self.empty_queue_for_work(q, idx, kind);
-                self.build_directly(q, idx, task, site, position)?;
-            } else if STATIC_TYPES_END <= kind {
-                self.empty_queue_for_work(q, idx, kind);
-                // another player's unit: slot 0x128's slot 0x7e8 finds whatever task it has on
-                // the foundation (a Build on an ally's), the work command's general path
-                let work = crate::orders::Work {
-                    target: foundation,
-                    point: Position::new(position.x(), position.y(), 0.0),
-                    carry_test: false,
-                    filter: -1,
-                    notified: true,
-                };
-                self.order_work(q, idx, &work)?;
-            } else if let Some(m) = self.players[q.index()].objects[idx].body.mover_mut() {
-                m.ignore_units.clear();
-            }
+            self.direct_builder((q, idx), (id, kind), (site, position), (to_queue, commits))?;
+        }
+        Ok(())
+    }
+
+    /// One builder of [`World::task_builders`] at `idx` of player `q`, of master type `kind`:
+    /// queued, started at once, handed the work of another player's foundation, or its ignore
+    /// list cleared, by its type and owner.
+    fn direct_builder(
+        &mut self,
+        (q, idx): (PlayerId, usize),
+        (id, kind): (i32, MasterKind),
+        (site, position): ((PlayerId, i32, MasterId), Position),
+        (to_queue, commits): (bool, bool),
+    ) -> Result<(), GenieError> {
+        let (player, foundation, _) = site;
+        if to_queue {
+            self.queue_builder((q, idx), site, position, commits)?;
+        } else if STATIC_TYPES_END <= kind && q == player {
+            let task = self.build_task(q, id, site, position)?;
+            self.empty_queue_for_work(q, idx, kind)?;
+            self.build_directly(q, idx, task, site, position)?;
+        } else if STATIC_TYPES_END <= kind {
+            self.empty_queue_for_work(q, idx, kind)?;
+            // another player's unit: slot 0x128's slot 0x7e8 finds whatever task it has on
+            // the foundation (a Build on an ally's), the work command's general path
+            let work = crate::orders::Work {
+                target: foundation,
+                point: Position::new(position.x(), position.y(), 0.0),
+                carry_test: false,
+                filter: -1,
+                notified: true,
+            };
+            self.order_work(q, idx, &work)?;
+        } else if let Some(m) = self.players.live_mut(q, idx)?.body.mover_mut() {
+            m.ignore_units.clear();
+        }
+        Ok(())
+    }
+
+    /// A builder that queues: its Build joins the queue, and under `commits` the readiness pass
+    /// with 0 makes every queued order ready.
+    fn queue_builder(
+        &mut self,
+        (q, idx): (PlayerId, usize),
+        site: (PlayerId, i32, MasterId),
+        position: Position,
+        commits: bool,
+    ) -> Result<(), GenieError> {
+        self.queue_build(q, idx, site, position)?;
+        if commits && let Some(ai) = self.players.live_mut(q, idx)?.ai.as_mut() {
+            crate::orders::readiness(&mut ai.orders, false);
         }
         Ok(())
     }
@@ -105,12 +133,18 @@ impl World {
     /// combat object's and a building's (`FUN_141211b80`, types 70 and 80) set `+0xa14` and
     /// empty their unit AI's order queue (`FUN_140c5e010`); the action object's
     /// (`FUN_14106c590`, types 40 to 60) goes straight to the work.
-    pub(super) fn empty_queue_for_work(&mut self, q: PlayerId, idx: usize, kind: MasterKind) {
+    pub(super) fn empty_queue_for_work(
+        &mut self,
+        q: PlayerId,
+        idx: usize,
+        kind: MasterKind,
+    ) -> Result<(), GenieError> {
         if crate::objects::masters::master_type::COMBAT <= kind
-            && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut()
+            && let Some(ai) = self.players.live_mut(q, idx)?.ai.as_mut()
         {
             ai.orders.clear();
         }
+        Ok(())
     }
 
     /// What slot 0x128 on `foundation` (of `master`, player `fp`'s, at `position`) takes for the
@@ -149,7 +183,7 @@ impl World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let owner = &world.players[q.index()];
+        let owner = world.players.player(q)?;
         let unit = owner
             .objects
             .by_id(id)
@@ -218,7 +252,7 @@ impl World {
         (fp, foundation, master): (PlayerId, i32, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
-        let unit = &mut self.players[q.index()].objects[idx];
+        let unit = self.players.live_mut(q, idx)?;
         if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
         }
@@ -256,7 +290,7 @@ impl World {
         position: Position,
     ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master(fp, master)?.class.get());
-        if let Some(m) = self.players[player.index()].objects[idx].body.mover_mut() {
+        if let Some(m) = self.players.live_mut(player, idx)?.body.mover_mut() {
             m.ignore_units.clear();
         }
         // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its
@@ -264,13 +298,13 @@ impl World {
         self.town_bell_order(player, idx, foundation, -1)?;
         // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
         // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
-        if self.players[player.index()].objects[idx].life.master_id != with {
+        if self.players.live(player, idx)?.life.master_id != with {
             self.change_master(player, idx, with)?;
         }
-        self.take(foundation, self.releaser(player, idx))?;
+        self.take(foundation, self.releaser(player, idx)?)?;
         // the work command's notify (slot 0x828): the build order and the foundation, with
         // the point slot 0x128 passes (BUILD's x and y, on the ground)
-        let unit = &mut self.players[player.index()].objects[idx];
+        let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Build),
@@ -289,7 +323,8 @@ impl World {
         // the install (slot 0x808): the action list clears (its actions' teardowns), then
         // holds the Build
         self.clear_actions(player, idx)?;
-        self.players[player.index()].objects[idx]
+        self.players
+            .live_mut(player, idx)?
             .actions
             .set_build(Some(build));
         Ok(())
@@ -311,7 +346,8 @@ impl World {
             self.change_master(player, idx, master)?;
         }
         self.clear_actions(player, idx)?;
-        self.players[player.index()].objects[idx]
+        self.players
+            .live_mut(player, idx)?
             .actions
             .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify::new(
                 wait.task,
@@ -338,7 +374,7 @@ impl World {
         if self.object(foundation).is_none() {
             return Ok(false);
         }
-        if self.players[player.index()].objects[idx].top_action_kind() == Some(action_type::BUILD) {
+        if self.players.live(player, idx)?.top_action_kind() == Some(action_type::BUILD) {
             let _ = self.build_take(player, idx, foundation)?;
             return Ok(true);
         }
@@ -358,7 +394,7 @@ impl World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let owner = &world.players[player.index()];
+        let owner = world.players.player(player)?;
         let unit = &owner.objects[idx];
         let actor = Actor {
             id: unit.id.get(),
@@ -392,9 +428,10 @@ impl World {
         if let Some(m) = switch.map(|m| m.id) {
             self.change_master(player, idx, m)?;
         }
-        self.take(foundation, self.releaser(player, idx))?;
+        self.take(foundation, self.releaser(player, idx)?)?;
         self.clear_actions(player, idx)?;
-        self.players[player.index()].objects[idx]
+        self.players
+            .live_mut(player, idx)?
             .actions
             .set_build(Some(build));
         Ok(true)

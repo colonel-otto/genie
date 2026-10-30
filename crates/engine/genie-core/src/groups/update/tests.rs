@@ -1500,7 +1500,7 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
         });
         (g.flags, g.motion.flags) = (flags, motion_flags);
         g.order_queue.push(crate::groups::GroupOrder::default());
-        t.build_mesh();
+        t.build_mesh().unwrap();
         assert_eq!(t.group_update(1), Ok(true));
         assert_eq!(t.groups.get(1).unwrap().order_queue.len(), 0);
         let f = t.groups.get(1).unwrap().current_formation.clone().unwrap();

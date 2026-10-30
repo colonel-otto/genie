@@ -24,6 +24,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::vision::registry::UnitUpdate;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// The units inside object `id`, any player's (its slot 0x498).
@@ -83,7 +84,7 @@ impl Unit {
                 // FUN_141663dc0 with allies, or Gaia's
                 view.allied = tp == PlayerId::GAIA
                     || crate::unit_ai::task_finder::allied(
-                        &c.w.players[c.player.index()].relations,
+                        &c.w.players.player(c.player)?.relations,
                         c.player,
                         tp,
                         true,
@@ -92,17 +93,14 @@ impl Unit {
             }
             None => (None, crate::garrison::WalkStart { gap: 0.0 }),
         };
-        let master = self.master(&c.w.masters, c.player);
-        let villager = master.as_ref().is_ok_and(|m| m.class == class::VILLAGER);
+        let master = self.master(&c.w.masters, c.player)?;
+        let villager = master.class == class::VILLAGER;
         Ok(crate::garrison::EnterReads {
             target,
             start,
-            waits: villager && !c.w.players[c.player.index()].computer,
+            waits: villager && !c.w.players.player(c.player)?.computer,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
-            defaults: master.map_or_else(
-                |_| MoveDefaults::default(),
-                |m| MoveDefaults::of(m, self.abilities.look.as_ref()),
-            ),
+            defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
         })
     }
 
@@ -192,10 +190,7 @@ impl Unit {
             &mut Well512,
         ),
     ) -> Result<(), GenieError> {
-        let master = self
-            .master_in(masters)
-            .ok()
-            .ok_or(crate::garrison::transport::NO_MASTER)?;
+        let master = self.master_in(masters)?;
         let task = self
             .actions
             .transport()
@@ -311,7 +306,7 @@ impl Unit {
             .clone();
         let hp = building.life.hp;
         let me = self.master_in(Some(masters))?.clone();
-        let owner = &c.w.players[c.player.index()];
+        let owner = c.w.players.player(c.player)?;
         let actor = Actor {
             id: self.id.get(),
             master: &me,
@@ -340,7 +335,7 @@ impl Unit {
                     resource,
                     self.life.amount,
                 )?;
-                c.w.players[c.player.index()].add_attributes(adds)?;
+                c.w.players.player_mut(c.player)?.add_attributes(adds)?;
                 self.life.attribute_type = -1;
                 self.life.amount = 0.0;
             }

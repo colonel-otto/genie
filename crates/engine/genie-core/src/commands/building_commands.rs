@@ -14,14 +14,29 @@ use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::world::slots::PlayerSlots;
 use crate::world::{BLOCKS_RESEARCH, World};
 
 impl World {
     /// Whether the player's object `i` takes a gather point: its master garrisons (`+0xb53`) or
     /// the player trains a unit there (`FUN_141625a20`'s count with no object,
     /// [`World::trainable_count`]). The test SET GATHER POINT and SET GATHER STATE make.
+    /// The index of object `id` in player `player`'s live list; none for a cleared id or an
+    /// object the player does not hold.
+    fn position_of_id(
+        &self,
+        player: PlayerId,
+        id: Option<ObjectId>,
+    ) -> Result<Option<usize>, GenieError> {
+        let held = self.players.player(player)?;
+        Ok(id.and_then(|id| held.objects.position_of(id)))
+    }
+
     fn takes_gather_point(&self, player: PlayerId, i: usize) -> Result<bool, GenieError> {
-        let master = self.players[player.index()].objects[i].master(&self.masters, player)?;
+        let master = self
+            .players
+            .live(player, i)?
+            .master(&self.masters, player)?;
         Ok(master.garrison != 0 || self.trainable_count(player, master.id) > 0)
     }
 
@@ -48,14 +63,13 @@ impl World {
         let (player, [x, y]) = (player, point.xy());
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
-            let Some(i) = id.and_then(|id| self.players[player.index()].objects.position_of(id))
-            else {
+            let Some(i) = self.position_of_id(player, id)? else {
                 continue;
             };
             if !self.takes_gather_point(player, i)? {
                 continue;
             }
-            let unit = &self.players[player.index()].objects[i];
+            let unit = &self.players.live(player, i)?;
             let old = unit.gather_point;
             let kept = old.is_some_and(|g| g.state == GatherPoint::KEPT);
             let z = old.map_or(0.0, |g| g.point.z());
@@ -84,7 +98,7 @@ impl World {
                     target_master,
                 })
             };
-            let unit = &mut self.players[player.index()].objects[i];
+            let unit = self.players.live_mut(player, i)?;
             unit.gather_point = gather;
             // the unit AI's slot 0x210 (FUN_140c16790): its command queue empties
             if let Some(ai) = unit.ai.as_mut() {
@@ -107,14 +121,13 @@ impl World {
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         for &id in ids {
-            let Some(i) = id.and_then(|id| self.players[player.index()].objects.position_of(id))
-            else {
+            let Some(i) = self.position_of_id(player, id)? else {
                 continue;
             };
             let gather = if state == 0 {
                 None
             } else if self.takes_gather_point(player, i)? {
-                let unit = &self.players[player.index()].objects[i];
+                let unit = &self.players.live(player, i)?;
                 Some(GatherPoint {
                     state: i32::from(state),
                     point: unit.position(),
@@ -124,7 +137,7 @@ impl World {
             } else {
                 continue;
             };
-            self.players[player.index()].objects[i].gather_point = gather;
+            self.players.live_mut(player, i)?.gather_point = gather;
         }
         Ok(())
     }
@@ -184,7 +197,7 @@ impl World {
                 }
                 continue;
             };
-            let unit = &self.players[p.index()].objects[i];
+            let unit = &self.players.live(p, i)?;
             let Some(ai) = unit.ai.as_ref() else {
                 continue;
             };
@@ -204,7 +217,7 @@ impl World {
                 queued.push(first);
             }
             queued.push(step(self, target, [x, y])?);
-            let unit = &mut self.players[p.index()].objects[i];
+            let unit = self.players.live_mut(p, i)?;
             if building {
                 unit.gather_point = None;
             }
@@ -278,7 +291,7 @@ impl World {
         buildings: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         let player = r.player;
-        let owner = &self.players[player.index()];
+        let owner = self.players.player(player)?;
         let Some(tech_id) = TechId::of_data(r.tech).filter(|t| t.index() < owner.techs.len())
         else {
             return Ok(());
@@ -293,20 +306,8 @@ impl World {
         let get = |i: i16| crate::technology::Attributes::get(owner, AttributeId::try_from(i)?);
         let factors = crate::technology::factors(tech_id, &get)?;
         let listed = owner.techs[tech].listed_costs(def, factors)?;
-        let mut sums = [0i16; 4];
-        for (attribute, amount) in listed {
-            if let Some(k) = usize::try_from(attribute).ok().filter(|&k| k < 4) {
-                sums[k] = sums[k].wrapping_add(amount);
-            }
-        }
-        for (debit, amount) in self.players[player.index()]
-            .pending_debit
-            .iter_mut()
-            .zip(sums)
-        {
-            *debit -= f32::from(amount);
-        }
-        let owner = &self.players[player.index()];
+        debit_listed(self.players.player_mut(player)?, listed);
+        let owner = self.players.player(player)?;
         let state = &owner.techs[tech];
         let repeatable = state.repeatable(def, false);
         if def.kind == crate::technology::SHARED_KIND {
@@ -314,7 +315,7 @@ impl World {
                 "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
             ));
         }
-        let building_id = self.least_loaded(r, buildings);
+        let building_id = self.least_loaded(r, buildings)?;
         if self.linked_techs.contains_key(&r.tech) {
             return Err(GenieError::unsupported(
                 "RESEARCH of a linked technology (FUN_140f3a0f0, FUN_140f39e80)",
@@ -376,7 +377,7 @@ impl World {
                     "RESEARCH of Castle Age in game mode 16 (the treaty monitor's +0x17)",
                 ));
             }
-            let building = &mut self.players[player.index()].objects[i];
+            let building = self.players.live_mut(player, i)?;
             if let Some(ai) = building.ai.as_mut() {
                 ai.set_action(Some(ActionKind::Research));
             }
@@ -398,9 +399,26 @@ impl World {
     ) -> Result<bool, GenieError> {
         let t = tech.index();
         let def = &self.techs[t];
-        let state = &self.players[player.index()].techs[t];
+        let state = &self.players.player(player)?.techs[t];
         let one = !state.allow_multiple || def.upgrades();
         let count: u16 = if !shift || one { 1 } else { 5 };
         self.queue_at(player, i, None, count, Some(tech), -1)
+    }
+}
+
+/// A research's listed costs go to the pending debit: each attribute 0 to 3 sums its amounts (in
+/// 16 bits) and the player's debit of it falls by the sum.
+fn debit_listed(owner: &mut crate::world::player::Player, listed: [(i16, i16); 3]) {
+    let mut sums = [0i16; 4];
+    for (attribute, amount) in listed {
+        if let Some(sum) = usize::try_from(attribute)
+            .ok()
+            .and_then(|k| sums.get_mut(k))
+        {
+            *sum = sum.wrapping_add(amount);
+        }
+    }
+    for (debit, amount) in owner.pending_debit.iter_mut().zip(sums) {
+        *debit -= f32::from(amount);
     }
 }

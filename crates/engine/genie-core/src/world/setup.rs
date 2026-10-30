@@ -1,6 +1,7 @@
 //! The world as the header save holds it ([`World::new`]): the next object id, the
 //! planners and the shape mesh the game's load builds.
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::movement::Mover;
@@ -101,7 +102,11 @@ impl World {
     /// inside another has none (it left the obstruction manager); `mROOAlreadyCalled`
     /// (`+0x686`) is not held (0 at a game's start), and a desolid foundation in a save is left
     /// without one, as the game's own placement leaves it (unchecked at a load).
-    pub fn build_mesh(&mut self) {
+    ///
+    /// # Errors
+    ///
+    /// An object of a master its owner lacks.
+    pub fn build_mesh(&mut self) -> Result<(), GenieError> {
         let width = u32::try_from(self.spatial.map[0]).unwrap_or(0);
         self.pathing.start_mesh(width);
         for (q, p) in PlayerId::each(self.players.len()).zip(&self.players) {
@@ -109,9 +114,8 @@ impl World {
                 if u.life.inside.is_some() || 7 <= u.life.state {
                     continue;
                 }
-                let (Some(placed), Some(m)) =
-                    (self.spatial.get(u.id), u.master(&self.masters, q).ok())
-                else {
+                let m = u.master(&self.masters, q)?;
+                let Some(placed) = self.spatial.get(u.id) else {
                     continue;
                 };
                 let moving = u.body.mover().is_some_and(Mover::is_moving);
@@ -129,5 +133,6 @@ impl World {
                 self.pathing.refresh(u.id.get(), placed, moving, m.outline);
             }
         }
+        Ok(())
     }
 }

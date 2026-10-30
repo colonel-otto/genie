@@ -33,6 +33,7 @@ it. After the combat update, every combat unit and building runs its passive abi
 | File | What it holds |
 | --- | --- |
 | [`mod.rs`](mod.rs) | Combat: attacks, hits and missiles. |
+| [`victim_reads.rs`](victim_reads.rs) | What a hit reads of its victim: the object's values and its relations to the attacker. |
 | [`victims.rs`](victims.rs) | A hit's victim: what the hit reads of it, the objects it may reach, the hit written back, the kill and its counts. |
 | [`volley.rs`](volley.rs) | A unit's strikes back and its volleys: the missiles it fires and launches. |
 | [`abilities/`](abilities/) | A combat object's passive abilities: `FUN_1412072f0`, which `TRIBE_Combat_Object::update` (`0x141208440`) runs on every combat unit and building (types 70 and 80) after `RGE_Combat_Object::update`, with what that one returned (the object leaves its list); a building's update (`TRIBE_Building_Object::update`) runs its production after it. |

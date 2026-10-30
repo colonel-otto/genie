@@ -12,6 +12,7 @@ use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
+use crate::world::slots::PlayerSlots;
 
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -68,7 +69,7 @@ impl World {
             let Some(crate::orders::Place::Live(player, idx)) = place else {
                 continue;
             };
-            let unit = &self.players[player.index()].objects[idx];
+            let unit = &self.players.player(player)?.objects[idx];
             if unit.life.hp < 1.0 {
                 continue;
             }
@@ -91,7 +92,7 @@ impl World {
                 self.leave_building(c, id, point)?;
                 continue;
             }
-            let unit = &self.players[player.index()].objects[idx];
+            let unit = &self.players.player(player)?.objects[idx];
             let master = unit.master(&self.masters, player)?;
             if master.kind < BUILDING {
                 let transport = container
@@ -131,10 +132,10 @@ impl World {
         };
         let _ = self.let_out(cp, ci, id, point, (None, true))?;
         let (up, ui) = self.live_inside(id)?;
-        let kind = self.players[up.index()].objects[ui]
+        let kind = self.players.player(up)?.objects[ui]
             .master(&self.masters, up)?
             .kind;
-        let u = &mut self.players[up.index()].objects[ui];
+        let u = &mut self.players.player_mut(up)?.objects[ui];
         if COMBAT <= kind {
             u.town_bell.flag = false;
         }
@@ -161,7 +162,7 @@ impl World {
         (flag, unit_type): (u8, i32),
         sound: bool,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[player.index()].objects[idx];
+        let unit = &self.players.player(player)?.objects[idx];
         if unit
             .ai
             .as_ref()
@@ -174,7 +175,7 @@ impl World {
         let mut i = unit.garrison.len();
         while 0 < i {
             i -= 1;
-            let Some(&inside) = self.players[player.index()].objects[idx].garrison.get(i) else {
+            let Some(&inside) = self.players.player(player)?.objects[idx].garrison.get(i) else {
                 continue;
             };
             // the game skips a null entry; an id the world no longer holds is one
@@ -186,10 +187,10 @@ impl World {
             }
             let _ = self.let_out(player, idx, inside, point, (None, sound))?;
             let (up, ui) = self.live_inside(inside)?;
-            let kind = self.players[up.index()].objects[ui]
+            let kind = self.players.player(up)?.objects[ui]
                 .master(&self.masters, up)?
                 .kind;
-            let u = &mut self.players[up.index()].objects[ui];
+            let u = &mut self.players.player_mut(up)?.objects[ui];
             // a unit (type 70) is no longer under the town bell (`+0x9dc`)
             if COMBAT <= kind {
                 u.town_bell.flag = false;
@@ -219,7 +220,7 @@ impl World {
         named: i32,
         last: &mut Option<[f32; 2]>,
     ) -> Result<(), GenieError> {
-        let own = self.players[player.index()].objects[idx].id;
+        let own = self.players.player(player)?.objects[idx].id;
         let (inner, holder) = match transport {
             Some(t) => (own.get(), t),
             None => match self.object(named) {
@@ -237,7 +238,7 @@ impl World {
                 "a transport that holds units outside the live lists",
             ));
         };
-        let h = &self.players[hp.index()].objects[hi];
+        let h = &self.players.player(hp)?.objects[hi];
         let at = h.position();
         let r = h.master(&self.masters, hp)?.radius;
         let around = crate::garrison::transport::Around {
@@ -248,7 +249,7 @@ impl World {
             return Ok(());
         };
         let (up, ui) = self.live_inside(inner)?;
-        let unit = &mut self.players[up.index()].objects[ui];
+        let unit = &mut self.players.player_mut(up)?.objects[ui];
         let inner_id = unit.id;
         unit.body
             .base_mut()
@@ -259,7 +260,7 @@ impl World {
             &made,
             Position::new(spot[0], spot[1], at.z()),
         )?;
-        let unit = &mut self.players[up.index()].objects[ui];
+        let unit = &mut self.players.player_mut(up)?.objects[ui];
         let place = (unit.position().ground(), Some(made.class));
         if unit.ai.is_some() {
             self.run_ai_calls((up, ui), |ai, side, rng| {
@@ -268,7 +269,7 @@ impl World {
             })?;
         }
         if COMBAT <= made.kind {
-            self.players[up.index()].objects[ui].town_bell.flag = false;
+            self.players.player_mut(up)?.objects[ui].town_bell.flag = false;
         }
         Ok(())
     }
@@ -289,13 +290,13 @@ impl World {
         idx: usize,
         point: [f32; 2],
     ) -> Result<(), GenieError> {
-        let id = self.players[player.index()].objects[idx].id;
+        let id = self.players.player(player)?.objects[idx].id;
         self.leave_group_of(id.get(), -1)?;
-        let unit = &mut self.players[player.index()].objects[idx];
+        let unit = &mut self.players.player_mut(player)?.objects[idx];
         if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
         }
-        let unit = &self.players[player.index()].objects[idx];
+        let unit = &self.players.player(player)?.objects[idx];
         let master = unit.master(&self.masters, player)?;
         // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
         let to = if master.class != class::BUILDING && point == [NO_POINT, NO_POINT] {
@@ -338,19 +339,19 @@ impl World {
             let Some((p, _)) = self.object(id) else {
                 continue;
             };
-            let Some(idx) = self.players[p.index()].objects.position_of(id) else {
+            let Some(idx) = self.players.player(p)?.objects.position_of(id) else {
                 return Err(GenieError::unsupported(
                     "a GO_BACK_TO_WORK of a sleeping object",
                 ));
             };
-            let b = &self.players[p.index()].objects[idx];
+            let b = &self.players.player(p)?.objects[idx];
             if b.master(&self.masters, p)?.kind != BUILDING {
                 continue;
             }
             let mut i = b.garrison.len();
             while 0 < i {
                 i -= 1;
-                let Some(&inside) = self.players[p.index()].objects[idx].garrison.get(i) else {
+                let Some(&inside) = self.players.player(p)?.objects[idx].garrison.get(i) else {
                     continue;
                 };
                 // any player's unit (an ally's too); the game skips a null entry, and an id the
@@ -393,23 +394,25 @@ impl World {
                 _ => return Ok(false),
             },
         };
-        let mut bell = self.players[up.index()].objects[ui].town_bell;
-        let lookup = |t: i32| -> Option<RecordTarget> {
-            let (op, o) = self.object(t)?;
-            let m = o.master(&self.masters, op).ok()?;
-            Some(RecordTarget {
+        let mut bell = self.players.player(up)?.objects[ui].town_bell;
+        let lookup = |t: i32| -> Result<Option<RecordTarget>, GenieError> {
+            let Some((op, o)) = self.object(t) else {
+                return Ok(None);
+            };
+            let m = o.master(&self.masters, op)?;
+            Ok(Some(RecordTarget {
                 id: t,
                 building: m.kind == BUILDING,
                 class: m.class,
                 built: o
                     .construction
                     .is_some_and(|c| f32::from(m.build_time) <= c.progress),
-            })
+            }))
         };
-        let (found, record) = bell.back_to_work(&lookup);
-        self.players[up.index()].objects[ui].town_bell = bell;
+        let (found, record) = bell.back_to_work(&lookup)?;
+        self.players.player_mut(up)?.objects[ui].town_bell = bell;
         if found.is_none() && 0 <= record.target_type && record.action.is_some() {
-            let unit = &mut self.players[up.index()].objects[ui];
+            let unit = &mut self.players.player_mut(up)?.objects[ui];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.set_action(record.action);
             }

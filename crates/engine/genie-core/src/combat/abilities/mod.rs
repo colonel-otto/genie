@@ -46,6 +46,7 @@ use crate::objects::masters::{Task, player_master};
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use genie_diff::Diff;
 
 mod generation;
@@ -188,22 +189,19 @@ impl World {
         owner: PlayerId,
         leaves: bool,
     ) -> Result<Vec<Reward>, GenieError> {
-        let i = match self.players[p.index()].objects.get(i) {
+        let i = match self.players.player(p)?.objects.get(i) {
             Some(u) if u.id == id => i,
             _ => match self.place(id) {
                 Some(crate::orders::Place::Live(q, j)) if q == p => j,
                 _ => return Ok(Vec::new()),
             },
         };
-        let unit = &self.players[p.index()].objects[i];
-        let Some(master) = unit
-            .master(&self.masters, p)
-            .ok()
-            // The object types the routine runs on: a combat unit (`'F'`) and a building (`'P'`).
-            .filter(|m| matches!(m.kind, COMBAT | BUILDING))
-        else {
+        let unit = &self.players.live(p, i)?;
+        let master = unit.master(&self.masters, p)?;
+        // The object types the routine runs on: a combat unit (`'F'`) and a building (`'P'`).
+        if !matches!(master.kind, COMBAT | BUILDING) {
             return Ok(Vec::new());
-        };
+        }
         let tasks: Vec<Task> = master
             .tasks
             .iter()
@@ -226,8 +224,9 @@ impl World {
             }
             for task in &tasks {
                 if task.action_type == REMOVAL_REWARD && task.work_range < EPSILON {
-                    let multiplier = AttributeId::of_data(task.attribute_type2)
-                        .and_then(|a| self.players[owner.index()].attribute(a));
+                    let held = self.players.player(owner)?;
+                    let multiplier =
+                        AttributeId::of_data(task.attribute_type2).and_then(|a| held.attribute(a));
                     let cost = player_master(&self.masters, owner, own.id)
                         .map_or(&[][..], |m| &m.cost[..]);
                     rewards.push(reward(task, owner, multiplier, cost));

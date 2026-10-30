@@ -22,6 +22,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::{ActionKind, UnitAi};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl TransportAction {
@@ -196,7 +197,7 @@ impl TransportAction {
         r: &TransportReads,
     ) -> Result<u8, GenieError> {
         let walked = self.walk(c, unit, me)?;
-        let computer = c.w.players[c.player.index()].computer;
+        let computer = c.w.players.player(c.player)?.computer;
         let World {
             spatial,
             zones,

@@ -18,6 +18,7 @@ use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::world::SideWorld;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView};
+use crate::world::slots::PlayerSlots;
 
 impl UnitView<'_, '_> {
     /// The attack command (slot 0x338, `FUN_14120cea0`; classes 51 and 54 are not modelled) ->
@@ -256,19 +257,17 @@ impl UnitView<'_, '_> {
             return Ok(None);
         };
         let attributes = if view.own(id).is_some() {
-            &self.c.w.players[self.player.index()].attributes
+            &self.c.w.players.player(self.player)?.attributes
         } else {
             let Some(owner) = view.players().player(q) else {
                 return Ok(None);
             };
             &owner.attributes[..]
         };
-        let Ok(master) = t.master(&self.c.w.masters, q) else {
-            return Ok(None);
-        };
+        let master = t.master(&self.c.w.masters, q)?;
         let dip = SideWorld {
             player: self.player,
-            relations: &self.c.w.players[self.player.index()].relations,
+            relations: &self.c.w.players.player(self.player)?.relations,
             foreign: view.players(),
             drop_sites: &self.c.w.drop_sites,
         };
@@ -299,7 +298,7 @@ impl UnitView<'_, '_> {
         let own = victim_of(
             unit,
             master,
-            &self.c.w.players[self.player.index()].attributes,
+            &self.c.w.players.player(self.player)?.attributes,
             self.player,
             self.c.w.spatial.terrain.as_ref(),
             self.c.w.mode_680,

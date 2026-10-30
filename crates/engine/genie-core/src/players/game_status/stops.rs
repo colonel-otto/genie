@@ -125,7 +125,7 @@ impl World {
     /// Build, the Attack and the Artifact halt ([`World::halt_other`]).
     pub(super) fn halt_top_action(&mut self, p: PlayerId, idx: usize) -> Result<bool, GenieError> {
         let computer = self.players.player(p)?.computer;
-        let by = self.releaser(p, idx);
+        let by = self.releaser(p, idx)?;
         let master_id = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master_id)?.standing_sprite;
         let unit = self.players.live_mut(p, idx)?;
@@ -203,7 +203,7 @@ impl World {
         idx: usize,
         kind: i16,
     ) -> Result<bool, GenieError> {
-        let by = self.releaser(p, idx);
+        let by = self.releaser(p, idx)?;
         let master_id = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master_id)?.standing_sprite;
         match kind {

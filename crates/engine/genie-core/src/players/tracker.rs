@@ -311,11 +311,12 @@ impl Tracker {
         old: i32,
         new: i32,
         old_class: Option<ClassId>,
-        class_of: &dyn Fn(i32) -> Option<ClassId>,
-    ) {
+        class_of: &dyn Fn(i32) -> Result<Option<ClassId>, GenieError>,
+    ) -> Result<(), GenieError> {
         if let Some(ids) = self.lists.get(&old).cloned() {
             for id in ids {
-                let Some(class) = (0 <= id).then(|| class_of(id)).flatten() else {
+                let class = if 0 <= id { class_of(id)? } else { None };
+                let Some(class) = class else {
                     continue;
                 };
                 self.push(new, id);
@@ -329,8 +330,9 @@ impl Tracker {
             }
         }
         if old < PENDING {
-            self.move_all(old + PENDING, new + PENDING, Key::NONE.class, class_of);
+            self.move_all(old + PENDING, new + PENDING, Key::NONE.class, class_of)?;
         }
+        Ok(())
     }
 }
 
@@ -368,7 +370,7 @@ impl crate::world::World {
                         }
                     }
                 }
-                let building = u.master(&self.masters, p).is_ok_and(|m| m.kind == BUILDING);
+                let building = u.master(&self.masters, p)?.kind == BUILDING;
                 if building
                     && u.construction
                         .is_some_and(|c| f32::from(c.build_time) <= c.progress)
@@ -460,18 +462,20 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         let old_class = self.tracker_key(p, from).class;
         let mut tracker = std::mem::take(&mut self.players.player_mut(p)?.tracker);
-        let class_of = |id: i32| {
-            let (q, u) = self.object(id)?;
-            Some(u.master(&self.masters, q).ok()?.class)
+        let class_of = |id: i32| -> Result<Option<ClassId>, GenieError> {
+            let Some((q, u)) = self.object(id) else {
+                return Ok(None);
+            };
+            Ok(Some(u.master(&self.masters, q)?.class))
         };
-        tracker.move_all(
+        let moved = tracker.move_all(
             i32::from(from.get()),
             i32::from(to.get()),
             old_class,
             &class_of,
         );
         self.players.player_mut(p)?.tracker = tracker;
-        Ok(())
+        moved
     }
 }
 
@@ -842,8 +846,9 @@ mod tests {
         t.push(500 + PENDING, 4);
         t.push(500 + PENDING, -1);
         // 2 is gone from the world; the objects are of class 6 now
-        let class_of = |id: i32| (id != 2).then_some(class::CLASS_6);
-        t.move_all(500, 600, Some(class::CLASS_5), &class_of);
+        let class_of = |id: i32| Ok((id != 2).then_some(class::CLASS_6));
+        t.move_all(500, 600, Some(class::CLASS_5), &class_of)
+            .unwrap();
         assert_eq!((t.list(500), t.list(500 + PENDING)), (&[][..], &[][..]));
         assert_eq!(
             (t.list(600), t.list(600 + PENDING)),

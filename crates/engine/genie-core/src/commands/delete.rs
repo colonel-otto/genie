@@ -23,6 +23,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::players::game_status::LOST;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,
 /// class 42, artifacts and class 60.
@@ -81,7 +82,7 @@ impl World {
         // TRIBE combat objects' type, whose slot 0xa0 is `FUN_14121cc40`.
         // A player's game status once it lost (`+0x89`).
         // A town centre's master whose delete also tells the world's `+0x820` (`FUN_1414615d0`).
-        let lost_ally = self.players[owner.index()].game_status == LOST && mutual(player, owner);
+        let lost_ally = self.players.player(owner)?.game_status == LOST && mutual(player, owner);
         if owner != player && !self.settings.cheats_enabled && !lost_ally {
             return Ok(());
         }
@@ -181,7 +182,7 @@ impl World {
             return Ok(());
         }
         let i = self.wake(id)?;
-        self.players[owner.index()].objects[i].life.hp = 0.0;
+        self.players.live_mut(owner, i)?.life.hp = 0.0;
         Ok(())
     }
 
@@ -232,7 +233,7 @@ impl World {
         if 0.0 < share {
             for (resource, amount, paid) in cost {
                 if 0 <= resource && paid {
-                    self.players[owner.index()].add_attribute(
+                    self.players.player_mut(owner)?.add_attribute(
                         AttributeId::required(resource)?,
                         f32::from(amount) * share,
                     )?;
@@ -240,7 +241,7 @@ impl World {
             }
         }
         let i = self.wake(id)?;
-        self.players[owner.index()].objects[i].life.hp = 0.0;
+        self.players.live_mut(owner, i)?.life.hp = 0.0;
         if state < 2 && desolid {
             self.destroy_foundation(owner, id)?;
         }
@@ -334,7 +335,7 @@ impl World {
             ));
         }
         let i = self.wake(id)?;
-        self.players[owner.index()].objects[i].life.hp = 0.0;
+        self.players.live_mut(owner, i)?.life.hp = 0.0;
         self.set_state(owner, id, 7)
     }
 
@@ -431,7 +432,7 @@ impl World {
         }
         if new == 3 && state == 2 {
             for (kind, amount) in crate::objects::lifecycle::death_parts::refund_of(master, main) {
-                let player = &mut self.players[owner.index()];
+                let player = self.players.player_mut(owner)?;
                 player.add_attribute(AttributeId::try_from(kind)?, -amount)?;
                 if player.attributes[kind as usize] < 0.0 {
                     player.attributes[kind as usize] = 0.0;
@@ -502,7 +503,9 @@ impl World {
     ) -> Result<(), GenieError> {
         for &(kind, amount, flag) in &master.storage {
             if 0 <= kind && leaves(flag) {
-                self.players[owner.index()].add_attribute(AttributeId::required(kind)?, -amount)?;
+                self.players
+                    .player_mut(owner)?
+                    .add_attribute(AttributeId::required(kind)?, -amount)?;
             }
         }
         Ok(())
@@ -517,13 +520,15 @@ impl World {
         id: i32,
         master: &Master,
     ) -> Result<(), GenieError> {
-        let computer = self.players[owner.index()].computer;
+        let computer = self.players.player(owner)?.computer;
         let (_, u) = self
             .object_mut(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
         let death = crate::objects::lifecycle::death_parts::built_death(u, master, computer)?;
         for &(kind, amount) in &death.adds {
-            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
+            self.players
+                .player_mut(owner)?
+                .add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         self.unwatch(owner, id)?;
         if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
@@ -531,7 +536,7 @@ impl World {
         }
         self.combat_set_state(owner, id, 3, master)?;
         if let Some(kind) = death.building.count {
-            let player = &mut self.players[owner.index()];
+            let player = self.players.player_mut(owner)?;
             player.add_attribute(AttributeId::try_from(kind)?, -1.0)?;
             if player.attributes[kind as usize] < 0.0 {
                 player.attributes[kind as usize] = 0.0;
@@ -552,17 +557,17 @@ impl World {
     pub(crate) fn wake(&mut self, id: i32) -> Result<usize, GenieError> {
         Ok(match self.place(id).ok_or_else(|| object_gone(id))? {
             Place::Live(p, i) => {
-                self.players[p.index()].objects[i].life.goto_sleep = false;
+                self.players.live_mut(p, i)?.life.goto_sleep = false;
                 i
             }
             Place::Sleeping(p, i) => {
-                let mut woken = self.players[p.index()].sleeping.swap_remove(i)?;
+                let mut woken = self.players.player_mut(p)?.sleeping.swap_remove(i)?;
                 woken.life.goto_sleep = false;
                 let (id, master) = (woken.id, woken.life.master_id);
-                self.players[p.index()].objects.push(woken);
+                self.players.player_mut(p)?.objects.push(woken);
                 // the remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
                 self.track_relist(p, id.get(), master)?;
-                self.players[p.index()].objects.len() - 1
+                self.players.player(p)?.objects.len() - 1
             }
         })
     }

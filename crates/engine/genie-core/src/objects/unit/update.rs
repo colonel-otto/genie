@@ -121,7 +121,7 @@ impl Unit {
             Some(Action::Gather(_)) => self.gather_update(c, me),
             Some(Action::Hunt(_)) => self.hunter_update(c, me),
             Some(Action::Attack(_)) => {
-                let own = self.own_victim(c);
+                let own = self.own_victim(c)?;
                 self.attack_part(c, me, own)
             }
         }
@@ -163,7 +163,7 @@ impl Unit {
     /// read and change.
     fn hunter_update(&mut self, c: &mut Step<'_>, me: Me) -> Result<HeadCode, GenieError> {
         self.hunt_targets(c)?;
-        let mut own = self.own_victim(c);
+        let mut own = self.own_victim(c)?;
         let tree_lost = self.tree_lost(c);
         self.hunt_part(c, me, &mut own, tree_lost)
     }
@@ -228,7 +228,7 @@ impl Unit {
             return Err(e);
         }
         if loses_actions(&self.life) {
-            let by = self.releaser(c);
+            let by = self.releaser(c)?;
             let (mut releases, mut leaves) = (Vec::new(), Vec::new());
             self.clear_own_actions(&mut releases, &mut leaves, by)?;
             crate::world::lets::torn_down(c, self, (leaves, releases))?;
@@ -261,15 +261,14 @@ impl Unit {
 
     /// [`Unit::ai_part`]'s first step: the pathing grid takes a unit of a master of kind 40 or
     /// more where it stands, moving or not.
-    pub(crate) fn refresh_pathing(&self, c: &mut Step<'_>) {
-        if let Some(m) = self
-            .master(&c.w.masters, c.player)
-            .ok()
-            .filter(|m| ACTION <= m.kind)
+    pub(crate) fn refresh_pathing(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
+        let m = self.master(&c.w.masters, c.player)?;
+        if ACTION <= m.kind
             && let Some(p) = c.w.spatial.get(self.id).copied()
         {
             let moving = self.body.mover().is_some_and(Mover::is_moving);
             c.w.pathing.refresh(self.id.get(), &p, moving, m.outline);
         }
+        Ok(())
     }
 }

@@ -21,6 +21,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use crate::world::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT,
@@ -47,9 +48,7 @@ impl Unit {
     /// of at most 0).
     pub(crate) fn gate_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player)?;
-        let Ok(master) = self.master(&c.w.masters, c.player) else {
-            return Ok(());
-        };
+        let master = self.master(&c.w.masters, c.player)?;
         let transforms = master
             .building
             .as_ref()
@@ -100,7 +99,9 @@ impl Unit {
         }
         let (p, id) = (c.player, self.id);
         c.lend(self, |w| {
-            let i = w.players[p.index()]
+            let i = w
+                .players
+                .player(p)?
                 .objects
                 .position_of(id)
                 .ok_or_else(|| {
@@ -141,9 +142,7 @@ impl Unit {
         else {
             return Ok(());
         };
-        let Ok(m) = self.master(&c.w.masters, c.player) else {
-            return Ok(());
-        };
+        let m = self.master(&c.w.masters, c.player)?;
         let foundation = m.building.as_ref().map_or(-1, |b| b.foundation_terrain);
         let Some(terrain) = farm_stage_terrain(
             m.id,
@@ -198,8 +197,8 @@ impl Unit {
         if !due {
             return Ok(());
         }
-        let master = self.master(&c.w.masters, c.player).ok();
-        if !master.is_some_and(walls_branch) && self.annex_of.is_some() {
+        let master = self.master(&c.w.masters, c.player)?;
+        if !walls_branch(master) && self.annex_of.is_some() {
             return Ok(());
         }
         let (p, id) = (c.player, self.id);
@@ -243,7 +242,9 @@ impl Unit {
         if walls_branch(master) {
             return Ok(());
         }
-        if c.w.players[c.player.index()]
+        if c.w
+            .players
+            .player(c.player)?
             .attributes
             .get(BUILDING_TERRAIN)
             == Some(&f32::from(master.id.get()))
@@ -269,8 +270,8 @@ impl Unit {
             let Some(u) = OthersRef::of(&c.w.players, c.player)?.own(id) else {
                 continue;
             };
-            let kind = u.master(&c.w.masters, c.player).ok().map(|m| m.kind);
-            if kind == Some(COMBAT) && 0 < u.raider_countdown {
+            let kind = u.master(&c.w.masters, c.player)?.kind;
+            if kind == COMBAT && 0 < u.raider_countdown {
                 return Err(GenieError::unsupported(
                     "a unit inside whose raider_build_countdown runs (FUN_1411e7220)",
                 ));
@@ -279,7 +280,7 @@ impl Unit {
         let rate = bm.garrison_heal_rate;
         let mut villagers = 0;
         for &id in &self.garrison {
-            let Some(u) = c.w.players[c.player.index()].objects.by_id_mut(id) else {
+            let Some(u) = c.w.players.player_mut(c.player)?.objects.by_id_mut(id) else {
                 continue;
             };
             let m = object_master(
@@ -375,9 +376,7 @@ impl Unit {
     ///
     /// What the blast does not model.
     pub(crate) fn death_blast(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let Ok(master) = self.master(&c.w.masters, c.player) else {
-            return Ok(());
-        };
+        let master = self.master(&c.w.masters, c.player)?;
         if !blasts_at_death(master, &self.life) {
             return Ok(());
         }
@@ -385,7 +384,7 @@ impl Unit {
         let mut own = victim_of(
             self,
             master,
-            &c.w.players[c.player.index()].attributes,
+            &c.w.players.player(c.player)?.attributes,
             c.player,
             terrain,
             c.w.mode_680,

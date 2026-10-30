@@ -55,15 +55,19 @@ impl Found {
 /// below and above (x − 1, x + 1, y − 1, y + 1) while it lies less than `r − 1` from the start on
 /// both axes, and a neighbour not yet reached is tested and queued. The first tile `test` names
 /// an object on answers it.
+///
+/// # Errors
+///
+/// The first error `test` returns.
 pub fn flood_search(
     at: (i32, i32),
     r: i32,
-    mut test: impl FnMut(i32, i32) -> Option<i32>,
-) -> Option<i32> {
+    mut test: impl FnMut(i32, i32) -> Result<Option<i32>, GenieError>,
+) -> Result<Option<i32>, GenieError> {
     let (ux, uy) = at;
     let mut reached = std::collections::HashSet::from([at]);
-    if let Some(id) = test(ux, uy) {
-        return Some(id);
+    if let Some(id) = test(ux, uy)? {
+        return Ok(Some(id));
     }
     let mut queue = vec![at];
     let mut next = 0;
@@ -76,13 +80,13 @@ pub fn flood_search(
             if !reached.insert((x, y)) {
                 continue;
             }
-            if let Some(id) = test(x, y) {
-                return Some(id);
+            if let Some(id) = test(x, y)? {
+                return Ok(Some(id));
             }
             queue.push((x, y));
         }
     }
-    None
+    Ok(None)
 }
 
 /// A search that never runs (units without a search).

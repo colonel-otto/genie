@@ -19,6 +19,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl BuildAction {
@@ -141,11 +142,12 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<bool, GenieError> {
-        let computer = c.w.players[c.player.index()].computer;
-        let site = Self::site_unit(c, reads);
-        let pasture = site
-            .and_then(|u| u.master(&c.w.masters, c.player).ok())
-            .is_some_and(|m| m.id == PASTURE_1889);
+        let computer = c.w.players.player(c.player)?.computer;
+        let site = Self::site_unit(c, reads)?;
+        let pasture = match site {
+            Some(u) => u.master(&c.w.masters, c.player)?.id == PASTURE_1889,
+            None => false,
+        };
         let built = site.is_some_and(|u| u.life.state != 0);
         if computer || !pasture || !built {
             return Ok(false);
@@ -168,7 +170,7 @@ impl BuildAction {
             crate::world::lets::release(c, builder, target, reads.by)?;
         }
         let (kind, amount) = (builder.life.attribute_type, builder.life.amount);
-        let attributes = c.w.players[c.player.index()].attributes.len();
+        let attributes = c.w.players.player(c.player)?.attributes.len();
         if usize::try_from(kind).is_ok_and(|k| k < attributes) {
             let kind = if matches!(kind, 15..=17) { 0 } else { kind };
             Self::drop_load(c, builder, kind, amount)?;
@@ -187,15 +189,15 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let Some(site) = Self::site_unit(c, reads) else {
+        let Some(site) = Self::site_unit(c, reads)? else {
             return Ok(());
         };
         let state = site.life.state;
         if state == 0 || matches!(self.state, FINISHED | MOVE | 8) {
             return Ok(());
         }
-        let master = site.master(&c.w.masters, c.player).ok();
-        let special = master.is_some_and(|m| m.id == TOWN_CENTRE_621 || m.class == class::GATE);
+        let master = site.master(&c.w.masters, c.player)?;
+        let special = master.id == TOWN_CENTRE_621 || master.class == class::GATE;
         let unbuilt = site
             .construction
             .is_some_and(|k| k.progress < f32::from(k.build_time));
@@ -326,12 +328,16 @@ impl BuildAction {
 
     /// What the `MoveTo`'s answer to the motion step giving up reads ([`GiveUp`]): a human
     /// player's villager waits (by its unit AI's stance).
-    pub(super) fn gives_up(c: &Step<'_>, builder: &Unit, reads: &BuildReads) -> GiveUp {
-        let computer = c.w.players[c.player.index()].computer;
-        GiveUp {
+    pub(super) fn gives_up(
+        c: &Step<'_>,
+        builder: &Unit,
+        reads: &BuildReads,
+    ) -> Result<GiveUp, GenieError> {
+        let computer = c.w.players.player(c.player)?.computer;
+        Ok(GiveUp {
             waits: reads.class == Some(class::VILLAGER) && !computer,
             stance: builder.ai.as_ref().map_or(0, |ai| ai.stance),
-        }
+        })
     }
 
     /// Case 5: `FUN_141162db0` turns the builder to face its foundation (a builder that turns over

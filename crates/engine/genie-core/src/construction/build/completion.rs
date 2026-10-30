@@ -11,6 +11,7 @@ use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::{BuildingMaster, Master};
 use crate::players::PlayerId;
+use crate::world::slots::PlayerSlots;
 
 impl crate::world::World {
     /// The building `id`'s `set_state(2)` from state 0 (`FUN_1411dbb70`), after its annexes'
@@ -96,7 +97,7 @@ impl crate::world::World {
         c.progress = f32::from(c.build_time);
         let mut gains = Vec::new();
         hand_storage(master, &mut gains, Some(&mut u.store));
-        self.players[p.index()].add_attributes(gains)
+        self.players.player_mut(p)?.add_attributes(gains)
     }
 
     /// The block for state 2's sight and sprite: the building `id` at `placed` swaps its sight
@@ -208,11 +209,12 @@ impl crate::world::World {
         let history = completion_counts(master, building, main, &mut counts);
         if let Some(kind) = history {
             let now = self.world_time;
-            self.players[p.index()]
+            self.players
+                .player_mut(p)?
                 .history
                 .add_event(kind, p.index() as f32, 0.0, 0, now);
         }
-        self.players[p.index()].add_attributes(counts)
+        self.players.player_mut(p)?.add_attributes(counts)
     }
 }
 

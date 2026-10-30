@@ -29,6 +29,40 @@ pub(super) struct Aim {
 }
 
 impl World {
+    /// What the attack's first update reads of the attacker at `idx` of player `player` and of
+    /// its `target` as combat objects; none when the world cannot read the target.
+    fn attack_ready(
+        &self,
+        player: PlayerId,
+        idx: usize,
+        target: i32,
+        (master, world_time): (&crate::objects::masters::Master, u32),
+    ) -> Result<Option<crate::combat::attack::ReadyReads>, GenieError> {
+        let u = self.players.live(player, idx)?;
+        let held = self.players.player(player)?;
+        let reads = AttackReads::of(
+            u,
+            master,
+            (self.masters.get(player.index()), &self.graphics),
+            u.ai.as_ref(),
+            (held.computer, world_time),
+        );
+        let own = crate::combat::victims::victim_of(
+            u,
+            master,
+            &held.attributes,
+            player,
+            self.spatial.terrain.as_ref(),
+            self.mode_680,
+        );
+        Ok(self
+            .victim(target, player)?
+            .map(|victim| crate::combat::attack::ReadyReads {
+                reads,
+                fight: Fight { victim, own },
+            }))
+    }
+
     /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):
     /// the unit AI takes action 600 (`FUN_140c64b50`) and the target (an annex its main building,
     /// `FUN_141189b20`) at its place (`FUN_140c64c10`); the Attack (`FUN_140a7c210`, sub-action 0:
@@ -79,28 +113,7 @@ impl World {
         let (tx, ty) = (t_at.position.x() as i32, t_at.position.y() as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (aim.fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
-        let u = &self.players.live(player, idx)?;
-        let reads = AttackReads::of(
-            u,
-            master,
-            (self.masters.get(player.index()), &self.graphics),
-            u.ai.as_ref(),
-            (self.players.player(player)?.computer, world_time),
-        );
-        let own = crate::combat::victims::victim_of(
-            u,
-            master,
-            &self.players.player(player)?.attributes,
-            player,
-            self.spatial.terrain.as_ref(),
-            self.mode_680,
-        );
-        let ready = self
-            .victim(target, player)
-            .map(|victim| crate::combat::attack::ReadyReads {
-                reads,
-                fight: Fight { victim, own },
-            });
+        let ready = self.attack_ready(player, idx, target, (master, world_time))?;
         let speed = self
             .players
             .live(player, idx)?
@@ -150,7 +163,7 @@ impl World {
         }
         attack.target2 = target;
         unit.actions.set_attack(Some(attack));
-        self.take(target, self.releaser(player, idx))?;
+        self.take(target, self.releaser(player, idx)?)?;
         Ok(())
     }
 
@@ -200,7 +213,7 @@ impl World {
             ai.set_action(Some(ActionKind::Attack));
             ai.set_target(aim.aimed, i32::from(aim.aimed_class.get()), aim.at);
         }
-        self.take(target, self.releaser(player, idx))?;
+        self.take(target, self.releaser(player, idx)?)?;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.last_retarget_time = world_time;
@@ -304,7 +317,7 @@ impl World {
             return Ok(old);
         }
         if old != -1 && !quiet && self.object(old).is_some() {
-            let by = self.releaser(player, idx);
+            let by = self.releaser(player, idx)?;
             self.release(old, by)?;
         }
         let Some((_, t)) = self.object(new) else {
@@ -314,7 +327,7 @@ impl World {
             return Ok(-1);
         }
         if !quiet {
-            self.take(new, self.releaser(player, idx))?;
+            self.take(new, self.releaser(player, idx)?)?;
         }
         Ok(new)
     }

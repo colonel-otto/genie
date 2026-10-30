@@ -28,7 +28,7 @@ impl World {
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         let unit = &self.players.live(player, idx)?;
         let livestock = unit.master(&self.masters, player)?.class == class::LIVESTOCK;
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
@@ -361,7 +361,7 @@ impl World {
         };
         let idx = self.put_back_own(p, unit)?;
         if let Some(site) = result? {
-            self.take(site, self.releaser(p, idx))?;
+            self.take(site, self.releaser(p, idx)?)?;
         }
         Ok(())
     }

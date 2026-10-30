@@ -13,6 +13,7 @@ use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, 
 use crate::unit_ai::world_view::UnitView;
 use crate::unit_ai::world_view::owner_view;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 
 impl UnitView<'_, '_> {
     /// Slot 0x380's answer (forced) on `foundation` without its effects, which `BuildObject`
@@ -69,7 +70,11 @@ impl UnitView<'_, '_> {
             master: own,
             player: self.player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.c.w.players[self.player.index()]
+            attribute_95: self
+                .c
+                .w
+                .players
+                .player(self.player)?
                 .attributes
                 .get(95)
                 .copied()
@@ -78,7 +83,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player: self.player,
-            relations: &self.c.w.players[self.player.index()].relations,
+            relations: &self.c.w.players.player(self.player)?.relations,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             drop_sites: &self.c.w.drop_sites,
         };
@@ -106,17 +111,22 @@ impl UnitView<'_, '_> {
             &self.c.w.masters,
             &self.c.w.spatial,
         );
-        let foundation_on = |x: i32, y: i32| -> Option<i32> {
-            spatial.objects_on(x, y).find_map(|(id, p)| {
+        let foundation_on = |x: i32, y: i32| -> Result<Option<i32>, GenieError> {
+            for (id, p) in spatial.objects_on(x, y) {
                 if p.player != player {
-                    return None;
+                    continue;
                 }
-                let u = others.own(id)?;
-                let kind = u.master(every, player).ok()?.kind;
-                (BUILDING <= kind && u.life.state == 0).then_some(id)
-            })
+                let Some(u) = others.own(id) else {
+                    continue;
+                };
+                let kind = u.master(every, player)?.kind;
+                if BUILDING <= kind && u.life.state == 0 {
+                    return Ok(Some(id));
+                }
+            }
+            Ok(None)
         };
-        Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))
+        Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on)?.unwrap_or(-1))
     }
 
     /// The base handler's case 0x216: the unit's closest spot beside the foundation `site`

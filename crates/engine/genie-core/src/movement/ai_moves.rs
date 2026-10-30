@@ -35,7 +35,7 @@ impl Unit {
         class: ClassId,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         let sprite_rng = c.w.streams.get(Stream::Sprite);
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         let sails = self.ai_move_with(
@@ -114,13 +114,10 @@ impl Unit {
             PointMove::Declined => {}
         }
         self.clear_own_actions(releases, builder_leaves, by)?;
-        let sprite = self
-            .master_in(masters)
-            .ok()
-            .and_then(|master| {
-                let look = self.abilities.look.as_ref();
-                ai_sprite(master, m.walk).or_else(|| point_sprite(master, look, false))
-            })
+        let master = self.master_in(masters)?;
+        let look = self.abilities.look.as_ref();
+        let sprite = ai_sprite(master, m.walk)
+            .or_else(|| point_sprite(master, look, false))
             .and_then(|id| graphics.get(&id).copied());
         let move_to = MoveToAction::to_point(m.point, m.range, sprite, self.body.mover_mut());
         if move_to.shows_standing() {
@@ -334,25 +331,23 @@ impl Unit {
                 "an AI move to an object of a unit that does not move",
             ));
         }
-        let livestock = self
-            .master(&c.w.masters, c.player)
-            .is_ok_and(|m| m.class == class::LIVESTOCK);
+        let livestock = self.master(&c.w.masters, c.player)?.class == class::LIVESTOCK;
         let master =
             c.w.spatial
                 .get_known(target)?
                 .ok_or(crate::movement::move_to::TARGET_LACKING)?
                 .master;
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         if crate::movement::move_to::holds_object(livestock, master, state) {
             crate::world::lets::take(c, self, target, by)?;
         }
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.clear_own_actions(&mut releases, &mut leaves, by)?;
         crate::world::lets::torn_down(c, self, (leaves, releases))?;
-        let own = self.master(&c.w.masters, c.player).ok();
-        let range = crate::movement::move_to::object_range(range, own);
-        let sprite = own
-            .and_then(|master| ai_sprite(master, false).or_else(|| object_sprite(master)))
+        let own = self.master(&c.w.masters, c.player)?;
+        let range = crate::movement::move_to::object_range(range, Some(own));
+        let sprite = ai_sprite(own, false)
+            .or_else(|| object_sprite(own))
             .and_then(|id| c.w.graphics.get(&id).copied());
         let here = self.position();
         let mover = self.body.mover_mut().expect("tested above");
@@ -414,11 +409,9 @@ impl Unit {
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite_rng: &mut Well512,
     ) -> Result<(), GenieError> {
-        let standing = self
-            .master_in(masters)
-            .ok()
-            .map(|m| m.standing_sprite)
-            .and_then(|id| graphics.get(&id).copied());
+        let standing = graphics
+            .get(&self.master_in(masters)?.standing_sprite)
+            .copied();
         if let Some(m) = self.body.mover_mut() {
             m.shows(standing.as_ref());
         }

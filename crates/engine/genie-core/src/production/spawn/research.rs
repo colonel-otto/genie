@@ -11,6 +11,7 @@ use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A building the research step runs for, whose action is no Research.
 const NO_RESEARCH_ACTION: GenieError =
@@ -44,8 +45,9 @@ impl World {
         p: PlayerId,
         tech: TechId,
     ) -> Result<(usize, &crate::technology::TechDef), GenieError> {
+        let tree = self.players.player(p)?.techs.len();
         let t = Some(tech.index())
-            .filter(|&t| t < self.players[p.index()].techs.len())
+            .filter(|&t| t < tree)
             .ok_or(GenieError::unsupported(
                 "a research of a technology the tree has not got",
             ))?;
@@ -71,12 +73,12 @@ impl World {
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
         use crate::technology::Attributes;
-        if self.players[p.index()].computer {
+        if self.players.player(p)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's research (its handicaps)",
             ));
         }
-        let owner = &self.players[p.index()];
+        let owner = self.players.player(p)?;
         let building = &owner.objects[i];
         let Some(Some(Making::Research(r))) = building.production.as_ref().map(|q| q.action) else {
             return Err(NO_RESEARCH_ACTION);
@@ -100,7 +102,7 @@ impl World {
                 "a research at a technology without locations",
             ))?;
         let times = state.times_researched;
-        let owner = &mut self.players[p.index()];
+        let owner = self.players.player_mut(p)?;
         let state = &mut owner.techs[t];
         if state.state != 2 && (repeatable || shared) {
             state.state = 2;
@@ -155,7 +157,7 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
         let (tech, t) = (t, t.index());
-        let owner = &self.players[p.index()];
+        let owner = self.players.player(p)?;
         let state = &owner.techs[t];
         let def = &self.techs[t];
         if state.state == 2 || repeat {
@@ -173,7 +175,7 @@ impl World {
                 let _ = self.complete_research(p, tech, Some(master))?;
             }
         }
-        let building = &mut self.players[p.index()].objects[i];
+        let building = self.players.live_mut(p, i)?;
         let (id, state) = (building.id, building.life.state);
         if let Some(Some(Making::Research(r))) =
             building.production.as_mut().map(|q| q.action.as_mut())
@@ -194,7 +196,9 @@ impl World {
         // world's table the player gets with the building as its object (its slot 0x10,
         // `TRIBE_Effects::do_effect`, which skips an id the table does not hold)
         let reward = crate::math::conversions::cvttss2si(
-            self.players[p.index()].get(AttributeId::try_from(WORLD_EFFECT)?)?,
+            self.players
+                .player(p)?
+                .get(AttributeId::try_from(WORLD_EFFECT)?)?,
         ) as i16;
         if 0 < reward
             && let Some(effect) = usize::try_from(reward)
@@ -203,6 +207,40 @@ impl World {
                 .cloned()
         {
             self.do_effect(p, &effect, Some(id.get()))?;
+        }
+        Ok(())
+    }
+
+    /// [`World::research_destroyed`]'s part for a research not done while the game is not
+    /// over: an unpaid one (`+0x60` clear) gives technology `t`'s costs back
+    /// ([`crate::production::refund_tech`]), and the building's unit AI is told the research
+    /// failed (0x1f9 with 0x26c).
+    fn research_failed(
+        &mut self,
+        p: PlayerId,
+        i: usize,
+        r: &MakeTech,
+        t: usize,
+    ) -> Result<(), GenieError> {
+        if !r.paid {
+            let def = &self.techs[t];
+            let owner = self.players.player_mut(p)?;
+            let mut state = std::mem::take(&mut owner.techs[t]);
+            let done = crate::production::refund_tech(&mut state, def, r.tech, owner);
+            owner.techs[t] = state;
+            let _ = done?;
+        }
+        let building = self.players.live_mut(p, i)?;
+        let (id, state) = (building.id, building.life.state);
+        if let Some(ai) = building.ai.as_mut() {
+            ai.post(
+                Notify::own(
+                    id.get(),
+                    crate::unit_ai::ACTION_FAILED,
+                    [ActionKind::Research.value(), 0, 0],
+                ),
+                state,
+            )?;
         }
         Ok(())
     }
@@ -227,32 +265,14 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
         let (t, _) = self.research_tech(p, r.tech)?;
-        let def = &self.techs[t];
         if r.state != MakeObj::DONE && self.game_state == 0 {
-            if !r.paid {
-                let owner = &mut self.players[p.index()];
-                let mut state = std::mem::take(&mut owner.techs[t]);
-                let done = crate::production::refund_tech(&mut state, def, r.tech, owner);
-                owner.techs[t] = state;
-                let _ = done?;
-            }
-            let building = &mut self.players[p.index()].objects[i];
-            let (id, state) = (building.id, building.life.state);
-            if let Some(ai) = building.ai.as_mut() {
-                ai.post(
-                    Notify::own(
-                        id.get(),
-                        crate::unit_ai::ACTION_FAILED,
-                        [ActionKind::Research.value(), 0, 0],
-                    ),
-                    state,
-                )?;
-            }
+            self.research_failed(p, i, r, t)?;
         }
-        let owner = &self.players[p.index()];
+        let def = &self.techs[t];
+        let owner = self.players.player(p)?;
         let state = &owner.techs[t];
         if def.kind == crate::technology::SHARED_KIND {
-            let state = &mut self.players[p.index()].techs[t];
+            let state = &mut self.players.player_mut(p)?.techs[t];
             state.state = 1;
             state.times_researched = 0;
             state.pending = 0;
@@ -279,7 +299,7 @@ impl World {
             time *= modifier;
         }
         let done = adjustment + time <= r.progress;
-        let state = &mut self.players[p.index()].techs[t];
+        let state = &mut self.players.player_mut(p)?.techs[t];
         state.research_done = r.progress;
         if done {
             state.times_researched = state.times_researched.wrapping_add(1);

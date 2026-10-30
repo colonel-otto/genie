@@ -13,6 +13,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::unit::Unit;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// The radius a part of a building must pass to count as an annex the builder stands on
@@ -45,7 +46,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let desolid = Self::site_unit(c, reads)
+        let desolid = Self::site_unit(c, reads)?
             .ok_or(FOREIGN_SITE)?
             .construction
             .is_some_and(|k| k.desolid);
@@ -308,9 +309,9 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let site = Self::site_unit(c, reads).ok_or(FOREIGN_SITE)?;
+        let site = Self::site_unit(c, reads)?.ok_or(FOREIGN_SITE)?;
         let mut rate = self.task.work_rate * self.task.work_value * seconds(c.dt);
-        let mut factor = c.w.players[c.player.index()].construction_rate;
+        let mut factor = c.w.players.player(c.player)?.construction_rate;
         if site.life.master_id == WONDER && WONDER_RATE < factor {
             factor = WONDER_RATE;
         }
@@ -326,7 +327,7 @@ impl BuildAction {
         }
         // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
         // without (deleted, it dies in its own update) leaves the Build as it is
-        if Self::site_unit(c, reads).is_some_and(|u| 0.0 < u.life.hp) {
+        if Self::site_unit(c, reads)?.is_some_and(|u| 0.0 < u.life.hp) {
             self.finish(c, builder, reads)?;
         }
         Ok(())

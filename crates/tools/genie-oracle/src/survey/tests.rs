@@ -68,7 +68,7 @@ fn a_stopped_player_is_listed_and_compared_no_more() {
     let [(1, stop)] = survey.stops.as_slice() else {
         panic!("player 1 stops: {:?}", survey.stops);
     };
-    assert_eq!(stop.update, 1);
+    assert_eq!(stop.update, 0);
     assert_eq!((survey.saves, survey.rows.len()), (0, 0));
 }
 

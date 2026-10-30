@@ -19,6 +19,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use crate::world::{DROP_SITE_MASTERS, World};
 
@@ -48,7 +49,7 @@ impl Unit {
         c: &Step<'_>,
         others: OthersRef<'_>,
         action: BuildAction,
-    ) -> BTreeMap<i32, ClearLook> {
+    ) -> Result<BTreeMap<i32, ClearLook>, GenieError> {
         let mut looks = BTreeMap::new();
         if let Some(f) = Some(action)
             .filter(|b| matches!(b.state, 6 | 222))
@@ -68,12 +69,11 @@ impl Unit {
                 } else {
                     continue;
                 };
-                if let Some(l) = clear_look_of(u, c.w.masters.get(owner.index())) {
-                    let _ = looks.insert(id, l);
-                }
+                let l = clear_look_of(u, c.w.masters.get(owner.index()))?;
+                let _ = looks.insert(id, l);
             }
         }
-        looks
+        Ok(looks)
     }
 
     /// What the Build's update reads of the world as it starts ([`BuildReads`]).
@@ -110,7 +110,7 @@ impl Unit {
         };
         let master = self.master(&c.w.masters, c.player);
         // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
-        let attributes = c.w.players[c.player.index()].attributes.len();
+        let attributes = c.w.players.player(c.player)?.attributes.len();
         let has_kind = usize::try_from(self.life.attribute_type).is_ok_and(|k| k < attributes);
         Ok(BuildReads {
             site,
@@ -119,10 +119,10 @@ impl Unit {
             build_targets,
             deposit,
             gone_orders,
-            looks: self.clearing_looks(c, others, action),
+            looks: self.clearing_looks(c, others, action)?,
             class: master.as_ref().ok().map(|m| m.class),
-            drop_site: drop_site_master(c, built) && has_kind,
-            by: self.releaser(c),
+            drop_site: drop_site_master(c, built)? && has_kind,
+            by: self.releaser(c)?,
         })
     }
 
@@ -147,12 +147,15 @@ impl Unit {
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
-            attribute_95: c.w.players[c.player.index()]
+            attribute_95: c
+                .w
+                .players
+                .player(c.player)?
                 .attributes
                 .get(95)
                 .copied()
                 .unwrap_or(0.0),
-            civ: c.w.players[c.player.index()].civ,
+            civ: c.w.players.player(c.player)?.civ,
         };
         Ok(state_of(site, others).map(|state| {
             let drop = DropOff {
@@ -237,12 +240,16 @@ impl BuildAction {
 
 /// `FUN_140fde180`: the foundation's master `built` is a drop site (the masters 562, 584, 621,
 /// 68, 1808, 50, 1187 and 199, or one the drop-site table has for every civ or the builder's).
-fn drop_site_master(c: &Step<'_>, built: Option<MasterId>) -> bool {
-    built.is_some_and(|m| {
-        DROP_SITE_MASTERS.contains(&m)
-            || c.w.drop_sites.iter().any(|d| {
-                d.building == m
-                    && (d.civs.is_empty() || d.civs.contains(&c.w.players[c.player.index()].civ))
-            })
-    })
+fn drop_site_master(c: &Step<'_>, built: Option<MasterId>) -> Result<bool, GenieError> {
+    let Some(m) = built else {
+        return Ok(false);
+    };
+    if DROP_SITE_MASTERS.contains(&m) {
+        return Ok(true);
+    }
+    let civ = c.w.players.player(c.player)?.civ;
+    Ok(c.w
+        .drop_sites
+        .iter()
+        .any(|d| d.building == m && (d.civs.is_empty() || d.civs.contains(&civ))))
 }

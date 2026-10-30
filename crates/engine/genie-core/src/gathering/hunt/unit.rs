@@ -18,6 +18,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
@@ -45,7 +46,7 @@ impl Unit {
         let task = hunt.task;
         if hunt.target_class == Some(class::PREDATOR) {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
-            if c.w.players[c.player.index()].computer {
+            if c.w.players.player(c.player)?.computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunt of class 10's search (set_state 1)",
                 ));
@@ -97,7 +98,7 @@ impl Unit {
         c: &mut Step<'_>,
         ids: [i32; N],
     ) -> Result<(), GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         for id in ids.into_iter().filter(|&id| id != -1) {
             crate::world::lets::release(c, self, id, by)?;
         }
@@ -126,8 +127,8 @@ impl Unit {
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
                 world_time: c.w.world_time,
-                computer: c.w.players[c.player.index()].computer,
-                construction_rate: c.w.players[c.player.index()].construction_rate,
+                computer: c.w.players.player(c.player)?.computer,
+                construction_rate: c.w.players.player(c.player)?.construction_rate,
                 groups: &c.w.groups,
             };
             let (site, _) = self.drop_site(&mut w, others, -1, crate::gathering::hunt::SEARCH)?;
@@ -223,7 +224,7 @@ impl Unit {
         let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let site = std::mem::replace(&mut hunt.carry_to, -1);
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         if site != -1 {
             crate::world::lets::release(c, self, site, by)?;
         }
@@ -354,9 +355,9 @@ impl Unit {
         let mut plan = Planning {
             pathing: &mut c.w.pathing,
             now: c.w.world_time,
-            computer: c.w.players[c.player.index()].computer,
+            computer: c.w.players.player(c.player)?.computer,
             object: c.w.streams.get(Stream::Object),
-            construction_rate: c.w.players[c.player.index()].construction_rate,
+            construction_rate: c.w.players.player(c.player)?.construction_rate,
             groups: &c.w.groups,
         };
         let master_id = self.life.master_id;
@@ -395,7 +396,7 @@ impl Unit {
     /// [`crate::gathering::hunt::HuntAction::search_walk`]); one without would wait
     /// (`set_state(2)`), not modelled.
     fn hunt_found_nothing(&mut self, c: &Step<'_>, kind: i8) -> Result<(), GenieError> {
-        if c.w.players[c.player.index()].computer && kind != 0 {
+        if c.w.players.player(c.player)?.computer && kind != 0 {
             return Err(GenieError::unsupported(
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
             ));
@@ -477,7 +478,7 @@ impl Unit {
         let arms = crate::combat::attack::arms(master, &c.w.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
@@ -514,10 +515,10 @@ impl Unit {
         if !failed {
             return Ok(());
         }
-        let standing = self
-            .master(&c.w.masters, c.player)
-            .ok()
-            .and_then(|m| c.w.graphics.get(&m.standing_sprite).copied());
+        let standing =
+            c.w.graphics
+                .get(&self.master(&c.w.masters, c.player)?.standing_sprite)
+                .copied();
         if let Some(m) = self.body.mover_mut() {
             m.shows(standing.as_ref());
         }
@@ -553,13 +554,13 @@ impl Unit {
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),
             world_time: c.w.world_time,
-            computer: c.w.players[c.player.index()].computer,
-            construction_rate: c.w.players[c.player.index()].construction_rate,
+            computer: c.w.players.player(c.player)?.computer,
+            construction_rate: c.w.players.player(c.player)?.construction_rate,
             groups: &c.w.groups,
         };
         let others = OthersRef::of(&c.w.players, c.player)?;
         if let Some(site) = self.drop_off_in(w, others, &c.w.graphics)? {
-            let by = self.releaser(c);
+            let by = self.releaser(c)?;
             crate::world::lets::take(c, self, site, by)?;
         }
         Ok(())

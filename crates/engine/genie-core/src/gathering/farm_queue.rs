@@ -20,6 +20,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::production::{cost_test, pay, refund_master};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A queue takes a purchase only below this count (`0x28`).
 pub const QUEUE_LIMIT: i32 = 40;
@@ -95,13 +96,13 @@ impl World {
         master: MasterId,
         queue: Queue,
     ) -> Result<bool, GenieError> {
-        if count < 1 || QUEUE_LIMIT <= self.queued(p, queue) {
+        if count < 1 || QUEUE_LIMIT <= self.queued(p, queue)? {
             return Ok(false);
         }
         let Some(masters) = self.masters.get(p.index()) else {
             return Ok(false);
         };
-        let player = &mut self.players[p.index()];
+        let player = self.players.player_mut(p)?;
         let mut n = count;
         loop {
             if cost_test(masters, master, n as f32, false, &*player)? {
@@ -132,11 +133,11 @@ impl World {
         master: MasterId,
         queue: Queue,
     ) -> Result<bool, GenieError> {
-        let n = count.min(self.queued(p, queue));
+        let n = count.min(self.queued(p, queue)?);
         if n < 1 {
             return Ok(false);
         }
-        let player = &mut self.players[p.index()];
+        let player = self.players.player_mut(p)?;
         match queue {
             Queue::Farms => player.farm_queue -= n,
             Queue::FishTraps => player.fish_trap_queue -= n,
@@ -155,28 +156,27 @@ impl World {
     /// town centres standing ([`World::town_centre_count`]) are fewer than attribute 218
     /// (`CVTSI2SS`, `COMISS`). A base id the player lacks makes none (the game reads its table's
     /// slot unchecked; the `.dat`'s masters name their own).
-    #[must_use]
-    pub fn can_make(&self, p: PlayerId, master: MasterId) -> bool {
+    pub fn can_make(&self, p: PlayerId, master: MasterId) -> Result<bool, GenieError> {
         let Some(ms) = self.masters.get(p.index()) else {
-            return false;
+            return Ok(false);
         };
         let Some(m) = ms.get(master) else {
-            return false;
+            return Ok(false);
         };
         let Some(based) = m.base_id.and_then(|b| ms.get(b)) else {
-            return false;
+            return Ok(false);
         };
         let mut base = m.base_id;
         if based.kind == crate::objects::masters::master_type::BUILDING
             && let Some(head) = based.building.as_ref().and_then(|b| b.head_unit)
         {
             let Some(h) = ms.get(head) else {
-                return false;
+                return Ok(false);
             };
             base = h.base_id;
         }
         let Some(b) = base.and_then(|b| ms.get(b)) else {
-            return false;
+            return Ok(false);
         };
         // The farm class (49), whose masters the reseed takes (`FUN_141658b40`'s `-0xe7b`).
         // The villager's class (4, `-0xea8`), which reseeds farms, and the fishing ship's (21, `0x15`),
@@ -184,25 +184,34 @@ impl World {
         // The town centre (621, `0x26d`), whose availability also counts the town centres standing
         // against attribute 218 (`FUN_141663f80`).
         if base == Some(TOWN_CENTRE_621) {
-            let limit = self.players[p.index()]
+            let limit = self
+                .players
+                .player(p)?
                 .attribute(attribute::TOWN_CENTRE_LIMIT)
                 .unwrap_or(0.0);
             if (self.town_centre_count(p) as f32) < limit {
-                return true;
+                return Ok(true);
             }
         }
-        b.available
+        Ok(b.available)
     }
 
     /// `FUN_141658b40`: the farm a reseeding villager of player `p` makes: the farm (0x32) when
     /// the player can make it ([`World::can_make`]) and it is of the farm class, else the pasture
     /// (0x761) so; else none.
-    #[must_use]
-    pub fn reseed_master(&self, p: PlayerId) -> Option<MasterId> {
-        [FARM, PASTURE].into_iter().find(|&m| {
-            self.can_make(p, m)
+    ///
+    /// # Errors
+    ///
+    /// A player the world does not hold.
+    pub fn reseed_master(&self, p: PlayerId) -> Result<Option<MasterId>, GenieError> {
+        for m in [FARM, PASTURE] {
+            if self.can_make(p, m)?
                 && player_master(&self.masters, p, m).is_some_and(|m| m.class == class::FARM)
-        })
+            {
+                return Ok(Some(m));
+            }
+        }
+        Ok(None)
     }
 
     /// `FUN_140a8aa60`: player `p`'s gatherer at `idx` reseeds its farm at its farm spot
@@ -226,7 +235,7 @@ impl World {
     /// and its slot 0x128 sends it to build the foundation at the spot ([`World::build_task`],
     /// [`World::build_directly`]). True when the foundation was made.
     pub(crate) fn reseed(&mut self, p: PlayerId, idx: usize) -> Result<bool, GenieError> {
-        let unit = &self.players[p.index()].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let Some(gather) = unit.actions.gather().copied() else {
             return Ok(false);
         };
@@ -235,32 +244,22 @@ impl World {
             return Ok(false);
         }
         let class = unit.master(&self.masters, p)?.class;
-        let owner = &self.players[p.index()];
-        let (master, auto, queue) =
-            if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != class::VILLAGER {
-                if !owner.auto_fishtrap_queue && owner.fish_trap_queue < 1 {
-                    return Ok(false);
-                }
-                if class != class::FISHING_SHIP {
-                    return Ok(false);
-                }
-                (FISH_TRAP, owner.auto_fishtrap_queue, Queue::FishTraps)
-            } else {
-                let Some(master) = self.reseed_master(p) else {
-                    return Ok(false);
-                };
-                (master, owner.auto_farm_queue, Queue::Farms)
-            };
+        let Some((master, auto, queue)) = self.reseed_choice(p, class)? else {
+            return Ok(false);
+        };
         // the farm's scan passes over the old target and, for a building, its annexes; the fish
         // trap's over nothing
         let mut own = Vec::new();
         if queue == Queue::Farms && gather.target != -1 {
             own.push(gather.target);
-            if self
-                .object(gather.target)
-                .and_then(|(q, t)| t.master(&self.masters, q).ok())
-                .is_some_and(|m| m.kind == crate::objects::masters::master_type::BUILDING)
-            {
+            let is_building = match self.object(gather.target) {
+                Some((q, t)) => {
+                    t.master(&self.masters, q)?.kind
+                        == crate::objects::masters::master_type::BUILDING
+                }
+                None => false,
+            };
+            if is_building {
                 let mut k = 0;
                 while k < own.len() {
                     own.extend(self.spatial.annexes_of(own[k]));
@@ -271,29 +270,15 @@ impl World {
         if self.placement_code_beside(p, master, farm, true, &own)? != 0 {
             return Ok(false);
         }
-        let mut from_queue = !auto;
-        if auto {
-            let Some(masters) = self.masters.get(p.index()) else {
-                // unreachable: the gatherer's master was found in this table above
-                return Ok(false);
-            };
-            if cost_test(masters, master, ONE_FARM, false, &self.players[p.index()])? {
-                if !pay(masters, master, ONE_FARM, &mut self.players[p.index()])? {
-                    return Ok(false);
-                }
-            } else {
-                if self.queued(p, queue) < 1 {
-                    return Ok(false);
-                }
-                from_queue = true;
-            }
-        }
+        let Some(from_queue) = self.pay_for_reseed(p, (master, auto, queue))? else {
+            return Ok(false);
+        };
         let made = self.master(p, master)?;
         let ai = Ok(made.unit_ai_type(master));
         let at = Position::new(farm[0], farm[1], 0.0);
         let (foundation, _) = self.make_building(p, master, ai, at)?;
         if from_queue {
-            let player = &mut self.players[p.index()];
+            let player = self.players.player_mut(p)?;
             let count = match queue {
                 Queue::Farms => &mut player.farm_queue,
                 Queue::FishTraps => &mut player.fish_trap_queue,
@@ -302,11 +287,65 @@ impl World {
                 *count -= 1;
             }
         }
-        let id = self.players[p.index()].objects[idx].id;
+        let id = self.players.live(p, idx)?.id;
         let site = (p, foundation, master);
         let task = self.build_task(p, id.get(), site, at)?;
         self.build_directly(p, idx, task, site, at)?;
         Ok(true)
+    }
+
+    /// What a reseeding gatherer of `class` makes ([`World::reseed`]): the master, whether the
+    /// automatic queue pays and the queue it takes from; none when nothing is to be made.
+    fn reseed_choice(
+        &self,
+        p: PlayerId,
+        class: crate::objects::masters::ClassId,
+    ) -> Result<Option<(MasterId, bool, Queue)>, GenieError> {
+        let owner = self.players.player(p)?;
+        let choice = if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != class::VILLAGER
+        {
+            if !owner.auto_fishtrap_queue && owner.fish_trap_queue < 1 {
+                return Ok(None);
+            }
+            if class != class::FISHING_SHIP {
+                return Ok(None);
+            }
+            (FISH_TRAP, owner.auto_fishtrap_queue, Queue::FishTraps)
+        } else {
+            let Some(master) = self.reseed_master(p)? else {
+                return Ok(None);
+            };
+            (master, owner.auto_farm_queue, Queue::Farms)
+        };
+        Ok(Some(choice))
+    }
+
+    /// The farm's or the fish trap's price ([`World::reseed`]): the player pays it when the
+    /// automatic queue is on and it can, else takes one from the queue, which must hold one.
+    /// None when it can do neither, else whether the queue gave it.
+    fn pay_for_reseed(
+        &mut self,
+        p: PlayerId,
+        (master, auto, queue): (MasterId, bool, Queue),
+    ) -> Result<Option<bool>, GenieError> {
+        let mut from_queue = !auto;
+        if auto {
+            let Some(masters) = self.masters.get(p.index()) else {
+                // unreachable: the gatherer's master was found in this table above
+                return Ok(None);
+            };
+            if cost_test(masters, master, ONE_FARM, false, self.players.player(p)?)? {
+                if !pay(masters, master, ONE_FARM, self.players.player_mut(p)?)? {
+                    return Ok(None);
+                }
+            } else {
+                if self.queued(p, queue)? < 1 {
+                    return Ok(None);
+                }
+                from_queue = true;
+            }
+        }
+        Ok(Some(from_queue))
     }
 
     /// State 0xf2's end (`0x140a8e1d0` case 0xf1, [`crate::gathering::gather::Next::Reseed`]) of player
@@ -323,11 +362,11 @@ impl World {
         if self.reseed(p, idx)? {
             return Ok(());
         }
-        let by = self.releaser(p, idx);
-        let master_id = self.players[p.index()].objects[idx].life.master_id;
+        let by = self.releaser(p, idx)?;
+        let master_id = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master_id)?.standing_sprite;
-        let computer = self.players[p.index()].computer;
-        let unit = &mut self.players[p.index()].objects[idx];
+        let computer = self.players.player(p)?.computer;
+        let unit = self.players.live_mut(p, idx)?;
         let Some(gather) = unit.actions.gather_mut() else {
             return Ok(());
         };
@@ -355,11 +394,12 @@ impl World {
     }
 
     /// Player `p`'s queue `queue`.
-    fn queued(&self, p: PlayerId, queue: Queue) -> i32 {
-        match queue {
-            Queue::Farms => self.players[p.index()].farm_queue,
-            Queue::FishTraps => self.players[p.index()].fish_trap_queue,
-        }
+    fn queued(&self, p: PlayerId, queue: Queue) -> Result<i32, GenieError> {
+        let owner = self.players.player(p)?;
+        Ok(match queue {
+            Queue::Farms => owner.farm_queue,
+            Queue::FishTraps => owner.fish_trap_queue,
+        })
     }
 }
 
@@ -495,13 +535,13 @@ mod tests {
             building(master_id(302), class::BUILDING, master_id(302), true, -1),
             building(master_id(303), class::BUILDING, master_id(999), true, -1),
         ]);
-        assert!(t.can_make(PlayerId::new(1), FARM));
+        assert!(t.can_make(PlayerId::new(1), FARM).unwrap());
         // the pasture's base 300 heads 301, whose base 302 is available
-        assert!(t.can_make(PlayerId::new(1), PASTURE));
-        assert!(!t.can_make(PlayerId::new(1), ids::ID_1187));
-        assert!(!t.can_make(PlayerId::new(1), master_id(303)));
+        assert!(t.can_make(PlayerId::new(1), PASTURE).unwrap());
+        assert!(!t.can_make(PlayerId::new(1), ids::ID_1187).unwrap());
+        assert!(!t.can_make(PlayerId::new(1), master_id(303)).unwrap());
         t.masters[1] = Masters::new([building(FARM, class::FARM, FARM, false, -1)]);
-        assert!(!t.can_make(PlayerId::new(1), FARM));
+        assert!(!t.can_make(PlayerId::new(1), FARM).unwrap());
     }
 
     /// The town centre 621 is also made while the town centres standing are fewer than
@@ -516,9 +556,9 @@ mod tests {
             false,
             -1,
         )]);
-        assert!(!t.can_make(PlayerId::new(1), TOWN_CENTRE_621));
+        assert!(!t.can_make(PlayerId::new(1), TOWN_CENTRE_621).unwrap());
         t.players[1].attributes[attribute::TOWN_CENTRE_LIMIT.index()] = 1.0;
-        assert!(t.can_make(PlayerId::new(1), TOWN_CENTRE_621));
+        assert!(t.can_make(PlayerId::new(1), TOWN_CENTRE_621).unwrap());
     }
 
     /// `FUN_141658b40`: the farm when the player can make it, else the pasture, each of the
@@ -533,13 +573,13 @@ mod tests {
             ])
         };
         t.masters[1] = masters(true, true, class::FARM);
-        assert_eq!(t.reseed_master(PlayerId::new(1)), Some(FARM));
+        assert_eq!(t.reseed_master(PlayerId::new(1)).unwrap(), Some(FARM));
         t.masters[1] = masters(false, true, class::FARM);
-        assert_eq!(t.reseed_master(PlayerId::new(1)), Some(PASTURE));
+        assert_eq!(t.reseed_master(PlayerId::new(1)).unwrap(), Some(PASTURE));
         t.masters[1] = masters(true, true, class::BUILDING);
-        assert_eq!(t.reseed_master(PlayerId::new(1)), Some(PASTURE));
+        assert_eq!(t.reseed_master(PlayerId::new(1)).unwrap(), Some(PASTURE));
         t.masters[1] = masters(false, false, class::FARM);
-        assert_eq!(t.reseed_master(PlayerId::new(1)), None);
+        assert_eq!(t.reseed_master(PlayerId::new(1)).unwrap(), None);
     }
 
     /// A return gives back at most the queue's count, each its paid costs.

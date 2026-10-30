@@ -17,6 +17,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::production::IN_PRODUCTION;
+use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi};
@@ -48,7 +49,7 @@ impl World {
         master: MasterId,
         pop: f32,
     ) -> Result<(), GenieError> {
-        if self.players[p.index()].computer {
+        if self.players.player(p)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's new unit (its AI's slot 0x398)",
             ));
@@ -58,7 +59,7 @@ impl World {
                 "a spawn without the players' sight",
             ));
         }
-        let building = &self.players[p.index()].objects[i];
+        let building = &self.players.live(p, i)?;
         let made = self.master(p, master)?.clone();
         if made.recyclable {
             return Err(GenieError::unsupported(
@@ -93,7 +94,7 @@ impl World {
             Position::new(point[0], point[1], position.z()),
         )?;
         let class = self.tracker_key(p, master).class;
-        let owner = &mut self.players[p.index()];
+        let owner = self.players.player_mut(p)?;
         owner.add_attribute(IN_PRODUCTION, -pop)?;
         // its queue place goes (FUN_14104fb00 with -1, FUN_14104f330)
         owner.tracker.count_queued(-1);
@@ -118,7 +119,7 @@ impl World {
             self.gather(p, new, gather, building_id.get(), true, true)?;
         }
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
-        let now = self.players[p.index()].objects[new].life.master_id;
+        let now = self.players.live(p, new)?.life.master_id;
         if self
             .master(p, now)?
             .tasks
@@ -148,14 +149,14 @@ impl World {
     ) -> Result<(), GenieError> {
         /// The target type whose queued order keeps a monastery's (`FUN_140c417f0` with 0x2a).
         const RELIC_TYPE: i32 = 0x2a;
-        let master = self.players[p.index()].objects[new].life.master_id;
+        let master = self.players.live(p, new)?.life.master_id;
         for o in queue {
             let target = (o.target != -1)
                 .then(|| self.object(o.target))
                 .flatten()
                 .map(|(tp, t)| (tp, t.life.master_id));
             if let Some((tp, tm)) = target {
-                let ai = self.players[p.index()].objects[new].ai.as_ref();
+                let ai = self.players.live(p, new)?.ai.as_ref();
                 // The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`).
                 let keeps = tm == MONASTERY
                     && ai.is_some_and(|ai| ai.orders.iter().any(|q| q.target_type == RELIC_TYPE));
@@ -170,7 +171,7 @@ impl World {
                     ));
                 }
             }
-            let unit = &mut self.players[p.index()].objects[new];
+            let unit = self.players.live_mut(p, new)?;
             let state = unit.life.state;
             if let Some(ai) = unit.ai.as_mut() {
                 let order = crate::unit_ai::QueuedOrder {
@@ -200,7 +201,7 @@ impl World {
         made: &crate::objects::masters::Master,
         position: Position,
     ) -> Result<NewObject, GenieError> {
-        let owner = &self.players[p.index()];
+        let owner = self.players.player(p)?;
         Ok(NewObject {
             computer: owner.computer,
             posture: owner.posture,
@@ -260,7 +261,7 @@ impl World {
         made: &crate::objects::masters::Master,
         position: Position,
     ) -> Result<usize, GenieError> {
-        if self.players[p.index()].computer {
+        if self.players.player(p)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's new unit (its AI's slot 0x398)",
             ));
@@ -344,7 +345,7 @@ impl World {
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }
-        let owner = &mut self.players[p.index()];
+        let owner = self.players.player_mut(p)?;
         for &(kind, amount, flag) in &made.storage {
             if kind >= 0 && matches!(flag, 1 | 2 | 32) {
                 owner.add_attribute(AttributeId::required(kind)?, amount)?;

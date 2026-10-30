@@ -3,30 +3,29 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
-use crate::map::spatial::Spatial;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
-use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
-use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute::{self, AttributeId};
 use crate::unit_ai::Notify;
-use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
 use crate::world::World;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
+
+pub(crate) use crate::combat::victim_reads::{victim_in, victim_of};
 
 impl World {
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): an
     /// object the slice holds, live or asleep (the world's table holds both, and a blast walks
     /// the tiles' lists of both), with its relations to the attacker's player and whether its
     /// place is a guess.
-    pub(crate) fn victim(&self, id: i32, attacker: PlayerId) -> Option<Victim> {
-        let (p, u) = PlayerId::each(self.players.len())
+    pub(crate) fn victim(&self, id: i32, attacker: PlayerId) -> Result<Option<Victim>, GenieError> {
+        let Some((p, u)) = PlayerId::each(self.players.len())
             .zip(&self.players)
             .find_map(|(p, player)| {
                 player
@@ -34,19 +33,22 @@ impl World {
                     .by_id(id)
                     .or_else(|| player.sleeping.by_id(id))
                     .map(|u| (p, u))
-            })?;
-        let master = u.master(&self.masters, p).ok()?;
+            })
+        else {
+            return Ok(None);
+        };
+        let master = u.master(&self.masters, p)?;
         let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        Some(victim_in(
+        Ok(Some(victim_in(
             u,
-            (p, master, &self.players[p.index()].attributes),
+            (p, master, &self.players.player(p)?.attributes),
             (attacker, &world),
             &self.spatial,
             self.mode_680,
-        ))
+        )))
     }
 
     /// The object `id` as the unit AI of a unit of player `viewer` finds it in the world's object
@@ -111,29 +113,33 @@ impl World {
     /// tile's list as the unit's update starts (an object the slice cannot read stands in with
     /// its place alone, as a guess); then the main buildings (`+0xbb8`) of the target and of the
     /// annexes among them, which the hits on those annexes go to.
-    pub(crate) fn blasted(&self, unit: &Unit, p: PlayerId, target: i32) -> Vec<Victim> {
-        let reach = unit
-            .master(&self.masters, p)
-            .ok()
-            .map(|m| m.area_effect)
+    pub(crate) fn blasted(
+        &self,
+        unit: &Unit,
+        p: PlayerId,
+        target: i32,
+    ) -> Result<Vec<Victim>, GenieError> {
+        let reach = Some(unit.master(&self.masters, p)?.area_effect)
             .filter(|&r| 0.0 < r)
             .map(|r| r + 6.0 + 2.0);
-        let mut near: Vec<Victim> = reach.map_or_else(Vec::new, |reach| {
+        let mut near: Vec<Victim> = Vec::new();
+        if let Some(reach) = reach {
             let (x, y) = (unit.position().x(), unit.position().y());
-            self.spatial
+            for (id, o) in self
+                .spatial
                 .objects_within(x - reach, y - reach, x + reach, y + reach)
                 .filter(|&(id, _)| id != unit.id.get() && id != target)
-                .map(|(id, o)| {
-                    self.victim(id, p).unwrap_or_else(|| Victim {
-                        id,
-                        position: o.position,
-                        uncertain: true,
-                        tile_place: self.spatial.tile_place(id),
-                        ..Victim::default()
-                    })
-                })
-                .collect()
-        });
+            {
+                let seen = self.victim(id, p)?;
+                near.push(seen.unwrap_or_else(|| Victim {
+                    id,
+                    position: o.position,
+                    uncertain: true,
+                    tile_place: self.spatial.tile_place(id),
+                    ..Victim::default()
+                }));
+            }
+        }
         let mains: Vec<i32> = std::iter::once(target)
             .chain(near.iter().map(|v| v.id))
             .filter_map(|id| self.spatial.annex_of(id))
@@ -142,12 +148,12 @@ impl World {
             if m != unit.id.get()
                 && m != target
                 && !near.iter().any(|v| v.id == m)
-                && let Some(v) = self.victim(m, p)
+                && let Some(v) = self.victim(m, p)?
             {
                 near.push(v);
             }
         }
-        near
+        Ok(near)
     }
 }
 
@@ -176,21 +182,26 @@ impl KillLeft {
 
 /// The object `id` a hit of the updating unit can read ([`victim`]) with its owner and master:
 /// one of any list, live or asleep, of a master its owner has.
-pub(crate) fn readable<'o>(c: &'o Step<'_>, id: i32) -> Option<(PlayerId, &'o Unit, &'o Master)> {
-    let (p, u, _) = c.w.locate(id)?;
-    let master = u.master(&c.w.masters, p).ok()?;
-    Some((p, u, master))
+pub(crate) fn readable<'o>(
+    c: &'o Step<'_>,
+    id: i32,
+) -> Result<Option<(PlayerId, &'o Unit, &'o Master)>, GenieError> {
+    let Some((p, u, _)) = c.w.locate(id) else {
+        return Ok(None);
+    };
+    let master = u.master(&c.w.masters, p)?;
+    Ok(Some((p, u, master)))
 }
 
 /// What a hit of the updating unit reads of object `id` ([`World::victim`] from the update):
 /// an object [`readable`] by the hit.
 pub(crate) fn victim(c: &Step<'_>, id: i32) -> Result<Option<Victim>, GenieError> {
-    let Some((p, u, master)) = readable(c, id) else {
+    let Some((p, u, master)) = readable(c, id)? else {
         return Ok(None);
     };
     let view = OthersRef::of(&c.w.players, c.player)?;
     let attributes = if p == c.player {
-        &c.w.players[c.player.index()].attributes[..]
+        &c.w.players.player(c.player)?.attributes[..]
     } else {
         let Some(owner) = view.players().player(p) else {
             return Ok(None);
@@ -199,7 +210,7 @@ pub(crate) fn victim(c: &Step<'_>, id: i32) -> Result<Option<Victim>, GenieError
     };
     let sides = SideWorld {
         player: c.player,
-        relations: &c.w.players[c.player.index()].relations,
+        relations: &c.w.players.player(c.player)?.relations,
         foreign: view.players(),
         drop_sites: &c.w.drop_sites,
     };
@@ -384,7 +395,9 @@ impl World {
                 );
             }
             for &(p, attribute, amount) in &r.adds {
-                self.players[p.index()].add_attribute(AttributeId::try_from(attribute)?, amount)?;
+                self.players
+                    .player_mut(p)?
+                    .add_attribute(AttributeId::try_from(attribute)?, amount)?;
             }
         }
         Ok(())
@@ -404,7 +417,7 @@ impl World {
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
     pub(crate) fn killed(&mut self, q: PlayerId, j: usize, kill: Kill) -> Result<(), GenieError> {
-        let u = &self.players[q.index()].objects[j];
+        let u = &self.players.live(q, j)?;
         let master = u.master(&self.masters, q)?.clone();
         self.count_killed(q, &master, kill)?;
         if kill.to_gaia {
@@ -426,7 +439,7 @@ impl World {
         master: &Master,
         kill: Kill,
     ) -> Result<(), GenieError> {
-        if self.players[q.index()].computer {
+        if self.players.player(q)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
             ));
@@ -435,7 +448,9 @@ impl World {
         if master.class == class::VILLAGER {
             // the attacker's class as the hit saw it: the attacker may be out for its update
             if matches!(kill.attacker_class, class::PREY | class::PREDATOR) {
-                self.players[q.index()].add_attribute(attribute::VILLAGER_KILLED_BY_ANIMAL, 1.0)?;
+                self.players
+                    .player_mut(q)?
+                    .add_attribute(attribute::VILLAGER_KILLED_BY_ANIMAL, 1.0)?;
             }
             let by_kind = match self.players[ap].kind {
                 1 => Some(attribute::VILLAGER_KILLED_BY_TYPE_1),
@@ -444,7 +459,7 @@ impl World {
                 _ => None,
             };
             if let Some(kind) = by_kind {
-                self.players[q.index()].add_attribute(kind, 1.0)?;
+                self.players.player_mut(q)?.add_attribute(kind, 1.0)?;
             }
         }
         self.count_kill_of(q, master, ap)
@@ -506,174 +521,21 @@ impl World {
         ];
         if !PEACEFUL.contains(&master.class) {
             self.players[ap].add_attribute(attribute::KILLS, 1.0)?;
-            self.players[q.index()].add_attribute(attribute::KILLS_OTHER, 1.0)?;
+            self.players
+                .player_mut(q)?
+                .add_attribute(attribute::KILLS_OTHER, 1.0)?;
         }
         self.players[ap].add_attribute(AttributeId::try_from(q.index() as i16 + 300)?, 1.0)?;
-        self.players[q.index()].add_attribute(AttributeId::try_from(ap as i16 + 325)?, 1.0)?;
+        self.players
+            .player_mut(q)?
+            .add_attribute(AttributeId::try_from(ap as i16 + 325)?, 1.0)?;
         let cost = paid_cost(master);
         self.players[ap].add_attribute(attribute::KILLS_VALUE, cost)?;
-        self.players[q.index()].add_attribute(attribute::KILLS_VALUE_OTHER, cost)?;
+        self.players
+            .player_mut(q)?
+            .add_attribute(attribute::KILLS_VALUE_OTHER, cost)?;
         self.players[ap].add_attribute(AttributeId::try_from(q.index() as i16 + 400)?, cost)?;
         Ok(())
-    }
-}
-
-/// What a hit of an attacker of player `attacker` reads of the object `u` of player `p`, of
-/// `master`, its player's `attributes` ([`victim_of`]): its relations to the attacker's player
-/// both ways (`dip`, [`Diplomacy::allied`] with allies), whether its place is a guess (the world
-/// `spatial` holds it as unknown, or not at all), its place in its tile's list and a building's
-/// annexes (the world's links).
-pub(crate) fn victim_in(
-    u: &Unit,
-    (p, master, attributes): (PlayerId, &Master, &[f32]),
-    (attacker, dip): (PlayerId, &dyn Diplomacy),
-    spatial: &Spatial,
-    mode_680: i32,
-) -> Victim {
-    let mut v = victim_of(u, master, attributes, p, spatial.terrain.as_ref(), mode_680);
-    v.allied = [dip.allied(attacker, p, true), dip.allied(p, attacker, true)];
-    v.uncertain = spatial.get(u.id).is_none_or(|o| o.unknown.is_some());
-    v.tile_place = spatial.tile_place(u.id.get());
-    if let Some(b) = v.building.as_mut() {
-        b.annexes = spatial.annexes_of(u.id.get());
-    }
-    v
-}
-
-/// What a hit reads of the object `u` of player `p` ([`Victim`]): its master's values and its
-/// own, its player's elevation attributes, the terrain defense of its tile (`terrain`, the map's;
-/// 1 for an object inside another, which has no tile) and the game's setting `mode_680`. Its
-/// relations to an attacker (`allied`) and whether its place is a guess (`uncertain`) are the
-/// caller's. The slice holds neither its unit AI's alert mode and attackers nor its facing.
-pub(crate) fn victim_of(
-    u: &Unit,
-    master: &Master,
-    attributes: &[f32],
-    p: PlayerId,
-    terrain: Option<&crate::map::terrain::Terrain>,
-    mode_680: i32,
-) -> Victim {
-    let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
-    let kind = master.kind;
-    let attack_elevation = if 212 < attributes.len() {
-        [attributes[211], attributes[212]]
-    } else {
-        [0.0; 2]
-    };
-    let defense = if master.terrain_bonus < 0 || u.life.inside.is_some() {
-        Some(1.0)
-    } else {
-        terrain.and_then(|t| {
-            t.defense(
-                master.terrain_bonus,
-                u.position().x() as i32,
-                u.position().y() as i32,
-            )
-        })
-    };
-    let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
-    Victim {
-        id: u.id.get(),
-        // the caller's, which holds the tile lists
-        tile_place: 0,
-        hp: u.life.hp,
-        amount: u.life.amount,
-        state: u.life.state,
-        position: u.position(),
-        kind,
-        class: master.class,
-        master_id: master.id,
-        radius: master.radius,
-        height: master.height,
-        storage: master.storage.first().map_or(0.0, |s| s.1),
-        capacity: master.capacity,
-        workers: u.workers,
-        blast_defense: master.blast_defense,
-        fog_visibility: master.fog_visibility,
-        goto_sleep: u.life.goto_sleep,
-        decay: u.life.master.map_or(0.0, |m| m.decay),
-        player: p,
-        elevation: [at(272), at(273)],
-        attack_elevation,
-        allied: [false; 2],
-        uncertain: false,
-        inside: u.life.inside.is_some(),
-        source: crate::combat::damage::Attacker {
-            id: u.id.get(),
-            kind,
-            class: master.class,
-            master_id: master.id,
-            ability: master.combat_ability,
-            missile: master.missile,
-            weapon_range: master.weapon_range,
-            area_effect: master.area_effect,
-            blast_level: master.blast_level,
-            area_damage: master.area_damage,
-            charge_type: master.charge_type,
-            max_charge: master.max_charge,
-            charge_target: master.charge_target,
-            special_attack: master.special_attack,
-            charge: u.charge,
-            charge_hit: u.charge_hit,
-            attack_powerup: u.attack_powerup,
-            mode_680,
-            player: p,
-            kill_bonus_tasks: tasks(0x9a),
-            fired_from: u.missile.as_ref().map_or(-1, |m| m.fired_from),
-        },
-        weapons: master.weapons.clone(),
-        master_hp: master.hit_points,
-        bonus_tasks: master
-            .tasks
-            .iter()
-            .filter(|t| t.action_type == crate::combat::damage::BONUS_DAMAGE)
-            .copied()
-            .collect(),
-        // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
-        armored: (RGE_COMBAT <= kind).then(|| crate::combat::damage::Armored {
-            armors: master.armors.clone(),
-            base_armor: master.base_armor,
-            terrain_bonus: master.terrain_bonus,
-            resistance: master.resistance,
-            ability: master.combat_ability,
-            reflection: master.reflection,
-            invulnerability: master.invulnerability,
-            special_attack: master.special_attack,
-            friendly_fire: master.friendly_fire,
-            special_graphic: master.special_graphic,
-            terrain: defense,
-            armor_powerups: u.armor_powerups,
-            armor_removed: u.armor_removed,
-            hp_powerups: u.hp_powerups,
-            kill_tasks: master
-                .tasks
-                .iter()
-                .any(|t| t.action_type == 0xa1 && 1e-7 < t.work_val1),
-            busy: u.top_action_kind().is_some() || u.unmodelled_action.is_some(),
-            unit_ai: u.ai.is_some(),
-            alert_idle: None,
-            facing: None,
-        }),
-        damaged: Vec::new(),
-        killed: None,
-        // a building's slot 0xe8 is FUN_1411cea90
-        building: (kind == BUILDING).then(|| crate::combat::damage::Building {
-            main: u.annex_of,
-            // the caller's, which holds the world's annex links
-            annexes: Vec::new(),
-            // +0xb90 is not saved and not held: a blast resets it on every building of its tiles
-            // before it reads it (FUN_14107f690's first pass), the only other one it reads being
-            // the main building of an annex it reaches, which lies within the annex offset of
-            // that annex, inside the six tiles the pass reaches past the radius; a trample reads
-            // its target's or its main building's after its own blast
-            blast_taken: 0.0,
-            trebuchet: is_trebuchet(master),
-            cost: paid_cost(master),
-            damaged_lately: u.damaged_lately,
-            struck: false,
-            relics: u.relics,
-            razed: Vec::new(),
-        }),
     }
 }
 

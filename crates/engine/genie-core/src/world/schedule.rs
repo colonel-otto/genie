@@ -362,7 +362,7 @@ impl World {
             }
             PlayerStep::NewTiles => self.process_new_tiles(p)?,
             PlayerStep::ScoutMap => self.world_player_tail(p)?,
-            PlayerStep::CloseGates => self.close_gates(p, &mut run.gates_open),
+            PlayerStep::CloseGates => self.close_gates(p, &mut run.gates_open)?,
             PlayerStep::ClearTiles => {
                 if let Some(v) = self.spatial.sight.as_mut() {
                     v.clear_new_tiles(p);

@@ -13,6 +13,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::technology::Attributes;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`
 /// fills): the Argali and the Ibex (Pasture).
@@ -97,7 +98,7 @@ impl World {
             .ok_or(GenieError::unreachable("a pasture its completion names"))?;
         let radius_x = self.master(p, master)?.radius.x();
         let mut points = edge_points(at, radius_x);
-        let owner = &self.players[p.index()];
+        let owner = self.players.player(p)?;
         let count = cvttss2si(Attributes::get(
             owner,
             AttributeId::try_from(PASTURE_LIVESTOCK)?,
@@ -182,7 +183,7 @@ impl World {
         if q != p {
             return Ok(-1);
         }
-        let unit = &self.players[p.index()].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let reach = unit.master(&self.masters, p)?.radius;
         let mut tended = Vec::new();
         for &id in &b.livestock {
@@ -200,7 +201,7 @@ impl World {
         }
         crate::math::msvc::sort(&mut tended, &|a, b| a.2 < b.2);
         let room = Attributes::get(
-            &self.players[q.index()],
+            self.players.player(q)?,
             AttributeId::try_from(PASTURE_WORKERS)?,
         )?;
         let mut pick = -1;
@@ -230,7 +231,7 @@ impl World {
         idx: usize,
         pasture: i32,
     ) -> Result<(), GenieError> {
-        let unit = &self.players[p.index()].objects[idx];
+        let unit = &self.players.live(p, idx)?;
         let (id, named) = (
             unit.id,
             if pasture == -1 {
@@ -250,7 +251,7 @@ impl World {
                 b.pasture_workers.push(id.get());
             }
         }
-        self.players[p.index()].objects[idx].my_pasture = pasture;
+        self.players.live_mut(p, idx)?.my_pasture = pasture;
         Ok(())
     }
 

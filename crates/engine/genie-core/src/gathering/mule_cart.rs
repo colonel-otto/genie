@@ -10,6 +10,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
@@ -24,30 +25,34 @@ impl World {
         id: i32,
         state: u8,
     ) -> Result<(), GenieError> {
-        let Some(idx) = self.players[p.index()].objects.position_of(id) else {
+        let Some(idx) = self.players.player(p)?.objects.position_of(id) else {
             return Ok(());
         };
-        let Some(current) = self.players[p.index()].objects[idx]
+        let Some(current) = self
+            .players
+            .live(p, idx)?
             .ai
             .as_ref()
             .map(|ai| ai.current_target)
         else {
             return Ok(());
         };
-        let found = if current == -1 && !self.players[p.index()].computer {
+        let found = if current == -1 && !self.players.player(p)?.computer {
             Some(self.cart_find(p, idx)?)
         } else {
             None
         };
         // all of it runs inside the completion's set_state(2), before the cart is in state 2
-        let built = std::mem::replace(&mut self.players[p.index()].objects[idx].life.state, state);
+        let built = std::mem::replace(&mut self.players.live_mut(p, idx)?.life.state, state);
         let result = (|| {
             if let Some(found) = found {
                 self.cart_work(p, idx, found)?;
             }
             // with a target (the one the work command gave the unit AI) the cart moves to it
             // (slot 0x138 at its place)
-            let target = self.players[p.index()].objects[idx]
+            let target = self
+                .players
+                .live(p, idx)?
                 .ai
                 .as_ref()
                 .map_or(-1, |ai| ai.current_target);
@@ -58,7 +63,7 @@ impl World {
             }
             Ok::<_, GenieError>(())
         })();
-        self.players[p.index()].objects[idx].life.state = built;
+        self.players.live_mut(p, idx)?.life.state = built;
         result
     }
 
@@ -83,17 +88,19 @@ impl World {
         idx: usize,
     ) -> Result<(i32, Position), GenieError> {
         const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
-        let id = self.players[p.index()].objects[idx].id;
-        let current = self.players[p.index()].objects[idx]
+        let id = self.players.live(p, idx)?.id;
+        let current = self
+            .players
+            .live(p, idx)?
             .ai
             .as_ref()
             .map_or(-1, |ai| ai.current_target);
-        if self.players[p.index()].objects[idx].body.mover().is_none() {
+        if self.players.live(p, idx)?.body.mover().is_none() {
             return Err(GenieError::unsupported(
                 "a mule cart's search without its movement state (a moving building's setup)",
             ));
         }
-        let master = self.players[p.index()].objects[idx].master(&self.masters, p)?;
+        let master = self.players.live(p, idx)?.master(&self.masters, p)?;
         let mut kinds = Vec::new();
         let mut class = -1;
         for t in &master.tasks {
@@ -109,7 +116,7 @@ impl World {
             };
             kinds.push(kind);
         }
-        let cart = self.players[p.index()].objects.take_out(idx)?;
+        let cart = self.players.player_mut(p)?.objects.take_out(idx)?;
         let result = (|| {
             let (before, rest) = self.players.split_at_mut(p.index());
             let (player, after) = rest.split_first_mut().expect("p is a player");
@@ -151,8 +158,8 @@ impl World {
         })();
         let idx = self.put_back_own(p, cart)?;
         let found = result?;
-        let cart_master = self.players[p.index()].objects[idx].master(&self.masters, p)?;
-        let at = self.players[p.index()].objects[idx].position();
+        let cart_master = self.players.live(p, idx)?.master(&self.masters, p)?;
+        let at = self.players.live(p, idx)?.position();
         let mut best: Option<(i32, Position)> = None;
         let mut best_d = CART_REACH;
         for f in found {

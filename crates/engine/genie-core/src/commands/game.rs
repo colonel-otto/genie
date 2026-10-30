@@ -11,6 +11,7 @@ use crate::objects::masters::ids::FARM;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -162,30 +163,24 @@ impl World {
             }
             sub::ALLIED_VICTORY if self.alliance_locked == 0 => {
                 if let Some(p) = target {
-                    self.players[p.index()].allied_victory = g.a as u8;
+                    self.players.player_mut(p)?.allied_victory = g.a as u8;
                     self.resolve_teams();
                 }
             }
             sub::CHEAT if self.settings.cheats_enabled => return Err(CHEAT),
             sub::PRODUCTION_QUEUE => {
                 if let Some(p) = target {
-                    self.players[p.index()].production_queue_on = g.a as u8;
+                    self.players.player_mut(p)?.production_queue_on = g.a as u8;
                 }
             }
             sub::TREASON => {
-                if let Some(p) = target
-                    && self.has_treason_building(p)
-                {
-                    // The pending debit's entry of gold (`FUN_141630ef0` with 3).
-                    self.players[p.index()].pending_debit[attribute::GOLD.index()] -= TREASON_COST;
-                    self.treason(p)?;
+                if let Some(p) = target {
+                    self.game_treason(p)?;
                 }
             }
             sub::AI_SETTING => {
-                if let Some(p) = target
-                    && self.players[p.index()].computer
-                {
-                    self.set_ai_setting(p, g.a, g.value);
+                if let Some(p) = target {
+                    self.game_ai_setting(p, g)?;
                 }
             }
             sub::FARM_QUEUE
@@ -202,7 +197,7 @@ impl World {
             }
             sub::POSTURE => {
                 if let Some(p) = target {
-                    let owner = &mut self.players[p.index()];
+                    let owner = self.players.player_mut(p)?;
                     owner.posture = i32::from(owner.posture == 0);
                 }
             }
@@ -210,6 +205,24 @@ impl World {
             // `allianceLocked`, 4 and 6 without cheats, and the sub-commands without a case do
             // nothing
             _ => {}
+        }
+        Ok(())
+    }
+
+    /// Treason (`FUN_141620400`) of player `p`, when it has a treason building: the pending debit's
+    /// entry of gold (`FUN_141630ef0` with 3) takes its cost.
+    fn game_treason(&mut self, p: PlayerId) -> Result<(), GenieError> {
+        if self.has_treason_building(p) {
+            self.players.player_mut(p)?.pending_debit[attribute::GOLD.index()] -= TREASON_COST;
+            self.treason(p)?;
+        }
+        Ok(())
+    }
+
+    /// A computer player's AI setting.
+    fn game_ai_setting(&mut self, p: PlayerId, g: &GameCommand) -> Result<(), GenieError> {
+        if self.players.player(p)?.computer {
+            self.set_ai_setting(p, g.a, g.value)?;
         }
         Ok(())
     }
@@ -239,7 +252,7 @@ impl World {
                 let _ = self.unqueue_farms(p, count, PASTURE)?;
             }
             sub::AUTO_FARM_QUEUE => {
-                let owner = &mut self.players[p.index()];
+                let owner = self.players.player_mut(p)?;
                 owner.auto_farm_queue = !owner.auto_farm_queue;
             }
             sub::FISH_TRAP_QUEUE => {
@@ -249,7 +262,7 @@ impl World {
                 let _ = self.unqueue_fish_traps(p, count)?;
             }
             sub::AUTO_FISH_TRAP_QUEUE => {
-                let owner = &mut self.players[p.index()];
+                let owner = self.players.player_mut(p)?;
                 owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
             }
             _ => {}
@@ -263,16 +276,21 @@ impl World {
     /// 0x10, 0x12, 0x13); 0xd the value as a float (`CVTSI2SS` of the zero-extended 32 bits),
     /// 0xf and 0x11 the value as it is. 0x13 is `mAllowCapturingGaiaUnits` (`+0x670`,
     /// [`World::allow_gaia_capture`]). Another setting changes nothing.
-    pub(crate) fn set_ai_setting(&mut self, p: PlayerId, setting: i16, value: u32) {
+    pub(crate) fn set_ai_setting(
+        &mut self,
+        p: PlayerId,
+        setting: i16,
+        value: u32,
+    ) -> Result<(), GenieError> {
         let byte = value as u8;
         if setting == 0x13 {
             if self.allow_gaia_capture.len() <= p.index() {
                 self.allow_gaia_capture.resize(p.index() + 1, false);
             }
             self.allow_gaia_capture[p.index()] = value != 0;
-            return;
+            return Ok(());
         }
-        let owner = &mut self.players[p.index()];
+        let owner = self.players.player_mut(p)?;
         let s = &mut owner.ai_settings;
         match setting {
             1 => owner.dodge_chance = byte,
@@ -295,6 +313,7 @@ impl World {
             0x12 => s.allow_serjeant_building = value != 0,
             _ => {}
         }
+        Ok(())
     }
 }
 

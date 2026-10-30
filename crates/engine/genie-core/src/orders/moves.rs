@@ -234,7 +234,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
         let class = unit.master(&self.masters, player)?.class;
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
         let sails = self.players.live_mut(player, idx)?.ai_move_with(
             m,

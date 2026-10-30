@@ -221,13 +221,17 @@ pub(crate) fn storage_leaves(u: &mut Unit, master: &Master) -> Vec<(i16, f32)> {
 }
 
 /// What the footprint clearing reads of the object `u` ([`crate::construction::build::ClearLook`]) with its
-/// owner's `masters`; None without its master.
+/// owner's `masters`.
+///
+/// # Errors
+///
+/// An object of a master its owner lacks.
 pub(crate) fn clear_look_of(
     u: &Unit,
     masters: Option<&Masters>,
-) -> Option<crate::construction::build::ClearLook> {
-    let m = u.master_in(masters).ok()?;
-    Some(crate::construction::build::ClearLook {
+) -> Result<crate::construction::build::ClearLook, GenieError> {
+    let m = u.master_in(masters)?;
+    Ok(crate::construction::build::ClearLook {
         hp: u.life.hp,
         height: m.height,
         roo_called: u.roo_called,

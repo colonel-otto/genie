@@ -3118,7 +3118,7 @@ fn transport_ticked(
     set: impl FnOnce(&mut transport::TransportAction),
 ) -> World {
     let mut t = coast_world(ship);
-    t.build_mesh();
+    t.build_mesh().unwrap();
     UnloadCommand {
         player: player_id(1),
         units: unit_list(object_ids([200])),
@@ -3146,7 +3146,7 @@ fn transport_ticked(
 #[test]
 fn a_transport_unloads_inside_its_own_update() {
     let mut t = coast_world([14.5, 10.5]);
-    t.build_mesh();
+    t.build_mesh().unwrap();
     UnloadCommand {
         player: player_id(1),
         units: unit_list(object_ids([200])),
@@ -3238,7 +3238,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
     // a computer player's AI would hear it, which is not modelled
     let mut t = coast_world([10.5, 10.5]);
-    t.build_mesh();
+    t.build_mesh().unwrap();
     t.players[1].computer = true;
     UnloadCommand {
         player: player_id(1),

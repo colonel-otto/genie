@@ -8,6 +8,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::FARM;
 use crate::objects::masters::player_master;
 use crate::players::PlayerId;
+use crate::world::slots::PlayerSlots;
 use crate::world::{RICE_FARM, World};
 
 impl World {
@@ -42,7 +43,9 @@ impl World {
                 listed[r] = listed[r].wrapping_add(amount);
             }
         }
-        for (debit, amount) in self.players[player.index()]
+        for (debit, amount) in self
+            .players
+            .player_mut(player)?
             .pending_debit
             .iter_mut()
             .zip(listed)
@@ -61,7 +64,7 @@ impl World {
         master: MasterId,
         builders: &[i32],
     ) -> Result<bool, GenieError> {
-        if self.players[player.index()].computer {
+        if self.players.player(player)?.computer {
             return Ok(true);
         }
         let trained_at = self.master(player, master)?.trained_at.clone();
@@ -84,7 +87,7 @@ impl World {
         master: MasterId,
         at: [f32; 2],
     ) -> Result<bool, GenieError> {
-        let human = !self.players[player.index()].computer;
+        let human = !self.players.player(player)?.computer;
         if self.placement_code(player, master, at, human)? != 0 {
             return Ok(false);
         }
@@ -202,7 +205,7 @@ impl World {
     /// holds. A cost in population (attribute 4) is not modelled.
     pub(crate) fn affords(&self, player: PlayerId, master: MasterId) -> Result<bool, GenieError> {
         let site = self.master(player, master)?;
-        let owner = &self.players[player.index()];
+        let owner = self.players.player(player)?;
         for &(resource, amount, _) in &site.cost {
             let Ok(r) = usize::try_from(resource) else {
                 continue;

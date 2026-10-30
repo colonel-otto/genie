@@ -16,6 +16,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::OWNER_CHANGED;
 use crate::world::World;
@@ -29,7 +30,7 @@ impl World {
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
     pub(crate) fn give_gaia(&mut self, q: PlayerId, j: usize) -> Result<(), GenieError> {
-        let mut unit = self.players[q.index()].objects.take_out(j)?;
+        let mut unit = self.players.player_mut(q)?.objects.take_out(j)?;
         let changed = change_hands(
             &mut unit,
             (q.index(), PlayerId::GAIA),
@@ -41,7 +42,7 @@ impl World {
         if !changed? {
             return Ok(());
         }
-        let unit = self.players[q.index()].objects.swap_remove(j)?;
+        let unit = self.players.player_mut(q)?.objects.swap_remove(j)?;
         let handed = self.hand_over_attributes(q.index(), 0, &unit);
         // the old owner's remove and Gaia's add (slots 0x2d8, 0x2d0) move it between the
         // trackers; a building whose build points reach its build time completes in Gaia's
@@ -110,7 +111,7 @@ impl World {
         let Some(crate::orders::Place::Live(_, idx)) = self.place(id) else {
             return Err(crate::ownership::capture::HANDS_LEFT);
         };
-        let u = &self.players[old.index()].objects[idx];
+        let u = &self.players.player(old)?.objects[idx];
         let master = match u.own_master.as_deref() {
             Some(m) => m.clone(),
             None => u.master(&self.masters, old)?.clone(),
@@ -122,12 +123,10 @@ impl World {
         let rice = u.rice;
         let placed = self.spatial.get(id).copied();
         if state < 3 {
-            self.spatial.drop_record(id);
-            self.pathing.removed(id);
-            self.pathing.tiles_changed(self.spatial.take_changes());
+            self.unrecord(id);
         }
         if state == 2 {
-            lose_built_storage(&mut self.players[old.index()], &master, held, amount)?;
+            lose_built_storage(self.players.player_mut(old)?, &master, held, amount)?;
         }
         if state == 0 {
             self.foundation_sight_off(id, placed)?;
@@ -137,20 +136,15 @@ impl World {
         if built {
             self.track_complete(new, id, master.id)?;
         }
-        if watched && let Some(p) = placed {
-            let _ = self.watch(
-                new,
-                id,
-                crate::math::conversions::cvttss2si(p.position.x()),
-                crate::math::conversions::cvttss2si(p.position.y()),
-            )?;
+        if watched {
+            self.watch_at_place(new, id, placed)?;
         }
         if state == 0 {
             self.foundation_sight_on(id, placed)?;
         }
         if state == 2 {
             self.built_with_new_owner(owner, id, &master, rice)?;
-            gain_built_storage(&mut self.players[owner.index()], &master, held, amount)?;
+            gain_built_storage(self.players.player_mut(owner)?, &master, held, amount)?;
         }
         self.garrison_leaves(owner, id)?;
         if state < 3 {
@@ -158,6 +152,31 @@ impl World {
         }
         if let Some((_, u)) = self.object_mut(id) {
             u.gather_point = None;
+        }
+        Ok(())
+    }
+
+    /// A building that changes hands leaves the spatial records and the planners' tiles.
+    fn unrecord(&mut self, id: i32) {
+        self.spatial.drop_record(id);
+        self.pathing.removed(id);
+        self.pathing.tiles_changed(self.spatial.take_changes());
+    }
+
+    /// The new owner watches the building `id`'s tile (the building's place, when it has one).
+    fn watch_at_place(
+        &mut self,
+        new: PlayerId,
+        id: i32,
+        placed: Option<crate::map::spatial::Placed>,
+    ) -> Result<(), GenieError> {
+        if let Some(p) = placed {
+            let _ = self.watch(
+                new,
+                id,
+                crate::math::conversions::cvttss2si(p.position.x()),
+                crate::math::conversions::cvttss2si(p.position.y()),
+            )?;
         }
         Ok(())
     }
@@ -240,7 +259,9 @@ impl World {
             if a.master(&self.masters, q)?.kind != BUILDING {
                 continue;
             }
-            let annex_watched = self.players[old.index()]
+            let annex_watched = self
+                .players
+                .player(old)?
                 .watched
                 .iter()
                 .any(|w| w.id == annex);
@@ -267,7 +288,7 @@ impl World {
         new: PlayerId,
         id: i32,
     ) -> Result<PlayerId, GenieError> {
-        let mut unit = self.players[old.index()].objects.take_out(idx)?;
+        let mut unit = self.players.player_mut(old)?.objects.take_out(idx)?;
         let changed = change_hands(
             &mut unit,
             (old.index(), new),
@@ -277,10 +298,10 @@ impl World {
         );
         let idx = self.put_back_own(old, unit)?;
         Ok(if changed? {
-            let unit = self.players[old.index()].objects.swap_remove(idx)?;
+            let unit = self.players.player_mut(old)?.objects.swap_remove(idx)?;
             let handed = self.hand_over_attributes(old.index(), new.index(), &unit);
             let master_id = unit.life.master_id;
-            self.players[new.index()].objects.push(unit);
+            self.players.player_mut(new)?.objects.push(unit);
             self.track_remove(old, id, master_id)?;
             self.track_add(new, id, master_id)?;
             handed?;

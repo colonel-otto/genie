@@ -13,6 +13,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// The unit's own Attack's update without its Attack: the caller's test.
@@ -163,20 +164,19 @@ impl Unit {
 
     /// The hunter or the attacker as a combat object, which its hits read and change: none for a
     /// unit without a Hunt or an Attack, or without its master.
-    pub(crate) fn own_victim(&self, c: &Step<'_>) -> Option<Victim> {
-        (self.actions.hunt().is_some() || self.actions.attack().is_some())
-            .then_some(())
-            .and_then(|()| {
-                let master = self.master(&c.w.masters, c.player).ok()?;
-                let terrain = c.w.spatial.terrain.as_ref();
-                Some(victim_of(
-                    self,
-                    master,
-                    &c.w.players[c.player.index()].attributes,
-                    c.player,
-                    terrain,
-                    c.w.mode_680,
-                ))
-            })
+    pub(crate) fn own_victim(&self, c: &Step<'_>) -> Result<Option<Victim>, GenieError> {
+        if self.actions.hunt().is_none() && self.actions.attack().is_none() {
+            return Ok(None);
+        }
+        let master = self.master(&c.w.masters, c.player)?;
+        let terrain = c.w.spatial.terrain.as_ref();
+        Ok(Some(victim_of(
+            self,
+            master,
+            &c.w.players.player(c.player)?.attributes,
+            c.player,
+            terrain,
+            c.w.mode_680,
+        )))
     }
 }

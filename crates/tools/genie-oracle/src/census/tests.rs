@@ -92,14 +92,15 @@ fn the_run_ends_once_every_player_is_done() {
     assert_eq!((run.updates, run.end), (1, CensusEnd::AllDone));
 }
 
-/// A player whose unit the slice cannot model stops at its first update.
+/// A player whose unit the slice cannot model stops before its first update.
 #[test]
 fn a_stop_is_the_players_first_unmodelled_update() {
     let save = header(vec![gaia(Vec::new()), human(vec![combat_object(7, 83)])]);
     let rec = recording(&save, &[Op::Sync { dt: 50 }, Op::Sync { dt: 50 }]);
     let run = census_run(&rec, None, None).unwrap();
     let stop = run.players[1].stop.as_ref().unwrap();
-    assert_eq!(stop.update, 1);
+    // the world step before its first update finds the object without a master
+    assert_eq!(stop.update, 0);
     assert_ne!(stop.reason, "");
 }
 
@@ -141,7 +142,7 @@ fn a_stopped_player_says_nothing_more() {
     let rec = recording(&save, &syncs(3));
     let mut never = |_: usize| -> Option<Vec<u8>> { panic!("no save is read after the stop") };
     let followed = header_divergence(&rec, None, 1, (1, 3), &mut never).unwrap();
-    assert!(matches!(followed, Followed::Stops(s) if s.update == 1));
+    assert!(matches!(followed, Followed::Stops(s) if s.update == 0));
 }
 
 /// The first update after which the world's next object id differs from the game's save, with

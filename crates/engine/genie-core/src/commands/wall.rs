@@ -29,6 +29,7 @@ use crate::objects::masters::{MasterId, player_master};
 use crate::orders::Place;
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// The snap's half tile and its step up (`FUN_141123ac0`).
 const HALF: f32 = crate::math::image::wall::HALF;
@@ -234,7 +235,7 @@ impl World {
             return Ok(());
         }
         let (radius, trained_at) = (site.radius, site.trained_at.clone());
-        let computer = self.players[player.index()].computer;
+        let computer = self.players.player(player)?.computer;
         let builders: &[i32] = if computer && builders.first() == Some(&-1) {
             &[]
         } else {
@@ -352,7 +353,9 @@ impl World {
                 "a wall builder the slice does not have",
             ));
         };
-        let direct = self.players[q.index()].objects[idx]
+        let direct = self
+            .players
+            .live(q, idx)?
             .ai
             .as_ref()
             .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
@@ -365,7 +368,7 @@ impl World {
                 self.queue_build(q, idx, (player, f, master), p)?;
             }
             if w.commits
-                && let Some(ai) = self.players[q.index()].objects[idx].ai.as_mut()
+                && let Some(ai) = self.players.live_mut(q, idx)?.ai.as_mut()
             {
                 // the readiness pass with 0: every queued order is ready
                 crate::orders::readiness(&mut ai.orders, false);

@@ -16,7 +16,7 @@ impl Unit {
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
     /// [`crate::objects::sprite::new_sprite`]) where the slice holds its sprite.
     pub(crate) fn stop_action(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         let sprite = c.w.streams.get(Stream::Sprite);
         let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.stop_with(
@@ -76,11 +76,9 @@ impl Unit {
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
     ) -> Result<(), GenieError> {
-        let standing = self
-            .master_in(masters)
-            .ok()
-            .map(|m| m.standing_sprite)
-            .and_then(|id| graphics.get(&id).copied());
+        let standing = graphics
+            .get(&self.master_in(masters)?.standing_sprite)
+            .copied();
         if let Some(m) = self.body.mover_mut() {
             m.shows(standing.as_ref());
         }
@@ -133,7 +131,7 @@ impl Unit {
     ///
     /// The deletion's, and what it lets go.
     pub(crate) fn delete_own_head(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         let torn = self.actions.delete_head(&mut self.body, self.life.state)?;
         torn.let_go(c, self, by)
     }

@@ -23,6 +23,7 @@ use crate::unit_ai::UnitAiType;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
@@ -52,8 +53,7 @@ impl Unit {
         c: &Step<'_>,
         target: i32,
     ) -> Result<RepairReads, GenieError> {
-        let own = repair_master(&c.w.masters, c.player, self)
-            .ok_or(GenieError::missing_data("a repairer's master"))?;
+        let own = repair_master(&c.w.masters, c.player, self)?;
         let (repairee, counted_in) =
             repairee_of(c, OthersRef::of(&c.w.players, c.player)?, target)?;
         Ok(RepairReads {
@@ -62,7 +62,7 @@ impl Unit {
             radius: own.radius,
             scenario: scenario_mode(c.w.settings.game_mode),
             rate: self.work_rate_powerup + own.work_rate,
-            waits: own.class == class::VILLAGER && !c.w.players[c.player.index()].computer,
+            waits: own.class == class::VILLAGER && !c.w.players.player(c.player)?.computer,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             standing: sprite_id(own.standing_sprite),
             restriction: usize::try_from(own.terrain_restriction).ok(),
@@ -130,16 +130,20 @@ impl Unit {
         &self,
         c: &Step<'_>,
         others: OthersRef<'_>,
-    ) -> Option<crate::unit_ai::TopTarget> {
-        let id = self.top_target().filter(|&t| t != -1)?;
-        let (owner, u) = others.find(id)?;
-        let m = u.master(&c.w.masters, owner).ok()?;
-        Some(crate::unit_ai::TopTarget {
+    ) -> Result<Option<crate::unit_ai::TopTarget>, GenieError> {
+        let Some(id) = self.top_target().filter(|&t| t != -1) else {
+            return Ok(None);
+        };
+        let Some((owner, u)) = others.find(id) else {
+            return Ok(None);
+        };
+        let m = u.master(&c.w.masters, owner)?;
+        Ok(Some(crate::unit_ai::TopTarget {
             id,
             kind: m.kind,
             position: u.position(),
             radius: m.radius,
-        })
+        }))
     }
 
     /// `restorePatrolInformation`'s unit part ([`crate::unit_ai::Effect::RestorePatrol`]): its own
@@ -172,8 +176,8 @@ impl Unit {
 }
 
 /// Object `u`'s master: its own (`+0x6c0`), else player `q`'s of its id.
-fn repair_master(every: &[Masters], q: PlayerId, u: &Unit) -> Option<Master> {
-    u.master(every, q).ok().cloned()
+fn repair_master(every: &[Masters], q: PlayerId, u: &Unit) -> Result<Master, GenieError> {
+    Ok(u.master(every, q)?.clone())
 }
 
 /// The Repair's `target` as its update reads it ([`Repairee`]) and the object `FUN_140ad9050`
@@ -188,14 +192,13 @@ fn repairee_of(
     let Some((q, t)) = held(target).filter(|_| target != -1) else {
         return Ok((None, None));
     };
-    let tm = repair_master(&c.w.masters, q, t)
-        .ok_or(GenieError::missing_data("a repaired object's master"))?;
+    let tm = repair_master(&c.w.masters, q, t)?;
     let repairee = Repairee {
         state: t.life.state,
         hp: t.life.hp,
         owner: q,
         allied: crate::unit_ai::task_finder::allied(
-            &c.w.players[c.player.index()].relations,
+            &c.w.players.player(c.player)?.relations,
             c.player,
             q,
             true,
@@ -233,8 +236,7 @@ pub(crate) fn repair_target(
     let mut set = Vec::new();
     let others = OthersRef::of(&c.w.players, player)?;
     if let Some((q, t)) = others.find(target).filter(|_| target != -1) {
-        let tm = repair_master(&c.w.masters, q, t)
-            .ok_or(GenieError::missing_data("a repaired object's master"))?;
+        let tm = repair_master(&c.w.masters, q, t)?;
         for id in reached_ids(&c.w.spatial, t, target, tm.kind == BUILDING) {
             let Some(o) = others.find(id) else {
                 continue;
@@ -254,7 +256,7 @@ pub(crate) fn repair_target(
             .get(player.index())
             .ok_or(GenieError::missing_data("a repairer's player's masters"))?;
     // what the owner holds now: the update may have paid or gained before the repair
-    let owner = &c.w.players[player.index()];
+    let owner = c.w.players.player(player)?;
     let mut paid = PaidAttributes::new(owner.resources, &owner.attributes);
     let mut payer = crate::construction::repair::Payer {
         masters,
@@ -272,7 +274,7 @@ pub(crate) fn repair_target(
             "a repaired object of a type below 70 (slot 0x110)",
         )),
     }?;
-    c.w.players[player.index()].add_attributes(paid.adds)?;
+    c.w.players.player_mut(player)?.add_attributes(paid.adds)?;
     repair_write_back(c.w, &set, &original);
     Ok((answer, kind))
 }
@@ -302,10 +304,9 @@ fn repaired(
     (oq, o): (PlayerId, &Unit),
     id: i32,
 ) -> Result<crate::construction::repair::Repaired, GenieError> {
-    let om = repair_master(&c.w.masters, oq, o)
-        .ok_or(GenieError::missing_data("a repaired object's master"))?;
+    let om = repair_master(&c.w.masters, oq, o)?;
     let attributes: &[f32] = if oq == c.player {
-        &c.w.players[c.player.index()].attributes
+        &c.w.players.player(c.player)?.attributes
     } else {
         others
             .players()

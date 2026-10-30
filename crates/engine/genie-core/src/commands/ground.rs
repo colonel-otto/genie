@@ -10,6 +10,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
 use crate::players::PlayerId;
+use crate::world::slots::PlayerSlots;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -82,7 +83,7 @@ impl World {
                     "a sleeping unit sent off a footprint",
                 ));
             };
-            if let Some(ai) = self.players[q.index()].objects[i].ai.as_mut() {
+            if let Some(ai) = self.players.live_mut(q, i)?.ai.as_mut() {
                 ai.post(Notify::own(id, crate::unit_ai::SENT_OFF, p), state)?;
             }
         }
@@ -134,8 +135,8 @@ impl World {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
-            let z = self.players[q.index()].objects[i].position().z();
-            if let Some(ai) = self.players[q.index()].objects[i].ai.as_mut() {
+            let z = self.players.live(q, i)?.position().z();
+            if let Some(ai) = self.players.live_mut(q, i)?.ai.as_mut() {
                 ai.set_action(Some(ActionKind::MoveAside));
             }
             self.move_point_order(q, i, Position::new(x, y, z))?;
@@ -144,7 +145,7 @@ impl World {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
-            let unit = &mut self.players[q.index()].objects[i];
+            let unit = self.players.live_mut(q, i)?;
             let state = unit.life.state;
             if let Some(ai) = unit.ai.as_mut()
                 && ai.current_action != Some(ActionKind::MoveAside)
@@ -223,10 +224,12 @@ impl World {
             at,
             trees,
         };
-        let looks: BTreeMap<i32, ClearLook> = clearing_objects(&self.spatial, at)
-            .into_iter()
-            .filter_map(|id| Some((id, self.clear_look(id)?)))
-            .collect();
+        let mut looks: BTreeMap<i32, ClearLook> = BTreeMap::new();
+        for id in clearing_objects(&self.spatial, at) {
+            if let Some(look) = self.clear_look(id)? {
+                let _ = looks.insert(id, look);
+            }
+        }
         let cleared = footprint_clearing(&self.spatial, &site, &looks)?;
         for cl in cleared {
             self.clear_object(cl, false)?;
@@ -235,7 +238,7 @@ impl World {
             }
             // FUN_141189670 after its destroy: unless +0x686 is set, a tall master's (COMISS: a
             // NaN height too) or a recorded object's record goes; then +0x686 (FUN_141189b60)
-            let look = self.clear_look(cl.id).ok_or(GenieError::unsupported(
+            let look = self.clear_look(cl.id)?.ok_or(GenieError::unsupported(
                 "a footprint clearing of an object the slice does not hold",
             ))?;
             let recorded = self
@@ -257,9 +260,11 @@ impl World {
     }
 
     /// What the footprint clearing reads of object `id` ([`crate::construction::build::ClearLook`]).
-    pub(crate) fn clear_look(&self, id: i32) -> Option<ClearLook> {
-        let (p, u) = self.object(id)?;
-        clear_look_of(u, self.masters.get(p.index()))
+    pub(crate) fn clear_look(&self, id: i32) -> Result<Option<ClearLook>, GenieError> {
+        let Some((p, u)) = self.object(id) else {
+            return Ok(None);
+        };
+        Ok(Some(clear_look_of(u, self.masters.get(p.index()))?))
     }
 
     /// An object the footprint clearing deletes ([`crate::construction::build::Cleared`]): a wall first goes

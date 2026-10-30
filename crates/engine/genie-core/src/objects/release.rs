@@ -85,12 +85,17 @@ impl World {
     /// world's leave of the place that the slice does not model.
     pub(crate) fn leave_world(&mut self, p: PlayerId, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id.get(), gone.life.master_id)?;
-        let master = gone.master(&self.masters, p).ok();
-        forget_resource(&mut self.spatial, master, gone.id.get(), gone.position())?;
-        if let Some(m) = master.filter(|m| COMBAT <= m.kind) {
-            count_class(&mut self.players.player_mut(p)?.attributes, m, -1.0);
+        let master = gone.master(&self.masters, p)?;
+        forget_resource(
+            &mut self.spatial,
+            Some(master),
+            gone.id.get(),
+            gone.position(),
+        )?;
+        if COMBAT <= master.kind {
+            count_class(&mut self.players.player_mut(p)?.attributes, master, -1.0);
         }
-        let recyclable = master.is_some_and(|m| m.recyclable);
+        let recyclable = master.recyclable;
         let left = self.spatial.leave(gone.id.get());
         self.unwatch(p, gone.id.get())?;
         if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
@@ -117,14 +122,11 @@ impl World {
             return Ok(());
         };
         let unit = self.players.live(p, i)?;
-        let Some(master) = unit
-            .master(&self.masters, p)
-            .ok()
-            .filter(|m| matches!(m.kind, COMBAT | BUILDING))
-            .cloned()
-        else {
+        let master = unit.master(&self.masters, p)?;
+        if !matches!(master.kind, COMBAT | BUILDING) {
             return Ok(());
-        };
+        }
+        let master = master.clone();
         self.players.live_mut(p, i)?.regenerate(&master, dt_seconds);
         Ok(())
     }
@@ -143,9 +145,7 @@ impl World {
             return Ok(());
         };
         let unit = self.players.live(p, i)?;
-        let combat = unit
-            .master(&self.masters, p)
-            .is_ok_and(|m| matches!(m.kind, COMBAT | BUILDING));
+        let combat = matches!(unit.master(&self.masters, p)?.kind, COMBAT | BUILDING);
         if combat {
             self.players.live_mut(p, i)?.clamp_hp_powerup();
         }
@@ -175,11 +175,11 @@ impl World {
 
 impl Unit {
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
-    pub(crate) fn releaser(&self, c: &Step<'_>) -> Releaser {
-        Releaser {
+    pub(crate) fn releaser(&self, c: &Step<'_>) -> Result<Releaser, GenieError> {
+        Ok(Releaser {
             id: self.id.get(),
-            class: self.master(&c.w.masters, c.player).ok().map(|m| m.class),
+            class: Some(self.master(&c.w.masters, c.player)?.class),
             player: c.player,
-        }
+        })
     }
 }

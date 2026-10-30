@@ -78,7 +78,7 @@ impl World {
         };
         let computer = owner.computer;
         let farm_stops = self.settings.walkable_farms;
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
         // capacity and the task's productivity attribute (none: 1.0)
         let productivity = unit.actions.gather().map_or(-1, |g| g.task.productivity);
@@ -168,7 +168,7 @@ impl World {
             position: at,
             gap: crate::movement::footprint_gap(unit.position(), me.radius, at, radius),
         });
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let unit = self.players.live_mut(player, idx)?;
         let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
@@ -228,7 +228,7 @@ impl World {
         q.drop_site = self.drops_at_main(player, idx, target)?;
         let quarry = Some(q);
         let gap = self.engagement(player, idx, target)?.gap;
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         let unit = self.players.live_mut(player, idx)?;
         let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let my_pasture = unit.my_pasture;
@@ -348,7 +348,7 @@ impl World {
             self.settings.walkable_farms,
             rate,
         )?;
-        self.take(target, self.releaser(player, idx))?;
+        self.take(target, self.releaser(player, idx)?)?;
         let unit = self.players.live_mut(player, idx)?;
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
@@ -394,10 +394,10 @@ impl World {
         let waits = gather.target == -1 && gather.carry_to != target;
         unit.actions.set_gather(Some(gather));
         if drops {
-            self.take(target, self.releaser(player, idx))?;
+            self.take(target, self.releaser(player, idx)?)?;
         }
         if drops || waits {
-            let by = self.releaser(player, idx);
+            let by = self.releaser(player, idx)?;
             self.release(target, by)?;
         }
         Ok(())
@@ -509,7 +509,7 @@ impl World {
         } = order;
         let mut quarry = self.quarry(player, target)?;
         quarry.drop_site = self.drops_at_main(player, idx, target)?;
-        self.take(target, self.releaser(player, idx))?;
+        self.take(target, self.releaser(player, idx)?)?;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut().filter(|_| notify) {
             ai.notify_work(
@@ -580,8 +580,8 @@ impl World {
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
         // go as the first (slot 0x68 with none)
         if drops {
-            self.take(target, self.releaser(player, idx))?;
-            let by = self.releaser(player, idx);
+            self.take(target, self.releaser(player, idx)?)?;
+            let by = self.releaser(player, idx)?;
             self.release(target, by)?;
         }
         Ok(())

@@ -221,31 +221,29 @@ impl World {
 
     /// `FUN_1411cc980`: a building its owner watches: not of class 51 or 54, not desolid
     /// (`+0xc60`), not an annex (`+0xbb8`, but a gate's), not master 1808.
-    fn watches_building(&self, p: PlayerId, id: i32) -> bool {
+    fn watches_building(&self, p: PlayerId, id: i32) -> Result<bool, GenieError> {
         self.watches_building_at(p, id, true)
     }
 
     /// [`World::watches_building`], with the annex link made (`linked`) or, during a load before
     /// the rehook, not yet: then an annex passes too.
-    fn watches_building_at(&self, p: PlayerId, id: i32, linked: bool) -> bool {
+    fn watches_building_at(&self, p: PlayerId, id: i32, linked: bool) -> Result<bool, GenieError> {
         let Some((_, u)) = self.object(id) else {
-            return false;
+            return Ok(false);
         };
-        let Ok(m) = u.master(&self.masters, p) else {
-            return false;
-        };
+        let m = u.master(&self.masters, p)?;
         let annex = linked && u.annex_of.is_some();
-        !UNWATCHED_CLASSES.contains(&m.class)
+        Ok(!UNWATCHED_CLASSES.contains(&m.class)
             && !u.construction.is_some_and(|c| c.desolid)
             // The master a building's watch leaves out (`FUN_1411cc980`).
             && (!annex || m.class == class::GATE)
-            && m.id != MASTER_1808
+            && m.id != MASTER_1808)
     }
 
     /// A building whose construction started (`FUN_1411e5670`): its owner watches it
     /// ([`World::watches_building`]).
     pub(crate) fn watch_started(&mut self, p: PlayerId, id: i32) -> Result<(), GenieError> {
-        if !self.watches_building(p, id) {
+        if !self.watches_building(p, id)? {
             return Ok(());
         }
         let Some((_, u)) = self.object(id) else {
@@ -294,9 +292,7 @@ impl World {
                 } else {
                     &self.players.live(q, k)?
                 };
-                let Ok(m) = u.master(&self.masters, p) else {
-                    continue;
-                };
+                let m = u.master(&self.masters, p)?;
                 let (state, kind, ghosts, position) =
                     (u.life.state, m.kind, m.ghost_on_death, u.position());
                 let [x, y] = Self::tile_at(position);
@@ -306,24 +302,19 @@ impl World {
                 }
                 // a building's load constructor (FUN_1411ac170, type 80 only): FUN_1411cc980
                 // before the rehook links its annexes
-                if kind == BUILDING && self.watches_building_at(p, id, false) {
+                if kind == BUILDING && self.watches_building_at(p, id, false)? {
                     let _ = self.watch(p, id, x, y)?;
                 }
             }
             for list in [false, true] {
-                let annexes: Vec<i32> = if list {
-                    &self.players.player(p)?.sleeping
-                } else {
-                    &self.players.player(p)?.objects
+                let held = self.players.player(p)?;
+                let objects = if list { &held.sleeping } else { &held.objects };
+                let mut annexes: Vec<i32> = Vec::new();
+                for u in objects.iter().filter(|u| u.annex_of.is_some()) {
+                    if u.master(&self.masters, p)?.class != class::GATE {
+                        annexes.push(u.id.get());
+                    }
                 }
-                .iter()
-                .filter(|u| u.annex_of.is_some())
-                .filter(|u| {
-                    u.master(&self.masters, p)
-                        .is_ok_and(|m| m.class != class::GATE)
-                })
-                .map(|u| u.id.get())
-                .collect();
                 for id in annexes {
                     self.unwatch(p, id)?;
                 }
@@ -348,10 +339,7 @@ impl World {
             master: u.life.master_id,
         };
         let position = u.position();
-        if id < 0
-            || u.master(&self.masters, p)
-                .map_or(true, |m| m.ghost_on_death != LEAVES_GHOSTS)
-        {
+        if id < 0 || u.master(&self.masters, p)?.ghost_on_death != LEAVES_GHOSTS {
             return Ok(());
         }
         let [x, y] = Self::tile_at(position);
@@ -1194,7 +1182,7 @@ mod tests {
         assert_eq!(t.players[1].watched[0].cell, Cell::Mask(9));
         assert_eq!(t.players[1].watched[1].cell, Cell::Tile(2 * 4 + 2));
         // a building in the game, its annex linked, is not watched as an annex
-        assert!(!t.watches_building(PlayerId::new(1), 11));
-        assert!(t.watches_building(PlayerId::new(1), 10));
+        assert!(!t.watches_building(PlayerId::new(1), 11).unwrap());
+        assert!(t.watches_building(PlayerId::new(1), 10).unwrap());
     }
 }

@@ -92,10 +92,7 @@ impl Unit {
         if !g.motion.moving() && g.slot_in_place(self.id.get()) {
             return Ok(None);
         }
-        let master = self
-            .master_in(masters)
-            .ok()
-            .ok_or(crate::world::OBJECT_MASTER)?;
+        let master = self.master_in(masters)?;
         if !self.free_for_group(master)? {
             return Ok(None);
         }
@@ -121,9 +118,7 @@ impl Unit {
         }
         let step = self.own_move_step(c, me)?;
         if step.gave_up {
-            let villager = self
-                .master(&c.w.masters, c.player)
-                .is_ok_and(|m| m.class == class::VILLAGER);
+            let villager = self.master(&c.w.masters, c.player)?.class == class::VILLAGER;
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             self.own_move_gave_up(
                 villager && !c.w.players[c.player.index()].computer,
@@ -161,7 +156,7 @@ impl Unit {
         let code = move_to.check_held(state, &mut inbox)?;
         let releases = code.is_some() && !move_to.quiet;
         if releases {
-            let by = self.releaser(c);
+            let by = self.releaser(c)?;
             crate::world::lets::release(c, self, ObjectId::field(target), by)?;
         }
         Ok(code)

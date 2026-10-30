@@ -21,6 +21,7 @@ use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
 
@@ -42,7 +43,7 @@ impl Unit {
         c: &mut Step<'_>,
         me: Me,
     ) -> Result<HeadCode, GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         self.gather_check_targets(c, by)?;
         let gather = *self.actions.gather().ok_or(NO_GATHER)?;
         let reads = self.gather_reads(c, &gather)?;
@@ -65,7 +66,7 @@ impl Unit {
     fn gather_check_targets(&mut self, c: &mut Step<'_>, by: Releaser) -> Result<(), GenieError> {
         let target = self.actions.gather().ok_or(NO_GATHER)?.target;
         if target != -1 {
-            let state = readable(c, target).map(|(_, u, _)| u.life.state);
+            let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.w.spatial.get(target).is_some() => {
@@ -134,7 +135,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player)?;
         let g = |id: i16| (0 <= id).then(|| c.w.graphics.get(&id).copied()).flatten();
         let task = gather.task;
-        let attributes = &c.w.players[c.player.index()].attributes;
+        let attributes = &c.w.players.player(c.player)?.attributes;
         Ok(crate::gathering::gather::GatherReads {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
@@ -155,7 +156,7 @@ impl Unit {
             master: self.life.master_id,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             farm_stops: c.w.settings.walkable_farms,
-            computer: c.w.players[c.player.index()].computer,
+            computer: c.w.players.player(c.player)?.computer,
             stop_productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
                 attributes,
@@ -222,12 +223,15 @@ impl Unit {
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
-            attribute_95: c.w.players[c.player.index()]
+            attribute_95: c
+                .w
+                .players
+                .player(c.player)?
                 .attributes
                 .get(95)
                 .copied()
                 .unwrap_or(0.0),
-            civ: c.w.players[c.player.index()].civ,
+            civ: c.w.players.player(c.player)?.civ,
         };
         Ok(Some(crate::gathering::hunt::DropOff {
             takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
@@ -366,8 +370,8 @@ impl Unit {
                 pathing: &mut c.w.pathing,
                 object: c.w.streams.get(Stream::Object),
                 world_time: c.w.world_time,
-                computer: c.w.players[c.player.index()].computer,
-                construction_rate: c.w.players[c.player.index()].construction_rate,
+                computer: c.w.players.player(c.player)?.computer,
+                construction_rate: c.w.players.player(c.player)?.construction_rate,
                 groups: &c.w.groups,
             };
             self.drop_site_from(&mut w, others, state, false)?

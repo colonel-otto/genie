@@ -325,11 +325,16 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         // the planners the load makes and the shape mesh it builds (a dump of the game's mesh
         // replaces it)
         turns.register_planners();
-        turns.build_mesh();
+        if let Err(e) = turns.build_mesh() {
+            stop_all(&mut turns, &e);
+        }
     }
     // the players' object trackers, which the objects' loads fill
     // the players' vision masks, which the world's load rebuilds (its slot 0x78)
-    if let Err(e) = turns.load_trackers().and_then(|()| turns.rebuild_vision()) {
+    // (both read the objects' masters: without the masters' table there is nothing to rebuild)
+    if masters.is_some()
+        && let Err(e) = turns.load_trackers().and_then(|()| turns.rebuild_vision())
+    {
         stop_all(&mut turns, &e);
     }
     turns

@@ -26,12 +26,7 @@ use crate::world::slots::PlayerSlots;
 
 impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
-        let class = self
-            .unit
-            .master(&self.c.w.masters, self.player)
-            .ok()
-            .map(|m| m.class)
-            .ok_or(crate::world::OBJECT_MASTER)?;
+        let class = self.unit.master(&self.c.w.masters, self.player)?.class;
         let at = self.unit.position().ground();
         let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
         let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
@@ -93,12 +88,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let find = |id: i32| others.find(id);
         let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == PlayerId::GAIA);
         let me = self.unit.id;
-        let my_radius = self
-            .unit
-            .master(&self.c.w.masters, self.player)
-            .ok()
-            .map(|m| m.radius)
-            .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let my_radius = self.unit.master(&self.c.w.masters, self.player)?.radius;
         for r in lists[1].iter().chain(&lists[2]) {
             if r.id == me.get() {
                 continue;
@@ -143,7 +133,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     }
 
     fn defended_attacker(&mut self, target: i32) -> Result<Option<i32>, GenieError> {
-        Ok(self.picker(None)?.nearest_attacker_of(target))
+        self.picker(None)?.nearest_attacker_of(target)
     }
 
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
@@ -244,8 +234,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             every: &self.c.w.masters,
             restriction: self
                 .unit
-                .master(&self.c.w.masters, self.player)
-                .map_or(-1, |m| m.terrain_restriction),
+                .master(&self.c.w.masters, self.player)?
+                .terrain_restriction,
             unit: &*self.unit,
             attributes: &self.c.w.players.player(self.player)?.attributes,
             relations: &self.c.w.players.player(self.player)?.relations,
@@ -345,9 +335,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let class = self
             .unit
             .master(&self.c.w.masters, self.c.player)
-            .ok()
             .map(|m| m.class);
-        let done = posted.and_then(|()| self.unit.run_effect(e, class, self.c));
+        let done = class
+            .and_then(|class| posted.and_then(|()| self.unit.run_effect(e, Some(class), self.c)));
         std::mem::swap(self.c.w.streams.get(Stream::Ai), rng);
         self.c.side_notifies = Some(Vec::new());
         *ai = self.unit.ai.take().ok_or_else(|| {

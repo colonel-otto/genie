@@ -17,6 +17,7 @@ use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::player::Player;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
@@ -55,7 +56,7 @@ impl Unit {
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
-        let target_state = readable(c, action.target).map(|(_, u, _)| u.life.state);
+        let target_state = readable(c, action.target)?.map(|(_, u, _)| u.life.state);
         let shooter_state = OthersRef::of(&c.w.players, c.player)?
             .own(action.fired_from)
             .map(|u| u.life.state);
@@ -76,7 +77,7 @@ impl Unit {
             action.fired_from = -1;
         }
         if action.target != -1 && target_state.is_some_and(dead) {
-            let by = self.releaser(c);
+            let by = self.releaser(c)?;
             crate::world::lets::release(c, self, action.target, by)?;
             action.target = -1;
         }
@@ -185,9 +186,7 @@ impl Unit {
         if !(0.0 < stats.radius.x() && 0.0 < stats.radius.y()) {
             return Ok(());
         }
-        let blast_level = self
-            .master(&c.w.masters, c.player)
-            .map_or(0, |m| m.blast_level);
+        let blast_level = self.master(&c.w.masters, c.player)?.blast_level;
         let met = self.missile_meets(stats, old, c)?;
         for &(id, player, kind, level) in &met {
             if action.state == DONE {
@@ -410,7 +409,7 @@ impl Unit {
         let mut own = victim_of(
             self,
             master,
-            &c.w.players[c.player.index()].attributes,
+            &c.w.players.player(c.player)?.attributes,
             c.player,
             terrain,
             c.w.mode_680,
@@ -533,7 +532,7 @@ impl Unit {
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if let Some(a) = slot.take() {
-            let by = self.releaser(c);
+            let by = self.releaser(c)?;
             for t in [a.target, a.fired_from].into_iter().filter(|&t| t != -1) {
                 crate::world::lets::release(c, self, t, by)?;
             }
@@ -550,8 +549,13 @@ impl Unit {
             self.life.state = 7;
             c.w.spatial.sight_state(self.id.get(), 7)?;
             if before < 4 {
-                let master = self.master(&c.w.masters, c.player).ok();
-                forget_resource(&mut c.w.spatial, master, self.id.get(), self.position())?;
+                let master = self.master(&c.w.masters, c.player)?;
+                forget_resource(
+                    &mut c.w.spatial,
+                    Some(master),
+                    self.id.get(),
+                    self.position(),
+                )?;
             }
         }
         Ok(())

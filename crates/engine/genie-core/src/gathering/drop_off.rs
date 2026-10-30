@@ -15,6 +15,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
@@ -30,7 +31,7 @@ impl Unit {
     /// modelled, or 0xf3 for a farmer); without a point a computer player's Gather is done, a
     /// human's idles (`set_state(2)`).
     pub(crate) fn gather_after_drop(&mut self, c: &mut Step<'_>) -> Result<HeadCode, GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         if self.after_drop_orders(c)? {
             return Ok(HeadCode::Deletes);
         }
@@ -129,7 +130,7 @@ impl Unit {
                 .walk_back(0.0, mover, &walks)
                 .map(|()| HeadCode::Keeps);
         }
-        if c.w.players[c.player.index()].computer {
+        if c.w.players.player(c.player)?.computer {
             return Ok(HeadCode::Deletes);
         }
         let carry_to = gather.carry_to;
@@ -194,7 +195,7 @@ impl Unit {
             self.found_resource(c, OthersRef::of(&c.w.players, c.player)?, found)?;
         let master = self.master(&c.w.masters, c.player)?;
         let (computer, farm_stops) = (
-            c.w.players[c.player.index()].computer,
+            c.w.players.player(c.player)?.computer,
             c.w.settings.walkable_farms,
         );
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
@@ -203,7 +204,7 @@ impl Unit {
             capacity: f32::from(master.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 self.actions.gather().map_or(-1, |g| g.task.productivity),
-                &c.w.players[c.player.index()].attributes,
+                &c.w.players.player(c.player)?.attributes,
             ),
         };
         let (Some(gather), Some(mover)) = (self.actions.gather_mut(), self.body.mover_mut()) else {
@@ -238,13 +239,15 @@ impl Unit {
             }
             if owner == c.player.index() && new == found {
                 // one of its own player's: allied, never listed
-                let u = c.w.players[c.player.index()]
-                    .objects
-                    .by_id_mut(found)
-                    .expect("found above");
+                let u =
+                    c.w.players
+                        .player_mut(c.player)?
+                        .objects
+                        .by_id_mut(found)
+                        .expect("found above");
                 u.taken(false, by.id);
             } else {
-                let by = self.releaser(c);
+                let by = self.releaser(c)?;
                 crate::world::lets::take(c, self, new, by)?;
             }
         }
@@ -300,13 +303,13 @@ impl Unit {
             pathing: &mut c.w.pathing,
             object: c.w.streams.get(Stream::Object),
             world_time: c.w.world_time,
-            computer: c.w.players[c.player.index()].computer,
-            construction_rate: c.w.players[c.player.index()].construction_rate,
+            computer: c.w.players.player(c.player)?.computer,
+            construction_rate: c.w.players.player(c.player)?.construction_rate,
             groups: &c.w.groups,
         };
         let others = OthersRef::of(&c.w.players, c.player)?;
         if let Some(site) = self.gather_drop_off_in(w, others, &c.w.graphics)? {
-            let by = self.releaser(c);
+            let by = self.releaser(c)?;
             crate::world::lets::take(c, self, site, by)?;
         }
         Ok(())

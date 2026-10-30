@@ -10,6 +10,7 @@ use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl Unit {
@@ -51,7 +52,7 @@ impl Unit {
             &c.w.drop_sites,
             built,
             master.class,
-            c.w.players[c.player.index()].civ,
+            c.w.players.player(c.player)?.civ,
         );
         let los = site.line_of_sight;
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };

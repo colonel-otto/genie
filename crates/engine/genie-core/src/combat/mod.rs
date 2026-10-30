@@ -6,5 +6,6 @@ pub mod abilities;
 pub mod attack;
 pub mod damage;
 pub mod missile;
+pub(crate) mod victim_reads;
 pub(crate) mod victims;
 pub(crate) mod volley;

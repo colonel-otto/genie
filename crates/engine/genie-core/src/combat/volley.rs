@@ -26,6 +26,7 @@ use crate::players::attribute::AttributeId;
 use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// A new missile's storage (its master's `storage`): the entries of flags 1, 2 and 32 with an
@@ -469,7 +470,7 @@ impl Unit {
             );
             let _ = v.sight_on(id.get(), position, made.radius, false, false)?;
         }
-        let held = missile_storage(&mut c.w.players[c.player.index()], &made.storage)?;
+        let held = missile_storage(c.w.players.player_mut(c.player)?, &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start
         let mut action = crate::combat::missile::MissileAction {
             state: 0,
@@ -549,11 +550,11 @@ impl Unit {
         };
         // it joins the end of its owner's list (slot 0x2d0, which files it in the tracker);
         // then its action takes the target and the shooter
-        c.w.players[c.player.index()].tracker.add(
+        c.w.players.player_mut(c.player)?.tracker.add(
             id.get(),
             crate::players::tracker::key(c.w.masters.get(c.player.index()), &c.w.lines, made.id),
         );
-        c.w.players[c.player.index()].objects.push(missile);
+        c.w.players.player_mut(c.player)?.objects.push(missile);
         let missile = Releaser {
             id: id.get(),
             class: Some(made.class),

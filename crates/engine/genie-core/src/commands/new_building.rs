@@ -22,6 +22,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
+use crate::world::slots::PlayerSlots;
 use crate::world::{BUILDING_COST, Gate, World};
 
 impl World {
@@ -38,7 +39,7 @@ impl World {
         let unit_ai = self.master(player, master)?.unit_ai_type(master);
         let made = self.make_building(player, master, Ok(unit_ai), position)?;
         let cost = self.master(player, master)?.cost.clone();
-        let owner = &mut self.players[player.index()];
+        let owner = self.players.player_mut(player)?;
         for &(resource, amount, paid) in &cost {
             let slot = usize::try_from(resource)
                 .ok()
@@ -63,7 +64,7 @@ impl World {
         master: MasterId,
     ) -> Result<(), GenieError> {
         if let Some(m) = player_master(&self.masters, player, master) {
-            count_class(&mut self.players[player.index()].attributes, m, 1.0);
+            count_class(&mut self.players.player_mut(player)?.attributes, m, 1.0);
         }
         let _ = self.streams.get(Stream::Object).rand15();
         if let Some(m) = player_master(&self.masters, player, master)
@@ -75,7 +76,8 @@ impl World {
                 .filter(|&&(resource, _, paid)| 0 <= resource && paid)
                 .map(|&(_, amount, _)| i32::from(amount))
                 .sum();
-            self.players[player.index()]
+            self.players
+                .player_mut(player)?
                 .add_attribute(AttributeId::try_from(BUILDING_COST)?, paid as f32)?;
         }
         Ok(())
@@ -93,7 +95,7 @@ impl World {
             .map(|m| m.storage.clone())
             .unwrap_or_default();
         let mut held = (-1, 0.0);
-        let owner = &mut self.players[player.index()];
+        let owner = self.players.player_mut(player)?;
         for &(kind, amount, flag) in &storage {
             if flag == 0 && kind != -1 {
                 held = (kind, amount);
@@ -157,15 +159,19 @@ impl World {
             .map(|(t, new)| {
                 t.and_then(|t| UnitAi::constructed(t, &new, self.streams.get(Stream::Ai)))
             });
-        let ai = ai.unwrap_or_else(|e| {
-            // the constructor's draws are unknown, so the turn player's are too
-            crate::trace::player_unsupported(self.ticks, self.player_turn, &e);
-            let turn = &mut self.players[self.player_turn.index()];
-            let at = turn.objects.len();
-            let _ = turn.unsupported.get_or_insert((self.ticks, at, e));
-            turn.stopped = true;
-            None
-        });
+        let ai = match ai {
+            Ok(ai) => ai,
+            Err(e) => {
+                // the constructor's draws are unknown, so the turn player's are too
+                crate::trace::player_unsupported(self.ticks, self.player_turn, &e);
+                let ticks = self.ticks;
+                let turn = self.players.player_mut(self.player_turn)?;
+                let at = turn.objects.len();
+                let _ = turn.unsupported.get_or_insert((ticks, at, e));
+                turn.stopped = true;
+                None
+            }
+        };
         // the setups the combat setup runs first, with its master's standing sprite current
         // (slot 0x798, FUN_1412029f0): their draws, the sprite and the angle it faces
         let standing = (0 <= made.standing_sprite)
@@ -242,7 +248,7 @@ impl World {
         let desolid = 0 < made.build_time
             && !matches!(made.class, class::CLASS_51 | class::CLASS_54)
             && progress == 0.0;
-        let owner = &mut self.players[player.index()];
+        let owner = self.players.player_mut(player)?;
         owner.objects.push(Unit {
             id,
             footprint_waits: 0,

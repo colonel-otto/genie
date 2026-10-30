@@ -457,7 +457,7 @@ pub(super) fn let_go(c: &mut Step<'_>, unit: &mut Unit, target: i32) -> Result<(
     if target == -1 {
         return Ok(());
     }
-    let by = unit.releaser(c);
+    let by = unit.releaser(c)?;
     crate::world::lets::release(c, unit, target, by)
 }
 

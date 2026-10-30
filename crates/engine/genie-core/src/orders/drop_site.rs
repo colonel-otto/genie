@@ -153,7 +153,7 @@ impl World {
     /// unit AI.
     pub(crate) fn build_drop_off_now(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
-        let by = self.releaser(p, idx);
+        let by = self.releaser(p, idx)?;
         let unit = &self.players.live(p, idx)?;
         let task_range = unit
             .actions
@@ -283,19 +283,21 @@ impl World {
     pub(crate) fn queue_way_back(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         use crate::orders::town_bell::RecordTarget;
         let mut bell = self.players.live(p, idx)?.town_bell;
-        let lookup = |t: i32| -> Option<RecordTarget> {
-            let (op, o) = self.object(t)?;
-            let m = o.master(&self.masters, op).ok()?;
-            Some(RecordTarget {
+        let lookup = |t: i32| -> Result<Option<RecordTarget>, GenieError> {
+            let Some((op, o)) = self.object(t) else {
+                return Ok(None);
+            };
+            let m = o.master(&self.masters, op)?;
+            Ok(Some(RecordTarget {
                 id: t,
                 building: m.kind == BUILDING,
                 class: m.class,
                 built: o
                     .construction
                     .is_some_and(|c| f32::from(m.build_time) <= c.progress),
-            })
+            }))
         };
-        let (found, record) = bell.back_to_work(&lookup);
+        let (found, record) = bell.back_to_work(&lookup)?;
         let target = match found {
             Some(f) => {
                 let (op, o) = self.object(f.id).ok_or_else(|| object_gone(f.id))?;

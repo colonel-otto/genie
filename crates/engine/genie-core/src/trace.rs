@@ -325,7 +325,9 @@ mod tests {
             objects: objects.into(),
             ..Player::default()
         };
-        World::new(0, 1, PlayerId::new(0), vec![0], vec![player])
+        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+        crate::world::tests::stock_masters(&mut t);
+        t
     }
 
     /// Each step names its stream, the draw count, the raw value and the engine's line that

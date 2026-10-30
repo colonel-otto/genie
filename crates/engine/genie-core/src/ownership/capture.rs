@@ -71,7 +71,7 @@ impl Unit {
         c: &mut Step<'_>,
         class: ClassId,
     ) -> Result<(), GenieError> {
-        let by = self.releaser(c);
+        let by = self.releaser(c)?;
         if let Some(artifact) = self.actions.artifact_mut() {
             let (gone, released) = artifact.stop();
             if gone.stops {
@@ -151,8 +151,8 @@ impl Unit {
         c: &mut Step<'_>,
         new: PlayerId,
     ) -> Result<(), GenieError> {
-        let master = self.master(&c.w.masters, c.player);
-        if master.is_ok_and(|m| m.class == class::SIEGE) && !self.garrison.is_empty() {
+        let master = self.master(&c.w.masters, c.player)?;
+        if master.class == class::SIEGE && !self.garrison.is_empty() {
             return Err(HANDS_LEFT);
         }
         let _ = self.change_owner(c, new)?;

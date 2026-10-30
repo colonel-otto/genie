@@ -362,10 +362,10 @@ impl World {
                 .get(t)
                 .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
         }) {
-            let building = object.and_then(|id| self.object(id)).is_some_and(|(q, u)| {
-                u.master(&self.masters, q)
-                    .is_ok_and(|m| m.kind == master_type::BUILDING)
-            });
+            let building = match object.and_then(|id| self.object(id)) {
+                Some((q, u)) => u.master(&self.masters, q)?.kind == master_type::BUILDING,
+                None => false,
+            };
             if building {
                 return Err(GenieError::unsupported(
                     "a research of the shared kind (FUN_1411c49a0)",
@@ -431,10 +431,10 @@ impl World {
             ));
         }
         if let (true, Some(id)) = (one, object) {
-            let building = self.object(id).is_some_and(|(q, u)| {
-                u.master(&self.masters, q)
-                    .is_ok_and(|m| m.kind == master_type::BUILDING)
-            });
+            let building = match self.object(id) {
+                Some((q, u)) => u.master(&self.masters, q)?.kind == master_type::BUILDING,
+                None => false,
+            };
             if building {
                 return Err(GenieError::unsupported(
                     "an enable command for one building",

@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
 use crate::players::PlayerId;
+use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -46,8 +47,8 @@ impl World {
             // The gate class, whose own walls BUILD's placement scan passes over (`FUN_14123aee0`).
             // The relic's master, which always stays (`FUN_141194e80`).
             // The villager class, whose new units count in attribute 248.
-            self.players[p.index()].objects[new].master(&self.masters, p)?.class == class::VILLAGER;
-        let unit = &mut self.players[p.index()].objects[new];
+            self.players.live(p, new)?.master(&self.masters, p)?.class == class::VILLAGER;
+        let unit = self.players.live_mut(p, new)?;
         if let Some(m) = unit.body.mover_mut() {
             m.waiting = 1;
         }
@@ -122,7 +123,9 @@ impl World {
             .first()
             .and_then(|m| g.target_master.and_then(|t| m.get(t)))
             .map(|m| m.class);
-        let los = self.players[p.index()].objects[new]
+        let los = self
+            .players
+            .live(p, new)?
             .master(&self.masters, p)?
             .line_of_sight;
         let (x, y) = (g.point.x(), g.point.y());
@@ -217,7 +220,7 @@ impl World {
             "unreachable: a gather point's target found",
         ))?;
         let on_building = t.master(&self.masters, owner)?.kind == BUILDING;
-        if let Some(m) = self.players[p.index()].objects[new].body.mover_mut() {
+        if let Some(m) = self.players.live_mut(p, new)?.body.mover_mut() {
             m.waiting = 1;
         }
         let garrison = finder && on_building && self.garrison_task_found(p, new, target, at)?;

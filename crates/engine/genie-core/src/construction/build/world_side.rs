@@ -13,6 +13,7 @@ use crate::objects::masters::{Master, player_master};
 use crate::orders::Place;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::slots::PlayerSlots;
 
 impl crate::world::World {
     /// What a built building's storage gave its owner leaves (`FUN_1411e63f0`, then
@@ -29,7 +30,9 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
         for (kind, amount) in crate::objects::lifecycle::death_parts::storage_leaves(u, master) {
-            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
+            self.players
+                .player_mut(owner)?
+                .add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         Ok(())
     }
@@ -53,17 +56,19 @@ impl crate::world::World {
         let completion = Completion {
             master: Some(master),
             farm_bonus: crate::objects::lifecycle::death_parts::farm_bonus(
-                &self.players[owner.index()].attributes,
+                &self.players.player(owner)?.attributes,
             ),
             masters: self.masters.get(owner.index()),
-            computer: self.players[owner.index()].computer,
+            computer: self.players.player(owner)?.computer,
             ai: u.ai.is_some(),
         };
         let part = completion.first_part(&construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
         self.track_complete(owner, id, master.id)?;
         for (kind, amount) in part.attributes {
-            self.players[owner.index()].add_attribute(AttributeId::try_from(kind)?, amount)?;
+            self.players
+                .player_mut(owner)?
+                .add_attribute(AttributeId::try_from(kind)?, amount)?;
         }
         if part.pasture {
             self.setup_pasture(owner, id)?;
@@ -90,8 +95,8 @@ impl crate::world::World {
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
         let volley = held(&mut self.players, place)
-            .master(&self.masters, p)
-            .map_or(0.0, |m| m.volley_fire);
+            .master(&self.masters, p)?
+            .volley_fire;
         let now = self.world_time;
         let u = held(&mut self.players, place);
         let Some(c) = u.construction.as_mut() else {
@@ -328,7 +333,7 @@ impl crate::world::World {
         // cleared with the flag, its visible resources for one that gathers by itself
         if made.kind == COMBAT {
             let idx = self.combat_object(p, master, &made, at)?;
-            let id = self.players[p.index()].objects[idx].id;
+            let id = self.players.live(p, idx)?.id;
             if flagged {
                 self.clear_footprint(p, master, at.ground(), true)?;
             }
@@ -347,7 +352,7 @@ impl crate::world::World {
                 at,
                 crate::production::spawn::Facing::Drawn,
             )?;
-            let id = self.players[p.index()].objects[idx].id;
+            let id = self.players.live(p, idx)?.id;
             if flagged {
                 self.clear_footprint(p, master, at.ground(), true)?;
             }
@@ -363,7 +368,7 @@ impl crate::world::World {
             let _ = self.work_building(id, STACK_WORK)?;
         }
         if made.auto_gather {
-            if self.players[p.index()].objects.last().map(|u| u.id.get()) != Some(id) {
+            if self.players.player(p)?.objects.last().map(|u| u.id.get()) != Some(id) {
                 return Err(GenieError::unsupported(
                     "an auto-gathered new building with annexes (its visible resources)",
                 ));

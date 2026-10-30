@@ -7,6 +7,7 @@ use crate::commands::queue::QueueCommand;
 use crate::commands::research::ResearchCommand;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::master_type::BUILDING;
@@ -19,6 +20,7 @@ use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::production::Production;
 use crate::technology::TechId;
+use crate::world::slots::PlayerSlots;
 use crate::world::{
     COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER_ANY, World, villager,
 };
@@ -61,7 +63,7 @@ impl World {
         let Some(ids) = self.command_check(player, &ObjectId::fields(buildings))? else {
             return Ok(());
         };
-        let owner = &self.players[player.index()];
+        let owner = self.players.player(player)?;
         let limit = if owner.computer { 500 } else { 60 };
         let empty = Masters::default();
         let masters = self.masters.get(player.index()).unwrap_or(&empty);
@@ -74,7 +76,7 @@ impl World {
             .into_iter()
             .flatten()
         {
-            let (_, building) = self.at(place);
+            let (_, building) = self.at(place)?;
             let listed = building
                 .production
                 .as_ref()
@@ -92,23 +94,7 @@ impl World {
         } else {
             QUEUE_LIMIT
         } as i32;
-        let mut rooms = Vec::with_capacity(found.len());
-        let mut loads = Vec::with_capacity(found.len());
-        let mut total_room = 0i32;
-        for &place in &found {
-            let (p, building) = self.at(place);
-            // a building the unit does not train at keeps room −1 and load 0
-            if !self.trains_at(unit, building.life.master_id) {
-                rooms.push(-1);
-                loads.push(0.0);
-                continue;
-            }
-            let total = building.production.as_ref().map_or(0, |p| p.queue.total);
-            let room = per - i32::from(total);
-            total_room += room.max(0);
-            rooms.push(room);
-            loads.push(self.production_load(p, building));
-        }
+        let (mut rooms, mut loads, total_room) = self.rooms_and_loads(&found, unit, per)?;
         let mut amount = i32::from(q.amount).min(i32::from(total_room as i16));
         if 0 < amount {
             if unit.kind < COMBAT {
@@ -148,7 +134,7 @@ impl World {
             if owner.one_military_queued {
                 return Ok(());
             }
-            self.players[player.index()].one_military_queued = true;
+            self.players.player_mut(player)?.one_military_queued = true;
             amount = 1;
         }
         let mut counts = vec![0u16; found.len()];
@@ -160,7 +146,7 @@ impl World {
             };
             rooms[k] -= 1;
             counts[k] += 1;
-            let at = self.at(found[k]).1.life.master_id;
+            let at = self.at(found[k])?.1.life.master_id;
             let time = crate::production::train_time(&unit.train_locations, at, q.button);
             loads[k] += f32::from(time);
             pick = Some(k);
@@ -180,11 +166,40 @@ impl World {
     }
 
     /// The object at `place`, with its player.
-    fn at(&self, place: Place) -> (PlayerId, &crate::objects::unit::Unit) {
-        match place {
-            Place::Live(p, i) => (p, &self.players[p.index()].objects[i]),
-            Place::Sleeping(p, i) => (p, &self.players[p.index()].sleeping[i]),
+    fn at(&self, place: Place) -> Result<(PlayerId, &crate::objects::unit::Unit), GenieError> {
+        Ok(match place {
+            Place::Live(p, i) => (p, self.players.live(p, i)?),
+            Place::Sleeping(p, i) => (p, self.players.asleep(p, i)?),
+        })
+    }
+
+    /// [`World::queue`]'s rooms and loads of the `found` buildings for `unit`, each with `per`
+    /// places: a building the unit does not train at keeps room −1 and load 0; the sum of the
+    /// rooms (0 at least) comes third.
+    fn rooms_and_loads(
+        &self,
+        found: &[Place],
+        unit: &Master,
+        per: i32,
+    ) -> Result<(Vec<i32>, Vec<f32>, i32), GenieError> {
+        let mut rooms = Vec::with_capacity(found.len());
+        let mut loads = Vec::with_capacity(found.len());
+        let mut total_room = 0i32;
+        for &place in found {
+            let (p, building) = self.at(place)?;
+            // a building the unit does not train at keeps room −1 and load 0
+            if !self.trains_at(unit, building.life.master_id) {
+                rooms.push(-1);
+                loads.push(0.0);
+                continue;
+            }
+            let total = building.production.as_ref().map_or(0, |p| p.queue.total);
+            let room = per - i32::from(total);
+            total_room += room.max(0);
+            rooms.push(room);
+            loads.push(self.production_load(p, building)?);
         }
+        Ok((rooms, loads, total_room))
     }
 
     /// RESEARCH's building (`0x140e7e270`): the packet's (`+4`, a building or none); with more
@@ -193,20 +208,25 @@ impl World {
     /// ([`World::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
     /// takes its place, of `buildings`, the listed ones the check left (none for the others).
     /// −1 for none.
-    pub(crate) fn least_loaded(&self, r: &ResearchCommand, buildings: &[Option<ObjectId>]) -> i32 {
-        let player = r.player.index();
-        let load = |id: i32| {
+    pub(crate) fn least_loaded(
+        &self,
+        r: &ResearchCommand,
+        buildings: &[Option<ObjectId>],
+    ) -> Result<i32, GenieError> {
+        let load = |id: i32| -> Result<f32, GenieError> {
             self.object(id)
-                .map_or(0.0, |(q, u)| self.production_load(q, u))
+                .map_or(Ok(0.0), |(q, u)| self.production_load(q, u))
         };
-        let is_building = |id: i32| {
-            self.object(id)
-                .is_some_and(|(q, u)| u.master(&self.masters, q).is_ok_and(|m| m.kind == BUILDING))
+        let is_building = |id: i32| -> Result<bool, GenieError> {
+            match self.object(id) {
+                Some((q, u)) => Ok(u.master(&self.masters, q)?.kind == BUILDING),
+                None => Ok(false),
+            }
         };
         let building = ObjectId::field(r.building);
-        let mut chosen = is_building(building).then_some(building);
+        let mut chosen = is_building(building)?.then_some(building);
         if 1 < r.count {
-            let limit = if self.players[player].computer {
+            let limit = if self.players.player(r.player)?.computer {
                 500
             } else {
                 60
@@ -216,12 +236,16 @@ impl World {
                 if self.object(id).is_none() {
                     continue;
                 }
-                if chosen.is_none_or(|c| load(c) > load(id)) {
+                let heavier = match chosen {
+                    Some(c) => load(c)? > load(id)?,
+                    None => true,
+                };
+                if heavier {
                     chosen = Some(id);
                 }
             }
         }
-        chosen.unwrap_or(-1)
+        Ok(chosen.unwrap_or(-1))
     }
 
     /// `FUN_1411d0e90`: the seconds of work `building` (live or sleeping) of player `p` has queued: each
@@ -229,15 +253,14 @@ impl World {
     /// integers; a research's location at the building, `FUN_1413cbd20`, its time plus its
     /// adjustment, as floats), less the work done of its production list's action (a make's
     /// `+0x6c`, a research's `+0x70`).
-    #[must_use]
     pub(crate) fn production_load(
         &self,
         p: PlayerId,
         building: &crate::objects::unit::Unit,
-    ) -> f32 {
-        let owner = &self.players[p.index()];
+    ) -> Result<f32, GenieError> {
+        let owner = self.players.player(p)?;
         let Some(production) = building.production.as_ref() else {
-            return 0.0;
+            return Ok(0.0);
         };
         let queue = &production.queue;
         let entries = usize::try_from(queue.count)
@@ -260,14 +283,14 @@ impl World {
             }
         }
         if queue.slots.is_empty() {
-            return queued;
+            return Ok(queued);
         }
         let done = match production.action {
             Some(crate::production::Making::Unit(m)) => m.progress,
             Some(crate::production::Making::Research(r)) => r.progress,
             None => 0.0,
         };
-        queued - (0.0 + done)
+        Ok(queued - (0.0 + done))
     }
 
     /// `FUN_1411cbc40`, QUEUE's and RESEARCH's building part, at the building at `i` of
@@ -300,7 +323,9 @@ impl World {
             }
             count = 1;
         }
-        let total = self.players[player.index()].objects[i]
+        let total = self
+            .players
+            .live(player, i)?
             .production
             .as_ref()
             .map_or(0, |p| p.queue.total);
@@ -349,7 +374,7 @@ impl World {
                 masters,
                 master,
                 f32::from(n),
-                &mut self.players[player.index()],
+                self.players.player_mut(player)?,
             )? {
                 break;
             }
@@ -362,7 +387,7 @@ impl World {
         let masters = self.masters.get(player.index()).unwrap_or(&empty);
         let made = masters.get(master);
         let pop = made.map_or(0.0, |m| population(&m.storage));
-        let owner = &mut self.players[player.index()];
+        let owner = self.players.player_mut(player)?;
         owner.add_attribute(AttributeId::try_from(QUEUED)?, pop * f32::from(n))?;
         let costs = as_entry_costs(master_costs(masters, master, &*owner)?);
         owner.tracker.count_queued(n);
@@ -412,7 +437,7 @@ impl World {
         let def = self.techs.get(t).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
-        let owner = &mut self.players[player.index()];
+        let owner = self.players.player_mut(player)?;
         let state = &owner.techs[t];
         let done = state.pending.wrapping_add(state.times_researched);
         let cap = if 0 <= state.research_cap {
@@ -463,7 +488,7 @@ impl World {
             return Ok(true);
         }
         self.new_entry(player, i, (master, Some(tech)), n, button, None)?;
-        let pending = &mut self.players[player.index()].techs[t].pending;
+        let pending = &mut self.players.player_mut(player)?.techs[t].pending;
         *pending = pending.wrapping_add(n);
         Ok(true)
     }
@@ -483,7 +508,9 @@ impl World {
         button: i32,
         time: Option<i16>,
     ) -> Result<(), GenieError> {
-        let queue = &self.players[player.index()].objects[i]
+        let queue = &self
+            .players
+            .live(player, i)?
             .production
             .as_ref()
             .ok_or(NO_QUEUE)?
@@ -500,7 +527,9 @@ impl World {
             None
         };
         let costs = self.entry_costs(player, tech, master)?;
-        let queue = &mut self.players[player.index()].objects[i]
+        let queue = &mut self
+            .players
+            .live_mut(player, i)?
             .production
             .as_mut()
             .ok_or(NO_QUEUE)?
@@ -530,7 +559,7 @@ impl World {
         master: Option<MasterId>,
     ) -> Result<[(i32, f32); 3], GenieError> {
         use crate::production::{NO_COSTS, as_entry_costs, master_costs};
-        let owner = &self.players[player.index()];
+        let owner = self.players.player(player)?;
         if let Some(master) = master {
             let empty = Masters::default();
             let masters = self.masters.get(player.index()).unwrap_or(&empty);

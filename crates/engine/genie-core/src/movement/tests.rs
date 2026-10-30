@@ -1666,6 +1666,18 @@ pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
     };
     unit.life.state = 2;
     t.players[1].objects.push(unit);
+    // the villager's master (the gatherer tests set it) and the default one
+    let master = |id| crate::objects::masters::Master {
+        id,
+        kind: crate::objects::masters::master_type::COMBAT,
+        class: class::VILLAGER,
+        ..crate::objects::masters::Master::default()
+    };
+    let table = crate::objects::masters::Masters::new([
+        master(ids::VILLAGER_MALE),
+        master(MasterId::default()),
+    ]);
+    t.masters = vec![crate::objects::masters::Masters::new([]), table];
     t
 }
 

@@ -25,6 +25,7 @@ use crate::production::spawn::{
 };
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`
@@ -38,7 +39,7 @@ impl World {
         made: &crate::objects::masters::Master,
         toward: Option<[f32; 2]>,
     ) -> Result<[f32; 2], GenieError> {
-        let building = &self.players[p.index()].objects[i];
+        let building = &self.players.live(p, i)?;
         let site_master = building.master(&self.masters, p)?;
         let position = building.position();
         let mut walls = [false; 4];
@@ -123,7 +124,7 @@ impl World {
                         flag_1: g.flags & 2 != 0,
                     },
                 );
-                if let Some(m) = self.players[p.index()].objects[new].body.mover_mut() {
+                if let Some(m) = self.players.live_mut(p, new)?.body.mover_mut() {
                     m.angle = crate::objects::facing::angle_of_facet(facet, own);
                 }
             }
@@ -189,21 +190,7 @@ impl World {
         at: Position,
         facing: Facing,
     ) -> Result<usize, GenieError> {
-        if made.kind != STATIC && !(ANIMATED..master_type::ACTION).contains(&made.kind) {
-            return Err(GenieError::unsupported(
-                "remains of a type other than 10 and 20 to 39",
-            ));
-        }
-        if made.kind == STATIC && 0 < made.hit_points {
-            return Err(GenieError::unsupported(
-                "remains with hit points (the sleeping list)",
-            ));
-        }
-        if made.recyclable {
-            return Err(GenieError::unsupported(
-                "a new object of a recyclable master (a negative id)",
-            ));
-        }
+        remains_supported(made)?;
         // its place (slot 0x58, the static new_position): the ground's height by its master's
         // fly mode (slot 0x60, FUN_141193a10)
         let at = self.on_ground(p, master, at);
@@ -277,7 +264,7 @@ impl World {
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }
-        let owner = &mut self.players[p.index()];
+        let owner = self.players.player_mut(p)?;
         let mut held = (-1, 0.0);
         for &(kind, amount, flag) in &made.storage {
             if kind >= 0 && matches!(flag, 1 | 2 | 32) {
@@ -390,10 +377,10 @@ impl World {
     ) -> Result<(), GenieError> {
         /// The flare a hit leaves (`0x70`, FLARE).
         const HIT_FLARE: MasterId = MasterId::named(112);
-        let before = self.players[p.index()].objects.len();
+        let before = self.players.player(p)?.objects.len();
         self.remains(p, HIT_FLARE, at, None)?;
         self.made_new_object(p)?;
-        if doubled && let Some(f) = self.players[p.index()].objects.get_mut(before) {
+        if doubled && let Some(f) = self.players.player_mut(p)?.objects.get_mut(before) {
             f.life.amount += f.life.amount;
         }
         Ok(())
@@ -414,7 +401,7 @@ impl World {
         made: &crate::objects::masters::Master,
         at: Position,
     ) -> Result<(), GenieError> {
-        if self.players[p.index()].computer {
+        if self.players.player(p)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's new building (its AI's slot 0x398)",
             ));
@@ -423,4 +410,25 @@ impl World {
         let _ = self.make_building(p, made.id, Ok(ai_type), at)?;
         Ok(())
     }
+}
+
+/// Remains the slice models: a static object of 10 or 20 to 39 without hit points, of a master
+/// that is not recyclable.
+fn remains_supported(made: &crate::objects::masters::Master) -> Result<(), GenieError> {
+    if made.kind != STATIC && !(ANIMATED..master_type::ACTION).contains(&made.kind) {
+        return Err(GenieError::unsupported(
+            "remains of a type other than 10 and 20 to 39",
+        ));
+    }
+    if made.kind == STATIC && 0 < made.hit_points {
+        return Err(GenieError::unsupported(
+            "remains with hit points (the sleeping list)",
+        ));
+    }
+    if made.recyclable {
+        return Err(GenieError::unsupported(
+            "a new object of a recyclable master (a negative id)",
+        ));
+    }
+    Ok(())
 }

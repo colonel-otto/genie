@@ -12,6 +12,7 @@ use crate::objects::masters::{Task, TaskId};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::world::slots::PlayerSlots;
 
 /// The trade cart's and the trade boat's classes (`FUN_141195400`, `FUN_141195490`).
 const TRADE_CLASSES: [ClassId; 2] = [class::TRADE_CART, class::TRADE_BOAT];
@@ -37,7 +38,7 @@ impl crate::world::World {
         self.clear_actions(p, i)?;
         let mut t = TransportAction::on_task(Some(task.id), point);
         let changed = self.with_shore(p, i, t.task, |ship, shore| t.start(true, ship, shore))?;
-        self.players[p.index()].objects[i]
+        self.players.player_mut(p)?.objects[i]
             .actions
             .set_transport(Some(t));
         self.transport_changed(p, i, changed)
@@ -61,7 +62,7 @@ impl crate::world::World {
         task: &Task,
         clears: bool,
     ) -> Result<bool, GenieError> {
-        let unit = &self.players[p.index()].objects[i];
+        let unit = &self.players.player(p)?.objects[i];
         let on_task = unit.top_action_kind() == Some(TRANSPORT)
             && unit.actions.transport().copied().and_then(|t| t.task) == Some(task.id);
         if !on_task || self.trade_at_own_market((p, i), target)? {
@@ -78,7 +79,7 @@ impl crate::world::World {
         let changed = self.with_shore(p, i, t.task, |ship, shore| {
             t.work(point, by_self, ship, shore)
         })?;
-        self.players[p.index()].objects[i]
+        self.players.player_mut(p)?.objects[i]
             .actions
             .set_transport(Some(t));
         self.transport_changed(p, i, changed)?;
@@ -98,7 +99,7 @@ impl crate::world::World {
         };
         // The market (`0x60f0` raw), whose own trade units the work command never retakes.
         let market = tp == p && t.master(&self.masters, tp)?.id == MARKET;
-        let class = self.players[p.index()].objects[i]
+        let class = self.players.player(p)?.objects[i]
             .master(&self.masters, p)?
             .class;
         Ok(market && TRADE_CLASSES.contains(&class))
@@ -117,7 +118,7 @@ impl crate::world::World {
             Some((tp, t)) => Some((target, i32::from(t.master(&self.masters, tp)?.class.get()))),
             None => None,
         };
-        let unit = &mut self.players[p.index()].objects[i];
+        let unit = &mut self.players.player_mut(p)?.objects[i];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Transport),
@@ -148,11 +149,11 @@ impl crate::world::World {
         f: impl FnOnce(&Ship<'_>, &mut MapShore<'_>) -> Result<Changed, GenieError>,
     ) -> Result<Changed, GenieError> {
         let ship = {
-            let unit = &self.players[p.index()].objects[i];
+            let unit = &self.players.player(p)?.objects[i];
             let master = unit.master(&self.masters, p)?;
             Ship::of_unit(unit, master, self.spatial.map, &self.graphics, task)?
         };
-        let restriction = self.players[p.index()].objects[i]
+        let restriction = self.players.player(p)?.objects[i]
             .master(&self.masters, p)?
             .terrain_restriction;
         let mut shore = MapShore::new(

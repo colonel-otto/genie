@@ -166,19 +166,21 @@ struct Recorder {
 #[test]
 fn the_builder_s_flood_tests_left_right_below_above() {
     let at = (50, 50);
-    let found = flood_search(at, 8, |x, y| match (x, y) {
-        (48, 50) => Some(1),
-        (50, 52) => Some(2),
-        _ => None,
+    let found = flood_search(at, 8, |x, y| {
+        Ok(match (x, y) {
+            (48, 50) => Some(1),
+            (50, 52) => Some(2),
+            _ => None,
+        })
     });
-    assert_eq!(found, Some(1));
+    assert_eq!(found, Ok(Some(1)));
     let mut tested = Vec::new();
     assert_eq!(
         flood_search(at, 3, |x, y| {
             tested.push((x, y));
-            None
+            Ok(None)
         }),
-        None
+        Ok(None)
     );
     // r = 3: tiles less than 2 from the start spread: the 3x3 square, then its neighbours
     assert_eq!(tested.len(), 1 + 4 + 4 + 12);

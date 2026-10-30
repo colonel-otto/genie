@@ -414,7 +414,7 @@ impl RepairAction {
         }
         let target = std::mem::replace(&mut self.target, -1);
         if target != -1 {
-            let by = repairer.releaser(c);
+            let by = repairer.releaser(c)?;
             crate::world::lets::release(c, repairer, target, by)?;
         }
         Ok(())

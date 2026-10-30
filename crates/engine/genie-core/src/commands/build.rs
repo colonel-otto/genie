@@ -9,6 +9,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::HOUSE;
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` at `position` (state
 /// 0, hit points 1), with the unit AI the factory gives its master. The player pays the master's
@@ -58,7 +59,7 @@ impl BuildCommand {
         let Some(builders) = w.command_check(player, &ObjectId::fields(listed))? else {
             return Ok(());
         };
-        if self.q_id != -1 && !w.players[player.index()].computer {
+        if self.q_id != -1 && !w.players.player(player)?.computer {
             return Ok(());
         }
         let [x, y] = self.position.xy();
@@ -71,7 +72,7 @@ impl BuildCommand {
             return Ok(());
         }
         let (id, position) = w.found(player, master, Position::new(x, y, 0.0))?;
-        let sprite_override = self.sprite_override_of(w.players[player.index()].civ);
+        let sprite_override = self.sprite_override_of(w.players.player(player)?.civ);
         if let Some((_, u)) = w.object_mut(id) {
             if let Some(c) = u.construction.as_mut() {
                 c.sprite_override = sprite_override != -1;

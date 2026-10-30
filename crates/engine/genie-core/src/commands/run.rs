@@ -1,9 +1,11 @@
 //! A command's run in the command phase ([`World::run`]), a human player's order and the
 //! order units' reset.
 
+use crate::GenieError;
 use crate::commands::Command;
 use crate::math::rng::Stream;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 impl World {
     /// Run a command in the command phase (`TRIBE_Command::do_command`, `0x140e77b00`): its own
@@ -40,7 +42,7 @@ impl World {
     /// ([`UnitAi::reset_for_order`]), in list order.
     ///
     /// [`UnitAi::reset_for_order`]: crate::unit_ai::UnitAi::reset_for_order
-    pub(crate) fn reset_order_units(&mut self, units: &[i32]) {
+    pub(crate) fn reset_order_units(&mut self, units: &[i32]) -> Result<(), GenieError> {
         for &id in units {
             let Some(place) = self.place(id) else {
                 continue;
@@ -48,7 +50,7 @@ impl World {
             let (p, i) = match place {
                 crate::orders::Place::Live(p, i) | crate::orders::Place::Sleeping(p, i) => (p, i),
             };
-            let player = &mut self.players[p.index()];
+            let player = self.players.player_mut(p)?;
             let unit = match place {
                 crate::orders::Place::Live(..) => &mut player.objects[i],
                 crate::orders::Place::Sleeping(..) => &mut player.sleeping[i],
@@ -57,5 +59,6 @@ impl World {
                 ai.reset_for_order(self.streams.get(Stream::Ai));
             }
         }
+        Ok(())
     }
 }

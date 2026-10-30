@@ -7,6 +7,7 @@ use crate::objects::ObjectId;
 use crate::orders::{Interact, MoveOrder};
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// WORK's and RETREAT's runs (`FUN_140e6a9f0`, `FUN_140e69f00`).
 const ORDER_UNMODELLED: GenieError = GenieError::unsupported("an order moves its units");
@@ -69,13 +70,10 @@ impl OrderCommand {
         let human = match order {
             Order::Interact(o) => o.human,
             Order::Move(o) => o.human,
-            Order::Follow(_) | Order::Guard(_) => units.iter().any(|&id| {
-                w.object(id)
-                    .is_some_and(|(p, _)| !w.players[p.index()].computer)
-            }),
+            Order::Follow(_) | Order::Guard(_) => Self::any_human_unit(w, &units)?,
             Order::Work(_) | Order::Retreat(_) => false,
         };
-        w.reset_order_units(&units);
+        w.reset_order_units(&units)?;
         if human {
             w.human_order(&units);
         }
@@ -86,6 +84,18 @@ impl OrderCommand {
             Order::Guard(target) => w.guard(player, &units, target.get()),
             Order::Work(_) | Order::Retreat(_) => Err(ORDER_UNMODELLED),
         }
+    }
+
+    /// Whether a unit of `units` the world holds belongs to a player who is not a computer.
+    fn any_human_unit(w: &World, units: &[i32]) -> Result<bool, GenieError> {
+        for &id in units {
+            if let Some((p, _)) = w.object(id)
+                && !w.players.player(p)?.computer
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// Its units after the command's check. The checks of INTERACT (`FUN_140e55250`), WORK

@@ -18,6 +18,7 @@ use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, Wait};
+use crate::world::slots::PlayerSlots;
 use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x9a).
@@ -106,7 +107,11 @@ impl UnitView<'_, '_> {
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.c.w.players[self.player.index()]
+            attribute_95: self
+                .c
+                .w
+                .players
+                .player(self.player)?
                 .attributes
                 .get(95)
                 .copied()
@@ -115,7 +120,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player,
-            relations: &self.c.w.players[self.player.index()].relations,
+            relations: &self.c.w.players.player(self.player)?.relations,
             foreign,
             drop_sites: &self.c.w.drop_sites,
         };

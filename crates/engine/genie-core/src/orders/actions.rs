@@ -58,13 +58,13 @@ impl World {
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.
-    pub(crate) fn releaser(&self, player: PlayerId, idx: usize) -> Releaser {
-        let u = &self.players[player.index()].objects[idx];
-        Releaser {
+    pub(crate) fn releaser(&self, player: PlayerId, idx: usize) -> Result<Releaser, GenieError> {
+        let u = self.players.live(player, idx)?;
+        Ok(Releaser {
             id: u.id.get(),
-            class: u.master(&self.masters, player).ok().map(|m| m.class),
+            class: Some(u.master(&self.masters, player)?.class),
             player,
-        }
+        })
     }
 
     /// `FUN_140c42080` after the notify of a new action (`FUN_14106e4e0`, the combat object's
@@ -114,7 +114,7 @@ impl World {
     /// [`World::leave_builders`]), then the targets go (slot 0x180, [`World::release`]). A
     /// building's production is a list of its own, which stays.
     pub(crate) fn clear_actions(&mut self, player: PlayerId, idx: usize) -> Result<(), GenieError> {
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
         self.players.live_mut(player, idx)?.clear_own_actions(
             &mut releases,

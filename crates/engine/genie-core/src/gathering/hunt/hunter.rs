@@ -19,6 +19,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use crate::world::{SEARCH_AGAIN, TREE_SEARCH_WITHIN};
 
@@ -28,7 +29,7 @@ impl Unit {
     /// `+0x60` being 0) and dropped; then the second target ([`second_target_checked`]).
     pub(crate) fn hunt_targets(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         if let Some(target) = self.actions.hunt().map(|h| h.target).filter(|&t| t != -1) {
-            let state = readable(c, target).map(|(_, u, _)| u.life.state);
+            let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.w.spatial.get(target).is_some() => {
@@ -40,7 +41,7 @@ impl Unit {
             };
             if gone {
                 if state.is_some() {
-                    let by = self.releaser(c);
+                    let by = self.releaser(c)?;
                     crate::world::lets::release(c, self, target, by)?;
                 }
                 if let Some(h) = self.actions.hunt_mut() {
@@ -174,12 +175,15 @@ impl Unit {
                     master,
                     player: c.player,
                     held: (self.life.attribute_type, self.life.amount),
-                    attribute_95: c.w.players[c.player.index()]
+                    attribute_95: c
+                        .w
+                        .players
+                        .player(c.player)?
                         .attributes
                         .get(95)
                         .copied()
                         .unwrap_or(0.0),
-                    civ: c.w.players[c.player.index()].civ,
+                    civ: c.w.players.player(c.player)?.civ,
                 };
                 Some(crate::gathering::hunt::DropOff {
                     takes: crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, s.master, &actor),
@@ -194,7 +198,7 @@ impl Unit {
             None => None,
         };
         let who = crate::gathering::hunt::PointWalker {
-            computer: c.w.players[c.player.index()].computer,
+            computer: c.w.players.player(c.player)?.computer,
             villager: master.class == class::VILLAGER,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
@@ -257,7 +261,7 @@ impl Unit {
             c.w.masters.get(c.player.index()),
         )?;
         let who = crate::gathering::hunt::PointWalker {
-            computer: c.w.players[c.player.index()].computer,
+            computer: c.w.players.player(c.player)?.computer,
             villager: master.class == class::VILLAGER,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };

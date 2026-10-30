@@ -358,7 +358,7 @@ impl World {
         let t_state = t.life.state;
         let t_master = t.master(&self.masters, tp)?.id;
         if crate::movement::move_to::holds_object(livestock, t_master, t_state) {
-            self.take(target, self.releaser(player, idx))?;
+            self.take(target, self.releaser(player, idx)?)?;
         }
         self.clear_actions(player, idx)?;
         self.start_object_move(player, idx, (target, t_state), livestock)
@@ -475,7 +475,7 @@ impl World {
         idx: usize,
         point: Position,
     ) -> Result<bool, GenieError> {
-        let by = self.releaser(player, idx);
+        let by = self.releaser(player, idx)?;
         let (released, left) = match self.players.live_mut(player, idx)?.head_takes_point(
             point,
             player,

@@ -17,15 +17,18 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::unit_ai::{ActionKind, OrderKind};
 use crate::world::SEARCH_NEEDED;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 impl BuildAction {
     /// The foundation as the update reads it ([`BuildReads::site`]): the builder's player's
     /// object, None once the player no longer holds it.
-    pub(super) fn site_unit<'w>(c: &'w Step<'_>, reads: &BuildReads) -> Option<&'w Unit> {
-        reads
-            .site
-            .and_then(|id| c.w.players[c.player.index()].objects.by_id(id))
+    pub(super) fn site_unit<'w>(
+        c: &'w Step<'_>,
+        reads: &BuildReads,
+    ) -> Result<Option<&'w Unit>, GenieError> {
+        let held = c.w.players.player(c.player)?;
+        Ok(reads.site.and_then(|id| held.objects.by_id(id)))
     }
 
     /// The builder count (`+0x9e8`) of the building `FUN_140aaddb0` gives a Build on `site`
@@ -150,17 +153,17 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
-        if c.w.players[c.player.index()].computer {
+        if c.w.players.player(c.player)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's builder after its work",
             ));
         }
-        let site = Self::site_unit(c, reads);
+        let site = Self::site_unit(c, reads)?;
         let master = site
-            .and_then(|u| u.master(&c.w.masters, c.player).ok())
             .ok_or(GenieError::unsupported(
                 "the end of a Build on a foundation the slice does not read",
-            ))?;
+            ))?
+            .master(&c.w.masters, c.player)?;
         // LAB_140ab09af: a villager works the farm it built (FUN_141194b20, FUN_141195750), a
         // fishing ship its fish trap (FUN_141194640, FUN_1411945a0): its unit AI drops its build
         // orders (FUN_140c5e020 with 0x2be), then slot 0x7e8 on the building
@@ -305,7 +308,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let built = Self::site_unit(c, reads).map(|s| (s.id.get(), s.life.state));
+        let built = Self::site_unit(c, reads)?.map(|s| (s.id.get(), s.life.state));
         self.leave(c, builder)?;
         self.state = IDLE;
         let mut left = 0;

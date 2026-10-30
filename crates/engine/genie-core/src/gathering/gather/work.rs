@@ -15,6 +15,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
 use crate::objects::unit::Unit;
+use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
@@ -208,7 +209,7 @@ impl GatherAction {
             self.random_wait(c, unit);
             return Ok(Dropped::Going);
         }
-        let attributes = c.w.players[c.player.index()].attributes.len();
+        let attributes = c.w.players.player(c.player)?.attributes.len();
         let kind = crate::gathering::hunt::resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
         unit.life.attribute_type = -1;

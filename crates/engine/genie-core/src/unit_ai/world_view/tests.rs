@@ -213,10 +213,12 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         now: 0,
         mode_680: 0,
     };
-    assert_eq!(picker.nearest_attacker_of(20), Some(51));
-    assert_eq!(picker.nearest_attacker_of(21), None);
-    assert_eq!(picker.nearest_attacker_of(22), Some(-1));
-    assert_eq!(picker.nearest_attacker_of(77), None);
+    assert_eq!(picker.nearest_attacker_of(20), Ok(Some(51)));
+    assert_eq!(picker.nearest_attacker_of(21), Ok(None));
+    assert_eq!(picker.nearest_attacker_of(22), Ok(Some(-1)));
+    assert_eq!(picker.nearest_attacker_of(77), Ok(None));
+    // an object the world does not hold is not weighed
+    assert!(picker.duel(&Spatial::default(), 77).is_err());
 }
 
 #[test]
