@@ -25,10 +25,10 @@ const UNIT_ORDER_GAP: [u8; 1] = [1];
 /// A value its packet's field cannot hold: a unit list or a FLARE's players too long for the
 /// packet.
 pub fn encode(command: &Command) -> Result<Vec<u8>, GenieError> {
-    Ok(match command {
-        Command::Unmodelled(c) => c.packet.clone(),
-        other => packet(other)?.encode(),
-    })
+    match command {
+        Command::Unmodelled(c) => Ok(c.packet.clone()),
+        other => Ok(packet(other)?.encode()?),
+    }
 }
 
 /// The largest packet: its size after the 4-byte header is a u16 (`+0x2`).

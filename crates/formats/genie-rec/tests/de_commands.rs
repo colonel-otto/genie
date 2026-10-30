@@ -41,14 +41,14 @@ fn a_built_command_decodes_its_fields() {
         (build.o_id, build.q_id, build.ids.as_slice()),
         (70, -1, &[1234][..])
     );
-    assert_eq!(Command::Build(build).encode(), packet);
+    assert_eq!(Command::Build(build).encode().unwrap(), packet);
 }
 
 #[test]
 fn a_packet_that_fits_no_layout_stays_raw() {
     let short = [0x66, 2, 0, 0];
     assert_eq!(Command::decode(&short), Command::Unknown(short.to_vec()));
-    assert_eq!(Command::decode(&short).encode(), short);
+    assert_eq!(Command::decode(&short).encode().unwrap(), short);
 }
 
 #[test]
@@ -82,7 +82,12 @@ fn every_tier_1_command_decodes_and_writes_back() {
                 if let Command::Unknown(_) = command {
                     *unknown.entry(packet[0]).or_default() += 1;
                 }
-                assert_eq!(command.encode(), packet, "{}: {command:?}", path.display());
+                assert_eq!(
+                    command.encode().unwrap(),
+                    packet,
+                    "{}: {command:?}",
+                    path.display()
+                );
             }
         }
     }

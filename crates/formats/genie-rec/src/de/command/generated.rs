@@ -2,6 +2,7 @@
 // tick oracle's command field map; do not edit by hand (`just command-decoders`).
 
 use super::{Tail, bytes, finish, fits, get, put, words};
+use crate::Error;
 
 /// `0x00` `RGE_COMMAND_INTERACT` (`GameCommand<RGE_Command_Interact>`, formatter `0x140e5ff90`: `Interact(num=%d, x=%.10f, y=%.10f, tId=%d, commId=%d )`).
 #[derive(Debug, Clone, PartialEq)]
@@ -41,23 +42,26 @@ impl Interact {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            t_id: get(p, 0x04),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            num: get(p, 0x10),
-            field_0x12: get(p, 0x12),
-            field_0x13: get(p, 0x13),
-            field_0x14: get(p, 0x14),
-            field_0x15: get(p, 0x15),
-            field_0x16: get(p, 0x16),
+            commp_id: get(p, 0x01)?,
+            t_id: get(p, 0x04)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            num: get(p, 0x10)?,
+            field_0x12: get(p, 0x12)?,
+            field_0x13: get(p, 0x13)?,
+            field_0x14: get(p, 0x14)?,
+            field_0x15: get(p, 0x15)?,
+            field_0x16: get(p, 0x16)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
         put(&mut out, self.x);
@@ -97,16 +101,19 @@ impl Stop {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -155,23 +162,26 @@ impl Work {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            t_id: get(p, 0x04),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            num: get(p, 0x10),
-            field_0x12: get(p, 0x12),
-            field_0x13: get(p, 0x13),
-            field_0x14: get(p, 0x14),
-            field_0x15: get(p, 0x15),
-            field_0x16: get(p, 0x16),
+            commp_id: get(p, 0x01)?,
+            t_id: get(p, 0x04)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            num: get(p, 0x10)?,
+            field_0x12: get(p, 0x12)?,
+            field_0x13: get(p, 0x13)?,
+            field_0x14: get(p, 0x14)?,
+            field_0x15: get(p, 0x15)?,
+            field_0x16: get(p, 0x16)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
         put(&mut out, self.x);
@@ -225,23 +235,26 @@ impl Move {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            t_id: get(p, 0x04),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            num: get(p, 0x10),
-            field_0x12: get(p, 0x12),
-            field_0x13: get(p, 0x13),
-            field_0x14: get(p, 0x14),
-            field_0x15: get(p, 0x15),
-            gap_0x16: get(p, 0x16),
+            commp_id: get(p, 0x01)?,
+            t_id: get(p, 0x04)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            num: get(p, 0x10)?,
+            field_0x12: get(p, 0x12)?,
+            field_0x13: get(p, 0x13)?,
+            field_0x14: get(p, 0x14)?,
+            field_0x15: get(p, 0x15)?,
+            gap_0x16: get(p, 0x16)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
         put(&mut out, self.x);
@@ -285,18 +298,21 @@ impl Create {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            loc: get(p, 0x04),
-            field_0x08: get(p, 0x08),
-            field_0x0c: get(p, 0x0c),
-            obj_cat: get(p, 0x10),
+            commp_id: get(p, 0x01)?,
+            loc: get(p, 0x04)?,
+            field_0x08: get(p, 0x08)?,
+            field_0x0c: get(p, 0x0c)?,
+            obj_cat: get(p, 0x10)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.loc);
         put(&mut out, self.field_0x08);
@@ -331,16 +347,19 @@ impl AddAttribute {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            attr_id: get(p, 0x04),
-            amt: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            attr_id: get(p, 0x04)?,
+            amt: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.attr_id);
         put(&mut out, self.amt);
@@ -371,14 +390,17 @@ impl RgeGiveAttribute {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -433,28 +455,31 @@ impl AiOrder {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            recipient: get(p, 0x08),
-            t_id: get(p, 0x0c),
-            gap_0x10: get(p, 0x10),
-            order: get(p, 0x14),
-            t_pos: get(p, 0x18),
-            field_0x1c: get(p, 0x1c),
-            field_0x20: get(p, 0x20),
-            range: get(p, 0x24),
-            pri: get(p, 0x28),
-            t_owner: get(p, 0x29),
-            immediate: get(p, 0x2a),
-            front: get(p, 0x2b),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            recipient: get(p, 0x08)?,
+            t_id: get(p, 0x0c)?,
+            gap_0x10: get(p, 0x10)?,
+            order: get(p, 0x14)?,
+            t_pos: get(p, 0x18)?,
+            field_0x1c: get(p, 0x1c)?,
+            field_0x20: get(p, 0x20)?,
+            range: get(p, 0x24)?,
+            pri: get(p, 0x28)?,
+            t_owner: get(p, 0x29)?,
+            immediate: get(p, 0x2a)?,
+            front: get(p, 0x2b)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -495,14 +520,17 @@ impl Resign {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            dropped: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            dropped: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.dropped);
         finish(out)
@@ -533,16 +561,19 @@ impl AddWaypoint {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            gap_0x04: get(p, 0x04),
-            recipient: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            gap_0x04: get(p, 0x04)?,
+            recipient: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.gap_0x04);
         put(&mut out, self.recipient);
@@ -577,16 +608,19 @@ impl Pause {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -621,17 +655,20 @@ impl GroupWaypoint {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            x: get(p, 0x06),
-            y: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            x: get(p, 0x06)?,
+            y: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.x);
@@ -687,27 +724,30 @@ impl GroupAiOrder {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            recipient_count: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            t_id: get(p, 0x08),
-            gap_0x0c: get(p, 0x0c),
-            order: get(p, 0x10),
-            t_pos: get(p, 0x14),
-            field_0x18: get(p, 0x18),
-            field_0x1c: get(p, 0x1c),
-            range: get(p, 0x20),
-            pri: get(p, 0x24),
-            t_owner: get(p, 0x25),
-            immediate: get(p, 0x26),
-            front: get(p, 0x27),
+            commp_id: get(p, 0x01)?,
+            recipient_count: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            t_id: get(p, 0x08)?,
+            gap_0x0c: get(p, 0x0c)?,
+            order: get(p, 0x10)?,
+            t_pos: get(p, 0x14)?,
+            field_0x18: get(p, 0x18)?,
+            field_0x1c: get(p, 0x1c)?,
+            range: get(p, 0x20)?,
+            pri: get(p, 0x24)?,
+            t_owner: get(p, 0x25)?,
+            immediate: get(p, 0x26)?,
+            front: get(p, 0x27)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.recipient_count);
         put(&mut out, self.gap_0x06);
@@ -755,18 +795,21 @@ impl UnitAiState {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            state: get(p, 0x08),
-            gap_0x09: get(p, 0x09),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            state: get(p, 0x08)?,
+            gap_0x09: get(p, 0x09)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -803,17 +846,20 @@ impl Guard {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            target: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            target: get(p, 0x08)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -849,17 +895,20 @@ impl Follow {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            target: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            target: get(p, 0x08)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -939,39 +988,42 @@ impl Patrol {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            field_0x08: get(p, 0x08),
-            gap_0x09: get(p, 0x09),
-            waypoints_count: get(p, 0x0b),
-            field_0x0c: get(p, 0x0c),
-            field_0x10: get(p, 0x10),
-            field_0x14: get(p, 0x14),
-            field_0x18: get(p, 0x18),
-            field_0x1c: get(p, 0x1c),
-            field_0x20: get(p, 0x20),
-            field_0x24: get(p, 0x24),
-            field_0x28: get(p, 0x28),
-            field_0x2c: get(p, 0x2c),
-            field_0x30: get(p, 0x30),
-            field_0x34: get(p, 0x34),
-            field_0x38: get(p, 0x38),
-            field_0x3c: get(p, 0x3c),
-            field_0x40: get(p, 0x40),
-            field_0x44: get(p, 0x44),
-            field_0x48: get(p, 0x48),
-            field_0x4c: get(p, 0x4c),
-            field_0x50: get(p, 0x50),
-            field_0x54: get(p, 0x54),
-            field_0x58: get(p, 0x58),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            field_0x08: get(p, 0x08)?,
+            gap_0x09: get(p, 0x09)?,
+            waypoints_count: get(p, 0x0b)?,
+            field_0x0c: get(p, 0x0c)?,
+            field_0x10: get(p, 0x10)?,
+            field_0x14: get(p, 0x14)?,
+            field_0x18: get(p, 0x18)?,
+            field_0x1c: get(p, 0x1c)?,
+            field_0x20: get(p, 0x20)?,
+            field_0x24: get(p, 0x24)?,
+            field_0x28: get(p, 0x28)?,
+            field_0x2c: get(p, 0x2c)?,
+            field_0x30: get(p, 0x30)?,
+            field_0x34: get(p, 0x34)?,
+            field_0x38: get(p, 0x38)?,
+            field_0x3c: get(p, 0x3c)?,
+            field_0x40: get(p, 0x40)?,
+            field_0x44: get(p, 0x44)?,
+            field_0x48: get(p, 0x48)?,
+            field_0x4c: get(p, 0x4c)?,
+            field_0x50: get(p, 0x50)?,
+            field_0x54: get(p, 0x54)?,
+            field_0x58: get(p, 0x58)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1037,20 +1089,23 @@ impl Scout {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            gap_0x10: get(p, 0x10),
-            field_0x13: get(p, 0x13),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            gap_0x10: get(p, 0x10)?,
+            field_0x13: get(p, 0x13)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1089,17 +1144,20 @@ impl FormFormation {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            formation: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            formation: get(p, 0x08)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1131,15 +1189,18 @@ impl BreakFormation {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            form_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            form_id: get(p, 0x04)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
         out.extend_from_slice(&self.rest);
@@ -1171,16 +1232,19 @@ impl WheelFormation {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            form_id: get(p, 0x04),
-            angle: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            form_id: get(p, 0x04)?,
+            angle: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
         put(&mut out, self.angle);
@@ -1211,15 +1275,18 @@ impl AboutFaceFormation {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            form_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            form_id: get(p, 0x04)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
         out.extend_from_slice(&self.rest);
@@ -1249,15 +1316,18 @@ impl Save {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            exit_after_save: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            exit_after_save: get(p, 0x04)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.exit_after_save);
         out.extend_from_slice(&self.rest);
@@ -1297,20 +1367,23 @@ impl FormationParameters {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            line_ratio: get(p, 0x04),
-            col_ratio: get(p, 0x08),
-            min_col_dist: get(p, 0x0c),
-            col_to_line_dist: get(p, 0x10),
-            form_influence_dist: get(p, 0x14),
-            break_auto_formations_by_speed: get(p, 0x18),
+            commp_id: get(p, 0x01)?,
+            line_ratio: get(p, 0x04)?,
+            col_ratio: get(p, 0x08)?,
+            min_col_dist: get(p, 0x0c)?,
+            col_to_line_dist: get(p, 0x10)?,
+            form_influence_dist: get(p, 0x14)?,
+            break_auto_formations_by_speed: get(p, 0x18)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.line_ratio);
         put(&mut out, self.col_ratio);
@@ -1345,15 +1418,18 @@ impl AutoFormations {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            on: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            on: get(p, 0x04)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.on);
         out.extend_from_slice(&self.rest);
@@ -1385,16 +1461,19 @@ impl LockFormation {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            form_id: get(p, 0x04),
-            form_type: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            form_id: get(p, 0x04)?,
+            form_type: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.form_id);
         put(&mut out, self.form_type);
@@ -1429,17 +1508,20 @@ impl GroupMultiWaypoints {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            waypoints: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            waypoints: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1467,13 +1549,16 @@ impl Chapter {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let out = vec![Self::BYTE, self.commp_id, 0, 0];
         finish(out)
     }
@@ -1519,24 +1604,27 @@ impl AttackMove {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            field_0x08: get(p, 0x08),
-            field_0x09: get(p, 0x09),
-            field_0x0a: get(p, 0x0a),
-            waypoints_count: get(p, 0x0b),
-            field_0x0c: get(p, 0x0c),
-            gap_0x10: get(p, 0x10),
-            field_0x34: get(p, 0x34),
-            gap_0x38: get(p, 0x38),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            field_0x08: get(p, 0x08)?,
+            field_0x09: get(p, 0x09)?,
+            field_0x0a: get(p, 0x0a)?,
+            waypoints_count: get(p, 0x0b)?,
+            field_0x0c: get(p, 0x0c)?,
+            gap_0x10: get(p, 0x10)?,
+            field_0x34: get(p, 0x34)?,
+            gap_0x38: get(p, 0x38)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1583,19 +1671,22 @@ impl AttackMoveTarget {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            t_id: get(p, 0x08),
-            gap_0x0c: get(p, 0x0c),
-            waypoints_count: get(p, 0x0f),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            t_id: get(p, 0x08)?,
+            gap_0x0c: get(p, 0x0c)?,
+            waypoints_count: get(p, 0x0f)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1647,23 +1738,26 @@ impl Retreat {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            t_id: get(p, 0x04),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            num: get(p, 0x10),
-            field_0x12: get(p, 0x12),
-            field_0x13: get(p, 0x13),
-            field_0x14: get(p, 0x14),
-            field_0x15: get(p, 0x15),
-            field_0x16: get(p, 0x16),
+            commp_id: get(p, 0x01)?,
+            t_id: get(p, 0x04)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            num: get(p, 0x10)?,
+            field_0x12: get(p, 0x12)?,
+            field_0x13: get(p, 0x13)?,
+            field_0x14: get(p, 0x14)?,
+            field_0x15: get(p, 0x15)?,
+            field_0x16: get(p, 0x16)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
         put(&mut out, self.x);
@@ -1703,16 +1797,19 @@ impl UnitTypeAiState {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            type_: get(p, 0x04),
-            state: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            type_: get(p, 0x04)?,
+            state: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.type_);
         put(&mut out, self.state);
@@ -1745,16 +1842,19 @@ impl AutoScout {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            field_0x04: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
+            commp_id: get(p, 0x01)?,
+            field_0x04: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
         put(&mut out, self.gap_0x06);
@@ -1783,14 +1883,17 @@ impl StopAll {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -1819,15 +1922,18 @@ impl TransformObject {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            field_0x04: get(p, 0x04),
-            field_0x08: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            field_0x04: get(p, 0x04)?,
+            field_0x08: get(p, 0x08)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
         put(&mut out, self.field_0x08);
@@ -1855,14 +1961,17 @@ impl Trigger {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -1891,15 +2000,18 @@ impl TransformObjects {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            gap_0x04: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            gap_0x04: get(p, 0x04)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.gap_0x04);
         out.extend_from_slice(&self.rest);
@@ -1931,16 +2043,19 @@ impl SeekShelter {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -1979,19 +2094,22 @@ impl BuildingCommandQueue {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            t_id: get(p, 0x04),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            num: get(p, 0x10),
-            gap_0x12: get(p, 0x12),
+            commp_id: get(p, 0x01)?,
+            t_id: get(p, 0x04)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            num: get(p, 0x10)?,
+            gap_0x12: get(p, 0x12)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.t_id);
         put(&mut out, self.x);
@@ -2023,14 +2141,17 @@ impl FireActiveAbility {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -2059,14 +2180,17 @@ impl RgeGiveAttributes {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -2099,17 +2223,20 @@ impl Make {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
-            q_id: get(p, 0x08),
-            o_id: get(p, 0x0c),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
+            q_id: get(p, 0x08)?,
+            o_id: get(p, 0x0c)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         put(&mut out, self.q_id);
@@ -2149,19 +2276,22 @@ impl Research {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
-            field_0x08: get(p, 0x08),
-            t_id: get(p, 0x0a),
-            q_id: get(p, 0x0c),
-            field_0x10: get(p, 0x10),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
+            field_0x08: get(p, 0x08)?,
+            t_id: get(p, 0x0a)?,
+            q_id: get(p, 0x0c)?,
+            field_0x10: get(p, 0x10)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         put(&mut out, self.field_0x08);
@@ -2215,25 +2345,28 @@ impl Build {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            o_id: get(p, 0x10),
-            q_id: get(p, 0x14),
-            field_0x18: get(p, 0x18),
-            frame: get(p, 0x1c),
-            gap_0x1d: get(p, 0x1d),
-            field_0x1e: get(p, 0x1e),
-            field_0x1f: get(p, 0x1f),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            o_id: get(p, 0x10)?,
+            q_id: get(p, 0x14)?,
+            field_0x18: get(p, 0x18)?,
+            frame: get(p, 0x1c)?,
+            gap_0x1d: get(p, 0x1d)?,
+            field_0x1e: get(p, 0x1e)?,
+            field_0x1f: get(p, 0x1f)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2281,19 +2414,22 @@ impl Game {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            field_0x04: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            field_0x08: get(p, 0x08),
-            field_0x0a: get(p, 0x0a),
-            field_0x0c: get(p, 0x0c),
-            field_0x10: get(p, 0x10),
+            commp_id: get(p, 0x01)?,
+            field_0x04: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            field_0x08: get(p, 0x08)?,
+            field_0x0a: get(p, 0x0a)?,
+            field_0x0c: get(p, 0x0c)?,
+            field_0x10: get(p, 0x10)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
         put(&mut out, self.gap_0x06);
@@ -2333,18 +2469,21 @@ impl Explore {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2397,25 +2536,28 @@ impl BuildWall {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x1: get(p, 0x08),
-            y1: get(p, 0x0a),
-            x2: get(p, 0x0c),
-            y2: get(p, 0x0e),
-            o_id: get(p, 0x10),
-            q_id: get(p, 0x14),
-            gap_0x18: get(p, 0x18),
-            field_0x1a: get(p, 0x1a),
-            field_0x1b: get(p, 0x1b),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x1: get(p, 0x08)?,
+            y1: get(p, 0x0a)?,
+            x2: get(p, 0x0c)?,
+            y2: get(p, 0x0e)?,
+            o_id: get(p, 0x10)?,
+            q_id: get(p, 0x14)?,
+            gap_0x18: get(p, 0x18)?,
+            field_0x1a: get(p, 0x1a)?,
+            field_0x1b: get(p, 0x1b)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2453,14 +2595,17 @@ impl CancelBuild {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         finish(out)
@@ -2499,20 +2644,23 @@ impl AttackGround {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            gap_0x10: get(p, 0x10),
-            field_0x13: get(p, 0x13),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            gap_0x10: get(p, 0x10)?,
+            field_0x13: get(p, 0x13)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2551,17 +2699,20 @@ impl TribeGiveAttribute {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            amt: get(p, 0x04),
-            cost: get(p, 0x08),
-            attr: get(p, 0x0c),
-            to: get(p, 0x0e),
+            commp_id: get(p, 0x01)?,
+            amt: get(p, 0x04)?,
+            cost: get(p, 0x08)?,
+            attr: get(p, 0x0c)?,
+            to: get(p, 0x0e)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.amt);
         put(&mut out, self.cost);
@@ -2597,17 +2748,20 @@ impl TradeAttribute {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            attr: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            attr: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2649,20 +2803,23 @@ impl Repair {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            t_id: get(p, 0x08),
-            gap_0x0c: get(p, 0x0c),
-            field_0x0e: get(p, 0x0e),
-            field_0x0f: get(p, 0x0f),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            t_id: get(p, 0x08)?,
+            gap_0x0c: get(p, 0x0c)?,
+            field_0x0e: get(p, 0x0e)?,
+            field_0x0f: get(p, 0x0f)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2711,22 +2868,25 @@ impl Unload {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            unit_type: get(p, 0x10),
-            flag: get(p, 0x14),
-            gap_0x15: get(p, 0x15),
-            field_0x18: get(p, 0x18),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            unit_type: get(p, 0x10)?,
+            flag: get(p, 0x14)?,
+            gap_0x15: get(p, 0x15)?,
+            field_0x18: get(p, 0x18)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2761,14 +2921,17 @@ impl Gate {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         finish(out)
@@ -2811,21 +2974,24 @@ impl Flare {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            field_0x04: get(p, 0x04),
-            field_0x08: get(p, 0x08),
-            field_0x0c: get(p, 0x0c),
-            field_0x10: get(p, 0x10),
-            gap_0x11: get(p, 0x11),
-            field_0x12: get(p, 0x12),
-            field_0x13: get(p, 0x13),
+            commp_id: get(p, 0x01)?,
+            field_0x04: get(p, 0x04)?,
+            field_0x08: get(p, 0x08)?,
+            field_0x0c: get(p, 0x0c)?,
+            field_0x10: get(p, 0x10)?,
+            gap_0x11: get(p, 0x11)?,
+            field_0x12: get(p, 0x12)?,
+            field_0x13: get(p, 0x13)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.field_0x04);
         put(&mut out, self.field_0x08);
@@ -2867,18 +3033,21 @@ impl Special {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            t_id: get(p, 0x08),
-            action: get(p, 0x0c),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            t_id: get(p, 0x08)?,
+            action: get(p, 0x0c)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -2933,26 +3102,29 @@ impl UnitOrder {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            t_id: get(p, 0x08),
-            x: get(p, 0x0c),
-            y: get(p, 0x10),
-            q_id: get(p, 0x14),
-            param: get(p, 0x18),
-            action: get(p, 0x1c),
-            field_0x1d: get(p, 0x1d),
-            field_0x1e: get(p, 0x1e),
-            gap_0x1f: get(p, 0x1f),
-            field_0x20: get(p, 0x20),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            t_id: get(p, 0x08)?,
+            x: get(p, 0x0c)?,
+            y: get(p, 0x10)?,
+            q_id: get(p, 0x14)?,
+            param: get(p, 0x18)?,
+            action: get(p, 0x1c)?,
+            field_0x1d: get(p, 0x1d)?,
+            field_0x1e: get(p, 0x1e)?,
+            gap_0x1f: get(p, 0x1f)?,
+            field_0x20: get(p, 0x20)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3011,24 +3183,27 @@ impl Diplomacy {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            p_id2: get(p, 0x04),
-            seq: get(p, 0x05),
-            status: get(p, 0x06),
-            declare: get(p, 0x07),
-            diplo: get(p, 0x08),
-            int: get(p, 0x09),
-            trade: get(p, 0x0a),
-            demand: get(p, 0x0b),
-            gold: get(p, 0x0c),
-            len: get(p, 0x0e),
+            commp_id: get(p, 0x01)?,
+            p_id2: get(p, 0x04)?,
+            seq: get(p, 0x05)?,
+            status: get(p, 0x06)?,
+            declare: get(p, 0x07)?,
+            diplo: get(p, 0x08)?,
+            int: get(p, 0x09)?,
+            trade: get(p, 0x0a)?,
+            demand: get(p, 0x0b)?,
+            gold: get(p, 0x0c)?,
+            len: get(p, 0x0e)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.p_id2);
         put(&mut out, self.seq);
@@ -3071,17 +3246,20 @@ impl Queue {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            b_id: get(p, 0x04),
-            t_id: get(p, 0x08),
-            count: get(p, 0x0a),
+            commp_id: get(p, 0x01)?,
+            b_id: get(p, 0x04)?,
+            t_id: get(p, 0x08)?,
+            count: get(p, 0x0a)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.b_id);
         put(&mut out, self.t_id);
@@ -3125,21 +3303,24 @@ impl SetGatherPoint {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            x: get(p, 0x08),
-            y: get(p, 0x0c),
-            t_id: get(p, 0x10),
-            tm_id: get(p, 0x14),
-            field_0x18: get(p, 0x18),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            x: get(p, 0x08)?,
+            y: get(p, 0x0c)?,
+            t_id: get(p, 0x10)?,
+            tm_id: get(p, 0x14)?,
+            field_0x18: get(p, 0x18)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3175,14 +3356,17 @@ impl SetRetreatPoint {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         finish(out)
@@ -3213,16 +3397,19 @@ impl SellCommodity {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            attr: get(p, 0x04),
-            amt: get(p, 0x06),
-            u_id: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            attr: get(p, 0x04)?,
+            amt: get(p, 0x06)?,
+            u_id: get(p, 0x08)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.attr);
         put(&mut out, self.amt);
@@ -3255,16 +3442,19 @@ impl BuyCommodity {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            attr: get(p, 0x04),
-            amt: get(p, 0x06),
-            u_id: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            attr: get(p, 0x04)?,
+            amt: get(p, 0x06)?,
+            u_id: get(p, 0x08)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.attr);
         put(&mut out, self.amt);
@@ -3297,16 +3487,19 @@ impl OffboardTrade {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
-            trade_route: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
+            trade_route: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         put(&mut out, self.trade_route);
@@ -3343,18 +3536,21 @@ impl UnitTransform {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            u_id: get(p, 0x08),
-            q_id: get(p, 0x0c),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            u_id: get(p, 0x08)?,
+            q_id: get(p, 0x0c)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3385,14 +3581,17 @@ impl DropRelic {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         finish(out)
@@ -3421,15 +3620,18 @@ impl TownBell {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
-            activate: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
+            activate: get(p, 0x08)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         put(&mut out, self.activate);
@@ -3457,14 +3659,17 @@ impl GoBackToWork {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         finish(out)
@@ -3503,20 +3708,23 @@ impl MultiQueue {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            b_id: get(p, 0x0a),
-            t_id: get(p, 0x0c),
-            count: get(p, 0x0e),
-            button_location_id: get(p, 0x10),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            b_id: get(p, 0x0a)?,
+            t_id: get(p, 0x0c)?,
+            count: get(p, 0x0e)?,
+            button_location_id: get(p, 0x10)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3557,17 +3765,20 @@ impl SetGatherState {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            field_0x08: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            field_0x08: get(p, 0x08)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3605,17 +3816,20 @@ impl DeleteObjects {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            field_0x08: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            field_0x08: get(p, 0x08)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3653,17 +3867,20 @@ impl ResetBuildings {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Words).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            num: get(p, 0x04),
-            gap_0x06: get(p, 0x06),
-            field_0x08: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            num: get(p, 0x04)?,
+            gap_0x06: get(p, 0x06)?,
+            field_0x08: get(p, 0x08)?,
             ids: words(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.num);
         put(&mut out, self.gap_0x06);
@@ -3697,16 +3914,19 @@ impl MultiGate {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            gap_0x04: get(p, 0x04),
-            state: get(p, 0x08),
+            commp_id: get(p, 0x01)?,
+            gap_0x04: get(p, 0x04)?,
+            state: get(p, 0x08)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.gap_0x04);
         put(&mut out, self.state);
@@ -3737,14 +3957,17 @@ impl GoBackToWork2 {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -3771,14 +3994,17 @@ impl ChangePlayerName {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -3807,15 +4033,18 @@ impl SendAiSignal {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            name: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            name: get(p, 0x04)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.name);
         out.extend_from_slice(&self.rest);
@@ -3843,14 +4072,17 @@ impl AiEffectAmount {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -3877,14 +4109,17 @@ impl AiEffectPercent {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::Bytes).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
+            commp_id: get(p, 0x01)?,
             rest: bytes(p, Self::FIXED)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         out.extend_from_slice(&self.rest);
         finish(out)
@@ -3911,14 +4146,17 @@ impl AllBackToWork {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            u_id: get(p, 0x04),
+            commp_id: get(p, 0x01)?,
+            u_id: get(p, 0x04)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.u_id);
         finish(out)
@@ -3969,26 +4207,29 @@ impl TribeGiveAttributes {
     pub fn decode(p: &[u8]) -> Option<Self> {
         fits(p, Self::FIXED, Tail::None).then_some(())?;
         Some(Self {
-            commp_id: get(p, 0x01),
-            amt: get(p, 0x04),
-            field_0x08: get(p, 0x08),
-            field_0x0c: get(p, 0x0c),
-            field_0x10: get(p, 0x10),
-            cost: get(p, 0x14),
-            field_0x18: get(p, 0x18),
-            field_0x1c: get(p, 0x1c),
-            field_0x20: get(p, 0x20),
-            attr: get(p, 0x24),
-            field_0x26: get(p, 0x26),
-            field_0x28: get(p, 0x28),
-            field_0x2a: get(p, 0x2a),
-            to: get(p, 0x2c),
+            commp_id: get(p, 0x01)?,
+            amt: get(p, 0x04)?,
+            field_0x08: get(p, 0x08)?,
+            field_0x0c: get(p, 0x0c)?,
+            field_0x10: get(p, 0x10)?,
+            cost: get(p, 0x14)?,
+            field_0x18: get(p, 0x18)?,
+            field_0x1c: get(p, 0x1c)?,
+            field_0x20: get(p, 0x20)?,
+            attr: get(p, 0x24)?,
+            field_0x26: get(p, 0x26)?,
+            field_0x28: get(p, 0x28)?,
+            field_0x2a: get(p, 0x2a)?,
+            to: get(p, 0x2c)?,
         })
     }
 
     /// The packet's bytes.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         let mut out = vec![Self::BYTE, self.commp_id, 0, 0];
         put(&mut out, self.amt);
         put(&mut out, self.field_0x08);
@@ -4298,8 +4539,11 @@ impl Command {
     }
 
     /// The packet's bytes, as the recording stores them.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::ValueOutOfRange`] when the packet is longer than its `u16` size holds.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
         match self {
             Self::Interact(c) => c.encode(),
             Self::Stop(c) => c.encode(),
@@ -4381,7 +4625,7 @@ impl Command {
             Self::AiEffectPercent(c) => c.encode(),
             Self::AllBackToWork(c) => c.encode(),
             Self::TribeGiveAttributes(c) => c.encode(),
-            Self::Unknown(p) => p.clone(),
+            Self::Unknown(p) => Ok(p.clone()),
         }
     }
 }

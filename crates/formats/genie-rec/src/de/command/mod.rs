@@ -13,6 +13,8 @@
 //! tail: the object ids most commands carry, or raw bytes. Bytes that no code reads stay as `gap_*`
 //! arrays, so a decoded packet writes back byte for byte.
 
+use crate::Error;
+
 mod generated;
 
 pub use generated::*;
@@ -42,15 +44,20 @@ fn fits(p: &[u8], fixed: usize, tail: Tail) -> bool {
 
 /// A little-endian value of a packet field.
 trait Field: Copy {
-    fn read(bytes: &[u8]) -> Self;
+    /// The value at the start of `bytes`; None for fewer bytes than its width.
+    fn read(bytes: &[u8]) -> Option<Self>;
     fn write(self, out: &mut Vec<u8>);
 }
 
 macro_rules! numeric_field {
     ($($t:ty),*) => {$(
         impl Field for $t {
-            fn read(bytes: &[u8]) -> Self {
-                <$t>::from_le_bytes(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
+            fn read(bytes: &[u8]) -> Option<Self> {
+                bytes
+                    .get(..size_of::<$t>())?
+                    .try_into()
+                    .ok()
+                    .map(<$t>::from_le_bytes)
             }
             fn write(self, out: &mut Vec<u8>) {
                 out.extend_from_slice(&self.to_le_bytes());
@@ -61,17 +68,17 @@ macro_rules! numeric_field {
 numeric_field!(u8, i8, u16, i16, u32, i32, u64, i64, f32);
 
 impl<const N: usize> Field for [u8; N] {
-    fn read(bytes: &[u8]) -> Self {
-        std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0))
+    fn read(bytes: &[u8]) -> Option<Self> {
+        bytes.get(..N)?.try_into().ok()
     }
     fn write(self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self);
     }
 }
 
-/// The field at `at`; [`fits`] has checked that the fixed part holds it.
-fn get<T: Field>(p: &[u8], at: usize) -> T {
-    T::read(&p[at..])
+/// The field at `at`; None for a packet too short to hold it.
+fn get<T: Field>(p: &[u8], at: usize) -> Option<T> {
+    T::read(p.get(at..)?)
 }
 
 fn put<T: Field>(out: &mut Vec<u8>, value: T) {
@@ -92,9 +99,15 @@ fn bytes(p: &[u8], at: usize) -> Option<Vec<u8>> {
 }
 
 /// Write the size into a packet the encoder has filled.
-fn finish(mut out: Vec<u8>) -> Vec<u8> {
-    // a packet read from a recording has a u16 size; a longer one cannot come from its fields
-    let size = u16::try_from(out.len().saturating_sub(4)).unwrap_or(u16::MAX);
-    out[2..4].copy_from_slice(&size.to_le_bytes());
-    out
+///
+/// # Errors
+///
+/// [`Error::ValueOutOfRange`] for a packet whose size does not fit its `u16`, or one without
+/// the size's two bytes.
+fn finish(mut out: Vec<u8>) -> Result<Vec<u8>, Error> {
+    let size = u16::try_from(out.len().saturating_sub(4)).map_err(|_| Error::ValueOutOfRange)?;
+    out.get_mut(2..4)
+        .ok_or(Error::ValueOutOfRange)?
+        .copy_from_slice(&size.to_le_bytes());
+    Ok(out)
 }

@@ -18,6 +18,7 @@ fn interact(num: u16, ids: Vec<i32>) -> Vec<u8> {
         ids,
     }
     .encode()
+    .unwrap()
 }
 
 /// An INTERACT of its own list notes its count's units for a primed run; a later count of
@@ -48,7 +49,8 @@ fn follow_and_guard_note_no_list() {
         target: 900,
         ids: vec![8],
     }
-    .encode();
+    .encode()
+    .unwrap();
     let guard = packets::Guard {
         commp_id: 1,
         num: 1,
@@ -56,7 +58,8 @@ fn follow_and_guard_note_no_list() {
         target: 901,
         ids: vec![8],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert!(d.command(&follow).is_some() && d.command(&guard).is_some());
     assert!(d.last_commanded.is_empty());
 }

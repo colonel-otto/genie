@@ -84,6 +84,7 @@ fn interact(num: u16, human: u8, ids: Vec<i32>) -> Vec<u8> {
         ids,
     }
     .encode()
+    .unwrap()
 }
 
 /// INTERACT keeps its target, point, flags and filter, and its count and every id the packet
@@ -131,7 +132,8 @@ fn an_interact_keeps_its_order_and_units() {
         field_0x16: 0,
         ids: vec![20],
     }
-    .encode();
+    .encode()
+    .unwrap();
     let worked = Interact {
         target: Some(object_id(600)),
         queued: true,
@@ -158,7 +160,8 @@ fn an_interact_keeps_its_order_and_units() {
         field_0x16: 0xffff,
         ids: vec![7],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&retreat),
         Command::Order(OrderCommand {
@@ -190,7 +193,8 @@ fn move_follow_and_guard_keep_their_orders() {
         gap_0x16: [0; 2],
         ids: many.clone(),
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&moved),
         Command::Order(OrderCommand {
@@ -213,7 +217,8 @@ fn move_follow_and_guard_keep_their_orders() {
         target: 900,
         ids: vec![8],
     }
-    .encode();
+    .encode()
+    .unwrap();
     let guard = packets::Guard {
         commp_id: 1,
         num: 1,
@@ -221,7 +226,8 @@ fn move_follow_and_guard_keep_their_orders() {
         target: 901,
         ids: vec![8],
     }
-    .encode();
+    .encode()
+    .unwrap();
     let ordered = |order| {
         Command::Order(OrderCommand {
             player: player_id(1),
@@ -248,7 +254,8 @@ fn the_buildings_lists_keep_their_counted_ids() {
         field_0x18: 1,
         ids: vec![30, 31],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&gather),
         Command::GatherPoint(GatherPointCommand {
@@ -272,7 +279,8 @@ fn the_buildings_lists_keep_their_counted_ids() {
         gap_0x12: [0, 1, 1, 0, 0, 0],
         ids: vec![32, 33],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&queue),
         Command::CommandQueue(BuildingQueueCommand {
@@ -296,7 +304,8 @@ fn the_unit_lists_keep_their_counted_ids() {
         gap_0x09: [0; 3],
         ids: vec![34],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&state),
         Command::UnitAiState(UnitAiStateCommand {
@@ -311,7 +320,8 @@ fn the_unit_lists_keep_their_counted_ids() {
         gap_0x06: [0; 2],
         ids: vec![35],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&scout),
         Command::AutoScout(AutoScoutCommand {
@@ -325,7 +335,8 @@ fn the_unit_lists_keep_their_counted_ids() {
         gap_0x06: [0; 2],
         ids: vec![36],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&shelter),
         Command::SeekShelter(SeekShelterCommand {
@@ -339,7 +350,8 @@ fn the_unit_lists_keep_their_counted_ids() {
         gap_0x06: [0; 2],
         ids: vec![50],
     }
-    .encode();
+    .encode()
+    .unwrap();
     // a count past the ids: STOP's check refuses it in the run
     assert_eq!(
         round_trip(&stop),
@@ -386,7 +398,8 @@ fn patrol_and_attack_move_keep_every_waypoint_slot() {
         field_0x58: -0.0,
         ids: vec![5],
     }
-    .encode();
+    .encode()
+    .unwrap();
     let Command::Patrol(PatrolCommand {
         waypoints, reset, ..
     }) = round_trip(&patrol)
@@ -418,7 +431,8 @@ fn patrol_and_attack_move_keep_every_waypoint_slot() {
         gap_0x38,
         ids: vec![5],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&attack),
         Command::AttackMove(AttackMoveCommand {
@@ -458,6 +472,7 @@ fn unload_and_unit_order_keep_their_lists_and_counts() {
             ids: vec![60],
         }
         .encode()
+        .unwrap()
     };
     assert_eq!(
         round_trip(&unload(1)),
@@ -489,6 +504,7 @@ fn unload_and_unit_order_keep_their_lists_and_counts() {
             ids: vec![61],
         }
         .encode()
+        .unwrap()
     };
     assert_eq!(
         round_trip(&order(1)),
@@ -516,7 +532,9 @@ fn go_back_to_work_2_keeps_its_counted_ids() {
     for id in [80_i32, 81, 82] {
         rest.extend(id.to_le_bytes());
     }
-    let packet = packets::GoBackToWork2 { commp_id: 1, rest }.encode();
+    let packet = packets::GoBackToWork2 { commp_id: 1, rest }
+        .encode()
+        .unwrap();
     assert_eq!(
         round_trip(&packet),
         Command::GoBackToWork2(GoBackToWork2Command {
@@ -531,13 +549,15 @@ fn go_back_to_work_2_keeps_its_counted_ids() {
         commp_id: 1,
         rest: vec![1, 0, 0, 0, 9],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(raw(&ragged).kind(), ErrorKind::InvalidInput);
     let short = packets::GoBackToWork2 {
         commp_id: 1,
         rest: vec![1, 0, 0],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(raw(&short).kind(), ErrorKind::Unsupported);
 }
 
@@ -559,7 +579,8 @@ fn build_and_build_wall_keep_their_fields() {
         field_0x1f: 1,
         ids: vec![9],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&build),
         Command::Build(BuildCommand {
@@ -589,7 +610,8 @@ fn build_and_build_wall_keep_their_fields() {
         field_0x1b: 0,
         ids: vec![9],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&wall),
         Command::BuildWall(BuildWallCommand {
@@ -618,7 +640,8 @@ fn queue_and_research_keep_their_fields() {
         button_location_id: 2,
         ids: vec![9],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&queue),
         Command::Queue(QueueCommand {
@@ -639,7 +662,8 @@ fn queue_and_research_keep_their_fields() {
         field_0x10: 1,
         ids: vec![90],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(
         round_trip(&research),
         Command::Research(ResearchCommand {
@@ -663,7 +687,8 @@ fn the_object_commands_keep_their_fields() {
                 commp_id: 2,
                 dropped: 1,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Resign(ResignCommand {
                 player: player_id(2),
                 dropped: true,
@@ -675,7 +700,8 @@ fn the_object_commands_keep_their_fields() {
                 field_0x04: 83,
                 field_0x08: 91,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::TransformObject(TransformObjectCommand {
                 player: player_id(2),
                 id: object_id(91),
@@ -687,7 +713,8 @@ fn the_object_commands_keep_their_fields() {
                 commp_id: 2,
                 u_id: 92,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Delete(DeleteCommand {
                 player: player_id(2),
                 id: object_id(92),
@@ -698,7 +725,8 @@ fn the_object_commands_keep_their_fields() {
                 commp_id: 2,
                 u_id: 93,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::GoBackToWork(GoBackToWorkCommand {
                 player: player_id(2),
                 id: object_id(93),
@@ -709,7 +737,8 @@ fn the_object_commands_keep_their_fields() {
                 commp_id: 2,
                 u_id: 93,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::AllBackToWork(AllBackToWorkCommand {
                 player: player_id(2),
                 id: object_id(93),
@@ -721,7 +750,8 @@ fn the_object_commands_keep_their_fields() {
                 u_id: 94,
                 activate: 1,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::TownBell(TownBellCommand {
                 player: player_id(2),
                 id: object_id(94),
@@ -733,7 +763,8 @@ fn the_object_commands_keep_their_fields() {
                 commp_id: 2,
                 u_id: 95,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Gate(GateCommand {
                 player: player_id(2),
                 id: object_id(95),
@@ -761,7 +792,8 @@ fn flare_trade_and_game_keep_their_fields() {
                 field_0x13: 1,
                 rest: vec![0, 1],
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Flare(FlareCommand {
                 player: player_id(2),
                 target: None,
@@ -777,7 +809,8 @@ fn flare_trade_and_game_keep_their_fields() {
                 amt: 2,
                 u_id: 96,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Trade(TradeCommand {
                 player: player_id(2),
                 attribute: 1,
@@ -793,7 +826,8 @@ fn flare_trade_and_game_keep_their_fields() {
                 amt: 1,
                 u_id: 97,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Trade(TradeCommand {
                 player: player_id(2),
                 attribute: 0x0102,
@@ -812,7 +846,8 @@ fn flare_trade_and_game_keep_their_fields() {
                 field_0x0c: 1.7,
                 field_0x10: 9,
             }
-            .encode(),
+            .encode()
+            .unwrap(),
             Command::Game(GameCommand {
                 issuer: player_id(2),
                 sub: 1,
@@ -847,7 +882,8 @@ fn a_tribute_keeps_its_four_gifts() {
         field_0x2a: 1,
         to: 2,
     }
-    .encode();
+    .encode()
+    .unwrap();
     let gift = |attribute, amount, fee| Gift {
         attribute,
         amount,
@@ -887,7 +923,8 @@ fn a_packet_its_command_does_not_write_back_stays_raw() {
         gap_0x12: [0; 6],
         ids: vec![32],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(raw(&queue).kind(), ErrorKind::InvalidInput);
 }
 
@@ -914,6 +951,7 @@ fn a_packet_of_a_value_its_types_refuse_stays_raw() {
             ids: vec![-1],
         }
         .encode()
+        .unwrap()
     };
     let why = raw(&build(-5));
     assert_eq!(why.kind(), ErrorKind::InvalidInput);
@@ -931,7 +969,8 @@ fn a_packet_of_a_value_its_types_refuse_stays_raw() {
         commp_id: 1,
         u_id: -1,
     }
-    .encode();
+    .encode()
+    .unwrap();
     let follow = packets::Follow {
         commp_id: 1,
         num: 1,
@@ -939,7 +978,8 @@ fn a_packet_of_a_value_its_types_refuse_stays_raw() {
         target: -1,
         ids: vec![5],
     }
-    .encode();
+    .encode()
+    .unwrap();
     for needed in [delete, follow] {
         let why = raw(&needed);
         assert_eq!(why.kind(), ErrorKind::InvalidInput);
@@ -957,7 +997,8 @@ fn an_unmodelled_packet_stays_raw() {
         gap_0x06: [0; 2],
         ids: vec![],
     }
-    .encode();
+    .encode()
+    .unwrap();
     assert_eq!(raw(&pause).kind(), ErrorKind::Unsupported);
     // an INTERACT one byte short of its fixed part
     let mut short = interact(0, 1, vec![]);

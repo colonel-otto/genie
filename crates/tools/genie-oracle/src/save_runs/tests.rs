@@ -292,7 +292,8 @@ fn priming_sets_the_update_count_and_the_last_commanded_units() {
         gap_0x16: [0; 2],
         ids: vec![7],
     }
-    .encode();
+    .encode()
+    .unwrap();
     let frames = [Frame {
         dt: 40,
         checkpoint: None,
