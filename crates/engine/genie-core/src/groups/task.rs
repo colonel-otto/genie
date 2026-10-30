@@ -113,9 +113,10 @@ impl World {
         if member == query.target {
             return Ok(None);
         }
-        let (player, unit) = self.object(member.get()).ok_or(GenieError::unsupported(
-            "a group's member the slice does not hold live",
-        ))?;
+        let (player, unit) = self.object(member.get()).ok_or_else(|| {
+            GenieError::unreachable("a member the group's task search found is not live")
+                .with("member", member.get())
+        })?;
         let own = unit.master(&self.masters, player)?;
         let owner = &self.players[player];
         let actor = Actor {
@@ -184,9 +185,11 @@ impl World {
                     .get(target.player)
                     .and_then(|p| p.attributes.get(OWNER_RANGE_ATTRIBUTE))
                     .copied()
-                    .ok_or(GenieError::unsupported(
-                        "a target owner without the attribute of a task's range",
-                    ))?,
+                    .ok_or_else(|| {
+                        GenieError::unreachable("a player without the attribute of a task's range")
+                            .with("player", target.player)
+                            .with("attribute", OWNER_RANGE_ATTRIBUTE)
+                    })?,
             ),
             _ => Some(task.work_range),
         };
