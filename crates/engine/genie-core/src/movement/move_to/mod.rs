@@ -22,7 +22,7 @@ pub use crate::movement::move_to::action::{
     MoveDefaults, MoveStep, MoveToAction, Shows, ai_sprite, holds_object, object_range,
     object_sprite, point_sprite,
 };
-pub use crate::movement::move_to::sub_action::GiveUp;
+pub use crate::movement::move_to::sub_action::{GiveUp, NO_TARGET_GAP};
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
 pub const MOVE_TO: i16 = 1;
@@ -776,6 +776,30 @@ mod tests {
             &mut inbox,
         );
         assert!(code.is_err());
+    }
+
+    /// A sub-action `MoveTo` as its owner adds it (`FUN_140a977e0`, then `0x140aa2100`): a unit
+    /// in state 3 or later adds none; within 0.01 of its target it arrived (a NaN gap is far);
+    /// farther it starts with speed (a NaN speed too) and fails without; one to a point is far.
+    #[test]
+    fn an_added_sub_move_to_arrives_starts_or_fails_and_a_dying_unit_adds_none() {
+        let m = MoveToAction::sub_to_point([1.0, 2.0, 0.0], 0.5, None);
+        let state = |unit_state, gap, speed| m.added(unit_state, gap, speed).map(|a| a.state);
+        assert_eq!(state(2, 0.01, 0.0), Some(MoveTo::Arrived));
+        assert_eq!(state(2, 0.0, 1.0), Some(MoveTo::Arrived));
+        assert_eq!(state(2, 0.010_001, 1.0), Some(MoveTo::Start));
+        assert_eq!(state(2, 0.5, 0.0), Some(MoveTo::Failed));
+        assert_eq!(state(2, f32::NAN, 1.0), Some(MoveTo::Start));
+        assert_eq!(state(2, 0.5, f32::NAN), Some(MoveTo::Start));
+        assert_eq!(state(0, NO_TARGET_GAP, 1.0), Some(MoveTo::Start));
+        assert_eq!(state(2, NO_TARGET_GAP, 0.0), Some(MoveTo::Failed));
+        assert_eq!(state(3, 0.0, 1.0), None);
+        assert_eq!(state(7, 0.5, 1.0), None);
+        let added = m.added(2, 0.5, 1.0);
+        assert_eq!(
+            added.map(|a| (a.point, a.range, a.quiet)),
+            Some((m.point, 0.5, true))
+        );
     }
 
     /// `+0x61` from the save: 0 follows, 1 asks again, 2 ignores; any other value is the save's

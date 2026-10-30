@@ -51,7 +51,7 @@ pub struct MoveToAction {
 
 /// A `MoveTo`'s start counts the unit at its target within this gap (`0x140aa2100`,
 /// `DAT_142eb99cc`).
-const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
+pub(super) const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
 /// A `MoveTo` to an object the world does not hold.
 pub(crate) const TARGET_LACKING: GenieError =
     GenieError::unsupported("a MoveTo to an object the world lacks");

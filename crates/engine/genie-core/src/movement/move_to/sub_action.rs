@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::movement::PathAsk;
+use crate::movement::move_to::action::ARRIVED;
 use crate::movement::move_to::{
     Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, ask_walk, walk_or_give_up,
 };
@@ -13,6 +14,10 @@ use crate::unit_ai::{Inbox, TARGET_MOVED};
 /// be its owner's, and no owner makes one.
 const SUB_RELEASE: GenieError =
     GenieError::unreachable("a sub-action MoveTo that is not quiet letting its target go");
+
+/// The gap `FUN_14118f680` gives a `MoveTo` without a target, one to a point: the largest
+/// float, which no start counts as arrived ([`MoveToAction::added`]).
+pub const NO_TARGET_GAP: f32 = crate::math::image::garrison::FAR;
 
 /// What the motion step's giving up reads of the unit ([`MoveWait::give_up`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -40,6 +45,28 @@ impl MoveToAction {
             on_target_moved: TargetMoved::Follows,
             wait: MoveWait::NEW,
         }
+    }
+
+    /// Its start as its owner adds it to its sub-actions (`FUN_140a977e0`): a unit in a state
+    /// (`+0x640`) of 3 or later adds none (the game deletes the new `MoveTo`). Else its start
+    /// (slot 5 with 1, `0x140aa2100`) sets its state by `gap`, the unit's from the target's
+    /// footprint (`FUN_14118f680`; [`NO_TARGET_GAP`] for a `MoveTo` to a point): within
+    /// [`ARRIVED`] it arrived (1; `COMISS`, `JC`: a NaN gap is far), else it starts (3) with
+    /// `speed` (slot 0x208) and fails (13) without (`UCOMISS`, `JP`: a NaN speed starts). A quiet
+    /// `MoveTo` shows no standing sprite in states 1 and 13 (`0x140aa29e0`).
+    #[must_use]
+    pub const fn added(self, unit_state: u8, gap: f32, speed: f32) -> Option<Self> {
+        if 3 <= unit_state {
+            return None;
+        }
+        let state = if gap <= ARRIVED {
+            MoveTo::Arrived
+        } else if speed == 0.0 {
+            MoveTo::Failed
+        } else {
+            MoveTo::Start
+        };
+        Some(Self { state, ..self })
     }
 
     /// Its update as an action's sub-action (`0x140aa2a70`, which the action's sub-action list
