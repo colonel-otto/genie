@@ -8,6 +8,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::orders::object_gone;
 
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -219,7 +220,7 @@ impl World {
                 _ => return Ok(()),
             },
         };
-        let (ip, unit) = self.object(inner).expect("found above");
+        let (ip, unit) = self.object(inner).ok_or_else(|| object_gone(inner))?;
         if unit.life.state != 2 {
             return Ok(());
         }

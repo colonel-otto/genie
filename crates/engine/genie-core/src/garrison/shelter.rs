@@ -12,10 +12,21 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::orders::object_gone;
 use crate::orders::{GARRISON, Work};
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
+
+/// A shelter index that the count list of the callers does not cover.
+const NO_COUNT: GenieError = GenieError::unreachable("a shelter without a count");
+
+/// A building the first take names that the shelter list lacks.
+const NO_LISTED_BUILDING: GenieError =
+    GenieError::unreachable("a taken building outside the shelter list");
+
+/// A unit the shelter queues an order for, whose AI was tested above.
+const NO_UNIT_AI: GenieError = GenieError::unreachable("a sheltered unit without a unit AI");
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
 /// (`param_4`), and the count list (`param_5`) its pairs index by their shelter's index, a
@@ -291,34 +302,13 @@ impl World {
             &mut pairs,
             &|a: (usize, usize, f32), b: (usize, usize, f32)| a.2 < b.2,
         );
-        let mut counts = shelters.counts.clone();
-        let mut taken = vec![false; units.len()];
-        // each shelter's units, by shelter index, and the order of the shelters' first take
-        let mut going: Vec<Vec<i32>> = vec![Vec::new(); all.len()];
-        let mut first_taken = Vec::new();
-        for &(i, j, _) in &pairs {
-            // the count list is at least as long as the shelters: its callers push a count for
-            // each shelter, and FUN_14161e370 one for each gate and annex beside
-            let count = counts.get_mut(j).expect("a count for each shelter index");
-            if !taken[i] && *count < capacities[j].1 {
-                going[j].push(units[i]);
-                first_taken.push(all[j]);
-                *count += 1;
-                taken[i] = true;
-            }
-        }
-        for &(i, j, _) in &pairs {
-            if !taken[i] {
-                going[j].push(units[i]);
-                first_taken.push(all[j]);
-                taken[i] = true;
-            }
-        }
+        let (going, first_taken) =
+            assign_shelters(&pairs, units, (&all, &capacities), shelters.counts.clone())?;
         for building in crate::math::msvc::unordered_map_order(first_taken) {
             let j = all
                 .iter()
                 .position(|&b| b == building)
-                .expect("a building of the list");
+                .ok_or(NO_LISTED_BUILDING)?;
             self.shelter_in(building, &going[j], through_ai)?;
         }
         Ok(())
@@ -359,7 +349,7 @@ impl World {
             .ok_or(GenieError::unsupported("a garrison's building is gone"))?;
         // the splitter tests a unit with a unit AI only
         let keeps = |id: i32| -> Result<bool, GenieError> {
-            let (p, u) = self.object(id).expect("a going unit");
+            let (p, u) = self.object(id).ok_or_else(|| object_gone(id))?;
             if u.ai.is_none() {
                 return Ok(true);
             }
@@ -398,10 +388,7 @@ impl World {
                     ready: true,
                     target_type: i32::from(master),
                 };
-                let ai = self.players[p].objects[idx]
-                    .ai
-                    .as_mut()
-                    .expect("tested above");
+                let ai = self.players[p].objects[idx].ai.as_mut().ok_or(NO_UNIT_AI)?;
                 let _ = ai.queue_order(state, order, false, false)?;
                 continue;
             }
@@ -416,4 +403,38 @@ impl World {
         }
         Ok(())
     }
+}
+
+/// [`World::shelter`]'s assignment: each unit, in the order of the sorted `pairs`, takes the
+/// first shelter whose count is below its capacity, then any unit left its nearest shelter.
+/// Each shelter's units by shelter index, and the order of the shelters' first take.
+fn assign_shelters(
+    pairs: &[(usize, usize, f32)],
+    units: &[i32],
+    (all, capacities): (&[i32], &[(bool, i32, i16)]),
+    mut counts: Vec<i32>,
+) -> Result<(Vec<Vec<i32>>, Vec<i32>), GenieError> {
+    let mut taken = vec![false; units.len()];
+    // each shelter's units, by shelter index, and the order of the shelters' first take
+    let mut going: Vec<Vec<i32>> = vec![Vec::new(); all.len()];
+    let mut first_taken = Vec::new();
+    for &(i, j, _) in pairs {
+        // the count list is at least as long as the shelters: its callers push a count for
+        // each shelter, and FUN_14161e370 one for each gate and annex beside
+        let count = counts.get_mut(j).ok_or(NO_COUNT)?;
+        if !taken[i] && *count < capacities[j].1 {
+            going[j].push(units[i]);
+            first_taken.push(all[j]);
+            *count += 1;
+            taken[i] = true;
+        }
+    }
+    for &(i, j, _) in pairs {
+        if !taken[i] {
+            going[j].push(units[i]);
+            first_taken.push(all[j]);
+            taken[i] = true;
+        }
+    }
+    Ok((going, first_taken))
 }

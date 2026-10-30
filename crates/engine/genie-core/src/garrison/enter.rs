@@ -12,6 +12,7 @@ use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::GARRISON;
 use crate::orders::action_state::FAILED;
+use crate::orders::object_gone;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -164,7 +165,7 @@ impl World {
                 })
             })
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
-        let (tp, t) = self.object(target).expect("found above");
+        let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
         let tm = t.master(&self.masters, tp)?;
         let (class, height) = (i32::from(tm.class), t.position()[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
@@ -248,7 +249,7 @@ impl World {
                 [ActionKind::Enter.value(), 0, 0],
             )));
         }
-        let (tp, t) = self.object(target).expect("found above");
+        let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
         if !self.has_room(tp, t, Some(id))? {
             return Err(GenieError::unsupported(
                 "an Enter into a building without room (state 11)",

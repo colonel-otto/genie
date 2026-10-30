@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::orders::object_gone;
 use crate::ownership::change::change_hands;
 use crate::unit_ai::ActionKind;
 use crate::world::others::OthersRef;
@@ -255,7 +256,7 @@ fn livestock_on(c: &Step<'_>, (x, y): (i32, i32), taken: &[i32]) -> Vec<i32> {
 fn take_livestock(c: &mut Step<'_>, id: i32, new: usize) -> Result<Option<[f32; 3]>, GenieError> {
     let mut unit =
         c.w.take_out_own(c.player, id)
-            .expect("the scan's own object");
+            .ok_or_else(|| object_gone(id))?;
     let done = (|| {
         unit.capture_stop(c, class::LIVESTOCK)?;
         unit.change_owner(c, new)

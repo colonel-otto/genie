@@ -9,6 +9,9 @@ use crate::garrison::transport::{
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 
+/// An unloading ship whose top action is no Transport where it was read as one.
+const NO_TRANSPORT: GenieError = GenieError::unreachable("an unloading ship without a Transport");
+
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.
 impl crate::world::World {
@@ -187,7 +190,7 @@ impl crate::world::World {
             let t = self.players[p].objects[i]
                 .actions
                 .transport_mut()
-                .expect("read above");
+                .ok_or(NO_TRANSPORT)?;
             t.point[0] = point[0];
             t.point[1] = point[1];
             if sails {
@@ -209,7 +212,7 @@ impl crate::world::World {
         let t = self.players[p].objects[i]
             .actions
             .transport_mut()
-            .expect("read above");
+            .ok_or(NO_TRANSPORT)?;
         changes.push(t.unloaded(&ship, &mut shore));
         for c in changes {
             self.transport_changed(p, i, c)?;
