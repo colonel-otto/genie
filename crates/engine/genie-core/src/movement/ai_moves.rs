@@ -88,12 +88,7 @@ impl Unit {
         }
         if !m.force
             && self.top_action_kind() == Some(crate::movement::move_to::MOVE_TO)
-            && self
-                .actions
-                .move_to()
-                .copied()
-                .and_then(|mt| mt.point(self.body.mover()))
-                .is_some_and(|p| p == m.point)
+            && self.actions.move_to().is_some_and(|mt| mt.point == m.point)
         {
             return Ok(false);
         }

@@ -1354,7 +1354,7 @@ fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
     let unit = &t.players[1].objects[0];
     assert_eq!(unit.ai.as_ref().unwrap().orders.len(), 1);
     assert_eq!(
-        unit.actions.move_to().copied().unwrap().goal,
+        unit.actions.move_to().copied().unwrap().goal(),
         Some([30.0, 30.0, 0.0])
     );
     t.move_point_order(1, 0, [31.0, 30.0, 0.0]).unwrap();
@@ -1800,7 +1800,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
             sprite: None,
             state: crate::movement::move_to::MoveTo::Start,
-            goal: Some([30.0, 30.0, 0.0]),
+            point: [30.0, 30.0, 0.0],
             target: -1,
             range: 0.0,
             quiet: false,
@@ -2711,7 +2711,7 @@ fn a_lone_unit_patrols_to_its_waypoint() {
     let u = &t.players[1].objects[0];
     let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
-        (move_to.goal, move_to.target, move_to.range),
+        (move_to.goal(), move_to.target, move_to.range),
         (Some([30.0, 20.0, 1.5]), -1, 0.0)
     );
     let m = u.body.mover().unwrap();
@@ -2752,7 +2752,7 @@ fn a_lone_unit_s_waypoints_but_the_last_become_its_own() {
         .unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(
-        u.actions.move_to().copied().unwrap().goal,
+        u.actions.move_to().copied().unwrap().goal(),
         Some([30.0, 20.0, 0.0])
     );
     assert_eq!(u.body.mover().unwrap().user_waypoints, [[25.5, 0.0, 20.5]]);
@@ -2782,7 +2782,7 @@ fn a_move_runs_the_stop_of_a_pending_completion_first() {
         (None, Some(ActionKind::Move), 0)
     );
     assert_eq!(
-        u.actions.move_to().copied().unwrap().goal,
+        u.actions.move_to().copied().unwrap().goal(),
         Some([30.0, 20.0, 0.0])
     );
 }
@@ -2812,7 +2812,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
     .unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(
-        u.actions.move_to().copied().unwrap().goal,
+        u.actions.move_to().copied().unwrap().goal(),
         Some([30.0, 20.0, 0.0])
     );
     let ai = u.ai.as_ref().unwrap();
@@ -3605,7 +3605,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
             sprite: None,
             state: crate::movement::move_to::MoveTo::Moving,
-            goal: Some([40.0, 89.5, 0.0]),
+            point: [40.0, 89.5, 0.0],
             target: -1,
             range: 0.0,
             quiet: false,

@@ -201,9 +201,8 @@ fn buildings_on(
 
 /// [`MeetingTarget`] of the target `t` (of master `tm`) with `room` for the unit: its top speed
 /// ([`crate::movement::MoveStats::speed`]), its top action's state and its point (`+0x38`,
-/// `+0x3c`): a `MoveTo`'s goal, or for one on an object the mover's
-/// [`crate::movement::Mover::move_to_point`]; a Transport's point. An action the slice does not
-/// hold has neither; another no point the slice keeps.
+/// `+0x3c`): a `MoveTo`'s ([`crate::movement::move_to::MoveToAction::point`]) or a Transport's.
+/// An action the slice does not hold has neither; another no point the slice keeps.
 pub(crate) fn meeting_target(
     t: &crate::objects::unit::Unit,
     tm: &Master,
@@ -213,11 +212,7 @@ pub(crate) fn meeting_target(
         return Err(e);
     }
     let action_point = match (t.top_action_kind(), t.actions.move_to().copied()) {
-        (Some(crate::movement::move_to::MOVE_TO), Some(m)) => m
-            .goal
-            .or_else(|| t.body.mover().and_then(|v| v.move_to_point))
-            .map(|p| [p[0], p[1]])
-            .ok_or(UNPLACED),
+        (Some(crate::movement::move_to::MOVE_TO), Some(m)) => Ok([m.point[0], m.point[1]]),
         // the Transport's point (+0x38, +0x3c), where it sails
         (Some(crate::garrison::transport::TRANSPORT), _) => t
             .actions

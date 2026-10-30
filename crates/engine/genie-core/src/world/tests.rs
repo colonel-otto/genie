@@ -5440,7 +5440,7 @@ fn the_ai_move_at_once_matches_the_one_after_the_update() {
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
     assert_eq!(
-        b.actions.move_to().copied().and_then(|mt| mt.goal),
+        b.actions.move_to().copied().and_then(|mt| mt.goal()),
         Some([35.0, 80.0, 0.0])
     );
     assert_eq!(
@@ -8000,7 +8000,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         target: 9149,
         goal: Some([20.0, 20.0, 0.0]),
         move_to: Some(MoveToAction {
-            goal: None,
+            point: [0.0; 3],
             target: 9149,
             range: 1.0,
             ..MoveToAction::sub_in(MoveTo::Moving)
@@ -8430,7 +8430,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         body: crate::objects::layers::Body::new([11.5, 10.5, 0.0], None, Some(mover.clone())),
         actions: ActionList::default().with_move_to(Some(MoveToAction {
             state: MoveTo::Arrived,
-            goal: None,
+            point: [0.0; 3],
             target: 50,
             range: 0.0,
             sprite: None,
@@ -10080,7 +10080,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         }),
         actions: ActionList::default().with_move_to(Some(MoveToAction {
             state: MoveTo::Moving,
-            goal: None,
+            point: [0.0; 3],
             target: 77,
             range: 0.0,
             sprite: None,
@@ -10102,7 +10102,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
     assert_eq!(ai_move_of(&mut u, run, 6), Ok(vec![77]));
     let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
-        (move_to.goal, move_to.range, move_to.sprite.map(|g| g.id)),
+        (move_to.goal(), move_to.range, move_to.sprite.map(|g| g.id)),
         (Some([30.0, 20.25, 0.5]), 0.0, None)
     );
 }
@@ -10856,7 +10856,7 @@ fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     assert_eq!(
         (
             mt.state,
-            mt.goal,
+            mt.goal(),
             mt.target,
             mt.range,
             mt.sprite.map(|g| g.id)
@@ -10942,11 +10942,14 @@ fn an_ai_move_hands_the_point_to_a_hunt_without_a_work_range() {
     u.actions.set_hunt(Some(hunt));
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![9149, 9150]));
     assert_eq!(u.actions.hunt().copied(), None);
-    assert_eq!(u.actions.move_to().map(|m| m.goal), Some(Some(AI_POINT)));
+    assert_eq!(
+        u.actions.move_to().map(MoveToAction::goal),
+        Some(Some(AI_POINT))
+    );
 }
 
 /// Without the force a head `MoveTo` whose point (`+0x38`) is the move's stands, a point one or
-/// an object one (the target's place, the mover's `move_to_point`); forced, or to another point,
+/// an object one (the target's place when it last took it); forced, or to another point,
 /// the new `MoveTo` replaces it (its teardown stops the unit and lets its target go).
 #[test]
 fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
@@ -10960,12 +10963,11 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
     assert_eq!(u.actions.move_to().copied(), Some(old));
     let to_object = MoveToAction {
-        goal: None,
+        point: AI_POINT,
         target: 9149,
         ..old
     };
     u.actions.set_move_to(Some(to_object));
-    u.body.mover_mut().unwrap().move_to_point = Some(AI_POINT);
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
     assert_eq!(u.actions.move_to().copied(), Some(to_object));
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149]));
@@ -10980,7 +10982,7 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
     };
     assert_eq!(ai_move_of(&mut u, elsewhere, 47), Ok(vec![]));
     assert_eq!(
-        u.actions.move_to().copied().unwrap().goal,
+        u.actions.move_to().copied().unwrap().goal(),
         Some([1.0, 2.0, 0.0])
     );
 }
@@ -10994,7 +10996,10 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
     assert!(ai_move_of(&mut u, forced(false), 54).is_err());
     assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(ai_move_of(&mut u, forced(false), 51), Ok(vec![]));
-    assert_eq!(u.actions.move_to().map(|m| m.goal), Some(Some(AI_POINT)));
+    assert_eq!(
+        u.actions.move_to().map(MoveToAction::goal),
+        Some(Some(AI_POINT))
+    );
     let mut u = mover_unit(7);
     u.actions
         .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify::new(
@@ -13518,7 +13523,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
     use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, TARGET_MOVED};
     let to_bush = |state| MoveToAction {
         state,
-        goal: None,
+        point: [0.0; 3],
         target: 600,
         range: 0.25,
         sprite: None,
@@ -13552,7 +13557,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
     // the unit AI on another action ignores the move's completion (FUN_140c556d0)
     assert_eq!(arrived(Some(ActionKind::Gather)).2, []);
     let to_point = MoveToAction {
-        goal: Some([40.5, 89.5, 0.0]),
+        point: [40.5, 89.5, 0.0],
         target: -1,
         ..to_bush(MoveTo::Failed)
     };
@@ -14920,7 +14925,7 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
         in_update(t, (1, 0), 50, |unit, c| {
             c.lend(unit, |w| w.ship_move(ship, meet))?;
             let (_, s) = c.w.object(9176).expect("held");
-            Ok(s.actions.move_to().map(|m| (m.goal, m.range)))
+            Ok(s.actions.move_to().map(|m| (m.goal(), m.range)))
         })
         .map_err(|e| e.reason().to_owned())
     };

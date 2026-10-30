@@ -7,8 +7,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::move_to::Shown;
 use crate::movement::move_to::{
-    Follow, Goal, MoveTo, MoveWait, TargetMoved, Walk, follow_path_end, start_walk_shown,
-    target_moved, walk_or_give_up,
+    Follow, Goal, MoveTo, MoveWait, TargetMoved, Walk, ask_walk, target_left, walk_or_give_up,
 };
 use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::masters::Master;
@@ -23,10 +22,12 @@ use genie_diff::Diff;
 pub struct MoveToAction {
     /// Its state (`+0x18`).
     pub state: MoveTo,
-    /// The point it walks to (`+0x38`..`+0x40`), when it has no target object.
-    pub goal: Option<[f32; 3]>,
-    /// The target object it walks to (`+0x20`, its id at `+0x30`), −1 for a point; its point is
-    /// the mover's [`Mover::move_to_point`].
+    /// `+0x38`..`+0x40`: the point it walks to without a target object; with one, the target's
+    /// place when it was made or last asked for a path (its state 3), which a path's end that
+    /// follows the target moves ([`TargetMoved::Follows`]). A target the world removed leaves the
+    /// `MoveTo` walking to it.
+    pub point: [f32; 3],
+    /// The target object it walks to (`+0x20`, its id at `+0x30`), −1 for a point.
     pub target: i32,
     /// `+0x68`.
     pub range: f32,
@@ -46,9 +47,6 @@ pub struct MoveToAction {
     /// Its wait after the motion step gave up.
     pub wait: MoveWait,
 }
-
-/// A `MoveTo` without a target object or a point.
-const GOAL_LACKING: GenieError = GenieError::unsupported("a MoveTo of its own without a goal");
 
 /// A `MoveTo`'s start counts the unit at its target within this gap (`0x140aa2100`,
 /// `DAT_142eb99cc`).
@@ -211,7 +209,6 @@ impl MoveToAction {
     ) -> Result<Self, GenieError> {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
-        mover.move_to_point = Some(t.position);
         let state = if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
             MoveTo::Arrived
         } else if mover.stats.speed == 0.0 {
@@ -224,7 +221,7 @@ impl MoveToAction {
         }
         Ok(Self {
             state,
-            goal: None,
+            point: t.position,
             target,
             range,
             sprite,
@@ -294,7 +291,7 @@ impl MoveToAction {
         };
         Self {
             state,
-            goal: Some(point),
+            point,
             target: -1,
             range,
             sprite,
@@ -305,15 +302,22 @@ impl MoveToAction {
     }
 
     /// Where it walks (`+0x30`, else `+0x38`..`+0x40`): its target object, else its point.
-    ///
-    /// # Errors
-    ///
-    /// A `MoveTo` with neither.
-    pub const fn walks_to(&self) -> Result<Goal, GenieError> {
-        match (self.target, self.goal) {
-            (-1, Some(point)) => Ok(Goal::Point(point)),
-            (-1, None) => Err(GOAL_LACKING),
-            (id, _) => Ok(Goal::Target(id)),
+    #[must_use]
+    pub const fn walks_to(&self) -> Goal {
+        match self.target {
+            -1 => Goal::Point(self.point),
+            id => Goal::Target(id),
+        }
+    }
+
+    /// The point it walks to when it has no target object, None for one to a target: what the
+    /// tests compare.
+    #[cfg(test)]
+    pub(crate) const fn goal(&self) -> Option<[f32; 3]> {
+        if self.target == -1 {
+            Some(self.point)
+        } else {
+            None
         }
     }
 
@@ -329,13 +333,6 @@ impl MoveToAction {
     #[must_use]
     pub const fn shows_standing(&self) -> bool {
         matches!(self.state, MoveTo::Arrived | MoveTo::Failed)
-    }
-
-    /// The point it walks to (`+0x38`..`+0x40`): its own, or for a target object the mover's
-    /// [`Mover::move_to_point`] (the target's place when it was made or last asked for a path).
-    #[must_use]
-    pub fn point(&self, mover: Option<&Mover>) -> Option<[f32; 3]> {
-        self.goal.or_else(|| mover.and_then(|m| m.move_to_point))
     }
 
     /// A `MoveTo` of its own is not quiet: its `set_state` 1 or 13 shows slot 0x798's sprite
@@ -421,9 +418,13 @@ impl MoveToAction {
         if self.target == -1 {
             return Ok(Follow::Stays);
         }
-        let follow = target_moved(walk, self.target, self.on_target_moved)?;
+        let follow = target_left(walk, self.target, self.point, self.on_target_moved)?;
         match follow {
-            Follow::PathEnd(p) => follow_path_end(walk, p)?,
+            Follow::PathEnd(p) => {
+                let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
+                mover.follow_path_end(p);
+                self.point = p;
+            }
             Follow::Again | Follow::Blocked => self.state = MoveTo::Start,
             Follow::Stays => {}
         }
@@ -444,19 +445,18 @@ impl MoveToAction {
         if self.wait.state == 1 {
             self.wait.state = 2;
         }
-        let goal = self.walks_to()?;
+        let goal = self.walks_to();
         self.state = MoveTo::Moving;
         let shown = Shown {
             sprite: &mut *shows.sprite,
             rng: &mut *shows.rng,
             graphic: self.sprite.or(shows.master_standing),
         };
-        match start_walk_shown(
-            walk.reborrow(),
-            (goal, self.range, self.quiet),
-            ask,
-            Some(shown),
-        )? {
+        let (state, asked) = ask_walk(walk, (goal, self.range, self.quiet), ask, Some(shown))?;
+        if let Some(point) = asked {
+            self.point = point;
+        }
+        match state {
             Some(state) => self.state = state,
             None => step.gave_up = true,
         }
@@ -494,7 +494,7 @@ mod tests {
         MoveToAction {
             sprite,
             state,
-            goal: (target == -1).then_some([30.0, 88.0, 0.0]),
+            point: [30.0, 88.0, 0.0],
             target,
             range: 0.1,
             quiet: false,
@@ -536,7 +536,7 @@ mod tests {
     /// 4, whose `set_state` (`0x140aa29e0`) shows its sprite (the running one: top speed 0.8 ×
     /// 1.5) before the motion step; a move runs the motion step and keeps moving; one at its
     /// target is done, a failed one reports it; a wait runs by the walk's dt and asks again at
-    /// its delay. A start without a goal and a target that is gone are not modelled.
+    /// its delay. A target that is gone is not modelled.
     ///
     /// [`WalkRig`]: crate::movement::tests::WalkRig
     #[test]
@@ -598,11 +598,6 @@ mod tests {
                 .unwrap_err()
                 .reason()
         };
-        let no_goal = MoveToAction {
-            goal: None,
-            ..own_move_to(MoveTo::Start, Some(WALKING), -1)
-        };
-        assert_eq!(reason(no_goal), "a MoveTo of its own without a goal");
         assert_eq!(
             reason(own_move_to(MoveTo::Moving, Some(WALKING), 77)),
             "a MoveTo of its own whose target is gone"
@@ -636,7 +631,7 @@ mod tests {
         rig.body.set_anim_speed(1.0);
         let mut looks = Looks::default();
         let mut at = own_move_to(MoveTo::Start, Some(RUNNING), -1);
-        at.goal = Some([28.0, 89.0, 0.0]);
+        at.point = [28.0, 89.0, 0.0];
         let ask = PathAsk {
             ends_in_range: true,
             ..PathAsk::default()
@@ -697,9 +692,9 @@ mod tests {
         use crate::movement::tests::WalkRig;
         let walked = |point: [f32; 3], waypoint| {
             let mut rig = WalkRig::on_the_path();
-            rig.mover_mut().move_to_point = Some(point);
             rig.mover_mut().paths[0].waypoint = waypoint;
             let mut m = own_move_to(MoveTo::Moving, Some(WALKING), 10028);
+            m.point = point;
             let step = m
                 .update(rig.walk(0), PathAsk::default(), Looks::default().shows())
                 .unwrap();
@@ -788,12 +783,12 @@ mod tests {
         };
         let held = to((9186, 2), false, 0.8);
         assert_eq!(
-            (held.target, held.goal, held.state),
+            (held.target, held.goal(), held.state),
             (9186, None, MoveTo::Start)
         );
         let gone = to((9186, 7), false, 0.8);
         assert_eq!(
-            (gone.target, gone.goal, gone.state),
+            (gone.target, gone.goal(), gone.state),
             (-1, Some([35.0, 40.0, 0.0]), MoveTo::Start)
         );
         assert_eq!(to((9186, 7), false, 0.0).state, MoveTo::Failed);
@@ -801,7 +796,7 @@ mod tests {
         assert_eq!(to((9149, 2), false, 0.8).target, 9149);
         let beside = to((9149, 2), true, 0.8);
         assert_eq!(
-            (beside.target, beside.goal),
+            (beside.target, beside.goal()),
             (-1, Some([50.0 - 0.2, 40.0 - 0.2, 0.0]))
         );
     }
@@ -824,7 +819,7 @@ mod tests {
         assert_eq!(
             (
                 moving.state,
-                moving.goal,
+                moving.goal(),
                 moving.target,
                 moving.range,
                 moving.sprite
@@ -833,7 +828,7 @@ mod tests {
         );
         assert_eq!(speed, 0.8);
         assert!(!moving.shows_standing());
-        assert_eq!(moving.point(None), Some(point));
+        assert_eq!(moving.point, point);
         assert_eq!(start(f32::NAN).0.state, MoveTo::Start);
         let (stuck, speed) = start(0.0);
         assert_eq!(stuck.state, MoveTo::Failed);
@@ -843,7 +838,7 @@ mod tests {
         assert_eq!(none.state, MoveTo::Failed);
     }
 
-    /// `FUN_140aa0df0` puts the target's place in `+0x38` (the mover's `move_to_point`); a unit
+    /// `FUN_140aa0df0` puts the target's place in `+0x38` (its point); a unit
     /// without speed away from the target fails at the start (state 13), which shows the
     /// standing sprite as an arrival does.
     #[test]
@@ -854,8 +849,7 @@ mod tests {
         let mut walker = crate::gathering::hunt::tests::walker();
         walker.stats.stand_speed = 0.5;
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
-        assert_eq!(walker.move_to_point, Some([35.0, 40.0, 0.0]));
-        assert_eq!(far.point(Some(&walker)), Some([35.0, 40.0, 0.0]));
+        assert_eq!(far.point, [35.0, 40.0, 0.0]);
         assert_eq!(walker.stats.speed, 0.8);
         walker.stats.speed = 0.0;
         let stuck = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();

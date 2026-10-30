@@ -657,7 +657,7 @@ mod tests {
         );
         let made = MoveToAction {
             state: MoveTo::Start,
-            goal: Some([19.0, 84.0, 0.0]),
+            point: [19.0, 84.0, 0.0],
             target: -1,
             range: 0.0,
             sprite: Some(walking),

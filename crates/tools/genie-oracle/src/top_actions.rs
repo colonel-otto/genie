@@ -233,7 +233,8 @@ fn saved_move_to(
     let base = action.base().ok_or(MOVE_TO_BASELESS)?;
     Ok(MoveToAction {
         state: move_to_state(base.state)?,
-        goal: target_point(base),
+        // its point (`+0x38`..`+0x40`), for a target object the target's place it last took
+        point: [base.target_x, base.target_y, base.target_z],
         target: base.target_id,
         range: sub_range(action)?,
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)

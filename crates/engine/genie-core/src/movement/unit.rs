@@ -146,10 +146,10 @@ impl Unit {
         Ok(match self.actions.move_to_mut() {
             Some(move_to) => {
                 // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
-                // point: the goal, or the target's place (a target gone fails the update first)
-                let point = match (move_to.target, move_to.goal) {
-                    (-1, goal) => goal.map(|p| [p[0], p[1]]),
-                    (id, _) => c.w.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
+                // point: its own, or the target's place (a target gone fails the update first)
+                let point = match move_to.target {
+                    -1 => Some([move_to.point[0], move_to.point[1]]),
+                    id => c.w.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
                 };
                 let ask = match point {
                     Some(p) if move_to.state == MoveTo::Start => {

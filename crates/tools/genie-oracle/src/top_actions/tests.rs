@@ -220,7 +220,7 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
         .copied()
         .unwrap();
     assert_eq!(m.state, MoveTo::Moving);
-    assert_eq!(m.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    assert_eq!((m.target, bits3(m.point)), (-1, bits3([1.0, 2.0, 0.0])));
     assert_eq!(
         (m.target, m.range.to_bits(), m.sprite),
         (-1, 0.5_f32.to_bits(), None)
@@ -335,7 +335,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
     let walk = a.move_to.unwrap();
     assert_eq!((walk.state, walk.quiet), (MoveTo::Moving, true));
     assert_eq!(a.goal.map(bits3), Some(bits3([4.0, 2.0, 0.0])));
-    assert!(matches!(walk.walks_to(), Ok(Goal::Point(p)) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert!(matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
     assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
     let mut to_object = move_to(4, 0.5);
     to_object
@@ -358,7 +358,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .unwrap();
     assert!(matches!(
         a.move_to.map(|m| m.walks_to()),
-        Some(Ok(Goal::Target(9)))
+        Some(Goal::Target(9))
     ));
     // the target's place is its goal however near the origin; an unset place (-1) is none
     let mut near = base(5);
@@ -544,7 +544,10 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         .unwrap();
     let flight = f.move_to.unwrap();
     assert_eq!((flight.state, flight.quiet), (MoveTo::Moving, false));
-    assert_eq!(flight.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    assert_eq!(
+        (flight.target, bits3(flight.point)),
+        (-1, bits3([1.0, 2.0, 0.0]))
+    );
     assert_eq!(
         imported(FLY, bird(with_sub(base(3), 4, explore(base(3))))).unwrap_err(),
         GenieError::unsupported("a saved Fly action with another sub-action")
@@ -659,7 +662,7 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     );
     assert!(r.counted && r.quiet);
     // a MoveTo without a target walks to its point, within its own range
-    assert!(matches!(walk.walks_to(), Ok(Goal::Point(p)) if bits3(p) == bits3([1.0, 2.0, 0.0])));
+    assert!(matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3([1.0, 2.0, 0.0])));
     assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
     let r = imported(REPAIR, repair(b.clone()))
         .unwrap()

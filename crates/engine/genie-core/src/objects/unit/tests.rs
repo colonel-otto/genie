@@ -107,7 +107,7 @@ fn an_object_past_state_2_loses_its_actions() {
     u.actions.set_move_to(Some(MoveToAction {
         sprite: None,
         state: MoveTo::Moving,
-        goal: Some([40.0, 80.0, 0.0]),
+        point: [40.0, 80.0, 0.0],
         target: -1,
         range: 0.0,
         quiet: false,

@@ -322,7 +322,7 @@ fn a_repair_s_move_tos_are_quiet() {
     let r = RepairAction::start((20, [11.0, 10.0, 0.0]), TASK, 1.5, &sprites(&g)).unwrap();
     let to_target = MoveToAction {
         state: MoveTo::Start,
-        goal: None,
+        point: [11.0, 10.0, 0.0],
         target: 20,
         range: 1.5,
         sprite: Some(g[&21]),
@@ -569,7 +569,12 @@ fn a_move_sends_the_repairer_to_its_point() {
         Ok((20, true))
     );
     assert_eq!(
-        (r.state, r.target, r.move_to.and_then(|m| m.goal), r.counted),
+        (
+            r.state,
+            r.target,
+            r.move_to.and_then(|m| m.goal()),
+            r.counted
+        ),
         (WALK_POINT, -1, Some([30.0, 5.0, 0.0]), false)
     );
     let mut t = repair_at(NEAR, |a| *a = r);

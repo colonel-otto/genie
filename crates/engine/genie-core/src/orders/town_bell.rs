@@ -760,7 +760,7 @@ mod tests {
             let goal = |t: &World, id: i32| {
                 let u = t.object(id).unwrap().1;
                 (
-                    u.actions.move_to().copied().and_then(|m| m.goal),
+                    u.actions.move_to().copied().and_then(|m| m.goal()),
                     u.town_bell.flag,
                 )
             };
@@ -806,7 +806,7 @@ mod tests {
             let u = t.object(1001).unwrap().1;
             assert_eq!(
                 (
-                    u.actions.move_to().copied().and_then(|m| m.goal),
+                    u.actions.move_to().copied().and_then(|m| m.goal()),
                     u.town_bell.flag
                 ),
                 (Some([3.5, 3.5, 0.0]), false)

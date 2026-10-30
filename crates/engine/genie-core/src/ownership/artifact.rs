@@ -206,19 +206,20 @@ impl Artifact {
         let gone = self.drop_sub_actions();
         self.goal = Some(at);
         let range = if to_building { 1.0 } else { 0.0 };
-        let (goal, walk_target) = if to_town_centre {
+        // its point (`+0x38`): the target's place, or the point below a town centre
+        let (point, walk_target) = if to_town_centre {
             let point = [
                 at[0] - TOWN_CENTRE_OFFSET,
                 at[1] - TOWN_CENTRE_OFFSET,
                 at[2],
             ];
-            (Some(point), -1)
+            (point, -1)
         } else {
-            (None, target)
+            (at, target)
         };
         self.move_to = Some(MoveToAction {
             state: MoveTo::Start,
-            goal,
+            point,
             target: walk_target,
             range,
             sprite,
@@ -1009,10 +1010,11 @@ mod tests {
         }
     }
 
-    /// The quiet `MoveTo` in `state` to the building `target` within 1, without a sprite.
+    /// The quiet `MoveTo` in `state` to the building `target` at (10, 12) within 1, without a
+    /// sprite.
     fn to_object(target: i32, state: MoveTo) -> MoveToAction {
         MoveToAction {
-            goal: None,
+            point: [10.0, 12.0, 0.0],
             target,
             range: 1.0,
             ..MoveToAction::sub_in(state)
@@ -1079,7 +1081,7 @@ mod tests {
             .take_object((9149, true), [10.0, 12.0, 0.0], true, true, &sprites())
             .unwrap();
         assert_eq!(
-            a.move_to.map(|m| (m.goal, m.target, m.range, m.quiet)),
+            a.move_to.map(|m| (m.goal(), m.target, m.range, m.quiet)),
             Some((Some([9.8, 11.8, 0.0]), -1, 1.0, true))
         );
         assert_eq!(a.target, 9149);
@@ -1156,10 +1158,10 @@ mod tests {
             waiting.move_to.map(|m| (m.state, m.wait.timer)),
             Some((MoveTo::Start, 0.0))
         );
-        // a MoveTo of its own without its point is not modelled
+        // a MoveTo to a target the world lacks is an error
         let mut lost = Artifact {
             move_to: Some(MoveToAction {
-                goal: None,
+                target: 4242,
                 ..MoveToAction::sub_in(MoveTo::Start)
             }),
             ..Artifact::new(false, None)

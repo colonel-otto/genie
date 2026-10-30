@@ -605,7 +605,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
         Some(MoveToAction {
             sprite: None,
             state: MoveTo::Start,
-            goal: Some([40.0, 80.0, 0.0]),
+            point: [40.0, 80.0, 0.0],
             target: -1,
             range: 0.0,
             quiet: false,

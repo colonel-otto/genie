@@ -101,7 +101,8 @@ impl RepairAction {
     pub fn to_target(&self, sprites: &SpriteReads<'_>) -> Result<MoveToAction, GenieError> {
         Ok(MoveToAction {
             state: MoveTo::Start,
-            goal: None,
+            // its point (`+0x38`, `FUN_140aa0df0`): the target's place, as the action took it
+            point: self.point,
             target: self.target,
             range: self.range,
             sprite: sprites.to_object(self.task.moving)?,

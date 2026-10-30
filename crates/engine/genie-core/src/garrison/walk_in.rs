@@ -205,9 +205,12 @@ impl EnterAction {
             sprites.graphics,
             self.move_shown(t.building, sprites.defaults),
         )?;
+        // its point (`+0x38`): `FUN_140aa0df0`'s target's place, or `FUN_140aa0d30`'s meeting
+        // point toward a transport (the constructors of [`EnterAction::move_shown`])
+        let to_object = t.building || self.point[0] < 0.0 || self.point[1] < 0.0;
         self.move_to = Some(MoveToAction {
             state: Self::walk_start(start)?,
-            goal: None,
+            point: if to_object { t.position } else { self.point },
             target: self.target,
             range: self.walk_range(t.building),
             sprite,
@@ -245,7 +248,7 @@ impl EnterAction {
     pub(crate) const fn walking(mut self, state: MoveTo) -> Self {
         self.move_to = Some(MoveToAction {
             state,
-            goal: None,
+            point: [0.0; 3],
             target: self.target,
             range: self.range,
             sprite: None,

@@ -200,15 +200,19 @@ pub enum Goal {
 /// standing sprite, [`crate::movement::Mover::shows_standing`]; the sprite itself and `+0x7b8`,
 /// cleared, are the caller's).
 ///
+/// Returns the `MoveTo`'s state after it, and the place it asked a path toward (None when it
+/// ended in range): its point (`+0x38`..`+0x40`), which for a target object state 3 takes from
+/// the target before the path request.
+///
 /// # Errors
 ///
 /// A target that is gone, a unit that does not move, and what the motion step does not model.
-pub fn start_walk_shown(
-    walk: Walk<'_>,
+pub fn ask_walk(
+    walk: &mut Walk<'_>,
     (goal, range, quiet): (Goal, f32, bool),
     ask: PathAsk,
     shown: Option<Shown<'_>>,
-) -> Result<Option<MoveTo>, GenieError> {
+) -> Result<(Option<MoveTo>, Option<[f32; 3]>), GenieError> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
             let t = walk
@@ -233,15 +237,36 @@ pub fn start_walk_shown(
         if !quiet {
             mover.shows_standing();
         }
-        return Ok(Some(MoveTo::Arrived));
+        return Ok((Some(MoveTo::Arrived), None));
     }
     mover.request_path_asked(here, point, range, target, now, ask);
-    // the MoveTo's point (`+0x38`): the target's place when it asks for the path
-    mover.move_to_point = (target != -1).then_some(point);
     if let Some(mut shown) = shown {
         shown.show(walk.body.move_stats_mut());
     }
-    walk_or_give_up(walk)
+    // the MoveTo's point (`+0x38`): the target's place when it asks for the path
+    Ok((walk_or_give_up(walk.reborrow())?, Some(point)))
+}
+
+/// [`ask_walk`] for an owner that keeps its own `MoveTo` fields until T3 reaches it (the Build,
+/// the Gather, the Hunt, the Attack): the target's place it asked toward goes to
+/// [`crate::movement::Mover::move_to_point`] (None for a point), where [`target_moved`] reads
+/// it. Returns the `MoveTo`'s state after it.
+///
+/// # Errors
+///
+/// [`ask_walk`]'s.
+pub fn start_walk_shown(
+    mut walk: Walk<'_>,
+    to: (Goal, f32, bool),
+    ask: PathAsk,
+    shown: Option<Shown<'_>>,
+) -> Result<Option<MoveTo>, GenieError> {
+    let to_target = matches!(to.0, Goal::Target(_));
+    let (state, asked) = ask_walk(&mut walk, to, ask, shown)?;
+    if let (Some(point), Some(mover)) = (asked, walk.body.mover_mut()) {
+        mover.move_to_point = to_target.then_some(point);
+    }
+    Ok(state)
 }
 
 /// A `MoveTo`'s sprite outside the sprites' table.
@@ -415,8 +440,9 @@ impl Follow {
     }
 }
 
-/// [`Follow::PathEnd`]: the unit's paths end at `point` ([`Mover::follow_path_end`]) and the
-/// `MoveTo`'s point becomes it.
+/// [`Follow::PathEnd`] for an owner that keeps its own `MoveTo` fields until T3 reaches it: the
+/// unit's paths end at `point` ([`Mover::follow_path_end`]) and the `MoveTo`'s point on the mover
+/// ([`Mover::move_to_point`]) becomes it.
 ///
 /// # Errors
 ///
@@ -429,7 +455,7 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
 }
 
 /// The moving `MoveTo`'s check of its target object (`0x140aa2a70` in state 4, before the motion
-/// step), by its `+0x61` (`mode`). A `MoveTo` that ignores its target's moves
+/// step) against its point (`point`, `+0x38`..`+0x40`), by its `+0x61` (`mode`). A `MoveTo` that ignores its target's moves
 /// ([`TargetMoved::Ignores`]) walks on. Otherwise a target that left the `MoveTo`'s point (more
 /// than half a tile off on either axis) makes a `MoveTo` that asks again
 /// ([`TargetMoved::AsksAgain`]: a hunt's and its Attack's, a drop-off's) turn to state 3 (the
@@ -445,10 +471,11 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
 ///
 /// # Errors
 ///
-/// A target the world lacks, a walker without movement state or without the `MoveTo`'s point.
-pub fn target_moved(
+/// A target the world lacks, a walker without movement state.
+pub fn target_left(
     walk: &mut Walk<'_>,
     target: i32,
+    point: [f32; 3],
     mode: TargetMoved,
 ) -> Result<Follow, GenieError> {
     if mode == TargetMoved::Ignores {
@@ -458,14 +485,6 @@ pub fn target_moved(
         .world
         .get_known(target)?
         .ok_or(GenieError::unsupported("a MoveTo whose target is gone"))?;
-    let point = walk
-        .body
-        .mover()
-        .ok_or(crate::world::WALKER_UNMOVING)?
-        .move_to_point
-        .ok_or(GenieError::unsupported(
-            "a MoveTo to a target whose point the slice does not hold",
-        ))?;
     let at = t.position;
     let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
     if !(dx < OFF_LOW || OFF_HIGH < dx || dy < OFF_LOW || OFF_HIGH < dy) {
@@ -496,6 +515,31 @@ pub fn target_moved(
     Ok(Follow::Blocked)
 }
 
+/// [`target_left`] for an owner that keeps its own `MoveTo` fields until T3 reaches it: the
+/// point is the mover's ([`Mover::move_to_point`]).
+///
+/// # Errors
+///
+/// [`target_left`]'s, and a walker without the `MoveTo`'s point.
+pub fn target_moved(
+    walk: &mut Walk<'_>,
+    target: i32,
+    mode: TargetMoved,
+) -> Result<Follow, GenieError> {
+    if mode == TargetMoved::Ignores {
+        return Ok(Follow::Stays);
+    }
+    let point = walk
+        .body
+        .mover()
+        .ok_or(crate::world::WALKER_UNMOVING)?
+        .move_to_point
+        .ok_or(GenieError::unsupported(
+            "a MoveTo to a target whose point the slice does not hold",
+        ))?;
+    target_left(walk, target, point, mode)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,8 +549,8 @@ mod tests {
     /// walker 0.8 off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that
     /// waited once, `+0x6c` 1, counts as having asked again, 2) and moves; a move runs the motion
     /// step and keeps moving; both give code 0. A wait runs by the walk's dt and asks again at
-    /// its delay (a NaN timer waits on). A `MoveTo` that ended gives 1, a failed one 3; one
-    /// without a goal is not modelled.
+    /// its delay (a NaN timer waits on). A `MoveTo` that ended gives 1, a failed one 3; one to a
+    /// target the world lacks is an error.
     ///
     /// [`WalkRig`]: crate::movement::tests::WalkRig
     #[test]
@@ -514,7 +558,7 @@ mod tests {
         use crate::movement::tests::WalkRig;
         let mut rig = WalkRig::on_the_path();
         let mut m = MoveToAction {
-            goal: None,
+            point: [30.0, 88.0, 0.0],
             target: 10028,
             range: 0.1,
             wait: MoveWait {
@@ -563,7 +607,7 @@ mod tests {
             assert_eq!(update(&mut m), Ok(code));
         }
         let mut lost = MoveToAction {
-            goal: None,
+            target: 4242,
             ..MoveToAction::sub_in(MoveTo::Start)
         };
         assert!(update(&mut lost).is_err());
@@ -618,9 +662,8 @@ mod tests {
                 }
                 rig.world = tiled_world(classes);
             }
-            rig.mover_mut().move_to_point = Some([30.6, 88.0, 0.0]);
             let mut m = MoveToAction {
-                goal: None,
+                point: [30.6, 88.0, 0.0],
                 target: 10028,
                 range: 0.1,
                 on_target_moved: mode,
@@ -637,16 +680,9 @@ mod tests {
             );
             let posted: Vec<i32> =
                 ai.map_or(vec![], |ai| ai.notifies.iter().map(|n| n.kind).collect());
-            let mover = rig.mover_mut();
-            (
-                code,
-                m.state,
-                posted,
-                mover.angle != 0.0,
-                mover.move_to_point,
-            )
+            (code, m.state, posted, rig.mover_mut().angle != 0.0, m.point)
         };
-        let off = Some([30.6, 88.0, 0.0]);
+        let off = [30.6, 88.0, 0.0];
         assert_eq!(
             walk_on(TargetMoved::AsksAgain, false),
             (Ok(0), MoveTo::Start, vec![], false, off)
@@ -657,7 +693,7 @@ mod tests {
         );
         assert_eq!(
             walk_on(TargetMoved::Follows, false),
-            (Ok(0), MoveTo::Moving, vec![], true, Some([30.0, 88.0, 0.0]))
+            (Ok(0), MoveTo::Moving, vec![], true, [30.0, 88.0, 0.0])
         );
         assert_eq!(
             walk_on(TargetMoved::Follows, true),

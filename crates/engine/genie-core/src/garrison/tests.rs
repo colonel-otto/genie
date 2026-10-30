@@ -1,7 +1,7 @@
 use super::*;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::map::Point;
-use crate::movement::move_to::MoveDefaults;
+use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::masters::BuildingMaster;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -259,18 +259,20 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
     );
     assert_eq!(enter.walk_range(false), 0.0);
     assert_eq!(enter.walk_range(true), 1.0);
-    t.object_mut(200).unwrap().1.actions.set_move_to(Some(
-        crate::movement::move_to::MoveToAction {
+    t.object_mut(200)
+        .unwrap()
+        .1
+        .actions
+        .set_move_to(Some(MoveToAction {
             sprite: None,
             state: MoveTo::Start,
-            goal: Some([9.5, 19.5, 0.0]),
+            point: [9.5, 19.5, 0.0],
             target: -1,
             range: 0.0,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
-        },
-    ));
+        }));
     assert_eq!(
         t.enter_walk_again(1, v, &mut enter, &ship, start),
         Ok(Walking::Walk(None))
@@ -356,7 +358,7 @@ fn ship_goal(t: &World) -> Option<[f32; 3]> {
         .1
         .actions
         .move_to()
-        .and_then(|m| m.goal)
+        .and_then(MoveToAction::goal)
 }
 
 /// The notifies 0x1fa (`NOTIFY_ACTION_COMPLETED`) villager 1000's unit AI heard.
@@ -2023,7 +2025,7 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
     let ship = t.object(200).unwrap().1.actions.move_to().copied().unwrap();
     assert_eq!(
         (
-            ship.goal,
+            ship.goal(),
             ship.range,
             ship.sprite.map(|g| g.id),
             ship.target
@@ -2053,17 +2055,16 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
     // FUN_140a85f30 on a ship under a MoveTo (state 3): its goal, code 0, no order
     let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
     let ship = t.object_mut(200).unwrap().1;
-    ship.actions
-        .set_move_to(Some(crate::movement::move_to::MoveToAction {
-            sprite: None,
-            state: MoveTo::Start,
-            goal: Some([9.5, 19.5, 0.0]),
-            target: -1,
-            range: 0.0,
-            quiet: false,
-            on_target_moved: crate::movement::move_to::TargetMoved::Follows,
-            wait: crate::movement::move_to::MoveWait::default(),
-        }));
+    ship.actions.set_move_to(Some(MoveToAction {
+        sprite: None,
+        state: MoveTo::Start,
+        point: [9.5, 19.5, 0.0],
+        target: -1,
+        range: 0.0,
+        quiet: false,
+        on_target_moved: crate::movement::move_to::TargetMoved::Follows,
+        wait: crate::movement::move_to::MoveWait::default(),
+    }));
     t.garrison_order(
         player_id(1),
         &object_ids([1000]),
@@ -2085,7 +2086,7 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
             .move_to()
             .copied()
             .unwrap()
-            .goal,
+            .goal(),
         Some([9.5, 19.5, 0.0])
     );
     // the same order again: the work command finds the Enter's own task, whose slot 9 (the
@@ -2118,9 +2119,7 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
     ship.actions.set_transport(Some(transport::TransportAction {
         state: transport::SAIL,
         point: [9.5, 19.5, 0.0],
-        move_to: Some(crate::movement::move_to::MoveToAction::sub_in(
-            MoveTo::Start,
-        )),
+        move_to: Some(MoveToAction::sub_in(MoveTo::Start)),
         ..transport::TransportAction::new([5.5, 30.5, 0.0])
     }));
     t.garrison_order(

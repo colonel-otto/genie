@@ -87,7 +87,7 @@ impl World {
             .set_move_to(Some(crate::movement::move_to::MoveToAction {
                 sprite,
                 state: crate::movement::move_to::MoveTo::Start,
-                goal: Some(point),
+                point,
                 target: -1,
                 range: 0.0,
                 quiet: false,

@@ -4,8 +4,7 @@
 use crate::GenieError;
 use crate::movement::PathAsk;
 use crate::movement::move_to::{
-    Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, start_walk_shown,
-    walk_or_give_up,
+    Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, ask_walk, walk_or_give_up,
 };
 use crate::objects::sprite::Graphic;
 use crate::unit_ai::{Inbox, TARGET_MOVED};
@@ -28,7 +27,7 @@ impl MoveToAction {
     pub const fn sub_to_point(point: [f32; 3], range: f32, sprite: Option<Graphic>) -> Self {
         Self {
             state: MoveTo::Start,
-            goal: Some(point),
+            point,
             target: -1,
             range,
             sprite,
@@ -54,7 +53,7 @@ impl MoveToAction {
     ///
     /// # Errors
     ///
-    /// A `MoveTo` without a goal, a target the world lacks, and what the path request and the
+    /// A target the world lacks, and what the path request and the
     /// motion step do not model.
     pub fn sub_update(
         &mut self,
@@ -70,10 +69,12 @@ impl MoveToAction {
                 if self.wait.state == 1 {
                     self.wait.state = 2;
                 }
-                let goal = self.walks_to()?;
+                let goal = self.walks_to();
                 self.state = MoveTo::Moving;
-                let started =
-                    start_walk_shown(walk.reborrow(), (goal, self.range, self.quiet), ask, shown)?;
+                let (started, asked) = ask_walk(walk, (goal, self.range, self.quiet), ask, shown)?;
+                if let Some(point) = asked {
+                    self.point = point;
+                }
                 self.state = started.unwrap_or_else(|| self.wait.give_up(waits, stance));
                 0
             }
