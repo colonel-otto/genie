@@ -89,7 +89,7 @@ impl World {
         }
         // TRIBE_Building_Object::update: the production after the combat update
         if matches!(outcome, Outcome::Stay) && own_update {
-            self.produce(p, i, seconds(dt))?;
+            self.building_production(p, i, seconds(dt))?;
         }
         Ok(())
     }

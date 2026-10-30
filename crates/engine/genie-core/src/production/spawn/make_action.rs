@@ -7,6 +7,7 @@ use crate::production::{IN_PRODUCTION, MakeObj, Making, QUEUED, housed, populati
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
+use crate::world::slots::PlayerSlots;
 
 /// A queue that is enabled and counts an entry, but holds none.
 const EMPTY_QUEUE: GenieError =
@@ -27,6 +28,28 @@ pub(super) const RESEARCH_TIME_MODIFIER: i16 = 86;
 pub(super) const WORLD_EFFECT: i16 = 269;
 
 impl World {
+    /// `TRIBE_Building_Object::update`'s part after its combat update (`0x1411ca3e2`) for the
+    /// building at `i` of player `p`: past state 2 (dying or dead) it cancels its whole queue
+    /// in every update ([`World::cancel_queue`], `FUN_1411cff00`: the units and researches
+    /// given back, the change counter counting on); in state 2 or below its production step
+    /// runs ([`World::produce`]). Its second action list (`+0xba0`: cleared first past state 2,
+    /// else updated by `FUN_140acafd0` into `+0xb9d`) holds nothing the world models.
+    ///
+    /// # Errors
+    ///
+    /// A building the world does not hold, and the cancel's and the production's.
+    pub(crate) fn building_production(
+        &mut self,
+        p: usize,
+        i: usize,
+        dt_seconds: f32,
+    ) -> Result<(), GenieError> {
+        if 2 < self.players.live(p, i)?.life.state {
+            return self.cancel_queue(p, i);
+        }
+        self.produce(p, i, dt_seconds)
+    }
+
     /// The building update's production step (`FUN_1411e7dc0`, after its combat update) for the
     /// building at `i` of player `p`. A disabled queue (`+0xbf6`) or an empty one does nothing.
     /// For a player not of type 3 a top action of the building's own (`FUN_141227a00`) that is a

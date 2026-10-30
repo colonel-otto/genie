@@ -379,6 +379,44 @@ fn a_cancel_gives_back_one_queued_unit() {
     assert!(t.cancel_order(&object_ids([9]), 0, true).is_ok());
 }
 
+/// `TRIBE_Building_Object::update` after its combat update (`0x1411ca3e2`): a building past
+/// state 2 cancels its whole queue (`FUN_1411cff00`): 429063959's player 3 deleted its town
+/// centre with four villagers queued at update 550, and the game gave their 200 food back as
+/// the town centre died. Each later update counts the queue's changes on; a building in state
+/// 2 keeps its queue for its production step.
+#[test]
+fn a_dying_building_cancels_its_queue_in_its_update() {
+    let mut t = game();
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 4, 50.0)]);
+    t.players[1].attributes[80] = 4.0;
+    t.players[1].objects[0].life.state = 3;
+    t.building_production(1, 0, 0.05).unwrap();
+    let p = &t.players[1];
+    assert_eq!((p.resources[0], p.attributes[80]), (200.0, 0.0));
+    let q = &p.objects[0].production.as_ref().unwrap().queue;
+    assert_eq!((q.count, q.total, q.changes), (0, 0, 1));
+    t.building_production(1, 0, 0.05).unwrap();
+    let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
+    assert_eq!((q.count, q.changes), (0, 2));
+    let mut t = game();
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 4, 50.0)]);
+    t.players[1].attributes[80] = 4.0;
+    t.players[1].objects[0].life.state = 2;
+    // a disabled queue (+0xbf6): the production step does nothing
+    t.players[1].objects[0]
+        .production
+        .as_mut()
+        .unwrap()
+        .queue
+        .enabled = false;
+    t.building_production(1, 0, 0.05).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.objects[0].production.as_ref().unwrap().queue.count, 1);
+    assert_eq!(p.resources[0], 0.0);
+}
+
 /// One unit of an entry of three goes: the entry keeps two, and the first unit's cancel
 /// drops the make action though the entry stays (`FUN_1411d66b0`).
 #[test]
