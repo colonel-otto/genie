@@ -9,6 +9,7 @@ use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, 
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{EnterOrder, RepairOrder, UnitView};
 use crate::world::others::OthersRef;
+use crate::world::slots::PlayerSlots;
 
 impl UnitView<'_, '_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
@@ -68,7 +69,11 @@ impl UnitView<'_, '_> {
             master: switch.unwrap_or(own),
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.c.w.players[self.player]
+            attribute_95: self
+                .c
+                .w
+                .players
+                .player(self.player)?
                 .attributes
                 .get(95)
                 .copied()
@@ -77,7 +82,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player,
-            relations: &self.c.w.players[self.player].relations,
+            relations: &self.c.w.players.player(self.player)?.relations,
             foreign,
             drop_sites: &self.c.w.drop_sites,
         };
@@ -152,7 +157,11 @@ impl UnitView<'_, '_> {
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.c.w.players[self.player]
+            attribute_95: self
+                .c
+                .w
+                .players
+                .player(self.player)?
                 .attributes
                 .get(95)
                 .copied()
@@ -161,7 +170,7 @@ impl UnitView<'_, '_> {
         };
         let dip = SideWorld {
             player,
-            relations: &self.c.w.players[self.player].relations,
+            relations: &self.c.w.players.player(self.player)?.relations,
             foreign,
             drop_sites: &self.c.w.drop_sites,
         };

@@ -9,6 +9,7 @@ use crate::unit_ai::{
     ARTIFACT_AI, CIVILIAN, Notify, QueuedOrder, SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi,
     UnitSide, civilian_may_attack, lion_may_attack,
 };
+use crate::world::slots::Held;
 
 impl UnitAi {
     /// `FUN_140c55c90`'s immediate branch ("Adding as an immediate order."), for a unit in state
@@ -58,7 +59,7 @@ impl UnitAi {
             Some((at, _)) => self.end_notifies(0, at, side, ai)?,
             None => self.clear_notifies(0)?,
         }
-        let front = self.orders[0];
+        let front = *self.orders.at(0)?;
         if self.process_order(&front, world, place, ai, side)? != 0xe {
             let _ = self.orders.remove(0);
         }

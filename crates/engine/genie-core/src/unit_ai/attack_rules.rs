@@ -11,6 +11,7 @@ use crate::unit_ai::{
     Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, LION_AI, PREDATOR_AI, PRIEST_AI,
     PRIORITY_3_CLASSES, SIEGE_AI, SOLDIER_AI, Seeker, TOWER_AI, Target,
 };
+use crate::world::slots::Held;
 
 /// What a priest's conversion test (`FUN_140c1af00`, the priest's slot 0x1b8) reads of the
 /// priest: its master's class and id, its faith (`+0x310`), its owner's attributes and its
@@ -293,7 +294,7 @@ pub(crate) fn patrol_distance(points: &[Vec3], point: Vec3) -> Result<f32, Genie
     }
     let mut least = PATROL_FARTHEST;
     for pair in points.windows(2) {
-        let d = line_distance(point, pair[0], pair[1]);
+        let d = line_distance(point, *pair.at(0)?, *pair.at(1)?);
         least = if least <= d { least } else { d };
     }
     Ok(least)

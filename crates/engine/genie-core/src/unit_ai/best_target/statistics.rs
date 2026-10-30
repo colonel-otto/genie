@@ -2,6 +2,7 @@
 //! the ranks and the sort, and the order history's weights.
 
 use crate::unit_ai::best_target::ORDER_WINDOW;
+use crate::world::slots::Held;
 
 /// The statistics' table holds at most this many objects (`FUN_140c66590`: `+0x1668` below
 /// 0x80).
@@ -305,44 +306,57 @@ impl Statistics {
     /// `FUN_140c41830` over the order slots `lo..=hi`: the last one's entry is the pivot; each
     /// slot before it whose entry ranks above it, or the same with a lower id, moves to the
     /// front part (a NaN rank never does); then the pivot follows the front part. Its slot.
-    pub(super) fn partition(&mut self, lo: usize, hi: usize) -> usize {
-        let pivot = self.entries[self.order[hi]];
+    ///
+    /// # Errors
+    ///
+    /// A slot or an entry the sort does not hold.
+    pub(super) fn partition(&mut self, lo: usize, hi: usize) -> Result<usize, crate::GenieError> {
+        let pivot = *self.entries.at(*self.order.at(hi)?)?;
         let mut i = lo;
         for j in lo..hi {
-            let e = self.entries[self.order[j]];
+            let e = *self.entries.at(*self.order.at(j)?)?;
             if pivot.rank < e.rank || (e.rank == pivot.rank && e.id < pivot.id) {
                 self.order.swap(i, j);
                 i += 1;
             }
         }
         self.order.swap(i, hi);
-        i
+        Ok(i)
     }
 
     /// `FUN_140c41b40` over the order slots `lo..=hi` (the quicksort, its second half by the
     /// loop).
-    pub(super) fn quicksort(&mut self, mut lo: usize, hi: usize) {
+    ///
+    /// # Errors
+    ///
+    /// A slot or an entry the sort does not hold.
+    pub(super) fn quicksort(&mut self, mut lo: usize, hi: usize) -> Result<(), crate::GenieError> {
         while lo < hi {
-            let p = self.partition(lo, hi);
+            let p = self.partition(lo, hi)?;
             if p > 0 {
-                self.quicksort(lo, p - 1);
+                self.quicksort(lo, p - 1)?;
             }
             lo = p + 1;
         }
+        Ok(())
     }
 
     /// `bestUnitToAttack`'s sort of the order slots by rank, the highest first (ties to the
     /// lower id): with more than one entry, `FUN_140c41830` over all, then `FUN_140c41b40` over
     /// both sides of the pivot.
-    pub fn sort(&mut self) {
+    ///
+    /// # Errors
+    ///
+    /// A slot or an entry the sort does not hold.
+    pub fn sort(&mut self) -> Result<(), crate::GenieError> {
         let Some(last) = self.entries.len().checked_sub(1).filter(|&l| 0 < l) else {
-            return;
+            return Ok(());
         };
-        let p = self.partition(0, last);
+        let p = self.partition(0, last)?;
         if p > 0 {
-            self.quicksort(0, p - 1);
+            self.quicksort(0, p - 1)?;
         }
-        self.quicksort(p + 1, last);
+        self.quicksort(p + 1, last)
     }
 }
 
@@ -358,8 +372,8 @@ pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: u32) -> [f32;
         if 60000 < age {
             break;
         }
-        if let Some(k) = usize::try_from(r.category).ok().filter(|&k| k < 12) {
-            w[k] += (60000 - age) as f32 / ORDER_WINDOW;
+        if let Some(slot) = usize::try_from(r.category).ok().and_then(|k| w.get_mut(k)) {
+            *slot += (60000 - age) as f32 / ORDER_WINDOW;
         }
     }
     w

@@ -5301,7 +5301,7 @@ fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
         notify[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes());
     }
     assert_eq!(
-        Notify::from_bytes(&notify),
+        Notify::from_bytes(&notify).unwrap(),
         Notify::own(9851, ACTION_COMPLETED, [ActionKind::Move.value(), 0, 0])
     );
 }

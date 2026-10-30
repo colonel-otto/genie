@@ -14,6 +14,7 @@ use crate::unit_ai::{
     Surroundings, TOWER_AI, TOWER_IDLE_TIMEOUT, UnitAi, UnitSeen, UnitSide, adjusted_idle_timeout,
     notify_capacity, siege_stance, soldier_stance,
 };
+use crate::world::slots::Held;
 
 impl UnitAi {
     /// The unit AI of `ai_type` a new object gets, as `FUN_141215560`'s constructors make it
@@ -215,7 +216,7 @@ impl UnitAi {
     ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < self.retries.len() {
-            let (target, timeout) = self.retries[i];
+            let (target, timeout) = *self.retries.at(i)?;
             if seen(target)?.is_none_or(|u| u.hp < 1.0) {
                 self.retries.clear();
                 break;

@@ -9,6 +9,7 @@ use crate::unit_ai::{
     AiMove, ENDED_ACTIONS, Effect, GO_ON, Notify, PRODUCED, QueuedOrder, Surroundings, UnitAi,
     UnitSide, WALK_BACK, point_gap_squared,
 };
+use crate::world::slots::Held;
 
 impl UnitAi {
     /// The base handler's case `0x1f9` ("Action %d has failed.", `FUN_140c589c0`): with an order
@@ -508,10 +509,10 @@ impl UnitAi {
     ) -> Result<(), GenieError> {
         let mut k = 0;
         while k < self.orders.len() {
-            if self.current_action.is_some() && self.orders[k].priority < 100 {
+            if self.current_action.is_some() && self.orders.at(k)?.priority < 100 {
                 return Ok(());
             }
-            let order = self.orders[k];
+            let order = *self.orders.at(k)?;
             let r = self.process_order(&order, Some((at, computer)), None, ai, side)?;
             if r == 0xe {
                 k += 1;

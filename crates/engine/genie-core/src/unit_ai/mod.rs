@@ -137,15 +137,18 @@ impl Notify {
     }
 
     /// The record as the save holds it.
-    #[must_use]
-    pub fn from_bytes(b: &[u8; 24]) -> Self {
-        let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-        Self {
-            caller: w(0),
-            recipient: w(4),
-            kind: w(8),
-            p: [w(12), w(16), w(20)],
-        }
+    ///
+    /// # Errors
+    ///
+    /// A record shorter than its fields.
+    pub fn from_bytes(b: &[u8; 24]) -> Result<Self, GenieError> {
+        let w = |i: usize| le_word(b, i).map(i32::from_le_bytes);
+        Ok(Self {
+            caller: w(0)?,
+            recipient: w(4)?,
+            kind: w(8)?,
+            p: [w(12)?, w(16)?, w(20)?],
+        })
     }
 }
 
@@ -288,6 +291,20 @@ pub struct QueuedOrder {
     pub target_type: i32,
 }
 
+/// The four bytes at offset `i` of a saved record.
+///
+/// # Errors
+///
+/// A record shorter than the offset.
+fn le_word(b: &[u8], i: usize) -> Result<[u8; 4], GenieError> {
+    b.get(i..)
+        .and_then(<[u8]>::first_chunk::<4>)
+        .copied()
+        .ok_or_else(|| {
+            GenieError::unreachable("a saved record shorter than its fields").with("offset", i)
+        })
+}
+
 impl QueuedOrder {
     /// The record as the save holds it (`+0x2d`..`+0x2f` are padding).
     ///
@@ -295,19 +312,19 @@ impl QueuedOrder {
     ///
     /// An order value no order holds ([`OrderKind::try_from`]).
     pub fn from_bytes(b: &[u8; 52]) -> Result<Self, GenieError> {
-        let w = |i: usize| i32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-        let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+        let w = |i: usize| le_word(b, i).map(i32::from_le_bytes);
+        let f = |i: usize| le_word(b, i).map(f32::from_le_bytes);
         Ok(Self {
-            issuer: w(0),
-            order: OrderKind::try_from(w(4))?,
-            priority: w(8),
-            target: w(12),
-            target_owner: w(16),
-            point: [f(20), f(24), f(28)],
-            range: f(32),
-            shown: [f(36), f(40)],
-            ready: b[44] != 0,
-            target_type: w(48),
+            issuer: w(0)?,
+            order: OrderKind::try_from(w(4)?)?,
+            priority: w(8)?,
+            target: w(12)?,
+            target_owner: w(16)?,
+            point: [f(20)?, f(24)?, f(28)?],
+            range: f(32)?,
+            shown: [f(36)?, f(40)?],
+            ready: le_word(b, 44)?[0] != 0,
+            target_type: w(48)?,
         })
     }
 }

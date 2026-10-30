@@ -7,6 +7,7 @@ use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker};
+use crate::world::slots::PlayerSlots;
 
 impl UnitView<'_, '_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit
@@ -25,8 +26,8 @@ impl UnitView<'_, '_> {
             every: &self.c.w.masters,
             restriction: -1,
             unit: &*self.unit,
-            attributes: &self.c.w.players[self.player].attributes,
-            relations: &self.c.w.players[self.player].relations,
+            attributes: &self.c.w.players.player(self.player)?.attributes,
+            relations: &self.c.w.players.player(self.player)?.relations,
             ai_settings: self.ai_settings,
             now: self.c.w.world_time,
             mode_680: self.c.w.mode_680,

@@ -85,7 +85,7 @@ fn the_scores_rank_and_sort_the_entries() {
         ]
     );
     st.rank(&mut |e| Ok(i32::from(!e.moving))).unwrap();
-    st.sort();
+    st.sort().unwrap();
     let ids: Vec<i32> = st.order.iter().map(|&i| st.entries[i].id).collect();
     assert_eq!(ids, [9, 5, 4]);
     // equal ranks go to the lower id
@@ -93,7 +93,7 @@ fn the_scores_rank_and_sort_the_entries() {
         e.rank = 1.0;
     }
     st.order = vec![0, 1, 2];
-    st.sort();
+    st.sort().unwrap();
     let ids: Vec<i32> = st.order.iter().map(|&i| st.entries[i].id).collect();
     assert_eq!(ids, [4, 5, 9]);
 }

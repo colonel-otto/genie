@@ -148,7 +148,7 @@ pub(super) fn unit_ai(
             .temp_notify
             .iter()
             .map(genie_core::unit_ai::Notify::from_bytes)
-            .collect(),
+            .collect::<Result<_, _>>()?,
         // the load's factory capacity, doubled for what it reads
         notify_capacity: genie_core::unit_ai::notify_capacity(
             combat.need_unit_ai as u32,

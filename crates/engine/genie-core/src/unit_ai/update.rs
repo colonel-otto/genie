@@ -14,6 +14,7 @@ use crate::unit_ai::{
     LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget, Search,
     Surroundings, UnitAi, UnitSide, civilian_kind, civilian_search_radius, retarget_kind,
 };
+use crate::world::slots::Held;
 
 /// What the full update's tail takes besides the surroundings ([`UnitAi::update_tail`]'s
 /// arguments, `0x140c66b10` from its slot 73 call on).
@@ -237,9 +238,9 @@ impl UnitAi {
             return Ok(());
         }
         for k in (0..self.orders.len()).rev() {
-            if self.orders[k].order == OrderKind::Build
+            if self.orders.at(k)?.order == OrderKind::Build
                 && side
-                    .seen_unit(self.orders[k].target)?
+                    .seen_unit(self.orders.at(k)?.target)?
                     .is_none_or(|u| u.state != 0)
             {
                 let _ = self.orders.remove(k);

@@ -17,6 +17,7 @@ use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker, patrol_information, town_centre};
 use crate::unit_ai::{Search, UnitAi};
 use crate::world::PETARD;
+use crate::world::slots::PlayerSlots;
 
 impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
     fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
@@ -33,7 +34,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             (
                 &self.c.w.drop_sites,
                 self.civ,
-                &self.c.w.players[self.c.player].tracker,
+                &self.c.w.players.player(self.c.player)?.tracker,
             ),
             (at, self.unit.life.attribute_type, class),
             look,
@@ -168,7 +169,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             kind: m.kind,
             main: u.annex_of,
             allied: crate::unit_ai::task_finder::allied(
-                &self.c.w.players[self.player].relations,
+                &self.c.w.players.player(self.player)?.relations,
                 self.player,
                 owner,
                 true,
@@ -241,8 +242,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
                 .master(&self.c.w.masters, self.player)
                 .map_or(-1, |m| m.terrain_restriction),
             unit: &*self.unit,
-            attributes: &self.c.w.players[self.player].attributes,
-            relations: &self.c.w.players[self.player].relations,
+            attributes: &self.c.w.players.player(self.player)?.attributes,
+            relations: &self.c.w.players.player(self.player)?.relations,
             ai_settings: self.ai_settings,
             now: self.c.w.world_time,
             mode_680: self.c.w.mode_680,

@@ -26,5 +26,5 @@ candidate by its attack category, its range and the unit AI's order history, the
 ## How it connects
 
 <!-- uses -->
-- Uses: [`math`](../../math/), [`objects`](../../objects/).
+- Uses: [`math`](../../math/), [`objects`](../../objects/), [`world`](../../world/).
 <!-- /uses -->
