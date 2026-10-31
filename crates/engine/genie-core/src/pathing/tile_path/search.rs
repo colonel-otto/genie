@@ -1,6 +1,7 @@
 //! The A* searches over the node cells and over the tiles: the nodes, the open list, the
 //! estimates and the expansions.
 
+use crate::pathing::tile_path::PlanTile;
 use crate::pathing::tile_path::{
     CLOSED, E, EARLY_LEFT, EARLY_START, GOAL, LONE, MIXED, N, NO_COST, NODE, OPEN, Planner, S,
     SHORTCUT_COST, W,
@@ -13,10 +14,9 @@ pub(super) struct Node {
     /// `+0`: the cell's index.
     pub(super) cell: usize,
     /// `+8`, `+0xa`: the cell at its level.
-    pub(super) x: i16,
-    pub(super) y: i16,
+    pub(super) at: PlanTile,
     /// `+0xc`, `+0xe`: the tile the cost is measured from.
-    pub(super) entry: [i16; 2],
+    pub(super) entry: PlanTile,
     /// `+0x10`: cost so far plus the estimate to the goal; `+0x14`: the cost so far.
     pub(super) f: f32,
     pub(super) g: f32,
@@ -107,11 +107,9 @@ impl OpenList {
 /// A node from the pool ([`Planner::alloc`]'s arguments, `FUN_140f79c90`'s).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TileNode {
-    /// The tile's x.
-    pub(super) tile_x: i16,
-    /// The tile's y.
-    pub(super) tile_y: i16,
-    /// The level of the tile's cell.
+    /// The cell at its level.
+    pub(super) at: PlanTile,
+    /// The cell's level.
     pub(super) level: u8,
     /// The cost so far.
     pub(super) cost: f32,
@@ -122,15 +120,14 @@ pub(super) struct TileNode {
     /// The edge it was entered by.
     pub(super) dir: u8,
     /// The tile its cost is measured from.
-    pub(super) entry: [i16; 2],
+    pub(super) entry: PlanTile,
 }
 
 impl Planner {
     /// `FUN_140f79c90`: a new node from the pool.
     pub(super) fn alloc(&mut self, new: TileNode) -> usize {
         let TileNode {
-            tile_x: x,
-            tile_y: y,
+            at,
             level,
             cost: g,
             estimate: h,
@@ -138,11 +135,10 @@ impl Planner {
             dir,
             entry,
         } = new;
-        let cell = self.index(level, x, y);
+        let cell = self.index(level, at);
         self.nodes.push(Node {
             cell,
-            x,
-            y,
+            at,
             entry,
             f: g + h,
             g,
@@ -155,23 +151,23 @@ impl Planner {
     }
 
     /// The estimate from a tile to the goal's, in whole tiles (`FUN_140f764c0`, `FUN_140f76840`).
-    pub(super) fn estimate_from(&self, x: i16, y: i16) -> f32 {
-        let dx = i32::from(self.goal[0]) - i32::from(x);
-        let dy = i32::from(self.goal[1]) - i32::from(y);
+    pub(super) fn estimate_from(&self, t: PlanTile) -> f32 {
+        let dx = i32::from(self.goal.x()) - i32::from(t.x());
+        let dy = i32::from(self.goal.y()) - i32::from(t.y());
         fmath::sqrt((dy * dy + dx * dx) as f32)
     }
 
     /// The start's estimate (`FUN_140f78850`, `FUN_140f79250`): in f32 differences.
-    pub(super) fn start_estimate(&self, x: i16, y: i16) -> f32 {
-        let dx = f32::from(self.goal[0]) - f32::from(x);
-        let dy = f32::from(self.goal[1]) - f32::from(y);
+    pub(super) fn start_estimate(&self, t: PlanTile) -> f32 {
+        let dx = f32::from(self.goal.x()) - f32::from(t.x());
+        let dy = f32::from(self.goal.y()) - f32::from(t.y());
         fmath::sqrt(dy * dy + dx * dx)
     }
 
     /// Where a new node's cost is measured from (`FUN_140f764c0`, `FUN_140f76840`): a turn
     /// (a move across the parent's own move) measures from the grandparent, unless the parent
     /// already did; returns that node's cost so far, its tile and whether it was the grandparent.
-    pub(super) fn measured_from(&self, parent: usize, dir: u8) -> (f32, [i16; 2], bool) {
+    pub(super) fn measured_from(&self, parent: usize, dir: u8) -> (f32, PlanTile, bool) {
         let p = &self.nodes[parent];
         if let (Some(gp), false) = (p.parent, p.shortcut) {
             let turn = if dir == W || dir == E {
@@ -192,68 +188,61 @@ impl Planner {
     pub(super) fn expand(
         &mut self,
         level: u8,
-        x: i16,
-        y: i16,
+        at: PlanTile,
         g: f32,
         parent: usize,
         dir: u8,
     ) -> Option<usize> {
-        let i = self.index(level, x, y);
+        let i = self.index(level, at);
         let [b0, b1] = self.cells[i];
         if dir & b0 == 0 {
             return None;
         }
         if b1 & NODE == 0 {
             if b1 & MIXED == 0 {
-                return self.expand(level + 1, x >> 1, y >> 1, g, parent, dir);
+                return self.expand(level + 1, at.up(1), g, parent, dir);
             }
-            let (x2, y2, l) = (x.wrapping_mul(2), y.wrapping_mul(2), level - 1);
+            let ([c0, c1, c2, c3], l) = (at.children(), level - 1);
             if dir & 3 != 0
-                && let Some(n) = self.expand(l, x2, y2, g, parent, dir)
+                && let Some(n) = self.expand(l, c0, g, parent, dir)
             {
                 return Some(n);
             }
             if dir & 5 != 0
-                && let Some(n) = self.expand(l, x2 + 1, y2, g, parent, dir)
+                && let Some(n) = self.expand(l, c1, g, parent, dir)
             {
                 return Some(n);
             }
             if dir & 0b1010 != 0
-                && let Some(n) = self.expand(l, x2, y2 + 1, g, parent, dir)
+                && let Some(n) = self.expand(l, c2, g, parent, dir)
             {
                 return Some(n);
             }
             if dir & 0xc == 0 {
                 return None;
             }
-            return self.expand(l, x2 + 1, y2 + 1, g, parent, dir);
+            return self.expand(l, c3, g, parent, dir);
         }
         if b0 & CLOSED != 0 {
             return None;
         }
-        let (cx, cy) = if 0 < level {
-            let half = 1i16 << (level - 1);
-            ((x << level) + half, (y << level) + half)
-        } else {
-            (x, y)
-        };
-        let (g0, [ex, ey], shortcut) = match self.measured_from(parent, dir) {
+        let centre = at.centre_at(level);
+        let (g0, entry, shortcut) = match self.measured_from(parent, dir) {
             (_, _, false) => (g, self.nodes[parent].entry, false),
             found => found,
         };
-        let dx = i32::from(ex) - i32::from(cx);
-        let dy = i32::from(ey) - i32::from(cy);
+        let dx = i32::from(entry.x()) - i32::from(centre.x());
+        let dy = i32::from(entry.y()) - i32::from(centre.y());
         let d = fmath::sqrt((dy * dy + dx * dx) as f32);
-        let h = self.estimate_from(cx, cy);
+        let h = self.estimate_from(centre);
         let n = self.alloc(TileNode {
-            tile_x: x,
-            tile_y: y,
+            at,
             level,
             cost: d + g0,
             estimate: h,
             parent: Some(parent),
             dir,
-            entry: [cx, cy],
+            entry: centre,
         });
         self.open.push(n, &self.nodes);
         self.nodes[n].shortcut = shortcut;
@@ -267,34 +256,32 @@ impl Planner {
     /// grandparent counts 1.1 times the grandparent's cost so far.
     pub(super) fn expand0(
         &mut self,
-        x: i16,
-        y: i16,
+        at: PlanTile,
         g: f32,
         parent: usize,
         dir: u8,
     ) -> Option<usize> {
-        let i = self.index(0, x, y);
+        let i = self.index(0, at);
         let b0 = self.cells[i][0];
         if dir & b0 == 0 || b0 & CLOSED != 0 {
             return None;
         }
-        let (g0, [ex, ey], shortcut) = match self.measured_from(parent, dir) {
+        let (g0, entry, shortcut) = match self.measured_from(parent, dir) {
             (gp, entry, true) => (gp * SHORTCUT_COST, entry, true),
             _ => (g, self.nodes[parent].entry, false),
         };
-        let dx = i32::from(ex) - i32::from(x);
-        let dy = i32::from(ey) - i32::from(y);
+        let dx = i32::from(entry.x()) - i32::from(at.x());
+        let dy = i32::from(entry.y()) - i32::from(at.y());
         let d = fmath::sqrt((dy * dy + dx * dx) as f32);
-        let h = self.estimate_from(x, y);
+        let h = self.estimate_from(at);
         let n = self.alloc(TileNode {
-            tile_x: x,
-            tile_y: y,
+            at,
             level: 0,
             cost: d + g0,
             estimate: h,
             parent: Some(parent),
             dir,
-            entry: [x, y],
+            entry: at,
         });
         self.open.push(n, &self.nodes);
         self.nodes[n].shortcut = shortcut;
@@ -326,20 +313,18 @@ impl Planner {
     pub(super) fn search_levels(
         &mut self,
         level: u8,
-        lx: i16,
-        ly: i16,
-        start: [i16; 2],
+        cell: PlanTile,
+        start: PlanTile,
         full: bool,
     ) -> Option<usize> {
-        let [b0, b1] = self.cell(level, lx, ly);
+        let [b0, b1] = self.cell(level, cell);
         if b1 & LONE == 0 && b0 == 0 {
             return None;
         }
-        let h0 = self.start_estimate(start[0], start[1]);
+        let h0 = self.start_estimate(start);
         let mut count: u32 = 0;
         let n = self.alloc(TileNode {
-            tile_x: lx,
-            tile_y: ly,
+            at: cell,
             level,
             cost: 0.0,
             estimate: h0,
@@ -368,7 +353,7 @@ impl Planner {
             for (edge, dx, dy, back) in steps {
                 if b & edge != 0
                     && let Some(found) =
-                        self.expand(node.level, node.x + dx, node.y + dy, node.g, n, back)
+                        self.expand(node.level, node.at.stepped(dx, dy), node.g, n, back)
                 {
                     return Some(found);
                 }
@@ -378,15 +363,13 @@ impl Planner {
     }
 
     /// `FUN_140f79250`: A* over the tiles from the start's tile.
-    pub(super) fn search_tiles(&mut self, start: [i16; 2]) -> Option<usize> {
-        let [x, y] = start;
-        if self.cell(0, x, y)[0] == 0 {
+    pub(super) fn search_tiles(&mut self, start: PlanTile) -> Option<usize> {
+        if self.cell(0, start)[0] == 0 {
             return None;
         }
-        let h0 = self.start_estimate(x, y);
+        let h0 = self.start_estimate(start);
         let n = self.alloc(TileNode {
-            tile_x: x,
-            tile_y: y,
+            at: start,
             level: 0,
             cost: 0.0,
             estimate: h0,
@@ -409,7 +392,7 @@ impl Planner {
             let steps = [(W, -1, 0, E), (E, 1, 0, W), (N, 0, -1, S), (S, 0, 1, N)];
             for (edge, dx, dy, back) in steps {
                 if b & edge != 0
-                    && let Some(found) = self.expand0(node.x + dx, node.y + dy, node.g, n, back)
+                    && let Some(found) = self.expand0(node.at.stepped(dx, dy), node.g, n, back)
                 {
                     return Some(found);
                 }

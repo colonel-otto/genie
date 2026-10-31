@@ -21,6 +21,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ObstructionType;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::short_path::Pather;
+use crate::pathing::tile_path::PlanRect;
 use crate::pathing::tile_path::Planner;
 use crate::players::PlayerId;
 use std::collections::BTreeMap;
@@ -55,7 +56,7 @@ pub struct Pathing {
     planners: BTreeMap<crate::map::RestrictionId, Planner>,
     /// Tile rectangles (x0, y0, x1, y1) whose static marks changed since the planners last saw
     /// them.
-    pending: Vec<[i16; 4]>,
+    pending: Vec<PlanRect>,
     /// The mesh, None until the slice has the game's.
     mesh: Option<Mesh>,
     /// Each object's shape (`+0x64c`).
@@ -301,7 +302,7 @@ impl Pathing {
     }
 
     /// Static marks changed over these tile rectangles.
-    pub fn tiles_changed(&mut self, rects: impl IntoIterator<Item = [i16; 4]>) {
+    pub fn tiles_changed(&mut self, rects: impl IntoIterator<Item = PlanRect>) {
         self.pending.extend(rects);
     }
 

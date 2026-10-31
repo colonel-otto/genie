@@ -9,7 +9,7 @@ fn a_search_leaves_the_grid_as_it_was() {
     let open = |_: Tile| false;
     let built = Planner::new(GridSize::new(8, 8), terrain.clone(), vec![1.0], &open);
     let mut searched = built.clone();
-    searched.goal = [3, 4];
+    searched.goal = PlanTile::new(3, 4);
     searched.goal_marked = true;
     assert!(searched != built && searched.same_grid(&built));
     let other = Planner::new(GridSize::new(8, 8), terrain, vec![0.0], &open);
@@ -158,7 +158,8 @@ fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
 #[test]
 fn an_open_map_is_one_node_cell_per_eight_tiles() {
     let p = Planner::new(GridSize::new(16, 8), vec![0; 128], vec![1.0], &open_map);
-    assert_eq!(p.level_sizes(), ([16, 8, 4, 2], [8, 4, 2, 1]));
+    let levels = [(16, 8), (8, 4), (4, 2), (2, 1)].map(|(w, h)| GridSize::new(w, h));
+    assert_eq!([0, 1, 2, 3].map(|l| p.level_size(l)), levels);
     // level 3: two uniform node cells, joined across their shared edge only
     assert_eq!(p.level(3), &[[E, NODE], [W, NODE]]);
     // an inner tile has all four edges; a corner tile two
@@ -170,7 +171,8 @@ fn an_open_map_is_one_node_cell_per_eight_tiles() {
 #[test]
 fn padding_tiles_of_a_map_that_is_not_a_multiple_of_eight_lie_off_the_map() {
     let p = Planner::new(GridSize::new(6, 6), vec![0; 36], vec![1.0], &open_map);
-    assert_eq!(p.level_sizes(), ([8, 4, 2, 1], [8, 4, 2, 1]));
+    let levels = [8, 4, 2, 1].map(|s| GridSize::new(s, s));
+    assert_eq!([0, 1, 2, 3].map(|l| p.level_size(l)), levels);
     let tile = |x: usize, y: usize| p.level(0)[y * 8 + x];
     assert_eq!(tile(6, 0), [0, 0xf]);
     assert_eq!(tile(5, 5), [N | W, 0]);
@@ -325,10 +327,10 @@ fn a_closed_rectangle_closes_the_node_cells_under_it() {
     assert_eq!(p.level(1)[0][1] & (NODE | MIXED), MIXED);
     assert_eq!(p.level(0)[0][1] & NODE, NODE);
     // the corners swapped and the low y off the map
-    p.close_rect([5, 3, 1, -2], true);
-    assert_eq!(p.region, [1, 0, 5, 3]);
+    p.close_rect(PlanRect::new(5, 3, 1, -2), true);
+    assert_eq!(p.region, PlanRect::new(1, 0, 5, 3));
     let closed = |p: &Planner, l: usize, x: usize, y: usize| {
-        let w = p.level_sizes().0[l] as usize;
+        let w = p.level_size(l).width() as usize;
         p.level(l)[y * w + x][0] & CLOSED != 0
     };
     let expected: [(usize, usize, usize, bool); 14] = [
@@ -352,12 +354,12 @@ fn a_closed_rectangle_closes_the_node_cells_under_it() {
     }
     // the closed bit is added once
     let once = p.clone();
-    p.close_rect([1, 0, 5, 3], true);
+    p.close_rect(PlanRect::new(1, 0, 5, 3), true);
     assert_eq!(p, once);
     assert_eq!(p.level(0)[1][0], CLOSED);
     // the high corner past the map's size holds at its last tile: everything reopens
-    p.close_rect([0, 0, 20, 9], false);
-    assert_eq!(p.region, [0, 0, 15, 7]);
+    p.close_rect(PlanRect::new(0, 0, 20, 9), false);
+    assert_eq!(p.region, PlanRect::new(0, 0, 15, 7));
     p.region = open.region;
     assert_eq!(p, open);
 }
@@ -366,9 +368,8 @@ fn a_closed_rectangle_closes_the_node_cells_under_it() {
 fn the_open_list_pops_the_cheapest_and_the_older_of_equal_costs_first() {
     let node = |f: f32| Node {
         cell: 0,
-        x: 0,
-        y: 0,
-        entry: [0, 0],
+        at: PlanTile::new(0, 0),
+        entry: PlanTile::new(0, 0),
         f,
         g: 0.0,
         level: 0,

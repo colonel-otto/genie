@@ -17343,14 +17343,20 @@ fn a_step_that_fails_stops_what_follows_it() {
         r.map_err(|e| e.reason().to_owned()),
         Err("the step's own gap".to_owned())
     );
-    assert_ne!(t.spatial.take_changes(), Vec::<[i16; 4]>::new());
+    assert_ne!(
+        t.spatial.take_changes(),
+        Vec::<crate::pathing::tile_path::PlanRect>::new()
+    );
     let mut t = house_builder();
     let r = finished_with(&mut t, (PlayerId::new(1), 0), |c| {
         c.w.spatial.add_record(object_id(10028), record);
         Ok(Outcome::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Outcome::Stay));
-    assert_eq!(t.spatial.take_changes(), Vec::<[i16; 4]>::new());
+    assert_eq!(
+        t.spatial.take_changes(),
+        Vec::<crate::pathing::tile_path::PlanRect>::new()
+    );
 }
 
 /// What a completion leaves its owner, each at once ([`World::complete_building`] and the

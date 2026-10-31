@@ -847,11 +847,11 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
             .word(Tile::new(140, 3))
             .is_some_and(|w| w & BLOCKED != 0)
     );
-    assert_eq!(s.take_changes(), Vec::<[i16; 4]>::new());
+    assert_eq!(s.take_changes(), Vec::<PlanRect>::new());
     // alone, it clears its tile
     s.remove(object_id(808));
     assert_eq!(s.tiles().word(Tile::new(140, 3)), Some(1));
-    assert_eq!(s.take_changes(), vec![[140, 3, 140, 3]]);
+    assert_eq!(s.take_changes(), vec![PlanRect::new(140, 3, 140, 3)]);
 }
 
 /// `FUN_141055b40` by the master's obstruction type: type 12 keeps all (false); type 1 clears

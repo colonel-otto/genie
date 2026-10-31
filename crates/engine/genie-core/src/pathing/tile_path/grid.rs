@@ -4,16 +4,17 @@
 use crate::map::GridSize;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
-use crate::pathing::tile_path::{E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, S, W};
+use crate::pathing::tile_path::{
+    E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, PlanRect, PlanTile, S, W,
+};
 
 /// A terrain restriction's planner (`0x4a8` bytes, built by `FUN_140f74f90`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Planner {
-    /// `+0x400`, `+0x402`: the map's size.
-    pub(super) size: [i16; 2],
-    /// Per level: `+0x3f0` width, `+0x3f8` height, `+0x3e0` first cell.
-    pub(super) widths: [i16; 4],
-    pub(super) heights: [i16; 4],
+    /// `+0x400`, `+0x402`: the map's size (as shorts).
+    pub(super) size: GridSize,
+    /// Per level: `+0x3f0` its width, `+0x3f8` its height (as shorts), `+0x3e0` its first cell.
+    pub(super) levels: [GridSize; 4],
     pub(super) offsets: [i32; 4],
     pub(super) cells: Vec<[u8; 2]>,
     /// `+0x3c0`: the restriction's passability per terrain.
@@ -21,11 +22,11 @@ pub struct Planner {
     /// Each tile's terrain (the map's tile `+9`), row by row.
     pub(super) terrain: Vec<u8>,
     /// `+0x408`..`+0x40e`: the tiles an update or the goal's marks cover.
-    pub(super) region: [i16; 4],
+    pub(super) region: PlanRect,
     /// `+0x410`, `+0x412`: the goal's tile.
-    pub(super) goal: [i16; 2],
+    pub(super) goal: PlanTile,
     /// `+0x414`, `+0x416`: the tile the path was last built to.
-    pub(super) last: [i16; 2],
+    pub(super) last: PlanTile,
     /// `+0x478`: the goal's marks found a node cell.
     pub(super) goal_marked: bool,
     pub(super) nodes: Vec<Node>,
@@ -58,8 +59,7 @@ impl Planner {
     #[must_use]
     pub fn same_grid(&self, other: &Self) -> bool {
         self.size == other.size
-            && self.widths == other.widths
-            && self.heights == other.heights
+            && self.levels == other.levels
             && self.offsets == other.offsets
             && self.cells == other.cells
             && self.passable == other.passable
@@ -74,22 +74,20 @@ impl Planner {
         let (w, h) = (size.width() as i16, size.height() as i16);
         let w0 = (w.wrapping_add(7)) & !7;
         let h0 = (h.wrapping_add(7)) & !7;
-        let widths = [w0, w0 >> 1, w0 >> 2, w0 >> 3];
-        let heights = [h0, h0 >> 1, h0 >> 2, h0 >> 3];
-        let area = |l: usize| i32::from(widths[l]) * i32::from(heights[l]);
+        let levels = [0, 1, 2, 3].map(|l| GridSize::new(i32::from(w0 >> l), i32::from(h0 >> l)));
+        let area = |l: usize| levels[l].width() * levels[l].height();
         let offsets = [0, area(0), area(0) + area(1), area(0) + area(1) + area(2)];
         let total = (offsets[3] + area(3)).max(0) as usize;
         let mut planner = Self {
-            size: [w, h],
-            widths,
-            heights,
+            size: GridSize::new(i32::from(w), i32::from(h)),
+            levels,
             offsets,
             cells: vec![[0, 0]; total],
             passable,
             terrain,
-            region: [0; 4],
-            goal: [0; 2],
-            last: [0; 2],
+            region: PlanRect::default(),
+            goal: PlanTile::default(),
+            last: PlanTile::default(),
             goal_marked: false,
             nodes: Vec::new(),
             open: OpenList::default(),
@@ -97,13 +95,18 @@ impl Planner {
             best_cost: NO_COST,
             points: Vec::new(),
         };
-        for x in (0..widths[3]).rev() {
-            for y in (0..heights[3]).rev() {
-                let _ = planner.init_cell(3, x, y);
+        for x in (0..w0 >> 3).rev() {
+            for y in (0..h0 >> 3).rev() {
+                let _ = planner.init_cell(3, PlanTile::new(x, y));
             }
         }
-        planner.update([0, 0, w, h], map);
+        planner.update(PlanRect::new(0, 0, w, h), map);
         planner
+    }
+
+    /// The map's last tile (its width and height less one) as the planner's shorts.
+    pub(super) const fn last_tile(&self) -> PlanTile {
+        PlanTile::new(self.size.width() as i16 - 1, self.size.height() as i16 - 1)
     }
 
     /// The restriction's passability per terrain the planner was made for.
@@ -116,41 +119,42 @@ impl Planner {
     #[must_use]
     pub fn level(&self, level: usize) -> &[[u8; 2]] {
         let start = self.offsets[level] as usize;
-        let n = (i32::from(self.widths[level]) * i32::from(self.heights[level])) as usize;
+        let size = self.levels[level];
+        let n = (size.width() * size.height()) as usize;
         &self.cells[start..start + n]
     }
 
-    /// The level sizes: widths, then heights.
+    /// The size of `level`'s grid in cells.
     #[must_use]
-    pub const fn level_sizes(&self) -> ([i16; 4], [i16; 4]) {
-        (self.widths, self.heights)
+    pub const fn level_size(&self, level: usize) -> GridSize {
+        self.levels[level]
     }
 
-    pub(super) fn index(&self, level: u8, x: i16, y: i16) -> usize {
+    /// The cell `at` of `level`'s place in the cells.
+    pub(super) fn index(&self, level: u8, at: PlanTile) -> usize {
         let l = usize::from(level);
-        let i =
-            i64::from(self.widths[l]) * i64::from(y) + i64::from(x) + i64::from(self.offsets[l]);
+        let i = i64::from(self.levels[l].width()) * i64::from(at.y())
+            + i64::from(at.x())
+            + i64::from(self.offsets[l]);
         usize::try_from(i).expect("a cell outside the planner's grid")
     }
 
-    pub(super) fn cell(&self, level: u8, x: i16, y: i16) -> [u8; 2] {
-        self.cells[self.index(level, x, y)]
+    pub(super) fn cell(&self, level: u8, at: PlanTile) -> [u8; 2] {
+        self.cells[self.index(level, at)]
     }
 
     /// `FUN_140f7da90`: clear a cell and mark its children that lie off the map; true when all of
     /// it does.
-    pub(super) fn init_cell(&mut self, level: u8, x: i16, y: i16) -> bool {
-        let i = self.index(level, x, y);
+    pub(super) fn init_cell(&mut self, level: u8, at: PlanTile) -> bool {
+        let i = self.index(level, at);
         self.cells[i] = [0, 0];
         if level == 0 {
-            if self.size[0] <= x || self.size[1] <= y {
+            if self.size.width() <= i32::from(at.x()) || self.size.height() <= i32::from(at.y()) {
                 self.cells[i][1] = 0xf;
             }
         } else {
-            let (x2, y2, l) = (x.wrapping_mul(2), y.wrapping_mul(2), level - 1);
-            let children = [(x2, y2), (x2 + 1, y2), (x2, y2 + 1), (x2 + 1, y2 + 1)];
-            for (bit, (cx, cy)) in children.into_iter().enumerate() {
-                if self.init_cell(l, cx, cy) {
+            for (bit, child) in at.children().into_iter().enumerate() {
+                if self.init_cell(level - 1, child) {
                     self.cells[i][1] += 1 << bit;
                 }
             }
@@ -161,7 +165,7 @@ impl Planner {
     /// `FUN_140f799b0` (through the passability lambda, `0x140f7b110`): 1 when the tile is
     /// blocked, else a bit per passable neighbour (2 left, 4 right, 8 above, 0x10 below).
     pub(super) fn adjacency(&self, tile: Tile, map: &impl Blocked) -> u32 {
-        let (w, h) = (i32::from(self.size[0]), i32::from(self.size[1]));
+        let (w, h) = (self.size.width(), self.size.height());
         let passes = |t: Tile| {
             let kind = self.terrain[(t.y() * w + t.x()) as usize];
             0.0 < self.passable[usize::from(kind)] && !map.blocked(t)
@@ -189,33 +193,27 @@ impl Planner {
 
     /// Rebuild the cells over a changed rectangle of tiles and its border (`FUN_140f7e4b0`, which
     /// the obstruction manager calls back through `FUN_140f7d4b0` when tiles change).
-    pub fn update(&mut self, [x0, y0, x1, y1]: [i16; 4], map: &impl Blocked) {
+    pub fn update(&mut self, rect: PlanRect, map: &impl Blocked) {
+        let [x0, y0, x1, y1] = rect.get();
         let (lo_x, hi_x) = (x0.min(x1), x0.max(x1).wrapping_add(1));
         let (lo_y, hi_y) = (y0.min(y1), y0.max(y1).wrapping_add(1));
+        let last = self.last_tile();
         let rx0 = (lo_x - 1).max(0);
         let ry0 = (lo_y - 1).max(0);
-        let rx1 = if self.size[0] <= hi_x {
-            self.size[0] - 1
-        } else {
-            hi_x
-        };
-        let ry1 = if self.size[1] <= hi_y {
-            self.size[1] - 1
-        } else {
-            hi_y
-        };
-        self.region = [rx0, ry0, rx1, ry1];
+        let rx1 = if last.x() < hi_x { last.x() } else { hi_x };
+        let ry1 = if last.y() < hi_y { last.y() } else { hi_y };
+        self.region = PlanRect::new(rx0, ry0, rx1, ry1);
         for cx in (rx0 >> 3)..=(rx1 >> 3) {
             for cy in (ry0 >> 3)..=(ry1 >> 3) {
-                let _ = self.rebuild(3, cx, cy, map);
+                let _ = self.rebuild(3, PlanTile::new(cx, cy), map);
             }
         }
     }
 
     /// `FUN_140f7e5e0`: a cell's edges and flags from its tile (level 0) or its children; returns
     /// both bytes.
-    pub(super) fn rebuild(&mut self, level: u8, x: i16, y: i16, map: &impl Blocked) -> [u8; 2] {
-        let i = self.index(level, x, y);
+    pub(super) fn rebuild(&mut self, level: u8, at: PlanTile, map: &impl Blocked) -> [u8; 2] {
+        let i = self.index(level, at);
         let old = self.cells[i][1];
         let mut low = old & 0xf;
         if level == 0 {
@@ -223,9 +221,8 @@ impl Planner {
             if old & LONE != 0 {
                 self.cells[i][1] = low + LONE;
             }
-            let [rx0, ry0, rx1, ry1] = self.region;
-            if rx0 <= x && ry0 <= y && x <= rx1 && y <= ry1 {
-                let a = self.adjacency(Tile::new(i32::from(x), i32::from(y)), map);
+            if self.region.holds_at(0, at) {
+                let a = self.adjacency(at.tile(), map);
                 self.cells[i][0] = 0;
                 if a & 1 == 0 {
                     let mut b = 0;
@@ -251,13 +248,12 @@ impl Planner {
             }
             return self.cells[i];
         }
-        let (x2, y2, l) = (x.wrapping_mul(2), y.wrapping_mul(2), level - 1);
-        // the children in the game's order: (2x, 2y), (2x + 1, 2y), (2x, 2y + 1), (2x + 1, 2y + 1)
-        let at = [(x2, y2), (x2 + 1, y2), (x2, y2 + 1), (x2 + 1, y2 + 1)];
+        let l = level - 1;
+        let children = at.children();
         let mut child = [[0u8; 2]; 4];
-        for (k, &(cx, cy)) in at.iter().enumerate() {
+        for (k, &c) in children.iter().enumerate() {
             if low == 0 || self.cells[i][1] & (1 << k) == 0 {
-                child[k] = self.rebuild(l, cx, cy, map);
+                child[k] = self.rebuild(l, c, map);
             }
         }
         let [d0, d1, d2, d3] = child.map(|c| c[0]);
@@ -267,9 +263,9 @@ impl Planner {
             || self.splits(child.map(|c| c[0]), dirs);
         if complex {
             low += MIXED;
-            for (k, &(cx, cy)) in at.iter().enumerate() {
+            for (k, &at) in children.iter().enumerate() {
                 if child[k][1] & (NODE | MIXED) == 0 {
-                    let c = self.index(l, cx, cy);
+                    let c = self.index(l, at);
                     self.cells[c][1] = self.cells[c][1].wrapping_add(NODE);
                 }
             }

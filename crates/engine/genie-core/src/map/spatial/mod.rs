@@ -24,6 +24,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
+use crate::pathing::tile_path::PlanRect;
 use crate::players::PlayerId;
 use crate::players::{ByRelation, QueryRelation, UnitRelation};
 use crate::vision::registry::Record;
@@ -481,9 +482,10 @@ impl Tiles {
     }
 
     /// The covered tiles as a rectangle, as the manager hands it to the planners' callback.
-    fn covered_rect(&self, p: &Placed) -> [i16; 4] {
+    fn covered_rect(&self, p: &Placed) -> PlanRect {
         let (xs, ys) = self.covered(p);
-        [*xs.start(), *ys.start(), *xs.end(), *ys.end()].map(|v| v as i16)
+        let [x0, y0, x1, y1] = [*xs.start(), *ys.start(), *xs.end(), *ys.end()].map(|v| v as i16);
+        PlanRect::new(x0, y0, x1, y1)
     }
 
     /// A static record marks the tiles it covers that no player marked yet.
@@ -574,7 +576,7 @@ pub struct Spatial {
     tiles: Tiles,
     /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
     /// ([`Spatial::take_changes`]).
-    changed: Vec<[i16; 4]>,
+    changed: Vec<PlanRect>,
     /// The seconds since each frozen object froze.
     frozen_for: BTreeMap<ObjectId, f32>,
     /// What a stopped player's units may have done since: the fastest any of the players' unit

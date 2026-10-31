@@ -14,6 +14,7 @@ use crate::map::spatial::{
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionType;
 use crate::objects::{ObjectId, ObjectKey};
+use crate::pathing::tile_path::PlanRect;
 use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
@@ -193,7 +194,7 @@ impl Spatial {
     }
 
     /// The tile rectangles whose static marks changed since the last call.
-    pub fn take_changes(&mut self) -> Vec<[i16; 4]> {
+    pub fn take_changes(&mut self) -> Vec<PlanRect> {
         std::mem::take(&mut self.changed)
     }
 

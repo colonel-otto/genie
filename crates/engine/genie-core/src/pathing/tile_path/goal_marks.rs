@@ -1,7 +1,9 @@
 //! A search's request and goal: its ranges and the marks of the cells and tiles within them.
 
 use crate::map::Point;
-use crate::pathing::tile_path::{CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, Planner};
+use crate::pathing::tile_path::{
+    CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, PlanRect, PlanTile, Planner,
+};
 
 /// A search's request: from a point to a goal with its ranges, as the planner's entry passes
 /// them on (`FUN_140f7c530`'s arguments 3 to 11).
@@ -16,8 +18,8 @@ pub struct Request {
     pub radii: f32,
     /// How near the goal counts as there (the path level's range).
     pub range: f32,
-    /// Rectangles of tiles closed for this search (x0, y0, x1, y1).
-    pub closed: Vec<[i16; 4]>,
+    /// Rectangles of tiles closed for this search.
+    pub closed: Vec<PlanRect>,
     /// A human player's search: no early stop near the goal.
     pub full: bool,
 }
@@ -48,12 +50,11 @@ pub(super) const fn tile(v: f32) -> i16 {
 }
 
 impl Planner {
-    /// `FUN_140f7ba80`: whether a cell at `level` lies within the goal's ranges of (`x`, `y`): one
-    /// of its passable (or lone) tiles, measured from the tile's corner.
-    pub(super) fn in_range(&self, level: u8, cx: i16, cy: i16, goal: Goal) -> bool {
+    /// `FUN_140f7ba80`: whether `cell` of `level` lies within the goal's ranges of (`x`, `y`):
+    /// one of its passable (or lone) tiles, measured from the tile's corner.
+    pub(super) fn in_range(&self, level: u8, cell: PlanTile, goal: Goal) -> bool {
         let Goal { x, y, radii, range } = goal;
-        let [rx0, ry0, rx1, ry1] = self.region;
-        if !(rx0 >> level <= cx && ry0 >> level <= cy && cx <= rx1 >> level && cy <= ry1 >> level) {
+        if !self.region.holds_at(level, cell) {
             return false;
         }
         let r = range + HALF;
@@ -67,10 +68,11 @@ impl Planner {
                 d
             }
         };
-        let (x0, y0) = (cx << level, cy << level);
+        let first = cell.corner_at(level);
+        let (x0, y0) = (first.x(), first.y());
         for tx in x0..=step - 1 + x0 {
             for ty in y0..=step - 1 + y0 {
-                let [b0, b1] = self.cell(0, tx, ty);
+                let [b0, b1] = self.cell(0, PlanTile::new(tx, ty));
                 if b0 == 0 && b1 & LONE == 0 {
                     continue;
                 }
@@ -99,14 +101,15 @@ impl Planner {
         let y0 = tile(y - r).max(0);
         let mut x1 = tile(r + x + far);
         let mut y1 = tile(r + y + far);
-        if self.size[0] <= x1 {
-            x1 = self.size[0] - 1;
+        let last = self.last_tile();
+        if last.x() < x1 {
+            x1 = last.x();
         }
-        if self.size[1] <= y1 {
-            y1 = self.size[1] - 1;
+        if last.y() < y1 {
+            y1 = last.y();
         }
-        self.region = [x0, y0, x1, y1];
-        self.goal = [tile(x), tile(y)];
+        self.region = PlanRect::new(x0, y0, x1, y1);
+        self.goal = PlanTile::new(tile(x), tile(y));
     }
 
     /// Toggle a cell's goal mark; true when it changed.
@@ -124,11 +127,11 @@ impl Planner {
     pub(super) fn mark_goal(&mut self, goal: Goal, set: bool) {
         self.goal_square(goal, FAR_SIDE);
         self.goal_marked = false;
-        let [x0, y0, x1, y1] = self.region;
+        let [x0, y0, x1, y1] = self.region.get();
         let mut marked = 0;
         for cx in (x0 >> 3)..=(x1 >> 3) {
             for cy in (y0 >> 3)..=(y1 >> 3) {
-                marked += self.mark_cells(3, cx, cy, goal, set);
+                marked += self.mark_cells(3, PlanTile::new(cx, cy), goal, set);
             }
         }
         if marked != 0 {
@@ -136,7 +139,7 @@ impl Planner {
             return;
         }
         let Some(i) = (0..=3u8).rev().find_map(|l| {
-            let i = self.index(l, self.goal[0] >> l, self.goal[1] >> l);
+            let i = self.index(l, self.goal.up(l));
             (self.cells[i][1] & NODE != 0).then_some(i)
         }) else {
             return;
@@ -148,87 +151,80 @@ impl Planner {
 
     /// `FUN_140f7d7a0`: the node cells under a cell within the goal's ranges, marked or cleared;
     /// returns how many changed.
-    pub(super) fn mark_cells(&mut self, level: u8, cx: i16, cy: i16, goal: Goal, set: bool) -> i32 {
-        let [rx0, ry0, rx1, ry1] = self.region;
-        if !(rx0 >> level <= cx && ry0 >> level <= cy && cx <= rx1 >> level && cy <= ry1 >> level) {
+    pub(super) fn mark_cells(&mut self, level: u8, cell: PlanTile, goal: Goal, set: bool) -> i32 {
+        if !self.region.holds_at(level, cell) {
             return 0;
         }
-        let i = self.index(level, cx, cy);
+        let i = self.index(level, cell);
         if self.cells[i][1] & NODE == 0 {
             if level == 0 {
                 return 0;
             }
-            let (x2, y2, l) = (cx.wrapping_mul(2), cy.wrapping_mul(2), level - 1);
-            return [(x2, y2), (x2 + 1, y2), (x2, y2 + 1), (x2 + 1, y2 + 1)]
+            return cell
+                .children()
                 .into_iter()
-                .map(|(a, b)| self.mark_cells(l, a, b, goal, set))
+                .map(|c| self.mark_cells(level - 1, c, goal, set))
                 .sum();
         }
-        i32::from(self.in_range(level, cx, cy, goal) && self.toggle_goal(i, set))
+        i32::from(self.in_range(level, cell, goal) && self.toggle_goal(i, set))
     }
 
     /// `FUN_140f7a990`: mark (or clear) the tiles within the goal's ranges; when none is, the
     /// goal's own tile.
     pub(super) fn mark_goal_tiles(&mut self, goal: Goal, set: bool) {
         self.goal_square(goal, 0.0);
-        let [x0, y0, x1, y1] = self.region;
+        let [x0, y0, x1, y1] = self.region.get();
         let mut changed = false;
         for ty in y0..=y1 {
             for tx in x0..=x1 {
-                if self.in_range(0, tx, ty, goal) {
-                    let i = self.index(0, tx, ty);
+                let t = PlanTile::new(tx, ty);
+                if self.in_range(0, t, goal) {
+                    let i = self.index(0, t);
                     changed |= self.toggle_goal(i, set);
                 }
             }
         }
         if !changed {
-            let i = self.index(0, self.goal[0], self.goal[1]);
+            let i = self.index(0, self.goal);
             let _ = self.toggle_goal(i, set);
         }
     }
 
     /// `FUN_140f7be80`: close (or reopen) the node cells over a rectangle of tiles
     /// (`FUN_140f7e070`).
-    pub(super) fn close_rect(&mut self, [x0, y0, x1, y1]: [i16; 4], set: bool) {
+    pub(super) fn close_rect(&mut self, rect: PlanRect, set: bool) {
+        let [x0, y0, x1, y1] = rect.get();
         let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
         let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+        let last = self.last_tile();
         let rx0 = lo_x.max(0);
         let ry0 = lo_y.max(0);
-        let rx1 = if self.size[0] <= hi_x {
-            self.size[0] - 1
-        } else {
-            hi_x
-        };
-        let ry1 = if self.size[1] <= hi_y {
-            self.size[1] - 1
-        } else {
-            hi_y
-        };
-        self.region = [rx0, ry0, rx1, ry1];
+        let rx1 = if last.x() < hi_x { last.x() } else { hi_x };
+        let ry1 = if last.y() < hi_y { last.y() } else { hi_y };
+        self.region = PlanRect::new(rx0, ry0, rx1, ry1);
         for cx in (rx0 >> 3)..=(rx1 >> 3) {
             for cy in (ry0 >> 3)..=(ry1 >> 3) {
-                self.close_cells(3, cx, cy, set);
+                self.close_cells(3, PlanTile::new(cx, cy), set);
             }
         }
     }
 
-    /// `FUN_140f7e070`.
-    pub(super) fn close_cells(&mut self, mut level: u8, mut x: i16, mut y: i16, set: bool) {
-        while self.cell(level, x, y)[1] & NODE == 0 {
+    /// `FUN_140f7e070`: the node cells under `cell` of `level` within the region closed or
+    /// reopened; the last child is walked by the loop, the others by recursion.
+    pub(super) fn close_cells(&mut self, mut level: u8, mut cell: PlanTile, set: bool) {
+        while self.cell(level, cell)[1] & NODE == 0 {
             if level == 0 {
                 return;
             }
             level -= 1;
-            x = x.wrapping_mul(2);
-            let y2 = y.wrapping_mul(2);
-            self.close_cells(level, x, y2, set);
-            self.close_cells(level, x + 1, y2, set);
-            self.close_cells(level, x + 1, y2 + 1, set);
-            y = y2 + 1;
+            let [c0, c1, c2, c3] = cell.children();
+            self.close_cells(level, c0, set);
+            self.close_cells(level, c1, set);
+            self.close_cells(level, c3, set);
+            cell = c2;
         }
-        let [rx0, ry0, rx1, ry1] = self.region;
-        if rx0 >> level <= x && x <= rx1 >> level && ry0 >> level <= y && y <= ry1 >> level {
-            let i = self.index(level, x, y);
+        if self.region.holds_at(level, cell) {
+            let i = self.index(level, cell);
             let b0 = self.cells[i][0];
             if set != (b0 & CLOSED != 0) {
                 self.cells[i][0] = if set { b0 + CLOSED } else { b0 - CLOSED };

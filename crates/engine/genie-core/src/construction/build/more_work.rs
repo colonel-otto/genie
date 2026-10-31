@@ -109,7 +109,7 @@ impl Unit {
             let planner = c.w.pathing.planner(restriction, spatial.tiles()).ok_or(
                 GenieError::unsupported("a builder's restriction without a planner"),
             )?;
-            let width = i64::from(planner.level_sizes().0[0]);
+            let width = i64::from(planner.level_size(0).width());
             let cells = planner.level(0);
             let blocked = move |t: Tile| {
                 cells[(width * i64::from(t.y()) + i64::from(t.x())) as usize][0] == 0

@@ -24,6 +24,7 @@ passability and the blocked tiles. A change to a building's tiles rebuilds the c
 | [`grid.rs`](grid.rs) | A terrain restriction's planner (`Planner`) and its four-level grid: built, read and rebuilt over a changed rectangle. |
 | [`mod.rs`](mod.rs) | The tile pathfinder: a planner per terrain restriction in use (the world's list at `world + 0x140`, made by `FUN_140f7d310`), which searches a four-level grid of the map's tiles for the path a unit's top path level asks for (`FUN_140f7c530`, called from the motion step's state-2 branch). |
 | [`path_trace.rs`](path_trace.rs) | The path's points: the tiles a node's path crosses into and aims at, traced back from the goal. |
+| [`plan_tile.rs`](plan_tile.rs) | The planner's places as its shorts: a tile or a cell of a level (`PlanTile`) and a rectangle of tiles (`PlanRect`). |
 | [`planning.rs`](planning.rs) | The planner's entry (`FUN_140f7c530`): the search over the levels, the shortcut near the start and the search on the tiles. |
 | [`search.rs`](search.rs) | The A* searches over the node cells and over the tiles: the nodes, the open list, the estimates and the expansions. |
 | [`smoothing.rs`](smoothing.rs) | The smoothing of a found path (`FUN_140f7dbb0`): its straight stretches wherever the unit can walk straight. |

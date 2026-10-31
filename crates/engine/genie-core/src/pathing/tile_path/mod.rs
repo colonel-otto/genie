@@ -21,13 +21,14 @@ use genie_diff::Diff;
 mod goal_marks;
 mod grid;
 mod path_trace;
+mod plan_tile;
 mod planning;
 mod search;
 mod smoothing;
 
 pub use self::goal_marks::Request;
-use self::goal_marks::tile;
 pub use self::grid::{Blocked, Planner};
+pub use self::plan_tile::{PlanRect, PlanTile};
 use self::search::{Node, OpenList};
 #[cfg(test)]
 use self::smoothing::straighten;
