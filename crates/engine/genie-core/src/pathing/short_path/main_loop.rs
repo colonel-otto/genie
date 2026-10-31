@@ -1,11 +1,11 @@
 //! The search's run: its main loop and a popped node's expansion by its type.
 
-use crate::pathing::ShapeId;
 use crate::pathing::short_path::{
-    Callback, Corner, Ctx, FixedPoint, HIT_WITHOUT_SHAPE, Hit, Kind, NONE, NUDGES, Node, Poly,
-    RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits,
-    float_distance, in_box, isqrt, through_float,
+    Callback, Corner, Ctx, FixedPoint, Hit, Kind, NONE, NUDGES, Node, OPEN_CORNER_WITHOUT_SIDES,
+    Poly, RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb,
+    corner_emits, float_distance, in_box, isqrt, through_float,
 };
+use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
@@ -24,7 +24,7 @@ impl Search<'_> {
         &mut self,
         n: Node,
         shape: ShapeId,
-        side: u8,
+        side: ShapeSide,
     ) -> Result<Option<ShortPath>, GenieError> {
         let p = n.at;
         let d = self.ctx.d;
@@ -32,7 +32,7 @@ impl Search<'_> {
             let Some(e) = Self::edge_holding(
                 self.polys.checked(i)?,
                 p,
-                u32::from(side),
+                side,
                 self.ctx.mesh,
                 Some(shape),
                 d,
@@ -47,14 +47,14 @@ impl Search<'_> {
         }
         self.polys.push(Poly::default());
         let mut poly = Poly::default();
-        let mut rc = self.trace(shape, u32::from(side), Some(p), &mut poly)?;
+        let mut rc = self.trace(shape, side, Some(p), &mut poly)?;
         let last = self.polys.len() - 1;
         'older: for j in 0..last {
             for k in 0..poly.vertices.len() {
                 let hit = Self::edge_holding(
                     self.polys.checked(j)?,
                     *poly.vertices.checked(k)?,
-                    u32::from(*poly.sides.checked(k)?),
+                    *poly.sides.checked(k)?,
                     self.ctx.mesh,
                     *poly.shapes.checked(k)?,
                     d,
@@ -148,8 +148,8 @@ impl Search<'_> {
                 hi,
                 poly: walk.poly,
                 token: u32::from(token),
-                prev: sp,
-                next: sn,
+                prev: Some(sp),
+                next: Some(sn),
             };
             let node = self.add(g, walk.parent, v, kind);
             self.push(node);
@@ -199,8 +199,8 @@ impl Search<'_> {
         &mut self,
         n: Node,
         token: u32,
-        prev: u8,
-        next: u8,
+        prev: ShapeSide,
+        next: ShapeSide,
     ) -> Result<(), GenieError> {
         let p = n.at;
         self.token = token;
@@ -210,14 +210,10 @@ impl Search<'_> {
         if self.goal_node != NONE && (reach >= self.arena.checked(self.goal_node as usize)?.g) {
             return Ok(());
         }
-        let mut hit = Hit {
-            shape: None,
-            side: 0,
-        };
-        let mut k =
-            self.ctx
-                .raycast(p, t, &mut frac, &mut hit, Callback::Corner, &mut self.token)?;
-        if k == 2 {
+        let mut found = self
+            .ctx
+            .raycast(p, t, &mut frac, Callback::Corner, &mut self.token)?;
+        if touches(found) {
             let b = self.bounds;
             for dir in NUDGES {
                 let tj = [
@@ -232,26 +228,21 @@ impl Search<'_> {
                 };
                 self.token = u32::from(tok);
                 let mut f2 = T_START;
-                k = self.ctx.raycast(
-                    p,
-                    tj,
-                    &mut f2,
-                    &mut hit,
-                    Callback::Corner,
-                    &mut self.token,
-                )?;
-                if k != 2 {
+                found = self
+                    .ctx
+                    .raycast(p, tj, &mut f2, Callback::Corner, &mut self.token)?;
+                if !touches(found) {
                     frac = f2;
                     t = tj;
                     break;
                 }
             }
-            if k == 2 {
+            if touches(found) {
                 self.corner_axis(n, t)?;
                 return Ok(());
             }
         }
-        if k == 1 {
+        if let Some((1, hit)) = found {
             let mut h = Self::at_fraction(p, t, frac);
             let shape = self.settle(&mut h, hit)?;
             if h != p {
@@ -267,8 +258,8 @@ impl Search<'_> {
             hi: NONE,
             poly: NONE,
             token: NONE,
-            prev: 0xff,
-            next: 0xff,
+            prev: None,
+            next: None,
         };
         let node = self.add(g, n.idx, t, kind);
         if self.goal_node == NONE || node.g < self.arena.checked(self.goal_node as usize)?.g {
@@ -436,24 +427,20 @@ impl Search<'_> {
                 }
                 let t = range_point(self.goal.range, p, self.goal.at)?;
                 let mut frac = T_START;
-                let mut hit = Hit {
-                    shape: None,
-                    side: 0,
-                };
                 let mut token = self.token;
-                let k = self
+                let found = self
                     .ctx
-                    .raycast(p, t, &mut frac, &mut hit, Callback::Box, &mut token)?;
+                    .raycast(p, t, &mut frac, Callback::Box, &mut token)?;
                 self.token = token;
-                match k {
-                    0 => {
+                match found {
+                    None => {
                         return Ok(Some(ShortPath {
                             result: 1,
                             points: vec![start, p, t],
                         }));
                     }
-                    2 => self.touch_from(n, p, t, frac, hit)?,
-                    _ => {
+                    Some((2, hit)) => self.touch_from(n, p, t, frac, hit)?,
+                    Some((_, hit)) => {
                         let mut h = Self::at_fraction(p, t, frac);
                         let shape = self.settle(&mut h, hit)?;
                         let g = n.g.wrapping_add(float_distance(p, h));
@@ -473,6 +460,9 @@ impl Search<'_> {
                 if self.pop_test(&n)? {
                     return Ok(None);
                 }
+                let (Some(prev), Some(next)) = (prev, next) else {
+                    return Err(OPEN_CORNER_WITHOUT_SIDES);
+                };
                 self.corner_expand(n, token, prev, next)?;
             }
         }
@@ -505,8 +495,7 @@ impl Search<'_> {
             }
             frac -= 0x6_6666;
         }
-        let touched = hit.shape.ok_or(HIT_WITHOUT_SHAPE)?;
-        let r = *self.ctx.mesh.shapes.checked(touched.index())?;
+        let r = *self.ctx.mesh.shapes.checked(hit.shape.index())?;
         let centre = [
             r[0].wrapping_add(
                 (((i64::from(r[2] - r[0]) * 0x40_0000)
@@ -538,6 +527,11 @@ impl Search<'_> {
         self.legs(base, c, dir_x, dir_y, delta)?;
         self.legs(base, c, dir_y, dir_x, delta)
     }
+}
+
+/// Whether a raycast's hit is a touch (its result 2), which the corner's nudges try to get past.
+const fn touches(found: Option<(i32, Hit)>) -> bool {
+    matches!(found, Some((2, _)))
 }
 
 /// `FUN_140fa31b0`: the point on the circle of `range` around `goal` toward `p` (the goal itself

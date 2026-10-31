@@ -7,8 +7,8 @@
 
 use crate::GenieError;
 use crate::math::fmath;
-use crate::pathing::ShapeId;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
+use crate::pathing::{ShapeId, ShapeSide};
 
 mod call;
 mod geometry;
@@ -89,12 +89,12 @@ const fn inside(r: Rect, [x, y]: FixedPoint, k: i32) -> bool {
 }
 
 /// A hit of the raycast or a sweep: the shape and its side.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hit {
-    /// The shape hit (none before the ray hits one: the game's -1).
-    pub shape: Option<ShapeId>,
+    /// The shape hit.
+    pub shape: ShapeId,
     /// Its side.
-    pub side: u8,
+    pub side: ShapeSide,
 }
 
 /// A sweep that counts a shape without the point and side its counting hit writes first.
@@ -108,13 +108,13 @@ struct Sweep {
     found: bool,
     shape: Option<ShapeId>,
     point: Option<FixedPoint>,
-    side: Option<u8>,
+    side: Option<ShapeSide>,
 }
 
 impl Sweep {
     /// The counted shape with the last hit's side and point: a sweep that counts a shape has
     /// written a point and a side by then (the hit that counts writes them first).
-    const fn counted(&self) -> Result<Option<(ShapeId, u8, FixedPoint)>, GenieError> {
+    const fn counted(&self) -> Result<Option<(ShapeId, ShapeSide, FixedPoint)>, GenieError> {
         if !self.found {
             return Ok(None);
         }
@@ -158,10 +158,10 @@ const TRACE_STEPS: i32 = 2000;
 const NUDGES: [FixedPoint; 4] = [[0, ONE], [ONE, 0], [0, -ONE], [-ONE, 0]];
 /// No node or polygon.
 const NONE: u32 = u32::MAX;
-/// A hit that counted without naming its shape: the raycast names the shape of every hit it
-/// counts.
-const HIT_WITHOUT_SHAPE: GenieError =
-    GenieError::unreachable("a ray's counted hit that names no shape");
+/// An open corner node without the sides around it: only the goal candidates, which never open,
+/// lack them.
+const OPEN_CORNER_WITHOUT_SIDES: GenieError =
+    GenieError::unreachable("an open corner node without the sides around its corner");
 
 /// The goal of a search (`local_148`): its point, the unit's radius, the target's half sizes,
 /// their sums and the range.
@@ -212,17 +212,18 @@ enum Kind {
     /// 1: a waypoint.
     Waypoint,
     /// 2: a point on a shape's side.
-    Side { shape: ShapeId, side: u8 },
+    Side { shape: ShapeId, side: ShapeSide },
     /// 3: a polygon corner or a terminal node: the walk's direction (1 backward), the vertices
-    /// it covers, its polygon, the callback A token and the sides around the corner.
+    /// it covers, its polygon, the callback A token and the sides around the corner (none for a
+    /// goal candidate, which never opens: the game's 0 or 0xff).
     Corner {
         dir: u8,
         lo: u32,
         hi: u32,
         poly: u32,
         token: u32,
-        prev: u8,
-        next: u8,
+        prev: Option<ShapeSide>,
+        next: Option<ShapeSide>,
     },
 }
 
@@ -241,7 +242,7 @@ struct Node {
 #[derive(Clone, Debug, Default)]
 struct Poly {
     vertices: Vec<FixedPoint>,
-    sides: Vec<u8>,
+    sides: Vec<ShapeSide>,
     /// Each vertex's shape, none for a vertex on the bounds' border.
     shapes: Vec<Option<ShapeId>>,
     costs: Vec<i32>,

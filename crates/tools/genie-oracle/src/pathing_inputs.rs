@@ -3,7 +3,7 @@
 
 use genie_core::map::GridSize;
 use genie_core::objects::ObjectId;
-use genie_core::pathing::ShapeId;
+use genie_core::pathing::{ShapeId, ShapeSide};
 
 use crate::masters::TerrainTable;
 use crate::{Error, live, spatial};
@@ -51,7 +51,7 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
                     .collect::<Option<_>>()?;
                 m.sides.last_mut()?[side].push(Contact {
                     other: ShapeId::new(w[0]),
-                    side: w[1],
+                    side: ShapeSide::of_word(w[1]).ok()?,
                     at: [w[2] as i32, w[3] as i32],
                     along: w[4] as i32,
                     flag: w[5] as u8,

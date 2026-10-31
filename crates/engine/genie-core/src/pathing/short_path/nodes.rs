@@ -2,8 +2,8 @@
 //! the clip to the box.
 
 use crate::GenieError;
-use crate::pathing::ShapeId;
 use crate::pathing::short_path::{FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search};
+use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 
 /// A polygon corner reached as a goal candidate (`FUN_140fa3860`'s arguments, [`Search::goal_test`]).
@@ -51,18 +51,23 @@ pub(super) struct Foot {
 
 /// `FUN_140fa3bc0`: whether a polygon corner at `v` between sides `prev` and `next` emits a node
 /// toward `g`, and the token its raycast ignores (0xff none).
-pub(super) fn corner_emits(prev: u8, next: u8, v: FixedPoint, g: FixedPoint) -> Option<u8> {
+pub(super) fn corner_emits(
+    prev: ShapeSide,
+    next: ShapeSide,
+    v: FixedPoint,
+    g: FixedPoint,
+) -> Option<u8> {
+    use ShapeSide::{HighX, HighY, LowX, LowY};
     let ([vx, vy], [gx, gy]) = (v, g);
     match prev {
-        0 if next == 3 => (gx <= vx && gy <= vy).then_some(0xff),
-        0 => (!(gx <= vx && vy <= gy)).then_some(u8::from(gx <= vx)),
-        1 if next == 0 => (vx <= gx && gy <= vy).then_some(0xff),
-        1 => (!(gx <= vx && gy <= vy)).then_some(1 + u8::from(vx < gx)),
-        2 if next == 1 => (vx <= gx && vy <= gy).then_some(0xff),
-        2 => (!(vx <= gx && gy <= vy)).then_some(2 + u8::from(vx <= gx)),
-        3 if next == 2 => (gx <= vx && vy <= gy).then_some(0xff),
-        3 => (!(vx <= gx && vy <= gy)).then_some(if gx < vx { 0 } else { 3 }),
-        _ => None,
+        LowY if next == LowX => (gx <= vx && gy <= vy).then_some(0xff),
+        LowY => (!(gx <= vx && vy <= gy)).then_some(u8::from(gx <= vx)),
+        HighX if next == LowY => (vx <= gx && gy <= vy).then_some(0xff),
+        HighX => (!(gx <= vx && gy <= vy)).then_some(1 + u8::from(vx < gx)),
+        HighY if next == HighX => (vx <= gx && vy <= gy).then_some(0xff),
+        HighY => (!(vx <= gx && gy <= vy)).then_some(2 + u8::from(vx <= gx)),
+        LowX if next == HighY => (gx <= vx && vy <= gy).then_some(0xff),
+        LowX => (!(vx <= gx && vy <= gy)).then_some(if gx < vx { 0 } else { 3 }),
     }
 }
 
@@ -196,7 +201,7 @@ impl Search<'_> {
         g: i32,
         parent: u32,
         shape: ShapeId,
-        side: u8,
+        side: ShapeSide,
         at: FixedPoint,
     ) {
         let n = self.add(g, parent, at, Kind::Side { shape, side });
@@ -228,8 +233,8 @@ impl Search<'_> {
             hi,
             poly,
             token: 5,
-            prev: 0,
-            next: 0,
+            prev: None,
+            next: None,
         };
         let better = self.goal_node == NONE || g < self.arena.checked(self.goal_node as usize)?.g;
         if self.goal.range2 < d2 || !better {

@@ -1,20 +1,31 @@
 //! The start's node, the hits' points and the two legs of an L.
 
-use crate::pathing::ShapeId;
 use crate::pathing::mesh::ONE;
 use crate::pathing::short_path::{
-    FixedPoint, HIT_WITHOUT_SHAPE, Hit, Kind, NONE, Node, Search, TO_FIXED, TO_FLOAT,
-    contact_point, in_box, shrunk_corner, snap_to_side, strictly_inside, through_float, tile_of,
+    FixedPoint, Hit, Kind, NONE, Node, Search, TO_FIXED, TO_FLOAT, contact_point, in_box,
+    shrunk_corner, snap_to_side, strictly_inside, through_float, tile_of,
 };
+use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
-/// The corners of each side of a shape as the start's scan walks it ([`shrunk_corner`]'s
+/// The corners of a side of a shape as the start's scan walks it ([`shrunk_corner`]'s
 /// numbers): side 0 from corner 0 to 1, side 1 from 1 to 2, side 2 from 3 to 2, side 3 from 0
 /// to 3.
-const SIDE_CORNERS: [(u32, u32); 4] = [(0, 1), (1, 2), (3, 2), (0, 3)];
-/// Each side's direction from its first corner to its second (one tile along x or y).
-const SIDE_DIRS: [FixedPoint; 4] = [[ONE, 0], [0, ONE], [ONE, 0], [0, ONE]];
+const fn side_corners(side: ShapeSide) -> (u32, u32) {
+    match side {
+        ShapeSide::LowY => (0, 1),
+        ShapeSide::HighX => (1, 2),
+        ShapeSide::HighY => (3, 2),
+        ShapeSide::LowX => (0, 3),
+    }
+}
+
+/// A side's direction from its first corner to its second ([`side_corners`]): one tile along x
+/// or y.
+const fn side_dir(side: ShapeSide) -> FixedPoint {
+    if side.along_y() { [0, ONE] } else { [ONE, 0] }
+}
 
 /// The distance from `p` to `a` in fixed point, through floats as the game takes it.
 fn float_distance([px, py]: FixedPoint, a: FixedPoint) -> i32 {
@@ -92,15 +103,15 @@ impl Search<'_> {
                 if self.ctx.ignored(id) {
                     continue;
                 }
-                for k in 0..4u32 {
-                    self.escape_side(p, root, (id, k), rr2)?;
+                for side in ShapeSide::ALL {
+                    self.escape_side(p, root, (id, side), rr2)?;
                 }
             }
         }
         Ok(())
     }
 
-    /// Side `k` of shape `id`, shrunk by the search's `d`, when its line comes within `rr2` (the
+    /// Side `side` of shape `id`, shrunk by the search's `d`, when its line comes within `rr2` (the
     /// doubled radius, squared) of the start `p`: the points where that circle crosses the side,
     /// the start's foot on it ([`Search::escape_foot`]), its first corner within the circle and
     /// its contacts ([`Search::escape_contacts`]) become escape candidates, each in the search's
@@ -109,28 +120,28 @@ impl Search<'_> {
         &mut self,
         p: FixedPoint,
         root: u32,
-        (id, k): (ShapeId, u32),
+        (id, side): (ShapeId, ShapeSide),
         rr2: i64,
     ) -> Result<(), GenieError> {
         let d = self.ctx.d;
         let r = *self.ctx.mesh.shapes.checked(id.index())?;
         let [px, py] = p;
-        let a = shrunk_corner(r, SIDE_CORNERS.checked(k as usize)?.0, d);
-        let e = shrunk_corner(r, SIDE_CORNERS.checked(k as usize)?.1, d);
-        let dir = *SIDE_DIRS.checked(k as usize)?;
-        let side = k as u8;
-        let (t, dist2, span) = if k == 0 || k == 2 {
-            let u = i64::from(dir[0]);
-            let t = ((i64::from(px - a[0]) * u) >> 22) as i32;
-            let perp = i64::from((px - a[0]) - (((i64::from(t) * u) >> 22) as i32));
-            let dy = i64::from(py - a[1]);
-            (t, ((dy * dy) >> 22) + ((perp * perp) >> 22), e[0] - a[0])
-        } else {
+        let (first, second) = side_corners(side);
+        let a = shrunk_corner(r, first, d);
+        let e = shrunk_corner(r, second, d);
+        let dir = side_dir(side);
+        let (t, dist2, span) = if side.along_y() {
             let u = i64::from(dir[1]);
             let t = ((i64::from(py - a[1]) * u) >> 22) as i32;
             let perp = i64::from((py - a[1]) - (((i64::from(t) * u) >> 22) as i32));
             let dx = i64::from(px - a[0]);
             (t, ((perp * perp) >> 22) + ((dx * dx) >> 22), e[1] - a[1])
+        } else {
+            let u = i64::from(dir[0]);
+            let t = ((i64::from(px - a[0]) * u) >> 22) as i32;
+            let perp = i64::from((px - a[0]) - (((i64::from(t) * u) >> 22) as i32));
+            let dy = i64::from(py - a[1]);
+            (t, ((dy * dy) >> 22) + ((perp * perp) >> 22), e[0] - a[0])
         };
         if dist2 > rr2 {
             return Ok(());
@@ -148,7 +159,7 @@ impl Search<'_> {
                 }
             }
         }
-        self.escape_foot(p, root, (id, k), (a, e))?;
+        self.escape_foot(p, root, (id, side), (a, e))?;
         // the side's first corner
         if in_box(a, b) && self.ctx.holder_but(a, id, d)?.is_none() {
             let dx = i64::from(px - a[0]);
@@ -159,23 +170,22 @@ impl Search<'_> {
                 self.side_node(g, root, id, side, a);
             }
         }
-        self.escape_contacts(p, root, (id, k), rr2)?;
+        self.escape_contacts(p, root, (id, side), rr2)?;
         Ok(())
     }
 
-    /// The start `p`'s foot on side `k` of shape `id` (its corners `a` and `e`), strictly
+    /// The start `p`'s foot on side `side` of shape `id` (its corners `a` and `e`), strictly
     /// between them, in the search's box and held by no shape: an escape candidate at the
     /// perpendicular distance.
     pub(super) fn escape_foot(
         &mut self,
         [px, py]: FixedPoint,
         root: u32,
-        (id, k): (ShapeId, u32),
+        (id, side): (ShapeId, ShapeSide),
         (a, e): (FixedPoint, FixedPoint),
     ) -> Result<(), GenieError> {
-        let side = k as u8;
         let b = self.bounds;
-        if k == 0 || k == 2 {
+        if !side.along_y() {
             if a[0] < px && px < e[0] {
                 let q = [px, a[1]];
                 if in_box(q, b) && self.ctx.holder(q)?.is_none() {
@@ -191,7 +201,7 @@ impl Search<'_> {
         Ok(())
     }
 
-    /// The contacts on side `k` of shape `id`: each wider than the search's `d`, with a shape
+    /// The contacts on side `side` of shape `id`: each wider than the search's `d`, with a shape
     /// not ignored, at a point in the search's box and held by no shape (a contact on a side of
     /// its own number only when its other shape holds the point nudged one unit into it), within
     /// `rr2` of the start `p`: an escape candidate, 0x32 dearer on a side of its own number.
@@ -199,14 +209,13 @@ impl Search<'_> {
         &mut self,
         [px, py]: FixedPoint,
         root: u32,
-        (id, k): (ShapeId, u32),
+        (id, side): (ShapeId, ShapeSide),
         rr2: i64,
     ) -> Result<(), GenieError> {
         let mesh = self.ctx.mesh;
         let d = self.ctx.d;
         let b = self.bounds;
-        let side = k as u8;
-        for &c in mesh.sides.checked(id.index())?.checked(k as usize)? {
+        for &c in mesh.sides.checked(id.index())?.checked(side.index())? {
             if (d >= c.half) || self.ctx.ignored(c.other) {
                 continue;
             }
@@ -214,13 +223,13 @@ impl Search<'_> {
             if !in_box(q, b) {
                 continue;
             }
-            if c.side == k {
+            if c.side == side {
                 let mut nudged = q;
-                match k {
-                    0 => nudged[1] += 1,
-                    1 => nudged[0] += 1,
-                    2 => nudged[1] -= 1,
-                    _ => nudged[0] -= 1,
+                match side {
+                    ShapeSide::LowY => nudged[1] += 1,
+                    ShapeSide::HighX => nudged[0] += 1,
+                    ShapeSide::HighY => nudged[1] -= 1,
+                    ShapeSide::LowX => nudged[0] -= 1,
                 }
                 if !strictly_inside(*mesh.shapes.checked(c.other.index())?, nudged, d) {
                     continue;
@@ -234,7 +243,7 @@ impl Search<'_> {
             let d2 = ((dy * dy) >> 22) + ((dx * dx) >> 22);
             if d2 < rr2 {
                 let g0 = (fmath::sqrt(d2 as f32 * TO_FLOAT) * TO_FIXED) as i32;
-                let g = if c.side == k { g0 + 0x32 } else { g0 };
+                let g = if c.side == side { g0 + 0x32 } else { g0 };
                 self.side_node(g, root, id, side, q);
             }
         }
@@ -257,7 +266,7 @@ impl Search<'_> {
     /// the shape the point settled on.
     pub(super) fn settle(&self, h: &mut FixedPoint, hit: Hit) -> Result<ShapeId, GenieError> {
         let d = self.ctx.d;
-        let mut shape = hit.shape.ok_or(HIT_WITHOUT_SHAPE)?;
+        let mut shape = hit.shape;
         snap_to_side(
             h,
             *self.ctx.mesh.shapes.checked(shape.index())?,

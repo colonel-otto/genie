@@ -2,12 +2,12 @@
 //! walk of a new polygon.
 
 use crate::GenieError;
-use crate::pathing::ShapeId;
 use crate::pathing::mesh::Mesh;
 use crate::pathing::short_path::{
     Corner, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
     contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
+use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 
 /// A vertex the tracer adds to the outline being traced ([`Search::append`]'s arguments after
@@ -21,9 +21,9 @@ pub(super) struct Traced {
     /// Whether the start side runs vertically.
     pub(super) vertical: bool,
     /// The start side.
-    pub(super) start_side: u32,
+    pub(super) start_side: ShapeSide,
     /// The side the vertex is on.
-    pub(super) side: u8,
+    pub(super) side: ShapeSide,
     /// The shape it lies on, none on the bounds' border.
     pub(super) shape: Option<ShapeId>,
     /// The turns so far (4 a full one).
@@ -54,7 +54,7 @@ impl Search<'_> {
             let closes = if vertical {
                 last[0] == first[0]
                     && pos[0] == first[0]
-                    && if s0 == 1 {
+                    && if s0 == ShapeSide::HighX {
                         last[1] <= first[1] && first[1] <= pos[1]
                     } else {
                         first[1] <= last[1] && pos[1] <= first[1]
@@ -62,7 +62,7 @@ impl Search<'_> {
             } else {
                 last[1] == first[1]
                     && pos[1] == first[1]
-                    && if s0 == 0 {
+                    && if s0 == ShapeSide::LowY {
                         last[0] <= first[0] && first[0] <= pos[0]
                     } else {
                         first[0] <= last[0] && pos[0] <= first[0]
@@ -84,8 +84,8 @@ impl Search<'_> {
     }
 
     /// The coordinate of `p` along a side's axis (x for sides 0 and 2, y for 1 and 3).
-    pub(super) const fn along(p: FixedPoint, side: u32) -> i32 {
-        if side & 1 == 1 { p[1] } else { p[0] }
+    pub(super) const fn along(p: FixedPoint, side: ShapeSide) -> i32 {
+        if side.along_y() { p[1] } else { p[0] }
     }
 
     /// `FUN_140fa9630`: the trace left the bounds: walk the bounds' border from `pos` in the turn
@@ -95,17 +95,17 @@ impl Search<'_> {
         &self,
         pos: &mut FixedPoint,
         first: &mut FixedPoint,
-        side: &mut u32,
+        side: &mut ShapeSide,
         u: &mut i32,
         steps: i32,
     ) -> Result<Option<ShapeId>, GenieError> {
         let b = self.bounds;
-        let w = side.wrapping_sub(1) & 3;
+        let w = side.prev();
         let (target, dir) = match w {
-            0 => ([b[0], b[3]], 2),
-            1 => ([b[0], b[1]], 3),
-            2 => ([b[2], b[1]], 0),
-            _ => ([b[2], b[3]], 1),
+            ShapeSide::LowY => ([b[0], b[3]], 2),
+            ShapeSide::HighX => ([b[0], b[1]], 3),
+            ShapeSide::HighY => ([b[2], b[1]], 0),
+            ShapeSide::LowX => ([b[2], b[3]], 1),
         };
         let sw = self.ctx.sweep(*pos, target, dir)?;
         let u_new = Self::along(*pos, w);
@@ -122,7 +122,7 @@ impl Search<'_> {
             *first = hp;
         }
         *u = u_new;
-        *side = u32::from(hs);
+        *side = hs;
         *pos = hp;
         Ok(Some(hid))
     }
@@ -134,14 +134,14 @@ impl Search<'_> {
     pub(super) fn trace(
         &self,
         shape0: ShapeId,
-        s0: u32,
+        s0: ShapeSide,
         start: Option<FixedPoint>,
         poly: &mut Poly,
     ) -> Result<i32, GenieError> {
         let d = self.ctx.d;
         let mesh = self.ctx.mesh;
         let b = self.bounds;
-        let vertical = s0 == 1 || s0 == 3;
+        let vertical = s0.along_y();
         let mut steps: i32 = 0;
         let mut winding: i32 = 0;
         let mut wprev: i32 = 0;
@@ -149,12 +149,12 @@ impl Search<'_> {
         let mut side = s0;
         let mut pos = match start {
             Some(p) => p,
-            None => shrunk_corner(*mesh.shapes.checked(shape.index())?, s0, d),
+            None => shrunk_corner(*mesh.shapes.checked(shape.index())?, s0.first_corner(), d),
         };
         let mut u = Self::along(pos, s0);
         let mut first = pos;
         'segment: loop {
-            let contacts = mesh.sides.checked(shape.index())?.checked(side as usize)?;
+            let contacts = mesh.sides.checked(shape.index())?.checked(side.index())?;
             let next_side;
             if let Some(k) = self.nearest_contact(contacts, side, u) {
                 let c = *contacts.checked(k)?;
@@ -170,16 +170,20 @@ impl Search<'_> {
                 side = c.side;
                 shape = c.other;
             } else {
-                next_side = (side + 1) & 3;
-                let corner = shrunk_corner(*mesh.shapes.checked(shape.index())?, next_side, d);
+                next_side = side.next();
+                let corner = shrunk_corner(
+                    *mesh.shapes.checked(shape.index())?,
+                    next_side.first_corner(),
+                    d,
+                );
                 if steps == 0 {
                     first = corner;
                 }
                 // an empty side list measures the old point; it lies on the side's line too
                 u = if contacts.is_empty() {
-                    Self::along(pos, side.wrapping_sub(1) & 3)
+                    Self::along(pos, side.prev())
                 } else {
-                    Self::along(corner, side.wrapping_sub(1) & 3)
+                    Self::along(corner, side.prev())
                 };
                 pos = corner;
                 winding += 1;
@@ -195,7 +199,7 @@ impl Search<'_> {
                 }
                 let out = !in_box(pos, b);
                 if out {
-                    side = side.wrapping_sub(2) & 3;
+                    side = side.opposite();
                     let clamped = clamp_to_box(pos, b);
                     if pos == first {
                         first = clamped;
@@ -210,7 +214,7 @@ impl Search<'_> {
                             first,
                             vertical,
                             start_side: s0,
-                            side: side as u8,
+                            side,
                             shape: on,
                             winding: wp,
                         },
@@ -246,7 +250,7 @@ impl Search<'_> {
     pub(super) fn nearest_contact(
         &self,
         contacts: &[crate::pathing::mesh::Contact],
-        side: u32,
+        side: ShapeSide,
         u: i32,
     ) -> Option<usize> {
         let d = self.ctx.d;
@@ -260,7 +264,8 @@ impl Search<'_> {
             if !in_box(q, self.bounds) {
                 continue;
             }
-            let forward = side == 0 || side == 1 || (side != 2 && side != 3);
+            // the sides 0 and 1 measure forward (the game's `side < 2`, and any side past 3)
+            let forward = matches!(side, ShapeSide::LowY | ShapeSide::HighX);
             let off = if side == c.side {
                 if c.flag != 0 { d.wrapping_neg() } else { d }
             } else {
@@ -272,7 +277,7 @@ impl Search<'_> {
                 c.along.wrapping_sub(off)
             };
             key = key.wrapping_sub(u);
-            if side.wrapping_sub(2) < 2 {
+            if !forward {
                 key = key.wrapping_neg();
             }
             if -1 < key && key < best_key {
@@ -289,7 +294,7 @@ impl Search<'_> {
     pub(super) fn edge_holding(
         poly: &Poly,
         p: FixedPoint,
-        side: u32,
+        side: ShapeSide,
         mesh: &Mesh,
         shape: Option<ShapeId>,
         d: i32,
@@ -324,7 +329,7 @@ impl Search<'_> {
             }
             let vc = *v.get(cur as usize)?;
             if Self::vertex_in_overlap(mesh, (p, vc, *poly.shapes.get(cur as usize)?), shape, d)
-                || (side == u32::from(s_cur)
+                || (side == s_cur
                     && Self::on_edge(s_cur, (vc, *v.get(nxt as usize)?), p, (prev, s_i)))
             {
                 return Some(cur);
@@ -374,54 +379,66 @@ impl Search<'_> {
     /// side before the edge's run (`prev`) and the one after it (`next`) decide whether each end
     /// counts.
     pub(super) const fn on_edge(
-        s_cur: u8,
+        s_cur: ShapeSide,
         (vc, vn): (FixedPoint, FixedPoint),
         p: FixedPoint,
-        (prev, next): (u8, u8),
+        (prev, next): (ShapeSide, ShapeSide),
     ) -> bool {
+        use ShapeSide::{HighX, HighY, LowX, LowY};
+        // the game's unsigned compares of the side numbers: `prev < 2`, `prev - 1 < 2` and the
+        // like name two neighbouring sides
         match s_cur {
-            0 if vc[1] == p[1] => {
+            LowY if vc[1] == p[1] => {
                 let (a, b) = (vc[0], vn[0]);
-                let start = if prev < 2 { a <= p[0] } else { a < p[0] };
+                let start = if matches!(prev, LowY | HighX) {
+                    a <= p[0]
+                } else {
+                    a < p[0]
+                };
                 start
-                    && if next == 3 || next == 0 {
+                    && if matches!(next, LowX | LowY) {
                         p[0] <= b
                     } else {
                         p[0] < b
                     }
             }
-            1 if vc[0] == p[0] => {
+            HighX if vc[0] == p[0] => {
                 let (a, b) = (vc[1], vn[1]);
-                let start = if prev.wrapping_sub(1) < 2 {
+                let start = if matches!(prev, HighX | HighY) {
                     a <= p[1]
                 } else {
                     a < p[1]
                 };
-                start && if next < 2 { p[1] <= b } else { p[1] < b }
+                start
+                    && if matches!(next, LowY | HighX) {
+                        p[1] <= b
+                    } else {
+                        p[1] < b
+                    }
             }
-            2 if vc[1] == p[1] => {
+            HighY if vc[1] == p[1] => {
                 let (a, b) = (vc[0], vn[0]);
-                let start = if next.wrapping_sub(1) < 2 {
+                let start = if matches!(next, HighX | HighY) {
                     b <= p[0]
                 } else {
                     b < p[0]
                 };
                 start
-                    && if 1 < prev.wrapping_sub(2) {
-                        p[0] < a
-                    } else {
+                    && if matches!(prev, HighY | LowX) {
                         p[0] <= a
+                    } else {
+                        p[0] < a
                     }
             }
-            3 if vc[0] == p[0] => {
+            LowX if vc[0] == p[0] => {
                 let (a, b) = (vc[1], vn[1]);
-                let start = if next.wrapping_sub(2) < 2 {
+                let start = if matches!(next, HighY | LowX) {
                     b <= p[1]
                 } else {
                     b < p[1]
                 };
                 start
-                    && if prev == 0 || prev == 3 {
+                    && if matches!(prev, LowY | LowX) {
                         p[1] <= a
                     } else {
                         p[1] < a
@@ -578,8 +595,8 @@ impl Search<'_> {
                 hi,
                 poly: walk.poly,
                 token: u32::from(token),
-                prev: sp,
-                next: sn,
+                prev: Some(sp),
+                next: Some(sn),
             };
             let node = self.add(g, walk.parent, vv, kind);
             self.push(node);

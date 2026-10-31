@@ -11,7 +11,7 @@
 //! exactly: a freed slot links the next free one through its first word, last in first out; the
 //! tile lists and contact lists keep their order of insertion.
 
-use crate::pathing::ShapeId;
+use crate::pathing::{ShapeId, ShapeSide};
 use std::collections::HashSet;
 
 /// One tile in fixed point.
@@ -27,7 +27,7 @@ pub struct Contact {
     /// w0: the other shape.
     pub other: ShapeId,
     /// w1: the side of the other shape the outline goes on along.
-    pub side: u32,
+    pub side: ShapeSide,
     /// w2, w3: the junction.
     pub at: [i32; 2],
     /// w4: the junction along the owner side's axis (x for sides 0 and 2, y for 1 and 3).
@@ -70,59 +70,59 @@ pub const fn corner(r: Rect, k: u32) -> [i32; 2] {
 /// overlap lies on, and whether it lies on both along one line (`FUN_140fdb8d0`,
 /// 0x140fdbcb0..0x140fdbddc, transliterated from the disassembly: each test overwrites what an
 /// earlier one set); None when the corner yields no contact.
-fn classify([cx, cy]: [i32; 2], o: Rect, n: Rect) -> Option<(u32, u32, bool)> {
-    let (mut lo, mut hi) = (0u32, 0u32);
+fn classify([cx, cy]: [i32; 2], o: Rect, n: Rect) -> Option<(ShapeSide, ShapeSide, bool)> {
+    let (mut lo, mut hi) = (ShapeSide::LowY, ShapeSide::LowY);
     let (mut collinear, mut found) = (false, false);
     let mut by_n_y = false;
     if cx == o[0] {
-        lo = 3;
+        lo = ShapeSide::LowX;
         if cx == n[0] {
-            hi = 3;
+            hi = ShapeSide::LowX;
             collinear = true;
             found = true;
         } else {
             by_n_y = true;
         }
     } else if cx == o[2] {
-        lo = 1;
+        lo = ShapeSide::HighX;
         if cx == n[2] {
-            hi = 1;
+            hi = ShapeSide::HighX;
             collinear = true;
             found = true;
         } else {
             by_n_y = true;
         }
     } else if cx == n[0] {
-        hi = 3;
+        hi = ShapeSide::LowX;
         if cy == o[1] {
-            lo = 0;
+            lo = ShapeSide::LowY;
             if cy == n[1] {
-                hi = 0;
+                hi = ShapeSide::LowY;
                 collinear = true;
             }
             found = true;
         } else if cy == o[3] {
-            lo = 2;
+            lo = ShapeSide::HighY;
             if cy == n[3] {
-                hi = 2;
+                hi = ShapeSide::HighY;
                 collinear = true;
             }
             found = true;
         }
     } else if cx == n[2] {
-        hi = 1;
+        hi = ShapeSide::HighX;
         if cy == o[1] {
-            lo = 0;
+            lo = ShapeSide::LowY;
             if cy == n[1] {
-                hi = 0;
+                hi = ShapeSide::LowY;
                 collinear = true;
             }
             found = true;
         }
         if cy == o[3] {
-            lo = 2;
+            lo = ShapeSide::HighY;
             if cy == n[3] {
-                hi = 2;
+                hi = ShapeSide::HighY;
                 collinear = true;
             }
             found = true;
@@ -130,16 +130,16 @@ fn classify([cx, cy]: [i32; 2], o: Rect, n: Rect) -> Option<(u32, u32, bool)> {
     }
     if by_n_y {
         if cy == n[1] {
-            hi = 0;
+            hi = ShapeSide::LowY;
             if cy == o[1] {
-                lo = 0;
+                lo = ShapeSide::LowY;
                 collinear = true;
             }
             found = true;
         } else if cy == n[3] {
-            hi = 2;
+            hi = ShapeSide::HighY;
             if cy == o[3] {
-                lo = 2;
+                lo = ShapeSide::HighY;
                 collinear = true;
             }
             found = true;
@@ -273,7 +273,7 @@ impl Mesh {
             let Some((lo, hi, collinear)) = classify(c, or, nr) else {
                 continue;
             };
-            let along = |side: u32| if side & 1 == 1 { c[1] } else { c[0] };
+            let along = |side: ShapeSide| if side.along_y() { c[1] } else { c[0] };
             if collinear {
                 // the owner: the shape with the junction as a corner, o before n at each corner
                 let owner = (0..4).find_map(|j| {
@@ -296,10 +296,10 @@ impl Mesh {
                     continue;
                 };
                 let flag = match lo {
-                    0 => c[0] == a[0] || c[0] == b[0],
-                    1 => c[1] == a[1] || c[1] == b[1],
-                    2 => c[0] == a[2] || c[0] == b[2],
-                    _ => c[1] == a[3] || c[1] == b[3],
+                    ShapeSide::LowY => c[0] == a[0] || c[0] == b[0],
+                    ShapeSide::HighX => c[1] == a[1] || c[1] == b[1],
+                    ShapeSide::HighY => c[0] == a[2] || c[0] == b[2],
+                    ShapeSide::LowX => c[1] == a[3] || c[1] == b[3],
                 };
                 self.contact(
                     (owner, lo),
@@ -312,7 +312,7 @@ impl Mesh {
                         half,
                     },
                 );
-            } else if (hi + 1) & 3 == lo {
+            } else if hi.next() == lo {
                 self.contact(
                     (o, lo),
                     Contact {
@@ -324,7 +324,7 @@ impl Mesh {
                         half,
                     },
                 );
-            } else if hi.wrapping_sub(1) & 3 == lo {
+            } else if hi.prev() == lo {
                 self.contact(
                     (n, hi),
                     Contact {
@@ -341,11 +341,11 @@ impl Mesh {
     }
 
     /// A contact goes last on side `side` of shape `owner`.
-    fn contact(&mut self, (owner, side): (ShapeId, u32), contact: Contact) {
+    fn contact(&mut self, (owner, side): (ShapeId, ShapeSide), contact: Contact) {
         if let Some(list) = self
             .sides
             .get_mut(owner.index())
-            .and_then(|s| s.get_mut(side as usize))
+            .and_then(|s| s.get_mut(side.index()))
         {
             list.push(contact);
         }
@@ -439,7 +439,7 @@ mod tests {
             m.sides[a.index()][0],
             [Contact {
                 other: b,
-                side: 3,
+                side: ShapeSide::LowX,
                 at: [0x17a0_0000, 0x0b20_0000],
                 along: 0x17a0_0000,
                 flag: 0,

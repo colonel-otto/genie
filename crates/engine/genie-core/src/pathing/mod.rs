@@ -25,11 +25,13 @@ use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
 pub use self::shape_id::ShapeId;
+pub use self::shape_side::ShapeSide;
 
 pub mod hull_path;
 pub mod long_path;
 pub mod mesh;
 mod shape_id;
+mod shape_side;
 pub mod short_path;
 pub mod tile_path;
 pub mod zones;

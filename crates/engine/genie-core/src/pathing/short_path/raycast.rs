@@ -2,11 +2,11 @@
 //! axis sweeps and the sight test.
 
 use crate::GenieError;
-use crate::pathing::ShapeId;
 use crate::pathing::mesh::{ONE, Rect};
 use crate::pathing::short_path::{
     Callback, Ctx, FixedPoint, Hit, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
 };
+use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 
 /// One tile of a raycast ([`Ctx::ray_tile`]'s arguments).
@@ -22,8 +22,6 @@ pub(super) struct RayTile<'a> {
     pub(super) end: FixedPoint,
     /// The ray's fraction so far, which a hit lowers.
     pub(super) fraction: &'a mut i32,
-    /// The hit it leaves.
-    pub(super) hit: &'a mut Hit,
     /// The token a hit ignores, as the callback leaves it.
     pub(super) token: &'a mut u32,
 }
@@ -69,19 +67,19 @@ impl Ctx<'_> {
         Ok(None)
     }
 
-    /// One tile of the raycast: the callback over the tile's shapes.
-    pub(super) fn ray_tile(&self, tile: RayTile<'_>) -> Result<i32, GenieError> {
+    /// One tile of the raycast: the callback over the tile's shapes; its last hit (each nearer
+    /// than the one before) and the callback's result for it, none without one.
+    pub(super) fn ray_tile(&self, tile: RayTile<'_>) -> Result<Option<(i32, Hit)>, GenieError> {
         let RayTile {
             callback: cb,
             list,
             start: a,
             end: b,
             fraction: t,
-            hit,
             token,
         } = tile;
         let d = self.d;
-        let mut result = 0;
+        let mut result = None;
         // B and C first test the shape against the ray's box
         let mut bx = [
             if a[0] < b[0] { a[0] } else { b[0] },
@@ -108,14 +106,12 @@ impl Ctx<'_> {
             match cb {
                 Callback::Corner => {
                     let mut tt = *t;
-                    let mut side = 0u8;
-                    let k = ray_rect(a, b, shrunk, &mut tt, &mut side);
-                    if k == 0 {
+                    let Some((k, side)) = ray_rect(a, b, shrunk, &mut tt) else {
                         continue;
-                    }
+                    };
                     let k = if k == 3 {
                         let own = id.get().wrapping_add(4);
-                        if u32::from(side) == *token || own == *token {
+                        if u32::from(side.get()) == *token || own == *token {
                             *token = own;
                             continue;
                         }
@@ -123,10 +119,8 @@ impl Ctx<'_> {
                     } else {
                         k
                     };
-                    result = k;
-                    hit.side = side;
+                    result = Some((k, Hit { shape: id, side }));
                     *t = tt;
-                    hit.shape = Some(id);
                 }
                 Callback::Box | Callback::Sight => {
                     let clip = [
@@ -139,12 +133,9 @@ impl Ctx<'_> {
                         continue;
                     }
                     let mut tt = *t;
-                    let mut side = 0u8;
-                    let k = ray_rect(a, b, shrunk, &mut tt, &mut side);
-                    if k != 0 {
-                        result = if k == 3 { 2 } else { k };
-                        hit.shape = Some(id);
-                        hit.side = side;
+                    if let Some((k, side)) = ray_rect(a, b, shrunk, &mut tt) {
+                        let k = if k == 3 { 2 } else { k };
+                        result = Some((k, Hit { shape: id, side }));
                         *t = tt;
                     }
                 }
@@ -154,17 +145,17 @@ impl Ctx<'_> {
     }
 
     /// `FUN_140faa820`: the segment `a`–`b` walked tile by tile (4-connected, x first on a corner),
-    /// the callback per tile; after a hit the walk goes on only to the hit's tile. Returns the last
-    /// non-zero callback result (the nearest hit's: hits only replace nearer ones).
+    /// the callback per tile; after a hit the walk goes on only to the hit's tile. Returns the
+    /// last hit, the nearest (hits only replace nearer ones), with its non-zero callback result;
+    /// none for 0.
     pub(super) fn raycast(
         &self,
         a: FixedPoint,
         b: FixedPoint,
         t: &mut i32,
-        hit: &mut Hit,
         cb: Callback,
         token: &mut u32,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<Option<(i32, Hit)>, GenieError> {
         let (x0, y0, x1, y1) = (a[0], a[1], b[0], b[1]);
         let dx = x1.wrapping_sub(x0);
         let adx = dx.wrapping_abs();
@@ -209,7 +200,7 @@ impl Ctx<'_> {
             };
             err = err_x.wrapping_sub(((i64::from(frac) * i64::from(adx)) >> 22) as i32);
         }
-        let mut result = 0;
+        let mut result = None;
         while 0 < count {
             let e = err;
             let list = self.tile(tx, ty)?;
@@ -219,11 +210,10 @@ impl Ctx<'_> {
                 start: a,
                 end: b,
                 fraction: t,
-                hit,
                 token,
             })?;
             let mut left = count;
-            if r != 0 {
+            if r.is_some() {
                 let hy = ((i64::from(y1.wrapping_sub(y0)) * i64::from(*t)) >> 22) as i32 + y0;
                 let hx = ((i64::from(dx) * i64::from(*t)) >> 22) as i32 + x0;
                 let span =
@@ -251,24 +241,28 @@ impl Ctx<'_> {
         r: Rect,
         d: i32,
         dir: u8,
-    ) -> Option<(FixedPoint, u8)> {
+    ) -> Option<(FixedPoint, ShapeSide)> {
         let [x, y] = from;
         match dir {
             1 => {
                 let h = d + r[0];
-                (r[1] + d < y && y < r[3] - d && h < end[0] && x <= h).then_some(([h, y], 3))
+                (r[1] + d < y && y < r[3] - d && h < end[0] && x <= h)
+                    .then_some(([h, y], ShapeSide::LowX))
             }
             2 => {
                 let h = d + r[1];
-                (r[0] + d < x && x < r[2] - d && h < end[1] && y <= h).then_some(([x, h], 0))
+                (r[0] + d < x && x < r[2] - d && h < end[1] && y <= h)
+                    .then_some(([x, h], ShapeSide::LowY))
             }
             3 => {
                 let h = r[2] - d;
-                (r[1] + d < y && y < r[3] - d && end[0] < h && h <= x).then_some(([h, y], 1))
+                (r[1] + d < y && y < r[3] - d && end[0] < h && h <= x)
+                    .then_some(([h, y], ShapeSide::HighX))
             }
             _ => {
                 let h = r[3] - d;
-                (r[0] + d < x && x < r[2] - d && end[1] < h && h <= y).then_some(([x, h], 2))
+                (r[0] + d < x && x < r[2] - d && end[1] < h && h <= y)
+                    .then_some(([x, h], ShapeSide::HighY))
             }
         }
     }
@@ -360,8 +354,9 @@ impl Ctx<'_> {
             return Ok(self.sweep(a, b, dir)?.found);
         }
         let mut t = T_START;
-        let mut hit = Hit::default();
         let mut token = 0;
-        Ok(self.raycast(a, b, &mut t, &mut hit, Callback::Sight, &mut token)? != 0)
+        Ok(self
+            .raycast(a, b, &mut t, Callback::Sight, &mut token)?
+            .is_some())
     }
 }

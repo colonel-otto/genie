@@ -1,6 +1,7 @@
 //! The fixed-point geometry: a shrunk rectangle's corners and sides, a contact's point, the
 //! segment and ray hits.
 
+use crate::pathing::ShapeSide;
 use crate::pathing::mesh::Rect;
 use crate::pathing::short_path::FixedPoint;
 
@@ -16,31 +17,36 @@ pub(super) const fn shrunk_corner(r: Rect, k: u32, d: i32) -> FixedPoint {
 }
 
 /// `FUN_140fa8350`: a contact's junction moved by `d` into the free space beside its side.
-pub(super) const fn contact_point([x, y]: FixedPoint, side: u32, d: i32, flag: u8) -> FixedPoint {
+pub(super) const fn contact_point(
+    [x, y]: FixedPoint,
+    side: ShapeSide,
+    d: i32,
+    flag: u8,
+) -> FixedPoint {
     let f = flag == 1;
     match side {
-        1 => {
+        ShapeSide::HighX => {
             if f {
                 [x - d, y + d]
             } else {
                 [x - d, y - d]
             }
         }
-        2 => {
+        ShapeSide::HighY => {
             if f {
                 [x - d, y - d]
             } else {
                 [x + d, y - d]
             }
         }
-        3 => {
+        ShapeSide::LowX => {
             if f {
                 [x + d, y - d]
             } else {
                 [x + d, y + d]
             }
         }
-        _ => {
+        ShapeSide::LowY => {
             if f {
                 [x + d, y + d]
             } else {
@@ -51,7 +57,7 @@ pub(super) const fn contact_point([x, y]: FixedPoint, side: u32, d: i32, flag: u
 }
 
 /// `FUN_140fa39f0`: `p` moved onto side `side` of `r` shrunk by `d`, held within the side.
-pub(super) fn snap_to_side(p: &mut FixedPoint, r: Rect, side: u8, d: i32) {
+pub(super) fn snap_to_side(p: &mut FixedPoint, r: Rect, side: ShapeSide, d: i32) {
     let hold = |v: i32, lo: i32, hi: i32| {
         if v < lo {
             lo
@@ -62,23 +68,22 @@ pub(super) fn snap_to_side(p: &mut FixedPoint, r: Rect, side: u8, d: i32) {
         }
     };
     match side {
-        0 => {
+        ShapeSide::LowY => {
             p[0] = hold(p[0], r[0] + d, r[2] - d);
             p[1] = r[1] + d;
         }
-        1 => {
+        ShapeSide::HighX => {
             p[0] = r[2] - d;
             p[1] = hold(p[1], r[1] + d, r[3] - d);
         }
-        2 => {
+        ShapeSide::HighY => {
             p[0] = hold(p[0], r[0] + d, r[2] - d);
             p[1] = r[3] - d;
         }
-        3 => {
+        ShapeSide::LowX => {
             p[0] = r[0] + d;
             p[1] = hold(p[1], r[1] + d, r[3] - d);
         }
-        _ => {}
     }
 }
 
@@ -140,33 +145,36 @@ pub(super) fn segment_hit(
 }
 
 /// `FUN_140faa4e0`: the ray `a`–`b` against the sides of the rectangle `r` it faces (the right side
-/// for a ray going left, the left for one going right, then the bottom or the top); `side` the side
-/// hit. Returns 0..3 as [`segment_hit`]; a y side wins only when strictly nearer.
-pub(super) fn ray_rect(a: FixedPoint, b: FixedPoint, r: Rect, t: &mut i32, side: &mut u8) -> i32 {
+/// for a ray going left, the left for one going right, then the bottom or the top): the hit, 1..3
+/// as [`segment_hit`], and the side hit; none for 0. A y side wins only when strictly nearer.
+pub(super) fn ray_rect(
+    a: FixedPoint,
+    b: FixedPoint,
+    r: Rect,
+    t: &mut i32,
+) -> Option<(i32, ShapeSide)> {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
-    let mut found = 0;
+    let mut found = None;
     // the side across x it faces: the right (1) for a ray going left, the left (3) for one going
     // right
     let (k, s) = match dx {
-        ..0 => (ray_right_side(a, b, r, t), 1),
-        0 => (0, 1),
-        _ => (ray_left_side(a, b, r, t), 3),
+        ..0 => (ray_right_side(a, b, r, t), ShapeSide::HighX),
+        0 => (0, ShapeSide::HighX),
+        _ => (ray_left_side(a, b, r, t), ShapeSide::LowX),
     };
     if k != 0 {
-        *side = s;
-        found = k;
+        found = Some((k, s));
     }
     // then the bottom (0) for a ray going up in y, the top (2) for one going down
     let (k, s) = match dy {
-        1.. => (ray_bottom_side(a, b, r, t), 0),
+        1.. => (ray_bottom_side(a, b, r, t), ShapeSide::LowY),
         0 => return found,
-        _ => (ray_top_side(a, b, r, t), 2),
+        _ => (ray_top_side(a, b, r, t), ShapeSide::HighY),
     };
     if k == 0 {
         return found;
     }
-    *side = s;
-    k
+    Some((k, s))
 }
 
 /// [`ray_rect`]'s ratio of a side's offset `num` along the ray's `den` (`num << 22 / den`).
