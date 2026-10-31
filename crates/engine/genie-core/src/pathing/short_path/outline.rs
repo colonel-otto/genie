@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::pathing::mesh::Mesh;
 use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
-    Corner, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
+    Corner, Emit, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
     contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
 use crate::pathing::{ShapeId, ShapeSide};
@@ -595,9 +595,11 @@ impl Search<'_> {
                 lo,
                 hi,
                 poly: walk.poly,
-                token: u32::from(token),
-                prev: Some(sp),
-                next: Some(sn),
+                emit: Some(Emit {
+                    token,
+                    prev: sp,
+                    next: sn,
+                }),
             };
             let node = self.add(g, walk.parent, vv, kind);
             self.push(node);

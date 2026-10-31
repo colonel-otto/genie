@@ -360,7 +360,6 @@ impl Pather {
             polys: Vec::new(),
             goal_node: NONE,
             best: 0,
-            token: 0,
         };
         let started = s.start(q.from);
         self.remove_terrain(mesh);
@@ -440,7 +439,6 @@ impl Pather {
             polys: Vec::new(),
             goal_node: NONE,
             best: 0,
-            token: 0,
         };
         s.run(q.from)
     }

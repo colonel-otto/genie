@@ -18,12 +18,14 @@ mod nodes;
 mod outline;
 mod raycast;
 mod start;
+mod token;
 
 pub use self::call::{Call, Entry, Listed, Pather, Query, ShortPath, Target, to_path};
 #[cfg(test)]
 use self::geometry::segment_hit;
 use self::geometry::{contact_point, ray_rect, shrunk_corner, snap_to_side};
 use self::nodes::{Corner, Foot, cheb, clamp_to_box, clip, corner_emits, in_box};
+use self::token::Token;
 
 /// A point in fixed point.
 pub type FixedPoint = [i32; 2];
@@ -130,8 +132,10 @@ impl Sweep {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Callback {
     /// A: a touch at the corner the ray starts from on the token's side (or of the token's shape)
-    /// is ignored.
-    Corner,
+    /// is ignored; the token becomes the shape's of each touch ignored. The game keeps the token
+    /// in a global (`DAT_143f0f360`), but sets it before each raycast that reads it, so no value
+    /// carries over from one ray to the next.
+    Corner(Token),
     /// B: the shapes whose box meets the ray's box, a flat box grown by 1.
     Box,
     /// C: as B, without the growth (the smoothing's line of sight).
@@ -159,10 +163,10 @@ const TRACE_STEPS: i32 = 2000;
 const NUDGES: [FixedPoint; 4] = [[0, ONE], [ONE, 0], [0, -ONE], [-ONE, 0]];
 /// No node or polygon.
 const NONE: u32 = u32::MAX;
-/// An open corner node without the sides around it: only the goal candidates, which never open,
-/// lack them.
-const OPEN_CORNER_WITHOUT_SIDES: GenieError =
-    GenieError::unreachable("an open corner node without the sides around its corner");
+/// An open corner node without its emission: only the goal candidates, which never open, lack
+/// one.
+const OPEN_CORNER_WITHOUT_EMIT: GenieError =
+    GenieError::unreachable("an open corner node without the token and sides it emits with");
 
 /// The goal of a search (`local_148`): its point, the unit's radius, the target's half sizes,
 /// their sums and the range.
@@ -215,17 +219,24 @@ enum Kind {
     /// 2: a point on a shape's side.
     Side { shape: ShapeId, side: ShapeSide },
     /// 3: a polygon corner or a terminal node: the walk's direction (1 backward), the vertices
-    /// it covers, its polygon, the callback A token and the sides around the corner (none for a
-    /// goal candidate, which never opens: the game's 0 or 0xff).
+    /// it covers, its polygon and what the corner emits its ray with (none for a goal
+    /// candidate, which never opens: the game's token 5 or −1 and sides 0 or 0xff).
     Corner {
         dir: u8,
         lo: u32,
         hi: u32,
         poly: u32,
-        token: u32,
-        prev: Option<ShapeSide>,
-        next: Option<ShapeSide>,
+        emit: Option<Emit>,
     },
+}
+
+/// What an open corner node emits its ray with (`FUN_140fa3bc0`): the token the ray ignores
+/// and the sides around the corner, before and after it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Emit {
+    token: Token,
+    prev: ShapeSide,
+    next: ShapeSide,
 }
 
 /// A node (`0x34` bytes).
@@ -261,9 +272,6 @@ struct Search<'a> {
     /// `local_1a0`, `local_194`.
     goal_node: u32,
     best: u32,
-    /// `DAT_143f0f360`, callback A's token: a global in the game, but set before each raycast that
-    /// reads it (type 3), so no value carries over between searches.
-    token: u32,
 }
 
 #[cfg(test)]

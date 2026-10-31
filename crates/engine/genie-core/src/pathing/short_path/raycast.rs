@@ -5,7 +5,8 @@ use crate::GenieError;
 use crate::pathing::mesh::{ONE, Rect};
 use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
-    Callback, Ctx, FixedPoint, Hit, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
+    Callback, Ctx, FixedPoint, Hit, Sweep, T_START, Token, inside, ray_rect, strictly_inside,
+    tile_of,
 };
 use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
@@ -13,8 +14,8 @@ use crate::world::slots::CheckedIndex;
 /// One tile of a raycast ([`Ctx::ray_tile`]'s arguments).
 #[derive(Debug)]
 pub(super) struct RayTile<'a> {
-    /// The callback over the tile's shapes.
-    pub(super) callback: Callback,
+    /// The callback over the tile's shapes, its token as the tiles before left it.
+    pub(super) callback: &'a mut Callback,
     /// The tile's shapes.
     pub(super) list: &'a [ShapeId],
     /// The ray's start.
@@ -23,8 +24,6 @@ pub(super) struct RayTile<'a> {
     pub(super) end: FixedPoint,
     /// The ray's fraction so far, which a hit lowers.
     pub(super) fraction: &'a mut i32,
-    /// The token a hit ignores, as the callback leaves it.
-    pub(super) token: &'a mut u32,
 }
 
 impl Ctx<'_> {
@@ -77,7 +76,6 @@ impl Ctx<'_> {
             start: a,
             end: b,
             fraction: t,
-            token,
         } = tile;
         let d = self.d;
         let mut result = None;
@@ -88,7 +86,7 @@ impl Ctx<'_> {
             if b[0] < a[0] { a[0] } else { b[0] },
             if b[1] < a[1] { a[1] } else { b[1] },
         ];
-        if cb == Callback::Box {
+        if matches!(cb, Callback::Box) {
             if a[0] == b[0] {
                 bx[0] -= 1;
                 bx[2] += 1;
@@ -105,14 +103,14 @@ impl Ctx<'_> {
             let r = *self.mesh.shapes.checked(id.index())?;
             let shrunk = [r[0] + d, r[1] + d, r[2] - d, r[3] - d];
             match cb {
-                Callback::Corner => {
+                Callback::Corner(token) => {
                     let mut tt = *t;
                     let Some((k, side)) = ray_rect(a, b, shrunk, &mut tt) else {
                         continue;
                     };
                     let k = if k == 3 {
-                        let own = id.get().wrapping_add(4);
-                        if u32::from(side.get()) == *token || own == *token {
+                        let own = Token::of_shape(id);
+                        if Token::of_side(side) == *token || own == *token {
                             *token = own;
                             continue;
                         }
@@ -154,8 +152,7 @@ impl Ctx<'_> {
         a: FixedPoint,
         b: FixedPoint,
         t: &mut i32,
-        cb: Callback,
-        token: &mut u32,
+        mut cb: Callback,
     ) -> Result<Option<(i32, Hit)>, GenieError> {
         let (x0, y0, x1, y1) = (a[0], a[1], b[0], b[1]);
         let dx = x1.wrapping_sub(x0);
@@ -206,12 +203,11 @@ impl Ctx<'_> {
             let e = err;
             let list = self.tile(tx, ty)?;
             let r = self.ray_tile(RayTile {
-                callback: cb,
+                callback: &mut cb,
                 list,
                 start: a,
                 end: b,
                 fraction: t,
-                token,
             })?;
             let mut left = count;
             if r.is_some() {
@@ -350,9 +346,6 @@ impl Ctx<'_> {
             return Ok(self.sweep(a, b, AxisDir::of_dx(b[0] - a[0]))?.found);
         }
         let mut t = T_START;
-        let mut token = 0;
-        Ok(self
-            .raycast(a, b, &mut t, Callback::Sight, &mut token)?
-            .is_some())
+        Ok(self.raycast(a, b, &mut t, Callback::Sight)?.is_some())
     }
 }

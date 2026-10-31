@@ -2,7 +2,7 @@
 //! the clip to the box.
 
 use crate::GenieError;
-use crate::pathing::short_path::{FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search};
+use crate::pathing::short_path::{FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search, Token};
 use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 
@@ -50,24 +50,32 @@ pub(super) struct Foot {
 }
 
 /// `FUN_140fa3bc0`: whether a polygon corner at `v` between sides `prev` and `next` emits a node
-/// toward `g`, and the token its raycast ignores (0xff none).
+/// toward `g`, and the token its raycast ignores.
 pub(super) fn corner_emits(
     prev: ShapeSide,
     next: ShapeSide,
     v: FixedPoint,
     g: FixedPoint,
-) -> Option<u8> {
+) -> Option<Token> {
     use ShapeSide::{HighX, HighY, LowX, LowY};
     let ([vx, vy], [gx, gy]) = (v, g);
     match prev {
-        LowY if next == LowX => (gx <= vx && gy <= vy).then_some(0xff),
-        LowY => (!(gx <= vx && vy <= gy)).then_some(u8::from(gx <= vx)),
-        HighX if next == LowY => (vx <= gx && gy <= vy).then_some(0xff),
-        HighX => (!(gx <= vx && gy <= vy)).then_some(1 + u8::from(vx < gx)),
-        HighY if next == HighX => (vx <= gx && vy <= gy).then_some(0xff),
-        HighY => (!(vx <= gx && gy <= vy)).then_some(2 + u8::from(vx <= gx)),
-        LowX if next == HighY => (gx <= vx && vy <= gy).then_some(0xff),
-        LowX => (!(vx <= gx && vy <= gy)).then_some(if gx < vx { 0 } else { 3 }),
+        LowY if next == LowX => (gx <= vx && gy <= vy).then_some(Token::NONE),
+        LowY => {
+            (!(gx <= vx && vy <= gy)).then_some(Token::of_side(if gx <= vx { HighX } else { LowY }))
+        }
+        HighX if next == LowY => (vx <= gx && gy <= vy).then_some(Token::NONE),
+        HighX => {
+            (!(gx <= vx && gy <= vy)).then_some(Token::of_side(if vx < gx { HighY } else { HighX }))
+        }
+        HighY if next == HighX => (vx <= gx && vy <= gy).then_some(Token::NONE),
+        HighY => {
+            (!(vx <= gx && gy <= vy)).then_some(Token::of_side(if vx <= gx { LowX } else { HighY }))
+        }
+        LowX if next == HighY => (gx <= vx && vy <= gy).then_some(Token::NONE),
+        LowX => {
+            (!(vx <= gx && vy <= gy)).then_some(Token::of_side(if gx < vx { LowY } else { LowX }))
+        }
     }
 }
 
@@ -232,9 +240,7 @@ impl Search<'_> {
             lo,
             hi,
             poly,
-            token: 5,
-            prev: None,
-            next: None,
+            emit: None,
         };
         let better = self.goal_node == NONE || g < self.arena.checked(self.goal_node as usize)?.g;
         if self.goal.range2 < d2 || !better {

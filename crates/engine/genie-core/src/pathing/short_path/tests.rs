@@ -31,7 +31,6 @@ fn search_toward(mesh: &Mesh, at: FixedPoint, range: i32) -> Search<'_> {
         polys: Vec::new(),
         goal_node: NONE,
         best: 0,
-        token: 0,
     };
     let _ = s.add(0, NONE, [0, 0], Kind::Start);
     s

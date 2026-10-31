@@ -36,6 +36,7 @@ tiles test which points see each other. The files follow the search:
 | [`raycast.rs`](raycast.rs) | The searches' walks over the mesh's tiles (`Ctx`): a point's holder, the raycast, the axis sweeps and the sight test. |
 | [`start.rs`](start.rs) | The start's node, the hits' points and the two legs of an L. |
 | [`tests.rs`](tests.rs) | Tests. |
+| [`token.rs`](token.rs) | Callback A's token: what a ray from a polygon corner ignores. |
 <!-- /files -->
 
 ## How it connects

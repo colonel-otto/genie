@@ -2,9 +2,9 @@
 
 use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
-    Callback, Corner, Ctx, FixedPoint, Hit, Kind, NONE, NUDGES, Node, OPEN_CORNER_WITHOUT_SIDES,
-    Poly, RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb,
-    corner_emits, float_distance, in_box, isqrt, through_float,
+    Callback, Corner, Ctx, Emit, FixedPoint, Hit, Kind, NONE, NUDGES, Node,
+    OPEN_CORNER_WITHOUT_EMIT, Poly, RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT,
+    UNSET, cheb, corner_emits, float_distance, in_box, isqrt, through_float,
 };
 use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
@@ -148,9 +148,11 @@ impl Search<'_> {
                 lo,
                 hi,
                 poly: walk.poly,
-                token: u32::from(token),
-                prev: Some(sp),
-                next: Some(sn),
+                emit: Some(Emit {
+                    token,
+                    prev: sp,
+                    next: sn,
+                }),
             };
             let node = self.add(g, walk.parent, v, kind);
             self.push(node);
@@ -196,15 +198,8 @@ impl Search<'_> {
     /// Type 3, a polygon corner: the raycast toward the goal's range point ignoring the corner's
     /// own touch (the token); a touch tries the four nudged points; then a crossing becomes a side
     /// node, a clear ray a terminal goal candidate, and a ray that still touches the axis L.
-    pub(super) fn corner_expand(
-        &mut self,
-        n: Node,
-        token: u32,
-        prev: ShapeSide,
-        next: ShapeSide,
-    ) -> Result<(), GenieError> {
+    pub(super) fn corner_expand(&mut self, n: Node, emit: Emit) -> Result<(), GenieError> {
         let p = n.at;
-        self.token = token;
         let mut t = range_point(self.goal.range, p, self.goal.at)?;
         let mut frac = T_START;
         let reach = n.g.wrapping_add(float_distance(t, p));
@@ -213,7 +208,7 @@ impl Search<'_> {
         }
         let mut found = self
             .ctx
-            .raycast(p, t, &mut frac, Callback::Corner, &mut self.token)?;
+            .raycast(p, t, &mut frac, Callback::Corner(emit.token))?;
         if touches(found) {
             let b = self.bounds;
             for dir in NUDGES {
@@ -224,14 +219,11 @@ impl Search<'_> {
                 if !in_box(tj, b) {
                     continue;
                 }
-                let Some(tok) = corner_emits(prev, next, p, tj) else {
+                let Some(token) = corner_emits(emit.prev, emit.next, p, tj) else {
                     continue;
                 };
-                self.token = u32::from(tok);
                 let mut f2 = T_START;
-                found = self
-                    .ctx
-                    .raycast(p, tj, &mut f2, Callback::Corner, &mut self.token)?;
+                found = self.ctx.raycast(p, tj, &mut f2, Callback::Corner(token))?;
                 if !touches(found) {
                     frac = f2;
                     t = tj;
@@ -258,9 +250,7 @@ impl Search<'_> {
             lo: NONE,
             hi: NONE,
             poly: NONE,
-            token: NONE,
-            prev: None,
-            next: None,
+            emit: None,
         };
         let node = self.add(g, n.idx, t, kind);
         if self.goal_node == NONE || node.g < self.arena.checked(self.goal_node as usize)?.g {
@@ -428,11 +418,7 @@ impl Search<'_> {
                 }
                 let t = range_point(self.goal.range, p, self.goal.at)?;
                 let mut frac = T_START;
-                let mut token = self.token;
-                let found = self
-                    .ctx
-                    .raycast(p, t, &mut frac, Callback::Box, &mut token)?;
-                self.token = token;
+                let found = self.ctx.raycast(p, t, &mut frac, Callback::Box)?;
                 match found {
                     None => {
                         return Ok(Some(ShortPath {
@@ -455,16 +441,11 @@ impl Search<'_> {
                 }
                 let _ = self.side_expand(n, shape, side)?;
             }
-            Kind::Corner {
-                token, prev, next, ..
-            } => {
+            Kind::Corner { emit, .. } => {
                 if self.pop_test(&n)? {
                     return Ok(None);
                 }
-                let (Some(prev), Some(next)) = (prev, next) else {
-                    return Err(OPEN_CORNER_WITHOUT_SIDES);
-                };
-                self.corner_expand(n, token, prev, next)?;
+                self.corner_expand(n, emit.ok_or(OPEN_CORNER_WITHOUT_EMIT)?)?;
             }
         }
         let _ = d;
