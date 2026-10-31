@@ -6,6 +6,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
+use crate::players::{ByRelation, UnitRelation};
 use crate::unit_ai::best_target::{
     Ask, AttackCategory, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
@@ -72,13 +73,13 @@ pub(super) fn tested(
     me: &Searcher,
     ask: &Ask,
     id: ObjectId,
-    kind: usize,
+    relation: UnitRelation,
     world: &mut dyn Battlefield,
 ) -> Result<Option<Thing>, crate::GenieError> {
     let Some(t) = world.thing(id)? else {
         return Ok(None);
     };
-    if !may_attack(me, (id, &t), kind, world)? {
+    if !may_attack(me, (id, &t), relation, world)? {
         return Ok(None);
     }
     let gaia_taken = !me.scenario && t.owner == PlayerId::GAIA && COMBAT <= t.kind;
@@ -94,13 +95,13 @@ pub(super) fn tested(
     Ok(kept_by_owner_and_class(me, ask, &t).then_some(t))
 }
 
-/// The world's checks of object `id` (`t`, of relation list `kind`), in the game's order: it
+/// The world's checks of object `id` (`t`, of relation list `relation`), in the game's order: it
 /// has a unit AI, is alive, not allied and not inside another; the unit AI's attack check; a
 /// combat unit's friends' scan; a neutral object's (list 3) test.
 pub(super) fn may_attack(
     me: &Searcher,
     (id, t): (ObjectId, &Thing),
-    kind: usize,
+    relation: UnitRelation,
     world: &mut dyn Battlefield,
 ) -> Result<bool, crate::GenieError> {
     if !t.has_ai || 3 <= t.state || t.allied || t.inside || !world.can_attack(id)? {
@@ -109,7 +110,7 @@ pub(super) fn may_attack(
     if me.kind == COMBAT && !world.spares_friends(id)? {
         return Ok(false);
     }
-    if kind == 3 && !world.attacks_neutral(t.class)? {
+    if relation == UnitRelation::NEUTRAL && !world.attacks_neutral(t.class)? {
         return Ok(false);
     }
     Ok(true)
@@ -185,7 +186,7 @@ pub(super) fn within(me: &Searcher, ask: &Ask, gap: f32, near: f32) -> bool {
 pub fn best_unit_to_attack(
     me: &Searcher,
     ask: &Ask,
-    lists: &[Vec<ObjectId>; 5],
+    lists: &ByRelation<Vec<ObjectId>>,
     world: &mut dyn Battlefield,
 ) -> Result<Choice, crate::GenieError> {
     let current = current_target(me, world)?;
@@ -301,7 +302,7 @@ pub(super) fn add_extra(
 struct Walked {
     narrowed: Option<AttackCategory>,
     walls: bool,
-    later: Vec<(ObjectId, usize)>,
+    later: Vec<(ObjectId, UnitRelation)>,
     gate: (Option<ObjectId>, f32),
     wall: (Option<ObjectId>, f32),
     beyond_walls: bool,
@@ -328,13 +329,20 @@ impl Walked {
         &mut self,
         me: &Searcher,
         ask: &Ask,
-        lists: &[Vec<ObjectId>; 5],
+        lists: &ByRelation<Vec<ObjectId>>,
         st: &mut Statistics,
         world: &mut dyn Battlefield,
     ) -> Result<(), crate::GenieError> {
-        let lowest = if me.scenario && !me.computer { 2 } else { 0 };
-        for kind in (lowest..=4).rev() {
-            for &id in lists.checked(kind)? {
+        let lowest = if me.scenario && !me.computer {
+            UnitRelation::ALLY
+        } else {
+            UnitRelation::GAIA
+        };
+        for (relation, list) in lists.iter().rev() {
+            if relation < lowest {
+                break;
+            }
+            for &id in list {
                 if STATISTICS <= st.entries.len() {
                     return Ok(());
                 }
@@ -342,10 +350,11 @@ impl Walked {
                     continue;
                 }
                 if me.retries.contains(&id) {
-                    self.later.push((id, kind));
+                    self.later.push((id, relation));
                     continue;
                 }
-                let Some((t, gap, k)) = self.counted(me, ask, id, kind, me.sight, world)? else {
+                let Some((t, gap, k)) = self.counted(me, ask, id, relation, me.sight, world)?
+                else {
                     continue;
                 };
                 match t.class {
@@ -381,8 +390,8 @@ impl Walked {
         st: &mut Statistics,
         world: &mut dyn Battlefield,
     ) -> Result<(), crate::GenieError> {
-        for (id, kind) in std::mem::take(&mut self.later) {
-            let Some((t, gap, k)) = self.counted(me, ask, id, kind, me.range, world)? else {
+        for (id, relation) in std::mem::take(&mut self.later) {
+            let Some((t, gap, k)) = self.counted(me, ask, id, relation, me.range, world)? else {
                 continue;
             };
             let counts = match t.class {
@@ -397,18 +406,18 @@ impl Walked {
         Ok(())
     }
 
-    /// The object `id` of list `kind`, its gap and its category when it passes the shared tests
+    /// The object `id` of list `relation`, its gap and its category when it passes the shared tests
     /// ([`tested`]), the ranges ([`within`], `near` the walk's) and the narrowed category.
     fn counted(
         &self,
         me: &Searcher,
         ask: &Ask,
         id: ObjectId,
-        kind: usize,
+        relation: UnitRelation,
         near: f32,
         world: &mut dyn Battlefield,
     ) -> Result<Option<(Thing, f32, Option<AttackCategory>)>, crate::GenieError> {
-        let Some(t) = tested(me, ask, id, kind, world)? else {
+        let Some(t) = tested(me, ask, id, relation, world)? else {
             return Ok(None);
         };
         let gap = t.distance;

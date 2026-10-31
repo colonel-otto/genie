@@ -22,6 +22,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::orders::object_gone;
 use crate::players::PlayerId;
+use crate::players::UnitRelation;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{UnitView, WorldPicker, patrol_information, town_centre};
 use crate::unit_ai::{Search, UnitAi};
@@ -93,7 +94,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == PlayerId::GAIA);
         let me = self.unit.id;
         let my_radius = self.unit.master(&self.c.w.masters, self.player)?.radius;
-        for r in lists[1].iter().chain(&lists[2]) {
+        for r in lists[UnitRelation::OWN]
+            .iter()
+            .chain(&lists[UnitRelation::ALLY])
+        {
             if r.id == me {
                 continue;
             }

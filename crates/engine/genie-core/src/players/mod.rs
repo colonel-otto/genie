@@ -13,7 +13,11 @@ mod player_type;
 pub mod tracker;
 pub mod treason;
 pub mod tribute;
+mod unit_relation;
 pub mod world_player;
 
 pub use self::player_id::PlayerId;
 pub use self::player_type::PlayerType;
+#[cfg(test)]
+pub(crate) use self::unit_relation::relations;
+pub use self::unit_relation::{ByRelation, UnitRelation};

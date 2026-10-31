@@ -16,6 +16,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::relations;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -90,10 +91,10 @@ fn world() -> World {
         vec![0, 0, 3, 0],
     ];
     s.unit_diplomacy = vec![
-        vec![1, 4, 4, 4],
-        vec![0, 1, 4, 2],
-        vec![0, 4, 1, 4],
-        vec![0, 2, 4, 1],
+        relations([1, 4, 4, 4]),
+        relations([0, 1, 4, 2]),
+        relations([0, 4, 1, 4]),
+        relations([0, 2, 4, 1]),
     ];
     s.sight = Some(crate::vision::visibility::Visibility::new(
         8,

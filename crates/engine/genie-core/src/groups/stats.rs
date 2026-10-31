@@ -13,6 +13,7 @@ use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::{ObjectId, ObjectKey};
+use crate::players::UnitRelation;
 use crate::unit_ai::ActionKind;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -252,149 +253,6 @@ impl World {
         Ok(())
     }
 
-    /// `CalcFormationType` (`FUN_14100b940`): the members' unit AIs' formation types (`+0x1d4`,
-    /// those below 9) counted, the most common the type (the first of equals); one below 3 unlocks
-    /// the group (`mFormationLockedType` 0) and makes its formation anew
-    /// ([`World::update_desired_positions`] with -1), the members' stances its state and their
-    /// formation types 0 ([`World::stances_state`]); a higher one locks the group to it
-    /// ([`World::lock_formation`]).
-    ///
-    /// # Errors
-    ///
-    /// When the world does not hold `group`: the game's routine gets the group itself, from a
-    /// caller that holds it.
-    pub fn calc_formation_type(&mut self, group: GroupId) -> Result<(), GenieError> {
-        let ids: Vec<ObjectId> = self
-            .groups
-            .held(group)?
-            .members
-            .iter()
-            .map(|m| m.id)
-            .collect();
-        let mut counts = [0i32; 9];
-        for &id in &ids {
-            if let Some(vote) = self
-                .object(id)
-                .and_then(|(_, u)| u.ai.as_ref())
-                .and_then(|ai| ai.formation_type.vote())
-            {
-                *counts.checked_mut(vote)? += 1;
-            }
-        }
-        let mut best = 0;
-        for k in 1..9 {
-            if *counts.checked(best)? < *counts.checked(k)? {
-                best = k;
-            }
-        }
-        if 3 <= best {
-            return self.lock_formation(group, FormationKind::of_vote(best));
-        }
-        if let Some(g) = self.groups.get_mut(group) {
-            g.formation_locked_type = Some(FormationKind::HORDE);
-        }
-        self.update_desired_positions(group, None)?;
-        self.stances_state(group, FormationKind::HORDE)?;
-        // FUN_1415417a0 finds sleeping members too
-        for &id in &ids {
-            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.formation_type = FormationKind::HORDE;
-            }
-        }
-        Ok(())
-    }
-
-    /// `LockFormation` (`FUN_141024e70`) of group `group` to type `kind`: a group without a
-    /// spacing yet (`mDesiredSpacing` 0) takes its held members' widest radius twice
-    /// ([`FormationUnit`]); a column or a line (1, 2) unlocks it (`mFormationLockedType` 0) to
-    /// its own choice ([`World::update_desired_positions`] with -1), any other type locks it to
-    /// that type and lays it; then the members' stances give its state and their formation
-    /// types are the lock's ([`World::stances_state`]). The analytics event it sends (each
-    /// member's master counted, `FUN_140986b60`) changes nothing in the world.
-    ///
-    /// # Errors
-    ///
-    /// What [`World::update_desired_positions`] does not
-    /// model.
-    ///
-    /// When the world does not hold `group`: the game's routine gets the group itself, from a
-    /// caller that holds it.
-    pub fn lock_formation(
-        &mut self,
-        group: GroupId,
-        kind: FormationKind,
-    ) -> Result<(), GenieError> {
-        let g = self.groups.held(group)?;
-        // the spacing is read again for every member held (0x14102500a): the first whose
-        // radius gives one above it sets it, and every later member finds it set
-        let mut spacing = g.desired_spacing;
-        for m in &g.members {
-            if spacing != 0.0 {
-                break;
-            }
-            if let Some((p, u)) = self.object(m.id) {
-                let unit = FormationUnit::of(u.master(&self.masters, p)?);
-                let s = unit.radius * crate::math::image::group::SPACING_FACTOR;
-                if spacing <= s && s != spacing {
-                    spacing = s;
-                }
-            }
-        }
-        self.groups.held_mut(group)?.desired_spacing = spacing;
-        let own_choice = matches!(kind, FormationKind::COLUMN | FormationKind::LINE);
-        let locked = if own_choice {
-            FormationKind::HORDE
-        } else {
-            kind
-        };
-        self.groups.held_mut(group)?.formation_locked_type = Some(locked);
-        self.update_desired_positions(group, (!own_choice).then_some(kind))?;
-        self.stances_state(group, locked)?;
-        Ok(())
-    }
-
-    /// `FUN_14100d140` with 1: the group's state (`mState`) is the members' most common stance
-    /// (`+0x1a9`: 0 aggressive, 1 defensive, 2 stand ground, 3 no attack; on equal counts the
-    /// lower), 0 without members whose unit AI the world holds; each such member's formation
-    /// type (`+0x1d4`) becomes `formation_type`.
-    pub fn stances_state(
-        &mut self,
-        group: GroupId,
-        formation_type: FormationKind,
-    ) -> Result<(), GenieError> {
-        let Some(g) = self.groups.get(group) else {
-            return Ok(());
-        };
-        let ids: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
-        let mut n = [0i32; 4];
-        for &id in &ids {
-            if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
-                && ai.stance < 4
-            {
-                *n.checked_mut(ai.stance as usize)? += 1;
-            }
-        }
-        let state = if ids.is_empty() || (n[1] <= n[0] && n[2] <= n[0] && n[3] <= n[0]) {
-            0
-        } else if n[2] <= n[1] && n[3] <= n[1] {
-            1
-        } else if n[3] <= n[2] {
-            2
-        } else {
-            3
-        };
-        if let Some(g) = self.groups.get_mut(group) {
-            g.state = state;
-        }
-        // FUN_1415417a0 finds sleeping members too
-        for &id in &ids {
-            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.formation_type = formation_type.unit_byte();
-            }
-        }
-        Ok(())
-    }
-
     /// `FUN_140c65c60` with -1 and [`MOST_OBJECTS`] for member `id` into the group's
     /// sighted objects (`+0x49c`, its count `+0x5b4`, [`crate::groups::UnitGroup::sighted`]):
     /// nothing once they are full. Else its unit AI's
@@ -457,7 +315,7 @@ impl World {
             "a group member's search that reads the registry's last answer (before any query)",
         ))?;
         if fresh {
-            let enemies = !lists[4].is_empty();
+            let enemies = !lists[UnitRelation::ENEMY].is_empty();
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
                 ai.alert_mode = enemies;
                 if enemies {
@@ -465,8 +323,12 @@ impl World {
                 }
             }
         }
-        for list in [4usize, 3, 2] {
-            for record in lists.checked(list)? {
+        for list in [
+            UnitRelation::ENEMY,
+            UnitRelation::NEUTRAL,
+            UnitRelation::ALLY,
+        ] {
+            for record in &lists[list] {
                 let Some(object) = self.world_object(record.id) else {
                     continue;
                 };
@@ -477,7 +339,7 @@ impl World {
                 if 3 <= state {
                     continue;
                 }
-                if list == 3 {
+                if list == UnitRelation::NEUTRAL {
                     let class = self.master(object.player(), object.master_id())?.class;
                     if !crate::unit_ai::type_attacks_neutral(ai_type, attack_priority, class) {
                         continue;
@@ -708,6 +570,7 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::players::relations;
     use crate::test_ids::group_id;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
@@ -815,10 +678,10 @@ mod tests {
             vec![0, 1, 3, 0],
         ];
         s.unit_diplomacy = vec![
-            vec![1, 4, 4, 4],
-            vec![0, 1, 4, 3],
-            vec![0, 4, 1, 4],
-            vec![0, 3, 4, 1],
+            relations([1, 4, 4, 4]),
+            relations([0, 1, 4, 3]),
+            relations([0, 4, 1, 4]),
+            relations([0, 3, 4, 1]),
         ];
         let mut r = crate::vision::registry::Registry::new(4, 65);
         for (id, owner, at, class) in [

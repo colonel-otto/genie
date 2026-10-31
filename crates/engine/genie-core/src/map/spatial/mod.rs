@@ -23,6 +23,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::players::PlayerId;
+use crate::players::{ByRelation, UnitRelation};
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
 use genie_diff::Diff;
@@ -144,9 +145,9 @@ struct Filter {
 /// `ClosestObject`'s count (`FUN_140c488b0`, `DAT_143e6f92c`): the owners from 1 to 8 of the
 /// records the lists read, every record marking its owner (`record+8`) before any test; Gaia
 /// is not counted.
-fn players_seen(found: &[Vec<Record>; 5]) -> u32 {
+fn players_seen(found: &ByRelation<Vec<Record>>) -> u32 {
     let mut seen = [false; 9];
-    for record in found.iter().flatten() {
+    for record in found.values().iter().flatten() {
         if let Some(s) = seen.get_mut(usize::from(record.owner)) {
             *s = true;
         }
@@ -583,10 +584,10 @@ pub struct Spatial {
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
     /// What each player's queries make of the other players' objects (`player+0x278`, the
-    /// save's `unit_diplomacy`): 1 its own, 0 Gaia's, 2 an ally's, 3 a neutral's, 4 an enemy's.
+    /// save's `unit_diplomacy`): none for a saved value past the five relations.
     /// Loaded, not derived: the slice runs no diplomacy change (command 0x76), whose handler
     /// would write it with `relation`.
-    pub unit_diplomacy: Vec<Vec<i32>>,
+    pub unit_diplomacy: Vec<Vec<Option<UnitRelation>>>,
     /// Each player's masters with a task of action type 0x99, which a building's slot 0x4f0
     /// reads (`FUN_1411d4980` -> `FUN_1415c60b0`): a drop-off walker counts such a building
     /// among the workers near it.
@@ -616,7 +617,7 @@ struct SearchCache {
     holds: bool,
     at: Point,
     /// The registry's five output lists as the last query left them.
-    last: Option<[Vec<Record>; 5]>,
+    last: Option<ByRelation<Vec<Record>>>,
 }
 
 impl SearchCache {
@@ -627,7 +628,7 @@ impl SearchCache {
     }
 
     /// The registry's lists a query left (`DAT_143f69178`): the last answer the cache reads.
-    fn remember(&mut self, lists: [Vec<Record>; 5]) {
+    fn remember(&mut self, lists: ByRelation<Vec<Record>>) {
         self.last = Some(lists);
     }
 }

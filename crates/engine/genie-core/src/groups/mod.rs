@@ -42,6 +42,7 @@ pub use command::MoveTo as CommandMoveTo;
 pub use order::CommandArgs;
 pub mod formation;
 mod layout;
+mod lock;
 mod motion;
 mod order;
 mod place;

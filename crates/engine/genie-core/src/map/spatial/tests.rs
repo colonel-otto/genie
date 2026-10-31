@@ -7,6 +7,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::master_type;
+use crate::players::relations;
 use crate::test_ids::class_id;
 use crate::test_ids::{master_id, object_id};
 use crate::vision::registry::UnitUpdate;
@@ -95,9 +96,13 @@ fn a_query_takes_its_kinds_of_players_from_the_save() {
     // diplomacy byte (2 here, which no derivation knew)
     let mut s = Spatial::new(GridSize::new(10, 10));
     s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 2, 0]];
-    s.unit_diplomacy = vec![vec![1, 4, 4], vec![0, 1, 4], vec![0, 2, 1]];
-    assert_eq!(s.query_kinds(PlayerId::new(2), 3), Ok(vec![0, 2, 1]));
-    assert_eq!(s.query_kinds(PlayerId::new(2), 2), Ok(vec![0, 2]));
+    s.unit_diplomacy = vec![
+        relations([1, 4, 4]),
+        relations([0, 1, 4]),
+        relations([0, 2, 1]),
+    ];
+    assert_eq!(s.query_kinds(PlayerId::new(2), 3), Ok(relations([0, 2, 1])));
+    assert_eq!(s.query_kinds(PlayerId::new(2), 2), Ok(relations([0, 2])));
     assert!(s.query_kinds(PlayerId::new(3), 3).is_err());
 }
 
@@ -245,7 +250,11 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     let mut s = Spatial::new(GridSize::new(120, 120));
     // player 2 counts player 1 its enemy (3)
     s.relations = vec![vec![0, 3, 3], vec![0, 0, 3], vec![0, 3, 0]];
-    s.unit_diplomacy = vec![vec![1, 4, 4], vec![0, 1, 4], vec![0, 4, 1]];
+    s.unit_diplomacy = vec![
+        relations([1, 4, 4]),
+        relations([0, 1, 4]),
+        relations([0, 4, 1]),
+    ];
     let mut r = Registry::new(3, 65);
     // a villager of player 1 at (12, 10), which player 2 sees
     r.update_unit(UnitUpdate {
@@ -1618,10 +1627,16 @@ const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
 fn closest_object_s_relation_numbers_name_its_lists() {
     use crate::map::spatial::search::{related, spared_list};
     assert_eq!(
-        [0, 1, 2, 3, -1, 4].map(spared_list),
+        [0, 1, 2, 3, -1, 4].map(|s| spared_list(s).map(UnitRelation::get)),
         [Some(2), Some(3), Some(4), Some(1), None, None]
     );
-    let kept = |relation| (0..5).filter(|&k| related(relation, k)).collect::<Vec<_>>();
+    let kept = |filter| {
+        UnitRelation::ALL
+            .into_iter()
+            .filter(|&r| related(filter, r))
+            .map(UnitRelation::get)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(
         [kept(0), kept(1), kept(2), kept(3), kept(-1)],
         [vec![1, 2], vec![3], vec![4], vec![1], vec![0, 1, 2, 3, 4]]

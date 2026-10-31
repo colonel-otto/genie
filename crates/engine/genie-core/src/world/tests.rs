@@ -53,6 +53,7 @@ use crate::ownership::change::change_hands;
 use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::relations;
 use crate::test_ids::attack_category;
 use crate::test_ids::carrying;
 use crate::test_ids::class_id;
@@ -10279,7 +10280,11 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         cell: crate::vision::ghost::Cell::Tile(10 * 40 + 10),
         bits: 0,
     });
-    t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+    t.spatial.unit_diplomacy = vec![
+        relations([1, 4, 4]),
+        relations([4, 1, 4]),
+        relations([4, 4, 1]),
+    ];
     t.spatial.insert(
         object_id(500),
         Placed {
@@ -10419,7 +10424,11 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
     );
     t.masters = vec![table.clone(), table.clone(), table];
     t.spatial = hands_world(7, PlayerId::new(0), class::ARTIFACT, ids::ID_854, 4.0);
-    t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+    t.spatial.unit_diplomacy = vec![
+        relations([1, 4, 4]),
+        relations([4, 1, 4]),
+        relations([4, 4, 1]),
+    ];
     t.spatial.insert(
         object_id(500),
         Placed {
@@ -13131,7 +13140,7 @@ fn helper_scout(helper: UnitAi, own: Option<&crate::combat::attack::Attack>) -> 
 /// the view.
 fn help_view<R>(
     helper: Unit,
-    searched: Option<[Vec<crate::vision::registry::Record>; 5]>,
+    searched: Option<crate::players::ByRelation<Vec<crate::vision::registry::Record>>>,
     groups: &crate::groups::UnitGroups,
     f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_, '_>) -> R,
 ) -> R {
@@ -15599,7 +15608,7 @@ fn an_explore_walks_to_its_point_then_asks_for_the_next() {
 fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     let mut t = hunt_world();
     t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
-    t.spatial.unit_diplomacy = vec![vec![1, 4], vec![4, 1]];
+    t.spatial.unit_diplomacy = vec![relations([1, 4]), relations([4, 1])];
     for masters in &mut t.masters {
         let m = masters.get_mut(master_id(122)).unwrap();
         (m.line_of_sight, m.search_radius) = (4.0, 4.0);
@@ -17777,13 +17786,13 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
         ry: 0.2,
     };
     let lists = || {
-        [
+        crate::players::ByRelation::new([
             Vec::new(),
             vec![record(object_id(123), 10.0), record(object_id(124), 10.3)],
             Vec::new(),
             Vec::new(),
             Vec::new(),
-        ]
+        ])
     };
     let groups = crate::groups::UnitGroups::default();
     let call = |helper: Unit, searched| {

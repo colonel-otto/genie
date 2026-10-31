@@ -3,7 +3,9 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
+use crate::players::ByRelation;
 use crate::players::PlayerId;
+use crate::players::UnitRelation;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
@@ -259,7 +261,7 @@ fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
         .things
         .insert(object_id(9), enemy(9, class::CLASS_0, 5.0, 10.0));
     field.quick = vec![object_id(9)];
-    let lists = [vec![], vec![], vec![], vec![], object_id_list([8, 7, 9])];
+    let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([8, 7, 9])]);
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -302,7 +304,7 @@ fn failed_paths_become_retarget_entries() {
     still.0.speed = 0.0;
     still.1.speed = 0.0;
     let _ = field.things.insert(object_id(9), still);
-    let lists = [vec![], vec![], vec![], vec![], object_id_list([7, 9])];
+    let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([7, 9])]);
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -360,7 +362,7 @@ fn the_lists_pass_over_what_the_unit_may_not_attack() {
         .things
         .insert(object_id(36), enemy(36, class::CLASS_0, 11.9, 40.0));
     field.quick = object_id_list(30..=36);
-    let lists = [vec![], vec![], vec![], vec![], object_id_list(30..=36)];
+    let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list(30..=36)]);
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -390,7 +392,7 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
     let _ = field
         .things
         .insert(object_id(22), enemy(22, class::GATE, 3.0, 100.0));
-    let lists = [vec![], vec![], vec![], vec![], object_id_list([20, 21, 22])];
+    let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([20, 21, 22])]);
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -486,7 +488,7 @@ fn a_gate_answers_at_once_only_among_walls() {
         .things
         .insert(object_id(7), enemy(7, class::CLASS_0, 5.0, 40.0));
     field.quick = vec![object_id(7)];
-    let lists = [vec![], vec![], vec![], vec![], object_id_list([20, 22, 7])];
+    let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([20, 22, 7])]);
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -515,7 +517,7 @@ fn the_current_target_answers_by_its_path_outside_an_idle_check() {
         .things
         .insert(object_id(9), enemy(9, class::CLASS_0, 5.0, 40.0));
     field.paths = vec![object_id(7)];
-    let lists = [vec![], vec![], vec![], vec![], object_id_list([7, 9])];
+    let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([7, 9])]);
     let ask = Ask {
         paths: 1,
         any_class: true,
@@ -566,19 +568,34 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
         (pass, field.checked)
     };
     let me = soldier();
-    assert_eq!(checked(&me, &thing, 4, &[]), (true, vec!['a', 'f']));
-    assert_eq!(checked(&me, &thing, 3, &[]), (true, vec!['a', 'f', 'n']));
-    assert_eq!(checked(&me, &thing, 3, &['a']), (false, vec!['a']));
-    assert_eq!(checked(&me, &thing, 3, &['f']), (false, vec!['a', 'f']));
     assert_eq!(
-        checked(&me, &thing, 3, &['n']),
+        checked(&me, &thing, UnitRelation::ENEMY, &[]),
+        (true, vec!['a', 'f'])
+    );
+    assert_eq!(
+        checked(&me, &thing, UnitRelation::NEUTRAL, &[]),
+        (true, vec!['a', 'f', 'n'])
+    );
+    assert_eq!(
+        checked(&me, &thing, UnitRelation::NEUTRAL, &['a']),
+        (false, vec!['a'])
+    );
+    assert_eq!(
+        checked(&me, &thing, UnitRelation::NEUTRAL, &['f']),
+        (false, vec!['a', 'f'])
+    );
+    assert_eq!(
+        checked(&me, &thing, UnitRelation::NEUTRAL, &['n']),
         (false, vec!['a', 'f', 'n'])
     );
     let building = Searcher {
         kind: master_type::BUILDING,
         ..soldier()
     };
-    assert_eq!(checked(&building, &thing, 4, &[]), (true, vec!['a']));
+    assert_eq!(
+        checked(&building, &thing, UnitRelation::ENEMY, &[]),
+        (true, vec!['a'])
+    );
     for t in [
         Thing {
             has_ai: false,
@@ -594,7 +611,7 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
             ..thing
         },
     ] {
-        assert_eq!(checked(&me, &t, 4, &[]), (false, vec![]));
+        assert_eq!(checked(&me, &t, UnitRelation::ENEMY, &[]), (false, vec![]));
     }
 }
 

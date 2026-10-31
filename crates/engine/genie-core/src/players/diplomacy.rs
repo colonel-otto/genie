@@ -20,6 +20,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type;
 use crate::players::PlayerId;
+use crate::players::UnitRelation;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -37,12 +38,6 @@ const NEUTRAL: u8 = 1;
 const ALLY_STANCE: u8 = 4;
 const NEUTRAL_STANCE: u8 = 3;
 const ENEMY_STANCE: u8 = 2;
-/// What a player's queries make of another's objects (`+0x278`): Gaia's, its own, an ally's, a
-/// neutral's, an enemy's.
-const GAIA_KIND: i32 = 0;
-const OWN_KIND: i32 = 1;
-const ALLY_KIND: i32 = 2;
-const NEUTRAL_KIND: i32 = 3;
 /// The teams a world has at most past the lone one (2 to 5, `FUN_1415e23f0`).
 const LAST_TEAM: i32 = 5;
 /// The bits of the unified map a player's masks name players by (`FUN_141285cb0`'s
@@ -66,17 +61,17 @@ pub const fn relation_of_stance(stance: u8) -> Option<u8> {
 /// it: Gaia's 0, its own 1, relations 0 and 4 an ally's (2), 1 a neutral's (3), any other an
 /// enemy's (4).
 #[must_use]
-pub fn unit_kind(p: PlayerId, q: PlayerId, relation: u8) -> i32 {
+pub fn unit_kind(p: PlayerId, q: PlayerId, relation: u8) -> UnitRelation {
     if q == PlayerId::GAIA {
-        GAIA_KIND
+        UnitRelation::GAIA
     } else if p == q {
-        OWN_KIND
+        UnitRelation::OWN
     } else if relation & 0xfb == 0 {
-        ALLY_KIND
+        UnitRelation::ALLY
     } else if relation == NEUTRAL {
-        NEUTRAL_KIND
+        UnitRelation::NEUTRAL
     } else {
-        NEUTRAL_KIND + 1
+        UnitRelation::ENEMY
     }
 }
 
@@ -168,7 +163,7 @@ impl World {
             set_lane(row, q, relation);
         }
         if let Some(row) = self.spatial.unit_diplomacy.get_mut(p.index()) {
-            set_lane(row, q, unit_kind(p, q, relation));
+            set_lane(row, q, Some(unit_kind(p, q, relation)));
         }
         let mut i = 0;
         while i < self.players.player(p)?.objects.len() {
@@ -439,7 +434,7 @@ mod tests {
         t.spatial.unit_diplomacy = (0..4)
             .map(|p| {
                 (0..4)
-                    .map(|q| unit_kind(PlayerId::new(p), PlayerId::new(q), 3))
+                    .map(|q| Some(unit_kind(PlayerId::new(p), PlayerId::new(q), 3)))
                     .collect()
             })
             .collect();
@@ -450,13 +445,34 @@ mod tests {
     /// 2 and 3 an enemy's.
     #[test]
     fn the_queries_kind_follows_the_relation() {
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(0), 0), 0);
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(1), 3), 1);
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(2), 0), 2);
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(2), 4), 2);
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(2), 1), 3);
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(2), 2), 4);
-        assert_eq!(unit_kind(PlayerId::new(1), PlayerId::new(2), 3), 4);
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(0), 0),
+            UnitRelation::GAIA
+        );
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(1), 3),
+            UnitRelation::OWN
+        );
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(2), 0),
+            UnitRelation::ALLY
+        );
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(2), 4),
+            UnitRelation::ALLY
+        );
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(2), 1),
+            UnitRelation::NEUTRAL
+        );
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(2), 2),
+            UnitRelation::ENEMY
+        );
+        assert_eq!(
+            unit_kind(PlayerId::new(1), PlayerId::new(2), 3),
+            UnitRelation::ENEMY
+        );
     }
 
     /// `FUN_1416397d0`'s relations: 1, 2 an enemy's, 3 a neutral's, 4, 5 an ally's, others none.
@@ -482,14 +498,14 @@ mod tests {
         assert_eq!(t.players[1].relations[2], 0);
         assert_eq!(t.players[2].relations[1], 3);
         assert_eq!(t.spatial.relations[1][2], 0);
-        assert_eq!(t.spatial.unit_diplomacy[1][2], ALLY_KIND);
+        assert_eq!(t.spatial.unit_diplomacy[1][2], Some(UnitRelation::ALLY));
         t.set_diplomacy(PlayerId::new(1), 2, 1).unwrap();
         assert_eq!(t.players[1].diplomacy[2], NEUTRAL_STANCE);
-        assert_eq!(t.spatial.unit_diplomacy[1][2], NEUTRAL_KIND);
+        assert_eq!(t.spatial.unit_diplomacy[1][2], Some(UnitRelation::NEUTRAL));
         t.set_diplomacy(PlayerId::new(1), 2, 4).unwrap();
         assert_eq!(t.players[1].diplomacy[2], ENEMY_STANCE);
         assert_eq!(t.players[1].relations[2], 3);
-        assert_eq!(t.spatial.unit_diplomacy[1][2], 4);
+        assert_eq!(t.spatial.unit_diplomacy[1][2], Some(UnitRelation::ENEMY));
         let before = t.players.clone();
         t.set_diplomacy(PlayerId::new(1), 2, 2).unwrap();
         t.set_diplomacy(PlayerId::new(1), 9, 0).unwrap();

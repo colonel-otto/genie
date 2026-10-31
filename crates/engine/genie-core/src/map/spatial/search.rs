@@ -15,11 +15,11 @@ use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::players::PlayerId;
+use crate::players::{ByRelation, UnitRelation};
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::registry::VisibleQuery;
 use crate::vision::visibility::Seer;
-use crate::world::slots::CheckedIndex;
 
 impl Spatial {
     /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, the
@@ -180,7 +180,7 @@ impl Spatial {
 
     /// The lists the last search left, as the cache holds them, or the error of a search that
     /// reads the registry's last answer before any query.
-    fn last_found(&self) -> Result<&[Vec<Record>; 5], GenieError> {
+    fn last_found(&self) -> Result<&ByRelation<Vec<Record>>, GenieError> {
         self.search_cache
             .last
             .as_ref()
@@ -195,14 +195,18 @@ impl Spatial {
     /// # Errors
     ///
     /// A player whose kinds the slice did not load.
-    pub fn query_kinds(&self, player: PlayerId, players: usize) -> Result<Vec<u32>, GenieError> {
+    pub fn query_kinds(
+        &self,
+        player: PlayerId,
+        players: usize,
+    ) -> Result<Vec<Option<UnitRelation>>, GenieError> {
         let kinds = self
             .unit_diplomacy
             .get(player.index())
             .ok_or(GenieError::unsupported(
                 "a search of a player without its unit diplomacy",
             ))?;
-        Ok(kinds.iter().take(players).map(|&k| k as u32).collect())
+        Ok(kinds.iter().take(players).copied().collect())
     }
 
     /// The query of a unit AI's search (`FUN_140c63e20`'s first part): over the player's
@@ -262,13 +266,13 @@ impl Spatial {
     /// The lists the last search left (`DAT_143f69178`, by relation kind; 4 the enemies), as
     /// [`Spatial::search_query`] left them.
     #[must_use]
-    pub fn searched(&self) -> Option<[Vec<Record>; 5]> {
+    pub fn searched(&self) -> Option<ByRelation<Vec<Record>>> {
         self.search_cache.last.clone()
     }
 
     /// The lists a last search left, as a test sets them.
     #[cfg(test)]
-    pub(crate) fn set_searched(&mut self, lists: [Vec<Record>; 5]) {
+    pub(crate) fn set_searched(&mut self, lists: ByRelation<Vec<Record>>) {
         self.search_cache.remember(lists);
     }
 
@@ -305,7 +309,7 @@ impl Spatial {
                 let found = self.last_found()?;
                 Ok(Found {
                     id,
-                    enemies: !found[4].is_empty(),
+                    enemies: !found[UnitRelation::ENEMY].is_empty(),
                     position: id.and_then(|id| self.objects.get(&id)).map(|p| p.position),
                     fresh,
                     players: players_seen(found),
@@ -317,7 +321,7 @@ impl Spatial {
                 let found = self.last_found()?;
                 Ok(Found {
                     id: None,
-                    enemies: !found[4].is_empty(),
+                    enemies: !found[UnitRelation::ENEMY].is_empty(),
                     position: None,
                     fresh,
                     players: 0,
@@ -334,7 +338,7 @@ impl Spatial {
                 }
                 Ok(Found {
                     id,
-                    enemies: !self.last_found()?[4].is_empty(),
+                    enemies: !self.last_found()?[UnitRelation::ENEMY].is_empty(),
                     position: id.and_then(|id| self.objects.get(&id)).map(|p| p.position),
                     fresh,
                     players: 0,
@@ -374,12 +378,12 @@ impl Spatial {
         };
         let spared = spared_list(filter.spared);
         let mut best: Option<(ObjectId, f32)> = None;
-        for kind in 0..5 {
-            let related = related(filter.relation, kind);
+        for relation in UnitRelation::ALL {
+            let related = related(filter.relation, relation);
             // each record is read where it is tested: the reachability check is handed the
             // spatial index, which it writes
             let mut next = 0;
-            while let Some(record) = self.last_found()?.checked(kind)?.get(next).copied() {
+            while let Some(record) = self.last_found()?[relation].get(next).copied() {
                 next += 1;
                 if record.id == me {
                     continue;
@@ -391,7 +395,7 @@ impl Spatial {
                 else {
                     continue;
                 };
-                if 7 <= seer.state || !related || spared == Some(kind) {
+                if 7 <= seer.state || !related || spared == Some(relation) {
                     continue;
                 }
                 if !closest_kept(record.id, (seer, p), filter, (player, searcher), checks)? {
@@ -423,7 +427,7 @@ impl Spatial {
     ) -> Result<crate::unit_ai::best_target::Choice, GenieError> {
         let me = attack.searcher(memory)?;
         let found = self.last_found()?;
-        let lists: [Vec<ObjectId>; 5] = found.each_ref().map(|v| v.iter().map(|r| r.id).collect());
+        let lists: ByRelation<Vec<ObjectId>> = found.map(|v| v.iter().map(|r| r.id).collect());
         let mut field = AttackField {
             picker: attack,
             reach,
@@ -475,24 +479,25 @@ pub(super) struct Searcher {
 
 /// `FUN_140c32b50`: the relation list `ClosestObject`'s argument 9 passes over: 0 the friends
 /// (list 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1); any other none.
-pub(super) const fn spared_list(spared: i32) -> Option<usize> {
+pub(super) const fn spared_list(spared: i32) -> Option<UnitRelation> {
     match spared {
-        0 => Some(2),
-        1 => Some(3),
-        2 => Some(4),
-        3 => Some(1),
+        0 => Some(UnitRelation::ALLY),
+        1 => Some(UnitRelation::NEUTRAL),
+        2 => Some(UnitRelation::ENEMY),
+        3 => Some(UnitRelation::OWN),
         _ => None,
     }
 }
 
-/// `ClosestObject`'s relation filter (`param_3`) on the relation list `kind`: 0 the friends and
-/// itself (lists 1 and 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1), any other all.
-pub(super) const fn related(relation: i32, kind: usize) -> bool {
-    match relation {
-        0 => matches!(kind, 1 | 2),
-        1 => kind == 3,
-        2 => kind == 4,
-        3 => kind == 1,
+/// `ClosestObject`'s relation filter (`param_3`, `filter`) on the relation list `relation`: 0
+/// the friends and itself (lists 1 and 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1),
+/// any other all.
+pub(super) const fn related(filter: i32, relation: UnitRelation) -> bool {
+    match filter {
+        0 => matches!(relation, UnitRelation::OWN | UnitRelation::ALLY),
+        1 => matches!(relation, UnitRelation::NEUTRAL),
+        2 => matches!(relation, UnitRelation::ENEMY),
+        3 => matches!(relation, UnitRelation::OWN),
         _ => true,
     }
 }

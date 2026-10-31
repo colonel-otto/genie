@@ -163,7 +163,14 @@ pub(super) fn spatial(
     out.unit_diplomacy = header
         .players()
         .iter()
-        .map(|p| p.world_player().base.unit_diplomacy.clone())
+        .map(|p| {
+            p.world_player()
+                .base
+                .unit_diplomacy
+                .iter()
+                .map(|&k| genie_core::players::UnitRelation::of_field(k))
+                .collect()
+        })
         .collect();
     let mut sight = saved_sight(header)?;
     for (player, section) in PlayerId::each(header.players().len()).zip(header.players()) {

@@ -13,6 +13,7 @@ use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
+use crate::players::{ByRelation, UnitRelation};
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
@@ -100,8 +101,8 @@ pub struct VisibleQuery<'a> {
     pub mode: i32,
     /// The classes it reads.
     pub classes: &'a [ClassId],
-    /// What the owners are to the player (0 Gaia, 1 self, 2 friend, 3 neutral, 4 enemy).
-    pub relations: &'a [u32],
+    /// What the owners are to the player (none for a saved value past the relations).
+    pub relations: &'a [Option<UnitRelation>],
     /// The searcher's radii (x, y).
     pub size: Footprint,
     /// The relations kept, one bit each.
@@ -269,7 +270,7 @@ impl Registry {
     pub fn visible_units(
         &self,
         query: VisibleQuery<'_>,
-    ) -> Result<Option<[Vec<Record>; 5]>, GenieError> {
+    ) -> Result<Option<ByRelation<Vec<Record>>>, GenieError> {
         let VisibleQuery {
             player,
             position,
@@ -295,7 +296,7 @@ impl Registry {
         let (x0, x1) = ((x - wide) - MARGIN, x + wide + MARGIN);
         let (y0, y1) = ((y - tall) - MARGIN, y + tall + MARGIN);
         let round = f32::midpoint(wide - rx, tall - ry);
-        let mut found: [Vec<Record>; 5] = Default::default();
+        let mut found: ByRelation<Vec<Record>> = ByRelation::default();
         for &class in classes {
             let list = class
                 .index()
@@ -310,9 +311,9 @@ impl Registry {
                         .ok_or(GenieError::unsupported(
                             "a record of an owner without a relation",
                         ))?;
-                if relation > 4 || wanted & (1 << relation) == 0 {
+                let Some(relation) = relation.filter(|r| wanted & r.bit() != 0) else {
                     continue;
-                }
+                };
                 if !(r.x <= x1 && x0 <= r.x && r.y <= y1 && y0 <= r.y) {
                     continue;
                 }
@@ -336,7 +337,7 @@ impl Registry {
                 if !inside {
                     continue;
                 }
-                let out = found.checked_mut(relation as usize)?;
+                let out = &mut found[relation];
                 if out.len() < MOST_FOUND {
                     out.push(Record {
                         distance: (dy * dy + dx * dx).sqrt(),
@@ -445,7 +446,7 @@ mod tests {
             new: 1,
         })
         .unwrap();
-        let relations = [1, 4, 4];
+        let relations = crate::players::relations([1, 4, 4]);
         let found = r
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
@@ -462,15 +463,23 @@ mod tests {
         // 1 is 1.8 off along x, 2 is 3.3 off along y (beyond 3.2), 3 is at the corner and beyond
         // the rounding
         assert_eq!(
-            found[4].iter().map(|x| x.id).collect::<Vec<_>>(),
+            found[UnitRelation::ENEMY]
+                .iter()
+                .map(|x| x.id)
+                .collect::<Vec<_>>(),
             [object_id(1)]
         );
         assert_eq!(
-            found[1].iter().map(|x| x.id).collect::<Vec<_>>(),
+            found[UnitRelation::OWN]
+                .iter()
+                .map(|x| x.id)
+                .collect::<Vec<_>>(),
             [object_id(4)]
         );
         // the edge distances, the overlap along y included: (1.8, -0.2)
-        assert!((found[4][0].distance - (1.8f32 * 1.8 + 0.04).sqrt()).abs() < 1e-6);
+        assert!(
+            (found[UnitRelation::ENEMY][0].distance - (1.8f32 * 1.8 + 0.04).sqrt()).abs() < 1e-6
+        );
         assert_eq!(
             r.visible_units(VisibleQuery {
                 player: PlayerId::new(0),
@@ -517,7 +526,11 @@ mod tests {
                 radius: 100.0,
                 mode: 1,
                 classes: &[class_id(4)],
-                relations: &[1, 4, 4],
+                relations: &[
+                    Some(UnitRelation::OWN),
+                    Some(UnitRelation::ENEMY),
+                    Some(UnitRelation::ENEMY),
+                ],
                 size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
             })
@@ -525,7 +538,10 @@ mod tests {
             .unwrap();
         // the box reaches 44.2 along x: 1's edge is 43.3 off, 2's 49.8
         assert_eq!(
-            found[4].iter().map(|x| x.id).collect::<Vec<_>>(),
+            found[UnitRelation::ENEMY]
+                .iter()
+                .map(|x| x.id)
+                .collect::<Vec<_>>(),
             [object_id(1)]
         );
     }
@@ -550,7 +566,11 @@ mod tests {
                 radius: 3.0,
                 mode: 0,
                 classes: &[class_id(4)],
-                relations: &[1, 4, 4],
+                relations: &[
+                    Some(UnitRelation::OWN),
+                    Some(UnitRelation::ENEMY),
+                    Some(UnitRelation::ENEMY),
+                ],
                 size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
             })
@@ -559,7 +579,10 @@ mod tests {
         // the centre is 5 off, beyond 3.2, but the edge is 3 off: the 7-tile margin keeps it in
         // the box
         assert_eq!(
-            found[4].iter().map(|x| x.id).collect::<Vec<_>>(),
+            found[UnitRelation::ENEMY]
+                .iter()
+                .map(|x| x.id)
+                .collect::<Vec<_>>(),
             [object_id(1)]
         );
     }

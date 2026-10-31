@@ -21,6 +21,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::relations;
 use crate::test_ids::carrying;
 use crate::test_ids::class_of;
 use crate::test_ids::group_id;
@@ -3772,7 +3773,7 @@ fn searchable(mut t: World) -> World {
         vec![vec![1.0]],
     ));
     s.relations = vec![vec![0, 3], vec![0, 0]];
-    s.unit_diplomacy = vec![vec![1, 4], vec![0, 1]];
+    s.unit_diplomacy = vec![relations([1, 4]), relations([0, 1])];
     let mut v =
         crate::vision::visibility::Visibility::new(60, 60, vec![], vec![], vec![], 0, vec![]);
     v.registry = Some(crate::vision::registry::Registry::new(2, 65));

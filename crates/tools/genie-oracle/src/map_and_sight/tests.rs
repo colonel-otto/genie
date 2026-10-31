@@ -212,7 +212,13 @@ mod spatial {
             (genie_core::objects::masters::master_type::COMBAT, 5, 0)
         );
         assert!(seer.explored && seer.building.is_none());
-        assert_eq!(out.unit_diplomacy[1], [0, 1]);
+        assert_eq!(
+            out.unit_diplomacy[1],
+            [
+                Some(genie_core::players::UnitRelation::GAIA),
+                Some(genie_core::players::UnitRelation::OWN)
+            ]
+        );
     }
 
     /// A standing building links its tiles (their link bits). A desolid foundation links none,
