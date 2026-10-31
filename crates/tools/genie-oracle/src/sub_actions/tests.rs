@@ -6,7 +6,7 @@ use genie_core::combat::attack::AttackState;
 use genie_core::movement::move_to::MoveTo;
 use genie_core::objects::masters::ActionType;
 use genie_core::players::attribute;
-use genie_core::production::Making;
+use genie_core::production::{MakeTechState, Making};
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByType, RgeActionMoveTo, RgeObject,
     TribeActionMakeObj, TribeActionMakeTech, TribeBuildingObjectEntry1,
@@ -88,8 +88,30 @@ fn a_research_is_a_production_action_too() {
     )]);
     let p = production(&university).unwrap().unwrap();
     assert!(
-        matches!(p.action, Some(Making::Research(r)) if r.tech == genie_core::technology::TechId::try_from(22).unwrap() && !r.paid)
+        matches!(p.action, Some(Making::Research(r)) if r.tech == genie_core::technology::TechId::try_from(22).unwrap() && !r.paid && r.state == MakeTechState::New)
     );
+}
+
+/// A research saved in a state no research has (2) fails the read.
+#[test]
+fn a_research_in_a_state_of_none_fails() {
+    let mut university = building_object(11, 209);
+    let research = Action {
+        tribe_action_make_tech: Some(Box::new(TribeActionMakeTech {
+            rge_action: RgeAction {
+                state: 2,
+                ..RgeAction::default()
+            },
+            tech_id: 22,
+            ..TribeActionMakeTech::default()
+        })),
+        ..Action::default()
+    };
+    building_mut(&mut university).production_queue_actions = action_list(vec![(
+        genie_core::objects::masters::action_type::MAKE_TECH,
+        research,
+    )]);
+    assert!(production(&university).is_err());
 }
 
 /// No building, or one without slots, action or local lists, has no production; its local

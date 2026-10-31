@@ -47,7 +47,7 @@ fn an_object_has_actions_while_it_holds_one() {
     assert!(!has_actions(&u));
     u.production.as_mut().unwrap().action = Some(crate::production::Making::Research(
         crate::production::MakeTech {
-            state: 6,
+            state: crate::production::MakeTechState::Researching,
             paid: false,
             tech: tech_id(22),
             master: -1,

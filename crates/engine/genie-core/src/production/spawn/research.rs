@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::players::attribute::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
-use crate::production::{MakeObj, MakeTech, Making};
+use crate::production::{MakeTech, MakeTechState, Making};
 use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
@@ -30,7 +30,7 @@ impl World {
             "a research entry without a technology",
         ))?;
         Ok(Making::Research(MakeTech {
-            state: 0,
+            state: MakeTechState::New,
             paid: true,
             tech,
             master: i32::from(MasterId::field(first.master)),
@@ -84,9 +84,9 @@ impl World {
             return Err(NO_RESEARCH_ACTION);
         };
         match r.state {
-            MakeObj::DONE => return Ok(1),
-            MakeObj::MAKING => {}
-            _ => return Ok(0),
+            MakeTechState::Done => return Ok(1),
+            MakeTechState::Researching => {}
+            MakeTechState::New => return Ok(0),
         }
         let (t, def) = self.research_tech(p, r.tech)?;
         let master = building.life.master_id;
@@ -180,7 +180,7 @@ impl World {
         if let Some(Some(Making::Research(r))) =
             building.production.as_mut().map(|q| q.action.as_mut())
         {
-            r.state = MakeObj::DONE;
+            r.state = MakeTechState::Done;
         }
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
@@ -262,7 +262,7 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
         let (t, _) = self.research_tech(p, r.tech)?;
-        if r.state != MakeObj::DONE && self.game_state == 0 {
+        if r.state != MakeTechState::Done && self.game_state == 0 {
             self.research_failed(p, i, r, t)?;
         }
         let def = &self.techs[t];

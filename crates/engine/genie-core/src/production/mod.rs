@@ -25,12 +25,14 @@ use crate::technology::TechId;
 use genie_diff::Diff;
 
 mod costs;
+mod make_tech_state;
 pub mod spawn;
 
 pub use self::costs::{
     as_entry_costs, cost_test, costed, master_costs, pay, refund, refund_master, refund_research,
     refund_tech,
 };
+pub use self::make_tech_state::MakeTechState;
 
 /// One slot of a building's queue (`+0xbe8`, 0x30 bytes; the save's `mProductionQueue[i]`). A
 /// slot the buffer's growth adds is zeroed (`calloc`), as [`Entry::default`] is.
@@ -348,8 +350,8 @@ impl MakeObj {
 /// entry (the save's `tribe_action_make_tech`).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MakeTech {
-    /// `+0x18`: its state (6 while it works).
-    pub state: u8,
+    /// `+0x18`: its state.
+    pub state: MakeTechState,
     /// `+0x60`: `FUN_140ad0700`'s `param_5` flipped (the building's update passes 0): set, its
     /// destructor gives nothing back (`FUN_1413ccc00` runs only while it is clear).
     pub paid: bool,
@@ -377,7 +379,7 @@ impl Making {
     pub const fn state(&self) -> u8 {
         match self {
             Self::Unit(m) => m.state,
-            Self::Research(r) => r.state,
+            Self::Research(r) => r.state.get(),
         }
     }
 }

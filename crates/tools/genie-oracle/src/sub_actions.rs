@@ -244,7 +244,9 @@ pub(super) fn master_build_task(
 pub(super) fn production(
     object: &genie_save::Object,
 ) -> Result<Option<genie_core::production::Production>, GenieError> {
-    use genie_core::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+    use genie_core::production::{
+        Entry, MakeObj, MakeTech, MakeTechState, Making, Production, Queue,
+    };
     let Some(building) = object.tribe_building_object.as_deref() else {
         return Ok(None);
     };
@@ -311,7 +313,7 @@ pub(super) fn production(
                 "a saved research action without its base",
             ))?;
             Some(Making::Research(MakeTech {
-                state: base.state,
+                state: MakeTechState::of_byte(base.state)?,
                 paid: base.sub_action_value != 0,
                 tech: genie_core::technology::TechId::try_from(tech.tech_id)?,
                 master: tech.unique_id,

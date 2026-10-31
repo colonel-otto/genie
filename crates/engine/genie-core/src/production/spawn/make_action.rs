@@ -8,7 +8,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::IN_PRODUCTION;
 use crate::players::attribute::QUEUED;
-use crate::production::{MakeObj, MakeTech, Making, housed, population};
+use crate::production::{MakeObj, MakeTech, MakeTechState, Making, housed, population};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::unit_ai::NotifyKind;
@@ -252,7 +252,7 @@ impl World {
         let state = &mut self.players.player_mut(p)?.techs[t];
         state.state = 2;
         state.building_master = Some(master);
-        r.state = MakeObj::MAKING;
+        r.state = MakeTechState::Researching;
         r.progress = 0.0;
         Ok(())
     }

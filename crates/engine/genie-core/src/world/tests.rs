@@ -8339,7 +8339,7 @@ fn a_queued_research_starts_at_the_buildings_master() {
     };
     assert_eq!(
         (r.state, r.progress),
-        (crate::production::MakeObj::MAKING, 0.0)
+        (crate::production::MakeTechState::Researching, 0.0)
     );
     assert_eq!(t.players[0].techs[5].state, 2);
     assert_eq!(t.players[0].techs[5].building_master, Some(master));

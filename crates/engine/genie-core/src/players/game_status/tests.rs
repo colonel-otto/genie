@@ -22,7 +22,7 @@ use crate::players::Relation;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
-use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::production::{Entry, MakeObj, MakeTech, MakeTechState, Making, Production, Queue};
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -616,7 +616,7 @@ fn researching(progress: f32) -> World {
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[entry]);
     tc.action = Some(Making::Research(MakeTech {
-        state: MakeObj::MAKING,
+        state: MakeTechState::Researching,
         paid: true,
         tech: tech_id(22),
         master: -1,
