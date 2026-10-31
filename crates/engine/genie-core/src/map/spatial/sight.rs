@@ -3,7 +3,6 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
-use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
@@ -233,10 +232,7 @@ impl Spatial {
 
     /// The unified map's word (`+0x5e30`) at `tile`, none off the map.
     pub(super) fn unified_word(v: &Visibility, tile: Tile) -> Option<u64> {
-        Some(
-            *v.unified
-                .get(GridSize::new(v.width, v.height).index(tile)?)?,
-        )
+        Some(*v.unified.get(v.size.index(tile)?)?)
     }
 
     /// `FUN_141663500`, the player's tile test: what player `player` knows of `tile`.

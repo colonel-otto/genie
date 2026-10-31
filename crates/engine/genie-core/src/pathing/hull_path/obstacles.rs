@@ -240,8 +240,8 @@ impl HullPather<'_> {
         let sight = self.world.sight.as_ref().ok_or(GenieError::unsupported(
             "the old short pather without the map's building links",
         ))?;
-        if sight.link(x, y)?.0 & 0x60 != 0
-            && let Some(anchor) = sight.anchor_of(x, y)
+        if sight.link(Tile::new(x, y))?.0 & 0x60 != 0
+            && let Some(anchor) = sight.anchor_of(Tile::new(x, y))
             && (anchor.x() < area[0]
                 || area[2] < anchor.x()
                 || anchor.y() < area[1]

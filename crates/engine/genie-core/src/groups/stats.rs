@@ -705,8 +705,7 @@ mod tests {
             .unwrap();
         }
         let mut v = crate::vision::visibility::Visibility::new(
-            20,
-            20,
+            GridSize::new(20, 20),
             Vec::new(),
             Vec::new(),
             Vec::new(),

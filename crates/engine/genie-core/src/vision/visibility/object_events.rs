@@ -76,7 +76,7 @@ impl Visibility {
             None => (at, s.umv, true),
         };
         let (x, y) = (place.x(), place.y());
-        let mut mask = self.word_at(x, y)?;
+        let mut mask = self.word_at(Point::new(x, y))?;
         if umv != 0 {
             let offsets = self
                 .extents
@@ -88,10 +88,12 @@ impl Visibility {
             for pair in offsets {
                 let (dx, dy) = (pair.dx(), pair.dy());
                 let (fx, fy) = (dx as f32 + x, dy as f32 + y);
-                let on_map =
-                    0.0 <= fx && 0.0 <= fy && fx < self.width as f32 && fy < self.height as f32;
+                let on_map = 0.0 <= fx
+                    && 0.0 <= fy
+                    && fx < self.size.width() as f32
+                    && fy < self.size.height() as f32;
                 if on_map || !edge {
-                    mask |= self.word_at(fx, fy)?;
+                    mask |= self.word_at(Point::new(fx, fy))?;
                 }
             }
         }

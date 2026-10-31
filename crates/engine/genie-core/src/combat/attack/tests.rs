@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Radii;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
@@ -1101,8 +1102,7 @@ fn sight(seen: bool) -> crate::vision::visibility::Visibility {
         0
     };
     crate::vision::visibility::Visibility::new(
-        16,
-        16,
+        GridSize::new(16, 16),
         Vec::new(),
         vec![word; 256],
         Vec::new(),

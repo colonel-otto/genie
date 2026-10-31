@@ -531,8 +531,7 @@ pub(crate) fn placeable_on(t: &mut World, map: GridSize) {
     let players = t.players.len();
     let seen = (0..players).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));
     t.spatial.sight = Some(crate::vision::visibility::Visibility::new(
-        w,
-        h,
+        GridSize::new(w, h),
         (0..players)
             .map(|_| crate::vision::visibility::VisibleMap {
                 counts: vec![0; n],
@@ -8601,8 +8600,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32)
     let n = 40 * 40;
     let mut s = Spatial::new(GridSize::new(40, 40));
     let mut v = crate::vision::visibility::Visibility::new(
-        40,
-        40,
+        GridSize::new(40, 40),
         (0..3)
             .map(|_| crate::vision::visibility::VisibleMap {
                 counts: vec![-1; n],

@@ -311,7 +311,7 @@ impl World {
     pub(crate) fn refill_tiles(&mut self, p: PlayerId) {
         let [visible, explored] = self.spatial.vision(p);
         if let Some(sight) = self.spatial.sight.as_mut() {
-            let (w, h) = (sight.width, sight.height);
+            let (w, h) = (sight.size.width(), sight.size.height());
             let rows = sight.unified.chunks(usize::try_from(w).unwrap_or(0).max(1));
             for (y, row) in (0..h).zip(rows) {
                 for (x, &word) in (0..w).zip(row) {

@@ -427,6 +427,7 @@ mod tests {
     use crate::groups::FormationKind;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
+    use crate::map::GridSize;
     use crate::map::Position;
     use crate::movement::PathState;
     use crate::objects::ObjectId;
@@ -677,8 +678,14 @@ mod tests {
             });
         }
         // the members' searches find nothing: an empty registry, no relations
-        let mut v =
-            crate::vision::visibility::Visibility::new(20, 20, vec![], vec![], vec![], 0, vec![]);
+        let mut v = crate::vision::visibility::Visibility::new(
+            GridSize::new(20, 20),
+            vec![],
+            vec![],
+            vec![],
+            0,
+            vec![],
+        );
         v.registry = Some(crate::vision::registry::Registry::new(2, 65));
         t.spatial.sight = Some(v);
         t.spatial.relations = vec![relation_row([0, 0]), relation_row([0, 0])];

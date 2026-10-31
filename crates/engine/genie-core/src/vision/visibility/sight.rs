@@ -3,7 +3,10 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
+use crate::map::TileRect;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
@@ -126,13 +129,15 @@ impl Visibility {
             }
             self.explore_rect(
                 s.player,
-                (x - rx) as i32,
-                (y - ry) as i32,
-                ((x + rx) - EDGE) as i32,
-                ((y + ry) - EDGE) as i32,
+                TileRect::new(
+                    (x - rx) as i32,
+                    (y - ry) as i32,
+                    ((x + rx) - EDGE) as i32,
+                    ((y + ry) - EDGE) as i32,
+                ),
             )?
         } else {
-            self.explore(s.player, x as i32, y as i32, los, offset)?
+            self.explore(s.player, Tile::new(x as i32, y as i32), los, offset)?
         };
         if let Some(s) = self.seers.get_mut(&id) {
             s.explored = true;
@@ -194,13 +199,15 @@ impl Visibility {
             }
             self.unexplore_rect(
                 s.player,
-                (x - rx) as i32,
-                (y - ry) as i32,
-                ((x + rx) - EDGE) as i32,
-                ((y + ry) - EDGE) as i32,
+                TileRect::new(
+                    (x - rx) as i32,
+                    (y - ry) as i32,
+                    ((x + rx) - EDGE) as i32,
+                    ((y + ry) - EDGE) as i32,
+                ),
             )?;
         } else {
-            self.unexplore(s.player, x as i32, y as i32, los, offset)?;
+            self.unexplore(s.player, Tile::new(x as i32, y as i32), los, offset)?;
         }
         Ok(())
     }
@@ -214,7 +221,12 @@ impl Visibility {
         to: Position,
         radius: Footprint,
     ) -> Result<(), GenieError> {
-        let tile = |p: Position| [tile_of(p.x(), self.width), tile_of(p.y(), self.height)];
+        let tile = |p: Position| {
+            [
+                tile_of(p.x(), self.size.width()),
+                tile_of(p.y(), self.size.height()),
+            ]
+        };
         if tile(from) == tile(to) {
             return Ok(());
         }
@@ -290,8 +302,10 @@ impl Visibility {
         }
     }
 
-    /// The unified map's word at tile (`x`, `y`) of a position, masked ([`MASK`]).
-    pub(super) fn word_at(&self, x: f32, y: f32) -> Result<u64, GenieError> {
-        Ok(*self.unified.checked(self.index(x as i32, y as i32))? & MASK)
+    /// The unified map's word at the tile of point `at` (its x and y truncated), masked
+    /// ([`MASK`]).
+    pub(super) fn word_at(&self, at: Point) -> Result<u64, GenieError> {
+        let tile = Tile::new(at.x() as i32, at.y() as i32);
+        Ok(*self.unified.checked(self.index(tile))? & MASK)
     }
 }

@@ -313,8 +313,7 @@ pub(super) fn saved_sight(header: &Header) -> Result<Visibility, genie_core::Gen
         })
         .collect();
     let mut sight = Visibility::new(
-        map.map_width,
-        map.map_height,
+        GridSize::new(map.map_width, map.map_height),
         maps,
         map.unified_vis_map
             .unified_visible_map
@@ -389,7 +388,7 @@ pub fn visibility_differences(slice: &Visibility, game: &Visibility, player: usi
         ));
     }
     out.extend(resource_differences(slice, game, player));
-    let w = slice.width.max(1) as usize;
+    let w = slice.size.width().max(1) as usize;
     let bits = 1u64 << player | 1u64 << (32 + player);
     let unified_same = || {
         slice

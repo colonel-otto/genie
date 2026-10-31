@@ -735,8 +735,7 @@ fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
             .tiles_mut_for_test()
             .mark_for_test(Tile::new(10, 10), 0x80_0000 << 3);
         t.spatial.sight = Some(crate::vision::visibility::Visibility::new(
-            20,
-            20,
+            GridSize::new(20, 20),
             Vec::new(),
             vec![1 << 1; 400],
             Vec::new(),

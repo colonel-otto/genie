@@ -1,5 +1,6 @@
 use crate::map_and_sight::{resource_differences, visibility_differences};
 use crate::test_ids::object_id;
+use genie_core::map::GridSize;
 use genie_core::vision::visibility::{Visibility, VisibleMap, VisibleResource, VisibleResources};
 
 /// A 2 × 2 map, Gaia and one player, each tile counted once and the player's unified bits set.
@@ -19,8 +20,7 @@ fn sight() -> Visibility {
         }]],
     };
     let mut sight = Visibility::default();
-    sight.width = 2;
-    sight.height = 2;
+    sight.size = GridSize::new(2, 2);
     sight.maps = vec![map(), map()];
     sight.unified = vec![1 << 1 | 1 << 33; 4];
     sight.resources = vec![resources(), resources()];
@@ -236,11 +236,11 @@ mod spatial {
         assert!(standing.explored);
         assert!(standing.building.is_some_and(|b| b.built && !b.started));
         assert!(out.get(object_id(11)).unwrap().obstruction.is_some());
-        assert_ne!(sight.link(2, 2).unwrap().0, 0);
+        assert_ne!(sight.link(Tile::new(2, 2)).unwrap().0, 0);
         let desolid = sight.seer(object_id(12)).unwrap();
         assert!(!desolid.explored);
         assert!(out.get(object_id(12)).unwrap().obstruction.is_none());
-        assert_eq!(sight.link(0, 3).unwrap().0, 0);
+        assert_eq!(sight.link(Tile::new(0, 3)).unwrap().0, 0);
     }
 
     /// The unit inside the building is off the tiles; the object without a master is not

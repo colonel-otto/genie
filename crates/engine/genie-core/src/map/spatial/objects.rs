@@ -205,10 +205,7 @@ impl Spatial {
         let Some(v) = self.sight.as_ref() else {
             return false;
         };
-        let Some(&unified) = GridSize::new(v.width, v.height)
-            .index(tile)
-            .and_then(|i| v.unified.get(i))
-        else {
+        let Some(&unified) = v.size.index(tile).and_then(|i| v.unified.get(i)) else {
             return false;
         };
         let word = unified & crate::vision::registry::MASK;

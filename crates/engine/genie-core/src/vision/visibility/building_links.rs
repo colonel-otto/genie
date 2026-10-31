@@ -15,11 +15,12 @@ impl Visibility {
     /// `FUN_140f68f50`: from a tile, step back along the directions to the first tile that is not
     /// a building's non-anchor tile.
     #[must_use]
-    pub fn anchor_of(&self, mut x: i32, mut y: i32) -> Option<Tile> {
-        while 0 <= x && x < self.width && 0 <= y && y < self.height {
-            let (bits, byte) = *self.links.get(self.index(x, y))?;
+    pub fn anchor_of(&self, from: Tile) -> Option<Tile> {
+        let mut tile = from;
+        while self.size.holds(tile) {
+            let (bits, byte) = *self.links.get(self.index(tile))?;
             if bits & LINKED == 0 {
-                return Some(Tile::new(x, y));
+                return Some(tile);
             }
             if bits & (LINKED | ANCHOR) != LINKED {
                 return None;
@@ -28,8 +29,7 @@ impl Visibility {
                 *STEP.get(usize::from(byte & 0xf))?,
                 *STEP.get(usize::from(byte >> 4))?,
             );
-            x -= sx;
-            y -= sy;
+            tile = tile.stepped_back(TileOffset::new(sx, sy));
             if sx == 0 && sy == 0 {
                 return None;
             }
@@ -37,15 +37,16 @@ impl Visibility {
         None
     }
 
-    /// `FUN_140f68e30`: the building's tile rectangle (x0, y0, x1, y1) from one of its tiles,
-    /// through its anchor's UMV entry.
+    /// `FUN_140f68e30`: the building's tile rectangle from one of its tiles, through its
+    /// anchor's UMV entry.
     #[must_use]
-    pub fn extent_of(&self, mut x: i32, mut y: i32) -> Option<[i32; 4]> {
+    pub fn extent_of(&self, from: Tile) -> Option<TileRect> {
+        let mut tile = from;
         loop {
-            if x < 0 || self.width <= x || y < 0 || self.height <= y {
+            if !self.size.holds(tile) {
                 return None;
             }
-            let (bits, byte) = *self.links.get(self.index(x, y))?;
+            let (bits, byte) = *self.links.get(self.index(tile))?;
             match bits & (LINKED | ANCHOR) {
                 ANCHOR => {
                     if byte == 0 {
@@ -54,7 +55,8 @@ impl Visibility {
                     let [g0, g1, g2, g3, ..] =
                         self.extents.get(usize::from(byte) - 1)?.guid.to_le_bytes();
                     let b = |v: u8| i32::from(v as i8);
-                    return Some([x - b(g0), y - b(g1), x + b(g2), y + b(g3)]);
+                    let (x, y) = (tile.x(), tile.y());
+                    return Some(TileRect::new(x - b(g0), y - b(g1), x + b(g2), y + b(g3)));
                 }
                 LINKED => {}
                 _ => return None,
@@ -63,8 +65,7 @@ impl Visibility {
                 *STEP.get(usize::from(byte & 0xf))?,
                 *STEP.get(usize::from(byte >> 4))?,
             );
-            x -= sx;
-            y -= sy;
+            tile = tile.stepped_back(TileOffset::new(sx, sy));
             if sx == 0 && sy == 0 {
                 return None;
             }
@@ -78,8 +79,8 @@ impl Visibility {
         let (x0, y0, x1, y1) = (rect.x0(), rect.y0(), rect.x1(), rect.y1());
         let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
         let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
-        if self.width <= lo_x
-            || self.height <= lo_y
+        if self.size.width() <= lo_x
+            || self.size.height() <= lo_y
             || hi_x < 0
             || hi_y < 0
             || (lo_x == hi_x && lo_y == hi_y)
@@ -173,16 +174,20 @@ impl Visibility {
         let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
         let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
         let inside = lo_x <= ax && ax <= hi_x && lo_y <= ay && ay <= hi_y;
-        let Some((x0, y0, x1, y1)) = self.held(lo_x, lo_y, hi_x, hi_y).filter(|_| inside) else {
+        let Some(held) = self
+            .held(TileRect::new(lo_x, lo_y, hi_x, hi_y))
+            .filter(|_| inside)
+        else {
             return Ok(0);
         };
+        let [x0, y0, x1, y1] = held.get();
         let nibble = |v: i32| (v.clamp(-8, 7) & 0xf) as u8;
         let mut entry = 0;
         for y in y0..=y1 {
             let dy = y - ay;
             for x in x0..=x1 {
                 let dx = x - ax;
-                let i = self.index(x, y);
+                let i = self.index(Tile::new(x, y));
                 if dx == 0 && dy == 0 {
                     entry = self.extent_entry(anchor, rect);
                     *self.links.checked_mut(i)? = (
@@ -207,12 +212,13 @@ impl Visibility {
         }
         let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
         let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
-        let Some((x0, y0, x1, y1)) = self.held(lo_x, lo_y, hi_x, hi_y) else {
+        let Some(held) = self.held(TileRect::new(lo_x, lo_y, hi_x, hi_y)) else {
             return Ok(());
         };
+        let [x0, y0, x1, y1] = held.get();
         for y in y0..=y1 {
             for x in x0..=x1 {
-                let i = self.index(x, y);
+                let i = self.index(Tile::new(x, y));
                 *self.links.checked_mut(i)? =
                     (self.links.checked_mut(i)?.0 & !(LINKED | ANCHOR), 0);
             }

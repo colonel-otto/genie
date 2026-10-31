@@ -23,6 +23,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::GenieError;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::map::TileOffset;
@@ -225,10 +226,8 @@ impl VisibleResources {
 /// sight.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Visibility {
-    /// The map's width in tiles.
-    pub width: i32,
-    /// The map's height in tiles.
-    pub height: i32,
+    /// The map's size in tiles.
+    pub size: GridSize,
     /// By player index (Gaia 0).
     pub maps: Vec<VisibleMap>,
     /// Map `+0x5e30`, row by row.
@@ -307,22 +306,20 @@ fn tile_of(v: f32, size: i32) -> i32 {
 }
 
 impl Visibility {
-    /// The saved maps of a `width` × `height` map, with the saved UMV list.
+    /// The saved maps of a map of `size`, with the saved UMV list.
     #[must_use]
     pub fn new(
-        width: i32,
-        height: i32,
+        size: GridSize,
         maps: Vec<VisibleMap>,
         unified: Vec<u64>,
         extents: Vec<Extent>,
         extents_capacity: i32,
         computer: Vec<bool>,
     ) -> Self {
-        let n = (width.max(0) * height.max(0)) as usize;
+        let n = (size.width().max(0) * size.height().max(0)) as usize;
         let players = maps.len();
         Self {
-            width,
-            height,
+            size,
             maps,
             unified,
             links: vec![(0, 0); n],
@@ -338,8 +335,9 @@ impl Visibility {
         }
     }
 
-    const fn index(&self, x: i32, y: i32) -> usize {
-        (y * self.width + x) as usize
+    /// `tile`'s place in the maps, row by row; unchecked, as the game reads them.
+    const fn index(&self, tile: Tile) -> usize {
+        (tile.y() * self.size.width() + tile.x()) as usize
     }
 
     /// The first unmodelled case met since the last call.
@@ -359,9 +357,9 @@ impl Visibility {
     }
 
     /// `RGE_Tile_List::add_node` (`FUN_14165d500`) on player `player`'s tile list.
-    fn new_tile(&mut self, player: PlayerId, x: i32, y: i32) {
+    fn new_tile(&mut self, player: PlayerId, tile: Tile) {
         if let Some(list) = self.new_tiles.get_mut(player.index()) {
-            list.push(Tile::new(x, y));
+            list.push(tile);
         }
     }
 
@@ -384,11 +382,11 @@ impl Visibility {
         position: Position,
         group: GatherGroup,
     ) -> Result<(), GenieError> {
-        let (x, y) = (position.x() as i32, position.y() as i32);
-        if x < 0 || y < 0 || self.width <= x || self.height <= y {
+        let tile = Tile::new(position.x() as i32, position.y() as i32);
+        if !self.size.holds(tile) {
             return Ok(());
         }
-        let mut explored = (*self.unified.checked(self.index(x, y))? & MASK) >> 32;
+        let mut explored = (*self.unified.checked(self.index(tile))? & MASK) >> 32;
         let mut p = 0;
         while explored != 0 {
             if explored & 1 != 0 {
@@ -424,9 +422,9 @@ impl Visibility {
         self.seers.get_mut(&id)
     }
 
-    /// The link bits and byte of tile (`x`, `y`).
-    pub fn link(&self, x: i32, y: i32) -> Result<(u8, u8), GenieError> {
-        Ok(*self.links.checked(self.index(x, y))?)
+    /// The link bits and byte of `tile`.
+    pub fn link(&self, tile: Tile) -> Result<(u8, u8), GenieError> {
+        Ok(*self.links.checked(self.index(tile))?)
     }
 }
 

@@ -2840,8 +2840,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let mut t = soldiers(&units, &[]);
     t.spatial = crate::map::spatial::Spatial::new(GridSize::new(40, 40));
     let sight = crate::vision::visibility::Visibility::new(
-        40,
-        40,
+        GridSize::new(40, 40),
         vec![],
         vec![u64::MAX; 1600],
         vec![],
@@ -3796,8 +3795,14 @@ fn searchable(mut t: World) -> World {
     ));
     s.relations = vec![relation_row([0, 3]), relation_row([0, 0])];
     s.unit_diplomacy = vec![relations([1, 4]), relations([0, 1])];
-    let mut v =
-        crate::vision::visibility::Visibility::new(60, 60, vec![], vec![], vec![], 0, vec![]);
+    let mut v = crate::vision::visibility::Visibility::new(
+        GridSize::new(60, 60),
+        vec![],
+        vec![],
+        vec![],
+        0,
+        vec![],
+    );
     v.registry = Some(crate::vision::registry::Registry::new(2, 65));
     s.sight = Some(v);
     t.spatial = s;

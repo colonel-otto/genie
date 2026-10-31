@@ -636,8 +636,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         t.masters = vec![Masters::new([stone])];
         t.load_trackers().unwrap();
         let mut v = crate::vision::visibility::Visibility::new(
-            w,
-            h,
+            GridSize::new(w, h),
             vec![crate::vision::visibility::VisibleMap {
                 counts: vec![0; n],
                 explored: 0,
@@ -820,8 +819,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         );
     }
     let mut v = crate::vision::visibility::Visibility::new(
-        10,
-        10,
+        GridSize::new(10, 10),
         Vec::new(),
         vec![0; 100],
         Vec::new(),

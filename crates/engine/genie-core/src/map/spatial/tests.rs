@@ -279,7 +279,14 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
         new: 1 << 2,
     })
     .unwrap();
-    let mut v = Visibility::new(120, 120, Vec::new(), Vec::new(), Vec::new(), 0, Vec::new());
+    let mut v = Visibility::new(
+        GridSize::new(120, 120),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        0,
+        Vec::new(),
+    );
     v.registry = Some(r);
     s.sight = Some(v);
     let villagers = [class::VILLAGER];
@@ -1275,8 +1282,7 @@ fn sighted(words: Vec<u64>) -> Spatial {
     let n = words.len() as i32;
     Spatial {
         sight: Some(Visibility::new(
-            n,
-            1,
+            GridSize::new(n, 1),
             Vec::new(),
             words,
             Vec::new(),

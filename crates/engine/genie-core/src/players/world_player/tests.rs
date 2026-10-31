@@ -127,8 +127,7 @@ fn attribute_22_is_the_explored_share_in_percent() {
         explored,
     };
     t.spatial.sight = Some(Visibility::new(
-        10,
-        10,
+        GridSize::new(10, 10),
         vec![map(0), map(37), map(0), map(0)],
         vec![0; 100],
         Vec::new(),
@@ -664,8 +663,7 @@ fn the_scout_map_takes_the_new_tiles() {
         explored: 0,
     };
     let mut sight = Visibility::new(
-        10,
-        10,
+        GridSize::new(10, 10),
         vec![map.clone(), map.clone(), map.clone(), map],
         unified,
         Vec::new(),

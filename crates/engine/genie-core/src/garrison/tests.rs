@@ -1479,8 +1479,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
     t.spatial.terrain = Some(terrain);
     let seen = (0..4).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));
     t.spatial.sight = Some(crate::vision::visibility::Visibility::new(
-        w,
-        h,
+        GridSize::new(w, h),
         (0..4)
             .map(|_| crate::vision::visibility::VisibleMap {
                 counts: vec![0; n],
@@ -3840,8 +3839,7 @@ fn a_market_tells_a_computer_ally_of_its_tile() {
         t.players[2].computer = computer_ally;
         t.players[1].computer = own_computer;
         let mut v = crate::vision::visibility::Visibility::new(
-            20,
-            20,
+            GridSize::new(20, 20),
             Vec::new(),
             Vec::new(),
             Vec::new(),

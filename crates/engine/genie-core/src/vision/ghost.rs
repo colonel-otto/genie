@@ -115,22 +115,21 @@ impl World {
         self.spatial.vision(p)[0]
     }
 
-    /// The unified map's visible and explored bits at tile (`x`, `y`) (`map+0x5e30`, masked);
-    /// 0 off the map or without the players' sight.
-    fn tile_bits(&self, x: i32, y: i32) -> Result<u64, GenieError> {
+    /// The unified map's visible and explored bits at `tile` (`map+0x5e30`, masked); 0 off the
+    /// map or without the players' sight.
+    fn tile_bits(&self, tile: Tile) -> Result<u64, GenieError> {
         let Some(v) = self.spatial.sight.as_ref() else {
             return Ok(0);
         };
-        if x < 0 || y < 0 || v.width <= x || v.height <= y {
+        let Some(i) = v.size.index(tile) else {
             return Ok(0);
-        }
-        Ok(*v.unified.checked((y * v.width + x) as usize)? & MASK)
+        };
+        Ok(*v.unified.checked(i)? & MASK)
     }
 
-    /// The tile index of (`x`, `y`) in the unified map.
-    fn tile_index(&self, x: i32, y: i32) -> Option<usize> {
-        let v = self.spatial.sight.as_ref()?;
-        (0 <= x && 0 <= y && x < v.width && y < v.height).then(|| (y * v.width + x) as usize)
+    /// `tile`'s index in the unified map.
+    fn tile_index(&self, tile: Tile) -> Option<usize> {
+        self.spatial.sight.as_ref()?.size.index(tile)
     }
 
     /// What a cell shows now.
@@ -164,8 +163,7 @@ impl World {
         &mut self,
         owner: PlayerId,
         id: ObjectId,
-        x: i32,
-        y: i32,
+        at: Tile,
     ) -> Result<bool, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(false);
@@ -182,10 +180,10 @@ impl World {
         }
         // the game takes the tile's word without a bounds test: every caller passes the
         // object's own tile, which is on the map
-        let Some(tile) = self.tile_index(x, y) else {
+        let Some(tile) = self.tile_index(at) else {
             return Ok(false);
         };
-        let bits = self.tile_bits(x, y)?;
+        let bits = self.tile_bits(at)?;
         let kind = u.master(&self.masters, p)?.kind;
         let umv = self
             .spatial
@@ -255,9 +253,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        let pair = Self::tile_at(u.position());
-        let (x, y) = (pair.x(), pair.y());
-        let _ = self.watch(p, id, x, y)?;
+        let _ = self.watch(p, id, Self::tile_at(u.position()))?;
         Ok(())
     }
 
@@ -302,16 +298,15 @@ impl World {
                 let m = u.master(&self.masters, p)?;
                 let (state, kind, ghosts, position) =
                     (u.life.state, m.kind, m.ghost_on_death, u.position());
-                let pair = Self::tile_at(position);
-                let (x, y) = (pair.x(), pair.y());
+                let tile = Self::tile_at(position);
                 // the static load's watch of a dead object (FUN_14119df60)
                 if ghosts == LEAVES_GHOSTS && ObjectState::Alive < state {
-                    let _ = self.watch(p, id, x, y)?;
+                    let _ = self.watch(p, id, tile)?;
                 }
                 // a building's load constructor (FUN_1411ac170, type 80 only): FUN_1411cc980
                 // before the rehook links its annexes
                 if kind == BUILDING && self.watches_building_at(p, id, false)? {
-                    let _ = self.watch(p, id, x, y)?;
+                    let _ = self.watch(p, id, tile)?;
                 }
             }
             for list in [false, true] {
@@ -354,9 +349,8 @@ impl World {
         if id.is_recyclable() || u.master(&self.masters, p)?.ghost_on_death != LEAVES_GHOSTS {
             return Ok(());
         }
-        let pair = Self::tile_at(position);
-        let (x, y) = (pair.x(), pair.y());
-        let bits = self.tile_bits(x, y)?;
+        let tile = Self::tile_at(position);
+        let bits = self.tile_bits(tile)?;
         let (mut explored, mut visible) = (bits >> 32, bits & 0x1ff_ffff);
         let mut i = 0usize;
         while explored != 0 {
@@ -372,7 +366,7 @@ impl World {
             explored >>= 1;
             visible >>= 1;
         }
-        let _ = self.watch(p, id, x, y)?;
+        let _ = self.watch(p, id, tile)?;
         Ok(())
     }
 
@@ -534,7 +528,7 @@ impl World {
     /// The bits of the ghost's tile and, for a building's ghost, of its footprint's tiles.
     fn ghost_bits(&self, g: &Ghost) -> Result<u64, GenieError> {
         let (px, py) = (g.position.x(), g.position.y());
-        let mut bits = self.tile_bits(g.tile.x(), g.tile.y())?;
+        let mut bits = self.tile_bits(g.tile)?;
         if g.footprint != 0 {
             let offsets = self
                 .spatial
@@ -547,7 +541,7 @@ impl World {
                 ))?;
             for pair in offsets {
                 let (ox, oy) = (pair.dx(), pair.dy());
-                bits |= self.tile_bits(px as i32 + ox, py as i32 + oy)?;
+                bits |= self.tile_bits(Tile::new(px as i32 + ox, py as i32 + oy))?;
             }
         }
         Ok(bits)
@@ -588,9 +582,7 @@ impl World {
                 && let Some(o) = g.original
             {
                 let original_mask = self.cell_bits(Cell::Mask(o))?;
-                if original_mask & viewer == 0
-                    && self.tile_bits(g.tile.x(), g.tile.y())? & viewer == 0
-                {
+                if original_mask & viewer == 0 && self.tile_bits(g.tile)? & viewer == 0 {
                     seen = true;
                 }
             }
@@ -683,6 +675,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::GridSize;
     use crate::map::TileOffset;
     use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
@@ -759,7 +752,14 @@ mod tests {
             ObjectState::Alive,
             Position::new(2.5, 1.5, 0.0),
         ));
-        let mut sight = Visibility::new(4, 4, Vec::new(), vec![0; 16], Vec::new(), 0, Vec::new());
+        let mut sight = Visibility::new(
+            GridSize::new(4, 4),
+            Vec::new(),
+            vec![0; 16],
+            Vec::new(),
+            0,
+            Vec::new(),
+        );
         sight.add_seer(
             object_id(9),
             Seer {
@@ -790,7 +790,10 @@ mod tests {
         // object of type 50 and up with +0x904
         let mut t = world(true);
         set_tile(&mut t, 2, 1, 0x0000_0002_0000_0002 | (1 << 30));
-        assert_eq!(t.watch(PlayerId::new(1), object_id(9), 2, 1), Ok(true));
+        assert_eq!(
+            t.watch(PlayerId::new(1), object_id(9), Tile::new(2, 1)),
+            Ok(true)
+        );
         assert_eq!(
             t.players[1].watched,
             [Watched {
@@ -800,11 +803,20 @@ mod tests {
             }]
         );
         // a second watch and another owner's object are refused
-        assert_eq!(t.watch(PlayerId::new(1), object_id(9), 2, 1), Ok(false));
-        assert_eq!(t.watch(PlayerId::new(1), object_id(5), 1, 2), Ok(false));
+        assert_eq!(
+            t.watch(PlayerId::new(1), object_id(9), Tile::new(2, 1)),
+            Ok(false)
+        );
+        assert_eq!(
+            t.watch(PlayerId::new(1), object_id(5), Tile::new(1, 2)),
+            Ok(false)
+        );
         // the mine (type 30) follows its tile
         set_tile(&mut t, 1, 2, 0x0000_0001_0000_0000);
-        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
+        assert_eq!(
+            t.watch(PlayerId::new(0), object_id(5), Tile::new(1, 2)),
+            Ok(true)
+        );
         assert_eq!(
             t.players[0].watched,
             [Watched {
@@ -1171,7 +1183,10 @@ mod tests {
         // FUN_1410905e0: lost = ((old ^ new) & old) >> 1, from player 1, not the list's player
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0007);
-        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
+        assert_eq!(
+            t.watch(PlayerId::new(0), object_id(5), Tile::new(1, 2)),
+            Ok(true)
+        );
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0001);
         t.watch_pass(PlayerId::new(0)).unwrap();
         assert_eq!(t.players[1].ghosts.len(), 1);
@@ -1181,14 +1196,20 @@ mod tests {
         let mut t = world(true);
         t.players[2].computer = true;
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0005);
-        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
+        assert_eq!(
+            t.watch(PlayerId::new(0), object_id(5), Tile::new(1, 2)),
+            Ok(true)
+        );
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0001);
         assert!(t.watch_pass(PlayerId::new(0)).is_err());
         assert_eq!(t.players[2].ghosts.len(), 1);
         // an entry whose object is gone leaves the list
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0007);
-        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
+        assert_eq!(
+            t.watch(PlayerId::new(0), object_id(5), Tile::new(1, 2)),
+            Ok(true)
+        );
         t.players[0].objects.clear();
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0001);
         t.watch_pass(PlayerId::new(0)).unwrap();

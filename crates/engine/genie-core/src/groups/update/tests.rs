@@ -103,8 +103,7 @@ fn world() -> World {
         relations([0, 2, 4, 1]),
     ];
     s.sight = Some(crate::vision::visibility::Visibility::new(
-        8,
-        8,
+        GridSize::new(8, 8),
         Vec::new(),
         vec![0; 64],
         Vec::new(),

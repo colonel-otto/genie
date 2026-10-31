@@ -174,12 +174,7 @@ impl World {
         placed: Option<crate::map::spatial::Placed>,
     ) -> Result<(), GenieError> {
         if let Some(p) = placed {
-            let _ = self.watch(
-                new,
-                id,
-                crate::math::conversions::cvttss2si(p.position.x()),
-                crate::math::conversions::cvttss2si(p.position.y()),
-            )?;
+            let _ = self.watch(new, id, p.position.tile())?;
         }
         Ok(())
     }

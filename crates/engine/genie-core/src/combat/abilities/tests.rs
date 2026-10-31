@@ -619,8 +619,7 @@ fn building_sight(t: &mut World, p: PlayerId, id: i32, built: bool) {
         explored: 0,
     };
     let mut v = crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         vec![map(), map(), map()],
         vec![0; 400],
         Vec::new(),

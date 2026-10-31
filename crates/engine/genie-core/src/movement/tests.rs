@@ -458,8 +458,7 @@ fn walled(radius: f32) -> Spatial {
         crate::map::spatial::Tiles::new(crate::map::GridSize::new(20, 20), classes),
     );
     w.sight = Some(crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         Vec::new(),
         Vec::new(),
         Vec::new(),

@@ -83,8 +83,7 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     let mut t = crate::world::World::new(0, 1, PlayerId::new(0), vec![0; 3], Vec::new());
     let n = 16 * 16;
     let mut v = Visibility::new(
-        16,
-        16,
+        GridSize::new(16, 16),
         vec![
             VisibleMap {
                 counts: vec![-1; n],
@@ -97,8 +96,14 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
         0,
         vec![false, true, false],
     );
-    assert_eq!(v.explore(PlayerId::new(1), 3, 2, 0, false), Ok(1));
-    assert_eq!(v.explore(PlayerId::new(2), 5, 5, 0, false), Ok(1));
+    assert_eq!(
+        v.explore(PlayerId::new(1), Tile::new(3, 2), 0, false),
+        Ok(1)
+    );
+    assert_eq!(
+        v.explore(PlayerId::new(2), Tile::new(5, 5), 0, false),
+        Ok(1)
+    );
     t.spatial.sight = Some(v);
     let mut m = module();
     m.info.width = 16;

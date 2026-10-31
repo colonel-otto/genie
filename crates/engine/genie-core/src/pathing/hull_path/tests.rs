@@ -370,8 +370,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
         Tiles::new(GridSize::new(20, 20), classes),
     );
     w.sight = Some(crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         Vec::new(),
         Vec::new(),
         Vec::new(),
@@ -1094,8 +1093,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
         Tiles::new(GridSize::new(20, 20), classes),
     );
     let mut v = crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         Vec::new(),
         Vec::new(),
         Vec::new(),
@@ -1104,7 +1102,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     );
     // a building of 2 × 2 tiles, 9..=10 each way, its anchor (10, 10)
     let _ = v.link_building(Position::new(10.0, 10.0, 0.0), Footprint::new(1.0, 1.0));
-    assert_eq!(v.anchor_of(9, 9), Some(Tile::new(10, 10)));
+    assert_eq!(v.anchor_of(Tile::new(9, 9)), Some(Tile::new(10, 10)));
     w.sight = Some(v);
     w.insert(object_id(20), tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
     w.insert(object_id(21), tall(9.5, 9.5, 0.1, class::PREDATOR));
@@ -1168,8 +1166,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     tiles.mark_for_test(Tile::new(8, 5), 0x4000 | 0x200);
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), tiles);
     w.sight = Some(crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         Vec::new(),
         Vec::new(),
         Vec::new(),
@@ -1544,8 +1541,7 @@ fn walled(wall_x: usize, unit: Point) -> Spatial {
         Tiles::new(GridSize::new(20, 20), classes),
     );
     w.sight = Some(crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         Vec::new(),
         Vec::new(),
         Vec::new(),
@@ -2068,8 +2064,7 @@ fn a_node_beyond_the_area_grows_it_once() {
         Tiles::new(GridSize::new(20, 20), classes),
     );
     w.sight = Some(crate::vision::visibility::Visibility::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         Vec::new(),
         Vec::new(),
         Vec::new(),
