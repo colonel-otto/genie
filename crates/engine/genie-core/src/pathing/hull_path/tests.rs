@@ -32,6 +32,13 @@ fn square() -> Hull {
     }
 }
 
+/// A hull's place is the value a search node holds for it.
+#[test]
+fn a_hull_s_node_slot_is_its_place() {
+    let h = HullIndex::new(3);
+    assert_eq!((h.index(), h.slot()), (3, 3));
+}
+
 #[test]
 fn a_hull_holds_the_points_inside_it() {
     let h = square();
@@ -278,7 +285,7 @@ fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
     let hull = pather
         .add_shape(Point::new(-1.2, 1.9), Point::new(-0.8, 2.3))
         .unwrap();
-    assert_eq!((hull, pather.hulls.len()), (0, 1));
+    assert_eq!((hull, pather.hulls.len()), (HullIndex::new(0), 1));
     assert!(pather.hulls[0].points.contains(&Point::new(10.0, 10.0)));
 }
 
@@ -808,7 +815,7 @@ fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
 
 /// `MShortPather::checkPointInsideHull` (`FUN_140f8be30`): the first hull with points that
 /// holds the point, moved [`NUDGE`] of the way toward its bounding box's middle (a point on
-/// a side counts as inside), or -1.
+/// a side counts as inside), or none.
 #[test]
 fn a_point_lies_in_the_first_hull_holding_it() {
     let mut w = open_world();
@@ -824,15 +831,15 @@ fn a_point_lies_in_the_first_hull_holding_it() {
         ..square()
     };
     p.hulls = vec![Hull::default(), shifted(0.0), shifted(0.5)];
-    assert_eq!(p.hull_of(Point::new(0.75, 0.5)), 1);
-    assert_eq!(p.hull_of(Point::new(1.25, 0.5)), 2);
+    assert_eq!(p.hull_of(Point::new(0.75, 0.5)), Some(HullIndex::new(1)));
+    assert_eq!(p.hull_of(Point::new(1.25, 0.5)), Some(HullIndex::new(2)));
     // the left side of hull 1 and the right side of hull 2, nudged inward
-    assert_eq!(p.hull_of(Point::new(0.0, 0.5)), 1);
-    assert_eq!(p.hull_of(Point::new(1.5, 0.5)), 2);
-    assert_eq!(p.hull_of(Point::new(1.75, 0.5)), -1);
-    assert_eq!(p.hull_of(Point::new(f32::NAN, 0.5)), -1);
+    assert_eq!(p.hull_of(Point::new(0.0, 0.5)), Some(HullIndex::new(1)));
+    assert_eq!(p.hull_of(Point::new(1.5, 0.5)), Some(HullIndex::new(2)));
+    assert_eq!(p.hull_of(Point::new(1.75, 0.5)), None);
+    assert_eq!(p.hull_of(Point::new(f32::NAN, 0.5)), None);
     p.hulls.clear();
-    assert_eq!(p.hull_of(Point::new(0.75, 0.5)), -1);
+    assert_eq!(p.hull_of(Point::new(0.75, 0.5)), None);
 }
 
 /// A tall object of class 10 (39 for a gate) without an obstruction record, owned by player 1.
@@ -910,7 +917,10 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     );
     assert_eq!(p.player, 1);
     p.hulls = vec![far.clone()];
-    assert!(p.add_tile_objects(5, 5, Some(0), 1).is_err());
+    assert!(
+        p.add_tile_objects(5, 5, Some(HullIndex::new(0)), 1)
+            .is_err()
+    );
     // player 1 passes the gate
     let passes = BTreeSet::from([object_id(3)]);
     let mut p = HullPather::new(
@@ -922,7 +932,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     )
     .with_gates(&passes);
     p.hulls = vec![far.clone()];
-    p.add_tile_objects(5, 5, Some(0), 1).unwrap();
+    p.add_tile_objects(5, 5, Some(HullIndex::new(0)), 1)
+        .unwrap();
     assert_eq!(
         hull_ids(&p),
         [
@@ -933,7 +944,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     assert_eq!(p.hulls[0].objects[0].bounds, Rect::new(4.8, 4.8, 6.2, 6.2));
     assert_eq!(p.hulls[1].objects[0].bounds, Rect::new(4.3, 4.3, 6.7, 6.7));
     // once per hull
-    p.add_tile_objects(5, 5, Some(0), 1).unwrap();
+    p.add_tile_objects(5, 5, Some(HullIndex::new(0)), 1)
+        .unwrap();
     assert_eq!(
         hull_ids(&p),
         [
@@ -951,7 +963,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     )
     .including(&[object_id(5), object_id(10)]);
     p.hulls = vec![far];
-    p.add_tile_objects(5, 5, Some(0), -1).unwrap();
+    p.add_tile_objects(5, 5, Some(HullIndex::new(0)), -1)
+        .unwrap();
     assert_eq!(
         hull_ids(&p),
         [
@@ -965,7 +978,8 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
         ]
     );
     // an unordered radius takes the given hull
-    p.add_tile_objects(8, 8, Some(0), -1).unwrap();
+    p.add_tile_objects(8, 8, Some(HullIndex::new(0)), -1)
+        .unwrap();
     assert_eq!(
         hull_ids(&p)[0],
         [
@@ -1104,11 +1118,14 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     // into a given hull, once; an ignored tile's box stays out
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.hulls = vec![Hull::default()];
-    p.process_tile(3, 3, [0, 0, 5, 5], Some(0)).unwrap();
-    p.process_tile(3, 3, [0, 0, 5, 5], Some(0)).unwrap();
+    p.process_tile(3, 3, [0, 0, 5, 5], Some(HullIndex::new(0)))
+        .unwrap();
+    p.process_tile(3, 3, [0, 0, 5, 5], Some(HullIndex::new(0)))
+        .unwrap();
     assert_eq!(hull_ids(&p), [vec![tile_record_id(3, 3)]]);
     p.ignore.push(tile_record_id(9, 9));
-    p.process_tile(9, 9, [5, 5, 10, 10], Some(0)).unwrap();
+    p.process_tile(9, 9, [5, 5, 10, 10], Some(HullIndex::new(0)))
+        .unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![tile_record_id(3, 3), RecordId::from(object_id(21))]]
@@ -1437,8 +1454,15 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
         })
         .unwrap();
     assert!(
-        p.side_points(0, root, b, Point::new(f32::NAN, f32::NAN), 0.5, None)
-            .unwrap()
+        p.side_points(
+            HullIndex::new(0),
+            root,
+            b,
+            Point::new(f32::NAN, f32::NAN),
+            0.5,
+            None
+        )
+        .unwrap()
     );
     let mut at: Vec<Point> = open_nodes(&p, 1)
         .iter()
@@ -1469,7 +1493,7 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
         .unwrap();
     let reach = Some((Point::new(5.0, 3.0), f32::NAN));
     assert!(
-        p.side_points(0, root, b, Point::new(5.0, 3.0), 0.5, reach)
+        p.side_points(HullIndex::new(0), root, b, Point::new(5.0, 3.0), 0.5, reach)
             .unwrap()
     );
     assert_eq!(open_nodes(&p, 1).len(), 3);
@@ -1633,7 +1657,7 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
         let h = p
             .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
             .unwrap();
-        p.hulls[h].objects.push(Shape {
+        p.hulls[h.index()].objects.push(Shape {
             bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
             id: RecordId::from(object_id(48)),
         });
@@ -1719,7 +1743,7 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
         let h = p
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
             .unwrap();
-        p.hulls[h].objects.push(Shape {
+        p.hulls[h.index()].objects.push(Shape {
             bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
             id: RecordId::from(object_id(48)),
         });
@@ -1791,7 +1815,7 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
         let h = p
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
             .unwrap();
-        p.hulls[h].objects.push(Shape {
+        p.hulls[h.index()].objects.push(Shape {
             bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
             id: RecordId::from(object_id(48)),
         });
@@ -1837,7 +1861,7 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
     let h = p
         .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
         .unwrap();
-    p.hulls[h].objects.push(Shape {
+    p.hulls[h.index()].objects.push(Shape {
         bounds: Rect::new(4.8, 4.8, 6.2, 6.2),
         id: RecordId::from(object_id(48)),
     });
@@ -2466,7 +2490,7 @@ fn around_triangle(at: Point, taken: &[i32]) -> (Vec<(Point, Option<usize>, i32)
             direction: -1,
         })
         .unwrap();
-    p.around_hull(node, 0, 1, to).unwrap();
+    p.around_hull(node, HullIndex::new(0), 1, to).unwrap();
     let made = p.nodes[node + 1..]
         .iter()
         .map(|n| (n.at, n.parent, n.vertex))

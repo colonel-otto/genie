@@ -6,7 +6,7 @@ use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::walk_in::WalkIn;
 use crate::pathing::hull_path::walks::WalkOut;
 use crate::pathing::hull_path::{
-    GROWTHS, HullPather, HullQuery, ITERATION_CAP, MOST, NUDGE, PATHS, Point, Waypoints,
+    GROWTHS, HullIndex, HullPather, HullQuery, ITERATION_CAP, MOST, NUDGE, PATHS, Point, Waypoints,
 };
 use crate::world::slots::CheckedIndex;
 
@@ -29,8 +29,10 @@ pub(super) struct Rounds {
     pub(super) entered_box: bool,
     /// The node found, or the one nearest the goal.
     pub(super) best_node: Option<usize>,
-    start_hull: i32,
-    goal_hull: i32,
+    /// The hull holding the start (`checkPointInsideHull`), if any.
+    start_hull: Option<HullIndex>,
+    /// The hull holding the goal, if any.
+    goal_hull: Option<HullIndex>,
 }
 
 impl Rounds {
@@ -45,8 +47,8 @@ impl Rounds {
             within: false,
             entered_box: false,
             best_node: None,
-            start_hull: -1,
-            goal_hull: -1,
+            start_hull: None,
+            goal_hull: None,
         }
     }
 
@@ -122,19 +124,19 @@ impl HullPather<'_> {
         rounds.start_hull = self.hull_of(q.from);
         rounds.goal_hull = self.hull_of(q.to);
         rounds.within = false;
-        if 0 <= rounds.start_hull
-            && let Some(result) = self.leave_start_hull(q, root, rounds, path)?
+        if let Some(start) = rounds.start_hull
+            && let Some(result) = self.leave_start_hull(q, root, start, rounds, path)?
         {
             return Ok(Some(result));
         }
         rounds.entered_box = false;
-        if 0 <= rounds.goal_hull {
-            rounds.entered_box = self.enter_goal_hull(q, rounds.goal_hull as usize)?;
+        if let Some(goal) = rounds.goal_hull {
+            rounds.entered_box = self.enter_goal_hull(q, goal)?;
         }
         Ok(None)
     }
 
-    /// A start inside a hull: with the goal in the same hull, the walk to it first (`walk_out`
+    /// A start inside hull `sh`: with the goal in the same hull, the walk to it first (`walk_out`
     /// toward the goal into `path`): there (1, or 2 for a target whose id is below 1, the goal
     /// query's among them), none (3, or 3 for a walk that never left the boxes), or partway
     /// (`within`). Then the ways out ([`HullPather::exit_paths`], none is 3), their nodes on the
@@ -143,11 +145,11 @@ impl HullPather<'_> {
         &mut self,
         q: &HullQuery,
         root: usize,
+        sh: HullIndex,
         rounds: &mut Rounds,
         path: &mut Waypoints,
     ) -> Result<Option<u8>, GenieError> {
-        let sh = rounds.start_hull as usize;
-        if rounds.start_hull == rounds.goal_hull {
+        if Some(sh) == rounds.goal_hull {
             path.points.clear();
             let mut count = 0;
             let walk = self.walk_out(WalkOut {
@@ -175,13 +177,18 @@ impl HullPather<'_> {
             return Ok(Some(3));
         }
         self.close(0, root)?;
-        self.add_exits(root, count, q.to, rounds.start_hull)?;
+        self.add_exits(root, count, q.to, sh)?;
         Ok(None)
     }
 
     /// The start hull's ways out (`walk_out` toward no goal into `exits`, at most
     /// [`PATHS`]): how many. The walk's result is not read, its paths are.
-    fn exit_paths(&mut self, hull: usize, from: Point, range: f32) -> Result<usize, GenieError> {
+    fn exit_paths(
+        &mut self,
+        hull: HullIndex,
+        from: Point,
+        range: f32,
+    ) -> Result<usize, GenieError> {
         let mut exits = std::mem::take(&mut self.exits);
         for e in &mut exits {
             e.points.clear();
@@ -211,7 +218,7 @@ impl HullPather<'_> {
         root: usize,
         count: usize,
         to: Point,
-        start_hull: i32,
+        start_hull: HullIndex,
     ) -> Result<(), GenieError> {
         for k in 0..count {
             let points = self.exits.checked(k)?.points.clone();
@@ -227,7 +234,7 @@ impl HullPather<'_> {
                     parent: Some(node),
                     position: p,
                     goal: Some(to),
-                    hull: start_hull,
+                    hull: start_hull.slot(),
                     direction: -1,
                 })?;
             }
@@ -238,7 +245,7 @@ impl HullPather<'_> {
                 parent: Some(node),
                 position: last,
                 goal: Some(to),
-                hull: start_hull,
+                hull: start_hull.slot(),
                 direction: -1,
             })?;
         }
@@ -248,13 +255,13 @@ impl HullPather<'_> {
     /// A goal inside the hull `hull`: the ways in (`walk_in` backwards from the goal into
     /// `entrances`, at most [`PATHS`]), their ends joined to the hull's points
     /// ([`HullPather::join_entrances`]). Whether the walk ended in a box (its result 5).
-    fn enter_goal_hull(&mut self, q: &HullQuery, hull: usize) -> Result<bool, GenieError> {
+    fn enter_goal_hull(&mut self, q: &HullQuery, hull: HullIndex) -> Result<bool, GenieError> {
         let mut entrances = std::mem::take(&mut self.entrances);
         for e in &mut entrances {
             e.points.clear();
         }
-        let n = self.hulls.checked(hull)?.points.len();
-        self.hulls.checked_mut(hull)?.entrances = vec![-1; n];
+        let n = self.hulls.checked(hull.index())?.points.len();
+        self.hulls.checked_mut(hull.index())?.entrances = vec![-1; n];
         let mut count = 0;
         let mut sides = [0usize; PATHS];
         let walk = self.walk_in(WalkIn {
@@ -309,10 +316,10 @@ impl HullPather<'_> {
         let Some((hit, p, edge)) = self.nearest_crossing(vertex, at, q.to) else {
             return self.no_crossing(q, best, rounds);
         };
-        if rounds.start_hull == -1 && rounds.goal_hull == -1 && self.blocked(at, p)? {
+        if rounds.start_hull.is_none() && rounds.goal_hull.is_none() && self.blocked(at, p)? {
             return Ok(Expanded::Next);
         }
-        if hit as i32 == self.nodes.checked(best)?.hull && 0 <= vertex {
+        if hit.slot() == self.nodes.checked(best)?.hull && 0 <= vertex {
             return Ok(Expanded::Next);
         }
         let node = self.add_unrefused(UnrefusedNode {
@@ -321,7 +328,7 @@ impl HullPather<'_> {
             parent: Some(best),
             position: p,
             goal: Some(q.to),
-            hull: hit as i32,
+            hull: hit.slot(),
             direction: -1,
         })?;
         rounds.nearer(node, self.nodes.checked(node)?.to_goal);
@@ -358,14 +365,19 @@ impl HullPather<'_> {
 
     /// The hull the walk from `at` to `to` crosses first: its index, the crossing and the edge
     /// crossed. A node off the hulls' points (`vertex` below 0) tests from outside.
-    fn nearest_crossing(&self, vertex: i32, at: Point, to: Point) -> Option<(usize, Point, usize)> {
-        let mut crossing: Option<(usize, Point, usize)> = None;
+    fn nearest_crossing(
+        &self,
+        vertex: i32,
+        at: Point,
+        to: Point,
+    ) -> Option<(HullIndex, Point, usize)> {
+        let mut crossing: Option<(HullIndex, Point, usize)> = None;
         let mut crossing_d = MOST;
         for (i, hull) in self.hulls.iter().enumerate() {
             if let Some((p, edge)) = hull.intersection(vertex < 0, at, to) {
                 let d = (p.y() - at.y()) * (p.y() - at.y()) + (p.x() - at.x()) * (p.x() - at.x());
                 if d < crossing_d {
-                    crossing = Some((i, p, edge));
+                    crossing = Some((HullIndex::new(i), p, edge));
                     crossing_d = d;
                 }
             }
@@ -400,11 +412,11 @@ impl HullPather<'_> {
             rounds.found = true;
             return Ok(Expanded::End);
         }
-        if 0 <= rounds.goal_hull
-            && rounds.goal_hull == self.nodes.checked(best)?.hull
+        if let Some(goal) = rounds.goal_hull
+            && goal.slot() == self.nodes.checked(best)?.hull
             && 0 <= vertex
         {
-            let hull = self.hulls.checked(rounds.goal_hull as usize)?;
+            let hull = self.hulls.checked(goal.index())?;
             if let Some(&e) = hull.entrances.get(vertex as usize)
                 && (vertex as usize) < hull.points.len()
                 && 0 <= e
@@ -424,38 +436,42 @@ impl HullPather<'_> {
     pub(super) fn around_hull(
         &mut self,
         node: usize,
-        hit: usize,
+        hit: HullIndex,
         edge: usize,
         to: Point,
     ) -> Result<(), GenieError> {
-        let np = self.hulls.checked(hit)?.points.len();
+        let np = self.hulls.checked(hit.index())?.points.len();
         let mut back = if edge >= 1 { edge } else { np } as i32 - 1;
         let mut fwd = edge;
         let (mut a, mut b) = (Some(node), Some(node));
         for _ in 0..np / 2 {
             if let Some(x) = a {
-                let p = *self.hulls.checked(hit)?.points.checked(back as usize)?;
+                let p = *self
+                    .hulls
+                    .checked(hit.index())?
+                    .points
+                    .checked(back as usize)?;
                 a = self.add_node(NewNode {
                     list: 0,
                     open: true,
                     parent: Some(x),
                     position: p,
                     goal: Some(to),
-                    hull: hit as i32,
+                    hull: hit.slot(),
                     vertex: back,
                     direction: -1,
                     by_place: false,
                 })?;
             }
             if let Some(x) = b {
-                let p = *self.hulls.checked(hit)?.points.checked(fwd)?;
+                let p = *self.hulls.checked(hit.index())?.points.checked(fwd)?;
                 b = self.add_node(NewNode {
                     list: 0,
                     open: true,
                     parent: Some(x),
                     position: p,
                     goal: Some(to),
-                    hull: hit as i32,
+                    hull: hit.slot(),
                     vertex: fwd as i32,
                     direction: -1,
                     by_place: false,
@@ -478,14 +494,18 @@ impl HullPather<'_> {
     /// when both ways are gone.
     fn odd_point(
         &mut self,
-        hit: usize,
+        hit: HullIndex,
         (a, back): (Option<usize>, i32),
         (b, fwd): (Option<usize>, usize),
         to: Point,
     ) -> Result<(), GenieError> {
         let (qa, qb) = (
-            *self.hulls.checked(hit)?.points.checked(back as usize)?,
-            *self.hulls.checked(hit)?.points.checked(fwd)?,
+            *self
+                .hulls
+                .checked(hit.index())?
+                .points
+                .checked(back as usize)?,
+            *self.hulls.checked(hit.index())?.points.checked(fwd)?,
         );
         let on_a = match (a, b) {
             (Some(x), Some(y)) => {
@@ -501,7 +521,7 @@ impl HullPather<'_> {
                 parent: Some(x),
                 position: qa,
                 goal: Some(to),
-                hull: hit as i32,
+                hull: hit.slot(),
                 vertex: back,
                 direction: -1,
                 by_place: false,
@@ -513,7 +533,7 @@ impl HullPather<'_> {
                 parent: Some(y),
                 position: qb,
                 goal: Some(to),
-                hull: hit as i32,
+                hull: hit.slot(),
                 vertex: fwd as i32,
                 direction: -1,
                 by_place: false,

@@ -8,8 +8,8 @@ use crate::math::fmath::{at_most_or_unordered, maxss, sqrt};
 use crate::objects::ObjectId;
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::{
-    DIRECTIONS, EXIT_STEP, HALF, HULL_ITERATIONS, HullPather, NUDGE, Node, ONE, Point, SAME_END,
-    SIDES, SQRT_2, Target, Waypoints, Within,
+    DIRECTIONS, EXIT_STEP, HALF, HULL_ITERATIONS, HullIndex, HullPather, NUDGE, Node, ONE, Point,
+    SAME_END, SIDES, SQRT_2, Target, Waypoints, Within,
 };
 use crate::world::slots::CheckedIndex;
 
@@ -17,7 +17,7 @@ use crate::world::slots::CheckedIndex;
 #[derive(Debug)]
 pub(super) struct WalkOut<'a> {
     /// The hull the start is inside.
-    pub(super) hull: usize,
+    pub(super) hull: HullIndex,
     /// The start.
     pub(super) start: Point,
     /// The goal (none: the ways out are kept).
@@ -144,7 +144,7 @@ impl HullPather<'_> {
     /// `p`; none inside a box of the hull. Returns whether one was made.
     pub(super) fn side_points(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         root: usize,
         b: Rect,
         p: Point,
@@ -208,7 +208,7 @@ impl HullPather<'_> {
         };
         let mut made = false;
         let mut add = |me: &mut Self, q: Point| -> Result<(), GenieError> {
-            if near(q) && me.hulls.checked(hull)?.box_holding(q).is_none() {
+            if near(q) && me.hulls.checked(hull.index())?.box_holding(q).is_none() {
                 let _ = me.add_node(NewNode {
                     list: 1,
                     open: true,
@@ -264,7 +264,7 @@ impl HullPather<'_> {
     /// diameter toward one of [`DIRECTIONS`], or to where it leaves the hull, unless inside a box.
     pub(super) fn first_steps(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         root: usize,
         p: Point,
         goal: Option<Point>,
@@ -273,10 +273,10 @@ impl HullPather<'_> {
         let mut made = false;
         for dir in DIRECTIONS {
             let mut q = Point::new(d * dir.x() + p.x(), d * dir.y() + p.y());
-            if let Some((at, _)) = self.hulls.checked(hull)?.intersection(false, p, q) {
+            if let Some((at, _)) = self.hulls.checked(hull.index())?.intersection(false, p, q) {
                 q = at;
             }
-            if self.hulls.checked(hull)?.box_holding(q).is_none() {
+            if self.hulls.checked(hull.index())?.box_holding(q).is_none() {
                 let _ = self.add_node(NewNode {
                     list: 1,
                     open: true,
@@ -483,7 +483,7 @@ impl HullPather<'_> {
     /// is stuck (no step made).
     fn begin_walk_out(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         from: Point,
         goal: Option<Point>,
     ) -> Result<(Option<usize>, bool), GenieError> {
@@ -496,13 +496,13 @@ impl HullPather<'_> {
             hull: -1,
             direction: -1,
         })?;
-        let inside = self.hulls.checked(hull)?.box_holding(from);
+        let inside = self.hulls.checked(hull.index())?.box_holding(from);
         let Some(b) = inside else {
             return Ok((inside, false));
         };
         self.close(1, root)?;
         let mut made = self.first_steps(hull, root, from, goal)?;
-        let bounds = self.hulls.checked(hull)?.objects.checked(b)?.bounds;
+        let bounds = self.hulls.checked(hull.index())?.objects.checked(b)?.bounds;
         let d = self.radius + self.radius;
         made |= self.side_points(hull, root, bounds, from, EXIT_STEP, Some((from, d)))?;
         Ok((inside, !made))
@@ -537,7 +537,7 @@ impl HullPather<'_> {
     /// `count` is below `most`. True when a ray left the boxes.
     pub(super) fn cast_rays(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         node: usize,
         goal: Option<Point>,
         nudge: bool,
@@ -551,7 +551,11 @@ impl HullPather<'_> {
             if !Self::may_cast(&n, side) {
                 continue;
             }
-            if let Some((q, b, box_side)) = self.hulls.checked(hull)?.ray_to_box(at, side, n.hull) {
+            if let Some((q, b, box_side)) = self
+                .hulls
+                .checked(hull.index())?
+                .ray_to_box(at, side, n.hull)
+            {
                 let _ = self.add_node(NewNode {
                     list: 1,
                     open: true,
@@ -566,7 +570,8 @@ impl HullPather<'_> {
                 continue;
             }
             left_boxes = true;
-            let Some((mut q, edge)) = self.hulls.checked(hull)?.ray_to_hull(at, side) else {
+            let Some((mut q, edge)) = self.hulls.checked(hull.index())?.ray_to_hull(at, side)
+            else {
                 continue;
             };
             if goal.is_some() {

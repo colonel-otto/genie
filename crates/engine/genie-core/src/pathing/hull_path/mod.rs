@@ -137,6 +137,29 @@ struct Hull {
     objects: Vec<Shape>,
 }
 
+/// A hull's place in the pather's hulls: the order the building made them in, where a merge
+/// moves the last hull into the place of the one it absorbed (`addShapeToHulls`). A node of the
+/// A* holds it in its `+0x28` ([`HullIndex::slot`]), −1 for none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HullIndex(usize);
+
+impl HullIndex {
+    /// The hull at place `index` of the hulls.
+    const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Its place in the hulls.
+    const fn index(self) -> usize {
+        self.0
+    }
+
+    /// The value a search node's `+0x28` holds for it.
+    fn slot(self) -> i32 {
+        i32::try_from(self.0).unwrap_or(i32::MAX)
+    }
+}
+
 /// A search node (`PathingNode`, 0x38 bytes).
 #[derive(Clone, Copy, Debug)]
 struct Node {
@@ -148,9 +171,11 @@ struct Node {
     to_goal: f32,
     /// The walk from the start (`+0x24`).
     cost: f32,
-    /// The hull of a hull point; in a walk out of a hull, the box the node lies on (`+0x28`).
+    /// The hull of a hull point ([`HullIndex::slot`]); in a walk out of a hull, the box the node
+    /// lies on (`+0x28`, −1 none). The game's one field for both, which no reader tells apart.
     hull: i32,
-    /// The point of that hull; in a walk out of a hull, the box's side (`+0x2c`).
+    /// The point of that hull; in a walk out of a hull, the box's side, or the hull's edge the
+    /// node left it by (`+0x2c`, −1 none): [`HullPather::may_cast`] reads the edge as a side.
     vertex: i32,
     /// The ray that made the node in a walk out of a hull (`+0x30`).
     direction: i32,

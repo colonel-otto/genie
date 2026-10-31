@@ -8,7 +8,7 @@ use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
-use crate::pathing::hull_path::{HALF, Hull, HullPather, Point, Shape};
+use crate::pathing::hull_path::{HALF, Hull, HullIndex, HullPather, Point, Shape};
 use crate::world::slots::CheckedIndex;
 
 impl HullPather<'_> {
@@ -22,9 +22,9 @@ impl HullPather<'_> {
         hulls: &mut Vec<Hull>,
         min: Point,
         max: Point,
-    ) -> Result<usize, GenieError> {
+    ) -> Result<HullIndex, GenieError> {
         let mut index = 0;
-        let mut hull: Option<usize> = None;
+        let mut hull: Option<HullIndex> = None;
         while index < hulls.len() {
             let (overlap, outside) = hulls.checked(index)?.shape_overlap(min, max);
             let corners = [
@@ -36,7 +36,7 @@ impl HullPather<'_> {
             match overlap {
                 1 => {
                     hulls.checked_mut(index)?.merge(&corners)?;
-                    hull = Some(index);
+                    hull = Some(HullIndex::new(index));
                 }
                 2 => {
                     let some: Vec<Point> = corners
@@ -46,9 +46,9 @@ impl HullPather<'_> {
                         .map(|(corner, _)| *corner)
                         .collect();
                     hulls.checked_mut(index)?.merge(&some)?;
-                    hull = Some(index);
+                    hull = Some(HullIndex::new(index));
                 }
-                3 => return Ok(index),
+                3 => return Ok(HullIndex::new(index)),
                 _ => {
                     index += 1;
                     continue;
@@ -69,14 +69,14 @@ impl HullPather<'_> {
                 max,
                 objects: Vec::new(),
             });
-            return Ok(hulls.len() - 1);
+            return Ok(HullIndex::new(hulls.len() - 1));
         };
         'merging: loop {
             for j in 0..hulls.len() {
-                if j == mine {
+                if j == mine.index() {
                     continue;
                 }
-                let (h, o) = (hulls.checked(mine)?, hulls.checked(j)?);
+                let (h, o) = (hulls.checked(mine.index())?, hulls.checked(j)?);
                 if !(h.min.x() <= o.max.x()
                     && h.min.y() <= o.max.y()
                     && o.min.x() <= h.max.x()
@@ -107,19 +107,23 @@ impl HullPather<'_> {
 
     /// Hull `j` merges into hull `mine`: its boxes the other lacks and its points join, and its
     /// slot goes to the last hull. Returns where `mine` now is.
-    fn absorb(hulls: &mut Vec<Hull>, mine: usize, j: usize) -> Result<usize, GenieError> {
+    fn absorb(hulls: &mut Vec<Hull>, mine: HullIndex, j: usize) -> Result<HullIndex, GenieError> {
         let other = hulls.checked(j)?.clone();
         for s in &other.objects {
-            let mine_objects = &mut hulls.checked_mut(mine)?.objects;
+            let mine_objects = &mut hulls.checked_mut(mine.index())?.objects;
             if !mine_objects.iter().any(|m| m.id == s.id) {
                 mine_objects.push(*s);
             }
         }
-        hulls.checked_mut(mine)?.merge(&other.points)?;
+        hulls.checked_mut(mine.index())?.merge(&other.points)?;
         let last = hulls.len() - 1;
         hulls.swap(j, last);
         let _ = hulls.pop();
-        Ok(if mine == last { j } else { mine })
+        Ok(if mine.index() == last {
+            HullIndex::new(j)
+        } else {
+            mine
+        })
     }
 
     /// `MShortPather::addTileObjects` (`FUN_140f8b460`): the tall objects of tile (`x`, `y`)'s
@@ -131,7 +135,7 @@ impl HullPather<'_> {
         &mut self,
         x: i32,
         y: i32,
-        hull: Option<usize>,
+        hull: Option<HullIndex>,
         player: i32,
     ) -> Result<(), GenieError> {
         let world = &*self.world;
@@ -173,7 +177,7 @@ impl HullPather<'_> {
         r: f32,
         id: ObjectId,
         p: &Placed,
-        hull: Option<usize>,
+        hull: Option<HullIndex>,
     ) -> Result<(), GenieError> {
         let (x, y) = (p.position.x(), p.position.y());
         let (rx, ry) = (p.radius.x(), p.radius.y());
@@ -183,7 +187,7 @@ impl HullPather<'_> {
             Some(h) if at_most_or_unordered(rx, HALF) && at_most_or_unordered(ry, HALF) => h,
             _ => Self::add_shape_to(hulls, bounds.corner0(), bounds.corner1())?,
         };
-        let objects = &mut hulls.checked_mut(h)?.objects;
+        let objects = &mut hulls.checked_mut(h.index())?.objects;
         let id = RecordId::from(id);
         if !objects.iter().any(|o| o.id == id) {
             objects.push(Shape { bounds, id });
@@ -192,7 +196,7 @@ impl HullPather<'_> {
     }
 
     /// [`HullPather::add_shape_to`] on the pather's hulls.
-    pub(super) fn add_shape(&mut self, min: Point, max: Point) -> Result<usize, GenieError> {
+    pub(super) fn add_shape(&mut self, min: Point, max: Point) -> Result<HullIndex, GenieError> {
         Self::add_shape_to(&mut self.hulls, min, max)
     }
 
@@ -204,7 +208,7 @@ impl HullPather<'_> {
         x: i32,
         y: i32,
         area: [i32; 4],
-        hull: Option<usize>,
+        hull: Option<HullIndex>,
     ) -> Result<(), GenieError> {
         let (w, h) = (self.world.map.width(), self.world.map.height());
         if x < 0 || y < 0 || w <= x || h <= y {
@@ -225,7 +229,7 @@ impl HullPather<'_> {
                     Some(k) => k,
                     None => self.add_shape(bounds.corner0(), bounds.corner1())?,
                 };
-                let objects = &mut self.hulls.checked_mut(k)?.objects;
+                let objects = &mut self.hulls.checked_mut(k.index())?.objects;
                 if !objects.iter().any(|o| o.id == id) {
                     objects.push(Shape { bounds, id });
                 }
@@ -326,11 +330,11 @@ impl HullPather<'_> {
     }
 
     /// `MShortPather::checkPointInsideHull` (`FUN_140f8be30`): the first hull holding `p`.
-    pub(super) fn hull_of(&self, p: Point) -> i32 {
+    pub(super) fn hull_of(&self, p: Point) -> Option<HullIndex> {
         self.hulls
             .iter()
             .position(|h| !h.points.is_empty() && h.inside(p))
-            .map_or(-1, |i| i as i32)
+            .map(HullIndex::new)
     }
 
     /// Whether `p` lies within the area's tiles, `r` from their edge. Each bound skips by

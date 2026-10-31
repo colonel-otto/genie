@@ -6,7 +6,9 @@ use crate::map::Rect;
 use crate::map::spatial::RecordId;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::objects::ObjectId;
-use crate::pathing::hull_path::{EPSILON, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints};
+use crate::pathing::hull_path::{
+    EPSILON, HullIndex, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints,
+};
 use crate::world::slots::CheckedIndex;
 
 impl HullPather<'_> {
@@ -154,7 +156,7 @@ impl HullPather<'_> {
     /// after the earlier; an end on the last side goes last. Each joined point keeps its path.
     pub(super) fn join_entrances(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         count: usize,
         sides: &[usize; PATHS],
     ) -> Result<(), GenieError> {
@@ -163,7 +165,7 @@ impl HullPather<'_> {
         }
         let mut order: Vec<usize> = (0..count).collect();
         let mut by: Vec<usize> = sides.head(count)?.to_vec();
-        let points = &self.hulls.checked(hull)?.points;
+        let points = &self.hulls.checked(hull.index())?.points;
         let mut d: Vec<f32> = (0..count)
             .map(|k| {
                 let last = *self
@@ -202,7 +204,7 @@ impl HullPather<'_> {
                 .points
                 .last()
                 .unwrap_or(&Point::ORIGIN);
-            let hull = self.hulls.checked_mut(hull)?;
+            let hull = self.hulls.checked_mut(hull.index())?;
             let at = if joined + *by.checked(k)? != 0 {
                 joined + *by.checked(k)?
             } else {

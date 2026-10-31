@@ -4,8 +4,8 @@ use crate::GenieError;
 use crate::map::Rect;
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::{
-    ENTRANCE_STEP, HULL_ITERATIONS, HullPather, NUDGE, PATHS, Point, SIDES, Target, Waypoints,
-    Within,
+    ENTRANCE_STEP, HULL_ITERATIONS, HullIndex, HullPather, NUDGE, PATHS, Point, SIDES, Target,
+    Waypoints, Within,
 };
 use crate::world::slots::CheckedIndex;
 
@@ -22,7 +22,7 @@ struct Ways<'a> {
 #[derive(Debug)]
 pub(super) struct WalkIn<'a> {
     /// The hull the goal is inside.
-    pub(super) hull: usize,
+    pub(super) hull: HullIndex,
     /// The goal, where the walk starts.
     pub(super) goal: Point,
     /// The start it walks toward.
@@ -109,7 +109,7 @@ impl HullPather<'_> {
     /// the box the goal lies in (if any) and whether the walk is stuck (no step made).
     fn begin_walk_in(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         (from, to): (Point, Point),
         target: Option<Target>,
     ) -> Result<(Option<usize>, bool), GenieError> {
@@ -122,7 +122,7 @@ impl HullPather<'_> {
             hull: -1,
             direction: -1,
         })?;
-        let inside = self.hulls.checked(hull)?.box_holding(from);
+        let inside = self.hulls.checked(hull.index())?.box_holding(from);
         if inside.is_none() && target.is_none() {
             return Ok((inside, false));
         }
@@ -131,7 +131,7 @@ impl HullPather<'_> {
         let bounds = match target {
             None => {
                 self.hulls
-                    .checked(hull)?
+                    .checked(hull.index())?
                     .objects
                     .checked(inside.unwrap_or(0))?
                     .bounds
@@ -156,7 +156,7 @@ impl HullPather<'_> {
     /// boxes.
     fn cast_into(
         &mut self,
-        hull: usize,
+        hull: HullIndex,
         node: usize,
         to: Point,
         ways: &mut Ways<'_>,
@@ -169,8 +169,10 @@ impl HullPather<'_> {
                 if !Self::may_cast(&n, side) {
                     continue;
                 }
-                if let Some((q, b, box_side)) =
-                    self.hulls.checked(hull)?.ray_to_box(at, side, n.hull)
+                if let Some((q, b, box_side)) = self
+                    .hulls
+                    .checked(hull.index())?
+                    .ray_to_box(at, side, n.hull)
                 {
                     let _ = self.add_node(NewNode {
                         list: 1,
@@ -186,7 +188,8 @@ impl HullPather<'_> {
                     continue;
                 }
                 left_boxes = true;
-                let Some((mut q, edge)) = self.hulls.checked(hull)?.ray_to_hull(at, side) else {
+                let Some((mut q, edge)) = self.hulls.checked(hull.index())?.ray_to_hull(at, side)
+                else {
                     continue;
                 };
                 if ways.most <= *ways.count {
