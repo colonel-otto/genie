@@ -156,7 +156,7 @@ impl Action {
             Self::Attack(a) => a.state.get(),
             Self::Explore(a) => a.state,
             Self::Enter(a) => a.state,
-            Self::Transport(a) => a.state,
+            Self::Transport(a) => a.state.get(),
             Self::Missile(a) => a.state,
             Self::Make(a) => a.state,
             Self::WaitSolidify(a) => a.state,

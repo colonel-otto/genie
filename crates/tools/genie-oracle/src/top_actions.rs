@@ -472,7 +472,7 @@ fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError
     ))?;
     unit.actions
         .set_transport(Some(genie_core::garrison::transport::TransportAction {
-            state: base.state,
+            state: genie_core::garrison::transport::TransportState::of_byte(base.state)?,
             mode: base.target2_id,
             point: saved.point(),
             // its quiet MoveTo to the point (`0x140aa42a0`: `FUN_140a7a170` with 1)

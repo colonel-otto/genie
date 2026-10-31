@@ -2,9 +2,10 @@
 //! unload and the units put ashore.
 
 use crate::GenieError;
+use crate::garrison::transport::TransportState;
 use crate::garrison::transport::{
-    Around, Changed, DropDraws, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT,
-    TransportAction, in_zone, retry_point,
+    Around, Changed, DropDraws, MapShore, NONE, Ship, Shore, TRANSPORT, TransportAction, in_zone,
+    retry_point,
 };
 use crate::map::Footprint;
 use crate::map::Point;
@@ -190,7 +191,7 @@ impl crate::world::World {
             let (x, y) = (point.x(), point.y());
             t.point = t.point.with_x(x).with_y(y);
             if sails {
-                changes.push(t.set_state(SAIL_TO_UNLOAD, &ship, &mut shore)?);
+                changes.push(t.set_state(TransportState::SailToUnload, &ship, &mut shore)?);
                 t.retarget = true;
             } else {
                 crate::unit_ai::alert_owner(computer)?;

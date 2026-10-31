@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::UnloadPick;
 use crate::commands::{GatherPoint, UnloadCommand};
+use crate::garrison::transport::TransportState;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -25,7 +26,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::{DONE, FAILED};
+use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
 use crate::players::Relation;
 use crate::players::attribute::AttributeId;
@@ -2444,7 +2445,7 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
     let mut t = shore_world(Point::new(5.5, 12.5), Point::new(5.5, 30.5));
     let ship = t.object_mut(object_id(200)).unwrap().1;
     ship.actions.set_transport(Some(transport::TransportAction {
-        state: transport::SAIL,
+        state: TransportState::Sail,
         point: Position::new(9.5, 19.5, 0.0),
         move_to: Some(MoveToAction::sub_in(MoveTo::Start)),
         ..transport::TransportAction::new(Position::new(5.5, 30.5, 0.0))
@@ -2595,7 +2596,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
             tr.retarget
         ),
         (
-            transport::SAIL_TO_UNLOAD,
+            TransportState::SailToUnload,
             1,
             Position::new(14.5, 10.5, 0.0),
             Some(MoveTo::Start),
@@ -2656,7 +2657,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
         .unwrap();
     assert_eq!(
         (tr.state, tr.point, tr.move_to),
-        (transport::UNLOAD, Position::new(10.5, 10.5, 0.0), None)
+        (TransportState::Unload, Position::new(10.5, 10.5, 0.0), None)
     );
 }
 
@@ -2731,7 +2732,7 @@ fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
             tr.move_to.map(|m| m.state)
         ),
         (
-            transport::SAIL,
+            TransportState::Sail,
             -1,
             Some(TaskId::test(7)),
             Position::new(14.5, 10.5, 0.0),
@@ -2763,7 +2764,7 @@ fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
         .unwrap();
     assert_eq!(
         (again.state, again.mode, again.task),
-        (transport::SAIL, 1, tr.task)
+        (TransportState::Sail, 1, tr.task)
     );
     // water: no task, no Transport
     let (mut t, idx) = transport_task_world();
@@ -2866,7 +2867,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
         .unwrap();
     assert_eq!(
         (tr.state, tr.point, tr.move_to),
-        (transport::UNLOAD, Position::new(15.5, 10.5, 0.0), None)
+        (TransportState::Unload, Position::new(15.5, 10.5, 0.0), None)
     );
     let spot = ashore(&mut t, Point::new(14.5, 10.5), 0.5);
     let idx = t.players[1]
@@ -2887,7 +2888,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
     assert_eq!(ship.garrison, Vec::<ObjectId>::new());
     assert_eq!(
         ship.actions.transport().map(|t| t.state),
-        Some(transport::IDLE)
+        Some(TransportState::Idle)
     );
     // a move to a point: the idle Transport takes it (its slot 8, 0x140aa3e40) and sails
     // there, its MoveTo starting; no MoveTo of the unit's own
@@ -2906,7 +2907,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
             ship.actions.move_to().copied()
         ),
         (
-            transport::SAIL,
+            TransportState::Sail,
             0,
             Position::new(5.5, 5.5, 0.0),
             Some(MoveTo::Start),
@@ -2957,7 +2958,7 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
         .copied()
         .unwrap();
     assert!(tr.retarget);
-    assert_eq!(tr.state, transport::SAIL_TO_UNLOAD);
+    assert_eq!(tr.state, TransportState::SailToUnload);
     if 15.0 <= x {
         // the first draw is on land: the MoveTo's point is the shore on the way to it
         assert_eq!(tr.move_to.map(|m| m.state), Some(MoveTo::Start));
@@ -3476,7 +3477,7 @@ fn a_transport_unloads_inside_its_own_update() {
         let inside = c.w.object(object_id(1000)).map(|(_, u)| u.life.inside);
         Ok((inside, unit.actions.transport().map(|t| t.state)))
     });
-    assert_eq!(seen, Ok((Some(None), Some(transport::IDLE))));
+    assert_eq!(seen, Ok((Some(None), Some(TransportState::Idle))));
 }
 
 /// The Transport's update in the ship's (`transport_update`): beside the shore (state 6, the
@@ -3490,11 +3491,11 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
     let ship = t.object(object_id(200)).unwrap().1;
     assert_eq!(
         ship.actions.transport().map(|t| t.state),
-        Some(transport::IDLE)
+        Some(TransportState::Idle)
     );
     assert_eq!(ship.garrison, Vec::<ObjectId>::new());
     assert_eq!(t.object(object_id(1000)).unwrap().1.life.inside, None);
-    let failed = |tr: &mut transport::TransportAction| tr.state = FAILED;
+    let failed = |tr: &mut transport::TransportAction| tr.state = TransportState::Failed;
     let t = transport_ticked(Point::new(10.5, 10.5), Point::new(17.5, 10.5), failed);
     let ship = t.object(object_id(200)).unwrap().1;
     assert_eq!(ship.actions.transport().copied(), None);
@@ -3525,12 +3526,12 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         .unwrap();
     assert_eq!(
         (tr.state, tr.move_to.map(|m| m.state)),
-        (transport::SAIL_TO_UNLOAD, Some(MoveTo::Moving))
+        (TransportState::SailToUnload, Some(MoveTo::Moving))
     );
     // an unload far from the point's land cannot unload: the owner hears it (a human's
     // interface only) and the Transport idles with the villager inside
     let far = |tr: &mut transport::TransportAction| {
-        (tr.state, tr.move_to, tr.retarget) = (transport::UNLOAD, None, false);
+        (tr.state, tr.move_to, tr.retarget) = (TransportState::Unload, None, false);
         tr.point = Position::new(17.5, 10.5, 0.0);
     };
     let t = transport_ticked(Point::new(10.5, 10.5), Point::new(17.5, 10.5), far);
@@ -3542,7 +3543,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         .transport()
         .copied()
         .unwrap();
-    assert_eq!(tr.state, transport::IDLE);
+    assert_eq!(tr.state, TransportState::Idle);
     assert_eq!(
         t.object(object_id(1000)).unwrap().1.life.inside,
         Some(object_id(200))
@@ -3585,8 +3586,8 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         .actions
         .transport()
         .copied();
-    assert_eq!(tr.map(|tr| tr.state), Some(transport::IDLE));
-    let done = |tr: &mut transport::TransportAction| tr.state = DONE;
+    assert_eq!(tr.map(|tr| tr.state), Some(TransportState::Idle));
+    let done = |tr: &mut transport::TransportAction| tr.state = TransportState::Done;
     let t = transport_ticked(Point::new(10.5, 10.5), Point::new(17.5, 10.5), done);
     let ship = t.object(object_id(200)).unwrap().1;
     assert_eq!(ship.actions.transport().copied(), None);

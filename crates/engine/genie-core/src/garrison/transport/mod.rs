@@ -25,12 +25,14 @@ use genie_diff::Diff;
 
 mod action;
 mod shore;
+mod transport_state;
 mod unload;
 mod work;
 
 pub use self::shore::Around;
 pub(crate) use self::shore::MapShore;
 pub(crate) use self::shore::{DropDraws, in_zone, retry_point};
+pub use self::transport_state::TransportState;
 #[cfg(test)]
 use crate::math::rng::Well512;
 
@@ -72,15 +74,6 @@ const DROP_TRIES: u16 = 50;
 const WATER_FLAGS: u8 = 7;
 const LAND_FLAGS: u8 = 0x18;
 
-/// Idle: the update does nothing.
-pub const IDLE: u8 = 2;
-/// Sailing to unload.
-pub const SAIL_TO_UNLOAD: u8 = 4;
-/// Unloading.
-pub const UNLOAD: u8 = 6;
-/// Sailing.
-pub const SAIL: u8 = 11;
-
 /// A drop location's first draw of side 4 (a draw of `0x7fff`), which keeps the place the
 /// stack holds: not modelled.
 pub const STACK_PLACE: GenieError =
@@ -90,7 +83,7 @@ pub const STACK_PLACE: GenieError =
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct TransportAction {
     /// The action state (`+0x18`), which word 9 adds.
-    pub state: u8,
+    pub state: TransportState,
     /// `+0x34`: −1 from the constructor (the base's `+0x30` pair), 1 after a work order (slot 9),
     /// 0 after a move (slot 8).
     pub mode: i32,

@@ -993,7 +993,7 @@ fn an_enter_takes_its_task_and_retry() {
 
 #[test]
 fn a_transport_takes_its_base_alone() {
-    use genie_core::garrison::transport::TRANSPORT;
+    use genie_core::garrison::transport::{TRANSPORT, TransportState};
     let transport = |b: RgeAction| Action {
         rge_action_transport: Some(Box::new(b)),
         ..Action::default()
@@ -1010,7 +1010,7 @@ fn a_transport_takes_its_base_alone() {
     let m = t.move_to.unwrap();
     assert_eq!(
         (t.state, t.mode, m.state, m.quiet),
-        (2, -1, MoveTo::Moving, true)
+        (TransportState::Idle, -1, MoveTo::Moving, true)
     );
     assert!(!t.retarget);
     assert_eq!(

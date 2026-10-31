@@ -2,10 +2,10 @@
 //! update, its walk and its test beside the shore.
 
 use crate::GenieError;
+use crate::garrison::transport::TransportState;
 use crate::garrison::transport::{
-    Changed, IDLE, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NO_TRANSPORT, NONE, SAIL,
-    SAIL_TO_UNLOAD, SHORE_MARGIN, Ship, Shore, TransportAction, TransportReads, UNLOAD,
-    UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
+    Changed, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NO_TRANSPORT, NONE, SHORE_MARGIN, Ship, Shore,
+    TransportAction, TransportReads, UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
 use crate::map::Footprint;
 use crate::map::GridSize;
@@ -19,8 +19,6 @@ use crate::movement::move_to::{MoveTo, MoveToReads, SpriteReads};
 use crate::objects::masters::{Master, TaskId};
 use crate::objects::sprite::{Graphic, new_sprite, sprite_id};
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::unit_ai::{ActionKind, UnitAi};
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -40,7 +38,7 @@ impl TransportAction {
     #[must_use]
     pub const fn on_task(task: Option<TaskId>, at: Position) -> Self {
         Self {
-            state: 0,
+            state: TransportState::New,
             mode: -1,
             point: at,
             move_to: None,
@@ -66,7 +64,15 @@ impl TransportAction {
         let sails = first
             && crate::math::fmath::at_most_or_unordered(0.0, x)
             && crate::math::fmath::at_most_or_unordered(0.0, y);
-        self.set_state(if sails { SAIL } else { IDLE }, ship, shore)
+        self.set_state(
+            if sails {
+                TransportState::Sail
+            } else {
+                TransportState::Idle
+            },
+            ship,
+            shore,
+        )
     }
 
     /// `set_state` (slot 16, `FUN_140aa42a0`): its sub-actions go first (`FUN_140a98620`: a
@@ -84,7 +90,7 @@ impl TransportAction {
     /// A sprite the table lacks.
     pub fn set_state(
         &mut self,
-        state: u8,
+        state: TransportState,
         ship: &Ship<'_>,
         shore: &mut impl Shore,
     ) -> Result<Changed, GenieError> {
@@ -94,8 +100,8 @@ impl TransportAction {
         };
         self.state = state;
         match state {
-            IDLE => changed.stands = true,
-            SAIL_TO_UNLOAD | SAIL => {
+            TransportState::Idle => changed.stands = true,
+            TransportState::SailToUnload | TransportState::Sail => {
                 if let Some(shore_at) =
                     shore.shore_point(ship.position.ground(), self.point.ground())
                 {
@@ -124,7 +130,7 @@ impl TransportAction {
     ) -> Result<Changed, GenieError> {
         self.point = point;
         self.mode = 0;
-        self.set_state(SAIL, ship, shore)
+        self.set_state(TransportState::Sail, ship, shore)
     }
 
     /// Slot 7 (`FUN_140aa4620`), the stop: `set_state(2)`.
@@ -133,7 +139,7 @@ impl TransportAction {
     ///
     /// A sprite the table lacks.
     pub fn stop(&mut self, ship: &Ship<'_>, shore: &mut impl Shore) -> Result<Changed, GenieError> {
-        self.set_state(IDLE, ship, shore)
+        self.set_state(TransportState::Idle, ship, shore)
     }
 
     /// Slot 9 (`FUN_140aa4830`), the work order on `point` (x, y and the height), `by_self` when
@@ -167,15 +173,15 @@ impl TransportAction {
         let within =
             !crate::math::fmath::below_or_unordered(UNLOAD_REACH_SQUARED, dy * dy + dx * dx);
         let state = if near && within {
-            UNLOAD
+            TransportState::Unload
         } else if crate::math::fmath::below_or_unordered(x, 0.0)
             || crate::math::fmath::below_or_unordered(y, 0.0)
         {
             return Ok(Changed::default());
         } else if by_self {
-            SAIL_TO_UNLOAD
+            TransportState::SailToUnload
         } else {
-            SAIL
+            TransportState::Sail
         };
         self.point = point;
         self.set_state(state, ship, shore)
@@ -270,14 +276,18 @@ impl TransportAction {
         computer: bool,
     ) -> Result<Updated, GenieError> {
         let (changed, code) = match self.state {
-            DONE => return Ok(Updated::Code(1)),
-            SAIL_TO_UNLOAD | SAIL if (1..=5).contains(&walked) => {
-                let next = if self.state == SAIL { IDLE } else { UNLOAD };
+            TransportState::Done => return Ok(Updated::Code(1)),
+            TransportState::SailToUnload | TransportState::Sail if (1..=5).contains(&walked) => {
+                let next = if self.state == TransportState::Sail {
+                    TransportState::Idle
+                } else {
+                    TransportState::Unload
+                };
                 (self.set_state(next, ship, shore)?, 0)
             }
             // Failed: the update returns 3.
-            FAILED => {
-                let changed = self.set_state(IDLE, ship, shore)?;
+            TransportState::Failed => {
+                let changed = self.set_state(TransportState::Idle, ship, shore)?;
                 stand(unit, changed, look)?;
                 unit.post_own(
                     crate::unit_ai::NotifyKind::ACTION_FAILED,
@@ -285,7 +295,7 @@ impl TransportAction {
                 )?;
                 return Ok(Updated::Code(3));
             }
-            UNLOAD => {
+            TransportState::Unload => {
                 let (x, y) = (self.point.x(), self.point.y());
                 let mut reaches = true;
                 if x == NONE {
@@ -331,7 +341,7 @@ impl TransportAction {
         if self.retarget {
             return Ok(Changed::default());
         }
-        self.set_state(IDLE, ship, shore)
+        self.set_state(TransportState::Idle, ship, shore)
     }
 
     /// The sprite the `set_state` (`0x140aa42a0`, states 4 and 11) of a Transport on `task` gives
