@@ -4,9 +4,10 @@ use crate::GenieError;
 use crate::combat::attack::Fight;
 use crate::combat::damage::Victim;
 use crate::gathering::gather::Walks;
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::{
-    FACE, GAP, GATHER, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT,
-    OWN_LIVESTOCK_RANGE, REMAINDER, WALK,
+    GAP, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT, OWN_LIVESTOCK_RANGE,
+    REMAINDER,
 };
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
@@ -37,7 +38,7 @@ impl HuntAction {
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(body.mover_mut())?;
-        self.state = WALK;
+        self.state = HuntState::Walk;
         self.timer = 0.0;
         // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
         // Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
@@ -149,7 +150,7 @@ impl HuntAction {
     /// standing sprite for none).
     pub(super) fn begin_face(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &HuntReads) {
         self.move_to = None;
-        self.state = FACE;
+        self.state = HuntState::Face;
         self.timer = 0.0;
         let carrying = self.task.resource.is_some()
             && unit.life.attribute_type == self.task.resource
@@ -173,7 +174,7 @@ impl HuntAction {
     /// amount), any other load is dropped; the unit takes the working sprite (slot 0x68; the
     /// standing one for none); the gathering sound is not held.
     pub(super) fn set_gather(&mut self, unit: &mut Unit, sprite_rng: &mut Well512, r: &HuntReads) {
-        self.state = GATHER;
+        self.state = HuntState::Gather;
         let kind = self.task.resource;
         let keeps = crate::gathering::both_food(kind, unit.life.attribute_type);
         if unit.life.attribute_type != kind {

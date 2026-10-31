@@ -365,7 +365,7 @@ impl Unit {
         }
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, state) = (hunt.carry_to, hunt.state);
-        let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
+        let (site, gap) = self.drop_site(&mut c, others, carry_to, state.get())?;
         if site.is_none() {
             return Err(GenieError::unsupported(
                 "a hunt without a drop site (notify 0x203, set_state 2)",

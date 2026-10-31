@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::UnloadPick;
 use crate::gathering::gather::GatherState;
+use crate::gathering::hunt::HuntState;
 use crate::groups::FormationKind;
 use crate::groups::GroupTarget;
 use crate::map::Footprint;
@@ -4206,7 +4207,10 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
         .hunt()
         .copied()
         .expect("the Hunt");
-    assert_eq!((h.carry_to, h.state), (Some(object_id(700)), 8));
+    assert_eq!(
+        (h.carry_to, h.state),
+        (Some(object_id(700)), HuntState::Drop)
+    );
     assert_eq!(t.players[1].objects[2].workers, 1);
 }
 

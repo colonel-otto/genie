@@ -29,6 +29,7 @@ pub(super) const NO_HUNT: crate::GenieError =
 mod drop_off;
 mod gathering;
 mod herding;
+mod hunt_state;
 mod hunter;
 mod hunter_strike;
 pub(crate) mod next_tree;
@@ -41,6 +42,7 @@ mod walks;
 #[cfg(test)]
 use self::drop_off::DROP_WAIT;
 pub use self::drop_off::Dropped;
+pub use self::hunt_state::HuntState;
 pub use self::sprites::{HuntSprites, walk_sprite};
 pub(crate) use self::sprites::{asked_drop_off, resource_kind, stand_sprite};
 pub use self::start::{HuntMove, HuntRetarget, HuntStart, PointWalk, PointWalker};
@@ -52,32 +54,6 @@ pub use crate::movement::move_to::Shown;
 
 /// The Hunt action's type, which word 9 adds.
 pub const HUNT: ActionType = ActionType::named(110);
-
-/// The states the slice models: 4 walking to a dead target, 6 facing it, 7 gathering from it, 8
-/// taking the load to its drop site, 12 attacking it (`0xc`).
-pub const WALK: u8 = 4;
-/// State 6: facing the dead target.
-pub const FACE: u8 = 6;
-/// State 7: gathering from it.
-pub const GATHER: u8 = 7;
-/// State 8: taking the load to its drop site.
-pub const DROP: u8 = 8;
-/// State 10 (`0xa`): leading its own livestock to the drop site, it waits for the animal to stop
-/// there.
-pub const LEAD: u8 = 10;
-/// State 12 (`0xc`): attacking it.
-pub const ATTACK: u8 = 12;
-/// State 2: the hunt is done with its target; it waits (a tree's target class would search
-/// again, `set_state` 3).
-pub const IDLE: u8 = 2;
-/// State 3: searching: it told its unit AI to look for the next target (notify 0x202), again
-/// every 10 seconds.
-pub const SEARCH: u8 = 3;
-/// State 15 (`0xf`): walking to a point a move gave it (its slot 0x40).
-pub const WALK_POINT: u8 = 15;
-/// State 11 (`0xb`): walking to the point after the target went on the way to it; its end
-/// searches (`set_state` 3).
-pub const WALK_SEARCH: u8 = 11;
 
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
@@ -109,7 +85,7 @@ pub struct HuntAction {
     /// The target object (`+0x20`, its id at `+0x30`).
     pub target: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
-    pub state: u8,
+    pub state: HuntState,
     /// `+0x38`..`+0x40`: where the target stood when the hunt took it.
     pub point: Position,
     /// `+0x68`: the target's class.

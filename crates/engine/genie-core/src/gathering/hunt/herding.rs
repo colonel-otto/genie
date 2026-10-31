@@ -3,9 +3,10 @@
 use crate::GenieError;
 use crate::combat::attack::Fight;
 use crate::combat::damage::Victim;
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::update::write_target_back;
 use crate::gathering::hunt::{
-    DECAY_TASK, Herd, HuntAction, HuntNext, HuntReads, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH,
+    DECAY_TASK, Herd, HuntAction, HuntNext, HuntReads, LEAD_REACH, LEAD_WAIT,
 };
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -29,7 +30,7 @@ impl HuntAction {
         herd: &Herd,
     ) -> Result<(), GenieError> {
         self.tear_down(unit.body.mover_mut())?;
-        self.state = LEAD;
+        self.state = HuntState::Lead;
         self.lead.still_time = 0;
         let at = f.victim.position;
         self.lead.start = at.ground();
@@ -78,7 +79,7 @@ impl HuntAction {
         r: &HuntReads,
     ) -> Result<HuntNext, GenieError> {
         if self.target.is_none() {
-            self.state = SEARCH;
+            self.state = HuntState::Search;
             return Ok(HuntNext::Search);
         }
         let herd = r.herd.ok_or(GenieError::unsupported(

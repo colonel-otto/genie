@@ -153,7 +153,7 @@ impl World {
         }
         let hunt = unit.actions.hunt_mut().ok_or(NO_TOP_ACTION)?;
         hunt.tear_down(unit.body.mover_mut())?;
-        hunt.state = crate::gathering::hunt::IDLE;
+        hunt.state = crate::gathering::hunt::HuntState::Idle;
         let sprite = crate::gathering::hunt::stand_sprite(
             &hunt.task,
             standing,

@@ -57,27 +57,37 @@ pub(super) fn import_hunt(
     task_at: TaskAt<'_>,
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
-    use genie_core::gathering::hunt::{
-        ATTACK, DROP, FACE, GATHER, HuntAction, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH,
-    };
+    use genie_core::gathering::hunt::{HuntAction, HuntState};
     let base = saved.base;
     let part = saved
         .action
         .tribe_action_hunt
         .as_deref()
         .ok_or(GenieError::unsupported("a saved Hunt without its own part"))?;
-    if !matches!(
-        base.state,
-        IDLE | SEARCH | WALK | FACE | GATHER | DROP | LEAD | ATTACK | WALK_SEARCH | WALK_POINT
-    ) {
-        return Err(GenieError::unsupported(
+    let state = HuntState::of_byte(base.state)
+        .ok()
+        .filter(|s| {
+            matches!(
+                s,
+                HuntState::Idle
+                    | HuntState::Search
+                    | HuntState::Walk
+                    | HuntState::Face
+                    | HuntState::Gather
+                    | HuntState::Drop
+                    | HuntState::Lead
+                    | HuntState::Attack
+                    | HuntState::WalkSearch
+                    | HuntState::WalkPoint
+            )
+        })
+        .ok_or(GenieError::unsupported(
             "a saved Hunt in a state the slice does not model",
-        ));
-    }
+        ))?;
     let task = hunt_task(&saved.task(task_at)?);
     let mut hunt = HuntAction {
         target: ObjectId::of_field(base.target_id),
-        state: base.state,
+        state,
         point: saved.point(),
         target_class: ClassId::of_param(part.target_type)?,
         task,

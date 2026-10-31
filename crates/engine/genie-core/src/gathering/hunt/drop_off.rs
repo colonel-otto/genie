@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::combat::attack::set_walker_anim;
 use crate::gathering::gather::Walks;
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{
-    DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, asked_drop_off, resource_kind,
+    DropOff, HuntAction, Lead, PointWalker, asked_drop_off, resource_kind,
 };
 use crate::map::Position;
 use crate::movement::move_to::GiveUp;
@@ -52,7 +53,7 @@ impl HuntAction {
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
-        self.state = DROP;
+        self.state = HuntState::Drop;
         if self.carry_to.is_none() {
             return Err(GenieError::unsupported(
                 "a drop-off without its drop site (its search)",
@@ -180,10 +181,10 @@ impl HuntAction {
 
     /// Case 6 without a target (`0x140ac7a00` at `0x140ac9029`): a load is carried off
     /// (`set_state(8)`, true, the caller's); with none, or one that is not a number (`COMISS`
-    /// with `JBE`), the hunt searches (`set_state(3)`: [`SEARCH`] here, the rest the caller's).
+    /// with `JBE`), the hunt searches (`set_state(3)`: [`HuntState::Search`] here, the rest the caller's).
     pub(super) fn ends_without_target(&mut self, held: f32) -> bool {
         if crate::math::fmath::at_most_or_unordered(held, 0.0) {
-            self.state = SEARCH;
+            self.state = HuntState::Search;
             false
         } else {
             true

@@ -17,6 +17,7 @@ use crate::construction::repair::RepairState;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::GatherState;
 use crate::gathering::gather::unit::give_load;
+use crate::gathering::hunt::HuntState;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Offset;
@@ -4164,7 +4165,7 @@ fn a_work_command_on_another_deer_moves_the_hunt_there() {
     );
     assert_eq!(
         (h.state, h.attack.map(|a| a.target)),
-        (crate::gathering::hunt::ATTACK, Some(Some(object_id(501))))
+        (HuntState::Attack, Some(Some(object_id(501))))
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -4200,7 +4201,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.target, h.carry_to, h.state, h.point),
-        (None, None, 15, point)
+        (None, None, HuntState::WalkPoint, point)
     );
     assert_eq!(
         (
@@ -4227,7 +4228,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         (
             None,
             Some(object_id(700)),
-            8,
+            HuntState::Drop,
             Position::from([-1.0; 3]),
             Some(class::BUILDING)
         )
@@ -4294,10 +4295,10 @@ fn hunt_part_of(t: &mut World, dt: u32) -> Result<(), GenieError> {
 /// and walking there.
 #[test]
 fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
-    use crate::gathering::hunt::DROP;
     let wait = |timer| {
         hunter_in(|h| {
-            (h.state, h.timer, h.target, h.carry_to) = (DROP, timer, None, Some(object_id(700)));
+            (h.state, h.timer, h.target, h.carry_to) =
+                (HuntState::Drop, timer, None, Some(object_id(700)));
             h.attack = None;
         })
     };
@@ -4305,7 +4306,10 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     t.players[1].objects[2].workers = 1;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.state, h.carry_to), (DROP, Some(object_id(700))));
+    assert_eq!(
+        (h.state, h.carry_to),
+        (HuntState::Drop, Some(object_id(700)))
+    );
     assert!((h.timer + 0.45).abs() < 1e-6);
     let mut t = wait(-0.01);
     t.players[1].objects[0].life.attribute_type = Some(attribute::MEAT);
@@ -4315,7 +4319,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.state, h.carry_to, h.timer),
-        (DROP, Some(object_id(700)), 0.0)
+        (HuntState::Drop, Some(object_id(700)), 0.0)
     );
     // the centre let go, then taken again as the new drop site
     assert_eq!(t.players[1].objects[2].workers, 1);
@@ -4328,12 +4332,12 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
 /// seconds and stops the animation; a centre that does not take the load is not modelled.
 #[test]
 fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
-    use crate::gathering::hunt::{ATTACK, DROP};
+    use crate::gathering::hunt::HuntState;
     use crate::movement::move_to::{MoveTo, MoveToAction};
     let dropping = |move_to| {
         let mut t = hunter_in(|h| {
             (h.state, h.timer, h.carry_to, h.move_to) = (
-                DROP,
+                HuntState::Drop,
                 0.0,
                 Some(object_id(700)),
                 Some(MoveToAction::sub_in(move_to)),
@@ -4367,7 +4371,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     let h = v.actions.hunt().copied().unwrap();
     assert_eq!(
         (h.state, h.target, h.carry_to),
-        (ATTACK, Some(object_id(500)), None)
+        (HuntState::Attack, Some(object_id(500)), None)
     );
     let mut t = dropping(MoveTo::Failed);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
@@ -4385,7 +4389,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
 #[test]
 fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
     let mut t = hunter_in(|h| {
-        h.state = FAILED;
+        h.state = HuntState::Failed;
         h.attack = None;
     });
     assert_eq!(t.players[0].objects[0].workers, 1);
@@ -4397,7 +4401,7 @@ fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
     );
     assert_eq!(t.players[0].objects[0].workers, 0);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
-    let mut t = hunter_in(|h| h.state = FAILED);
+    let mut t = hunter_in(|h| h.state = HuntState::Failed);
     assert!(hunt_part_of(&mut t, 50).is_err());
 }
 
@@ -4407,10 +4411,10 @@ fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
 /// once; a done hunt (state 2) waits, but of a tree's class it is not modelled.
 #[test]
 fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
-    use crate::gathering::hunt::{IDLE, LEAD, SEARCH};
+    use crate::gathering::hunt::HuntState;
     let search = [ActionKind::Hunt.value(), 9, 700];
     let mut t = hunter_in(|h| {
-        (h.state, h.timer) = (SEARCH, -0.5);
+        (h.state, h.timer) = (HuntState::Search, -0.5);
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
@@ -4423,17 +4427,17 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
         Some(SEARCH_AGAIN)
     );
     let mut t = hunter_in(|h| {
-        (h.state, h.target) = (LEAD, None);
+        (h.state, h.target) = (HuntState::Lead, None);
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
-        Some(SEARCH)
+        Some(HuntState::Search)
     );
     assert_eq!(notified(&t, NotifyKind::REQUIRES_SEARCH), [search]);
     let mut t = hunter_in(|h| {
-        h.state = IDLE;
+        h.state = HuntState::Idle;
         h.attack = None;
     });
     let before = t.players[1].objects[0].actions.hunt().copied();
@@ -4453,7 +4457,7 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
 /// 4, its timer below 0) the timer runs, then the walk to the point (state 11).
 #[test]
 fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
-    use crate::gathering::hunt::{IDLE, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
+    use crate::gathering::hunt::HuntState;
     use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
     let walked = |state| {
         hunter_in(|h| {
@@ -4461,21 +4465,24 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
             h.attack = None;
         })
     };
-    let mut t = walked(WALK_POINT);
+    let mut t = walked(HuntState::WalkPoint);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.state, h.target, h.move_to), (IDLE, None, None));
+    assert_eq!(
+        (h.state, h.target, h.move_to),
+        (HuntState::Idle, None, None)
+    );
     assert_eq!(t.players[0].objects[0].workers, 0);
-    let mut t = walked(WALK_SEARCH);
+    let mut t = walked(HuntState::WalkSearch);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
-        Some(SEARCH)
+        Some(HuntState::Search)
     );
     assert_eq!(notified(&t, NotifyKind::REQUIRES_SEARCH).len(), 1);
     let mut t = hunter_in(|h| {
         (h.state, h.move_to) = (
-            WALK_POINT,
+            HuntState::WalkPoint,
             Some(MoveToAction {
                 wait: MoveWait {
                     delay: 1.0,
@@ -4490,17 +4497,17 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.move_to.map(|m| m.state), h.state),
-        (Some(MoveTo::Waiting), WALK_POINT)
+        (Some(MoveTo::Waiting), HuntState::WalkPoint)
     );
     let mut t = hunter_in(|h| {
-        (h.state, h.target, h.timer, h.move_to) = (WALK, None, -0.01, None);
+        (h.state, h.target, h.timer, h.move_to) = (HuntState::Walk, None, -0.01, None);
         h.point = Position::new(36.0, 89.5, 0.0);
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
-        Some(WALK_SEARCH)
+        Some(HuntState::WalkSearch)
     );
 }
 
@@ -4511,7 +4518,7 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
 /// town centre (state 8) without taking it.
 #[test]
 fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
-    use crate::gathering::hunt::{ATTACK, DROP, GATHER};
+    use crate::gathering::hunt::HuntState;
     use crate::movement::move_to::MoveTo;
     let mut t = hunter_in(|_| {});
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
@@ -4522,12 +4529,15 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
             h.state,
             h.attack.map(|a| (a.state, a.move_to.map(|m| m.state)))
         ),
-        (ATTACK, Some((AttackState::Move, Some(MoveTo::Moving))))
+        (
+            HuntState::Attack,
+            Some((AttackState::Move, Some(MoveTo::Moving)))
+        )
     );
     assert!(v.body.mover().is_some_and(|m| !m.paths.is_empty()));
     let gathering = |held: f32| {
         let mut t = hunter_in(|h| {
-            (h.state, h.attack, h.move_to) = (GATHER, None, None);
+            (h.state, h.attack, h.move_to) = (HuntState::Gather, None, None);
             (h.task.work_value, h.task.resource) = (1.0, Some(attribute::MEAT));
         });
         for masters in &mut t.masters {
@@ -4554,12 +4564,15 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
     assert!((gained - 5.05).abs() < 1e-5 && (left - 99.95).abs() < 1e-4);
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
-        Some(GATHER)
+        Some(HuntState::Gather)
     );
     let mut t = gathering(9.99);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.state, h.carry_to), (DROP, Some(object_id(700))));
+    assert_eq!(
+        (h.state, h.carry_to),
+        (HuntState::Drop, Some(object_id(700)))
+    );
     assert_eq!(t.players[1].objects[0].life.amount, 9.99);
     assert_eq!(t.players[0].objects[0].life.amount, 100.0);
 }
@@ -4568,9 +4581,8 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
 /// [`crate::combat::victims::write_back`]): in the same update the deer holds 0.05 less.
 #[test]
 fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
-    use crate::gathering::hunt::GATHER;
     let mut t = hunter_in(|h| {
-        (h.state, h.attack, h.move_to) = (GATHER, None, None);
+        (h.state, h.attack, h.move_to) = (HuntState::Gather, None, None);
         (h.task.work_value, h.task.resource) = (1.0, Some(attribute::MEAT));
     });
     for masters in &mut t.masters {
@@ -4613,8 +4625,8 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
 /// target.
 #[test]
 fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
-    use crate::gathering::hunt::{GATHER, SEARCH};
-    let mut t = hunter_in(|h| (h.state, h.attack, h.move_to) = (GATHER, None, None));
+    use crate::gathering::hunt::HuntState;
+    let mut t = hunter_in(|h| (h.state, h.attack, h.move_to) = (HuntState::Gather, None, None));
     let _ = t.players[0].objects.remove(0).unwrap();
     let _ = t.spatial.leave(object_id(500));
     let r = in_update(&mut t, (PlayerId::new(1), 0), 50, |unit, c| {
@@ -4630,7 +4642,7 @@ fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
     });
     assert_eq!(r, Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
-    assert_eq!((h.state, h.target), (SEARCH, None));
+    assert_eq!((h.state, h.target), (HuntState::Search, None));
 }
 
 /// [`hunt_world`] with player 1's own sheep 510 (master 594, class 58, moving) at `x` beside
@@ -4714,19 +4726,19 @@ fn shepherd_world(x: f32) -> World {
 /// (state 12, the Attack).
 #[test]
 fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
-    use crate::gathering::hunt::{ATTACK, LEAD};
+    use crate::gathering::hunt::HuntState;
     let mut t = shepherd_world(30.2);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.state, h.target, h.drop_site),
-        (LEAD, Some(object_id(510)), Some(object_id(700)))
+        (HuntState::Lead, Some(object_id(510)), Some(object_id(700)))
     );
     assert!(t.players[1].objects[3].actions.move_to().is_some());
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
-        Some(LEAD)
+        Some(HuntState::Lead)
     );
     let mut t = shepherd_world(22.6);
     t.players[1].objects[0].place_for_test(Position::new(23.2, 89.5, 0.0));
@@ -4737,7 +4749,7 @@ fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.state, h.attack.map(|a| a.target)),
-        (ATTACK, Some(Some(object_id(510))))
+        (HuntState::Attack, Some(Some(object_id(510))))
     );
 }
 
@@ -5226,7 +5238,7 @@ fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
         let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
         assert_eq!(
             (h.state, h.timer, h.target),
-            (crate::gathering::hunt::SEARCH, SEARCH_AGAIN, None)
+            (HuntState::Search, SEARCH_AGAIN, None)
         );
     }
 }
@@ -9936,7 +9948,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     let hunt = hunter.actions.hunt().copied().unwrap();
     assert_eq!(
         (hunt.state, hunt.carry_to),
-        (crate::gathering::hunt::DROP, Some(object_id(9149)))
+        (HuntState::Drop, Some(object_id(9149)))
     );
     assert_eq!(drop_off(&mut hunter, &mut t), Ok(None));
 }
@@ -10004,7 +10016,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     hunter
         .actions
         .set_hunt(Some(crate::gathering::hunt::HuntAction {
-            state: crate::gathering::hunt::SEARCH,
+            state: HuntState::Search,
             target: None,
             carry_to: Some(object_id(9149)),
             ..crate::gathering::hunt::tests::hunting(-1)
@@ -10042,7 +10054,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     hunter
         .actions
         .set_hunt(Some(crate::gathering::hunt::HuntAction {
-            state: FAILED,
+            state: HuntState::Failed,
             target: None,
             carry_to: Some(object_id(9149)),
             ..crate::gathering::hunt::tests::hunting(-1)
@@ -12710,7 +12722,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
 fn an_ai_move_hands_the_point_to_a_hunt_without_a_work_range() {
     let mut u = mover_unit(47);
     let mut hunt = crate::gathering::hunt::tests::hunting(9149);
-    hunt.state = crate::gathering::hunt::IDLE;
+    hunt.state = HuntState::Idle;
     hunt.carry_to = Some(object_id(9150));
     u.actions.set_hunt(Some(hunt));
     assert_eq!(
@@ -12721,7 +12733,7 @@ fn an_ai_move_hands_the_point_to_a_hunt_without_a_work_range() {
     assert_eq!(
         (h.state, h.target, h.carry_to, h.point, h.target_class),
         (
-            crate::gathering::hunt::WALK_POINT,
+            HuntState::WalkPoint,
             None,
             Some(object_id(9150)),
             AI_POINT,
@@ -15852,7 +15864,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
 
 /// The hunt's state, target and drop site after [`hunted_without_a_deer`], and the two deer's
 /// workers.
-fn hunt_after(t: &World) -> (Option<(u8, i32, i32)>, [i32; 2]) {
+fn hunt_after(t: &World) -> (Option<(HuntState, i32, i32)>, [i32; 2]) {
     let h = t.players[1].objects[0].actions.hunt().copied();
     let deer = &t.players[0].objects;
     (
@@ -15873,10 +15885,7 @@ fn hunt_after(t: &World) -> (Option<(u8, i32, i32)>, [i32; 2]) {
 #[test]
 fn a_hunter_without_its_deer_after_the_drop_takes_the_closest_one() {
     let t = hunted_without_a_deer(|_| ());
-    assert_eq!(
-        hunt_after(&t),
-        (Some((crate::gathering::hunt::ATTACK, 500, -1)), [1, 0])
-    );
+    assert_eq!(hunt_after(&t), (Some((HuntState::Attack, 500, -1)), [1, 0]));
 }
 
 /// A queued order on a target the world still holds ends the hunt after the drop, so the unit AI
@@ -15904,7 +15913,7 @@ fn a_hunter_with_a_queued_order_after_the_drop_ends_its_hunt() {
     );
     assert_eq!(
         hunt_after(&gone),
-        (Some((crate::gathering::hunt::ATTACK, 500, -1)), [1, 0])
+        (Some((HuntState::Attack, 500, -1)), [1, 0])
     );
 }
 
@@ -15916,7 +15925,7 @@ fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
         let t = hunted_without_a_deer(|v| v.actions.hunt_mut().unwrap().target_class = Some(class));
         assert_eq!(
             hunt_after(&t),
-            (Some((crate::gathering::hunt::WALK_SEARCH, -1, -1)), [0, 0]),
+            (Some((HuntState::WalkSearch, -1, -1)), [0, 0]),
             "class {class}"
         );
         let h = t.players[1].objects[0].actions.hunt().copied().unwrap();

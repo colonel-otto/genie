@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::victims::readable;
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
@@ -14,7 +15,6 @@ use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, second_target_checked};
-use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::Actor;
@@ -78,7 +78,7 @@ impl Unit {
     /// both times).
     pub(crate) fn tree_lost(&self, c: &Step<'_>) -> bool {
         self.actions.hunt().is_some_and(|h| {
-            h.state == crate::gathering::hunt::WALK
+            h.state == HuntState::Walk
                 && 0.0 <= h.timer
                 && h.move_to.is_some_and(|m| {
                     m.state == MoveTo::Failed
@@ -108,23 +108,22 @@ impl Unit {
         own: &mut Option<Victim>,
         tree_lost: bool,
     ) -> Result<HeadCode, GenieError> {
-        use crate::gathering::hunt::{DROP, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
         let (state, timer, target) = self
             .actions
             .hunt()
             .map_or((None, 0.0, None), |h| (Some(h.state), h.timer, h.target));
         match state {
-            Some(DROP) if timer < 0.0 => self.hunt_drop_wait(c)?,
-            Some(DROP) => return self.hunt_drop_walk(c, me),
+            Some(HuntState::Drop) if timer < 0.0 => self.hunt_drop_wait(c)?,
+            Some(HuntState::Drop) => return self.hunt_drop_walk(c, me),
             // State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
-            Some(FAILED) => return self.hunt_failed(),
-            Some(WALK_POINT | WALK_SEARCH) => self.hunt_point_walk(c, me)?,
-            Some(SEARCH) => self.hunt_search_wait(c)?,
-            Some(IDLE) => self.hunt_idle()?,
-            Some(WALK) if target.is_none() && timer < 0.0 => self.hunt_wait_walk(c)?,
-            Some(LEAD) if target.is_none() => {
+            Some(HuntState::Failed) => return self.hunt_failed(),
+            Some(HuntState::WalkPoint | HuntState::WalkSearch) => self.hunt_point_walk(c, me)?,
+            Some(HuntState::Search) => self.hunt_search_wait(c)?,
+            Some(HuntState::Idle) => self.hunt_idle()?,
+            Some(HuntState::Walk) if target.is_none() && timer < 0.0 => self.hunt_wait_walk(c)?,
+            Some(HuntState::Lead) if target.is_none() => {
                 // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
-                self.actions.hunt_mut().expect("above").state = SEARCH;
+                self.actions.hunt_mut().expect("above").state = HuntState::Search;
                 self.hunt_set_search(c)?;
             }
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::victims::victim;
 use crate::gathering::closest_resource::herded;
 use crate::gathering::hunt::HuntRetarget;
+use crate::gathering::hunt::HuntState;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
@@ -15,7 +16,6 @@ use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
@@ -134,7 +134,7 @@ impl Unit {
                 construction_rate: c.w.players.player(c.player)?.construction_rate,
                 groups: &c.w.groups,
             };
-            let (site, _) = self.drop_site(&mut w, others, None, crate::gathering::hunt::SEARCH)?;
+            let (site, _) = self.drop_site(&mut w, others, None, HuntState::Search.get())?;
             match site {
                 None => {
                     self.actions
@@ -251,7 +251,7 @@ impl Unit {
                 "a hunt's Attack whose MoveTo starts arrived after its drop-off",
             ));
         }
-        if hunt.state == FAILED {
+        if hunt.state == HuntState::Failed {
             return Err(GenieError::unsupported(
                 "a hunt failing on its target after its drop-off",
             ));
@@ -363,7 +363,7 @@ impl Unit {
         let me = Me {
             id: self.id,
             group: self.group.id,
-            action_state: self.actions.hunt().expect("the caller's hunt").state,
+            action_state: self.actions.hunt().expect("the caller's hunt").state.get(),
         };
         let mut plan = Planning {
             pathing: &mut c.w.pathing,
@@ -526,7 +526,10 @@ impl Unit {
     /// A hunt that failed at once after its retarget: the unit shows standing, and a unit with
     /// a sprite takes its master's standing sprite (none in the data file is not modelled).
     fn hunt_failed_sprite(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        let failed = self.actions.hunt().is_some_and(|h| h.state == FAILED);
+        let failed = self
+            .actions
+            .hunt()
+            .is_some_and(|h| h.state == HuntState::Failed);
         if !failed {
             return Ok(());
         }

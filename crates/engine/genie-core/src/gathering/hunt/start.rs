@@ -4,11 +4,9 @@
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::gathering::gather::Walks;
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::walks::QUIET_CODE;
-use crate::gathering::hunt::{
-    ATTACK, DROP, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH,
-    WALK_POINT, WALK_SEARCH,
-};
+use crate::gathering::hunt::{HuntAction, HuntTask, Lead, OWN_LIVESTOCK_RANGE, Quarry};
 use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
@@ -20,7 +18,6 @@ use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::world::step::Step;
 
@@ -131,7 +128,7 @@ impl HuntAction {
         } = start;
         let mut hunt = Self {
             target: Some(target.id),
-            state: 0,
+            state: HuntState::New,
             point: target.position,
             target_class: Some(target.class),
             task,
@@ -192,7 +189,7 @@ impl HuntAction {
         walks: &Walks<'_>,
     ) -> Result<bool, GenieError> {
         self.tear_down(Some(mover))?;
-        self.state = 4;
+        self.state = HuntState::Walk;
         self.timer = 0.0;
         self.point = target.position;
         let own_livestock = target.class == class::LIVESTOCK && target.player == player;
@@ -214,11 +211,11 @@ impl HuntAction {
         if target.class != class::FARM && target.allied {
             // LAB_140ac679d: set_state(13): the timer clears; the unit's sprite (slot 0x68 with
             // FUN_140ac5210's) is the caller's
-            self.state = FAILED;
+            self.state = HuntState::Failed;
             self.timer = 0.0;
             return Ok(false);
         }
-        self.state = ATTACK;
+        self.state = HuntState::Attack;
         let reads = walks.live(mover);
         let (a, arrived) = Attack::start(target.id, attack, arms, mover, &reads)?;
         self.attack = Some(a);
@@ -305,7 +302,7 @@ impl HuntAction {
             ));
         }
         if let Some(t) = target.filter(|t| t.player == player && drops_here && 0.0 < held) {
-            if Some(t.id) == self.carry_to && self.state == DROP {
+            if Some(t.id) == self.carry_to && self.state == HuntState::Drop {
                 return Ok(true);
             }
             self.set_target(None);
@@ -318,7 +315,7 @@ impl HuntAction {
         self.point = point;
         self.target_class = None;
         self.set_target(None);
-        self.set_point_walk(WALK_POINT, mover, &walks)?;
+        self.set_point_walk(HuntState::WalkPoint, mover, &walks)?;
         Ok(true)
     }
 
@@ -329,7 +326,7 @@ impl HuntAction {
     ///
     /// A unit without speed.
     pub fn search_walk(&mut self, mover: &mut Mover, walks: &Walks<'_>) -> Result<(), GenieError> {
-        self.set_point_walk(WALK_SEARCH, mover, walks)
+        self.set_point_walk(HuntState::WalkSearch, mover, walks)
     }
 
     /// `set_state` 11 and 15 (`0x140ac60e0` case 0xb): the sub-actions go, the timer clears and a
@@ -337,7 +334,7 @@ impl HuntAction {
     /// ([`HuntAction::move_to_point`]).
     pub(super) fn set_point_walk(
         &mut self,
-        state: u8,
+        state: HuntState,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
@@ -366,7 +363,7 @@ impl HuntAction {
             return Ok(());
         }
         self.timer = 0.0;
-        self.set_point_walk(WALK_SEARCH, mover, walks)
+        self.set_point_walk(HuntState::WalkSearch, mover, walks)
     }
 
     /// State 15's and 11's update (`0x140ac7a00` cases 0xe and 0xa) of `unit`'s hunt on the step,
@@ -409,8 +406,8 @@ impl HuntAction {
             }));
         }
         self.tear_down(unit.body.mover_mut())?;
-        if self.state == WALK_SEARCH {
-            self.state = SEARCH;
+        if self.state == HuntState::WalkSearch {
+            self.state = HuntState::Search;
             return Ok(PointWalk::Search);
         }
         let [target, second] = self.set_done();
@@ -422,7 +419,7 @@ impl HuntAction {
     /// target go (slot 0x68 and `FUN_140a7a190` with none: returned in that order for the caller
     /// to release), the point clears and the timer.
     pub fn set_done(&mut self) -> [Option<ObjectId>; 2] {
-        self.state = IDLE;
+        self.state = HuntState::Idle;
         let target = self.target.take();
         let second = self.carry_to.take();
         self.point = Position::from([-1.0; 3]);

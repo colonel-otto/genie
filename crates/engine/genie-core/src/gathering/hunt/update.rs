@@ -3,10 +3,9 @@
 
 use crate::GenieError;
 use crate::combat::attack::{Attack, Fight, set_walker_anim};
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::walks::QUIET_CODE;
-use crate::gathering::hunt::{
-    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, SEARCH, WALK, WALK_SEARCH,
-};
+use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads};
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
@@ -42,25 +41,27 @@ impl HuntAction {
             ));
         }
         match self.state {
-            ATTACK => self.update_attack(c, unit, me, f, r),
+            HuntState::Attack => self.update_attack(c, unit, me, f, r),
             // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
-            WALK if self.timer < 0.0 => {
+            HuntState::Walk if self.timer < 0.0 => {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
                 self.wait_then_walk(seconds(c.dt), mover, &walks)?;
                 Ok(HuntNext::Stay)
             }
-            WALK => self.update_walk(c, unit, me, f, r),
-            LEAD => self.update_lead(c, unit, f, r),
-            FACE => self.update_face(c, unit, f, r),
+            HuntState::Walk => self.update_walk(c, unit, me, f, r),
+            HuntState::Lead => self.update_lead(c, unit, f, r),
+            HuntState::Face => self.update_face(c, unit, f, r),
             // case 6 without a target (or a task): set_state(8) to carry the load off, set_state(3)
             // with none
-            GATHER if self.target.is_none() => Ok(if self.ends_without_target(unit.life.amount) {
-                HuntNext::Drop
-            } else {
-                HuntNext::Search
-            }),
-            GATHER => {
+            HuntState::Gather if self.target.is_none() => {
+                Ok(if self.ends_without_target(unit.life.amount) {
+                    HuntNext::Drop
+                } else {
+                    HuntNext::Search
+                })
+            }
+            HuntState::Gather => {
                 let full = self.gather(seconds(c.dt), unit, &mut f.victim, r)?;
                 write_target_back(c, unit, f)?;
                 Ok(if full { HuntNext::Drop } else { HuntNext::Stay })
@@ -94,7 +95,7 @@ impl HuntAction {
             0 | 6.. => Ok(HuntNext::Stay),
             1 | 2 | 5 if self.target.is_none() => {
                 self.tear_down(unit.body.mover_mut())?;
-                self.state = SEARCH;
+                self.state = HuntState::Search;
                 Ok(HuntNext::Search)
             }
             1 | 2 | 5
@@ -119,7 +120,7 @@ impl HuntAction {
                 unit.hunt_release(c, [target])?;
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-                self.set_point_walk(WALK_SEARCH, mover, &walks)?;
+                self.set_point_walk(HuntState::WalkSearch, mover, &walks)?;
                 Ok(HuntNext::Stay)
             }
         }
@@ -201,7 +202,7 @@ impl HuntAction {
             self.set_gather(unit, c.w.streams.get(Stream::Sprite), r);
             return Ok(HuntNext::Stay);
         }
-        self.state = SEARCH;
+        self.state = HuntState::Search;
         Ok(HuntNext::Search)
     }
 
@@ -219,7 +220,7 @@ impl HuntAction {
         self.set_target(None);
         let walks = r.walks(&c.w.graphics, unit);
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-        self.set_point_walk(WALK_SEARCH, mover, &walks)
+        self.set_point_walk(HuntState::WalkSearch, mover, &walks)
     }
 
     /// `FUN_140ac4670` with 8 and −1 for a class the unit AI's slot 0x1b0 gives 0 (trees, the
@@ -249,7 +250,7 @@ impl HuntAction {
         let reads = unit.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.move_to = None;
-        self.state = ATTACK;
+        self.state = HuntState::Attack;
         // the herd is read only on a live target
         let target = self.target.ok_or(GenieError::unreachable(
             "a hunt's Attack on its livestock without a target",

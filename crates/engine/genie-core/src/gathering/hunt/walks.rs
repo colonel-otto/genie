@@ -94,7 +94,7 @@ impl HuntAction {
         mut me: Me,
         gives_up: GiveUp,
     ) -> Result<u8, GenieError> {
-        me.action_state = self.state;
+        me.action_state = self.state.get();
         let state = self.move_to.as_ref().map(|m| m.state);
         let how = ListUpdate {
             gives_up,

@@ -2,6 +2,7 @@ use super::*;
 use crate::combat::attack::AttackState;
 use crate::construction::repair::RepairState;
 use crate::gathering::gather::GatherState;
+use crate::gathering::hunt::HuntState;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -347,7 +348,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
         }),
         actions: ActionList::default().with_hunt(Some(HuntAction {
             target: None,
-            state: 4,
+            state: HuntState::Walk,
             point: Position::from([-1.0; 3]),
             target_class: None,
             task: HuntTask {
@@ -389,10 +390,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     without_ai.players[1].objects[idx].ai = None;
     without_ai.object_stop(PlayerId::new(1), idx).unwrap();
     let u = &without_ai.players[1].objects[idx];
-    assert_eq!(
-        u.actions.hunt().map(|h| h.state),
-        Some(crate::gathering::hunt::IDLE)
-    );
+    assert_eq!(u.actions.hunt().map(|h| h.state), Some(HuntState::Idle));
     // its target went through slot 0x68 (FUN_140ac7980), which clears the lead
     assert_eq!(u.actions.hunt().map(|h| h.lead), Some(Lead::NEW));
 }

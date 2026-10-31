@@ -6,6 +6,7 @@ use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{KillLeft, file_kill, victim};
 use crate::gathering::drop_sites::nearest_drop_site;
+use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
 use crate::movement::move_to::{MoveDefaults, MoveTo};
@@ -137,7 +138,7 @@ impl Unit {
         }
         let hunt = self.actions.hunt_mut().ok_or(NO_HUNT)?;
         hunt.tear_down(self.body.mover_mut())?;
-        hunt.state = crate::gathering::hunt::SEARCH;
+        hunt.state = HuntState::Search;
         self.hunt_search_state(c)
     }
 
@@ -153,10 +154,10 @@ impl Unit {
         master: &Master,
         victim: &Victim,
     ) -> Result<Option<Herd>, GenieError> {
-        let faces = action.state == crate::gathering::hunt::WALK
+        let faces = action.state == HuntState::Walk
             && action.move_to.is_some_and(|m| m.state == MoveTo::Arrived);
         if !((faces && victim.class == class::LIVESTOCK && victim.state <= ObjectState::Alive)
-            || action.state == crate::gathering::hunt::LEAD)
+            || action.state == HuntState::Lead)
         {
             return Ok(None);
         }

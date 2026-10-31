@@ -151,7 +151,7 @@ impl Action {
             Self::Repair(a) => a.state.get(),
             Self::MoveTo(a) => a.state.number(),
             Self::Fly(a) => a.state,
-            Self::Hunt(a) => a.state,
+            Self::Hunt(a) => a.state.get(),
             Self::Gather(a) => a.state.get(),
             Self::Attack(a) => a.state.get(),
             Self::Explore(a) => a.state,

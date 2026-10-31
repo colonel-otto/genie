@@ -778,8 +778,8 @@ fn hunt(b: RgeAction) -> Action {
 /// the sprites' table; a state or sub-action the slice does not model is refused.
 #[test]
 fn a_hunt_takes_its_task_lead_and_move_to() {
-    use genie_core::gathering::hunt::{HUNT, IDLE, WALK};
-    let h = imported(HUNT, hunt(base(IDLE)))
+    use genie_core::gathering::hunt::{HUNT, HuntState};
+    let h = imported(HUNT, hunt(base(HuntState::Idle.get())))
         .unwrap()
         .actions
         .hunt()
@@ -798,12 +798,19 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         h.lead.start.get().map(f32::to_bits),
         [6.0_f32, 7.0].map(f32::to_bits)
     );
-    let h = imported(HUNT, hunt(with_sub(base(WALK), MOVE_TO, move_to(4, 0.75))))
-        .unwrap()
-        .actions
-        .hunt()
-        .copied()
-        .unwrap();
+    let h = imported(
+        HUNT,
+        hunt(with_sub(
+            base(HuntState::Walk.get()),
+            MOVE_TO,
+            move_to(4, 0.75),
+        )),
+    )
+    .unwrap()
+    .actions
+    .hunt()
+    .copied()
+    .unwrap();
     // every MoveTo of the Hunt is quiet
     let walk = h.move_to.unwrap();
     assert_eq!(
@@ -825,7 +832,7 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         imported(
             HUNT,
             hunt(with_sub(
-                base(WALK),
+                base(HuntState::Walk.get()),
                 genie_core::combat::attack::ATTACK,
                 attack
             ))
@@ -837,7 +844,7 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         imported(
             HUNT,
             hunt(with_sub(
-                base(WALK),
+                base(HuntState::Walk.get()),
                 genie_core::movement::explore::EXPLORE,
                 explore(base(3))
             ))
@@ -850,7 +857,7 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         GenieError::unsupported("a saved Hunt in a state the slice does not model")
     );
     assert_eq!(
-        imported(HUNT, explore(base(IDLE))).unwrap_err(),
+        imported(HUNT, explore(base(HuntState::Idle.get()))).unwrap_err(),
         GenieError::unsupported("a saved Hunt without its own part")
     );
 }
@@ -1140,7 +1147,7 @@ fn attack(state: u8, walk: u16, pending: bool) -> Action {
 #[test]
 fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
     use genie_core::combat::attack::{ATTACK, AttackState};
-    use genie_core::gathering::hunt::{HUNT, WALK};
+    use genie_core::gathering::hunt::{HUNT, HuntState};
     let master = |reload: f32| {
         let mut m = combat_master(83);
         m.tribe_master_combat_object
@@ -1156,7 +1163,7 @@ fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
             &acting(
                 HUNT,
                 hunt(with_sub(
-                    base(WALK),
+                    base(HuntState::Walk.get()),
                     ATTACK,
                     attack(state.get(), 4, pending),
                 )),
