@@ -7,6 +7,7 @@ use genie_core::map::Distance;
 use genie_core::map::Point;
 use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
+use genie_core::objects::HitPoints;
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::objects::masters::ClassId;
@@ -85,7 +86,7 @@ pub(super) fn lifecycle(
             Class::Animated
         },
         state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
-        hp: s.hp,
+        hp: HitPoints::new(s.hp),
         attribute_type: AttributeId::of_data(s.attribute_type_held),
         amount: s.attribute_amount_held,
         dying_sprite,

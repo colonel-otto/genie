@@ -8,6 +8,7 @@ use crate::groups::GroupId;
 use crate::map::Distance;
 use crate::map::Point;
 use crate::math::image::group::MEMBER_MIN_HP;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterKind;
@@ -91,7 +92,7 @@ impl World {
             let Some(member) = Some(m.id) else {
                 continue;
             };
-            if u.life.hp < MEMBER_MIN_HP {
+            if u.life.hp < HitPoints::new(MEMBER_MIN_HP) {
                 continue;
             }
             if let Some(task) = self.member_task(member, &query)? {

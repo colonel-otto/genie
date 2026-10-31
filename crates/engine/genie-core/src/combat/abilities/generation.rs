@@ -1,6 +1,7 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
 use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
@@ -33,7 +34,7 @@ pub struct TopWork {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WorkTarget {
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its master's first storage amount (`+0x610`).
     pub storage: f32,
     /// Its master's class (`+0x410`).
@@ -65,7 +66,7 @@ pub fn generates(
         && WORKING_ACTIONS.contains(&top.kind)
         && top.state == WORKING
         && let Some(t) = top.target
-        && (0.0 < t.hp || 0.0 < t.storage)
+        && (HitPoints::ZERO < t.hp || 0.0 < t.storage)
         && task.for_class(t.class)
     {
         return true;

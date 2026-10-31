@@ -46,6 +46,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 #[cfg(test)]
 use crate::math::fmath;
+use crate::objects::HitPoints;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -135,7 +136,7 @@ pub struct Victim {
     /// `FUN_140f5f0a0` and `FUN_140f5f560` keep), which a blast walks a tile by ([`blast`]).
     pub tile_place: usize,
     /// Its hit points (`+0x278`), what it holds (`+0x310`), its state and place.
-    pub hp: f32,
+    pub hp: HitPoints,
     /// What it holds (`+0x310`).
     pub amount: f32,
     /// Its state (`+0x640`).

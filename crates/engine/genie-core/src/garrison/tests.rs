@@ -17,6 +17,7 @@ use crate::math::fmath::BVector;
 use crate::movement::Speed;
 use crate::movement::move_to::MoveToAction;
 use crate::movement::move_to::MoveWaitState;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -138,7 +139,7 @@ fn garrison_masters() -> Masters {
     ])
 }
 
-pub(crate) fn unit(id: i32, master: MasterId, hp: f32) -> Unit {
+pub(crate) fn unit(id: i32, master: MasterId, hp: HitPoints) -> Unit {
     let mut u = Unit {
         id: object_id(id),
         pasture: None,
@@ -166,9 +167,13 @@ fn garrison_world() -> World {
         players,
     );
     t.masters = (0..4).map(|_| garrison_masters()).collect();
-    t.players[1].objects.push(unit(100, TC, 2400.0));
-    t.players[1].objects.push(unit(200, SHIP, 100.0));
-    let mut gate = unit(300, GATE, 2750.0);
+    t.players[1]
+        .objects
+        .push(unit(100, TC, HitPoints::new(2400.0)));
+    t.players[1]
+        .objects
+        .push(unit(200, SHIP, HitPoints::new(100.0)));
+    let mut gate = unit(300, GATE, HitPoints::new(2750.0));
     gate.annex_of = Some(object_id(100));
     t.players[1].objects.push(gate);
     t
@@ -203,7 +208,9 @@ fn walks_at(t: &mut World, idx: ListIndex, speed: f32) {
 /// [`garrison_world`] with villager 9149 of player 1, and its index.
 fn walk_again_world() -> (World, ListIndex) {
     let mut t = garrison_world();
-    t.players[1].objects.push(unit(9149, VILLAGER, 25.0));
+    t.players[1]
+        .objects
+        .push(unit(9149, VILLAGER, HitPoints::new(25.0)));
     let idx = t.players[1].objects.last_place().unwrap();
     (t, idx)
 }
@@ -1353,11 +1360,11 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
     assert!(!takes(&t, 200, PlayerId::new(1), ARCHER, true, true));
     // hit points at most a fifth of the master's (COMISD, JBE: NaN too)
     for hp in [480.0, f32::NAN] {
-        t.players[1].objects[ListIndex::new(0)].life.hp = hp;
+        t.players[1].objects[ListIndex::new(0)].life.hp = HitPoints::new(hp);
         assert!(!takes(&t, 100, PlayerId::new(1), VILLAGER, true, true));
         assert!(!takes(&t, 300, PlayerId::new(1), VILLAGER, true, true));
     }
-    t.players[1].objects[ListIndex::new(0)].life.hp = 480.5;
+    t.players[1].objects[ListIndex::new(0)].life.hp = HitPoints::new(480.5);
     assert!(takes(&t, 100, PlayerId::new(1), VILLAGER, true, true));
     // state 2 only
     t.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
@@ -1365,7 +1372,7 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
     t.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Alive;
     // full: only the room test (param_5 0) refuses
     for k in 0..15 {
-        let mut v = unit(1000 + k, VILLAGER, 25.0);
+        let mut v = unit(1000 + k, VILLAGER, HitPoints::new(25.0));
         v.life.inside = Some(object_id(100));
         t.players[1].objects.push(v);
     }
@@ -1382,7 +1389,7 @@ fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     };
     assert_eq!(takes(&t, VILLAGER, false), Ok(true));
     assert_eq!(takes(&t, ARCHER, true), Ok(false));
-    let mut v = unit(1000, VILLAGER, 25.0);
+    let mut v = unit(1000, VILLAGER, HitPoints::new(25.0));
     v.life.inside = Some(object_id(200));
     t.players[1].objects.push(v);
     assert_eq!(takes(&t, VILLAGER, false), Ok(false));
@@ -1433,7 +1440,9 @@ fn the_class_flags_are_the_images_table_by_class() {
 fn a_room_test_counts_the_unit_and_what_it_holds_or_one_for_none() {
     // FUN_1412169b0: slot 0x498 of the building plus that of the unit and 1
     let mut t = garrison_world();
-    t.players[1].objects.push(unit(1000, VILLAGER, 25.0));
+    t.players[1]
+        .objects
+        .push(unit(1000, VILLAGER, HitPoints::new(25.0)));
     let room = |t: &World, unit| {
         let (bp, b) = t.object(object_id(200)).unwrap();
         t.has_room(bp, b, unit).unwrap()
@@ -1441,7 +1450,7 @@ fn a_room_test_counts_the_unit_and_what_it_holds_or_one_for_none() {
     assert!(room(&t, None));
     assert!(room(&t, Some(object_id(1000))));
     // a unit holding one more needs room for two
-    let mut held = unit(1001, ARCHER, 25.0);
+    let mut held = unit(1001, ARCHER, HitPoints::new(25.0));
     held.life.inside = Some(object_id(1000));
     t.players[1].objects.push(held);
     assert!(!room(&t, Some(object_id(1000))));
@@ -1468,7 +1477,7 @@ fn unload_picks_the_units_its_flag_names_of_any_player() {
         (2, 2000, VILLAGER),
         (3, 3000, ARCHER),
     ] {
-        let mut u = unit(id, m, 25.0);
+        let mut u = unit(id, m, HitPoints::new(25.0));
         u.life.inside = (p != 3).then_some(object_id(100));
         t.players[p].objects.push(u);
     }
@@ -1654,7 +1663,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
 #[test]
 fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     let mut t = let_out_world();
-    let mut v = unit(400, VILLAGER, 25.0);
+    let mut v = unit(400, VILLAGER, HitPoints::new(25.0));
     v.place_for_test(Position::new(12.5, 10.0, 0.0));
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
@@ -1714,7 +1723,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
 /// ([`World::start_enter`]). The result and the world after it.
 fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>, World) {
     let mut t = let_out_world();
-    let mut v = unit(400, VILLAGER, 25.0);
+    let mut v = unit(400, VILLAGER, HitPoints::new(25.0));
     v.place_for_test(Position::new(12.5, 10.0, 0.0));
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
@@ -1798,7 +1807,8 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
     let v = t.object(object_id(400)).unwrap().1;
     assert_eq!((v.life.inside, v.life.amount), (Some(object_id(100)), 6.0));
     let reason = |setup: fn(&mut World)| enters_the_centre(setup).0.unwrap_err().reason();
-    let weak: fn(&mut World) = |t| t.object_mut(object_id(100)).unwrap().1.life.hp = 480.0;
+    let weak: fn(&mut World) =
+        |t| t.object_mut(object_id(100)).unwrap().1.life.hp = HitPoints::new(480.0);
     assert_eq!(
         reason(weak),
         "an enter into a building at a fifth of its hit points (state 13)"
@@ -1829,7 +1839,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
 
 /// Puts unit `id` of player `p` and master `m` inside the town centre.
 pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: MasterId) {
-    let mut u = unit(id, m, 25.0);
+    let mut u = unit(id, m, HitPoints::new(25.0));
     u.place_for_test(Position::new(10.0, 10.0, 0.0));
     u.life.inside = Some(object_id(100));
     t.players[p.index()].objects.push(u);
@@ -1976,7 +1986,9 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
         ..Master::default()
     }]));
     t.masters = (0..4).map(|_| masters.clone()).collect();
-    t.players[1].objects.push(unit(400, master_id(59), 10.0));
+    t.players[1]
+        .objects
+        .push(unit(400, master_id(59), HitPoints::new(10.0)));
     let takes = |t: &World, b, p, m| {
         let (bp, bu) = t.object(object_id(b)).unwrap();
         t.ai_takes(bp, bu, p, m)
@@ -1992,7 +2004,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
 
 /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
 pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: Point) {
-    let mut v = unit(id, m, 25.0);
+    let mut v = unit(id, m, HitPoints::new(25.0));
     v.place_for_test(at.with_height(0.0));
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: UnitAiType::CIVILIAN,
@@ -2054,7 +2066,7 @@ pub(crate) fn building_at(
     at: Point,
     annex_of: Option<ObjectId>,
 ) {
-    let mut b = unit(id, m, 2400.0);
+    let mut b = unit(id, m, HitPoints::new(2400.0));
     b.place_for_test(at.with_height(0.0));
     b.annex_of = annex_of;
     t.players[1].objects.push(b);
@@ -2102,7 +2114,7 @@ fn the_shelters_near_a_target_follow_its_owners_tracker_and_count_annexes_and_ga
         Point::new(10.0, 15.0),
         Some(object_id(101)),
     );
-    let mut inside = unit(500, VILLAGER, 25.0);
+    let mut inside = unit(500, VILLAGER, HitPoints::new(25.0));
     inside.life.inside = Some(object_id(104));
     t.players[1].objects.push(inside);
     tracked(&mut t, TC, &[104, 102, 101, 100]);
@@ -2149,7 +2161,7 @@ fn a_garrison_near_its_target_reads_the_count_list_at_its_pairs_index() {
             Point::new(10.0, 15.0),
             Some(object_id(101)),
         );
-        let mut inside = unit(500, VILLAGER, 25.0);
+        let mut inside = unit(500, VILLAGER, HitPoints::new(25.0));
         inside.life.inside = Some(object_id(104));
         t.players[1].objects.push(inside);
         let listed: &[i32] = if with_annex {
@@ -3491,7 +3503,7 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
         (1, 1000, VILLAGER),
         (2, 2000, VILLAGER),
     ] {
-        let mut u = unit(id, m, 25.0);
+        let mut u = unit(id, m, HitPoints::new(25.0));
         u.life.inside = Some(object_id(100));
         t.players[p].objects.push(u);
     }
@@ -3500,7 +3512,7 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
     t.object_mut(object_id(1000)).unwrap().1.raider_countdown = 20;
     assert!(t.garrisoned(object_id(100)).is_err());
     // a transport has no +0xc2c term
-    let mut u = unit(3000, VILLAGER, 25.0);
+    let mut u = unit(3000, VILLAGER, HitPoints::new(25.0));
     u.life.inside = Some(object_id(200));
     u.raider_countdown = 20;
     t.players[1].objects.push(u);
@@ -3701,7 +3713,7 @@ fn let_out_beside_a_second_centre(
         stance: UnitStance::DEFENSIVE,
         ..crate::unit_ai::UnitAi::default()
     });
-    let mut second = unit(101, TC, 2400.0);
+    let mut second = unit(101, TC, HitPoints::new(2400.0));
     second.place_for_test(Position::new(16.0, 4.0, 0.0));
     t.players[1].objects.push(second);
     let placed = *t.spatial.get(object_id(100)).unwrap();

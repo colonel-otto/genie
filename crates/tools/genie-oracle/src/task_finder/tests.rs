@@ -1,5 +1,6 @@
 use crate::task_finder::{FinderObject, FinderWorld, finder_objects};
 use crate::test_ids::object_id;
+use genie_core::objects::HitPoints;
 use genie_core::objects::ObjectId;
 use genie_core::objects::ObjectState;
 use genie_core::objects::lifecycle::Held;
@@ -82,7 +83,7 @@ fn an_annex_stands_for_its_main_building() {
     let target = w.target(object_id(10)).unwrap();
     assert_eq!(
         (target.player, target.state, target.hp),
-        (PlayerId::new(1), ObjectState::Alive, 25.0)
+        (PlayerId::new(1), ObjectState::Alive, HitPoints::new(25.0))
     );
     assert_eq!(
         (target.pasture, target.top_action),

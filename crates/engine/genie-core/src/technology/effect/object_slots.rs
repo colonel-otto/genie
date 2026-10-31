@@ -2,6 +2,7 @@
 //! the combat unit's and the building's.
 
 use crate::GenieError;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -155,9 +156,9 @@ impl World {
             a::HIT_POINTS => {
                 let (_, u) = self.object_mut(id).ok_or(OBJECT_GONE)?;
                 let full = f32::from(master.hit_points);
-                let hp = u.life.hp;
+                let hp = u.life.hp.get();
                 let short = |x: f32| f32::from(crate::math::conversions::cvttss2si(x) as i16);
-                u.life.hp = match change {
+                u.life.hp = HitPoints::new(match change {
                     Change::Set => short(v * hp / full),
                     Change::Add => short((full + v) * hp / full),
                     // COMISS 32767, x; JBE: a NaN holds the cap too
@@ -171,7 +172,7 @@ impl World {
                         OBJECT_HP_CAP
                     }
                     Change::Multiply => short(v * hp + ROUND),
-                };
+                });
             }
             a::LINE_OF_SIGHT => {
                 let los = match change {

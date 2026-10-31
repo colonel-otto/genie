@@ -7,6 +7,7 @@ use crate::combat::victims::{victim_of, write_back};
 use crate::construction::gates::gate_units;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
@@ -232,7 +233,9 @@ impl Unit {
         // at most a fifth of its hit points (DAT_142eae8d0), it lets its garrison out
         // (FUN_1411e7220 for each from the last, then their slots 0x1a8 and 0xd0); its master's
         // slot 0x110 only sets a sound flag
-        if self.life.hp <= f32::from(master.hit_points) * EJECT_SHARE && !self.garrison.is_empty() {
+        if self.life.hp <= HitPoints::new(f32::from(master.hit_points) * EJECT_SHARE)
+            && !self.garrison.is_empty()
+        {
             return Err(GenieError::unsupported(
                 "a damaged building lets its garrison out (a fifth of its hit points)",
             ));
@@ -292,13 +295,13 @@ impl Unit {
                 villagers += 1;
             }
             let (class, hit_points) = (m.class, m.hit_points);
-            if 0.0 < rate && u.life.hp < f32::from(hit_points) {
-                u.heal(class, hit_points, rate)?;
+            if 0.0 < rate && u.life.hp < HitPoints::new(f32::from(hit_points)) {
+                u.heal(class, hit_points, HitPoints::new(rate))?;
             }
         }
         if 0 < villagers
             && 0.0 < bm.garrison_repair_rate
-            && self.life.hp < f32::from(master.hit_points)
+            && self.life.hp < HitPoints::new(f32::from(master.hit_points))
         {
             return Err(GenieError::unsupported(
                 "a building its villagers inside repair (FUN_1411d33e0)",
@@ -471,7 +474,7 @@ pub(crate) const DEATH_BLAST_FACTOR: f32 = crate::math::image::turn::DEATH_BLAST
 /// 2. The update runs for the combat objects and buildings (types 70 and 80).
 pub(crate) fn blasts_at_death(master: &Master, life: &Lifecycle) -> bool {
     COMBAT <= master.kind
-        && life.hp < DEATH_BLAST_HP
+        && life.hp < HitPoints::new(DEATH_BLAST_HP)
         && life.state == ObjectState::Alive
         && (DEATH_BLAST_MASTERS.contains(&master.id) || DEATH_BLAST_CLASSES.contains(&master.class))
 }

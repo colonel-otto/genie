@@ -13,6 +13,7 @@
 //! its id + 0x609c), the port compares the decoded values and names the encoded ones.
 
 use crate::GenieError;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
@@ -70,9 +71,9 @@ pub struct TaskTarget<'a> {
     /// What it holds (`+0x308`, `+0x310`): a resource's kind and amount.
     pub held: Held,
     /// Its hit points and their most (slots 0xc0 and 200).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its most hit points (slot 200).
-    pub max_hp: f32,
+    pub max_hp: HitPoints,
     /// `+0x68a`, `unit_attackable_flag` (`FUN_141188b10`).
     pub attackable: bool,
     /// `+0x790`, `parent_pasture_id`: the pasture it is in, if any.
@@ -640,8 +641,8 @@ mod tests {
             player,
             state,
             held: carrying(None, 0.0),
-            hp: 550.0,
-            max_hp: 550.0,
+            hp: HitPoints::new(550.0),
+            max_hp: HitPoints::new(550.0),
             attackable: true,
             pasture: None,
             top_action: None,
@@ -989,7 +990,7 @@ mod tests {
     fn a_damaged_building_takes_the_repair_task_for_its_master_or_class() {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let damaged = TaskTarget {
-            hp: 300.0,
+            hp: HitPoints::new(300.0),
             ..building(&house, PlayerId::new(2), ObjectState::Alive)
         };
         let by = |tasks: Vec<Task>, t: &TaskTarget<'_>, filter: Option<ActionType>| {
@@ -1051,8 +1052,8 @@ mod tests {
     fn transport(ship: &Master, player: PlayerId) -> TaskTarget<'_> {
         TaskTarget {
             id: object_id(7420),
-            hp: 100.0,
-            max_hp: 100.0,
+            hp: HitPoints::new(100.0),
+            max_hp: HitPoints::new(100.0),
             ..building(ship, player, ObjectState::Alive)
         }
     }
@@ -1545,7 +1546,7 @@ mod tests {
         }
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let damaged = TaskTarget {
-            hp: 300.0,
+            hp: HitPoints::new(300.0),
             ..building(&house, PlayerId::new(2), ObjectState::Alive)
         };
         let any = master(

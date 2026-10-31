@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::{Class, Lifecycle};
@@ -383,7 +384,7 @@ impl World {
             life: Lifecycle {
                 class: Class::Animated,
                 state: ObjectState::Alive,
-                hp: f32::from(made.hit_points),
+                hp: HitPoints::of_master(made.hit_points),
                 attribute_type: None,
                 amount: 0.0,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),

@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -286,8 +287,18 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
             crate::world::Player::default(),
             crate::world::Player {
                 objects: vec![
-                    unit(object_id(11), ids::VILLAGER_MALE, ObjectState::Alive, 25.0),
-                    unit(object_id(60), ids::HOUSE, ObjectState::Foundation, 550.0),
+                    unit(
+                        object_id(11),
+                        ids::VILLAGER_MALE,
+                        ObjectState::Alive,
+                        HitPoints::new(25.0),
+                    ),
+                    unit(
+                        object_id(60),
+                        ids::HOUSE,
+                        ObjectState::Foundation,
+                        HitPoints::new(550.0),
+                    ),
                 ]
                 .into(),
                 attributes,
@@ -523,7 +534,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
             life: Lifecycle {
                 master_id: master_id(master),
                 state: ObjectState::Alive,
-                hp: 25.0,
+                hp: HitPoints::new(25.0),
                 ..Lifecycle::default()
             },
             ..Unit::default()
@@ -536,7 +547,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         life: Lifecycle {
             master_id: ids::HOUSE,
             state: ObjectState::Alive,
-            hp: 550.0,
+            hp: HitPoints::new(550.0),
             ..Lifecycle::default()
         },
         ..Unit::default()

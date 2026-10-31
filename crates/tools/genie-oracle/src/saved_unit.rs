@@ -10,6 +10,7 @@ use genie_core::GenieError;
 use genie_core::map::Distance;
 use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
+use genie_core::objects::HitPoints;
 use genie_core::objects::HpPowerup;
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::Lifecycle;
@@ -94,8 +95,8 @@ pub(super) fn unit(
             .and_then(|b| ObjectId::of_field(b.mupt_linked_object_references_linked_owner_id)),
         group: group_link(s),
         hp_powerup: object.combat().map_or(HpPowerup::NONE, |c| HpPowerup {
-            taken: c.hitpoints_powerup,
-            max: c.hitpoints_max_powerup,
+            taken: HitPoints::new(c.hitpoints_powerup),
+            max: HitPoints::new(c.hitpoints_max_powerup),
         }),
         regen_timer: object
             .combat()

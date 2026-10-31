@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Rect;
 use crate::map::Tile;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -47,7 +48,7 @@ pub struct ClearingSite {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClearLook {
     /// `+0x278`.
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its master's `radius_z` (`+0x5e0`).
     pub height: f32,
     /// `+0x686`.
@@ -214,7 +215,7 @@ pub(super) fn clearing_takes(
         "a footprint clearing of an object the slice does not hold",
     ))?;
     // the tree's test: COMISS 1.0 against its hit points, JC passes it over (a NaN too)
-    if o.buildable_on == 0 && !own_wall && below_or_unordered(STUMP_HP, seen.hp) {
+    if o.buildable_on == 0 && !own_wall && below_or_unordered(STUMP_HP, seen.hp.get()) {
         return Ok(None);
     }
     let (rx, ry) = (site.radius.x(), site.radius.y());

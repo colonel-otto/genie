@@ -3,6 +3,7 @@ use crate::map::GridSize;
 use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::{Rect, Segment};
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -1525,7 +1526,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     wall.radius = Footprint::new(0.5, 0.5);
     s.insert(object_id(33990), wall);
     let look = |state: ObjectState, kind: MasterKind, desolid: bool| ClearLook {
-        hp: 1.0,
+        hp: HitPoints::new(1.0),
         height: 1.0,
         roo_called: false,
         kind,

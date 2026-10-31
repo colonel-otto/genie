@@ -10,6 +10,7 @@ use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::movement::PathState;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -52,7 +53,7 @@ fn soldier(id: i32, x: f32, y: f32) -> Unit {
     };
     u.life.master_id = master_id(4);
     u.life.state = ObjectState::Alive;
-    u.life.hp = 50.0;
+    u.life.hp = HitPoints::new(50.0);
     u
 }
 
@@ -156,7 +157,7 @@ fn light(t: &mut World, p: usize, x: usize, y: usize, seen: bool) {
 #[test]
 fn lost_members_leave_the_group_and_stop() {
     let mut t = world();
-    t.players[1].objects[ListIndex::new(1)].life.hp = 0.5;
+    t.players[1].objects[ListIndex::new(1)].life.hp = HitPoints::new(0.5);
     let mut stray = soldier(12, 1.0, 2.0);
     stray.group.id = Some(group_id(1));
     let _ = t.players[1].objects.remove(ListIndex::new(2)).unwrap();
@@ -195,7 +196,7 @@ fn lost_members_leave_the_group_and_stop() {
     assert_eq!(stopped.velocity.unwrap().velocity.y(), 0.0);
     // a NaN's hit points stay (COMISS then JA)
     let mut t = world();
-    t.players[1].objects[ListIndex::new(0)].life.hp = f32::NAN;
+    t.players[1].objects[ListIndex::new(0)].life.hp = HitPoints::new(f32::NAN);
     t.drop_lost_members(group_id(1)).unwrap();
     assert_eq!(t.groups.get(group_id(1)).unwrap().members.len(), 3);
     assert_eq!(t.groups.get(group_id(1)).unwrap().flags & 0x1_0000, 0);
@@ -243,9 +244,9 @@ fn a_hibernating_group_waits_runs_its_queue_or_goes() {
     // 20, or of nothing, the queue runs
     set(&mut t, 0x6a, 30, false);
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(false));
-    t.players[3].objects[ListIndex::new(0)].life.hp = f32::NAN;
+    t.players[3].objects[ListIndex::new(0)].life.hp = HitPoints::new(f32::NAN);
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(false));
-    t.players[3].objects[ListIndex::new(0)].life.hp = 60.0;
+    t.players[3].objects[ListIndex::new(0)].life.hp = HitPoints::new(60.0);
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
     set(&mut t, 0x6a, 20, false);
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));

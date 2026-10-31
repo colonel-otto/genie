@@ -270,7 +270,7 @@ pub(crate) fn write_back(c: &mut Step<'_>, v: &mut Victim) -> Result<Option<Kill
         let (_, u) = c.w.object_mut(v.id).expect("located");
         u.life.hp = v.hp;
         u.life.amount = v.amount;
-        if crate::math::fmath::at_most_or_unordered(1.0, v.hp) {
+        if crate::math::fmath::at_most_or_unordered(1.0, v.hp.get()) {
             return Ok(None);
         }
         let _ = c.w.wake_sleeper(v.id)?;

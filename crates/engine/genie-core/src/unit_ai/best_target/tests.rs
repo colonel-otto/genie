@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Distance;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
@@ -27,7 +28,7 @@ fn candidate(id: i32, distance: Distance, speed: f32) -> Candidate {
         armed: true,
         reach: Distance::new(1.0),
         damage: 4.0,
-        hp: 40.0,
+        hp: HitPoints::new(40.0),
         reload: 2.0,
         workable: false,
         current: false,
@@ -78,7 +79,7 @@ fn the_scores_rank_and_sort_the_entries() {
     let mut st = Statistics::default();
     st.add(&candidate(5, Distance::new(2.0), 1.0));
     st.add(&Candidate {
-        hp: 80.0,
+        hp: HitPoints::new(80.0),
         ..candidate(4, Distance::new(6.0), 1.0)
     });
     st.add(&candidate(9, Distance::new(4.0), 0.0));
@@ -227,7 +228,7 @@ fn soldier() -> Searcher {
     }
 }
 
-fn enemy(id: i32, class: ClassId, distance: Distance, hp: f32) -> (Thing, Candidate) {
+fn enemy(id: i32, class: ClassId, distance: Distance, hp: HitPoints) -> (Thing, Candidate) {
     (
         Thing {
             owner: PlayerId::new(2),
@@ -258,15 +259,15 @@ fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
     let mut field = Field::default();
     let _ = field.things.insert(
         object_id(7),
-        enemy(7, class::CLASS_0, Distance::new(3.0), 40.0),
+        enemy(7, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0)),
     );
     let _ = field.things.insert(
         object_id(8),
-        enemy(8, class::CLASS_0, Distance::new(9.0), 40.0),
+        enemy(8, class::CLASS_0, Distance::new(9.0), HitPoints::new(40.0)),
     );
     let _ = field.things.insert(
         object_id(9),
-        enemy(9, class::CLASS_0, Distance::new(5.0), 10.0),
+        enemy(9, class::CLASS_0, Distance::new(5.0), HitPoints::new(10.0)),
     );
     field.quick = vec![object_id(9)];
     let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([8, 7, 9])]);
@@ -307,9 +308,9 @@ fn failed_paths_become_retarget_entries() {
     let mut field = Field::default();
     let _ = field.things.insert(
         object_id(7),
-        enemy(7, class::CLASS_0, Distance::new(3.0), 40.0),
+        enemy(7, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0)),
     );
-    let mut still = enemy(9, class::CLASS_0, Distance::new(5.0), 10.0);
+    let mut still = enemy(9, class::CLASS_0, Distance::new(5.0), HitPoints::new(10.0));
     still.0.speed = Speed::ZERO;
     still.1.speed = Speed::ZERO;
     let _ = field.things.insert(object_id(9), still);
@@ -356,28 +357,38 @@ fn failed_paths_become_retarget_entries() {
 #[test]
 fn the_lists_pass_over_what_the_unit_may_not_attack() {
     let mut field = Field::default();
-    let mut no_ai = enemy(30, class::CLASS_0, Distance::new(3.0), 40.0);
+    let mut no_ai = enemy(30, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0));
     no_ai.0.has_ai = false;
-    let mut inside = enemy(31, class::CLASS_0, Distance::new(3.0), 40.0);
+    let mut inside = enemy(31, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0));
     inside.0.inside = true;
-    let mut dead = enemy(32, class::CLASS_0, Distance::new(3.0), 40.0);
+    let mut dead = enemy(32, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0));
     dead.0.state = ObjectState::Dying;
-    let mut ally = enemy(33, class::CLASS_0, Distance::new(3.0), 40.0);
+    let mut ally = enemy(33, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0));
     ally.0.allied = true;
     for (id, t) in [(30, no_ai), (31, inside), (32, dead), (33, ally)] {
         let _ = field.things.insert(object_id(id), t);
     }
     let _ = field.things.insert(
         object_id(34),
-        enemy(34, class::CLASS_0, Distance::new(12.5), 40.0),
+        enemy(
+            34,
+            class::CLASS_0,
+            Distance::new(12.5),
+            HitPoints::new(40.0),
+        ),
     );
     let _ = field.things.insert(
         object_id(35),
-        enemy(35, class::CLASS_0, Distance::new(0.1), 40.0),
+        enemy(35, class::CLASS_0, Distance::new(0.1), HitPoints::new(40.0)),
     );
     let _ = field.things.insert(
         object_id(36),
-        enemy(36, class::CLASS_0, Distance::new(11.9), 40.0),
+        enemy(
+            36,
+            class::CLASS_0,
+            Distance::new(11.9),
+            HitPoints::new(40.0),
+        ),
     );
     field.quick = object_id_list(30..=36);
     let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list(30..=36)]);
@@ -403,15 +414,15 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
     let mut field = Field::default();
     let _ = field.things.insert(
         object_id(20),
-        enemy(20, class::WALL, Distance::new(2.0), 100.0),
+        enemy(20, class::WALL, Distance::new(2.0), HitPoints::new(100.0)),
     );
     let _ = field.things.insert(
         object_id(21),
-        enemy(21, class::GATE, Distance::new(4.0), 100.0),
+        enemy(21, class::GATE, Distance::new(4.0), HitPoints::new(100.0)),
     );
     let _ = field.things.insert(
         object_id(22),
-        enemy(22, class::GATE, Distance::new(3.0), 100.0),
+        enemy(22, class::GATE, Distance::new(3.0), HitPoints::new(100.0)),
     );
     let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([20, 21, 22])]);
     let ask = Ask {
@@ -467,7 +478,7 @@ fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
     for (id, d) in [(40, 3.0), (41, 0.1), (42, 4.0)] {
         let _ = field.things.insert(
             object_id(id),
-            enemy(id, class::CLASS_0, Distance::new(d), 40.0),
+            enemy(id, class::CLASS_0, Distance::new(d), HitPoints::new(40.0)),
         );
     }
     let ask = Ask {
@@ -505,15 +516,15 @@ fn a_gate_answers_at_once_only_among_walls() {
     let mut field = Field::default();
     let _ = field.things.insert(
         object_id(20),
-        enemy(20, class::WALL, Distance::new(2.0), 100.0),
+        enemy(20, class::WALL, Distance::new(2.0), HitPoints::new(100.0)),
     );
     let _ = field.things.insert(
         object_id(22),
-        enemy(22, class::GATE, Distance::new(3.0), 100.0),
+        enemy(22, class::GATE, Distance::new(3.0), HitPoints::new(100.0)),
     );
     let _ = field.things.insert(
         object_id(7),
-        enemy(7, class::CLASS_0, Distance::new(5.0), 40.0),
+        enemy(7, class::CLASS_0, Distance::new(5.0), HitPoints::new(40.0)),
     );
     field.quick = vec![object_id(7)];
     let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([20, 22, 7])]);
@@ -540,11 +551,11 @@ fn the_current_target_answers_by_its_path_outside_an_idle_check() {
     let mut field = Field::default();
     let _ = field.things.insert(
         object_id(7),
-        enemy(7, class::CLASS_0, Distance::new(3.0), 40.0),
+        enemy(7, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0)),
     );
     let _ = field.things.insert(
         object_id(9),
-        enemy(9, class::CLASS_0, Distance::new(5.0), 40.0),
+        enemy(9, class::CLASS_0, Distance::new(5.0), HitPoints::new(40.0)),
     );
     field.paths = vec![object_id(7)];
     let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([7, 9])]);
@@ -588,7 +599,7 @@ fn the_current_target_answers_by_its_path_outside_an_idle_check() {
 /// failing it.
 #[test]
 fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_order() {
-    let (thing, _) = enemy(7, class::CLASS_0, Distance::new(3.0), 40.0);
+    let (thing, _) = enemy(7, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0));
     let checked = |me: &Searcher, t: &Thing, kind, refused: &[char]| {
         let mut field = Field {
             refused: refused.to_vec(),
@@ -654,7 +665,7 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
 /// castle); a human player's unit keeps them all.
 #[test]
 fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
-    let (thing, _) = enemy(7, class::CLASS_0, Distance::new(3.0), 40.0);
+    let (thing, _) = enemy(7, class::CLASS_0, Distance::new(3.0), HitPoints::new(40.0));
     let any = Ask {
         any_class: true,
         ..Ask::default()

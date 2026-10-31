@@ -9,6 +9,7 @@ use crate::setup::slice;
 use crate::test_ids::object_id;
 use crate::{Decoder, Dumps, Error, TickReport, listed};
 use genie_core::GenieError;
+use genie_core::objects::HitPoints;
 use genie_core::objects::ListIndex;
 use genie_core::world::WorldTime;
 use genie_core::world::{GameState, World};
@@ -72,7 +73,7 @@ fn the_state_the_status_and_the_unfrozen_objects_differ() {
         .freezes
         .push((5, object_id(7), GenieError::unsupported("a test's freeze")));
     for unit in &mut after.objects[1] {
-        unit.life.hp += 1.0;
+        unit.life.hp += HitPoints::new(1.0);
     }
     let mut report = TickReport::default();
     compare_players(&turns, &after, Some(6), &mut report).unwrap();

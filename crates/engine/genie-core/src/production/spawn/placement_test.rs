@@ -8,6 +8,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::{Tile, TileRect};
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -64,7 +65,7 @@ pub struct Near {
     /// `+0x308`, through `FUN_140fdd470` below 4: 0 to 3 and the meats 15 to 17).
     pub holds: bool,
     /// Its hit points.
-    pub hp: f32,
+    pub hp: HitPoints,
     /// The terrain of its tile (`+0x2e8`, taken as the tile it stands on) is a forest
     /// ([`crate::map::terrain::TerrainKind::forest`]).
     pub forest_tile: bool,
@@ -479,7 +480,9 @@ pub(super) fn build_passes(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -
             || (map.allied(player, o.player, false) && map.allied(o.player, player, false)));
     // a felled tree (at most 1 hit point) passes off a forest (`FUN_140f5efb0` on its
     // tile's terrain)
-    passes || o.buildable_on == 1 || (o.class == class::TREE && o.hp <= 1.0 && !o.forest_tile)
+    passes
+        || o.buildable_on == 1
+        || (o.class == class::TREE && o.hp <= HitPoints::new(1.0) && !o.forest_tile)
 }
 
 /// How far BUILD's placement scan looks around the point (`FUN_14123aee0`, `DAT_142eb9430`).

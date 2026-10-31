@@ -13,6 +13,7 @@ use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::movement::PathState;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -74,7 +75,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
     };
     u.life.master_id = master_id(4);
     u.life.state = ObjectState::Alive;
-    u.life.hp = 50.0;
+    u.life.hp = HitPoints::new(50.0);
     u.group.id = Some(group_id(1));
     u
 }

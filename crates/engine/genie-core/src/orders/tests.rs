@@ -95,11 +95,20 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
 /// sprites): unhurt, its share is 0 under either master; a resource's share is not modelled.
 #[test]
 fn a_damage_share_is_the_whole_less_the_hit_points_share() {
-    assert_eq!(damage_share(1650.0, 1650, class::GATE), Ok(0));
-    assert_eq!(damage_share(825.0, 1650, class::GATE), Ok(50));
-    assert_eq!(damage_share(1.0, 1650, class::GATE), Ok(99));
-    assert_eq!(damage_share(2000.0, 1650, class::GATE), Ok(0));
-    assert!(damage_share(10.0, 100, class::LIVESTOCK).is_err());
+    assert_eq!(
+        damage_share(HitPoints::new(1650.0), 1650, class::GATE),
+        Ok(0)
+    );
+    assert_eq!(
+        damage_share(HitPoints::new(825.0), 1650, class::GATE),
+        Ok(50)
+    );
+    assert_eq!(damage_share(HitPoints::new(1.0), 1650, class::GATE), Ok(99));
+    assert_eq!(
+        damage_share(HitPoints::new(2000.0), 1650, class::GATE),
+        Ok(0)
+    );
+    assert!(damage_share(HitPoints::new(10.0), 100, class::LIVESTOCK).is_err());
 }
 
 /// records/425906646's update 1641: player 6's drop-off order reaches its goose 28766 (class
@@ -822,7 +831,7 @@ fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(126),
             state: ObjectState::Alive,
-            hp: 25.0,
+            hp: HitPoints::new(25.0),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -1459,7 +1468,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
         life: crate::objects::lifecycle::Lifecycle {
             master_id: TROPHY,
             state,
-            hp: 50.0,
+            hp: HitPoints::new(50.0),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -1469,7 +1478,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
         .unwrap();
     let unit = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(unit.life.master_id, master_id(1650));
-    assert_eq!(unit.life.hp, 50.0);
+    assert_eq!(unit.life.hp, HitPoints::new(50.0));
     assert_eq!(unit.construction.unwrap().progress, 30.0);
     // FUN_141225b70 in state 2: the volleys are the new master's volley fire
     assert_eq!(unit.firepower, 2.0);
@@ -2023,7 +2032,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         id: object_id(7),
         body: crate::objects::layers::Body::at(Position::new(5.0, 5.0, 0.0)),
         life: crate::objects::lifecycle::Lifecycle {
-            hp: 20.0,
+            hp: HitPoints::new(20.0),
             master_id: master_id(4),
             inside: Some(object_id(100)),
             ..crate::objects::lifecycle::Lifecycle::default()
@@ -2041,7 +2050,10 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     };
     let switched = switch_master(&mut unit, &old, &next, world).unwrap();
     assert!(switched.promoted);
-    assert_eq!((unit.life.master_id, unit.life.hp), (master_id(5), 30.0));
+    assert_eq!(
+        (unit.life.master_id, unit.life.hp),
+        (master_id(5), HitPoints::new(30.0))
+    );
     let record = spatial.get(object_id(7)).copied().unwrap();
     assert_eq!(
         (record.master, record.radius),
@@ -2178,7 +2190,7 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
             },
             &mut sprites,
         )),
-        ..unit(20.0, ObjectState::Alive)
+        ..unit(HitPoints::new(20.0), ObjectState::Alive)
     };
     let (switched, u, record) = switched_in_the_open(showing, &old, &next, &[10, 11]).unwrap();
     assert_eq!(
@@ -2193,7 +2205,7 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
     assert!(switched.promoted);
     assert_eq!(
         (u.life.master_id, u.life.hp, u.firepower),
-        (master_id(5), 30.0, 3.0)
+        (master_id(5), HitPoints::new(30.0), 3.0)
     );
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(11));
     assert_eq!(
@@ -2217,10 +2229,15 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
                 .unwrap();
         (u.life.hp, u.firepower)
     };
-    assert_eq!(hp(50.0), (60.0, 0.0));
-    assert_eq!(hp(0.5), (1.0, 0.0));
-    let (switched, u, record) =
-        switched_in_the_open(unit(20.0, ObjectState::Dying), &old, &next, &[]).unwrap();
+    assert_eq!(hp(HitPoints::new(50.0)), (HitPoints::new(60.0), 0.0));
+    assert_eq!(hp(HitPoints::new(0.5)), (HitPoints::new(1.0), 0.0));
+    let (switched, u, record) = switched_in_the_open(
+        unit(HitPoints::new(20.0), ObjectState::Dying),
+        &old,
+        &next,
+        &[],
+    )
+    .unwrap();
     assert!(!switched.promoted && switched.leaving.is_empty());
     assert_eq!(
         (u.life.master_id, record.master),
@@ -2236,7 +2253,7 @@ fn a_master_change_s_unmodelled_parts_fail() {
     let unit = Unit {
         id: object_id(7),
         life: crate::objects::lifecycle::Lifecycle {
-            hp: 0.1,
+            hp: HitPoints::new(0.1),
             master_id: master_id(4),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
@@ -2280,8 +2297,8 @@ fn a_master_change_clears_the_powerups_but_the_hit_points_one() {
         reload_stinger: 0.25,
         work_rate_powerup: 0.15,
         hp_powerup: HpPowerup {
-            taken: 10.0,
-            max: 20.0,
+            taken: HitPoints::new(10.0),
+            max: HitPoints::new(20.0),
         },
         armor_powerups: [1, 2],
         ..Unit::default()
@@ -2299,8 +2316,8 @@ fn a_master_change_clears_the_powerups_but_the_hit_points_one() {
         (unit.hp_powerup, unit.armor_powerups),
         (
             HpPowerup {
-                taken: 10.0,
-                max: 0.0
+                taken: HitPoints::new(10.0),
+                max: HitPoints::ZERO
             },
             [0, 0]
         )
@@ -2875,7 +2892,7 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
         id,
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master,
-            hp: 10.0,
+            hp: HitPoints::new(10.0),
             amount,
             state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
@@ -2896,7 +2913,7 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
     let hp: Vec<(i32, f32)> = t.players[1]
         .objects
         .iter()
-        .map(|u| (u.id.get(), u.life.hp))
+        .map(|u| (u.id.get(), u.life.hp.get()))
         .collect();
     assert_eq!(
         hp,
@@ -2942,13 +2959,13 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
             ..Master::default()
         },
     ]);
-    t.players[1].objects[ListIndex::new(0)].life.hp = 25.0;
+    t.players[1].objects[ListIndex::new(0)].life.hp = HitPoints::new(25.0);
     t.players[1].objects.push(Unit {
         id: object_id(60),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::HOUSE,
             state: ObjectState::Foundation,
-            hp: 550.0,
+            hp: HitPoints::new(550.0),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -4643,7 +4660,7 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: ids::MARKET,
                 state: ObjectState::Alive,
-                hp: 5.0,
+                hp: HitPoints::new(5.0),
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
@@ -4827,7 +4844,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::HOUSE,
             state: ObjectState::Alive,
-            hp: 550.0,
+            hp: HitPoints::new(550.0),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -4854,7 +4871,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
     t.masters
         .push(crate::objects::masters::Masters::new([building]));
     for u in &mut t.players[1].objects {
-        u.life.hp = 25.0;
+        u.life.hp = HitPoints::new(25.0);
     }
     let order = Interact {
         target: Some(object_id(60)),

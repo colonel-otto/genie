@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Radii;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::players::CivId;
@@ -1207,8 +1208,8 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             player: PlayerId::new(2),
             state: ObjectState::Alive,
             held: carrying(None, 0.0),
-            hp: 1.0,
-            max_hp: 480.0,
+            hp: HitPoints::new(1.0),
+            max_hp: HitPoints::new(480.0),
             attackable: true,
             pasture: None,
             top_action: None,
@@ -1272,8 +1273,8 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
         player: PlayerId::new(2),
         state: ObjectState::Foundation,
         held: carrying(None, 0.0),
-        hp: 1.0,
-        max_hp: 550.0,
+        hp: HitPoints::new(1.0),
+        max_hp: HitPoints::new(550.0),
         attackable: true,
         pasture: None,
         top_action: None,

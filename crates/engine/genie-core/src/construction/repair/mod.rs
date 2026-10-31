@@ -15,6 +15,7 @@ use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -133,7 +134,7 @@ pub struct Repairee {
     /// Its state (`+0x640`).
     pub state: ObjectState,
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its owner's id (`player+0x718`).
     pub owner: PlayerId,
     /// The repairer's player counts its owner as its own or an ally (`FUN_141663dc0` with the

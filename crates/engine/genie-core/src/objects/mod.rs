@@ -5,6 +5,7 @@
 pub mod actions;
 pub mod facing;
 pub(crate) mod hit_points;
+mod hp;
 pub mod layers;
 pub mod lifecycle;
 pub mod lines;
@@ -18,6 +19,7 @@ pub(crate) mod teardown;
 pub mod unit;
 
 pub use self::hit_points::HpPowerup;
+pub use self::hp::HitPoints;
 pub use self::lifecycle::ObjectState;
 pub use self::list_index::{ListIndex, Places};
 pub use self::object_id::{ObjectId, ObjectKey};

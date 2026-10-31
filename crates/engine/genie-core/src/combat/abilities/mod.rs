@@ -36,6 +36,7 @@ use crate::GenieError;
 use crate::map::Distance;
 use crate::map::Footprint;
 use crate::math::fmath;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
@@ -157,8 +158,8 @@ pub struct Reward {
 /// The routine's test of the object's hit points (`COMISS 1.0, hp` / `JBE`): at least 1 (or a
 /// NaN) takes the living path, else the dead one.
 #[must_use]
-pub fn alive(hp: f32) -> bool {
-    fmath::at_most_or_unordered(ONE, hp)
+pub fn alive(hp: HitPoints) -> bool {
+    fmath::at_most_or_unordered(ONE, hp.get())
 }
 
 /// The action types the routine acts on.

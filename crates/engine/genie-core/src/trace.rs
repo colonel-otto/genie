@@ -235,6 +235,7 @@ impl Watch {
 mod tests {
     use super::*;
     use crate::commands::{Command, UnmodelledCommand};
+    use crate::objects::HitPoints;
     use crate::objects::ListIndex;
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
     use crate::test_ids::object_id;
@@ -455,7 +456,7 @@ mod tests {
             id: object_id(5),
             life: Lifecycle {
                 class: Class::Animated,
-                hp: 0.0,
+                hp: HitPoints::ZERO,
                 master: Some(MasterData::default()),
                 ..Lifecycle::default()
             },

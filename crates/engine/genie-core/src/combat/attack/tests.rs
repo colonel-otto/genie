@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -729,7 +730,7 @@ const fn me(id: i32, state: AttackState) -> Me {
 fn struck_building(id: i32, at: Position, building: damage::Building) -> Victim {
     Victim {
         id: object_id(id),
-        hp: 100.0,
+        hp: HitPoints::new(100.0),
         kind: BUILDING,
         class: class::BUILDING,
         player: PlayerId::new(2),
@@ -800,7 +801,10 @@ fn a_strike_on_an_annex_hits_its_main_building() {
     )
     .unwrap();
     assert_eq!(struck.result, 1);
-    assert_eq!((blasted[0].hp, annex.hp), (96.0, 96.0));
+    assert_eq!(
+        (blasted[0].hp, annex.hp),
+        (HitPoints::new(96.0), HitPoints::new(96.0))
+    );
     assert!(blasted[0].building.as_ref().is_some_and(|b| b.struck));
 }
 
@@ -898,7 +902,10 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
     };
     let executed = Attack::hit(&mut f, &mut blasted, 100, &mut Well512::default()).unwrap();
     assert_eq!(executed, Some(object_id(21)));
-    assert_eq!((blasted[0].hp, f.victim.hp), (90.0, 90.0));
+    assert_eq!(
+        (blasted[0].hp, f.victim.hp),
+        (HitPoints::new(90.0), HitPoints::new(90.0))
+    );
     assert_eq!(
         blasted[0].building.as_ref().map(|b| b.blast_taken),
         Some(5.0)
@@ -2310,7 +2317,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
     a.swing = Seconds::new(1.0);
     let deer = Victim {
         id: object_id(50),
-        hp: 5.0,
+        hp: HitPoints::new(5.0),
         position: Position::new(13.0, 10.0, 0.0),
         radius: Footprint::new(0.2, 0.2),
         player: PlayerId::new(0),
@@ -2350,7 +2357,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
     let rest = 2.0 - 10.0 * 0.1;
     assert_eq!((a.rest, a.swing), (Seconds::new(rest), Seconds::new(rest)));
     let mut rig = Rig::on_the_path(Victim {
-        hp: 50.0,
+        hp: HitPoints::new(50.0),
         ..Victim::default()
     });
     let mut melee = swinging_attack(AttackState::Swing, false, 0);
@@ -2372,7 +2379,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
 fn a_swing_s_unmodelled_parts_fail_and_a_killing_hit_ends_it() {
     let reason = |class, master, ranged, fire| {
         let mut rig = Rig::on_the_path(Victim {
-            hp: 50.0,
+            hp: HitPoints::new(50.0),
             ..Victim::default()
         });
         (rig.f.own.class, rig.f.own.master_id) = (class, master);

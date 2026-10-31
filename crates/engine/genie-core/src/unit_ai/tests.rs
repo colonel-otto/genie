@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::AttackPriority;
@@ -327,7 +328,7 @@ impl UnitSide for HelpSide {
             target: None,
             gap_squared: DistanceSquared::ZERO,
             position: Position::new(101.5, 158.5, 0.0),
-            hp: 0.0,
+            hp: HitPoints::ZERO,
             master: ids::ID_0,
             kind: MasterKind::of_data(0),
             main: None,
@@ -445,7 +446,7 @@ fn the_order_history_keeps_the_eight_newest_first() {
 /// stays; a target gone or below 1 hit point empties them all.
 #[test]
 fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
-    let seen = |hp: f32| UnitSeen {
+    let seen = |hp: HitPoints| UnitSeen {
         hp,
         ..UnitSeen::default()
     };
@@ -457,8 +458,10 @@ fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
         ],
         ..UnitAi::default()
     };
-    ai.expire_retries(WorldTime::from_millis(1000), &mut |_| Ok(Some(seen(5.0))))
-        .unwrap();
+    ai.expire_retries(WorldTime::from_millis(1000), &mut |_| {
+        Ok(Some(seen(HitPoints::new(5.0))))
+    })
+    .unwrap();
     assert_eq!(ai.retries, [(object_id(2), WorldTime::from_millis(1100))]);
     let mut ai = UnitAi {
         retries: vec![
@@ -468,7 +471,7 @@ fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
         ..UnitAi::default()
     };
     ai.expire_retries(WorldTime::from_millis(1000), &mut |id| {
-        Ok((id == object_id(1)).then(|| seen(5.0)))
+        Ok((id == object_id(1)).then(|| seen(HitPoints::new(5.0))))
     })
     .unwrap();
     assert_eq!(ai.retries, []);
@@ -476,8 +479,10 @@ fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
         retries: vec![(object_id(1), WorldTime::from_millis(2000))],
         ..UnitAi::default()
     };
-    ai.expire_retries(WorldTime::from_millis(1000), &mut |_| Ok(Some(seen(0.5))))
-        .unwrap();
+    ai.expire_retries(WorldTime::from_millis(1000), &mut |_| {
+        Ok(Some(seen(HitPoints::new(0.5))))
+    })
+    .unwrap();
     assert_eq!(ai.retries, []);
 }
 
@@ -2890,7 +2895,7 @@ fn foe(id: i32, class: ClassId) -> UnitSeen {
         owner: PlayerId::new(2),
         state: ObjectState::Alive,
         position: Position::new(12.0, 10.0, 0.0),
-        hp: 30.0,
+        hp: HitPoints::new(30.0),
         kind: master_type::COMBAT,
         ..UnitSeen::default()
     }
@@ -3294,7 +3299,7 @@ fn a_soldier_with_a_target_attacks_back_from_buildings_only() {
 /// (the attacker's sooner, or its conversion, but never against a converting target).
 #[test]
 fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
-    let duel = |converts: bool, attacks: f32, harmed: f32, hp: f32| Duel {
+    let duel = |converts: bool, attacks: f32, harmed: f32, hp: HitPoints| Duel {
         converts,
         attacks,
         harms: 2.0,
@@ -3326,8 +3331,8 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
     };
     let at = soldier_at();
     let fair = vec![
-        (object_id(9), duel(false, 5.0, 10.0, 100.0)),
-        (object_id(7), duel(false, 5.0, 10.0, 50.0)),
+        (object_id(9), duel(false, 5.0, 10.0, HitPoints::new(100.0))),
+        (object_id(7), duel(false, 5.0, 10.0, HitPoints::new(50.0))),
     ];
     let wonder = UnitSeen {
         master: WONDER,
@@ -3387,16 +3392,16 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
         vec![object_id(7)]
     );
     let slow = vec![
-        (object_id(9), duel(false, 5.0, 10.0, 100.0)),
-        (object_id(7), duel(false, 5.0, 10.0, 200.0)),
+        (object_id(9), duel(false, 5.0, 10.0, HitPoints::new(100.0))),
+        (object_id(7), duel(false, 5.0, 10.0, HitPoints::new(200.0))),
     ];
     assert_eq!(
         run(&at, foe(7, class::CLASS_6), foe(9, class::CLASS_6), slow).1,
         vec![]
     );
     let converting = vec![
-        (object_id(9), duel(false, 5.0, 10.0, 100.0)),
-        (object_id(7), duel(true, 5.0, 10.0, 200.0)),
+        (object_id(9), duel(false, 5.0, 10.0, HitPoints::new(100.0))),
+        (object_id(7), duel(true, 5.0, 10.0, HitPoints::new(200.0))),
     ];
     assert_eq!(
         run(
@@ -3409,8 +3414,8 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
         vec![object_id(7)]
     );
     let harmless = vec![
-        (object_id(9), duel(false, 0.0, 10.0, 100.0)),
-        (object_id(7), duel(false, 5.0, 0.0, 50.0)),
+        (object_id(9), duel(false, 0.0, 10.0, HitPoints::new(100.0))),
+        (object_id(7), duel(false, 5.0, 0.0, HitPoints::new(50.0))),
     ];
     // the attack back, then the kill times: the attacker never dies (25000) against 10
     assert_eq!(
@@ -3423,8 +3428,8 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
         (GO_ON, vec![object_id(7)], vec![object_id(7)])
     );
     let priest = vec![
-        (object_id(9), duel(true, 0.0, 10.0, 100.0)),
-        (object_id(7), duel(true, 5.0, 10.0, 1.0)),
+        (object_id(9), duel(true, 0.0, 10.0, HitPoints::new(100.0))),
+        (object_id(7), duel(true, 5.0, 10.0, HitPoints::new(1.0))),
     ];
     assert_eq!(
         run(&at, foe(7, class::CLASS_6), foe(9, class::CLASS_6), priest).1,

@@ -77,7 +77,7 @@ fn on_map(
 
 /// What `FUN_1415c3620` reads besides the place: hit points `hp` and height `height` of a
 /// live static object.
-const fn seen(hp: f32, height: f32) -> ClearLook {
+const fn seen(hp: HitPoints, height: f32) -> ClearLook {
     ClearLook {
         hp,
         height,
@@ -104,52 +104,52 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
         (
             5,
             on_map(10.5, 10.5, master_id(1358), class::CLASS_5, 0.5, 1),
-            seen(1.0, 0.0),
+            seen(HitPoints::new(1.0), 0.0),
         ),
         (
             3,
             on_map(10.2, 10.2, master_id(1351), class::CLASS_5, 0.5, 1),
-            seen(1.0, 0.0),
+            seen(HitPoints::new(1.0), 0.0),
         ),
         (
             8,
             on_map(11.2, 10.5, master_id(349), class::TREE, 0.5, 0),
-            seen(0.5, 1.0),
+            seen(HitPoints::new(0.5), 1.0),
         ),
         (
             9,
             on_map(11.5, 9.5, master_id(350), class::TREE, 0.5, 0),
-            seen(100.0, 1.0),
+            seen(HitPoints::new(100.0), 1.0),
         ),
         (
             11,
             on_map(11.7, 9.7, master_id(350), class::TREE, 0.5, 0),
-            seen(f32::NAN, 1.0),
+            seen(HitPoints::new(f32::NAN), 1.0),
         ),
         (
             4,
             on_map(9.5, 10.5, master_id(72), class::WALL, 0.5, 0),
-            seen(100.0, 1.0),
+            seen(HitPoints::new(100.0), 1.0),
         ),
         (
             6,
             on_map(10.2, 11.5, master_id(0x112), class::CLASS_11, 0.5, 1),
-            seen(1.0, 0.0),
+            seen(HitPoints::new(1.0), 0.0),
         ),
         (
             7,
             on_map(11.5, 11.5, master_id(0x112), class::CLASS_11, 0.5, 1),
-            seen(1.0, 2.0),
+            seen(HitPoints::new(1.0), 2.0),
         ),
         (
             10,
             on_map(13.6, 10.5, master_id(1358), class::CLASS_5, 0.5, 1),
-            seen(1.0, 0.0),
+            seen(HitPoints::new(1.0), 0.0),
         ),
         (
             12,
             on_map(10.6, 10.6, ids::HOUSE, class::BUILDING, 1.0, 1),
-            seen(1.0, 0.0),
+            seen(HitPoints::new(1.0), 0.0),
         ),
     ];
     for (id, p, _) in &objects {
@@ -251,21 +251,21 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
         Tiles::new(GridSize::new(20, 20), vec![0; 400]),
     );
     let looks = [
-        (1, seen(1.0, 1.0)),
-        (2, seen(1.0, f32::NAN)),
+        (1, seen(HitPoints::new(1.0), 1.0)),
+        (2, seen(HitPoints::new(1.0), f32::NAN)),
         (
             3,
             ClearLook {
                 roo_called: true,
-                ..seen(1.0, 1.0)
+                ..seen(HitPoints::new(1.0), 1.0)
             },
         ),
-        (4, seen(1.0, 0.0)),
+        (4, seen(HitPoints::new(1.0), 0.0)),
         (
             5,
             ClearLook {
                 kind: master_type::COMBAT,
-                ..seen(1.0, 0.0)
+                ..seen(HitPoints::new(1.0), 0.0)
             },
         ),
         (
@@ -273,14 +273,14 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
             ClearLook {
                 kind: master_type::BUILDING,
                 desolid: true,
-                ..seen(1.0, 1.0)
+                ..seen(HitPoints::new(1.0), 1.0)
             },
         ),
         (
             7,
             ClearLook {
                 kind: master_type::BUILDING,
-                ..seen(1.0, 1.0)
+                ..seen(HitPoints::new(1.0), 1.0)
             },
         ),
         (
@@ -288,7 +288,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
             ClearLook {
                 kind: master_type::COMBAT,
                 state: ObjectState::Dead,
-                ..seen(1.0, 0.0)
+                ..seen(HitPoints::new(1.0), 0.0)
             },
         ),
     ];
@@ -781,7 +781,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     }
     let life = Lifecycle {
         state: ObjectState::Foundation,
-        hp: 548.0,
+        hp: HitPoints::new(548.0),
         master_id: ids::HOUSE,
         ..Lifecycle::default()
     };
@@ -841,7 +841,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
         );
         let life = Lifecycle {
             state: ObjectState::Foundation,
-            hp: 100.0,
+            hp: HitPoints::new(100.0),
             master_id: id,
             ..Lifecycle::default()
         };
@@ -930,7 +930,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     world.insert(object_id(10028), house());
     let life = Lifecycle {
         state: ObjectState::Foundation,
-        hp: 1.0,
+        hp: HitPoints::new(1.0),
         master_id: ids::HOUSE,
         ..Lifecycle::default()
     };
@@ -957,7 +957,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     assert_eq!(t.work_building(object_id(10028), rate), Ok(true));
     let h = t.players[1].objects.by_id(object_id(10028)).unwrap();
     let c = h.construction.unwrap();
-    assert_eq!(h.life.hp, 1.462);
+    assert_eq!(h.life.hp, HitPoints::new(1.462));
     assert!(!c.desolid);
     assert_eq!(c.progress, f32::from_bits(STARTED) + rate);
     assert!(
@@ -1005,7 +1005,7 @@ fn the_work_starts_the_desolid_annexes_first() {
     };
     let life = |master_id| Lifecycle {
         state: ObjectState::Foundation,
-        hp: 1.0,
+        hp: HitPoints::new(1.0),
         master_id,
         ..Lifecycle::default()
     };
@@ -1139,7 +1139,7 @@ fn an_annex_s_work_goes_to_its_main_building() {
         );
         let life = Lifecycle {
             state: ObjectState::Foundation,
-            hp: 1.0,
+            hp: HitPoints::new(1.0),
             master_id: master_id(1192),
             ..Lifecycle::default()
         };
@@ -1163,7 +1163,7 @@ fn an_annex_s_work_goes_to_its_main_building() {
         let post = t.players[1].objects.by_id(object_id(10029)).unwrap();
         assert_eq!(
             (post.construction, post.life.hp),
-            (Some(foundation), 1.0),
+            (Some(foundation), HitPoints::new(1.0)),
             "the post itself is not worked"
         );
         let state = t.players[1]

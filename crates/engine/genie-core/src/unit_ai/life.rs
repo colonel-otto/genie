@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -232,7 +233,7 @@ impl UnitAi {
         let mut i = 0;
         while i < self.retries.len() {
             let (target, timeout) = *self.retries.checked(i)?;
-            if seen(target)?.is_none_or(|u| u.hp < 1.0) {
+            if seen(target)?.is_none_or(|u| u.hp < HitPoints::new(1.0)) {
                 self.retries.clear();
                 break;
             }

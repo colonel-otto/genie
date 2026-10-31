@@ -9,6 +9,7 @@
 use crate::GenieError;
 use crate::construction::build::held;
 use crate::map::Tile;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -184,7 +185,7 @@ impl World {
             return Ok(());
         }
         let i = self.wake(id)?;
-        self.players.live_mut(owner, i)?.life.hp = 0.0;
+        self.players.live_mut(owner, i)?.life.hp = HitPoints::ZERO;
         Ok(())
     }
 
@@ -224,7 +225,7 @@ impl World {
         let (state, hp) = (unit.life.state, unit.life.hp);
         let site = unit.construction;
         let desolid = site.is_some_and(|c| c.desolid);
-        let share = if state < ObjectState::Alive && 1.0 <= hp {
+        let share = if state < ObjectState::Alive && HitPoints::new(1.0) <= hp {
             let c = site.ok_or(crate::construction::build::NO_CONSTRUCTION)?;
             let build_time = f32::from(c.build_time);
             (build_time - c.progress) / build_time
@@ -233,7 +234,7 @@ impl World {
         };
         // at most 1 (a NaN keeps the 1)
         let mut share = if share <= 1.0 { share } else { 1.0 };
-        if desolid && 0.0 < hp {
+        if desolid && HitPoints::ZERO < hp {
             share = 1.0;
         }
         if 0.0 < share {
@@ -246,7 +247,7 @@ impl World {
             }
         }
         let i = self.wake(id)?;
-        self.players.live_mut(owner, i)?.life.hp = 0.0;
+        self.players.live_mut(owner, i)?.life.hp = HitPoints::ZERO;
         if state < ObjectState::Alive && desolid {
             self.destroy_foundation(owner, id)?;
         }
@@ -340,7 +341,7 @@ impl World {
             ));
         }
         let i = self.wake(id)?;
-        self.players.live_mut(owner, i)?.life.hp = 0.0;
+        self.players.live_mut(owner, i)?.life.hp = HitPoints::ZERO;
         self.set_state(owner, id, ObjectState::Removed)
     }
 
@@ -665,7 +666,7 @@ mod tests {
             for &(i, master) in objects {
                 let u = &mut t.players[p].objects[ListIndex::new(i)];
                 u.life.master_id = master_id(master);
-                u.life.hp = 25.0;
+                u.life.hp = HitPoints::new(25.0);
                 u.pasture = None;
                 u.my_pasture = None;
             }
@@ -710,17 +711,17 @@ mod tests {
                 hp(&t, 2, ListIndex::new(0)),
                 hp(&t, 1, ListIndex::new(2))
             ),
-            (0.0, 25.0, 25.0)
+            (HitPoints::ZERO, HitPoints::new(25.0), HitPoints::new(25.0))
         );
         // the setting +0x1074 lets a player delete another's
         t.settings.cheats_enabled = true;
         t.delete(player_id(1), object_id(20)).unwrap();
-        assert_eq!(hp(&t, 2, ListIndex::new(0)), 0.0);
+        assert_eq!(hp(&t, 2, ListIndex::new(0)), HitPoints::ZERO);
         // a unit whose deletion is disabled stays
         let mut t = game(0.0, true);
         t.players[1].objects[ListIndex::new(0)].undeletable = true;
         t.delete(player_id(1), object_id(10)).unwrap();
-        assert_eq!(hp(&t, 1, ListIndex::new(0)), 25.0);
+        assert_eq!(hp(&t, 1, ListIndex::new(0)), HitPoints::new(25.0));
     }
 
     #[test]
@@ -731,7 +732,7 @@ mod tests {
         let house = &t.players[1].objects[ListIndex::new(1)].life;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
-            (25.0, 0.0, ObjectState::Removed)
+            (25.0, HitPoints::ZERO, ObjectState::Removed)
         );
         // 10 of its 25 seconds of work done: 15/25 of the wood (in f32: 15.000001); it dies in
         // its own update
@@ -741,7 +742,7 @@ mod tests {
         let share = (25.0_f32 - 10.0) / 25.0;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
-            (25.0 * share, 0.0, ObjectState::Foundation)
+            (25.0 * share, HitPoints::ZERO, ObjectState::Foundation)
         );
     }
 
@@ -765,7 +766,7 @@ mod tests {
         let tc = &t.players[1].objects[ListIndex::new(1)].life;
         assert_eq!(
             (t.players[1].resources[1], tc.hp, tc.state),
-            (25.0, 0.0, ObjectState::Removed)
+            (25.0, HitPoints::ZERO, ObjectState::Removed)
         );
         let mut t = game(0.0, true);
         town_centre(&mut t);
@@ -972,7 +973,10 @@ mod clearing_tests {
         assert_eq!(ids, [object_id(1), object_id(6084), object_id(6083)]);
         assert_eq!(t.players[0].sleeping.len(), 0);
         for u in &t.players[0].objects.as_slice()[1..] {
-            assert_eq!((u.life.state, u.life.hp), (ObjectState::Removed, 0.0));
+            assert_eq!(
+                (u.life.state, u.life.hp),
+                (ObjectState::Removed, HitPoints::ZERO)
+            );
         }
         assert_eq!(
             t.players[0].objects[ListIndex::new(0)].life.state,
@@ -993,7 +997,10 @@ mod clearing_tests {
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
         let u = &t.players[1].objects[ListIndex::new(0)];
-        assert_eq!((u.life.state, u.life.hp), (ObjectState::Removed, 0.0));
+        assert_eq!(
+            (u.life.state, u.life.hp),
+            (ObjectState::Removed, HitPoints::ZERO)
+        );
         assert_eq!(t.players[1].attributes[7], 2.0);
     }
 
@@ -1010,7 +1017,7 @@ mod clearing_tests {
         let u = &t.players[0].objects[ListIndex::new(0)];
         assert_eq!(
             (u.life.state, u.life.hp, u.roo_called),
-            (ObjectState::Removed, 0.0, true)
+            (ObjectState::Removed, HitPoints::ZERO, true)
         );
         let p = t.spatial.get(object_id(40)).unwrap();
         assert_eq!((p.obstruction, p.tall), (None, false));
@@ -1029,7 +1036,7 @@ mod clearing_tests {
         let u = &t.players[1].objects[ListIndex::new(0)];
         assert_eq!(
             (u.life.state, u.life.hp, u.roo_called),
-            (ObjectState::Removed, 0.0, true)
+            (ObjectState::Removed, HitPoints::ZERO, true)
         );
     }
 

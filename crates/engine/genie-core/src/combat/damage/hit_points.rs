@@ -3,6 +3,7 @@
 
 use crate::combat::damage::{Armored, Victim};
 use crate::math::fmath;
+use crate::objects::HitPoints;
 use crate::objects::HpPowerup;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -23,24 +24,24 @@ pub fn shield(v: &mut Victim, missile: bool) -> bool {
 
 /// `FUN_141202a80`: the hit points the master's `invulnerability_level` keeps (a share of its hit
 /// points when above 0, the level itself when below), 0 for none.
-pub(super) fn hp_floor(a: &Armored, master_hp: i16) -> f32 {
+pub(super) fn hp_floor(a: &Armored, master_hp: i16) -> HitPoints {
     invulnerability_floor(a.invulnerability, master_hp)
 }
 
 /// [`hp_floor`] of a master's `invulnerability_level` and hit points.
 #[must_use]
-pub(crate) fn invulnerability_floor(level: f32, master_hp: i16) -> f32 {
+pub(crate) fn invulnerability_floor(level: f32, master_hp: i16) -> HitPoints {
     if level == 0.0 {
-        0.0
+        HitPoints::ZERO
     } else if 0.0 < level {
-        f32::from(master_hp) * level
+        HitPoints::of_master(master_hp) * level
     } else {
-        level.abs()
+        HitPoints::new(level.abs())
     }
 }
 
 /// Slot 0xc0: the hit points with the powerups' room.
-pub(super) fn effective(v: &Victim) -> f32 {
+pub(super) fn effective(v: &Victim) -> HitPoints {
     let pu = v.armored.as_ref().map_or(HpPowerup::NONE, |a| a.hp_powerup);
     pu.room() + v.hp
 }
@@ -51,7 +52,7 @@ pub(super) fn effective(v: &Victim) -> f32 {
 /// (no update of this recording fills either list): the kill credits of a dying object's active
 /// stingers (`+0xb58`) and a surviving object's hit point transforms (`+0xb20`,
 /// `FUN_141204450`).
-pub fn lose(t: &mut Victim, d: f32) {
+pub fn lose(t: &mut Victim, d: HitPoints) {
     let unit = matches!(t.kind, COMBAT | BUILDING);
     let Some(a) = t.armored.as_mut().filter(|_| unit) else {
         t.hp -= d;
@@ -62,7 +63,7 @@ pub fn lose(t: &mut Victim, d: f32) {
     };
     let floor = hp_floor(a, t.master_hp);
     let left = t.hp - d;
-    t.hp = if floor == 0.0 || floor <= left {
+    t.hp = if floor == HitPoints::ZERO || floor <= left {
         left
     } else {
         floor
@@ -74,23 +75,23 @@ pub fn lose(t: &mut Victim, d: f32) {
 /// its most (the master's plus the room), an overflow taken off the powerup (never below 0); a
 /// powerup above its room first takes the room. The hit point transforms of `FUN_141204450`,
 /// empty in the recordings, are not held.
-pub fn gain_hp(hp: &mut f32, powerup: &mut HpPowerup, master_hp: i16, amount: f32) {
+pub fn gain_hp(hp: &mut HitPoints, powerup: &mut HpPowerup, master_hp: i16, amount: HitPoints) {
     let (mut up, room) = (powerup.taken, powerup.max);
-    let most = f32::from(master_hp) + room;
+    let most = HitPoints::of_master(master_hp) + room;
     if room < up {
         up = room;
     }
     if most <= *hp {
-        if 0.0 < up {
-            up = (up - amount).max(0.0);
+        if HitPoints::ZERO < up {
+            up = HitPoints::new((up - amount).get().max(0.0));
         }
     } else {
         let healed = *hp + amount;
         *hp = healed;
         if most < healed {
             *hp = most;
-            if 0.0 < up {
-                up = (up - (healed - most)).max(0.0);
+            if HitPoints::ZERO < up {
+                up = HitPoints::new((up - (healed - most)).get().max(0.0));
             }
         }
     }
@@ -100,15 +101,20 @@ pub fn gain_hp(hp: &mut f32, powerup: &mut HpPowerup, master_hp: i16, amount: f3
 /// `FUN_141193b30`: slot 0xb8 adds `amount` ([`gain_hp`]); a loss (`amount` below 0) leaves at
 /// least 1 hit point; healed to its full hit points (slot 0xc0 at least slot 200, `COMISS` with
 /// `JC`: a NaN is not), it holds exactly its master's. True then.
-pub fn heal_hp(hp: &mut f32, powerup: &mut HpPowerup, master_hp: i16, amount: f32) -> bool {
+pub fn heal_hp(
+    hp: &mut HitPoints,
+    powerup: &mut HpPowerup,
+    master_hp: i16,
+    amount: HitPoints,
+) -> bool {
     gain_hp(hp, powerup, master_hp, amount);
-    if amount < 0.0 && *hp < 1.0 {
-        *hp = 1.0;
+    if amount < HitPoints::ZERO && *hp < HitPoints::new(1.0) {
+        *hp = HitPoints::new(1.0);
     }
-    let most = f32::from(master_hp) + powerup.max;
-    if fmath::below_or_unordered(powerup.room() + *hp, most) {
+    let most = HitPoints::of_master(master_hp) + powerup.max;
+    if fmath::below_or_unordered((powerup.room() + *hp).get(), most.get()) {
         return false;
     }
-    *hp = f32::from(master_hp);
+    *hp = HitPoints::of_master(master_hp);
     true
 }

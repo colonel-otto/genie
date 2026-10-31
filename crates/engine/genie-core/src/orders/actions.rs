@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -279,7 +280,7 @@ impl World {
             }
         };
         unit.life.goto_sleep = false;
-        unit.life.hp = 0.0;
+        unit.life.hp = HitPoints::ZERO;
         Ok(())
     }
 
@@ -379,7 +380,7 @@ pub(crate) fn switch_master(
             }
         }
         let new_hp = f32::from(next.hit_points);
-        let share = unit.life.hp / f32::from(old.hit_points) * new_hp;
+        let share = unit.life.hp.get() / f32::from(old.hit_points) * new_hp;
         let hp = if share > new_hp {
             new_hp
         } else if 1.0 <= share {
@@ -388,7 +389,7 @@ pub(crate) fn switch_master(
             1.0
         };
         let old_hp = unit.life.hp;
-        unit.life.hp = f32::from(hp as i32 as i16);
+        unit.life.hp = HitPoints::new(f32::from(hp as i32 as i16));
         // FUN_1411859a0: the damage share picks the damage sprites; one that stays keeps them
         // (the object's `+0xd`, not held, taken to be the old master's share)
         if (old.damage_sprites || next.damage_sprites)

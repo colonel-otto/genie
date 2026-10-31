@@ -4,6 +4,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassAmount;
@@ -315,7 +316,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
             state: ObjectState::Alive,
-            hp: 40.0,
+            hp: HitPoints::new(40.0),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -408,7 +409,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     );
     assert_eq!(
         (c.armed, c.reach, c.damage, c.hp, c.reload),
-        (true, Distance::new(0.5), 6.0, 40.0, 2.0)
+        (true, Distance::new(0.5), 6.0, HitPoints::new(40.0), 2.0)
     );
     assert_eq!((c.workable, c.current), (false, false));
     assert!(

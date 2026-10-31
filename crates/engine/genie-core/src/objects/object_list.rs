@@ -449,6 +449,7 @@ impl<const N: usize> PartialEq<[Unit; N]> for ObjectList {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::HitPoints;
     use crate::test_ids::object_id;
 
     fn unit(id: i32) -> Unit {
@@ -475,9 +476,9 @@ mod tests {
         assert_eq!(l.by_id(object_id(9)).map(|u| u.id.get()), Some(9));
         assert!(l.by_id(object_id(8)).is_none());
         if let Some(u) = l.by_id_mut(object_id(5)) {
-            u.life.hp = 3.0;
+            u.life.hp = HitPoints::new(3.0);
         }
-        assert_eq!(l[ListIndex::new(0)].life.hp, 3.0);
+        assert_eq!(l[ListIndex::new(0)].life.hp, HitPoints::new(3.0));
         l.push(unit(11));
         assert_eq!(l.position_of(object_id(11)), Some(ListIndex::new(3)));
         l.extend([unit(12), unit(13)]);
@@ -496,7 +497,7 @@ mod tests {
         );
         // the loop holds no borrow of the list: it may change it
         for i in l.places().rev() {
-            l.checked_mut(i).unwrap().life.hp = 1.0;
+            l.checked_mut(i).unwrap().life.hp = HitPoints::new(1.0);
             let _ = l.swap_remove(i).unwrap();
         }
         assert!(l.is_empty());
@@ -507,9 +508,9 @@ mod tests {
         l.push(unit(9));
         assert_eq!(l.checked(ListIndex::FIRST).unwrap().id, object_id(9));
         if let Some(u) = l.last_mut() {
-            u.life.hp = 2.0;
+            u.life.hp = HitPoints::new(2.0);
         }
-        assert_eq!(l[ListIndex::FIRST].life.hp, 2.0);
+        assert_eq!(l[ListIndex::FIRST].life.hp, HitPoints::new(2.0));
         assert!(l.holds(ListIndex::FIRST) && !l.holds(ListIndex::new(1)));
         let indexed: Vec<_> = l.indexed().map(|(i, u)| (i, u.id)).collect();
         assert_eq!(indexed, [(ListIndex::FIRST, object_id(9))]);
@@ -682,8 +683,8 @@ mod tests {
         assert_eq!(ids, [object_id(1), object_id(2)]);
         let mut c = list(&[3]);
         for u in &mut c {
-            u.life.hp = 2.0;
+            u.life.hp = HitPoints::new(2.0);
         }
-        assert_eq!((&c).into_iter().map(|u| u.life.hp).sum::<f32>(), 2.0);
+        assert_eq!((&c).into_iter().map(|u| u.life.hp.get()).sum::<f32>(), 2.0);
     }
 }

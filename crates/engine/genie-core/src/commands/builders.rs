@@ -10,6 +10,7 @@ use crate::math::rng::Stream;
 use crate::movement::Speed;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -179,8 +180,8 @@ impl World {
             player: fp,
             state: ObjectState::Foundation,
             held: Held::default(),
-            hp: 1.0,
-            max_hp: f32::from(site.hit_points),
+            hp: HitPoints::new(1.0),
+            max_hp: HitPoints::of_master(site.hit_points),
             attackable: true,
             pasture: None,
             top_action: None,

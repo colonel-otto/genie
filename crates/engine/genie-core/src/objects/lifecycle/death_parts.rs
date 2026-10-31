@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -86,7 +87,7 @@ pub(crate) fn combat_dies(
     ) {
         return Err(GenieError::unsupported("a dying unit of class 1, 13 or 43"));
     }
-    u.life.hp = 0.0;
+    u.life.hp = HitPoints::ZERO;
     if u.roo_called {
         return Ok(());
     }

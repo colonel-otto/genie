@@ -383,6 +383,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::HitPoints;
     use crate::objects::masters::ids;
     use crate::players::tracker::ListKey;
     use crate::test_ids::object_id;
@@ -406,9 +407,9 @@ mod tests {
     /// holds 20 and, again, 12.
     fn world() -> (ObjectList, [Player; 1], [Player; 1]) {
         let mut own = ObjectList::from(vec![unit(10), Unit::taken_out(), unit(12)]);
-        own[ListIndex::new(2)].life.hp = 5.0;
+        own[ListIndex::new(2)].life.hp = HitPoints::new(5.0);
         let mut theirs = player(&[20, 12], &[]);
-        theirs.objects[ListIndex::new(1)].life.hp = 7.0;
+        theirs.objects[ListIndex::new(1)].life.hp = HitPoints::new(7.0);
         (own, [player(&[1], &[2])], [theirs])
     }
 
@@ -427,11 +428,11 @@ mod tests {
             "another player's is not the owner's"
         );
         assert_eq!(
-            v.find(object_id(12)).map(|(q, u)| (q, u.life.hp)),
+            v.find(object_id(12)).map(|(q, u)| (q, u.life.hp.get())),
             Some((PlayerId::new(1), 5.0))
         );
         assert_eq!(
-            v.foreign(object_id(12)).map(|(q, u)| (q, u.life.hp)),
+            v.foreign(object_id(12)).map(|(q, u)| (q, u.life.hp.get())),
             Some((PlayerId::new(2), 7.0))
         );
         assert_eq!(
@@ -496,7 +497,7 @@ mod tests {
         assert_eq!(ids, [object_id(10), object_id(12)]);
         for (id, owner) in [(10, 1), (12, 1), (13, 1), (2, 0), (20, 2)] {
             let (q, u) = others.get_mut(object_id(id)).expect("any list's object");
-            u.life.hp = 4.0;
+            u.life.hp = HitPoints::new(4.0);
             assert_eq!(q, PlayerId::from(owner));
         }
         assert!(
@@ -509,15 +510,15 @@ mod tests {
         );
         assert_eq!(
             others.view().own(object_id(10)).map(|u| u.life.hp),
-            Some(4.0)
+            Some(HitPoints::new(4.0))
         );
         assert_eq!(
             others.view().find(object_id(2)).map(|(_, u)| u.life.hp),
-            Some(4.0)
+            Some(HitPoints::new(4.0))
         );
         assert_eq!(
             others.view().find(object_id(12)).map(|(_, u)| u.life.hp),
-            Some(4.0)
+            Some(HitPoints::new(4.0))
         );
         assert_eq!(
             others.view().find(object_id(20)).map(|(q, _)| q),
@@ -626,7 +627,7 @@ mod tests {
             .changed_hands(PlayerId::new(2), &after[0].objects);
         assert_eq!(v.own(object_id(20)).map(|u| u.id.get()), Some(20));
         assert_eq!(
-            v.find(object_id(12)).map(|(q, u)| (q, u.life.hp)),
+            v.find(object_id(12)).map(|(q, u)| (q, u.life.hp.get())),
             Some((PlayerId::new(2), 7.0))
         );
         assert_eq!(

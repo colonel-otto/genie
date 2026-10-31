@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::construction::repair::ONE;
+use crate::objects::HitPoints;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -48,7 +49,7 @@ pub struct Repaired {
     /// Its master's hit points (`+0x530`).
     pub master_hp: i16,
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its hit point powerup (`+0xa38`, `+0xa3c`).
     pub hp_powerup: HpPowerup,
     /// An annex's main building (`+0xbb8`).
@@ -104,7 +105,7 @@ pub fn repair_building(
     if TREBUCHETS.contains(&set[idx].class) {
         return repair_unit(set, idx, amount, payer);
     }
-    if crate::math::fmath::below_or_unordered(set[idx].hp, ONE) {
+    if crate::math::fmath::below_or_unordered(set[idx].hp.get(), ONE) {
         return Ok(2);
     }
     if top && let Some(main) = set[idx].main {
@@ -126,8 +127,8 @@ pub fn repair_building(
     let o = &set[idx];
     let most = f32::from(o.master_hp);
     let mut amount = amount;
-    if most < o.hp + amount {
-        amount = most - o.hp;
+    if most < o.hp.get() + amount {
+        amount = most - o.hp.get();
     }
     let share = o.building_repair_cost * amount / most;
     if crate::production::pay(payer.masters, o.master, share, &mut *payer.attributes)? {
@@ -154,8 +155,8 @@ pub fn repair_unit(
     let o = &mut set[idx];
     let mut amount = amount;
     if COSTED.contains(&o.class) {
-        let most = f32::from(o.master_hp) + o.hp_powerup.max;
-        let now = o.hp_powerup.room() + o.hp;
+        let most = f32::from(o.master_hp) + o.hp_powerup.max.get();
+        let now = (o.hp_powerup.room() + o.hp).get();
         if most < now + amount {
             amount = most - now;
         }
@@ -164,7 +165,12 @@ pub fn repair_unit(
             return Ok(2);
         }
     }
-    let full = crate::combat::damage::heal_hp(&mut o.hp, &mut o.hp_powerup, o.master_hp, amount);
+    let full = crate::combat::damage::heal_hp(
+        &mut o.hp,
+        &mut o.hp_powerup,
+        o.master_hp,
+        HitPoints::new(amount),
+    );
     Ok(u8::from(full))
 }
 

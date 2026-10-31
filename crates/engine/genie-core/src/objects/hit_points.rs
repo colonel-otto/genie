@@ -4,6 +4,7 @@
 //! that heals around it) calls the healed object's heal here.
 
 use crate::GenieError;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
@@ -30,27 +31,27 @@ pub(crate) const HP_POWERUP_FLOOR: f32 = crate::math::image::turn::HP_POWERUP_FL
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct HpPowerup {
     /// `+0xa38`: what losses took of it.
-    pub taken: f32,
+    pub taken: HitPoints,
     /// `+0xa3c`: its most.
-    pub max: f32,
+    pub max: HitPoints,
 }
 
 impl HpPowerup {
     /// No powerup: none taken of none.
     pub const NONE: Self = Self {
-        taken: 0.0,
-        max: 0.0,
+        taken: HitPoints::ZERO,
+        max: HitPoints::ZERO,
     };
 
     /// What it can still take: its most less what it took (`max - taken`).
     #[must_use]
-    pub fn room(self) -> f32 {
+    pub fn room(self) -> HitPoints {
         self.max - self.taken
     }
 
     /// Slot 0xb0's first part: below its most, it takes the loss `d` up to its room. The rest
     /// of the loss, or None when it took all of it.
-    pub fn absorb(&mut self, d: f32) -> Option<f32> {
+    pub fn absorb(&mut self, d: HitPoints) -> Option<HitPoints> {
         let (taken, max) = (self.taken, self.max);
         if taken < max {
             let room = max - taken;
@@ -86,7 +87,7 @@ impl Unit {
         &mut self,
         class: ClassId,
         hit_points: i16,
-        amount: f32,
+        amount: HitPoints,
     ) -> Result<(), GenieError> {
         if matches!(
             class,
@@ -112,7 +113,7 @@ impl Unit {
     /// Slot 0xb8 of a combat object (`FUN_141203be0`): `amount` added up to its hit points with
     /// its powerups' room, an overflow taken off the powerup (`+0xa38`, never below 0; the hit
     /// point transforms of `FUN_141204450`, empty in the recordings, are not held).
-    pub(crate) fn gain_hp(&mut self, master: &Master, amount: f32) {
+    pub(crate) fn gain_hp(&mut self, master: &Master, amount: HitPoints) {
         crate::combat::damage::gain_hp(
             &mut self.life.hp,
             &mut self.hp_powerup,
@@ -127,14 +128,14 @@ impl Unit {
     /// (no update of the recordings fills either list): a dying object's kill credits of its
     /// active stingers (`+0xb58`, `+0x954`) and a surviving one's hit point transforms
     /// (`FUN_141204450`); [`crate::combat::damage::lose`] is the same loss on a hit's victim.
-    pub(crate) fn lose_hp(&mut self, master: &Master, d: f32) {
+    pub(crate) fn lose_hp(&mut self, master: &Master, d: HitPoints) {
         let Some(d) = self.hp_powerup.absorb(d) else {
             return;
         };
         let floor =
             crate::combat::damage::invulnerability_floor(master.invulnerability, master.hit_points);
         let left = self.life.hp - d;
-        self.life.hp = if floor == 0.0 || floor <= left {
+        self.life.hp = if floor == HitPoints::ZERO || floor <= left {
             left
         } else {
             floor
@@ -156,7 +157,7 @@ impl Unit {
     pub(crate) fn regenerate(&mut self, master: &Master, dt_seconds: Seconds) {
         use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
         let rate = regeneration_rate(master, self);
-        if below_or_unordered(self.life.hp, REGENERATION_LEAST_HP)
+        if below_or_unordered(self.life.hp.get(), REGENERATION_LEAST_HP)
             || self.life.state != ObjectState::Alive
         {
             return;
@@ -177,8 +178,8 @@ impl Unit {
         if at_most_or_unordered(whole, 0.0) {
             return;
         }
-        let most = f32::from(master.hit_points) + self.hp_powerup.max;
-        let now = self.hp_powerup.room() + self.life.hp;
+        let most = f32::from(master.hit_points) + self.hp_powerup.max.get();
+        let now = (self.hp_powerup.room() + self.life.hp).get();
         if at_most_or_unordered(rate, 0.0) {
             let amount = if at_most_or_unordered(whole, now) {
                 whole
@@ -186,7 +187,7 @@ impl Unit {
                 now
             };
             if !at_most_or_unordered(amount, 0.0) {
-                self.lose_hp(master, amount);
+                self.lose_hp(master, HitPoints::new(amount));
             }
         } else {
             let left = most - now;
@@ -196,12 +197,12 @@ impl Unit {
                 left
             };
             if !at_most_or_unordered(amount, 0.0) {
-                self.gain_hp(master, amount);
+                self.gain_hp(master, HitPoints::new(amount));
             }
         }
         // at its most hit points (slot 0xc0 at least slot 200, `COMISS`: a NaN is not) the
         // armor its charge's hits took (`+0x9e4`, `+0x9e6`) comes back
-        if most <= self.hp_powerup.room() + self.life.hp {
+        if most <= (self.hp_powerup.room() + self.life.hp).get() {
             self.armor_removed = [0; 2];
         }
     }
@@ -211,16 +212,20 @@ impl Unit {
     /// (`MAXSS` with 1: not below 1, a NaN becomes 1) and the powerup takes the room.
     pub(crate) fn clamp_hp_powerup(&mut self) {
         let p = self.hp_powerup;
-        if crate::math::fmath::at_most_or_unordered(p.taken, p.max) {
+        if crate::math::fmath::at_most_or_unordered(p.taken.get(), p.max.get()) {
             return;
         }
-        self.life.hp = crate::math::fmath::maxss(self.life.hp - p.room().abs(), HP_POWERUP_FLOOR);
+        self.life.hp = HitPoints::new(crate::math::fmath::maxss(
+            self.life.hp.get() - p.room().get().abs(),
+            HP_POWERUP_FLOOR,
+        ));
         self.hp_powerup.taken = p.max;
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::objects::HitPoints;
     use crate::objects::HpPowerup;
 
     /// A powerup's room is its most less what it took; it takes a loss up to its room and
@@ -228,21 +233,21 @@ mod tests {
     #[test]
     fn a_powerup_takes_a_loss_up_to_its_room_and_passes_the_rest() {
         let mut p = HpPowerup {
-            taken: 2.0,
-            max: 5.0,
+            taken: HitPoints::new(2.0),
+            max: HitPoints::new(5.0),
         };
-        assert_eq!(p.room(), 3.0);
-        assert_eq!(p.absorb(1.0), None);
-        assert_eq!(p.taken, 3.0);
-        assert_eq!(p.absorb(4.0), Some(2.0));
-        assert_eq!((p.taken, p.room()), (5.0, 0.0));
-        assert_eq!(p.absorb(1.5), Some(1.5));
+        assert_eq!(p.room(), HitPoints::new(3.0));
+        assert_eq!(p.absorb(HitPoints::new(1.0)), None);
+        assert_eq!(p.taken, HitPoints::new(3.0));
+        assert_eq!(p.absorb(HitPoints::new(4.0)), Some(HitPoints::new(2.0)));
+        assert_eq!((p.taken, p.room()), (HitPoints::new(5.0), HitPoints::ZERO));
+        assert_eq!(p.absorb(HitPoints::new(1.5)), Some(HitPoints::new(1.5)));
         let mut nan = HpPowerup {
-            taken: 0.0,
-            max: f32::NAN,
+            taken: HitPoints::ZERO,
+            max: HitPoints::new(f32::NAN),
         };
-        assert_eq!(nan.absorb(1.0), Some(1.0));
-        assert_eq!(nan.taken, 0.0);
+        assert_eq!(nan.absorb(HitPoints::new(1.0)), Some(HitPoints::new(1.0)));
+        assert_eq!(nan.taken, HitPoints::ZERO);
         assert_eq!(HpPowerup::NONE, HpPowerup::default());
     }
 }

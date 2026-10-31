@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::construction::build::construction::{completion_counts, hand_storage, lay_foundation};
 use crate::construction::build::{NO_CONSTRUCTION, NOT_HELD, StackUnit, held, show_built};
 use crate::map::spatial::Placed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
@@ -71,7 +72,7 @@ impl crate::world::World {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
         u.life.state = ObjectState::Alive;
         if building.disappears_when_built {
-            u.life.hp = 0.0;
+            u.life.hp = HitPoints::ZERO;
         }
         self.spatial.sight_state(id, ObjectState::Alive)?;
         if let Some(tech) = building.tech {
@@ -177,7 +178,7 @@ impl crate::world::World {
                 "a completed stack unit without a master",
             ))?,
             at: placed.position,
-            hp_lost: f32::from(master.hit_points) - hp,
+            hp_lost: HitPoints::of_master(master.hit_points) - hp,
         };
         self.stack_unit(p, id, stack)
     }

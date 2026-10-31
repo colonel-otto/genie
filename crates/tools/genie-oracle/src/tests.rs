@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_ids::object_id;
+use genie_core::objects::HitPoints;
 use genie_core::objects::actions::ActionList;
 use genie_core::objects::masters::{MasterId, ids};
 use genie_core::ownership::artifact::ArtifactState;
@@ -87,14 +88,22 @@ fn differences_name_the_object_its_master_and_the_field() {
         u
     };
     let slice = [
-        unit(object_id(1), ids::VILLAGER_MALE, 25.0),
-        unit(object_id(2), ids::VILLAGER_MALE, 25.0),
-        unit(object_id(4), MasterId::try_from(4).unwrap(), 1.0),
+        unit(object_id(1), ids::VILLAGER_MALE, HitPoints::new(25.0)),
+        unit(object_id(2), ids::VILLAGER_MALE, HitPoints::new(25.0)),
+        unit(
+            object_id(4),
+            MasterId::try_from(4).unwrap(),
+            HitPoints::new(1.0),
+        ),
     ];
     let game = [
-        unit(object_id(1), ids::VILLAGER_MALE, 25.0),
-        unit(object_id(2), ids::VILLAGER_FEMALE, 24.0),
-        unit(object_id(3), MasterId::try_from(59).unwrap(), 1.0),
+        unit(object_id(1), ids::VILLAGER_MALE, HitPoints::new(25.0)),
+        unit(object_id(2), ids::VILLAGER_FEMALE, HitPoints::new(24.0)),
+        unit(
+            object_id(3),
+            MasterId::try_from(59).unwrap(),
+            HitPoints::new(1.0),
+        ),
     ];
     let d = object_field_differences(&slice, &game);
     let fields: Vec<(i32, i16, &str)> = d

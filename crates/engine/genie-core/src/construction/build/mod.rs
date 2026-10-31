@@ -15,6 +15,7 @@
 use self::update::drop_done_orders;
 use crate::map::Distance;
 use crate::map::Position;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -272,7 +273,7 @@ pub struct StackUnit {
     /// The building's place.
     pub at: Position,
     /// Its master's hit points (`+0x530`, a short) less its own.
-    pub hp_lost: f32,
+    pub hp_lost: HitPoints,
 }
 
 /// The completion's sprite (`FUN_1411dbb70` from state 0 to 2, after its storage): slot 0x68
@@ -544,7 +545,7 @@ mod stack_tests {
             life: Lifecycle {
                 class: Class::Animated,
                 state: ObjectState::Foundation,
-                hp: 2399.0,
+                hp: HitPoints::new(2399.0),
                 master_id: ids::TOWN_CENTRE_621,
                 ..Lifecycle::default()
             },
@@ -727,7 +728,10 @@ mod stack_tests {
                 unit(object_id(8768)).life.hp,
                 unit(object_id(8768)).store.clone()
             ),
-            (2400.0 - lacked, vec![(AttributeId::numbered(506), 1.0)])
+            (
+                HitPoints::new(2400.0 - lacked),
+                vec![(AttributeId::numbered(506), 1.0)]
+            )
         );
         let attributes = &t.players[1].attributes;
         assert_eq!(
@@ -735,7 +739,7 @@ mod stack_tests {
             (5.0, 0.0, 0.0)
         );
         let gone = unit(object_id(8759));
-        assert_eq!((gone.life.hp, gone.roo_called), (0.0, true));
+        assert_eq!((gone.life.hp, gone.roo_called), (HitPoints::ZERO, true));
         assert_eq!(t.spatial.get(object_id(8759)).unwrap().obstruction, None);
     }
 
@@ -817,7 +821,7 @@ mod stack_tests {
                 StackUnit {
                     master: ids::TOWN_CENTRE,
                     at: Position::new(54.0, 147.0, 0.0),
-                    hp_lost: 0.0,
+                    hp_lost: HitPoints::ZERO,
                 },
             )
             .unwrap();

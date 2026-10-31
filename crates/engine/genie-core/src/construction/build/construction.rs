@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::construction::build::{Construction, SITE_GONE, STARTED};
 use crate::map::Tile;
 use crate::map::spatial::Spatial;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -154,7 +155,7 @@ impl Construction {
     /// point: at most up to its build time, it adds its share of its master's hit points `hp`
     /// (all of them without a build time of at least 1), never past them; true when its build
     /// points reach its build time.
-    pub(crate) fn add_work(&mut self, hp: &mut f32, amount: f32) -> bool {
+    pub(crate) fn add_work(&mut self, hp: &mut HitPoints, amount: f32) -> bool {
         let mut amount = amount;
         let build_time = f32::from(self.build_time);
         let hit_points = f32::from(self.hit_points);
@@ -162,11 +163,11 @@ impl Construction {
             amount = build_time - self.progress;
         }
         let new = if 1.0 <= build_time {
-            (amount * hit_points) / build_time + *hp
+            (amount * hit_points) / build_time + hp.get()
         } else {
             hit_points
         };
-        *hp = if hit_points < new { hit_points } else { new };
+        *hp = HitPoints::new(if hit_points < new { hit_points } else { new });
         let before = self.progress;
         self.progress = amount + before;
         crate::math::fmath::at_most_or_unordered(build_time, amount + before)

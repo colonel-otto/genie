@@ -142,7 +142,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         life: Lifecycle {
             class: Class::Animated,
             state: ObjectState::Alive,
-            hp: 25.0,
+            hp: HitPoints::new(25.0),
             master_id: ids::VILLAGER_MALE,
             attribute_type: None,
             ..Lifecycle::default()
@@ -168,7 +168,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         life: Lifecycle {
             class: Class::Animated,
             state: ObjectState::Foundation,
-            hp: 1.0,
+            hp: HitPoints::new(1.0),
             master_id: ids::HOUSE,
             ..Lifecycle::default()
         },
@@ -328,11 +328,11 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     // another builder works on the main building, below 1 hit point: the work stays the annex's
     let main = own(&mut t, HOUSE);
     main.construction = Some(construction(1.0, 1, false));
-    main.life.hp = 0.5;
+    main.life.hp = HitPoints::new(0.5);
     let mut annex = own(&mut t, HOUSE).clone();
     annex.id = ANNEX;
     annex.annex_of = Some(HOUSE);
-    annex.life.hp = 1.0;
+    annex.life.hp = HitPoints::new(1.0);
     annex.construction = Some(construction(1.0, 0, false));
     t.players[1].objects.push(annex);
     t.spatial.insert(
@@ -873,7 +873,7 @@ fn stump(t: &mut World) {
         body: Body::at(Position::new(10.2, 10.2, 0.0)),
         life: Lifecycle {
             state: ObjectState::Alive,
-            hp: 0.5,
+            hp: HitPoints::new(0.5),
             master_id: master_id(349),
             ..Lifecycle::default()
         },
@@ -936,7 +936,7 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
     let tree = t.players[0].objects.by_id(object_id(77)).unwrap();
     assert_eq!(
         (tree.life.state, tree.life.hp, tree.roo_called),
-        (ObjectState::Removed, 0.0, true)
+        (ObjectState::Removed, HitPoints::ZERO, true)
     );
     let b = build(&t);
     assert_eq!(

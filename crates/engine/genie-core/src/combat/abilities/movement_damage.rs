@@ -8,6 +8,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -132,8 +133,8 @@ pub fn struck(hitter: &Hitter, range: Distance, b: &Bystander) -> bool {
 /// it has 0, and holds 0 (`FUN_14119d320` with 0, 0 and 1: at most its master's capacity, a
 /// capacity below 0 taken as it is). Returns whether it was.
 pub fn finish(v: &mut Victim) -> bool {
-    if v.hp < ONE {
-        v.hp = 0.0;
+    if v.hp < HitPoints::new(ONE) {
+        v.hp = HitPoints::ZERO;
         v.amount = 0.0;
         let capacity = f32::from(v.capacity);
         if capacity < v.amount {
@@ -283,7 +284,7 @@ impl World {
             self.spatial.terrain.as_ref(),
             self.mode_680,
         );
-        crate::combat::damage::lose(&mut v, damage);
+        crate::combat::damage::lose(&mut v, HitPoints::new(damage));
         let killed = finish(&mut v);
         let (_, u) = self
             .object_mut(b.id)

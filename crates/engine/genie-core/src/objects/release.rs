@@ -2,6 +2,7 @@
 //! update's regeneration and hit point check, and a walk's pause.
 
 use crate::GenieError;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -64,7 +65,7 @@ pub(crate) fn released_fields(
         u.workers -= 1;
     }
     // COMISS hp with 0, JNC: a NaN does not count as alive
-    let alive = (u.life.state == ObjectState::Alive && 0.0 <= u.life.hp)
+    let alive = (u.life.state == ObjectState::Alive && HitPoints::ZERO <= u.life.hp)
         || u.life.state == ObjectState::Undead;
     // The first master type whose slot 0x180 is not the static object's (`FUN_141197d00`, types 10
     // and 15): the animated object's (`FUN_141071ea0`, types 20 to 40) only counts a worker less.

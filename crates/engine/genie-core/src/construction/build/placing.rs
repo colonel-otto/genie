@@ -12,6 +12,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::map::spatial::Placed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -336,7 +337,7 @@ impl BuildAction {
         }
         // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
         // without (deleted, it dies in its own update) leaves the Build as it is
-        if Self::site_unit(c, reads)?.is_some_and(|u| 0.0 < u.life.hp) {
+        if Self::site_unit(c, reads)?.is_some_and(|u| HitPoints::ZERO < u.life.hp) {
             self.finish(c, builder, reads)?;
         }
         Ok(())

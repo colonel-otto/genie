@@ -10,6 +10,7 @@
 //! is made and the farmers took the last of it, the farm's slot 0xd8 sets its hit points to 0.
 
 use crate::GenieError;
+use crate::objects::HitPoints;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -150,7 +151,7 @@ impl MakeAction {
                     // below it slot 0xd8 is `FUN_14118f580` itself.
                     && (master.kind < COMBAT || master.class != NEVER_EXHAUSTED_CLASS) =>
             {
-                farm.life.hp = 0.0;
+                farm.life.hp = HitPoints::ZERO;
             }
             _ => {}
         }
@@ -228,7 +229,7 @@ mod tests {
             id: object_id(600),
             life: Lifecycle {
                 state: ObjectState::Alive,
-                hp: 480.0,
+                hp: HitPoints::new(480.0),
                 master_id: master,
                 attribute_type: Some(attribute::FARM_FOOD),
                 amount,
@@ -273,7 +274,7 @@ mod tests {
             code,
             *farm.actions.make().unwrap(),
             farm.life.amount,
-            farm.life.hp,
+            farm.life.hp.get(),
         )
     }
 

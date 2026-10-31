@@ -9,6 +9,7 @@ use crate::combat::damage::{
 };
 use crate::map::Distance;
 use crate::map::Position;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
@@ -148,7 +149,7 @@ pub(super) fn take_building(
         *others[k] = m;
         return struck.map(|_| false);
     }
-    if 0.0 >= t.hp {
+    if HitPoints::ZERO >= t.hp {
         return Ok(false);
     }
     damage(t, src, weapons, factor, blast_taken)?;
@@ -160,12 +161,12 @@ pub(super) fn take_building(
         } else {
             ONE
         };
-        if least > before - t.hp {
-            lose(t, least);
+        if least > (before - t.hp).get() {
+            lose(t, HitPoints::new(least));
         }
     }
     let b = t.building.get_or_insert_with(Building::default);
-    if t.player != PlayerId::GAIA && ONE > t.hp {
+    if t.player != PlayerId::GAIA && ONE > t.hp.get() {
         let (ap, q) = (src.player, t.player);
         let event = match t.master_id {
             CASTLE => Some(crate::players::history::EventKind::CASTLE_DESTROYED),
@@ -199,7 +200,7 @@ pub(super) fn take_building(
     for a in others.iter_mut().filter(|a| annexes.contains(&a.id)) {
         a.hp = t.hp;
     }
-    if forward && RGE_COMBAT <= src.kind && t.hp >= ONE {
+    if forward && RGE_COMBAT <= src.kind && t.hp >= HitPoints::new(ONE) {
         attack_effects(&src.source, t)?;
     }
     Ok(true)
@@ -271,9 +272,9 @@ pub(super) fn take_static(
     for w in weapons {
         damage += f32::from(w.amount) * factor;
     }
-    t.hp -= damage;
-    if t.hp < 1.0 {
-        t.hp = 0.0;
+    t.hp -= HitPoints::new(damage);
+    if t.hp < HitPoints::new(1.0) {
+        t.hp = HitPoints::ZERO;
         t.goto_sleep = false;
         // The villager class (4): its hits leave what a static target holds.
         if src.class != class::VILLAGER {
@@ -302,7 +303,7 @@ pub(super) fn take_unit(
     blast_taken: f32,
 ) -> Result<(), GenieError> {
     let before = effective(t);
-    if t.hp < 1.0 {
+    if t.hp < HitPoints::new(1.0) {
         return Ok(());
     }
     let a = t.armored.clone().ok_or(GenieError::unsupported(
@@ -376,7 +377,7 @@ pub(super) fn retaliates(
     }
     let w = t.weapons.clone();
     take(src, t, others, &w, f, 0.0)?;
-    Ok(src.hp <= 1.0)
+    Ok(src.hp <= HitPoints::new(1.0))
 }
 
 /// [`take_unit`]'s end after the damage: a hit takes at least one hit point of the `before`
@@ -391,25 +392,34 @@ pub(super) fn after_hit(
     t: &mut Victim,
     src: &mut Victim,
     a: &Armored,
-    before: f32,
+    before: HitPoints,
 ) -> Result<(), GenieError> {
     // a hit takes at least one hit point
     let mut lost = before - effective(t);
     let floor = hp_floor(a, t.master_hp);
-    if lost < 1.0 && (floor == 0.0 || floor + 1.0 <= before) {
-        t.hp = before - 1.0;
-        lost = 1.0;
+    if lost < HitPoints::new(1.0)
+        && (floor == HitPoints::ZERO || floor + HitPoints::new(1.0) <= before)
+    {
+        t.hp = before - HitPoints::new(1.0);
+        lost = HitPoints::new(1.0);
     }
     if EPSILON < a.reflection {
         let d = a.reflection * lost;
-        lose(src, if 1.0 <= d { d } else { 1.0 });
+        lose(
+            src,
+            if HitPoints::new(1.0) <= d {
+                d
+            } else {
+                HitPoints::new(1.0)
+            },
+        );
     }
     // COMISS 1, hp / JBE past: below 1 (not NaN) the kill bonus; COMISS hp, 1 / JC past: at 1
     // or more (not NaN) the attacker's effects
-    if ONE > t.hp {
+    if ONE > t.hp.get() {
         kill_bonus(&src.source)?;
     }
-    if RGE_COMBAT <= src.kind && t.hp >= ONE {
+    if RGE_COMBAT <= src.kind && t.hp >= HitPoints::new(ONE) {
         attack_effects(&src.source, t)?;
     }
     Ok(())

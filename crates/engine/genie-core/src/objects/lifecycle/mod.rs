@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::players::attribute::AttributeId;
@@ -89,7 +90,7 @@ pub struct Lifecycle {
     /// `+0x640`, the save's `object_state`.
     pub state: ObjectState,
     /// The masked hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// `+0x308`: the attribute of what the object holds, none for −1.
     pub attribute_type: Option<AttributeId>,
     /// `+0x310`: how much it holds.
@@ -124,7 +125,7 @@ impl Default for Lifecycle {
         Self {
             class: Class::Static,
             state: ObjectState::Alive,
-            hp: 1.0,
+            hp: HitPoints::new(1.0),
             attribute_type: None,
             amount: 0.0,
             dying_sprite: None,
@@ -171,7 +172,7 @@ impl Lifecycle {
         }
         match self.state {
             ObjectState::Foundation | ObjectState::Alive => {
-                if self.hp < 1.0 {
+                if self.hp < HitPoints::new(1.0) {
                     self.die(object)?;
                 }
                 Ok(false)
@@ -291,7 +292,7 @@ mod tests {
     fn dead(class: Class) -> Lifecycle {
         Lifecycle {
             class,
-            hp: 0.0,
+            hp: HitPoints::ZERO,
             master: Some(MasterData::default()),
             ..Lifecycle::default()
         }

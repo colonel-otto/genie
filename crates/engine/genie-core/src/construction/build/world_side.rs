@@ -179,7 +179,7 @@ impl crate::world::World {
             match self.object(main) {
                 Some((_, m))
                     if m.life.state == ObjectState::Foundation
-                        && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp) =>
+                        && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp.get()) =>
                 {
                     at = main;
                 }
@@ -188,7 +188,7 @@ impl crate::world::World {
         }
         let (q, u) = self.object(at).ok_or(NOT_HELD)?;
         if u.life.state != ObjectState::Foundation
-            || crate::math::fmath::below_or_unordered(u.life.hp, 1.0)
+            || crate::math::fmath::below_or_unordered(u.life.hp.get(), 1.0)
         {
             return Ok(false);
         }

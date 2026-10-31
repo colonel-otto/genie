@@ -6,6 +6,7 @@ use crate::map::Distance;
 use crate::map::Footprint;
 use crate::math::rng::Well512;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -269,13 +270,13 @@ impl UnitAi {
         let target_time = if 0.0 < t.harmed {
             t.hp / t.harmed
         } else {
-            NEVER_KILLED
+            HitPoints::new(NEVER_KILLED)
         };
         let a = side.duel(attacker_id)?;
         let attacker_time = if 0.0 < a.harmed {
             a.hp / a.harmed
         } else {
-            NEVER_KILLED
+            HitPoints::new(NEVER_KILLED)
         };
         // "my current target will take longer to kill"
         if !t.converts && (attacker_time < target_time || a.converts) {

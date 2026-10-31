@@ -3,6 +3,7 @@
 
 use crate::map::Distance;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
@@ -88,7 +89,7 @@ pub struct Candidate {
     /// factor and its armor against the unit's attacks).
     pub damage: f32,
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// The unit's reload time (slot 0x218).
     pub reload: f32,
     /// The unit's unit AI could work on it (its slot 0x1b8 with 0: a priest's conversion).
@@ -224,7 +225,7 @@ impl Statistics {
         }
         self.distance.take(c.distance);
         e.kill_time = if crate::math::fmath::below_or_unordered(EPSILON, c.damage) {
-            (c.hp / c.damage) / c.reload
+            ((c.hp / c.damage) / c.reload).get()
         } else if c.workable {
             NO_DAMAGE_KILL
         } else {

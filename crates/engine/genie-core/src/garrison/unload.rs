@@ -6,6 +6,7 @@ use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -70,7 +71,7 @@ impl World {
                 continue;
             };
             let unit = &self.players.player(player)?.objects[idx];
-            if unit.life.hp < 1.0 {
+            if unit.life.hp < HitPoints::new(1.0) {
                 continue;
             }
             // the object it is inside, and that object's type

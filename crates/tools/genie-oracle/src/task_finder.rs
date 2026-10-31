@@ -2,6 +2,7 @@
 
 use crate::masters::MasterTable;
 use crate::{Error, work_masters};
+use genie_core::objects::HitPoints;
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::Held;
 use genie_core::objects::masters::ActionType;
@@ -109,8 +110,8 @@ impl FinderWorld {
             player: o.player,
             state: o.state,
             held: o.held,
-            hp: o.hp,
-            max_hp: o.max_hp,
+            hp: HitPoints::new(o.hp),
+            max_hp: HitPoints::new(o.max_hp),
             attackable: o.attackable,
             pasture: o.pasture,
             top_action: o.top_action,

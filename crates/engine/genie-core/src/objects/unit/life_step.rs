@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::masters::master_type::BUILDING;
@@ -50,7 +51,7 @@ impl Unit {
     /// An attribute the player does not have.
     pub(crate) fn dying_storage_leaves(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
         // a NaN hit point is not below one
-        if !(self.life.is_alive() && self.life.hp < 1.0) {
+        if !(self.life.is_alive() && self.life.hp < HitPoints::new(1.0)) {
             return Ok(());
         }
         let m = self.master(&c.w.masters, c.player)?;

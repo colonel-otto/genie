@@ -10,6 +10,7 @@ use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
@@ -506,7 +507,7 @@ impl Unit {
             life: Lifecycle {
                 class: Class::Animated,
                 state: ObjectState::Alive,
-                hp: f32::from(made.hit_points),
+                hp: HitPoints::of_master(made.hit_points),
                 attribute_type: held.kind,
                 amount: held.amount,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),

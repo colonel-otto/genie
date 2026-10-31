@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterId;
@@ -119,7 +120,7 @@ pub(crate) fn task_target_with<'a>(
         state: u.life.state,
         held: u.life.held(),
         hp: u.life.hp + u.hp_powerup.room(),
-        max_hp: f32::from(master.hit_points) + u.hp_powerup.max,
+        max_hp: HitPoints::of_master(master.hit_points) + u.hp_powerup.max,
         attackable: u.attackable,
         pasture: u.pasture,
         top_action: u.top_action_kind(),

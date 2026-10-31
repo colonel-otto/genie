@@ -47,7 +47,7 @@ use crate::test_ids::object_id;
 fn sheep() -> Victim {
     Victim {
         id: object_id(9520),
-        hp: 14.0,
+        hp: HitPoints::new(14.0),
         kind: master_type::COMBAT,
         class: class::LIVESTOCK,
         master_id: master_id(705),
@@ -71,7 +71,7 @@ fn sheep() -> Victim {
 fn hunter() -> Victim {
     Victim {
         id: object_id(10029),
-        hp: 25.0,
+        hp: HitPoints::new(25.0),
         kind: master_type::COMBAT,
         class: class::VILLAGER,
         master_id: master_id(592),
@@ -144,7 +144,7 @@ fn a_wall_foundation_s_pierce_armor_is_computed_as_any_other() {
 #[test]
 fn a_static_object_takes_a_ready_charge_first() {
     let tree = || Victim {
-        hp: 100.0,
+        hp: HitPoints::new(100.0),
         class: class::TREE,
         kind: master_type::STATIC,
         ..Victim::default()
@@ -159,14 +159,14 @@ fn a_static_object_takes_a_ready_charge_first() {
     };
     let mut t = tree();
     take_static(&mut t, &charging, &[ClassAmount::new(4, 3)], 1.0);
-    assert_eq!(t.hp, 100.0 - (5.0 + 3.0));
+    assert_eq!(t.hp, HitPoints::new(100.0 - (5.0 + 3.0)));
     let mut t = tree();
     let plain = Attacker {
         charge_type: 0,
         ..charging
     };
     take_static(&mut t, &plain, &[ClassAmount::new(4, 3)], 1.0);
-    assert_eq!(t.hp, 97.0);
+    assert_eq!(t.hp, HitPoints::new(97.0));
 }
 
 /// Slot 0xe8 of a moving or action object (types 30 to 49) is the static object's
@@ -174,7 +174,7 @@ fn a_static_object_takes_a_ready_charge_first() {
 /// wakes and loses what it holds but to a villager. A NaN hit point count stays (`COMISS`/`JBE`).
 #[test]
 fn a_moving_object_takes_a_hit_as_a_static_one() {
-    let bird = |hp: f32| Victim {
+    let bird = |hp: HitPoints| Victim {
         hp,
         amount: 50.0,
         kind: master_type::ACTION,
@@ -183,7 +183,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         ..Victim::default()
     };
     let mut hunter = hunter();
-    let mut t = bird(10.0);
+    let mut t = bird(HitPoints::new(10.0));
     take(
         &mut t,
         &mut hunter,
@@ -193,7 +193,10 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         0.0,
     )
     .unwrap();
-    assert_eq!((t.hp, t.amount, t.goto_sleep), (5.0, 50.0, true));
+    assert_eq!(
+        (t.hp, t.amount, t.goto_sleep),
+        (HitPoints::new(5.0), 50.0, true)
+    );
     take(
         &mut t,
         &mut hunter,
@@ -204,10 +207,13 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
     )
     .unwrap();
     // a villager's hit leaves what it holds
-    assert_eq!((t.hp, t.amount, t.goto_sleep), (0.0, 50.0, false));
+    assert_eq!(
+        (t.hp, t.amount, t.goto_sleep),
+        (HitPoints::ZERO, 50.0, false)
+    );
     let mut archer = hunter.clone();
     archer.source.class = class::CLASS_0;
-    let mut t = bird(4.0);
+    let mut t = bird(HitPoints::new(4.0));
     take(
         &mut t,
         &mut archer,
@@ -217,8 +223,8 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         0.0,
     )
     .unwrap();
-    assert_eq!((t.hp, t.amount), (0.0, 0.0));
-    let mut t = bird(f32::NAN);
+    assert_eq!((t.hp, t.amount), (HitPoints::ZERO, 0.0));
+    let mut t = bird(HitPoints::new(f32::NAN));
     take(
         &mut t,
         &mut archer,
@@ -228,7 +234,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         0.0,
     )
     .unwrap();
-    assert!(t.hp.is_nan() && t.amount == 50.0 && t.goto_sleep);
+    assert!(t.hp.get().is_nan() && t.amount == 50.0 && t.goto_sleep);
 }
 
 #[test]
@@ -240,11 +246,11 @@ fn a_hunter_strikes_its_sheep_for_twelve() {
         Ok(12.0)
     );
     take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
-    assert_eq!(sheep.hp, 2.0);
+    assert_eq!(sheep.hp, HitPoints::new(2.0));
     assert_eq!(sheep.damaged, [(Some(object_id(10029)), [10029, 2, 14])]);
     // the next hit kills it, and Gaia takes a player's livestock
     take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
-    assert_eq!(sheep.hp, 0.0);
+    assert_eq!(sheep.hp, HitPoints::ZERO);
     assert_eq!(
         sheep.killed,
         Some(Kill {
@@ -286,34 +292,40 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
     let mut v = hunter();
     assert_eq!(
         (v.shown_hp(), v.most_hp(), v.hp_share(false)),
-        (25.0, 25.0, 1.0)
+        (HitPoints::new(25.0), HitPoints::new(25.0), 1.0)
     );
     assert_eq!(v.hp_share(true), 0.0);
-    v.hp = 10.0;
+    v.hp = HitPoints::new(10.0);
     v.armored.as_mut().unwrap().hp_powerup = HpPowerup {
-        taken: 2.0,
-        max: 5.0,
+        taken: HitPoints::new(2.0),
+        max: HitPoints::new(5.0),
     };
-    assert_eq!((v.shown_hp(), v.most_hp()), (13.0, 30.0));
+    assert_eq!(
+        (v.shown_hp(), v.most_hp()),
+        (HitPoints::new(13.0), HitPoints::new(30.0))
+    );
     assert_eq!(v.hp_share(false), 13.0 / 30.0);
     assert_eq!(v.hp_share(true), 1.0 - 13.0 / 30.0);
-    v.hp = 40.0;
+    v.hp = HitPoints::new(40.0);
     assert_eq!(v.hp_share(false), 1.0);
     let mut rge = hunter();
     rge.kind = master_type::RGE_COMBAT;
-    rge.hp = 10.0;
+    rge.hp = HitPoints::new(10.0);
     rge.armored.as_mut().unwrap().hp_powerup = HpPowerup {
-        taken: 2.0,
-        max: 5.0,
+        taken: HitPoints::new(2.0),
+        max: HitPoints::new(5.0),
     };
-    assert_eq!((rge.shown_hp(), rge.most_hp()), (10.0, 25.0));
+    assert_eq!(
+        (rge.shown_hp(), rge.most_hp()),
+        (HitPoints::new(10.0), HitPoints::new(25.0))
+    );
     let mut none = hunter();
     none.master_hp = 0;
     assert_eq!((none.hp_share(false), none.hp_share(true)), (0.0, 0.0));
     let mut nan = hunter();
     nan.armored.as_mut().unwrap().hp_powerup = HpPowerup {
-        taken: 0.0,
-        max: f32::NAN,
+        taken: HitPoints::ZERO,
+        max: HitPoints::new(f32::NAN),
     };
     assert!(nan.hp_share(false).is_nan());
 }
@@ -336,7 +348,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
         }
     };
     let (mut sheep, mut hunter) = (sheep(), hunter());
-    sheep.hp = 7.0;
+    sheep.hp = HitPoints::new(7.0);
     // any target below type 80: the sheep lacks half its hit points, two steps of 0.25
     hunter.bonus_tasks = vec![task(-1, None, Distance::new(1.0), 1)];
     let steps = libm::floorf(0.5 / 0.25 + EPSILON);
@@ -370,9 +382,9 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     }];
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
     hunter.bonus_tasks = vec![task(-1, None, Distance::ZERO, 0)];
-    sheep.hp = 0.0;
+    sheep.hp = HitPoints::ZERO;
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
-    sheep.hp = 7.0;
+    sheep.hp = HitPoints::new(7.0);
     hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val1: -3.0,
         ..task(-1, None, Distance::ZERO, 0)
@@ -531,7 +543,7 @@ fn a_ready_charge_adds_to_the_first_melee_weapon_and_empties() {
         0.0,
     )
     .unwrap();
-    assert_eq!(sheep.hp, 14.0 - 8.0);
+    assert_eq!(sheep.hp, HitPoints::new(14.0 - 8.0));
     assert!(hunter.source.charge_hit);
     assert_eq!(hunter.source.charge, 0.0);
     // not ready: no charge
@@ -639,7 +651,7 @@ fn a_special_attack_takes_a_hit_from_the_front_to_two_thirds() {
         0.0,
     )
     .unwrap();
-    assert_eq!(sheep.hp, 14.0 - 10.0 * SPECIAL);
+    assert_eq!(sheep.hp, HitPoints::new(14.0 - 10.0 * SPECIAL));
     // a busy target does not, and an unknown facing is not modelled
     let mut busy = self::sheep();
     busy.armored.as_mut().unwrap().special_attack = 1;
@@ -653,7 +665,7 @@ fn a_special_attack_takes_a_hit_from_the_front_to_two_thirds() {
         0.0,
     )
     .unwrap();
-    assert_eq!(busy.hp, 4.0);
+    assert_eq!(busy.hp, HitPoints::new(4.0));
     let mut unknown = self::sheep();
     unknown.armored.as_mut().unwrap().special_attack = 1;
     assert!(
@@ -692,9 +704,12 @@ fn a_retaliation_strikes_the_melee_attacker_first() {
         0.0,
     )
     .unwrap();
-    assert_eq!((hunter.hp, sheep.hp), (20.0, 11.0));
+    assert_eq!(
+        (hunter.hp, sheep.hp),
+        (HitPoints::new(20.0), HitPoints::new(11.0))
+    );
     assert_eq!(hunter.damaged, [(Some(object_id(9520)), [9520, 20, 25])]);
-    hunter.hp = 5.0;
+    hunter.hp = HitPoints::new(5.0);
     take(
         &mut sheep,
         &mut hunter,
@@ -705,7 +720,10 @@ fn a_retaliation_strikes_the_melee_attacker_first() {
     )
     .unwrap();
     // the hunter dies; the sheep loses the least, one hit point
-    assert_eq!((hunter.hp, sheep.hp), (0.0, 10.0));
+    assert_eq!(
+        (hunter.hp, sheep.hp),
+        (HitPoints::ZERO, HitPoints::new(10.0))
+    );
     assert!(hunter.killed.is_some());
 }
 
@@ -723,7 +741,10 @@ fn reflected_damage_comes_back_at_least_one() {
         0.0,
     )
     .unwrap();
-    assert_eq!((sheep.hp, hunter.hp), (8.0, 22.0));
+    assert_eq!(
+        (sheep.hp, hunter.hp),
+        (HitPoints::new(8.0), HitPoints::new(22.0))
+    );
     take(
         &mut sheep,
         &mut hunter,
@@ -733,7 +754,10 @@ fn reflected_damage_comes_back_at_least_one() {
         0.0,
     )
     .unwrap();
-    assert_eq!((sheep.hp, hunter.hp), (7.0, 21.0));
+    assert_eq!(
+        (sheep.hp, hunter.hp),
+        (HitPoints::new(7.0), HitPoints::new(21.0))
+    );
     assert!(hunter.damaged.is_empty() && hunter.killed.is_none());
 }
 
@@ -766,7 +790,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
         Ok(true)
     );
     let f = (1.0 - fmath::sqrt(0.5 * 0.5)) / 1.0 * 0.5;
-    assert_eq!(t.hp, 14.0 - 10.0 * f);
+    assert_eq!(t.hp, HitPoints::new(14.0 - 10.0 * f));
     // a narrow cone keeps a NaN offset
     elephant.source.blast_level = 0x82;
     elephant.armored.as_mut().unwrap().facing = Some(Facing {
@@ -789,7 +813,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
         blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
         Ok(true)
     );
-    assert_eq!(t.hp, 9.0);
+    assert_eq!(t.hp, HitPoints::new(9.0));
     // a NaN area damage share leaves the factor at 1
     elephant.source.blast_level = 2;
     elephant.source.area_damage = f32::NAN;
@@ -798,7 +822,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
         blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
         Ok(true)
     );
-    assert_eq!(t.hp, 4.0);
+    assert_eq!(t.hp, HitPoints::new(4.0));
     // no radius, no blast; a NaN radius blasts
     elephant.source.area_effect = Distance::ZERO;
     assert_eq!(
@@ -860,7 +884,12 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
     );
     assert_eq!(
         (target.hp, near.hp, far.hp, friend.hp),
-        (14.0, 9.0, 14.0, 14.0)
+        (
+            HitPoints::new(14.0),
+            HitPoints::new(9.0),
+            HitPoints::new(14.0),
+            HitPoints::new(14.0)
+        )
     );
     // the falloff: 0.3 of radius 1 away keeps 0.7
     elephant.source.blast_level = 0x42;
@@ -872,7 +901,7 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
     );
     let dx = (10.8f32 - 10.5f32).abs();
     let f = (1.0 - fmath::sqrt(0.0 * 0.0 + dx * dx)) / 1.0 * 0.5;
-    assert_eq!(near.hp, 14.0 - 10.0 * f);
+    assert_eq!(near.hp, HitPoints::new(14.0 - 10.0 * f));
 }
 
 /// A player's house (master 70, class 3, type 80) of 550 hit points: melee armor 0, pierce
@@ -880,7 +909,7 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
 fn house() -> Victim {
     Victim {
         id: object_id(500),
-        hp: 550.0,
+        hp: HitPoints::new(550.0),
         kind: BUILDING,
         class: class::BUILDING,
         master_id: ids::HOUSE,
@@ -919,7 +948,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
         0.0,
     )
     .unwrap();
-    assert_eq!(h.hp, 547.0);
+    assert_eq!(h.hp, HitPoints::new(547.0));
     assert_eq!(h.damaged, [(Some(object_id(10029)), [10029, 547, 550])]);
     let b = h.building.as_ref().unwrap();
     assert_eq!((b.damaged_lately, b.struck, b.razed.len()), (60, true, 0));
@@ -936,7 +965,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
         0.0,
     )
     .unwrap();
-    assert_eq!(h.hp, 549.0);
+    assert_eq!(h.hp, HitPoints::new(549.0));
     // half a hit point taken: the least is taken whole again
     let mut h = house();
     take(
@@ -948,7 +977,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
         0.0,
     )
     .unwrap();
-    assert_eq!(h.hp, 548.5);
+    assert_eq!(h.hp, HitPoints::new(548.5));
     // an archer's least is a tenth
     let mut archer = villager.clone();
     archer.source.class = class::CLASS_0;
@@ -963,7 +992,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
         0.0,
     )
     .unwrap();
-    assert_eq!(h.hp, 550.0 - LEAST_CLASS_HIT);
+    assert_eq!(h.hp, HitPoints::new(550.0 - LEAST_CLASS_HIT));
     // a blast's damage so far, even a NaN one, takes no least
     let mut h = house();
     h.armored.as_mut().unwrap().armors = vec![ClassAmount::new(4, 10)];
@@ -976,7 +1005,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
         2.0,
     )
     .unwrap();
-    assert_eq!(h.hp, 550.0);
+    assert_eq!(h.hp, HitPoints::new(550.0));
     take(
         &mut h,
         &mut archer,
@@ -986,7 +1015,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
         f32::NAN,
     )
     .unwrap();
-    assert_eq!(h.hp, 550.0);
+    assert_eq!(h.hp, HitPoints::new(550.0));
 }
 
 /// `COMISS 0, hp` / `JNC` past: a building at 0 hit points or fewer takes nothing (and is not
@@ -994,7 +1023,10 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
 #[test]
 fn a_building_without_hit_points_takes_no_hit() {
     let mut villager = hunter();
-    let mut h = Victim { hp: 0.0, ..house() };
+    let mut h = Victim {
+        hp: HitPoints::ZERO,
+        ..house()
+    };
     take(
         &mut h,
         &mut villager,
@@ -1004,10 +1036,10 @@ fn a_building_without_hit_points_takes_no_hit() {
         0.0,
     )
     .unwrap();
-    assert_eq!((h.hp, h.damaged.is_empty()), (0.0, true));
+    assert_eq!((h.hp, h.damaged.is_empty()), (HitPoints::ZERO, true));
     assert!(!h.building.as_ref().unwrap().struck);
     let mut h = Victim {
-        hp: f32::NAN,
+        hp: HitPoints::new(f32::NAN),
         ..house()
     };
     take(
@@ -1033,7 +1065,7 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
     let mut villager = hunter();
     let mut main = Victim {
         id: object_id(10),
-        hp: 2400.0,
+        hp: HitPoints::new(2400.0),
         building: Some(Building {
             annexes: vec![object_id(11), object_id(12)],
             cost: 275.0,
@@ -1044,7 +1076,7 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
     main.armored.as_mut().unwrap().armors = vec![ClassAmount::new(4, 1)];
     let annex = |id| Victim {
         id,
-        hp: 2400.0,
+        hp: HitPoints::new(2400.0),
         building: Some(Building {
             main: Some(object_id(10)),
             ..Building::default()
@@ -1061,7 +1093,14 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
         0.0,
     )
     .unwrap();
-    assert_eq!((main.hp, a.hp, other.hp), (2398.0, 2398.0, 2398.0));
+    assert_eq!(
+        (main.hp, a.hp, other.hp),
+        (
+            HitPoints::new(2398.0),
+            HitPoints::new(2398.0),
+            HitPoints::new(2398.0)
+        )
+    );
     assert!(main.building.as_ref().unwrap().struck);
     assert!(!a.building.as_ref().unwrap().struck);
     assert_eq!(main.damaged, [(Some(object_id(10029)), [10029, 2398, 550])]);
@@ -1089,7 +1128,7 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
 fn a_player_s_building_below_one_hit_point_is_razed() {
     let mut villager = hunter();
     let mut castle = Victim {
-        hp: 1.5,
+        hp: HitPoints::new(1.5),
         master_id: ids::CASTLE,
         ..house()
     };
@@ -1102,7 +1141,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
         0.0,
     )
     .unwrap();
-    assert_eq!(castle.hp, 0.0);
+    assert_eq!(castle.hp, HitPoints::ZERO);
     assert!(castle.killed.is_some());
     let razed = &castle.building.as_ref().unwrap().razed;
     assert_eq!(
@@ -1125,7 +1164,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
         }]
     );
     let mut wonder = Victim {
-        hp: 1.5,
+        hp: HitPoints::new(1.5),
         master_id: ids::WONDER,
         class: class::WALL,
         ..house()
@@ -1148,7 +1187,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
         )
     );
     let mut gaia = Victim {
-        hp: 1.5,
+        hp: HitPoints::new(1.5),
         player: PlayerId::new(0),
         ..house()
     };
@@ -1183,7 +1222,7 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     let mut villager = hunter();
     villager.source.mode_680 = 1;
     // no damage at 1, the least takes it below 1 but its damage did not kill it
-    let mut t = trebuchet(1.5);
+    let mut t = trebuchet(HitPoints::new(1.5));
     t.armored.as_mut().unwrap().armors = vec![ClassAmount::new(4, 10)];
     take(
         &mut t,
@@ -1194,7 +1233,7 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
         0.0,
     )
     .unwrap();
-    assert_eq!((t.hp, t.killed), (0.5, None));
+    assert_eq!((t.hp, t.killed), (HitPoints::new(0.5), None));
     assert_eq!(
         t.building.as_ref().unwrap().razed[0].adds,
         vec![
@@ -1209,7 +1248,7 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
             (PlayerId::new(2), attribute::RAZINGS_VALUE_OTHER, 400.0),
         ]
     );
-    let mut t = trebuchet(2.0);
+    let mut t = trebuchet(HitPoints::new(2.0));
     take(
         &mut t,
         &mut villager,
@@ -1263,7 +1302,10 @@ fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
         0.0,
     )
     .unwrap();
-    let mut h = Victim { hp: 2.0, ..house() };
+    let mut h = Victim {
+        hp: HitPoints::new(2.0),
+        ..house()
+    };
     take(
         &mut h,
         &mut villager,
@@ -1275,7 +1317,10 @@ fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
     .unwrap();
     let mut villager = hunter();
     villager.source.kill_bonus_tasks = true;
-    let mut h = Victim { hp: 2.0, ..house() };
+    let mut h = Victim {
+        hp: HitPoints::new(2.0),
+        ..house()
+    };
     assert!(
         take(
             &mut h,
@@ -1288,7 +1333,7 @@ fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
         .is_err()
     );
     let mut h = Victim {
-        hp: 2.0,
+        hp: HitPoints::new(2.0),
         class: class::WALL,
         ..house()
     };
@@ -1320,7 +1365,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     let center = mangonel.position;
     let mut main = Victim {
         id: object_id(20),
-        hp: 100.0,
+        hp: HitPoints::new(100.0),
         position: Position::new(11.5, 10.5, 0.0),
         radius: Footprint::new(1.0, 1.0),
         blast_defense: 2,
@@ -1334,7 +1379,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     main.source.area_damage = 0.0;
     let mut annex = Victim {
         id: object_id(21),
-        hp: 100.0,
+        hp: HitPoints::new(100.0),
         position: Position::new(10.5, 10.5, 0.0),
         radius: Footprint::new(0.5, 0.5),
         blast_defense: 0,
@@ -1350,7 +1395,10 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
         Ok(true)
     );
     assert_eq!(all.map(|t| t.id), [object_id(21), object_id(20)]);
-    assert_eq!((main.hp, annex.hp), (95.0, 95.0));
+    assert_eq!(
+        (main.hp, annex.hp),
+        (HitPoints::new(95.0), HitPoints::new(95.0))
+    );
     assert_eq!(main.building.as_ref().unwrap().blast_taken, 5.0);
     // each hit posts its damage notify to the main building's unit AI: the annex's
     // forwarded one, then its own (426048706's gate 7228: 271, then -58)
@@ -1396,7 +1444,10 @@ fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
 
 /// A hit point powerup that took `taken` of its most `max`.
 const fn pu(taken: f32, max: f32) -> HpPowerup {
-    HpPowerup { taken, max }
+    HpPowerup {
+        taken: HitPoints::new(taken),
+        max: HitPoints::new(max),
+    }
 }
 
 /// `FUN_141203be0`: hit points gain up to the master's plus the powerup room; the overflow
@@ -1404,20 +1455,20 @@ const fn pu(taken: f32, max: f32) -> HpPowerup {
 /// its most a gain only takes off the powerup.
 #[test]
 fn a_gain_fills_hit_points_and_its_overflow_takes_off_the_powerup() {
-    let mut hp = 50.0;
+    let mut hp = HitPoints::new(50.0);
     let mut ups = pu(0.0, 0.0);
-    gain_hp(&mut hp, &mut ups, 60, 5.0);
-    assert_eq!((hp, ups), (55.0, pu(0.0, 0.0)));
-    gain_hp(&mut hp, &mut ups, 60, 10.0);
-    assert_eq!((hp, ups), (60.0, pu(0.0, 0.0)));
-    let mut hp = 65.0;
+    gain_hp(&mut hp, &mut ups, 60, HitPoints::new(5.0));
+    assert_eq!((hp, ups), (HitPoints::new(55.0), pu(0.0, 0.0)));
+    gain_hp(&mut hp, &mut ups, 60, HitPoints::new(10.0));
+    assert_eq!((hp, ups), (HitPoints::new(60.0), pu(0.0, 0.0)));
+    let mut hp = HitPoints::new(65.0);
     let mut ups = pu(8.0, 10.0);
-    gain_hp(&mut hp, &mut ups, 60, 10.0);
-    assert_eq!((hp, ups), (70.0, pu(3.0, 10.0)));
-    gain_hp(&mut hp, &mut ups, 60, 5.0);
-    assert_eq!((hp, ups), (70.0, pu(0.0, 10.0)));
+    gain_hp(&mut hp, &mut ups, 60, HitPoints::new(10.0));
+    assert_eq!((hp, ups), (HitPoints::new(70.0), pu(3.0, 10.0)));
+    gain_hp(&mut hp, &mut ups, 60, HitPoints::new(5.0));
+    assert_eq!((hp, ups), (HitPoints::new(70.0), pu(0.0, 10.0)));
     let mut ups = pu(12.0, 10.0);
-    gain_hp(&mut hp, &mut ups, 60, 0.0);
+    gain_hp(&mut hp, &mut ups, 60, HitPoints::new(0.0));
     assert_eq!(ups, pu(10.0, 10.0));
 }
 
@@ -1426,21 +1477,26 @@ fn a_gain_fills_hit_points_and_its_overflow_takes_off_the_powerup() {
 /// not full.
 #[test]
 fn a_heal_to_full_holds_the_master_s_hit_points() {
-    let mut hp = 30.0;
+    let mut hp = HitPoints::new(30.0);
     let mut ups = HpPowerup::default();
-    assert!(!heal_hp(&mut hp, &mut ups, 60, 10.0));
-    assert_eq!(hp, 40.0);
-    assert!(heal_hp(&mut hp, &mut ups, 60, 25.0));
-    assert_eq!(hp, 60.0);
-    let mut hp = 0.5;
-    assert!(!heal_hp(&mut hp, &mut ups, 60, -3.0));
-    assert_eq!(hp, 1.0);
-    let mut hp = 55.0;
+    assert!(!heal_hp(&mut hp, &mut ups, 60, HitPoints::new(10.0)));
+    assert_eq!(hp, HitPoints::new(40.0));
+    assert!(heal_hp(&mut hp, &mut ups, 60, HitPoints::new(25.0)));
+    assert_eq!(hp, HitPoints::new(60.0));
+    let mut hp = HitPoints::new(0.5);
+    assert!(!heal_hp(&mut hp, &mut ups, 60, HitPoints::new(-3.0)));
+    assert_eq!(hp, HitPoints::new(1.0));
+    let mut hp = HitPoints::new(55.0);
     let mut ups = pu(5.0, 5.0);
-    assert!(!heal_hp(&mut hp, &mut ups, 60, 4.0));
-    assert_eq!(hp, 59.0);
-    let mut hp = f32::NAN;
-    assert!(!heal_hp(&mut hp, &mut HpPowerup::default(), 60, 1.0));
+    assert!(!heal_hp(&mut hp, &mut ups, 60, HitPoints::new(4.0)));
+    assert_eq!(hp, HitPoints::new(59.0));
+    let mut hp = HitPoints::new(f32::NAN);
+    assert!(!heal_hp(
+        &mut hp,
+        &mut HpPowerup::default(),
+        60,
+        HitPoints::new(1.0)
+    ));
 }
 
 /// The blast's ledger (`+0xbb8`): an annex keeps its damage on its main building among the
@@ -1636,9 +1692,9 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
         ..sheep()
     };
     fixed_blast(&attacker, &attacker.source, &mut t, -5.0).unwrap();
-    assert_eq!((t.hp, t.killed), (9.0, None));
+    assert_eq!((t.hp, t.killed), (HitPoints::new(9.0), None));
     fixed_blast(&attacker, &attacker.source, &mut t, -20.0).unwrap();
-    assert_eq!((t.hp, t.amount), (0.0, 0.0));
+    assert_eq!((t.hp, t.amount), (HitPoints::ZERO, 0.0));
     assert_eq!(
         t.killed.map(|k| (k.attacker, k.attacker_player)),
         Some((object_id(10029), 1))
@@ -1648,7 +1704,7 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
         ..sheep()
     };
     fixed_blast(&attacker, &attacker.source, &mut gaia, -20.0).unwrap();
-    assert_eq!((gaia.hp, gaia.killed), (0.0, None));
+    assert_eq!((gaia.hp, gaia.killed), (HitPoints::ZERO, None));
     let bonus = Attacker {
         kill_bonus_tasks: true,
         ..attacker.source
@@ -1680,7 +1736,7 @@ fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
         (None, 0.0),
     )
     .unwrap();
-    assert_eq!(enemy.hp, 9.0);
+    assert_eq!(enemy.hp, HitPoints::new(9.0));
     let mut main = house();
     let mut annex = Victim {
         id: object_id(501),
@@ -1692,12 +1748,12 @@ fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
     };
     let mut all = [&mut main, &mut annex];
     blast_hit(&mut attacker, &mut all, 0, (&weapons, 1.0), (Some(0), 0.0)).unwrap();
-    let lost = 550.0 - all[0].hp;
+    let lost = 550.0 - all[0].hp.get();
     assert!(0.0 < lost);
     assert_eq!(all[0].building.as_ref().map(|b| b.blast_taken), Some(lost));
     blast_hit(&mut attacker, &mut all, 1, (&weapons, 1.0), (Some(0), 0.0)).unwrap();
-    assert_eq!(all[1].hp, 550.0);
-    assert!(all[0].hp < 550.0 - lost);
+    assert_eq!(all[1].hp, HitPoints::new(550.0));
+    assert!(all[0].hp < HitPoints::new(550.0 - lost));
     assert_eq!(all[0].building.as_ref().map(|b| b.blast_taken), Some(lost));
 }
 
@@ -1738,7 +1794,7 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
         let r = blast_one(&mut elephant, &mut [&mut t], 0, (b, &weapons));
         r.map(|()| t.hp)
     };
-    assert_eq!(hit(&b, enemy.clone()), Ok(9.0));
+    assert_eq!(hit(&b, enemy.clone()), Ok(HitPoints::new(9.0)));
     for passed in [
         Victim {
             position: Position::new(30.0, 30.0, 0.0),
@@ -1765,13 +1821,13 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
             ..enemy.clone()
         },
     ] {
-        assert_eq!(hit(&b, passed), Ok(14.0));
+        assert_eq!(hit(&b, passed), Ok(HitPoints::new(14.0)));
     }
     let ram = blast(Attacker {
         master_id: RAMS[0],
         ..b.a
     });
-    assert_eq!(hit(&ram, enemy.clone()), Ok(14.0));
+    assert_eq!(hit(&ram, enemy.clone()), Ok(HitPoints::new(14.0)));
     let unsure = Victim {
         uncertain: true,
         ..enemy

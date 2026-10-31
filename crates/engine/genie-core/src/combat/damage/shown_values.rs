@@ -6,6 +6,7 @@ use crate::combat::damage::{
 };
 use crate::map::Distance;
 use crate::math::conversions::cvttss2si;
+use crate::objects::HitPoints;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -28,7 +29,7 @@ impl Victim {
     /// (`FUN_141202990`) most hit points powerup less its hit points powerup (`+0xa3c` less
     /// `+0xa38`), plus its hit points; any other object's its hit points (`FUN_141188830`).
     #[must_use]
-    pub fn shown_hp(&self) -> f32 {
+    pub fn shown_hp(&self) -> HitPoints {
         self.armored
             .as_ref()
             .filter(|_| self.tribe())
@@ -41,8 +42,8 @@ impl Victim {
     /// stingers (`+0xb38`..`+0xb50`) are 0: `TRIBE_Combat_Object::update` zeroes them and rebuilds
     /// them from the object's stinger list (`FUN_1412092e0`), which the slice holds empty.
     #[must_use]
-    pub fn most_hp(&self) -> f32 {
-        let hp = f32::from(self.master_hp);
+    pub fn most_hp(&self) -> HitPoints {
+        let hp = HitPoints::of_master(self.master_hp);
         self.armored
             .as_ref()
             .filter(|_| self.tribe())
@@ -55,11 +56,11 @@ impl Victim {
     #[must_use]
     pub fn hp_share(&self, lacking: bool) -> f32 {
         let most = self.most_hp();
-        let least = fmath::minss(most, self.shown_hp());
-        if !fmath::below_or_unordered(0.0, most) {
+        let least = fmath::minss(most.get(), self.shown_hp().get());
+        if !fmath::below_or_unordered(0.0, most.get()) {
             return 0.0;
         }
-        let share = least / most;
+        let share = least / most.get();
         if lacking { ONE - share } else { share }
     }
 }
@@ -95,7 +96,7 @@ pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
         // the task's `+0x26` read as a flag: other than 0 (none, −1, is other too)
         let share = whose.hp_share(AttributeId::field(t.attribute_type4) != 0);
         if fmath::at_most_or_unordered(t.work_val2, 0.0)
-            || fmath::at_most_or_unordered(target.shown_hp(), 0.0)
+            || fmath::at_most_or_unordered(target.shown_hp().get(), 0.0)
         {
             continue;
         }

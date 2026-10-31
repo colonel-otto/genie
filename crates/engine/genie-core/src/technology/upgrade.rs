@@ -6,6 +6,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
@@ -111,7 +112,7 @@ pub(crate) fn damage_sprites(
     let Some((share, hp)) = share_of(u, master) else {
         return Ok(before);
     };
-    u.life.hp = hp;
+    u.life.hp = HitPoints::new(hp);
     if share == before || 100 <= share {
         return Ok(share);
     }
@@ -180,7 +181,7 @@ fn share_of(u: &Unit, master: &Master) -> Option<(u8, f32)> {
     if master.damage_graphics.is_empty() {
         return None;
     }
-    let mut hp = u.life.hp;
+    let mut hp = u.life.hp.get();
     if storage_share(master, u.life.state) {
         let held = master
             .storage
@@ -461,11 +462,11 @@ impl World {
         let share = if most.abs() <= NO_HIT_POINTS {
             0.0
         } else {
-            u.life.hp / most
+            u.life.hp.get() / most
         };
         let before = damage_share_of(u, old);
         let state = u.life.state;
-        self.object_at_mut(place)?.life.hp = most;
+        self.object_at_mut(place)?.life.hp = HitPoints::new(most);
         let mut held = before;
         if state == ObjectState::Alive {
             held = self.damage_sprites_at(place, old, held)?;
@@ -494,7 +495,7 @@ impl World {
                 self.object_at_mut(place)?.charge += more;
             }
         }
-        self.object_at_mut(place)?.life.hp = f32::from(new.hit_points) * share;
+        self.object_at_mut(place)?.life.hp = HitPoints::new(f32::from(new.hit_points) * share);
         if let Some(s) = next.filter(|&s| 0 <= s) {
             self.show(place, s)?;
         }
@@ -739,7 +740,7 @@ mod tests {
     }
 
     /// A unit of master `master` in `state` with `hp`.
-    fn object(id: i32, master: MasterId, state: ObjectState, hp: f32) -> Unit {
+    fn object(id: i32, master: MasterId, state: ObjectState, hp: HitPoints) -> Unit {
         Unit {
             id: object_id(id),
             life: crate::objects::lifecycle::Lifecycle {
@@ -768,21 +769,21 @@ mod tests {
             hit_points: 100,
             ..Master::default()
         };
-        let mut u = object_of(150.0);
+        let mut u = object_of(HitPoints::new(150.0));
         let r = damage_sprites(&mut u, &bare, 7, (&graphics, &mut object, &mut sprite));
-        assert_eq!((r, u.life.hp), (Ok(7), 150.0));
+        assert_eq!((r, u.life.hp), (Ok(7), HitPoints::new(150.0)));
         let placed = building(70, 100, SPRITE_PLACED, -1);
         let r = damage_sprites(&mut u, &placed, 0, (&graphics, &mut object, &mut sprite));
-        assert_eq!((r, u.life.hp), (Ok(0), 100.0));
-        let mut low = object_of(-5.0);
+        assert_eq!((r, u.life.hp), (Ok(0), HitPoints::new(100.0)));
+        let mut low = object_of(HitPoints::new(-5.0));
         let r = damage_sprites(&mut low, &placed, 0, (&graphics, &mut object, &mut sprite));
-        assert_eq!((r, low.life.hp), (Ok(100), 0.0));
-        let mut nan = object_of(f32::NAN);
+        assert_eq!((r, low.life.hp), (Ok(100), HitPoints::ZERO));
+        let mut nan = object_of(HitPoints::new(f32::NAN));
         let _ = damage_sprites(&mut nan, &placed, 0, (&graphics, &mut object, &mut sprite));
-        assert!(nan.life.hp.is_nan());
+        assert!(nan.life.hp.get().is_nan());
         // mode 0: nothing drawn
         let before = object.clone();
-        let mut hurt = object_of(40.0);
+        let mut hurt = object_of(HitPoints::new(40.0));
         assert_eq!(
             damage_sprites(&mut hurt, &placed, 0, (&graphics, &mut object, &mut sprite)),
             Ok(60)
@@ -792,7 +793,7 @@ mod tests {
         let scattered = building(70, 100, SPRITE_SCATTERED, -1);
         let mut expected = object.clone();
         let _ = (expected.rand15(), expected.rand15());
-        let mut hurt = object_of(40.0);
+        let mut hurt = object_of(HitPoints::new(40.0));
         assert_eq!(
             damage_sprites(
                 &mut hurt,
@@ -804,7 +805,7 @@ mod tests {
         );
         assert_eq!(object, expected);
         // the same entry (25 < 30 and 40, below 50): nothing more
-        let mut hurt = object_of(60.0);
+        let mut hurt = object_of(HitPoints::new(60.0));
         assert_eq!(
             damage_sprites(
                 &mut hurt,
@@ -822,14 +823,14 @@ mod tests {
                 graphic(1070),
                 &mut sprite,
             )),
-            ..object_of(40.0)
+            ..object_of(HitPoints::new(40.0))
         };
         assert_eq!(
             damage_sprites(&mut u, &shown, 0, (&graphics, &mut object, &mut sprite)),
             Ok(60)
         );
         assert_eq!(u.sprite.map(|s| s.graphic.id), Some(2120));
-        u.life.hp = 100.0;
+        u.life.hp = HitPoints::new(100.0);
         assert_eq!(
             damage_sprites(&mut u, &shown, 60, (&graphics, &mut object, &mut sprite)),
             Ok(0)
@@ -837,7 +838,7 @@ mod tests {
         assert_eq!(u.sprite.map(|s| s.graphic.id), Some(1070));
     }
 
-    fn object_of(hp: f32) -> Unit {
+    fn object_of(hp: HitPoints) -> Unit {
         object(1, ids::HOUSE, ObjectState::Alive, hp)
     }
 
@@ -856,13 +857,13 @@ mod tests {
             }],
             ..Master::default()
         };
-        let mut u = object(1, master_id(1), ObjectState::Dying, 20.0);
+        let mut u = object(1, master_id(1), ObjectState::Dying, HitPoints::new(20.0));
         (u.life.attribute_type, u.life.amount) = (Some(attribute::WOOD), 25.0);
         assert_eq!(share_of(&u, &tree), Some((75, 20.0)));
         u.life.attribute_type = Some(attribute::STONE);
         assert_eq!(share_of(&u, &tree), Some((0, 20.0)));
         u.life.state = ObjectState::Alive;
-        u.life.hp = 5.0;
+        u.life.hp = HitPoints::new(5.0);
         assert_eq!(share_of(&u, &tree), Some((75, 5.0)));
     }
 
@@ -927,7 +928,7 @@ mod tests {
             kind: master_type::STATIC,
             ..Master::default()
         };
-        let mut house = object(10, ids::HOUSE, ObjectState::Alive, 275.0);
+        let mut house = object(10, ids::HOUSE, ObjectState::Alive, HitPoints::new(275.0));
         let mut sprites = Well512::default();
         house.sprite = Some(crate::objects::sprite::ActiveSprite::start(
             graphic(1070),
@@ -936,8 +937,8 @@ mod tests {
         let player = crate::world::Player {
             objects: vec![
                 house,
-                object(11, ids::HOUSE, ObjectState::DyingSprite, 0.0),
-                object(12, master_id(1403), ObjectState::Alive, 1.0),
+                object(11, ids::HOUSE, ObjectState::DyingSprite, HitPoints::ZERO),
+                object(12, master_id(1403), ObjectState::Alive, HitPoints::new(1.0)),
             ]
             .into(),
             ..crate::world::Player::default()
@@ -966,7 +967,7 @@ mod tests {
         };
         assert_eq!(
             (house.life.master_id, house.life.hp),
-            (master_id(70), 450.0)
+            (master_id(70), HitPoints::new(450.0))
         );
         assert_eq!(house.sprite.map(|s| s.graphic.id), Some(1464));
         assert!(house.own_master.is_none());
@@ -1007,7 +1008,12 @@ mod tests {
             volley_fire: 3.0,
             ..Master::default()
         };
-        let mut v = object(10, ids::VILLAGER_MALE, ObjectState::Alive, 25.0);
+        let mut v = object(
+            10,
+            ids::VILLAGER_MALE,
+            ObjectState::Alive,
+            HitPoints::new(25.0),
+        );
         (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 10.0);
         v.firepower = 1.0;
         let player = crate::world::Player {
@@ -1029,7 +1035,7 @@ mod tests {
         let v = &t.players[0].objects[ListIndex::new(0)];
         assert_eq!(
             (v.life.master_id, v.life.hp, v.firepower),
-            (master_id(6), 50.0, 3.0)
+            (master_id(6), HitPoints::new(50.0), 3.0)
         );
         assert_eq!(v.life.held(), carrying(None, 0.0));
         let a = &t.players[0].attributes;
@@ -1194,11 +1200,21 @@ mod tests {
             hit_points,
             ..Master::default()
         };
-        let mut own = object(11, master_id(4), ObjectState::Alive, 20.0);
+        let mut own = object(11, master_id(4), ObjectState::Alive, HitPoints::new(20.0));
         own.own_master = Some(Box::new(soldier(master_id(4), 40)));
         let player = crate::world::Player {
-            objects: vec![object(10, master_id(4), ObjectState::Alive, 20.0), own].into(),
-            sleeping: vec![object(12, master_id(4), ObjectState::Alive, 20.0)].into(),
+            objects: vec![
+                object(10, master_id(4), ObjectState::Alive, HitPoints::new(20.0)),
+                own,
+            ]
+            .into(),
+            sleeping: vec![object(
+                12,
+                master_id(4),
+                ObjectState::Alive,
+                HitPoints::new(20.0),
+            )]
+            .into(),
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
@@ -1230,7 +1246,7 @@ mod tests {
             p.objects
                 .iter()
                 .chain(&p.sleeping)
-                .map(|u| u.life.hp)
+                .map(|u| u.life.hp.get())
                 .collect()
         };
         let mut t = upgrade_world();
@@ -1373,7 +1389,7 @@ mod tests {
             ..Master::default()
         };
         let shown = |at: i16, new: &Master| {
-            let mut u = object(10, master_id(4), ObjectState::Alive, 10.0);
+            let mut u = object(10, master_id(4), ObjectState::Alive, HitPoints::new(10.0));
             u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(at),
                 &mut Well512::default(),
@@ -1416,7 +1432,7 @@ mod tests {
             ..villager.clone()
         };
         let load = |master: &Master, kind, amount| {
-            let mut v = object(10, master.id, ObjectState::Alive, 25.0);
+            let mut v = object(10, master.id, ObjectState::Alive, HitPoints::new(25.0));
             (v.life.attribute_type, v.life.amount) = (kind, amount);
             let mut t = one_player(vec![v], vec![master.clone()], &[]);
             t.players[0].attributes[37] = 1.0;
@@ -1471,7 +1487,7 @@ mod tests {
             ..Master::default()
         };
         let sighted = |state: ObjectState, inside: Option<ObjectId>, keep: bool| {
-            let mut u = object(10, master_id(4), state, 10.0);
+            let mut u = object(10, master_id(4), state, HitPoints::new(10.0));
             u.place_for_test(Position::new(5.5, 5.5, 0.0));
             u.life.inside = inside;
             let mut t = one_player(vec![u], vec![old.clone()], &[]);
@@ -1580,7 +1596,12 @@ mod tests {
             ..old.clone()
         };
         let upgraded = |old: &Master, new: &Master, at: i16| {
-            let mut u = object(10, master_id(4), ObjectState::DyingSprite, 20.0);
+            let mut u = object(
+                10,
+                master_id(4),
+                ObjectState::DyingSprite,
+                HitPoints::new(20.0),
+            );
             u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(at),
                 &mut Well512::default(),
@@ -1592,7 +1613,10 @@ mod tests {
             let u = &t.players[0].objects[ListIndex::new(0)];
             (u.life.hp, u.sprite.map(|s| s.graphic.id), u.charge)
         };
-        assert_eq!(upgraded(&old, &new, 300), (30.0, Some(400), 3.0));
+        assert_eq!(
+            upgraded(&old, &new, 300),
+            (HitPoints::new(30.0), Some(400), 3.0)
+        );
         // the second standing sprite becomes the new standing one when the new has none
         assert_eq!(upgraded(&old, &new, 301).1, Some(400));
         assert_eq!(upgraded(&old, &new, 302).1, Some(402));
@@ -1602,7 +1626,7 @@ mod tests {
             hit_points: 0,
             ..old.clone()
         };
-        assert_eq!(upgraded(&none, &new, 304).0, 0.0);
+        assert_eq!(upgraded(&none, &new, 304).0, HitPoints::ZERO);
         let uncharged = Master {
             charge_type: 0,
             ..new

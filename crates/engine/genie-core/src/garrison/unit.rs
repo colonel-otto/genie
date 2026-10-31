@@ -10,6 +10,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveDefaults;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::class;
@@ -360,7 +361,10 @@ impl Unit {
             }
         }
         if bm.kind == BUILDING
-            && hp <= f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE
+            && hp
+                <= HitPoints::new(
+                    f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE,
+                )
         {
             return Err(GenieError::unsupported(
                 "an enter into a building at a fifth of its hit points (state 13)",

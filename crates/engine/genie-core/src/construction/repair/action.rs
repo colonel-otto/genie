@@ -155,7 +155,7 @@ impl RepairAction {
         }
         if let Some(t) = reads.target
             && (t.state != ObjectState::Alive
-                || LEAST_HP > t.hp
+                || LEAST_HP > t.hp.get()
                 || (!t.allied && t.owner != PlayerId::GAIA))
         {
             self.drop_target(c, repairer, reads)?;

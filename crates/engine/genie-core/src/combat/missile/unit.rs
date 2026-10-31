@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{RecordId, WalkQuery};
 use crate::math::rng::Stream;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::ObjectState;
@@ -131,7 +132,7 @@ impl Unit {
         let to = old.moved(step);
         let (w, h) = (c.w.spatial.map.width(), c.w.spatial.map.height());
         if to.x() < 0.0 || w as f32 <= to.x() || to.y() < 0.0 || h as f32 <= to.y() {
-            self.life.hp = 0.0;
+            self.life.hp = HitPoints::ZERO;
         }
         let mover = self
             .body
@@ -306,7 +307,7 @@ impl Unit {
     /// (`FUN_14118f580`), its hit points to 0.
     pub(crate) const fn end_missile(&mut self, action: &mut crate::combat::missile::MissileAction) {
         action.state = MissileState::Done;
-        self.life.hp = 0.0;
+        self.life.hp = HitPoints::ZERO;
     }
 
     /// The shooter's hit for its missile (`FUN_140a9e6e0`: slot 0x860 of the object it was fired
@@ -546,7 +547,7 @@ impl Unit {
                 ));
             }
             let before = self.life.state;
-            self.life.hp = 0.0;
+            self.life.hp = HitPoints::ZERO;
             self.life.goto_sleep = false;
             self.life.state = ObjectState::Removed;
             c.w.spatial.sight_state(self.id, ObjectState::Removed)?;

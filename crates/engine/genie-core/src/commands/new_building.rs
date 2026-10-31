@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::HitPoints;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -252,7 +253,7 @@ impl World {
             life: Lifecycle {
                 class: Class::Animated,
                 state: ObjectState::Foundation,
-                hp,
+                hp: HitPoints::new(hp),
                 master_id: master,
                 attribute_type: held.kind,
                 amount: held.amount,

@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -329,8 +330,8 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
     };
     let player = Player {
         objects: vec![
-            villager(object_id(9175), 25.0),
-            villager(object_id(9177), 10.0),
+            villager(object_id(9175), HitPoints::new(25.0)),
+            villager(object_id(9177), HitPoints::new(10.0)),
         ]
         .into(),
         ..Player::default()
@@ -358,7 +359,11 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
     t.do_effect(PlayerId::new(0), &loom, None).unwrap();
-    let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
+    let hp: Vec<f32> = t.players[0]
+        .objects
+        .iter()
+        .map(|u| u.life.hp.get())
+        .collect();
     // (25 + 15) × 10 / 25 = 16
     assert_eq!(hp, [40.0, 16.0]);
     let m = t.masters[0].get(ids::VILLAGER_MALE).unwrap();
@@ -387,7 +392,7 @@ fn built() -> crate::construction::build::Construction {
     }
 }
 
-fn unit_of(id: i32, master: MasterId, hp: f32) -> Unit {
+fn unit_of(id: i32, master: MasterId, hp: HitPoints) -> Unit {
     let mut u = Unit {
         id: object_id(id),
         ..Unit::default()
@@ -419,8 +424,8 @@ fn attribute(kind: u8, a: i16, b: i16, c: i16, d: f32) -> EffectCommand {
 fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
     let player = Player {
         objects: vec![
-            unit_of(1, master_id(4), 30.0),
-            unit_of(2, master_id(5), 30.0),
+            unit_of(1, master_id(4), HitPoints::new(30.0)),
+            unit_of(2, master_id(5), HitPoints::new(30.0)),
         ]
         .into(),
         ..Player::default()
@@ -442,7 +447,11 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
     t.load_trackers().unwrap();
     t.do_effect(PlayerId::new(0), &[attribute(0, 4, 6, 0, 90.0)], None)
         .unwrap();
-    let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
+    let hp: Vec<f32> = t.players[0]
+        .objects
+        .iter()
+        .map(|u| u.life.hp.get())
+        .collect();
     assert_eq!(hp, [45.0, 30.0]);
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [90, 60, 60]);
@@ -456,7 +465,10 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
         .unwrap();
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [100, 70, 70]);
-    assert_eq!(t.players[0].objects[ListIndex::new(1)].life.hp, 35.0);
+    assert_eq!(
+        t.players[0].objects[ListIndex::new(1)].life.hp,
+        HitPoints::new(35.0)
+    );
 }
 
 /// `FUN_141614f40`'s hooks: a building's volleys lose the shares of the combat units inside
@@ -464,10 +476,10 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
 /// change of the archers' attack moves an archer's share.
 #[test]
 fn a_change_moves_the_shares_of_the_units_inside_a_building() {
-    let mut tower = unit_of(10, master_id(79), 1000.0);
+    let mut tower = unit_of(10, master_id(79), HitPoints::new(1000.0));
     tower.garrison = vec![object_id(11)];
     tower.firepower = 2.0;
-    let mut archer = unit_of(11, master_id(4), 30.0);
+    let mut archer = unit_of(11, master_id(4), HitPoints::new(30.0));
     archer.life.inside = Some(object_id(10));
     let player = Player {
         objects: vec![tower, archer].into(),
@@ -512,13 +524,13 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
 /// (pending) takes it too.
 #[test]
 fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
-    let mut main = unit_of(20, master_id(30), 100.0);
+    let mut main = unit_of(20, master_id(30), HitPoints::new(100.0));
     main.life.master_id = master_id(30);
     main.construction = Some(built());
-    let mut annex = unit_of(21, master_id(31), 50.0);
+    let mut annex = unit_of(21, master_id(31), HitPoints::new(50.0));
     annex.annex_of = Some(object_id(20));
     annex.construction = Some(built());
-    let mut foundation = unit_of(22, master_id(30), 10.0);
+    let mut foundation = unit_of(22, master_id(30), HitPoints::new(10.0));
     foundation.life.state = ObjectState::Foundation;
     let player = Player {
         objects: vec![main, annex, foundation].into(),
@@ -553,7 +565,11 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     t.load_trackers().unwrap();
     t.do_effect(PlayerId::new(0), &[attribute(5, -1, 3, 0, 1.5)], None)
         .unwrap();
-    let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
+    let hp: Vec<f32> = t.players[0]
+        .objects
+        .iter()
+        .map(|u| u.life.hp.get())
+        .collect();
     assert_eq!(hp, [150.0, 75.0, 15.0]);
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [300, 150]);
@@ -612,7 +628,11 @@ fn a_team_effect_reaches_the_mutual_allies() {
 #[test]
 fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
     let player = Player {
-        objects: vec![unit_of(1, ids::HOUSE, 550.0), unit_of(2, ids::HOUSE, 550.0)].into(),
+        objects: vec![
+            unit_of(1, ids::HOUSE, HitPoints::new(550.0)),
+            unit_of(2, ids::HOUSE, HitPoints::new(550.0)),
+        ]
+        .into(),
         attributes: vec![0.0; 40],
         ..Player::default()
     };
@@ -653,7 +673,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     };
     let world = || {
         let player = Player {
-            objects: vec![unit_of(1, ids::FARM, 10.0)].into(),
+            objects: vec![unit_of(1, ids::FARM, HitPoints::new(10.0))].into(),
             attributes: vec![0.0; 40],
             ..Player::default()
         };
@@ -795,7 +815,7 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
         flags: 0,
     };
     let moving = |id| {
-        let mut u = unit_of(id, master_id(4), 30.0);
+        let mut u = unit_of(id, master_id(4), HitPoints::new(30.0));
         u.body = crate::objects::layers::Body::new(
             Position::new(5.5, 5.5, 0.0),
             None,
@@ -842,11 +862,11 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
 #[test]
 fn an_object_s_copies_of_its_master_follow_its_change() {
     use crate::objects::masters::attribute as a;
-    let mut site = unit_of(1, master_id(4), 30.0);
+    let mut site = unit_of(1, master_id(4), HitPoints::new(30.0));
     site.construction = Some(built());
     let player = Player {
-        objects: vec![site, unit_of(3, master_id(5), 30.0)].into(),
-        sleeping: vec![unit_of(2, master_id(4), 30.0)].into(),
+        objects: vec![site, unit_of(3, master_id(5), HitPoints::new(30.0))].into(),
+        sleeping: vec![unit_of(2, master_id(4), HitPoints::new(30.0))].into(),
         ..Player::default()
     };
     let mut t = World::new(
@@ -957,7 +977,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
 /// A speed's change reaches what a unit of the master moves with (the game reads its master).
 #[test]
 fn a_speed_change_reaches_the_units_movement() {
-    let mut walker = unit_of(1, master_id(4), 25.0);
+    let mut walker = unit_of(1, master_id(4), HitPoints::new(25.0));
     let mover = crate::gathering::hunt::tests::walker();
     let stats = mover.stats;
     walker.body.put_mover(Some(mover));
@@ -1039,7 +1059,7 @@ fn the_resource_commands_set_add_and_multiply_an_attribute() {
 /// (`FUN_141615270`), the exponent attribute 31.
 #[test]
 fn a_farm_food_change_grows_the_farms_food() {
-    let mut farm = unit_of(5, ids::FARM, 480.0);
+    let mut farm = unit_of(5, ids::FARM, HitPoints::new(480.0));
     farm.life.amount = 75.0;
     farm.construction = Some(built());
     farm.actions
@@ -1321,11 +1341,16 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
         .unwrap();
     assert_eq!(t.masters[0].get(master_id(74)).unwrap().hit_points, 45);
     // with an object: its slot 0x98 keeps its share of the hit points (45 of 45: 50 of 50)
-    t.players[0].objects.push(unit_of(1, master_id(74), 45.0));
+    t.players[0]
+        .objects
+        .push(unit_of(1, master_id(74), HitPoints::new(45.0)));
     t.do_effect(PlayerId::new(0), &[attribute(3, 74, 75, -1, 0.0)], None)
         .unwrap();
     let u = &t.players[0].objects[ListIndex::new(0)];
-    assert_eq!((u.life.master_id, u.life.hp), (master_id(74), 50.0));
+    assert_eq!(
+        (u.life.master_id, u.life.hp),
+        (master_id(74), HitPoints::new(50.0))
+    );
     assert_eq!(t.masters[0].get(master_id(74)).unwrap().hit_points, 50);
 }
 
@@ -1335,7 +1360,7 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
 /// (`FUN_1415c1f70`): the slots after an emptied one keep their places.
 #[test]
 fn spawns_and_cost_entries() {
-    let mut centre = unit_of(1, ids::TOWN_CENTRE, 2400.0);
+    let mut centre = unit_of(1, ids::TOWN_CENTRE, HitPoints::new(2400.0));
     centre.life.state = ObjectState::Foundation;
     let player = Player {
         objects: vec![centre].into(),
@@ -1851,7 +1876,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
     };
     let mut rng = crate::math::rng::Well512::default();
     let mut shown = |id, variant| {
-        let mut u = unit_of(id, master_id(4), 30.0);
+        let mut u = unit_of(id, master_id(4), HitPoints::new(30.0));
         u.sprite = Some(ActiveSprite::start(graphic(300), &mut rng));
         u.idle_variant = variant;
         u
@@ -1915,10 +1940,10 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
 /// changes.
 #[test]
 fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
-    let mut house = unit_of(1, ids::HOUSE, 550.0);
+    let mut house = unit_of(1, ids::HOUSE, HitPoints::new(550.0));
     house.place_for_test(Position::new(5.5, 5.5, 0.0));
     house.construction = Some(built());
-    let mut soldier = unit_of(2, master_id(4), 30.0);
+    let mut soldier = unit_of(2, master_id(4), HitPoints::new(30.0));
     soldier.group.id = Some(group_id(7));
     let player = Player {
         objects: vec![house, soldier].into(),

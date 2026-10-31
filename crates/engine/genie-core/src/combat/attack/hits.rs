@@ -99,7 +99,7 @@ pub(crate) fn strike(
         let master_hp = i32::from(own.master_hp);
         victim
             .damaged
-            .push((Some(own.id), [own.id.get(), own.hp as i32, master_hp]));
+            .push((Some(own.id), [own.id.get(), own.hp.get() as i32, master_hp]));
         return Ok(Struck {
             result: 2,
             executed: None,

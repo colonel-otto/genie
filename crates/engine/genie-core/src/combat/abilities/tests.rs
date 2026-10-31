@@ -55,11 +55,11 @@ fn keshik_gold() -> Task {
 
 #[test]
 fn the_living_path_takes_at_least_1_hit_point_or_a_nan() {
-    assert!(alive(1.0));
-    assert!(alive(25.0));
-    assert!(alive(f32::NAN));
-    assert!(!alive(0.999_999_94));
-    assert!(!alive(0.0));
+    assert!(alive(HitPoints::new(1.0)));
+    assert!(alive(HitPoints::new(25.0)));
+    assert!(alive(HitPoints::new(f32::NAN)));
+    assert!(!alive(HitPoints::new(0.999_999_94)));
+    assert!(!alive(HitPoints::ZERO));
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn a_building_generates_once_built() {
 fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class() {
     let t = keshik_gold();
     let target = WorkTarget {
-        hp: 45.0,
+        hp: HitPoints::new(45.0),
         storage: 0.0,
         class: class::CLASS_0,
     };
@@ -149,7 +149,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     ));
     // a dead target counts while its master stores some, never with a NaN
     let dead = WorkTarget {
-        hp: 0.0,
+        hp: HitPoints::ZERO,
         storage: 1.0,
         ..target
     };
@@ -161,7 +161,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         false
     ));
     let empty = WorkTarget {
-        hp: 0.0,
+        hp: HitPoints::ZERO,
         storage: 0.0,
         ..target
     };
@@ -173,7 +173,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         false
     ));
     let nan = WorkTarget {
-        hp: f32::NAN,
+        hp: HitPoints::new(f32::NAN),
         storage: f32::NAN,
         ..target
     };
@@ -392,31 +392,31 @@ fn a_movement_damage_strikes_enemies_in_reach() {
 #[test]
 fn a_hit_below_1_hit_point_leaves_0_and_holds_nothing() {
     let mut v = Victim {
-        hp: 0.5,
+        hp: HitPoints::new(0.5),
         amount: 30.0,
         capacity: 100,
         ..Victim::default()
     };
     assert!(finish(&mut v));
-    assert_eq!((v.hp, v.amount), (0.0, 0.0));
+    assert_eq!((v.hp, v.amount), (HitPoints::ZERO, 0.0));
     // a capacity below 0 is taken as it is
     let mut v = Victim {
-        hp: -3.0,
+        hp: HitPoints::new(-3.0),
         amount: 30.0,
         capacity: -1,
         ..Victim::default()
     };
     assert!(finish(&mut v));
-    assert_eq!((v.hp, v.amount), (0.0, -1.0));
+    assert_eq!((v.hp, v.amount), (HitPoints::ZERO, -1.0));
     let mut v = Victim {
-        hp: 1.0,
+        hp: HitPoints::new(1.0),
         amount: 30.0,
         ..Victim::default()
     };
     assert!(!finish(&mut v));
     assert_eq!(v.amount, 30.0);
     let mut v = Victim {
-        hp: f32::NAN,
+        hp: HitPoints::new(f32::NAN),
         ..Victim::default()
     };
     assert!(!finish(&mut v));
@@ -593,7 +593,7 @@ fn give_master(t: &mut World, id: MasterId, kind: MasterKind, class: ClassId, ta
 
 /// Object `id` of master `m` with `hp` hit points at (`x`, `y`) in player `p`'s list, placed
 /// on its tile.
-fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, at: Point) {
+fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: HitPoints, at: Point) {
     let mut u = Unit {
         id: object_id(id),
         body: crate::objects::layers::Body::at(at.with_height(0.0)),
@@ -688,7 +688,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
         PlayerId::new(1),
         50,
         master_id(1021),
-        2000.0,
+        HitPoints::new(2000.0),
         Point::new(5.5, 5.5),
     );
     building_sight(&mut t, PlayerId::new(1), 50, true);
@@ -727,7 +727,7 @@ fn keshik(t: &mut World) {
         PlayerId::new(1),
         60,
         master_id(1228),
-        100.0,
+        HitPoints::new(100.0),
         Point::new(5.5, 5.5),
     );
     let attack = crate::combat::attack::Attack {
@@ -774,7 +774,7 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
         PlayerId::new(2),
         77,
         master_id(4),
-        30.0,
+        HitPoints::new(30.0),
         Point::new(6.5, 5.5),
     );
     run(&mut t, PlayerId::new(1), 60);
@@ -808,7 +808,7 @@ fn trampler(t: &mut World) {
         PlayerId::new(1),
         10,
         master_id(9),
-        100.0,
+        HitPoints::new(100.0),
         Point::new(5.5, 5.5),
     );
     let mut mover = crate::gathering::hunt::tests::walker();
@@ -832,7 +832,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         PlayerId::new(2),
         20,
         master_id(4),
-        30.0,
+        HitPoints::new(30.0),
         Point::new(6.5, 5.5),
     );
     put(
@@ -840,7 +840,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         PlayerId::new(2),
         21,
         master_id(4),
-        30.0,
+        HitPoints::new(30.0),
         Point::new(9.5, 5.5),
     );
     put(
@@ -848,7 +848,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         PlayerId::new(1),
         30,
         master_id(4),
-        30.0,
+        HitPoints::new(30.0),
         Point::new(5.5, 6.5),
     );
     put(
@@ -856,15 +856,15 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         PlayerId::new(0),
         40,
         master_id(4),
-        30.0,
+        HitPoints::new(30.0),
         Point::new(4.5, 5.5),
     );
     run(&mut t, PlayerId::new(1), 10);
     let hp = |t: &World, id: ObjectId| t.object(id).unwrap().1.life.hp;
-    assert_eq!(hp(&t, object_id(20)), 25.0);
-    assert_eq!(hp(&t, object_id(21)), 30.0);
-    assert_eq!(hp(&t, object_id(30)), 30.0);
-    assert_eq!(hp(&t, object_id(40)), 30.0);
+    assert_eq!(hp(&t, object_id(20)), HitPoints::new(25.0));
+    assert_eq!(hp(&t, object_id(21)), HitPoints::new(30.0));
+    assert_eq!(hp(&t, object_id(30)), HitPoints::new(30.0));
+    assert_eq!(hp(&t, object_id(40)), HitPoints::new(30.0));
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
             .abilities
@@ -873,7 +873,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     );
     // the timer runs down first: no hit for 3 s
     run(&mut t, PlayerId::new(1), 10);
-    assert_eq!(hp(&t, object_id(20)), 25.0);
+    assert_eq!(hp(&t, object_id(20)), HitPoints::new(25.0));
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
             .abilities
@@ -890,7 +890,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         .unwrap()
         .velocity = None;
     run(&mut t, PlayerId::new(1), 10);
-    assert_eq!(hp(&t, object_id(20)), 25.0);
+    assert_eq!(hp(&t, object_id(20)), HitPoints::new(25.0));
 }
 
 #[test]
@@ -903,13 +903,13 @@ fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
         PlayerId::new(2),
         20,
         master_id(4),
-        3.0,
+        HitPoints::new(3.0),
         Point::new(6.5, 5.5),
     );
     t.players[2].objects[ListIndex::new(0)].life.amount = 10.0;
     run(&mut t, PlayerId::new(1), 10);
     let (_, u) = t.object(object_id(20)).unwrap();
-    assert_eq!((u.life.hp, u.life.amount), (0.0, 0.0));
+    assert_eq!((u.life.hp, u.life.amount), (HitPoints::ZERO, 0.0));
     // FUN_1412005b0: player 1 a kill (20) of player 2 (302), player 2 a loss (154)
     assert_eq!(t.players[1].attributes[20], 1.0);
     assert_eq!(t.players[1].attributes[302], 1.0);
@@ -963,7 +963,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
         PlayerId::new(1),
         70,
         master_id(250),
-        100.0,
+        HitPoints::new(100.0),
         Point::new(5.5, 6.5),
     );
     let mut mover = crate::gathering::hunt::tests::walker();
@@ -1017,7 +1017,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
         PlayerId::new(1),
         80,
         master_id(5),
-        0.0,
+        HitPoints::ZERO,
         Point::new(5.5, 5.5),
     );
     t.players[1].attributes[7] = 2.0;
@@ -1029,7 +1029,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
     };
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, true), vec![r, r]);
     // alive, it issues none
-    t.players[1].objects[ListIndex::new(0)].life.hp = 1.0;
+    t.players[1].objects[ListIndex::new(0)].life.hp = HitPoints::new(1.0);
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, true), Vec::new());
 }
 
@@ -1048,7 +1048,7 @@ fn an_object_of_another_type_has_no_abilities() {
         PlayerId::new(1),
         90,
         ids::ID_7,
-        0.0,
+        HitPoints::ZERO,
         Point::new(5.5, 5.5),
     );
     assert_eq!(rewards(&mut t, PlayerId::new(1), 90, true), Vec::new());

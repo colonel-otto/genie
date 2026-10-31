@@ -122,7 +122,7 @@ fn summary(u: &Unit) -> String {
         "master {} state {} hp {:?} at {:?} action {:?}",
         u.life.master_id,
         u.life.state,
-        u.life.hp,
+        u.life.hp.get(),
         u.position(),
         crate::top_action(u).map(|a| (a.kind, a.state))
     )

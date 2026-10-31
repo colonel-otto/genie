@@ -15,6 +15,7 @@ use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -226,7 +227,7 @@ impl Attack {
             write_strike_back(c, unit, &mut f.victim)?;
         }
         self.pending = false;
-        if f.victim.hp <= 0.0 {
+        if f.victim.hp <= HitPoints::ZERO {
             return self.enter(AttackState::Killed, unit);
         }
         let rest = Seconds::new(

@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -126,7 +127,7 @@ pub struct Surroundings {
     /// The unit's position (`+0x3c8`, `+0x4c8`, `+0x5a8`).
     pub position: Position,
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
     /// size in tiles and the world's dt in seconds (`world+0x164`).
     pub speed: Speed,
@@ -315,7 +316,7 @@ pub struct UnitSeen {
     /// Its place.
     pub position: Position,
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
     /// Its master's id and type (`+0xf`).
     pub master: MasterId,
     /// Its type (`+0xf`).
@@ -345,7 +346,7 @@ pub struct Duel {
     /// What the unit deals it per hit (its slot 0x220 with the unit).
     pub harmed: f32,
     /// Its hit points (`+0x278`).
-    pub hp: f32,
+    pub hp: HitPoints,
 }
 
 /// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`); as

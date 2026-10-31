@@ -6,6 +6,7 @@ use crate::groups::GroupId;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
+use crate::objects::HitPoints;
 use crate::objects::ObjectState;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
@@ -152,7 +153,7 @@ impl World {
             let leaves = match self.world_object(id) {
                 None | Some(WorldObject::Ghost(..)) => true,
                 Some(WorldObject::Unit(p, u)) => {
-                    u.ai.is_none() || u.life.hp < 1.0 || p.index() as u32 != owner
+                    u.ai.is_none() || u.life.hp < HitPoints::new(1.0) || p.index() as u32 != owner
                 }
             };
             if leaves && self.remove_unit(group, id, None, false)? {
@@ -238,8 +239,10 @@ impl World {
             ));
         };
         let most = f32::from(u.master(&self.masters, p)?.hit_points);
-        Ok(crate::math::fmath::below_or_unordered(u.life.hp, most)
-            && self.spatial.allied_with(owner, p)
-            && self.spatial.allied_with(p, owner))
+        Ok(
+            crate::math::fmath::below_or_unordered(u.life.hp.get(), most)
+                && self.spatial.allied_with(owner, p)
+                && self.spatial.allied_with(p, owner),
+        )
     }
 }

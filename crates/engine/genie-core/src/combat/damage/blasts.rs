@@ -9,6 +9,7 @@ use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
+use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -43,7 +44,7 @@ pub(super) fn damage(
                 src.source.charge = 0.0;
             }
         }
-        lose(t, d - blast_taken);
+        lose(t, HitPoints::new(d - blast_taken));
     }
     let marks = t.kind == COMBAT
         || (t.kind == BUILDING && matches!(t.class, class::CLASS_51 | class::CLASS_54));
@@ -61,10 +62,10 @@ pub(super) fn damage(
         };
         // the notify's p1 is the attacker's id (the game's record)
         t.damaged
-            .push((sender, [src.id.get(), t.hp as i32, master_hp]));
+            .push((sender, [src.id.get(), t.hp.get() as i32, master_hp]));
     }
-    if t.hp < 1.0 {
-        t.hp = 0.0;
+    if t.hp < HitPoints::new(1.0) {
+        t.hp = HitPoints::ZERO;
         if t.armored.as_ref().is_some_and(|a| a.kill_tasks) {
             return Err(GenieError::unsupported(
                 "a kill reward task (action type 0xa1)",
@@ -405,14 +406,14 @@ pub(super) fn fixed_blast(
     share: f32,
 ) -> Result<(), GenieError> {
     let before = t.hp;
-    lose(t, share.abs());
-    if t.hp < 1.0 {
-        t.hp = 0.0;
+    lose(t, HitPoints::new(share.abs()));
+    if t.hp < HitPoints::new(1.0) {
+        t.hp = HitPoints::ZERO;
         t.amount = 0.0;
         if f32::from(t.capacity) < t.amount {
             t.amount = f32::from(t.capacity);
         }
-        if 1.0 <= before && t.player != PlayerId::GAIA && t.kind == COMBAT {
+        if HitPoints::new(1.0) <= before && t.player != PlayerId::GAIA && t.kind == COMBAT {
             t.killed = Some(Kill {
                 attacker: attacker.id,
                 attacker_player: attacker.player.index(),
@@ -450,7 +451,7 @@ pub(super) fn blast_hit(
             None => None,
         };
         if let Some(b) = ledger {
-            b.blast_taken += lost;
+            b.blast_taken += lost.get();
         }
     }
     *targets[i] = t;

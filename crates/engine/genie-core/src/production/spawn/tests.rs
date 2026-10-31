@@ -8,6 +8,7 @@ use crate::map::Radii;
 use crate::map::Tile;
 use crate::map::TileOffset;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
@@ -232,7 +233,7 @@ fn sheep(state: ObjectState) -> Near {
         fog_visibility: 0,
         fog_mask: None,
         holds: false,
-        hp: 7.0,
+        hp: HitPoints::new(7.0),
         forest_tile: false,
         outline: Radii::ZERO,
     }
@@ -1239,7 +1240,7 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
     let stump = Near {
         class: class::TREE,
         kind: master_type::STATIC,
-        hp: 1.0,
+        hp: HitPoints::new(1.0),
         ..still
     };
     assert!(passes(stump));
@@ -1247,7 +1248,10 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
         forest_tile: true,
         ..stump
     }));
-    assert!(!passes(Near { hp: 2.0, ..stump }));
+    assert!(!passes(Near {
+        hp: HitPoints::new(2.0),
+        ..stump
+    }));
 }
 
 /// What blocks a foundation at (21, 21): another player's house whose box overlaps it; not a
@@ -1293,7 +1297,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         Near {
             class: class::TREE,
             kind: master_type::STATIC,
-            hp: 1.0,
+            hp: HitPoints::new(1.0),
             ..house
         },
         Near {

@@ -14,6 +14,7 @@ use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::Speed;
+use crate::objects::HitPoints;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
@@ -425,7 +426,7 @@ impl World {
             state: u.life.state,
             held: u.life.held(),
             hp: u.life.hp + u.hp_powerup.room(),
-            max_hp: f32::from(master.hit_points) + u.hp_powerup.max,
+            max_hp: HitPoints::of_master(master.hit_points) + u.hp_powerup.max,
             attackable: u.attackable,
             pasture: u.pasture,
             top_action: u.top_action_kind(),
@@ -462,7 +463,7 @@ const fn clear_powerups(unit: &mut Unit) {
     unit.range_powerup = Distance::ZERO;
     unit.reload_powerup = 0.0;
     unit.work_rate_powerup = 0.0;
-    unit.hp_powerup.max = 0.0;
+    unit.hp_powerup.max = HitPoints::ZERO;
     unit.armor_powerups = [0; 2];
 }
 
@@ -597,7 +598,7 @@ const DAMAGE_WHOLE: f32 = crate::math::image::order::DAMAGE_WHOLE;
 /// The damage share `FUN_1411859a0` picks damage sprites by: `100 − hp × 100 / hit points`,
 /// whole, of hit points at most the master's. An object whose share is its resource's (the
 /// classes `FUN_141193590` names; its master's `+0x681` would add any) is not modelled.
-fn damage_share(hp: f32, hit_points: i16, class: ClassId) -> Result<u8, GenieError> {
+fn damage_share(hp: HitPoints, hit_points: i16, class: ClassId) -> Result<u8, GenieError> {
     if matches!(
         class,
         class::CLASS_5
@@ -623,7 +624,7 @@ fn damage_share(hp: f32, hit_points: i16, class: ClassId) -> Result<u8, GenieErr
         ));
     }
     let most = f32::from(hit_points);
-    let hp = hp.min(most);
+    let hp = hp.get().min(most);
     Ok((DAMAGE_WHOLE - hp * DAMAGE_WHOLE / most) as i32 as u8)
 }
 
