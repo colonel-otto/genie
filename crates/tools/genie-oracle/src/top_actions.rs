@@ -488,6 +488,7 @@ fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError
 
 /// The Explore (4): its state, its `MoveTo` and the wait.
 fn import_explore(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
+    use genie_core::movement::explore::ExploreState;
     let base = saved.base;
     let sub = saved.move_to_sub(GenieError::unsupported(
         "a saved Explore with another sub-action",
@@ -496,17 +497,15 @@ fn import_explore(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
     let move_to = sub
         .map(|s| saved_move_to(s, saved.graphics, true))
         .transpose()?;
-    if !matches!(
-        base.state,
-        genie_core::movement::explore::WAIT | genie_core::movement::explore::WALK
-    ) {
-        return Err(GenieError::unsupported(
+    let state = ExploreState::of_byte(base.state)
+        .ok()
+        .filter(|s| matches!(s, ExploreState::Wait | ExploreState::Walk))
+        .ok_or(GenieError::unsupported(
             "a saved Explore in a state the slice does not model",
-        ));
-    }
+        ))?;
     unit.actions
         .set_explore(Some(genie_core::movement::explore::ExploreAction {
-            state: base.state,
+            state,
             point: saved.point(),
             move_to,
         }));

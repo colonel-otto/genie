@@ -33,6 +33,7 @@ use genie_diff::Diff;
 
 pub(crate) mod ai_moves;
 pub mod explore;
+mod explore_state;
 pub mod fly;
 mod long_walk;
 pub mod move_to;

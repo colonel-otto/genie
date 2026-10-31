@@ -3286,17 +3286,20 @@ fn with_effects(t: &mut World, effects: Vec<Effect>) -> Result<(), GenieError> {
 /// not modelled.
 #[test]
 fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
-    use crate::movement::explore::{WAIT, WALK};
+    use crate::movement::explore::ExploreState;
     use crate::unit_ai::Effect;
     let mut t = forage_world();
     with_effects(&mut t, vec![Effect::Explore(Point::new(40.0, 90.0))]).unwrap();
     let e = t.players[1].objects[0].actions.explore().copied().unwrap();
-    assert_eq!((e.state, e.point), (WALK, Position::new(40.0, 90.0, 0.0)));
+    assert_eq!(
+        (e.state, e.point),
+        (ExploreState::Walk, Position::new(40.0, 90.0, 0.0))
+    );
     assert!(e.move_to.is_some());
     with_effects(&mut t, vec![Effect::Explore(Point::new(-1.0, 90.0))]).unwrap();
     let v = &t.players[1].objects[0];
     let e = v.actions.explore().copied().unwrap();
-    assert_eq!((e.state, e.move_to), (WAIT, None));
+    assert_eq!((e.state, e.move_to), (ExploreState::Wait, None));
     let notifies = &v.ai.as_ref().unwrap().notifies;
     assert_eq!(
         notifies.last().map(|n| (n.kind, n.p)),
@@ -15712,7 +15715,7 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
         let me = crate::movement::Me {
             id: unit.id,
             group: unit.group.id,
-            action_state: crate::movement::explore::WALK,
+            action_state: crate::movement::explore::ExploreState::Walk.get(),
         };
         unit.explore_part(c, me)
     });
@@ -15753,7 +15756,7 @@ fn an_explore_s_move_to_shows_the_master_s_walking_sprite_as_it_starts() {
         let me = crate::movement::Me {
             id: unit.id,
             group: unit.group.id,
-            action_state: crate::movement::explore::WALK,
+            action_state: crate::movement::explore::ExploreState::Walk.get(),
         };
         unit.explore_part(c, me)
     });
@@ -15781,13 +15784,13 @@ type Explored = (
 /// not modelled.
 #[test]
 fn an_explore_walks_to_its_point_then_asks_for_the_next() {
-    use crate::movement::explore::{WAIT, WALK};
+    use crate::movement::explore::ExploreState;
     let (r, e, heard) = explored(|_| ());
     assert_eq!(r, Ok(()));
     let e = e.unwrap();
     assert_eq!(
         (e.state, e.move_to.map(|m| m.state)),
-        (WALK, Some(MoveTo::Moving))
+        (ExploreState::Walk, Some(MoveTo::Moving))
     );
     assert_eq!(heard, []);
     let asked = vec![(
@@ -15802,16 +15805,25 @@ fn an_explore_walks_to_its_point_then_asks_for_the_next() {
         });
         assert_eq!(r, Ok(()));
         let e = e.unwrap();
-        assert_eq!((e.state, e.move_to), (WAIT, None));
+        assert_eq!((e.state, e.move_to), (ExploreState::Wait, None));
         assert_eq!(heard, asked);
     }
     let (r, e, heard) = explored(|e| {
-        let _ = e.set_state(WAIT, None);
+        let _ = e.set_state(ExploreState::Wait, None);
     });
-    assert_eq!((r, e.map(|e| e.state), heard), (Ok(()), Some(WAIT), vec![]));
+    assert_eq!(
+        (r, e.map(|e| e.state), heard),
+        (Ok(()), Some(ExploreState::Wait), vec![])
+    );
     for (state, reason) in [
-        (DONE, "a done Explore (the action list after it)"),
-        (FAILED, "a failed Explore (notify 0x1f9, set_state 2)"),
+        (
+            ExploreState::Done,
+            "a done Explore (the action list after it)",
+        ),
+        (
+            ExploreState::Failed,
+            "a failed Explore (notify 0x1f9, set_state 2)",
+        ),
     ] {
         let (r, _, _) = explored(|e| e.state = state);
         assert_eq!(r.unwrap_err().reason(), reason);

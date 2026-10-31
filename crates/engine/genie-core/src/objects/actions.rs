@@ -154,7 +154,7 @@ impl Action {
             Self::Hunt(a) => a.state.get(),
             Self::Gather(a) => a.state.get(),
             Self::Attack(a) => a.state.get(),
-            Self::Explore(a) => a.state,
+            Self::Explore(a) => a.state.get(),
             Self::Enter(a) => a.state,
             Self::Transport(a) => a.state.get(),
             Self::Missile(a) => a.state,

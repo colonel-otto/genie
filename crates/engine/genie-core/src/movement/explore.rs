@@ -21,8 +21,6 @@ use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::{Unit, object_master};
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitStance;
@@ -33,12 +31,7 @@ use std::collections::BTreeMap;
 /// The Explore action's type.
 pub const EXPLORE: ActionType = ActionType::named(4);
 
-/// State 2: stopped.
-pub const STOPPED: u8 = 2;
-/// State 3: waiting for a point.
-pub const WAIT: u8 = 3;
-/// State 11: walking to the point.
-pub const WALK: u8 = 11;
+pub use crate::movement::explore_state::ExploreState;
 
 /// State 11 made without what its `MoveTo` reads of the unit.
 const WALK_WITHOUT_READS: GenieError =
@@ -65,7 +58,7 @@ pub enum Owner {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct ExploreAction {
     /// `+0x18`.
-    pub state: u8,
+    pub state: ExploreState,
     /// The point it walks to (`+0x38`..`+0x40`), x −1 for none.
     pub point: Position,
     /// Its `MoveTo` to the point: state 11's sub-action, quiet, range 0, with the master's walking
@@ -105,11 +98,15 @@ impl ExploreAction {
     /// A sprite the table lacks.
     pub fn new(point: Position, walk: &ExploreMove<'_>) -> Result<(Self, Owner), GenieError> {
         let mut a = Self {
-            state: 0,
+            state: ExploreState::New,
             point,
             move_to: None,
         };
-        let state = if a.point.x() == NO_POINT { WAIT } else { WALK };
+        let state = if a.point.x() == NO_POINT {
+            ExploreState::Wait
+        } else {
+            ExploreState::Walk
+        };
         let owner = a.set_state(state, Some(walk))?;
         Ok((a, owner))
     }
@@ -124,25 +121,24 @@ impl ExploreAction {
     /// A sprite the table lacks, and state 11 without `walk`.
     pub fn set_state(
         &mut self,
-        state: u8,
+        state: ExploreState,
         walk: Option<&ExploreMove<'_>>,
     ) -> Result<Owner, GenieError> {
         self.move_to = None;
         self.state = state;
         Ok(match state {
-            STOPPED => {
+            ExploreState::Stopped => {
                 self.point = Position::from([-1.0; 3]);
                 Owner::Stopped
             }
-            WAIT => Owner::WantsPoint,
-            // State 13: failed.
-            DONE | FAILED | 14 => Owner::Standing,
-            WALK => {
+            ExploreState::Wait => Owner::WantsPoint,
+            ExploreState::Done | ExploreState::Failed | ExploreState::Ended => Owner::Standing,
+            ExploreState::Walk => {
                 let walk = walk.ok_or(WALK_WITHOUT_READS)?;
                 self.move_to = walk.reads.to_point(self.point, 0.0, walk.given)?;
                 Owner::Nothing
             }
-            _ => Owner::Nothing,
+            ExploreState::New => Owner::Nothing,
         })
     }
 
@@ -160,9 +156,9 @@ impl ExploreAction {
     ) -> Result<Owner, GenieError> {
         if 0.0 <= point.x() && 0.0 <= point.y() {
             self.point = point;
-            return self.set_state(WALK, Some(walk));
+            return self.set_state(ExploreState::Walk, Some(walk));
         }
-        self.set_state(WAIT, None)
+        self.set_state(ExploreState::Wait, None)
     }
 
     /// What the update does after its `MoveTo`'s update returned `code` (`0x140a880c0` in state 11,
@@ -170,7 +166,7 @@ impl ExploreAction {
     /// runs the action's slot 0x68 and walks again (`set_state` 11), which is not modelled.
     pub fn after_walk(&mut self, code: u8) -> Result<Owner, GenieError> {
         match code {
-            1 | 2 | 3 | 5 => self.set_state(WAIT, None),
+            1 | 2 | 3 | 5 => self.set_state(ExploreState::Wait, None),
             4 => Err(GenieError::unsupported(
                 "an Explore whose MoveTo returned 4 (its slot 0x68)",
             )),
@@ -201,13 +197,13 @@ impl ExploreAction {
         // 0x140a880c0: state 1 is done (the action list removes it, the default task's restart
         // is not modelled), 11 walks, 13 fails; the others wait
         match self.state {
-            DONE => Err(GenieError::unsupported(
+            ExploreState::Done => Err(GenieError::unsupported(
                 "a done Explore (the action list after it)",
             )),
-            FAILED => Err(GenieError::unsupported(
+            ExploreState::Failed => Err(GenieError::unsupported(
                 "a failed Explore (notify 0x1f9, set_state 2)",
             )),
-            WALK => self.walk(c, explorer, me),
+            ExploreState::Walk => self.walk(c, explorer, me),
             _ => Ok(()),
         }
     }
@@ -731,7 +727,10 @@ mod tests {
         let table = BTreeMap::from([(7, WALKING)]);
         let walk = walk_of(&table, Some(7));
         let (mut a, owner) = ExploreAction::new(Position::new(-1.0, -1.0, 0.0), &walk).unwrap();
-        assert_eq!((a.state, owner, a.move_to), (WAIT, Owner::WantsPoint, None));
+        assert_eq!(
+            (a.state, owner, a.move_to),
+            (ExploreState::Wait, Owner::WantsPoint, None)
+        );
         let walking = WALKING;
         assert_eq!(
             a.take_point(Position::new(19.0, 84.0, 0.0), &walk),
@@ -747,10 +746,10 @@ mod tests {
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::NEW,
         };
-        assert_eq!((a.state, a.move_to), (WALK, Some(made)));
+        assert_eq!((a.state, a.move_to), (ExploreState::Walk, Some(made)));
         assert_eq!(a.after_walk(0), Ok(Owner::Nothing));
         assert_eq!(a.after_walk(1), Ok(Owner::WantsPoint));
-        assert_eq!((a.state, a.move_to), (WAIT, None));
+        assert_eq!((a.state, a.move_to), (ExploreState::Wait, None));
         assert_eq!(
             a.take_point(Position::new(-1.0, 5.0, 0.0), &walk),
             Ok(Owner::WantsPoint)
