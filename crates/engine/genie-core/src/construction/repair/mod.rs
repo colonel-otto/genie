@@ -28,12 +28,14 @@ use genie_diff::Diff;
 
 mod action;
 pub(crate) mod payment;
+mod repair_state;
 pub(crate) mod unit;
 
 pub use self::action::work_amount;
 pub use self::payment::{
     BUILDING_REPAIR_COST, Payer, Repaired, UNIT_REPAIR_COST, repair_building, repair_unit,
 };
+pub use self::repair_state::RepairState;
 pub(crate) use self::unit::repair_target;
 
 /// The Repair action's type, which word 9 adds, and its tasks' action type.
@@ -50,14 +52,6 @@ const LEAST_HP: f32 = crate::math::image::repair::LEAST_HP;
 const EXTRA_REPAIRER: f32 = crate::math::image::repair::EXTRA_REPAIRER;
 /// The wait of state 10 (`0x3f800000`), and the repairer count's first (`DAT_14330eb8c`).
 const ONE: f32 = crate::math::image::repair::ONE;
-
-const HALTED: u8 = 2;
-const IDLE: u8 = 3;
-const MOVE: u8 = 4;
-const FACE: u8 = 6;
-const WORK: u8 = 7;
-const WAIT: u8 = 10;
-const WALK_POINT: u8 = 11;
 
 /// The ship classes whose repair meets them at the shore (`FUN_140ad9120`: 20, 21, 22, 2, 53).
 pub const SHIPS: [ClassId; 5] = [
@@ -112,7 +106,7 @@ pub struct RepairAction {
     /// The target's id (`+0x30`).
     pub target: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
-    pub state: u8,
+    pub state: RepairState,
     /// Its quiet `MoveTo` sub-action: to the target (state 4) or to the point (state 11).
     pub move_to: Option<MoveToAction>,
     /// `+0x38`..`+0x40`: the target's place as the action last took it (the constructor, states

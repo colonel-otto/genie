@@ -148,7 +148,7 @@ impl Action {
         match self {
             Self::Artifact(a) => a.state,
             Self::Build(a) => a.state,
-            Self::Repair(a) => a.state,
+            Self::Repair(a) => a.state.get(),
             Self::MoveTo(a) => a.state.number(),
             Self::Fly(a) => a.state,
             Self::Hunt(a) => a.state,

@@ -1,5 +1,6 @@
 use super::*;
 use crate::combat::attack::AttackState;
+use crate::construction::repair::RepairState;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -311,7 +312,10 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let objects = &t.players[1].objects;
     assert_eq!(objects[gather].actions.gather().map(|g| g.state), Some(2));
     assert_eq!(objects[build].actions.build().map(|b| b.state), Some(2));
-    assert_eq!(objects[repair].actions.repair().map(|r| r.state), Some(2));
+    assert_eq!(
+        objects[repair].actions.repair().map(|r| r.state),
+        Some(RepairState::Halted)
+    );
     let a = &objects[attack];
     assert_eq!(a.actions.attack().map(|a| a.state), Some(AttackState::Done));
     assert_eq!(a.body.anim_speed(), Some(1.0));

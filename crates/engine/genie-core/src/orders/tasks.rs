@@ -1,6 +1,7 @@
 //! The hunt and gather commands, a build's and a repair's start, retake and target.
 
 use crate::GenieError;
+use crate::construction::repair::RepairState;
 use crate::gathering::hunt::HuntTask;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -335,7 +336,9 @@ impl World {
             .copied()
             .ok_or(NO_REPAIR)?;
         let same = repair.target == Some(target);
-        let stays = same && (repair.state == 6 || (repair.state == 4 && computer));
+        let stays = same
+            && (repair.state == RepairState::Face
+                || (repair.state == RepairState::Move && computer));
         if !stays {
             if !same && repair.counted {
                 self.leave_builders(repair.target)?;

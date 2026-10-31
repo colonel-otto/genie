@@ -8,8 +8,6 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::teardown::HeadCode;
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
@@ -418,12 +416,12 @@ fn a_repairer_shows_its_task_s_sprites_as_it_faces_and_works() {
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         assert_eq!(
             (repair_of(&t).state, sprite_of(&t)),
-            (FACE, Some(sprites[0]))
+            (RepairState::Face, Some(sprites[0]))
         );
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         assert_eq!(
             (repair_of(&t).state, sprite_of(&t)),
-            (WORK, Some(sprites[1]))
+            (RepairState::Work, Some(sprites[1]))
         );
     }
 }
@@ -483,7 +481,7 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
         change(&mut t);
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         let r = repair_of(&t);
-        assert_eq!((r.state, r.target), (DONE, None));
+        assert_eq!((r.state, r.target), (RepairState::Done, None));
         assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_COMPLETED]);
         assert_eq!(sprite_of(&t), Some(5));
         if held {
@@ -512,7 +510,10 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
     t.players[1].objects.push(dying);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
-    assert_eq!((r.state, r.target, r.move_to), (DONE, None, None));
+    assert_eq!(
+        (r.state, r.target, r.move_to),
+        (RepairState::Done, None, None)
+    );
     assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_COMPLETED]);
     assert_eq!(the_house(&t).2, 0, "the house let go");
 }
@@ -520,12 +521,15 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
 /// Gaia's object is repaired: the repairer faces it, then works and joins its repairers.
 #[test]
 fn gaia_s_object_is_repaired() {
-    let mut t = repair_at(NEAR, |r| (r.state, r.move_to) = (FACE, None));
+    let mut t = repair_at(NEAR, |r| (r.state, r.move_to) = (RepairState::Face, None));
     let house = t.players[1].objects.remove(1).unwrap();
     t.players[0].objects.push(house);
     t.players[0].attributes = vec![0.0; 300];
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!((repair_of(&t).state, the_house(&t).1), (WORK, 1));
+    assert_eq!(
+        (repair_of(&t).state, the_house(&t).1),
+        (RepairState::Work, 1)
+    );
 }
 
 /// State 4 once the `MoveTo` ended: within reach the unit faces the target (6); out of reach
@@ -536,21 +540,24 @@ fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
     let mut t = repair_at(NEAR, arrived);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
-    assert_eq!((r.state, r.move_to), (FACE, None));
+    assert_eq!((r.state, r.move_to), (RepairState::Face, None));
     // no MoveTo (the sub-action list empty, FUN_140a992b0's 1) counts as at the target
     let mut t = repair_at(NEAR, |r| r.move_to = None);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!(repair_of(&t).state, FACE);
+    assert_eq!(repair_of(&t).state, RepairState::Face);
     let mut t = repair_at(Position::new(30.0, 95.0, 0.0), arrived);
     passable(&mut t);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
-    assert_eq!((r.state, r.timer, sprite_of(&t)), (WAIT, 1.0, Some(5)));
+    assert_eq!(
+        (r.state, r.timer, sprite_of(&t)),
+        (RepairState::Wait, 1.0, Some(5))
+    );
     let mut t = repair_at(OFF, arrived);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!(repair_of(&t).state, FAILED);
+    assert_eq!(repair_of(&t).state, RepairState::Failed);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Deletes));
-    assert_eq!(repair_of(&t).state, HALTED);
+    assert_eq!(repair_of(&t).state, RepairState::Halted);
     assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_FAILED]);
     assert_eq!(the_house(&t).0, 300.0);
 }
@@ -560,7 +567,7 @@ fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
 /// posts 0x1fb and ends it too; a target that walked out of reach sends the unit walking.
 #[test]
 fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
-    let working = |r: &mut RepairAction| (r.state, r.move_to) = (WORK, None);
+    let working = |r: &mut RepairAction| (r.state, r.move_to) = (RepairState::Work, None);
     let mut t = repair_at(NEAR, working);
     t.players[1].objects[1]
         .construction
@@ -573,7 +580,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
         .unwrap()
         .counted = true;
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!(repair_of(&t).state, WORK);
+    assert_eq!(repair_of(&t).state, RepairState::Work);
     assert_eq!(
         the_house(&t),
         (300.0 + work_amount(1.0, 0.5, 0.05, Some(1)), 1, 1)
@@ -581,7 +588,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
     let h = &mut t.players[1].objects[1];
     (h.life.hp, h.armor_removed) = (549.99, [3, 4]);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!(repair_of(&t).state, DONE);
+    assert_eq!(repair_of(&t).state, RepairState::Done);
     assert_eq!(the_house(&t), (550.0, 0, 0));
     assert_eq!(t.players[1].objects[1].armor_removed, [0, 0]);
     assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_COMPLETED]);
@@ -621,7 +628,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
             r.counted,
             the_house(&t).1
         ),
-        (MOVE, Some(MoveTo::Start), false, 0)
+        (RepairState::Move, Some(MoveTo::Start), false, 0)
     );
 }
 
@@ -629,19 +636,25 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
 /// or waits a second again.
 #[test]
 fn a_waiting_repairer_looks_again_each_second() {
-    let waiting = |r: &mut RepairAction| (r.state, r.move_to, r.timer) = (WAIT, None, 0.1);
+    let waiting =
+        |r: &mut RepairAction| (r.state, r.move_to, r.timer) = (RepairState::Wait, None, 0.1);
     let mut t = repair_at(Position::new(30.0, 95.0, 0.0), waiting);
     passable(&mut t);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
         (repair_of(&t).state, repair_of(&t).timer),
-        (WAIT, 0.1 - 0.05)
+        (RepairState::Wait, 0.1 - 0.05)
     );
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!((repair_of(&t).state, repair_of(&t).timer), (WAIT, 1.0));
-    let mut t = repair_at(NEAR, |r| (r.state, r.move_to, r.timer) = (WAIT, None, 0.0));
+    assert_eq!(
+        (repair_of(&t).state, repair_of(&t).timer),
+        (RepairState::Wait, 1.0)
+    );
+    let mut t = repair_at(NEAR, |r| {
+        (r.state, r.move_to, r.timer) = (RepairState::Wait, None, 0.0);
+    });
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
-    assert_eq!(repair_of(&t).state, FACE);
+    assert_eq!(repair_of(&t).state, RepairState::Face);
 }
 
 /// Slot 8 (`FUN_140ad9700`): the point, the target let go (a counted repairer leaving its
@@ -650,7 +663,7 @@ fn a_waiting_repairer_looks_again_each_second() {
 fn a_move_sends_the_repairer_to_its_point() {
     let mut mover = crate::gathering::hunt::tests::walker();
     let mut r = RepairAction {
-        state: WORK,
+        state: RepairState::Work,
         move_to: None,
         counted: true,
         ..started()
@@ -671,7 +684,12 @@ fn a_move_sends_the_repairer_to_its_point() {
             r.move_to.and_then(|m| m.goal()),
             r.counted
         ),
-        (WALK_POINT, None, Some(Position::new(30.0, 5.0, 0.0)), false)
+        (
+            RepairState::WalkPoint,
+            None,
+            Some(Position::new(30.0, 5.0, 0.0)),
+            false
+        )
     );
     let mut t = repair_at(NEAR, |a| *a = r);
     t.players[1].objects[0]
@@ -682,7 +700,10 @@ fn a_move_sends_the_repairer_to_its_point() {
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
         (repair_of(&t).state, heard(&t)),
-        (DONE, vec![crate::unit_ai::NotifyKind::ACTION_COMPLETED])
+        (
+            RepairState::Done,
+            vec![crate::unit_ai::NotifyKind::ACTION_COMPLETED]
+        )
     );
 }
 
@@ -692,14 +713,14 @@ fn a_move_sends_the_repairer_to_its_point() {
 fn a_halt_stops_the_repair_and_answers_whether_it_counted() {
     let mut mover = crate::gathering::hunt::tests::walker();
     let mut r = RepairAction {
-        state: WORK,
+        state: RepairState::Work,
         counted: true,
         ..started()
     };
     assert_eq!(r.halt(Some(&mut mover)), Ok(true));
     assert_eq!(
         (r.state, r.counted, r.move_to, r.target),
-        (HALTED, false, None, Some(object_id(20)))
+        (RepairState::Halted, false, None, Some(object_id(20)))
     );
     assert_eq!(r.halt(None), Ok(false));
 }
@@ -712,7 +733,7 @@ fn walking_again_starts_a_new_move_to_the_target() {
     let g = graphics();
     let r = started();
     let mut walking = RepairAction {
-        state: WALK_POINT,
+        state: RepairState::WalkPoint,
         move_to: Some(MoveToAction {
             state: MoveTo::Arrived,
             ..r.to_point(Position::new(3.0, 4.0, 0.0), &move_reads(&g))
@@ -727,6 +748,9 @@ fn walking_again_starts_a_new_move_to_the_target() {
     );
     assert_eq!(
         (walking.state, walking.move_to),
-        (MOVE, r.walk(&move_reads(&g), Some(TARGET)).unwrap())
+        (
+            RepairState::Move,
+            r.walk(&move_reads(&g), Some(TARGET)).unwrap()
+        )
     );
 }

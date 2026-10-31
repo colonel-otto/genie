@@ -13,6 +13,7 @@ use crate::commands::{
 };
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::construction::gates::gate_units;
+use crate::construction::repair::RepairState;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
 use crate::map::Footprint;
@@ -2222,7 +2223,13 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
     let r = v.actions.repair().copied().unwrap();
     assert_eq!(
         (r.target, r.state, r.range, r.task.id, r.task.work_value),
-        (Some(object_id(10028)), 4, 0.5, TaskId::test(4), 0.5)
+        (
+            Some(object_id(10028)),
+            RepairState::Move,
+            0.5,
+            TaskId::test(4),
+            0.5
+        )
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -2233,7 +2240,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
             Some(object_id(10028))
         )
     );
-    t.players[1].objects[0].actions.repair_mut().unwrap().state = 6;
+    t.players[1].objects[0].actions.repair_mut().unwrap().state = RepairState::Face;
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
     assert_eq!(
         t.players[1].objects[0]
@@ -2242,7 +2249,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
             .copied()
             .unwrap()
             .state,
-        6
+        RepairState::Face
     );
 }
 
@@ -2269,7 +2276,7 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
         .unwrap();
     {
         let r = t.players[1].objects[0].actions.repair_mut().unwrap();
-        (r.state, r.counted) = (7, true);
+        (r.state, r.counted) = (RepairState::Work, true);
     }
     t.players[1].objects[1]
         .construction
@@ -2283,7 +2290,7 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
         (r.target, r.state, r.counted, r.point),
         (
             Some(object_id(10031)),
-            4,
+            RepairState::Move,
             false,
             Position::new(34.0, 88.0, 0.0)
         )
@@ -5259,7 +5266,12 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     let r = v.actions.repair().copied().expect("the Repair");
     assert_eq!(
         (r.target, r.state, r.range, r.task.id),
-        (Some(object_id(10028)), 4, 0.5, TaskId::test(4))
+        (
+            Some(object_id(10028)),
+            RepairState::Move,
+            0.5,
+            TaskId::test(4)
+        )
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -16460,7 +16472,7 @@ pub(crate) fn repairing(at: Position) -> World {
 
 /// The work command on the house, then `n` of the repairer's repair parts
 /// ([`Unit::repair_part`], 50 ms each): the Repair's states in turn (None once it ended).
-fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
+fn repair_for(t: &mut World, n: usize) -> Vec<Option<RepairState>> {
     let work = crate::orders::Work {
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
@@ -16499,7 +16511,10 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
 #[test]
 fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     let mut t = repairing(Position::new(29.5, 89.5, 0.0));
-    assert_eq!(repair_for(&mut t, 10), [Some(4), Some(13), None]);
+    assert_eq!(
+        repair_for(&mut t, 10),
+        [Some(RepairState::Move), Some(RepairState::Failed), None]
+    );
     let house = &t.players[1].objects[1];
     assert_eq!(
         (house.life.hp, house.repairers(), house.workers),
@@ -16520,7 +16535,14 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     let v = &mut t.players[1].objects[0];
     v.place_for_test(at);
     v.body.mover_mut().unwrap().moved_at = at;
-    assert_eq!(repair_for(&mut t, 400), [Some(4), Some(6), Some(7)]);
+    assert_eq!(
+        repair_for(&mut t, 400),
+        [
+            Some(RepairState::Move),
+            Some(RepairState::Face),
+            Some(RepairState::Work)
+        ]
+    );
     let house = &t.players[1].objects[1];
     assert_eq!(
         (house.life.hp, house.repairers(), house.workers),
@@ -16537,7 +16559,14 @@ fn a_repair_pays_from_what_its_owner_holds_at_the_payment() {
     let mut t = repairing(Position::new(30.0, 89.2, 0.0));
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
-    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    assert_eq!(
+        repair_for(&mut t, 100),
+        [
+            Some(RepairState::Move),
+            Some(RepairState::Face),
+            Some(RepairState::Work)
+        ]
+    );
     let hp = t.players[1].objects[1].life.hp;
     in_update(&mut t, (PlayerId::new(1), 0), 50, |unit, c| {
         c.w.players[1].resources[1] = 0.0;
@@ -16566,7 +16595,14 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     let mut t = repairing(near);
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
-    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    assert_eq!(
+        repair_for(&mut t, 100),
+        [
+            Some(RepairState::Move),
+            Some(RepairState::Face),
+            Some(RepairState::Work)
+        ]
+    );
     assert_eq!(t.players[1].objects[1].life.hp, 302.449_4);
     assert_eq!(t.players[1].resources, [100.0, 99.888_596, 100.0, 100.0]);
     // a castle (650 stone, 4800 hit points) pays its share in stone
@@ -16593,14 +16629,30 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     );
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
-    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    assert_eq!(
+        repair_for(&mut t, 100),
+        [
+            Some(RepairState::Move),
+            Some(RepairState::Face),
+            Some(RepairState::Work)
+        ]
+    );
     assert_eq!(t.players[1].objects[1].life.hp, 3_002.440_4);
     assert_eq!(t.players[1].resources, [100.0, 100.0, 99.668_03, 100.0]);
     let mut t = repairing(near);
     let house = &mut t.players[1].objects[1];
     (house.life.hp, house.armor_removed) = (549.0, [3, 4]);
     let states = repair_for(&mut t, 100);
-    assert_eq!(states, [Some(4), Some(6), Some(7), Some(1), None]);
+    assert_eq!(
+        states,
+        [
+            Some(RepairState::Move),
+            Some(RepairState::Face),
+            Some(RepairState::Work),
+            Some(RepairState::Done),
+            None
+        ]
+    );
     let house = &t.players[1].objects[1];
     assert_eq!(
         (
@@ -16644,12 +16696,28 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     };
     assert_eq!(
         allied(300.0),
-        (vec![Some(4), Some(6), Some(7)], 302.449_4, [3, 4], 1, 1)
+        (
+            vec![
+                Some(RepairState::Move),
+                Some(RepairState::Face),
+                Some(RepairState::Work)
+            ],
+            302.449_4,
+            [3, 4],
+            1,
+            1
+        )
     );
     assert_eq!(
         allied(549.0),
         (
-            vec![Some(4), Some(6), Some(7), Some(1), None],
+            vec![
+                Some(RepairState::Move),
+                Some(RepairState::Face),
+                Some(RepairState::Work),
+                Some(RepairState::Done),
+                None
+            ],
             550.0,
             [0, 0],
             0,
@@ -16680,7 +16748,14 @@ fn a_repair_of_an_annex_repairs_its_main_building_and_counts_there() {
             ..p
         },
     );
-    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    assert_eq!(
+        repair_for(&mut t, 100),
+        [
+            Some(RepairState::Move),
+            Some(RepairState::Face),
+            Some(RepairState::Work)
+        ]
+    );
     let [annex, main] = [&t.players[1].objects[1], &t.players[1].objects[2]];
     assert_eq!(
         (

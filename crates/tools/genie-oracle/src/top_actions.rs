@@ -406,7 +406,7 @@ fn import_repair(
     unit.actions
         .set_repair(Some(genie_core::construction::repair::RepairAction {
             target: ObjectId::of_field(base.target_id),
-            state: base.state,
+            state: genie_core::construction::repair::RepairState::of_byte(base.state)?,
             move_to,
             point: saved.point(),
             timer: base.timer,
