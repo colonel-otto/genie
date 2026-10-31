@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Attackers;
@@ -143,14 +144,14 @@ impl UnitAi {
             order_priority: -1,
             current_action: None,
             current_target: None,
-            target_type: -1,
+            target_class: None,
             target_point: Position::from([-1.0; 3]),
             desired_distance: DESIRED_DISTANCE,
             defend_target: None,
             last_order: None,
             last_action: None,
             last_target: None,
-            last_target_type: -1,
+            last_target_class: None,
             idle_timer: 0,
             adjusted_idle_timeout,
             idle_timeout: IDLE_TIMEOUT,
@@ -416,15 +417,15 @@ impl UnitAi {
     pub(crate) const fn target_at(
         &mut self,
         id: Option<ObjectId>,
-        class: Option<i32>,
+        class: Option<ClassId>,
         point: Position,
     ) {
         self.last_target = self.current_target;
-        self.last_target_type = self.target_type;
+        self.last_target_class = self.target_class;
         self.current_target = id;
         self.target_point = point;
         if let Some(class) = class {
-            self.target_type = class;
+            self.target_class = class.or_none();
         }
     }
 
@@ -432,12 +433,12 @@ impl UnitAi {
     pub(crate) const fn set_target(
         &mut self,
         target: Option<ObjectId>,
-        class: i32,
+        class: Option<ClassId>,
         point: Position,
     ) {
         self.last_target = self.current_target;
-        self.last_target_type = self.target_type;
-        self.target_type = class;
+        self.last_target_class = self.target_class;
+        self.target_class = class;
         self.target_point = point;
         self.current_target = target;
     }
@@ -453,14 +454,14 @@ impl UnitAi {
         &mut self,
         order: Option<OrderKind>,
         action: Option<ActionKind>,
-        target: Option<(ObjectId, i32)>,
+        target: Option<(ObjectId, ClassId)>,
         point: Position,
         clears: bool,
         ai: &mut Well512,
     ) -> Result<(), GenieError> {
         self.set_order(order, ai);
         self.set_action(action);
-        let (id, class) = target.map_or((None, -1), |(id, class)| (Some(id), class));
+        let (id, class) = target.map_or((None, None), |(id, class)| (Some(id), class.or_none()));
         self.set_target(id, class, point);
         if clears {
             self.clear_notifies(0)?;
@@ -474,7 +475,7 @@ impl UnitAi {
     pub fn notify_move(
         &mut self,
         moved: bool,
-        target: Option<(ObjectId, i32)>,
+        target: Option<(ObjectId, ClassId)>,
         point: Point,
         ai: &mut Well512,
     ) {
@@ -483,7 +484,7 @@ impl UnitAi {
             self.set_action(Some(ActionKind::Move));
             self.forget_targets();
         }
-        let (id, class) = target.map_or((None, -1), |(id, class)| (Some(id), class));
+        let (id, class) = target.map_or((None, None), |(id, class)| (Some(id), class.or_none()));
         self.set_target(id, class, point.with_height(0.0));
     }
 
@@ -493,7 +494,7 @@ impl UnitAi {
     pub fn notify_grid_move(&mut self, cell: Point, ai: &mut Well512) {
         self.set_order(Some(OrderKind::Move), ai);
         self.set_action(Some(ActionKind::Move));
-        self.set_target(None, -1, cell.with_height(0.0));
+        self.set_target(None, None, cell.with_height(0.0));
     }
 
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes

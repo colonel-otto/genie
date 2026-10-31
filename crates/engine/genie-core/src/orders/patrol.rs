@@ -406,7 +406,7 @@ impl World {
                 rng,
             );
             ai.set_action(Some(ActionKind::Move));
-            ai.set_target(None, -1, shown.with_height(z));
+            ai.set_target(None, None, shown.with_height(z));
         }
         Ok(())
     }

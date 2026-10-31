@@ -99,7 +99,7 @@ pub struct VisibleQuery<'a> {
     /// 0: a rounded box, 1: a box.
     pub mode: i32,
     /// The classes it reads.
-    pub classes: &'a [i32],
+    pub classes: &'a [ClassId],
     /// What the owners are to the player (0 Gaia, 1 self, 2 friend, 3 neutral, 4 enemy).
     pub relations: &'a [u32],
     /// The searcher's radii (x, y).
@@ -297,8 +297,8 @@ impl Registry {
         let round = f32::midpoint(wide - rx, tall - ry);
         let mut found: [Vec<Record>; 5] = Default::default();
         for &class in classes {
-            let list = usize::try_from(class)
-                .ok()
+            let list = class
+                .index()
                 .and_then(|c| self.lists.get(player.index())?.get(c))
                 .ok_or(GenieError::unsupported(
                     "a query of a class beyond the registry's",
@@ -353,7 +353,7 @@ impl Registry {
 mod tests {
     use super::*;
     use crate::objects::masters::class;
-    use crate::test_ids::object_id;
+    use crate::test_ids::{class_id, object_id};
 
     fn registry() -> Registry {
         Registry::new(3, 65)
@@ -452,7 +452,7 @@ mod tests {
                 position: Point::new(10.0, 10.0),
                 radius: 3.0,
                 mode: 0,
-                classes: &[4, 9],
+                classes: &[class_id(4), class_id(9)],
                 relations: &relations,
                 size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
@@ -516,7 +516,7 @@ mod tests {
                 position: Point::new(10.0, 10.0),
                 radius: 100.0,
                 mode: 1,
-                classes: &[4],
+                classes: &[class_id(4)],
                 relations: &[1, 4, 4],
                 size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,
@@ -549,7 +549,7 @@ mod tests {
                 position: Point::new(10.0, 10.0),
                 radius: 3.0,
                 mode: 0,
-                classes: &[4],
+                classes: &[class_id(4)],
                 relations: &[1, 4, 4],
                 size: Footprint::new(0.2, 0.2),
                 wanted: 0xff,

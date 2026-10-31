@@ -11,6 +11,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::MoveToReads;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::GARRISON;
@@ -158,7 +159,7 @@ impl World {
         idx: usize,
         target: ObjectId,
         task: &Task,
-    ) -> Result<(EnterAction, ObjectId, i32), GenieError> {
+    ) -> Result<(EnterAction, ObjectId, ClassId), GenieError> {
         let (tp, t) = self
             .object(target)
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
@@ -169,7 +170,7 @@ impl World {
         };
         let (tp, t) = self.object(target).ok_or_else(|| object_gone(target))?;
         let tm = t.master(&self.masters, tp)?;
-        let (class, height) = (i32::from(tm.class.get()), t.position().z());
+        let (class, height) = (tm.class, t.position().z());
         let (at, _) = self.enter_meeting(player, idx, target)?;
         let action = EnterAction::new(target, at.with_height(height), task);
         self.take(target, self.releaser(player, idx)?)?;

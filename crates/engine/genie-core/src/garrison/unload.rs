@@ -302,12 +302,12 @@ impl World {
             order: OrderKind::Unload,
             priority: 100,
             target: Some(id),
-            target_owner: player.index() as i32,
+            target_owner: Some(player),
             point: to.with_height(0.0),
             range: UNLOAD_RANGE,
             shown: to,
             ready: true,
-            target_type: i32::from(master.id.get()),
+            target_type: Some(crate::unit_ai::OrderTargetType::of_master(master.id)),
         };
         if unit.ai.is_none() {
             return Ok(());
@@ -403,7 +403,7 @@ impl World {
         };
         let (found, record) = bell.back_to_work(&lookup)?;
         self.players.player_mut(up)?.objects[ui].town_bell = bell;
-        if found.is_none() && 0 <= record.target_type && record.action.is_some() {
+        if found.is_none() && record.target_class.is_some() && record.action.is_some() {
             let unit = &mut self.players.player_mut(up)?.objects[ui];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.set_action(record.action);
@@ -412,7 +412,7 @@ impl World {
                 crate::unit_ai::REQUIRES_SEARCH,
                 [
                     ActionKind::field(record.action),
-                    record.target_type,
+                    i32::from(ClassId::field(record.target_class)),
                     ObjectId::field(record.target),
                 ],
             )?;

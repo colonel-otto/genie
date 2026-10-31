@@ -13,8 +13,12 @@ use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::class_id;
+use crate::test_ids::class_of;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::test_ids::order_type;
+use crate::test_ids::owner;
 use crate::test_ids::player_id;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -265,7 +269,7 @@ impl UnitSide for Recorder {
 /// (classes and radius) and the attackers its walk got.
 struct HelpSide {
     holds: bool,
-    searches: Vec<(Vec<i32>, f32)>,
+    searches: Vec<(Vec<ClassId>, f32)>,
     walks: Vec<ObjectId>,
 }
 
@@ -586,14 +590,14 @@ impl UnitSide for OffSide {
 fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
     let site = Named {
         id: object_id(10028),
-        master: 70,
-        owner: 1,
+        master: master_id(70),
+        owner: player_id(1),
         vector: Point::new(30.0, 2.0),
     };
     let tree = Named {
         id: object_id(600),
-        master: 349,
-        owner: 0,
+        master: master_id(349),
+        owner: player_id(0),
         vector: Point::new(33.5, 2.0),
     };
     let off = OffFootprint {
@@ -779,12 +783,12 @@ fn sent_off_queue() -> UnitAi {
         order,
         priority: 100,
         target: ObjectId::of_field(target),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::new(x, 2.0, 0.0),
         range: 0.0,
         shown: Point::new(x, 2.0),
         ready: true,
-        target_type: 70,
+        target_type: order_type(70),
     };
     UnitAi {
         current_action: None,
@@ -811,18 +815,18 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
         current_action: None,
         current_order: None,
         current_target: Some(object_id(7)),
-        target_type: 10,
+        target_class: class_of(10),
         orders: vec![QueuedOrder {
             issuer: Some(Issuer::Player(player_id(1))),
             order: OrderKind::Build,
             priority: -1,
             target: Some(object_id(10028)),
-            target_owner: 1,
+            target_owner: owner(1),
             point: Position::new(30.0, 88.0, 0.0),
             range: 2.0,
             shown: Point::new(30.0, 88.0),
             ready: true,
-            target_type: 3,
+            target_type: order_type(3),
         }],
         ..UnitAi::default()
     };
@@ -858,19 +862,19 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
         (
             ai.current_action,
             ai.current_target,
-            ai.target_type,
+            ai.target_class,
             ai.target_point
         ),
         (
             Some(ActionKind::Build),
             Some(object_id(10028)),
-            3,
+            class_of(3),
             Position::new(30.0, 88.0, 0.0)
         )
     );
     assert_eq!(
-        (ai.last_target, ai.last_target_type),
-        (Some(object_id(7)), 10)
+        (ai.last_target, ai.last_target_class),
+        (Some(object_id(7)), class_of(10))
     );
     assert_eq!(
         (ai.current_order, ai.order_priority),
@@ -1078,13 +1082,13 @@ fn found_at(id: i32) -> Found {
 /// found are not modelled.
 #[test]
 fn a_hunter_asked_for_another_target_hunts_what_its_search_finds() {
-    let hunter = |target_type, last_target_type| UnitAi {
+    let hunter = |target: i16, last: i16| UnitAi {
         ai_type: CIVILIAN,
         current_order: Some(OrderKind::Gather),
         current_action: Some(ActionKind::Hunt),
         current_target: Some(object_id(28202)),
-        target_type,
-        last_target_type,
+        target_class: class_of(target),
+        last_target_class: class_of(last),
         ..UnitAi::default()
     };
     let at = Surroundings::default();
@@ -1112,7 +1116,10 @@ fn a_hunter_asked_for_another_target_hunts_what_its_search_finds() {
     };
     let mut u = hunter(-1, -1);
     assert_eq!(search(&mut u, &mut deer(), 9, false).0, Ok(BREAK));
-    assert_eq!((u.current_target, u.target_type), (Some(object_id(40)), 9));
+    assert_eq!(
+        (u.current_target, u.target_class),
+        (Some(object_id(40)), class_of(9))
+    );
     let mut u = hunter(9, -1);
     assert_eq!(search(&mut u, &mut deer(), -1, false).0, Ok(BREAK));
     let mut u = hunter(-1, 9);
@@ -1163,13 +1170,13 @@ fn a_hunter_asked_for_another_target_hunts_what_its_search_finds() {
 /// its place is not modelled.
 #[test]
 fn a_gatherer_without_a_class_stops_and_one_on_a_farm_searches_for_another() {
-    let gatherer = |target_type, last_target_type| UnitAi {
+    let gatherer = |target: i16, last: i16| UnitAi {
         ai_type: CIVILIAN,
         current_order: Some(OrderKind::Gather),
         current_action: Some(ActionKind::Gather),
         current_target: Some(object_id(28202)),
-        target_type,
-        last_target_type,
+        target_class: class_of(target),
+        last_target_class: class_of(last),
         ..UnitAi::default()
     };
     let at = Surroundings::default();
@@ -1251,7 +1258,7 @@ fn a_villager_searches_by_its_action() {
         ai_type: CIVILIAN,
         current_action,
         current_target: Some(object_id(28202)),
-        target_type: 9,
+        target_class: class_of(9),
         ..UnitAi::default()
     };
     let at = Surroundings {
@@ -1293,8 +1300,8 @@ fn a_villager_searches_by_its_action() {
         )
     );
     assert_eq!(
-        (u.current_target, u.target_type),
-        (Some(object_id(10028)), 3)
+        (u.current_target, u.target_class),
+        (Some(object_id(10028)), class_of(3))
     );
     for foundation in [(Some(object_id(10028)), false), (None, false)] {
         let mut u = villager(Some(ActionKind::Build));
@@ -1330,7 +1337,7 @@ fn a_build_object_whose_build_command_answers_0_changes_nothing() {
         ai_type: CIVILIAN,
         current_action: Some(ActionKind::Gather),
         current_target: Some(object_id(28202)),
-        target_type: 9,
+        target_class: class_of(9),
         ..UnitAi::default()
     };
     let before = u.clone();
@@ -1377,14 +1384,14 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     let bush = Gatherable {
         id: object_id(28200),
         position: Position::new(111.5, 16.5, 0.0),
-        class: 7,
+        class: class::CLASS_7,
     };
     let mut ai = UnitAi {
         ai_type: CIVILIAN,
         current_order: Some(OrderKind::Gather),
         current_action: Some(ActionKind::Gather),
         current_target: Some(object_id(28202)),
-        target_type: 7,
+        target_class: class_of(7),
         ..UnitAi::default()
     };
     let mut side = ResourceSide {
@@ -1428,7 +1435,7 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     let mut ai = UnitAi {
         ai_type: CIVILIAN,
         current_action: Some(ActionKind::Gather),
-        target_type: 32,
+        target_class: class_of(32),
         ..UnitAi::default()
     };
     let mut side = ResourceSide {
@@ -1465,13 +1472,13 @@ fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
     let tree = Gatherable {
         id: object_id(28300),
         position: Position::new(50.5, 60.5, 0.0),
-        class: 15,
+        class: class::TREE,
     };
     let mut ai = UnitAi {
         ai_type: CIVILIAN,
         current_action: Some(ActionKind::Hunt),
         current_target: Some(object_id(28301)),
-        target_type: 15,
+        target_class: class_of(15),
         ..UnitAi::default()
     };
     let mut side = ResourceSide {
@@ -2937,8 +2944,11 @@ fn each_unit_ai_type_searches_its_constructor_s_classes() {
         cared_classes(t, Some(class), computer).unwrap()
     };
     assert_eq!(list(UnitAiType::HUNTED, class::PREY, false), &HUNTED_CARED);
-    assert_eq!(list(UnitAiType::PREDATOR, class::PREDATOR, false), &[58, 4]);
-    let none: &[i32] = &[];
+    assert_eq!(
+        list(UnitAiType::PREDATOR, class::PREDATOR, false),
+        &[class::LIVESTOCK, class::VILLAGER]
+    );
+    let none: &[ClassId] = &[];
     assert_eq!(list(BOAR_AI, class::PREDATOR, false), none);
     assert_eq!(
         (
@@ -2951,7 +2961,10 @@ fn each_unit_ai_type_searches_its_constructor_s_classes() {
     assert_eq!(list(PRIEST_AI, class::MONK, false).len(), 30);
     assert_eq!(list(TRADE_AI, class::TRADE_BOAT, false), &TRADE_SHIP_CARED);
     assert_eq!(list(TRADE_AI, class::TRADE_CART, false), &TRADE_CART_CARED);
-    assert_eq!(list(SOLDIER_AI, class::CLASS_6, true).last(), Some(&10));
+    assert_eq!(
+        list(SOLDIER_AI, class::CLASS_6, true).last(),
+        Some(&class::PREDATOR)
+    );
     assert_eq!(list(SOLDIER_AI, class::CLASS_6, false), &SOLDIER_CARED);
     assert_eq!(list(LIVESTOCK_AI, class::LIVESTOCK, false), none);
     assert!(cared_classes(UnitAiType::of_value(1), Some(class::LIVESTOCK), false).is_err());
@@ -3295,7 +3308,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
             current_order: Some(OrderKind::Attack),
             current_action: Some(ActionKind::Attack),
             current_target: Some(object_id(25954)),
-            target_type: 58,
+            target_class: class_of(58),
             target_point: Position::new(5.0, 6.0, 0.0),
             stance: 2,
             ..idle(UnitAiType::SOLDIER)
@@ -3678,7 +3691,7 @@ fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
     u.notify_work(
         Some(OrderKind::Hunt),
         Some(ActionKind::Hunt),
-        Some((object_id(9365), 15)),
+        Some((object_id(9365), class::TREE)),
         Position::new(24.5, 97.5, 0.0),
         true,
         &mut r,
@@ -3697,7 +3710,7 @@ fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
     u.notify_work(
         Some(OrderKind::Hunt),
         Some(ActionKind::Hunt),
-        Some((object_id(9365), 15)),
+        Some((object_id(9365), class::TREE)),
         Position::new(24.5, 97.5, 0.0),
         true,
         &mut r,
@@ -3990,14 +4003,14 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             current_order: None,
             current_action: None,
             current_target: None,
-            target_type: -1,
+            target_class: None,
             target_point: Position::new(-1.0, -1.0, -1.0),
             desired_distance: 2.0,
             defend_target: None,
             last_order: None,
             last_action: None,
             last_target: None,
-            last_target_type: -1,
+            last_target_class: None,
             idle_timer: 0,
             adjusted_idle_timeout: b % 1500 + 2250,
             idle_timeout: 3000,
@@ -4083,7 +4096,7 @@ fn a_new_artifact_unit_ai_draws_four_timers() {
 struct ArtifactSide {
     found: Found,
     owner: Option<PlayerId>,
-    searches: Vec<(f32, Vec<i32>, bool)>,
+    searches: Vec<(f32, Vec<ClassId>, bool)>,
     under_attack: bool,
 }
 
@@ -4845,12 +4858,12 @@ fn boar() -> UnitAi {
         idle_timeout: 3000,
         look_around_timeout: 5426,
         retarget_timer: 1205,
-        target_type: -1,
+        target_class: None,
         target_point: Position::new(-1.0, -1.0, -1.0),
         last_order: None,
         last_action: None,
         last_target: None,
-        last_target_type: -1,
+        last_target_class: None,
         stance: 0,
         home: Some(Home {
             origin: Position::new(23.5, 105.5, 0.0),
@@ -5028,7 +5041,7 @@ fn a_move_forgets_the_target_and_an_order_keeps_its_history() {
     // MOVE of 9185 in 1044: order 710, action 610, no target, the point on the ground
     let mut u = UnitAi {
         current_target: Some(object_id(9365)),
-        target_type: 15,
+        target_class: class_of(15),
         ..idle(UnitAiType::SOLDIER)
     };
     u.notify_move(true, None, Point::new(21.947_916, 92.489_586), &mut rng());
@@ -5037,18 +5050,18 @@ fn a_move_forgets_the_target_and_an_order_keeps_its_history() {
             u.current_order,
             u.current_action,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
-        (Some(OrderKind::Move), Some(ActionKind::Move), None, -1)
+        (Some(OrderKind::Move), Some(ActionKind::Move), None, None)
     );
     assert_eq!(
         (
             u.last_order,
             u.last_action,
             u.last_target,
-            u.last_target_type
+            u.last_target_class
         ),
-        (None, None, None, -1)
+        (None, None, None, None)
     );
     assert_eq!(u.target_point, Position::new(21.947_916, 92.489_586, 0.0));
 }
@@ -5082,12 +5095,12 @@ fn deer() -> UnitAi {
         idle_timeout: 4000,
         look_around_timeout: 5424,
         retarget_timer: 1212,
-        target_type: -1,
+        target_class: None,
         target_point: Position::new(-1.0, -1.0, -1.0),
         last_order: None,
         last_action: None,
         last_target: None,
-        last_target_type: -1,
+        last_target_class: None,
         hunted: Some(Hunted {
             origin: Position::new(31.5, 106.5, 0.0),
             leash: 0.0,
@@ -5270,23 +5283,23 @@ fn scout() -> UnitAi {
         order: OrderKind::Move,
         priority: 100,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(x, y, 0.0),
         range: 0.0,
         shown: Point::new(x, y),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     UnitAi {
         current_order: Some(OrderKind::Move),
         order_priority: -1,
         current_action: Some(ActionKind::Move),
-        target_type: -1,
+        target_class: None,
         target_point: Position::new(93.583_336, 57.791_668, 0.0),
         last_order: Some(OrderKind::Move),
         last_action: Some(ActionKind::Move),
         last_target: None,
-        last_target_type: -1,
+        last_target_class: None,
         stance: 2,
         orders: vec![order(89.09375, 60.677_082), order(91.822_914, 52.489_582)],
         ..idle(UnitAiType::SOLDIER)
@@ -5710,7 +5723,7 @@ fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
             Position::new(91.822_914, 52.489_582, 0.0),
             0.0,
             true,
-            -1
+            None
         )
     );
     // an order value no order holds (MOVE's action value)
@@ -5740,7 +5753,7 @@ fn builder_done() -> UnitAi {
         current_order: Some(OrderKind::Build),
         current_action: Some(ActionKind::Build),
         current_target: Some(object_id(10028)),
-        target_type: 3,
+        target_class: class_of(3),
         target_point: Position::new(30.0, 88.0, 0.0),
         idle_timeout: 3000,
         ..idle(UnitAiType::CIVILIAN)
@@ -5932,7 +5945,7 @@ fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
         &mut With::new(&mut Recorder::default(), &mut fx),
     )
     .unwrap();
-    assert_eq!((u.current_target, u.target_type), (None, 3));
+    assert_eq!((u.current_target, u.target_class), (None, class_of(3)));
     assert_eq!(u.idle_timer, 3000);
     // inside another, a unit drops its target before the lookup
     let inside = Surroundings {
@@ -6069,7 +6082,7 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
         current_order: Some(OrderKind::Follow),
         current_action: Some(ActionKind::Follow),
         current_target: Some(object_id(9655)),
-        target_type: 9,
+        target_class: class_of(9),
         target_point: Position::new(115.6998, 39.299_213, 0.0),
         desired_distance: 2.0,
         stance: 2,
@@ -6115,8 +6128,8 @@ fn the_follow_order_moves_to_a_target_that_left_its_point() {
         (Some(ActionKind::Move), Some(ActionKind::Follow))
     );
     assert_eq!(
-        (u.current_target, u.last_target, u.target_type),
-        (Some(object_id(9655)), Some(object_id(9655)), 9)
+        (u.current_target, u.last_target, u.target_class),
+        (Some(object_id(9655)), Some(object_id(9655)), class_of(9))
     );
     assert_eq!(u.target_point, deer);
     // less than a tile off on both axes it stays
@@ -6317,8 +6330,8 @@ const IDLE: Seeker = Seeker {
     order: None,
     action: None,
     target: None,
-    target_type: -1,
-    last_target_type: -1,
+    target_class: None,
+    last_target_class: None,
     patrol_path: false,
     target_kind: None,
 };
@@ -6563,21 +6576,21 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(12)),
-        target_type: 4,
+        target_class: class_of(4),
         target_point: Position::new(3.0, 4.0, 0.5),
         last_target: Some(object_id(11)),
-        last_target_type: 9,
+        last_target_class: class_of(9),
         ..idle(UnitAiType::SOLDIER)
     };
     u.forget_targets();
     assert_eq!(
         (
             u.current_target,
-            u.target_type,
+            u.target_class,
             u.last_target,
-            u.last_target_type
+            u.last_target_class
         ),
-        (None, -1, None, -1)
+        (None, None, None, None)
     );
     assert_eq!(u.target_point, Position::new(-1.0, -1.0, -1.0));
     assert_eq!(
@@ -6586,9 +6599,9 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
     );
     let mut moved = UnitAi {
         current_target: Some(object_id(12)),
-        target_type: 4,
+        target_class: class_of(4),
         last_target: Some(object_id(11)),
-        last_target_type: 9,
+        last_target_class: class_of(9),
         ..idle(UnitAiType::SOLDIER)
     };
     moved.notify_move(true, None, Point::new(5.0, 6.0), &mut rng());
@@ -6596,10 +6609,10 @@ fn forgetting_the_targets_clears_the_current_and_the_last_and_the_point() {
     assert_eq!(
         (
             moved.last_target,
-            moved.last_target_type,
+            moved.last_target_class,
             moved.current_target
         ),
-        (None, -1, None)
+        (None, None, None)
     );
     assert_eq!(moved.target_point, Position::new(5.0, 6.0, 0.0));
 }
@@ -6727,7 +6740,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         order_priority: 2,
         current_action: Some(ActionKind::Build),
         current_target: Some(object_id(50)),
-        target_type: 3,
+        target_class: class_of(3),
         target_point: Position::new(20.0, 21.0, 0.0),
         desired_distance: 2.0,
         ..idle(UnitAiType::CIVILIAN)
@@ -6737,12 +6750,12 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         order: OrderKind::Move,
         priority: 7,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(10.0, 11.0, 0.0),
         range: 0.5,
         shown: Point::new(10.0, 11.0),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     let mut fx = Vec::new();
     u.order_now(
@@ -6759,12 +6772,12 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         order: OrderKind::Build,
         priority: 2,
         target: Some(object_id(50)),
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(20.0, 21.0, 0.0),
         range: 2.0,
         shown: Point::new(10.0, 11.0),
         ready: true,
-        target_type: 3,
+        target_type: order_type(3),
     };
     assert_eq!(u.orders, vec![kept]);
     assert_eq!(
@@ -7036,12 +7049,12 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         order: OrderKind::Move,
         priority: 100,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(9.0, 9.0, 0.0),
         range: 0.0,
         shown: Point::new(9.0, 9.0),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     let mut u = UnitAi {
         orders: vec![order],
@@ -7540,7 +7553,7 @@ fn a_boar_whose_move_aside_completed_heads_home_next() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::MoveAside),
         current_target: Some(object_id(50)),
-        target_type: 4,
+        target_class: class_of(4),
         adjusted_idle_timeout: 3100,
         idle_timeout: 3000,
         ..hit_boar()
@@ -7980,9 +7993,9 @@ fn an_ai_move_needs_force_or_no_action_and_keeps_the_target_class() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(40)),
-        target_type: 9,
+        target_class: class_of(9),
         last_target: Some(object_id(30)),
-        last_target_type: 4,
+        last_target_class: class_of(4),
         ..idle(UnitAiType::BOAR)
     };
     let before = u.clone();
@@ -7996,11 +8009,11 @@ fn an_ai_move_needs_force_or_no_action_and_keeps_the_target_class() {
     assert_eq!(
         (
             u.last_target,
-            u.last_target_type,
+            u.last_target_class,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
-        (Some(object_id(40)), 9, None, 9)
+        (Some(object_id(40)), class_of(9), None, class_of(9))
     );
     assert_eq!(u.target_point, Position::new(4.0, 5.0, 0.5));
 }
@@ -8365,29 +8378,43 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
 fn a_target_takes_its_class_only_from_an_object_the_world_holds() {
     let mut u = UnitAi {
         current_target: Some(object_id(40)),
-        target_type: 9,
+        target_class: class_of(9),
         ..idle(UnitAiType::SOLDIER)
     };
     u.target_at(Some(object_id(41)), None, Position::new(1.0, 2.0, 3.0));
     assert_eq!(
         (
             u.last_target,
-            u.last_target_type,
+            u.last_target_class,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
-        (Some(object_id(40)), 9, Some(object_id(41)), 9)
+        (
+            Some(object_id(40)),
+            class_of(9),
+            Some(object_id(41)),
+            class_of(9)
+        )
     );
     assert_eq!(u.target_point, Position::new(1.0, 2.0, 3.0));
-    u.target_at(Some(object_id(42)), Some(4), Position::new(5.0, 6.0, 0.0));
+    u.target_at(
+        Some(object_id(42)),
+        Some(class::VILLAGER),
+        Position::new(5.0, 6.0, 0.0),
+    );
     assert_eq!(
         (
             u.last_target,
-            u.last_target_type,
+            u.last_target_class,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
-        (Some(object_id(41)), 9, Some(object_id(42)), 4)
+        (
+            Some(object_id(41)),
+            class_of(9),
+            Some(object_id(42)),
+            class_of(4)
+        )
     );
 }
 
@@ -9388,7 +9415,7 @@ fn the_base_attack_check_lets_every_type_without_its_own_attack() {
 #[derive(Default)]
 struct ShipSide {
     found: Vec<Found>,
-    searched: Vec<(f32, Vec<i32>, Pick)>,
+    searched: Vec<(f32, Vec<ClassId>, Pick)>,
     units: Vec<UnitSeen>,
     reach: bool,
 }
@@ -9501,7 +9528,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
     assert!(matches!(
         pick,
         Pick::Closest {
-            group: -1,
+            group: None,
             relation: -1,
             reach: true,
             ..
@@ -9713,7 +9740,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
         fx,
         vec![Effect::Command(AiCommand::BuildObject(object_id(42)))]
     );
-    let groups: Vec<i32> = side
+    let groups: Vec<Option<ClassId>> = side
         .searched
         .iter()
         .map(|(_, _, p)| match p {
@@ -9723,10 +9750,10 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
                 state: 0,
                 ..
             } => *group,
-            _ => -9,
+            _ => Some(class_id(99)),
         })
         .collect();
-    assert_eq!(groups, FISHING_BUILDS.to_vec());
+    assert_eq!(groups, FISHING_BUILDS.map(Some).to_vec());
     // out of reach: the human's goes on, the computer's posts its completion
     let mut side = ShipSide {
         found: vec![found(Some(object_id(41)), 6)],
@@ -10208,7 +10235,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     assert_eq!(r.draws, 1);
     // a building target: no draw, the base handler's
     let mut on_house = UnitAi {
-        target_type: 3,
+        target_class: class_of(3),
         ..idle(SIEGE_AI)
     };
     let mut r = rng();
@@ -10352,7 +10379,7 @@ fn on_target(action: Option<ActionKind>) -> UnitAi {
     UnitAi {
         current_action: action,
         current_target: Some(object_id(500)),
-        target_type: 6,
+        target_class: class_of(6),
         target_point: Position::new(10.0, 10.0, 0.0),
         ..idle(UnitAiType::LION)
     }
@@ -10844,7 +10871,7 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(18842)),
-        target_type: 10,
+        target_class: class_of(10),
         idle_timer: 400,
         ..idle(UnitAiType::CIVILIAN)
     };
@@ -10896,7 +10923,7 @@ struct OrderSide {
     resource: Option<Gatherable>,
     searches: Vec<ResourceSearch>,
     /// The classes of the players' masters: ((player, master), class).
-    classes: Vec<((i32, i32), ClassId)>,
+    classes: Vec<((PlayerId, MasterId), ClassId)>,
 }
 
 impl OrderSide {
@@ -10990,7 +11017,11 @@ impl UnitSide for OrderSide {
         self.searches.push(search);
         Ok(self.resource)
     }
-    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<ClassId>, GenieError> {
+    fn master_class(
+        &mut self,
+        player: PlayerId,
+        master: MasterId,
+    ) -> Result<Option<ClassId>, GenieError> {
         Ok(self
             .classes
             .iter()
@@ -11006,12 +11037,12 @@ fn queued(order: OrderKind, target: i32) -> QueuedOrder {
         order,
         priority: 40,
         target: ObjectId::of_field(target),
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(12.7, 30.2, 0.5),
         range: 3.0,
         shown: Point::new(12.5, 30.5),
         ready: true,
-        target_type: -1,
+        target_type: None,
     }
 }
 
@@ -11102,8 +11133,12 @@ fn the_attack_order_attacks_by_the_unit_ai_s_type_and_becomes_the_ai_s() {
         (Some(OrderKind::Attack), 40, Some(ActionKind::Attack))
     );
     assert_eq!(
-        (u.current_target, u.target_type, u.target_point),
-        (Some(object_id(70)), 6, Position::new(10.0, 20.0, 0.0))
+        (u.current_target, u.target_class, u.target_point),
+        (
+            Some(object_id(70)),
+            class_of(6),
+            Position::new(10.0, 20.0, 0.0)
+        )
     );
     let mut u = idle(SOLDIER_AI);
     let mut side = OrderSide::holding(&[(70, class::CLASS_6)]);
@@ -11167,9 +11202,9 @@ fn the_attack_order_attacks_by_the_unit_ai_s_type_and_becomes_the_ai_s() {
             u.current_order,
             u.order_priority,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
-        (None, 40, None, 6)
+        (None, 40, None, class_of(6))
     );
     // a command the unit refuses, or a target the world does not hold: not taken
     let mut u = idle(BOAR_AI);
@@ -11220,8 +11255,12 @@ fn the_defend_order_keeps_near_its_target_or_its_point() {
         )
     );
     assert_eq!(
-        (u.current_target, u.target_type, u.target_point),
-        (Some(object_id(70)), 6, Position::new(10.0, 20.0, 0.0))
+        (u.current_target, u.target_class, u.target_point),
+        (
+            Some(object_id(70)),
+            class_of(6),
+            Position::new(10.0, 20.0, 0.0)
+        )
     );
     assert_eq!(
         (u.desired_distance, u.defend_target),
@@ -11294,7 +11333,7 @@ fn the_heal_conversion_and_repair_orders_give_the_unit_s_commands() {
         let mut side = OrderSide::holding(&[(70, class::BUILDING)]);
         let mut u = UnitAi {
             current_target: Some(object_id(5)),
-            target_type: 9,
+            target_class: class_of(9),
             ..idle(PRIEST_AI)
         };
         let (r, fx, _) = run_order(&mut u, queued(order, 70), class::MONK, &mut side);
@@ -11305,10 +11344,17 @@ fn the_heal_conversion_and_repair_orders_give_the_unit_s_commands() {
             (Some(order), Some(action))
         );
         assert_eq!(
-            (u.current_target, u.target_type, u.target_point),
-            (Some(object_id(70)), 3, Position::new(10.0, 20.0, 0.0))
+            (u.current_target, u.target_class, u.target_point),
+            (
+                Some(object_id(70)),
+                class_of(3),
+                Position::new(10.0, 20.0, 0.0)
+            )
         );
-        assert_eq!((u.last_target, u.last_target_type), (Some(object_id(5)), 9));
+        assert_eq!(
+            (u.last_target, u.last_target_class),
+            (Some(object_id(5)), class_of(9))
+        );
         // refused: nothing changes
         let mut u = idle(PRIEST_AI);
         side.refuses = true;
@@ -11468,13 +11514,13 @@ fn the_gather_and_hunt_orders_work_an_object_the_world_holds() {
             u.current_order,
             u.current_action,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
         (
             Some(gather),
             Some(ActionKind::Gather),
             Some(object_id(70)),
-            15
+            class_of(15)
         )
     );
     // gone: the gather command takes nothing
@@ -11674,13 +11720,13 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
         (
             u.current_action,
             u.current_target,
-            u.target_type,
+            u.target_class,
             u.target_point
         ),
         (
             Some(ActionKind::Enter),
             Some(object_id(70)),
-            3,
+            class_of(3),
             Position::from([-1.0; 3])
         )
     );
@@ -11693,14 +11739,17 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
     assert_eq!(side.commands.len(), 1);
     // (FUN_140c64c10 keeps the class it held for an object the world does not hold)
     let mut u = UnitAi {
-        target_type: 12,
+        target_class: class_of(12),
         ..idle(SOLDIER_AI)
     };
     assert_eq!(
         run_order(&mut u, queued(enter, 99), class::CLASS_6, &mut side).0,
         Ok(1)
     );
-    assert_eq!((u.current_target, u.target_type), (Some(object_id(99)), 12));
+    assert_eq!(
+        (u.current_target, u.target_class),
+        (Some(object_id(99)), class_of(12))
+    );
     // the unloads: the point at the unit's height; the unit itself the target
     for (order, over_wall, action) in [
         (OrderKind::Unload, false, ActionKind::Unload),
@@ -11722,9 +11771,9 @@ fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
                 u.current_order,
                 u.current_action,
                 u.current_target,
-                u.target_type
+                u.target_class
             ),
-            (Some(order), Some(action), Some(object_id(9)), 20)
+            (Some(order), Some(action), Some(object_id(9)), class_of(20))
         );
         assert_eq!(u.target_point, Position::new(5.0, 6.0, 0.25));
     }
@@ -11743,13 +11792,13 @@ fn seek_and_destroy_attacks_and_explore_and_destroy_explores_at_tiles() {
             u.current_order,
             u.current_action,
             u.current_target,
-            u.target_type
+            u.target_class
         ),
         (
             Some(seek),
             Some(ActionKind::SeekAndDestroy),
             Some(object_id(70)),
-            6
+            class_of(6)
         )
     );
     assert_eq!(u.target_point, Position::new(12.0, 30.0, EXPLORE_Z));
@@ -11883,14 +11932,14 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
     let tree = Gatherable {
         id: object_id(80),
         position: Position::new(13.5, 31.5, 0.0),
-        class: 15,
+        class: class::TREE,
     };
     let mut side = OrderSide {
         resource: Some(tree),
         ..OrderSide::default()
     };
     let typed = QueuedOrder {
-        target_type: 15,
+        target_type: order_type(15),
         ..queued(OrderKind::OnTarget, 99)
     };
     let mut u = UnitAi {
@@ -11925,12 +11974,12 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
     // 4, any workers); a master the player does not hold, or nothing found, gives nothing
     let mut side = OrderSide {
         resource: Some(tree),
-        classes: vec![((2, 66), class::CLASS_32)],
+        classes: vec![((player_id(2), master_id(66)), class::CLASS_32)],
         ..OrderSide::default()
     };
     let owned = |master| QueuedOrder {
-        target_type: master,
-        target_owner: 2,
+        target_type: Some(OrderTargetType::of_master(master_id(master))),
+        target_owner: owner(2),
         ..queued(OrderKind::OnTarget, 99)
     };
     let mut u = idle(CIVILIAN);
@@ -11947,7 +11996,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
     // a class of no kind (a soldier's 6), or a unit AI type whose slot 0x1b0 gives none
     let mut side = OrderSide::default();
     let soldier_type = QueuedOrder {
-        target_type: 6,
+        target_type: order_type(6),
         ..queued(OrderKind::OnTarget, 99)
     };
     let mut u = idle(CIVILIAN);
@@ -11962,7 +12011,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
 
 #[test]
 fn slot_0x1b0_gives_the_kind_of_resource_by_the_unit_ai_s_type() {
-    let kind = |ai_type, class| idle(ai_type).resource_kind(class);
+    let kind = |ai_type, class| idle(ai_type).resource_kind(class_id(class));
     for ai_type in [CIVILIAN, UnitAiType::BUILDING] {
         assert_eq!(
             [15, 7, 5, 31, 33, 8, 32, 63, 6].map(|c| kind(ai_type, c)),
@@ -12104,7 +12153,7 @@ fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() 
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(18842)),
-        target_type: 47,
+        target_class: class_of(47),
         stop_after_kill,
         ..idle(CIVILIAN)
     };

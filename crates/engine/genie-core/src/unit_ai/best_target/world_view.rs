@@ -19,7 +19,7 @@ pub struct Searcher {
     /// Its unit AI's current target (`+0x48`).
     pub target: Option<ObjectId>,
     /// The AI's target's class (`+0x4c`) and its last target's (`+0x70`).
-    pub target_types: [i32; 2],
+    pub target_classes: [Option<ClassId>; 2],
     /// The AI's order (`+0x3c`) and action (`+0x44`).
     pub order: Option<crate::unit_ai::OrderKind>,
     /// The AI's action (`+0x44`).

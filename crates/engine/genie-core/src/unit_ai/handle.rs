@@ -128,10 +128,10 @@ impl UnitAi {
             classes: &ARTIFACT_CARED,
             size: at.size,
             pick: Pick::Closest {
-                group: -1,
+                group: None,
                 relation: -1,
                 state: -1,
-                master: -1,
+                master: None,
                 workers: -1,
                 spared: -1,
                 reach: 0.0 < at.speed,

@@ -650,7 +650,7 @@ impl UnitAi {
             rng,
         )?;
         self.set_action(Some(ActionKind::Move));
-        self.target_at(Some(id), Some(i32::from(class.get())), position);
+        self.target_at(Some(id), Some(class), position);
         Ok(())
     }
 

@@ -99,8 +99,9 @@ impl World {
             let Some(ai) = unit.ai.as_mut() else {
                 return Ok(());
             };
-            let (target_type, target_owner) =
-                target.map_or((-1, -1), |(m, o)| (i32::from(m.get()), o.index() as i32));
+            let (target_type, target_owner) = target.map_or((None, None), |(m, o)| {
+                (Some(crate::unit_ai::OrderTargetType::of_master(m)), Some(o))
+            });
             let queued = crate::unit_ai::QueuedOrder {
                 issuer: Some(crate::unit_ai::Issuer::Player(issuer)),
                 order: OrderKind::Move,

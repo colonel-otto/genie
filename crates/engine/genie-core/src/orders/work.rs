@@ -92,7 +92,7 @@ impl World {
             "an attack's target the slice does not hold",
         ))?;
         let target = t.id;
-        let class = i32::from(t.master(&self.masters, tp)?.class.get());
+        let class = t.master(&self.masters, tp)?.class;
         let world_time = self.world_time;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
@@ -408,7 +408,7 @@ impl World {
                 "a hunt sent to its player's master 84",
             ));
         }
-        let class = i32::from(t.master.class.get());
+        let class = t.master.class;
         self.retarget_hunt(player, idx, target)?;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
@@ -440,7 +440,7 @@ impl World {
                 "a gather sent to its player's master 84",
             ));
         }
-        let class = i32::from(t.master.class.get());
+        let class = t.master.class;
         let took = self.retarget_gather(player, idx, target)?;
         if took {
             let unit = self.players.live_mut(player, idx)?;
@@ -562,7 +562,7 @@ impl World {
                 let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
                     "a work command's target the slice does not hold",
                 ))?;
-                Some((target, i32::from(t.master(&self.masters, tp)?.class.get())))
+                Some((target, t.master(&self.masters, tp)?.class))
             }
         };
         let (order, action) = if alive {

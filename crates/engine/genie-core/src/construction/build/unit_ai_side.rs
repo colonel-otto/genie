@@ -156,8 +156,8 @@ impl UnitView<'_, '_> {
             };
             found.map(|(p, u)| crate::unit_ai::Named {
                 id,
-                master: i32::from(u.life.master_id.get()),
-                owner: p.index() as i32,
+                master: u.life.master_id,
+                owner: p,
                 vector: Point::new(u.position().x(), u.position().z()),
             })
         };

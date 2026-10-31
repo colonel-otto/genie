@@ -51,8 +51,8 @@ const CLOSEST_RANGE: f32 = crate::math::image::spatial::CLOSEST_RANGE;
 const SEARCH_REUSE_SQUARED: f32 = crate::math::image::spatial::SEARCH_REUSE_SQUARED;
 
 /// The pasture and livestock classes `ClosestObject` treats apart.
-const PASTURE_CLASS: i32 = crate::objects::masters::class::FARM.get() as i32;
-const LIVESTOCK_CLASS: i32 = crate::objects::masters::class::LIVESTOCK.get() as i32;
+const PASTURE_CLASS: ClassId = crate::objects::masters::class::FARM;
+const LIVESTOCK_CLASS: ClassId = crate::objects::masters::class::LIVESTOCK;
 
 /// The caller's reachability check of a found object (slot 0x3d0 within a range): it paths over
 /// the spatial index the search reads, which the check's queries write, so the search hands it
@@ -127,10 +127,10 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
 /// the master and the cap of workers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Filter {
-    group: i32,
+    group: Option<ClassId>,
     relation: i32,
     state: i32,
-    master: i32,
+    master: Option<MasterId>,
     workers: i32,
     /// The relation passed over (argument 9, `FUN_140c32b50`: 0 friends, 1 neutrals, 2
     /// enemies, 3 itself; −1 none).

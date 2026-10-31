@@ -34,7 +34,7 @@ pub struct BackToWork {
     pub target: Option<ObjectId>,
     /// `town_bell_target_type` (`+0x9b0`): a Gather's (5) or Hunt's (`0x6e`) target class
     /// (`+0x68`), else −1.
-    pub target_type: i32,
+    pub target_class: Option<ClassId>,
     /// `town_bell_action` (`+0x9b4`): the unit AI's current action (`+0x44`).
     pub action: Option<ActionKind>,
     /// `townBellTargetId2` (`+0x9b8`): the top action's second target (`+0x34`).
@@ -48,7 +48,7 @@ impl BackToWork {
     /// than building drops: no ids, the point (−1, −1).
     pub const NONE: Self = Self {
         target: None,
-        target_type: -1,
+        target_class: None,
         action: None,
         target2: None,
         point: Point::new(-1.0, -1.0),
@@ -544,12 +544,10 @@ impl World {
             |t| (Some(t.id), t.position().ground()),
         );
         let actions = &unit.actions;
-        let target_type = match unit.top_action_kind() {
-            Some(HUNT) => actions
-                .hunt()
-                .map_or(-1, |h| i32::from(ClassId::field(h.target_class))),
-            Some(GATHER) => actions.gather().map_or(-1, |g| g.target_type),
-            _ => -1,
+        let target_class = match unit.top_action_kind() {
+            Some(HUNT) => actions.hunt().and_then(|h| h.target_class),
+            Some(GATHER) => actions.gather().and_then(|g| g.target_class),
+            _ => None,
         };
         let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
             "a town-bell record of a unit without a unit AI",
@@ -557,7 +555,7 @@ impl World {
         let target2 = unit.top_second_target().and_then(held).map(|(_, t)| t.id);
         let now = BackToWork {
             target,
-            target_type,
+            target_class,
             action: ai.current_action,
             target2,
             point,
@@ -571,7 +569,7 @@ impl World {
 mod tests {
     use crate::map::Point;
     use crate::objects::ObjectId;
-    use crate::test_ids::object_id;
+    use crate::test_ids::{class_of, object_id};
 
     use super::*;
 
@@ -604,7 +602,7 @@ mod tests {
             work(None, None, Point::new(29.0, 99.0))
         );
         let cutting = BackToWork {
-            target_type: 15,
+            target_class: class_of(15),
             ..work(
                 Some(object_id(9365)),
                 Some(ActionKind::Hunt),

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::gather::HuntOrder;
@@ -118,7 +119,7 @@ impl World {
             "a Build's foundation the slice does not hold",
         ))?;
         let tm = t.master(&self.masters, tp)?;
-        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class.get()));
+        let (t_at, t_radius, class) = (t.position(), tm.radius, tm.class);
         let t_state = Some(t.life.state);
         let unit = &self.players.live(player, idx)?;
         let builder = unit.master(&self.masters, player)?;
@@ -172,13 +173,13 @@ impl World {
         idx: usize,
         target: ObjectId,
         task: &crate::objects::masters::Task,
-    ) -> Result<(crate::construction::repair::RepairAction, i32), GenieError> {
+    ) -> Result<(crate::construction::repair::RepairAction, ClassId), GenieError> {
         let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
         let tm = t.master(&self.masters, tp)?;
         if crate::construction::repair::SHIPS.contains(&tm.class) {
             return Err(crate::construction::repair::SHIP_REPAIR);
         }
-        let class = i32::from(tm.class.get());
+        let class = tm.class;
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         let move_reads = crate::movement::move_to::MoveToReads::of(unit, master, &self.graphics);
@@ -318,11 +319,11 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: ObjectId,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<ClassId, GenieError> {
         let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
         let tm = t.master(&self.masters, tp)?;
         let (class, ship) = (
-            i32::from(tm.class.get()),
+            tm.class,
             crate::construction::repair::SHIPS.contains(&tm.class),
         );
         let computer = self.players.player(player)?.computer;
@@ -411,7 +412,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: ObjectId,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<ClassId, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a Build's foundation the slice does not hold",
         ))?;
@@ -421,7 +422,7 @@ impl World {
             ));
         }
         let tm = t.master(&self.masters, tp)?;
-        let (t_at, t_radius, class) = (t.position(), tm.radius, i32::from(tm.class.get()));
+        let (t_at, t_radius, class) = (t.position(), tm.radius, tm.class);
         let t_state = Some(t.life.state);
         let unit = &self.players.live(player, idx)?;
         let old = unit

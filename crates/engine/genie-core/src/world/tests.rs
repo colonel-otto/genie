@@ -50,12 +50,16 @@ use crate::ownership::change::change_hands;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
+use crate::test_ids::class_id;
+use crate::test_ids::class_of;
 use crate::test_ids::costs;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::opt_master;
+use crate::test_ids::order_type;
+use crate::test_ids::owner;
 use crate::test_ids::player_id;
 use crate::test_ids::tech_id;
 use crate::test_ids::unit_list;
@@ -64,6 +68,7 @@ use crate::unit_ai::AiCommand;
 use crate::unit_ai::Attackers;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::task_finder::world::{
     SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
@@ -1691,12 +1696,12 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
         order: OrderKind::Move,
         priority: 100,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(19.760_416, 101.677_086, 0.0),
         range: 0.0,
         shown: Point::new(19.760_416, 102.177_086),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     for u in &mut t.players[1].objects {
         u.ai.as_mut().unwrap().orders.push(queued_move);
@@ -1807,7 +1812,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
             Some(Issuer::Player(player_id(2))),
             OrderKind::Build,
             Some(object_id(10028)),
-            1
+            Some(player_id(1))
         ))
     );
     assert_eq!(
@@ -1816,7 +1821,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
             Some(Issuer::Player(player_id(1))),
             OrderKind::Build,
             Some(object_id(10028)),
-            1
+            Some(player_id(1))
         ))
     );
 }
@@ -2537,12 +2542,12 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
         order: OrderKind::OnTarget,
         priority: 3,
         target,
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::ORIGIN,
         range: 0.0,
         shown: Point::ORIGIN,
         ready: true,
-        target_type: 80,
+        target_type: order_type(80),
     };
     let mut t = sent_off_world(vec![]);
     t.order_on_target(PlayerId::new(1), 0, order(Some(object_id(10028))))
@@ -3172,12 +3177,12 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             order: OrderKind::Move,
             priority: 100,
             target: None,
-            target_owner: -1,
+            target_owner: None,
             point: Position::new(10.0, 10.0, 0.0),
             range: 0.0,
             shown: Point::new(10.0, 10.0),
             ready: true,
-            target_type: -1,
+            target_type: None,
         });
     t.start_work(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].objects[0].actions.gather().copied(), None);
@@ -3327,12 +3332,12 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
         order: OrderKind::OnTarget,
         priority: 3,
         target: Some(object_id(10028)),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::ORIGIN,
         range: 0.0,
         shown: Point::ORIGIN,
         ready: true,
-        target_type: 80,
+        target_type: order_type(80),
     };
     with_effects(&mut t, vec![Effect::OrderOnTarget(order)]).unwrap();
     let v = &t.players[1].objects[0];
@@ -3377,12 +3382,12 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
         order: OrderKind::OnTarget,
         priority: 3,
         target: Some(object_id(10028)),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::ORIGIN,
         range: 0.0,
         shown: Point::ORIGIN,
         ready: true,
-        target_type: 80,
+        target_type: order_type(80),
     };
     let run = |orders| {
         let mut t = forage_world();
@@ -3455,11 +3460,11 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
     );
     assert_eq!(
         off.site.map(|s| (s.id, s.master, s.owner)),
-        Some((object_id(10028), 70, 1))
+        Some((object_id(10028), master_id(70), player_id(1)))
     );
     assert_eq!(
         off.action_target.map(|s| (s.id, s.master, s.owner)),
-        Some((object_id(600), 59, 0))
+        Some((object_id(600), master_id(59), player_id(0)))
     );
     t.spatial.insert(
         object_id(10028),
@@ -3536,7 +3541,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
         point: NO_POINT,
         min_state: 2,
     };
-    assert_eq!(search(&mut t, any), Some((object_id(600), 7)));
+    assert_eq!(search(&mut t, any), Some((object_id(600), class::CLASS_7)));
     assert_eq!(
         search(
             &mut t,
@@ -3545,7 +3550,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
                 ..any
             }
         ),
-        Some((object_id(601), 7))
+        Some((object_id(601), class::CLASS_7))
     );
     assert_eq!(
         search(
@@ -3555,7 +3560,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
                 ..any
             }
         ),
-        Some((object_id(600), 7))
+        Some((object_id(600), class::CLASS_7))
     );
     assert_eq!(
         search(
@@ -3565,7 +3570,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
                 ..any
             }
         ),
-        Some((object_id(600), 7))
+        Some((object_id(600), class::CLASS_7))
     );
     assert_eq!(
         search(
@@ -4733,7 +4738,7 @@ fn lumber_world(near: f32) -> World {
     let here = v.position();
     let h = v.actions.hunt_mut().unwrap();
     (h.target, h.target_class, h.attack, h.point) = (None, Some(class::TREE), None, here);
-    v.ai.as_mut().unwrap().target_type = 15;
+    v.ai.as_mut().unwrap().target_class = Some(class::TREE);
     t
 }
 
@@ -5116,9 +5121,9 @@ fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
         (h.target, h.attack.map(|a| a.target)),
         (Some(object_id(520)), Some(Some(object_id(520))))
     );
-    for (near, target_type) in [(39.0, 15), (31.5, 99)] {
+    for (near, target_class) in [(39.0, class::TREE), (31.5, class_id(99))] {
         let mut t = lumber_world(near);
-        t.players[1].objects[0].ai.as_mut().unwrap().target_type = target_type;
+        t.players[1].objects[0].ai.as_mut().unwrap().target_class = Some(target_class);
         assert_eq!(failed(&mut t), Ok(()));
         let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
         assert_eq!(
@@ -5166,12 +5171,12 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
         order: OrderKind::Repair,
         priority: 100,
         target: Some(object_id(10028)),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::new(30.0, 88.0, 0.0),
         range: 0.0,
         shown: Point::new(30.0, 88.0),
         ready: true,
-        target_type: 80,
+        target_type: order_type(80),
     };
     let world = |repairer: bool| repairer_world(vec![order], repairer);
     let mut t = world(true);
@@ -5771,12 +5776,12 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
         order: OrderKind::Enter,
         priority: 100,
         target: Some(object_id(10028)),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::new(30.0, 88.0, 0.0),
         range: 0.0,
         shown: Point::new(30.0, 88.0),
         ready: true,
-        target_type: 80,
+        target_type: order_type(80),
     };
     let mut t = enter_world(vec![order], 5);
     t.tick(50);
@@ -5820,12 +5825,12 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
         order: OrderKind::Foundation,
         priority: 100,
         target: Some(object_id(10028)),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::new(30.0, 0.0, 0.0),
         range: 0.0,
         shown: Point::new(30.0, 0.0),
         ready: true,
-        target_type: 70,
+        target_type: order_type(70),
     };
     let mut t = sent_off_world(vec![order]);
     t.tick(50);
@@ -5880,12 +5885,12 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
         order: OrderKind::Build,
         priority: 100,
         target: Some(object_id(10028)),
-        target_owner: 1,
+        target_owner: owner(1),
         point: Position::new(30.0, 88.0, 0.0),
         range: 0.0,
         shown: Point::new(30.0, 88.0),
         ready: true,
-        target_type: 70,
+        target_type: order_type(70),
     };
     let mut t = sent_off_world(vec![]);
     {
@@ -6095,7 +6100,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
     let mut t = sent_off_world(vec![]);
     let work = BackToWork {
         target: Some(object_id(10028)),
-        target_type: 3,
+        target_class: class_of(3),
         action: Some(ActionKind::Build),
         target2: None,
         point: Point::new(1.0, 2.0),
@@ -6110,12 +6115,12 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
             order: OrderKind::OnTarget2,
             priority: 100,
             target: Some(object_id(10028)),
-            target_owner: 1,
+            target_owner: owner(1),
             point: Position::new(30.0, 88.0, 0.0),
             range: 0.0,
             shown: Point::new(30.0, 88.0),
             ready: true,
-            target_type: 70,
+            target_type: order_type(70),
         }]
     );
     // a recorded target the world no longer holds: the record as it is, in front
@@ -6132,7 +6137,12 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
             first.target_owner,
             first.point
         ),
-        (Some(object_id(999)), 3, -1, Position::new(1.0, 2.0, 0.0))
+        (
+            Some(object_id(999)),
+            OrderTargetType::of_class(class::BUILDING),
+            None,
+            Position::new(1.0, 2.0, 0.0)
+        )
     );
 }
 
@@ -14767,7 +14777,7 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
             (bush.auto_gather, bush.gather_group) = (true, 1);
             masters.get_mut(master_id(120)).unwrap().line_of_sight = 4.0;
         }
-        t.players[1].objects[0].ai.as_mut().unwrap().target_type = -1;
+        t.players[1].objects[0].ai.as_mut().unwrap().target_class = None;
         if near {
             t.players[0].objects[1].place_for_test(Position::new(25.5, 89.5, 0.0));
             let p = *t.spatial.get(object_id(601)).unwrap();
@@ -14839,12 +14849,12 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
         order: OrderKind::Gather,
         priority: 100,
         target,
-        target_owner: 0,
+        target_owner: owner(0),
         point: Position::new(36.5, 89.5, 0.0),
         range: 0.0,
         shown: Point::new(36.5, 89.5),
         ready: true,
-        target_type: 7,
+        target_type: order_type(7),
     };
     // the Gather's state 8 after the deposit, its bush gone, two orders queued
     let mut t = foraging();
@@ -15509,7 +15519,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     let at = v.position();
     v.body.mover_mut().unwrap().moved_at = at;
     v.actions.hunt_mut().unwrap().target = None;
-    v.ai.as_mut().unwrap().target_type = -1;
+    v.ai.as_mut().unwrap().target_class = None;
     setup(v);
     in_update(&mut t, (PlayerId::new(1), 0), 50, |unit, c| {
         let code = unit.hunt_after_drop(c)?;
@@ -15557,12 +15567,12 @@ fn a_hunter_with_a_queued_order_after_the_drop_ends_its_hunt() {
         order: OrderKind::Hunt,
         priority: 100,
         target: ObjectId::of_field(target),
-        target_owner: 0,
+        target_owner: owner(0),
         point: Position::new(36.5, 89.5, 0.0),
         range: 0.0,
         shown: Point::new(36.5, 89.5),
         ready: true,
-        target_type: 9,
+        target_type: order_type(9),
     };
     let held = hunted_without_a_deer(|v| v.ai.as_mut().unwrap().orders = vec![order(501)]);
     assert_eq!(hunt_after(&held), (None, [0, 0]));

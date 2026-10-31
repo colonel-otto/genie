@@ -877,8 +877,12 @@ fn a_gather_takes_its_stops_and_move_to() {
         .copied()
         .unwrap();
     assert_eq!(
-        (g.target_type, g.stops, g.task.id),
-        (5, 2, TaskId::of_task(0))
+        (g.target_class, g.stops, g.task.id),
+        (
+            Some(genie_core::objects::masters::ClassId::try_from(5).unwrap()),
+            2,
+            TaskId::of_task(0)
+        )
     );
     assert!(g.worked && g.move_to.is_none());
     assert_eq!(g.farm.x().to_bits(), 3.0_f32.to_bits());

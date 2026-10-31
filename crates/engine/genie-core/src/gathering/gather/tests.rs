@@ -14,6 +14,7 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::players::attribute::{self, AttributeId};
 use crate::test_ids::carrying;
+use crate::test_ids::class_of;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::step::Step;
@@ -934,7 +935,7 @@ fn waiting(worked: bool) -> GatherAction {
         state: FARM_WAIT,
         timer: -1.0,
         target: None,
-        target_type: i32::from(class::FARM.get()),
+        target_class: Some(class::FARM),
         worked,
         gather_at: Point::new(112.0, 173.0),
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
@@ -1089,8 +1090,8 @@ fn a_forager_walks_to_its_bush() {
     let mut mover = crate::gathering::hunt::tests::walker();
     let mut g = GatherAction::new(task(), &bush(), true, rate()).unwrap();
     assert_eq!(
-        (g.stops, g.gather_at, g.target_type),
-        (1, Point::from([-1.0; 2]), 7)
+        (g.stops, g.gather_at, g.target_class),
+        (1, Point::from([-1.0; 2]), class_of(7))
     );
     let mut held = carrying(Some(attribute::STONE), 0.0);
     let carried = walks(held);
@@ -1182,7 +1183,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
             g.target,
             g.carry_to,
             g.point,
-            g.target_type
+            g.target_class
         ),
         (
             WALK,
@@ -1190,7 +1191,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
             Some(object_id(28222)),
             None,
             Position::new(23.5, 93.5, 0.0),
-            7
+            class_of(7)
         )
     );
     // the gathering is not started any more (+0x80 cleared first)

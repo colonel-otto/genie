@@ -5,11 +5,13 @@ use crate::commands::UnitList;
 use crate::groups::GroupId;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Held;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{COST_SLOTS, CostSlot};
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
+use crate::unit_ai::OrderTargetType;
 
 /// The object id `value` (not −1); const, so a test's constants name objects too.
 pub(crate) const fn object_id(value: i32) -> ObjectId {
@@ -50,6 +52,26 @@ pub(crate) fn master_id(value: i16) -> MasterId {
 /// The master `value`, or none for −1 (a field the game fills with −1).
 pub(crate) fn opt_master(value: i16) -> Option<MasterId> {
     MasterId::of_data(value)
+}
+
+/// The class `value` (0 or more).
+pub(crate) fn class_id(value: i16) -> ClassId {
+    ClassId::try_from(value).expect("a test's class is 0 or more")
+}
+
+/// The class `value`, or none for −1 (a unit AI's target class the game holds as −1).
+pub(crate) fn class_of(value: i16) -> Option<ClassId> {
+    ClassId::of_field(value).expect("a test's class is −1 or more")
+}
+
+/// A queued order's target type `value`, or none for −1.
+pub(crate) fn order_type(value: i32) -> Option<OrderTargetType> {
+    OrderTargetType::of_field(value).expect("a test's target type is −1 or more")
+}
+
+/// A queued order's target owner `value`, or none for −1.
+pub(crate) fn owner(value: i32) -> Option<PlayerId> {
+    PlayerId::of_field(value).expect("a test's owner is −1 or a player")
 }
 
 /// The technology `value` (0 or more).

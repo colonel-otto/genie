@@ -45,8 +45,7 @@ impl World {
         let followed = Followed {
             id: target,
             place: t.position().ground(),
-            class: (0.0 < tm.radius.x() || 0.0 < tm.radius.y())
-                .then_some(i32::from(tm.class.get())),
+            class: (0.0 < tm.radius.x() || 0.0 < tm.radius.y()).then_some(tm.class),
         };
         let cap = if self.players.player(player)?.computer {
             500
@@ -108,12 +107,12 @@ impl World {
             order: OrderKind::Defend,
             priority: 100,
             target: Some(target),
-            target_owner: tp.index() as i32,
+            target_owner: Some(tp),
             point: Position::new(x, y, z),
             range: GUARD_RANGE,
             shown: Point::new(x, y),
             ready: true,
-            target_type: i32::from(tm.id.get()),
+            target_type: Some(crate::unit_ai::OrderTargetType::of_master(tm.id)),
         };
         let cap = if self.players.player(player)?.computer {
             500
@@ -238,7 +237,7 @@ impl World {
             }
             let (t, class) = followed
                 .class
-                .map_or((None, -1), |c| (Some(followed.id), c));
+                .map_or((None, None), |c| (Some(followed.id), c.or_none()));
             ai.set_target(t, class, Position::new(x, y, 0.0));
         }
         Ok(())
@@ -281,7 +280,7 @@ impl World {
             ai.set_action(Some(ActionKind::Move));
             let (t, class) = followed
                 .class
-                .map_or((None, -1), |c| (Some(followed.id), c));
+                .map_or((None, None), |c| (Some(followed.id), c.or_none()));
             ai.set_target(t, class, at);
         }
         Ok(())

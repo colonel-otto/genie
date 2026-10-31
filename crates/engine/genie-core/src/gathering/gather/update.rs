@@ -160,7 +160,7 @@ impl GatherAction {
         if 0.0 < unit.life.amount {
             return Ok(Next::Drop);
         }
-        if waits_for_a_farm(r.master, self.target_type) {
+        if waits_for_a_farm(r.master, self.target_class) {
             return self.begin_farm_wait(c, unit, r);
         }
         self.begin_search(c, unit, r)

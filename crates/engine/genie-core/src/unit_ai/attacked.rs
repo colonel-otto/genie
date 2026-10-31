@@ -14,9 +14,9 @@ use crate::unit_ai::AiCommand;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, Pick, QueuedOrder,
-    RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide, alert_owner,
-    closest_undiscovered_tile,
+    AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, OrderTargetType,
+    Pick, QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
+    alert_owner, closest_undiscovered_tile,
 };
 
 impl UnitAi {
@@ -380,12 +380,12 @@ impl UnitAi {
                 order,
                 priority: 100,
                 target: Some(o.id),
-                target_owner: o.owner,
+                target_owner: Some(o.owner),
                 point: o.vector.with_height(0.0),
                 range: 0.0,
                 shown: o.vector,
                 ready: true,
-                target_type: o.master,
+                target_type: Some(OrderTargetType::of_master(o.master)),
             };
             self.insert_order(order(&site, OrderKind::Foundation), true);
             self.insert_order(order(&target, OrderKind::OnTarget), false);

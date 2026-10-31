@@ -143,3 +143,15 @@ pub const CLASS_64: ClassId = ClassId::named(64);
 pub const CLASS_25: ClassId = ClassId::named(25);
 /// Class 37, as the `.dat` numbers it.
 pub const CLASS_37: ClassId = ClassId::named(37);
+
+/// A table of classes from the game's numbers (the unit AIs' cared lists): each a class the
+/// code names.
+pub(crate) const fn classes<const N: usize>(values: [i16; N]) -> [ClassId; N] {
+    let mut out = [NO_CLASS; N];
+    let mut i = 0;
+    while i < N {
+        out[i] = ClassId::named(values[i]);
+        i += 1;
+    }
+    out
+}

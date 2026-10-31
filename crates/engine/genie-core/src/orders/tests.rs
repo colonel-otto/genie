@@ -19,6 +19,7 @@ use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
+use crate::test_ids::class_of;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -582,12 +583,12 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
         )
     );
     assert_eq!(
-        (ai.target_type, ai.target_point),
-        (52, Position::new(21.0, 21.0, 0.0))
+        (ai.target_class, ai.target_point),
+        (class_of(52), Position::new(21.0, 21.0, 0.0))
     );
     assert_eq!(
-        (ai.last_target, ai.last_target_type, ai.last_retarget_time),
-        (Some(object_id(60)), 3, 1730)
+        (ai.last_target, ai.last_target_class, ai.last_retarget_time),
+        (Some(object_id(60)), class_of(3), 1730)
     );
     let record = ai.order_history.last().expect("the order history");
     assert_eq!(
@@ -1105,12 +1106,12 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
         order: OrderKind::Move,
         priority: 100,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(1.0, 1.0, 0.0),
         range: 0.0,
         shown: Point::new(1.0, 1.0),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
         orders: vec![order],
@@ -1688,12 +1689,12 @@ fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
         order: OrderKind::Move,
         priority: 100,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(1.0, 1.0, 0.0),
         range: 0.0,
         shown: Point::new(1.0, 1.0),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
         orders: vec![order],
@@ -1779,7 +1780,7 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(40)),
-        target_type: 6,
+        target_class: class_of(6),
         ..crate::unit_ai::UnitAi::default()
     };
     let mut ai = attacking;
@@ -2358,8 +2359,8 @@ fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
         (Some(OrderKind::Follow), Some(ActionKind::Follow))
     );
     assert_eq!(
-        (ai.current_target, ai.target_type),
-        (Some(object_id(30)), 6)
+        (ai.current_target, ai.target_class),
+        (Some(object_id(30)), class_of(6))
     );
     assert_eq!(ai.target_point, Position::new(40.0, 20.0, 0.0));
     assert_eq!(
@@ -2461,12 +2462,12 @@ fn a_unit_s_own_queued_order_names_its_target() {
         order: OrderKind::Move,
         priority: 100,
         target,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(1.0, 1.0, 0.0),
         range: 0.0,
         shown: Point::new(1.0, 1.0),
         ready: true,
-        target_type: -1,
+        target_type: None,
     };
     let mut ai = crate::unit_ai::UnitAi {
         orders: vec![
@@ -3245,7 +3246,7 @@ fn patrollers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
             current_order: None,
             current_action: None,
             current_target: None,
-            target_type: -1,
+            target_class: None,
             idle_timer: 400,
             adjusted_idle_timeout: 2000,
             secondary_timer: 3000,
@@ -3360,8 +3361,8 @@ fn a_lone_unit_patrols_to_its_waypoint() {
         (Some(OrderKind::Patrol), None, Some(ActionKind::Move))
     );
     assert_eq!(
-        (ai.current_target, ai.target_type, ai.target_point),
-        (None, -1, Position::new(30.0, 20.0, 1.5))
+        (ai.current_target, ai.target_class, ai.target_point),
+        (None, None, Position::new(30.0, 20.0, 1.5))
     );
     assert_eq!(
         (ai.idle_timer, ai.adjusted_idle_timeout, ai.secondary_timer),
@@ -3538,12 +3539,12 @@ fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
         order: OrderKind::Move,
         priority: 100,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(25.0, 20.0, 0.0),
         range: 0.0,
         shown: Point::ORIGIN,
         ready: false,
-        target_type: -1,
+        target_type: None,
     };
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))]);
     t.players[1].objects[0].ai.as_mut().unwrap().orders = vec![unready];

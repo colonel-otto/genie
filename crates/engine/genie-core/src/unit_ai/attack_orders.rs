@@ -10,6 +10,7 @@ use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
     ARTIFACT_AI, CIVILIAN, Notify, QueuedOrder, SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi,
@@ -47,12 +48,12 @@ impl UnitAi {
                 order: current,
                 priority: self.order_priority,
                 target: self.current_target,
-                target_owner: -1,
+                target_owner: None,
                 point: self.target_point,
                 range: self.desired_distance,
                 shown: order.shown,
                 ready: order.ready,
-                target_type: self.target_type,
+                target_type: self.target_class.and_then(OrderTargetType::of_class),
             };
             self.insert_order(kept, true);
         }
@@ -108,7 +109,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
-        self.target_at(Some(target), Some(i32::from(class.get())), position);
+        self.target_at(Some(target), Some(class), position);
         Ok(true)
     }
 
@@ -201,7 +202,7 @@ impl UnitAi {
             },
         };
         if matches!(t.class, class::PREY | class::PREDATOR | class::TREE) {
-            self.hunt_object(target, i32::from(t.class.get()), t.position, at, side, rng)?;
+            self.hunt_object(target, t.class, t.position, at, side, rng)?;
             return Ok(true);
         }
         self.attack_object(target, true, false, at, side)

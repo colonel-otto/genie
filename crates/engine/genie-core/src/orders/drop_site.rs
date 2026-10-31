@@ -18,6 +18,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::OrderTargetType;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -264,12 +265,12 @@ impl World {
                 order: OrderKind::OnTarget,
                 priority: 100,
                 target: Some(target),
-                target_owner: owner.index() as i32,
+                target_owner: Some(owner),
                 point: place,
                 range: 0.0,
                 shown: place.ground(),
                 ready: true,
-                target_type: i32::from(master.get()),
+                target_type: Some(OrderTargetType::of_master(master)),
             };
             let _ = ai.queue_order(state, order, false, false)?;
         }
@@ -308,12 +309,17 @@ impl World {
                 let master = o.master(&self.masters, op)?.id;
                 (
                     Some(f.id),
-                    i32::from(master.get()),
-                    op.index() as i32,
+                    Some(OrderTargetType::of_master(master)),
+                    Some(op),
                     o.position().ground(),
                 )
             }
-            None => (record.target, record.target_type, -1, record.point),
+            None => (
+                record.target,
+                record.target_class.and_then(OrderTargetType::of_class),
+                None,
+                record.point,
+            ),
         };
         let unit = self.players.live_mut(p, idx)?;
         unit.town_bell = bell;

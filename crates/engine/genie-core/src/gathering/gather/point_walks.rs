@@ -15,6 +15,7 @@ use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
@@ -23,15 +24,15 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::world::step::Step;
 
-/// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for
+/// Whether a gatherer of `master` whose Gather has the target class `target_class` waits for
 /// another farm where another would search (`set_state(0xf3)`, `0x140a8e1d0`): the farmers'
 /// masters, and the fishing ships' on a farm-class target (a fish trap).
 #[must_use]
-pub fn waits_for_a_farm(master: MasterId, target_type: i32) -> bool {
+pub fn waits_for_a_farm(master: MasterId, target_class: Option<ClassId>) -> bool {
     FARM_WAITERS.contains(&master)
         // The farm class, whose gather the slice does not model yet.
         // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
-        || (TRAP_WAITERS.contains(&master) && target_type == i32::from(class::FARM.get()))
+        || (TRAP_WAITERS.contains(&master) && target_class == Some(class::FARM))
 }
 
 impl GatherAction {
@@ -167,9 +168,7 @@ impl GatherAction {
             }
         });
         if !self.worked {
-            if self.target_type == i32::from(class::FARM.get())
-                && target.is_some_and(|t| 1 < t.workers)
-            {
+            if self.target_class == Some(class::FARM) && target.is_some_and(|t| 1 < t.workers) {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 self.set_walk_back(radius, mover, &walks)?;

@@ -8,6 +8,7 @@ use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
 use crate::unit_ai::{
@@ -298,7 +299,11 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// A side without the players' masters.
-    fn master_class(&mut self, _player: i32, _master: i32) -> Result<Option<ClassId>, GenieError> {
+    fn master_class(
+        &mut self,
+        _player: PlayerId,
+        _master: MasterId,
+    ) -> Result<Option<ClassId>, GenieError> {
         Err(GenieError::unsupported(
             "a master's class without the world",
         ))
@@ -461,8 +466,8 @@ pub struct Gatherable {
     pub id: ObjectId,
     /// Its place.
     pub position: Position,
-    /// Its master's class, or the target type the hunter took (a class or a master).
-    pub class: i32,
+    /// Its master's class, or the class the hunter's or gatherer's search took.
+    pub class: ClassId,
 }
 
 /// An object as an order in the queue names it: its id, master, owner and the first two parts
@@ -472,9 +477,9 @@ pub struct Named {
     /// The object.
     pub id: ObjectId,
     /// Its master.
-    pub master: i32,
+    pub master: MasterId,
     /// Its owner.
-    pub owner: i32,
+    pub owner: PlayerId,
     /// Its slot 0x520 vector's x and second part (the height), which the game's orders read as
     /// a point's x and y.
     pub vector: Point,

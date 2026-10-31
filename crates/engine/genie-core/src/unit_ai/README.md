@@ -59,6 +59,7 @@ show in checkpoint word 9.
 | [`retarget.rs`](retarget.rs) | The idle part of the update, the retarget check and search, and the types' other checks. |
 | [`side.rs`](side.rs) | What the unit AI asks of the world (`UnitSide`) and the commands it gives its unit. |
 | [`surroundings.rs`](surroundings.rs) | What the unit AI knows of its surroundings: the searches' results, its home, its targets and what it has seen. |
+| [`target_type.rs`](target_type.rs) | A queued order's target type: the number its writer puts there, a master id or a class, and the two ways the game reads it. |
 | [`test_sides.rs`](test_sides.rs) | Tests: The tests' sides that record the unit's calls (`UnitSide::effect_now`): a list of them standing for a side without a unit, and `With` around another test side. |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`type_notifies.rs`](type_notifies.rs) | Each unit-AI type's notify handler (slot 0x238): the animals', the villager's, the ships', the siege's, the soldier's, the tower's and the building's. |

@@ -11,6 +11,7 @@ use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
@@ -362,7 +363,7 @@ impl Unit {
     pub(crate) fn gather_search(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player)?;
         let gather = self.actions.gather().ok_or(NO_GATHER)?;
-        let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
+        let (carry_to, class, state) = (gather.carry_to, gather.target_class, gather.state);
         let master = self.master(&c.w.masters, c.player)?;
         let site = if let Some(carry) = carry_to {
             carry.get()
@@ -386,7 +387,11 @@ impl Unit {
         };
         self.post_own(
             crate::unit_ai::REQUIRES_SEARCH,
-            [ActionKind::Gather.value(), target_type, site],
+            [
+                ActionKind::Gather.value(),
+                i32::from(ClassId::field(class)),
+                site,
+            ],
         )
     }
 }

@@ -148,7 +148,7 @@ pub struct GatherAction {
     /// `+0x48`: its task.
     pub task: HuntTask,
     /// `+0x68`, `mTargetType`: the target's class.
-    pub target_type: i32,
+    pub target_class: Option<ClassId>,
     /// `+0x6c`, `mNumberStops`: 1, or a farm's stops.
     pub stops: u8,
     /// `+0x6d`, `mCurrentStop`.

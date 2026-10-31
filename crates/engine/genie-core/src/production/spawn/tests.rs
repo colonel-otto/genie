@@ -481,12 +481,12 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         order: OrderKind::Move,
         priority: 5,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
         shown: Point::new(40.0, 80.0),
         ready: false,
-        target_type: -1,
+        target_type: None,
     };
     t.players[1].objects[2]
         .ai
@@ -697,12 +697,12 @@ fn queued_move() -> crate::unit_ai::QueuedOrder {
         order: OrderKind::Move,
         priority: 5,
         target: None,
-        target_owner: -1,
+        target_owner: None,
         point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
         shown: Point::new(40.0, 80.0),
         ready: false,
-        target_type: -1,
+        target_type: None,
     }
 }
 

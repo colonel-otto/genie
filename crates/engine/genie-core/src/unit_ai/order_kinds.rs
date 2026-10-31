@@ -37,7 +37,7 @@ impl UnitAi {
             return Ok(false);
         };
         self.set_action(Some(ActionKind::Defend));
-        self.target_at(Some(target), Some(i32::from(t.class.get())), t.position);
+        self.target_at(Some(target), Some(t.class), t.position);
         self.desired_distance = range;
         self.defend_target = Some(target);
         Ok(true)
@@ -90,8 +90,8 @@ impl UnitAi {
         side.effect_now(Effect::Command(AiCommand::BuildObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
-            Some(t) => self.set_target(Some(target), i32::from(t.class.get()), t.position),
-            None => self.set_target(Some(target), -1, Position::ORIGIN),
+            Some(t) => self.set_target(Some(target), t.class.or_none(), t.position),
+            None => self.set_target(Some(target), None, Position::ORIGIN),
         }
         Ok(true)
     }
@@ -117,8 +117,8 @@ impl UnitAi {
         }
         self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
-            Some(t) => self.set_target(Some(target), i32::from(t.class.get()), t.position),
-            None => self.set_target(Some(target), -1, Position::ORIGIN),
+            Some(t) => self.set_target(Some(target), t.class.or_none(), t.position),
+            None => self.set_target(Some(target), None, Position::ORIGIN),
         }
         Ok(true)
     }
@@ -141,7 +141,7 @@ impl UnitAi {
             Gatherable {
                 id: target,
                 position: t.position,
-                class: i32::from(t.class.get()),
+                class: t.class,
             },
             side,
             rng,
@@ -168,7 +168,7 @@ impl UnitAi {
             self.stop_current(true, at, side, rng)?;
             return Ok(false);
         };
-        self.hunt_object(target, i32::from(t.class.get()), t.position, at, side, rng)?;
+        self.hunt_object(target, t.class, t.position, at, side, rng)?;
         Ok(true)
     }
 
@@ -194,7 +194,7 @@ impl UnitAi {
             return Ok(false);
         };
         self.set_action(Some(ActionKind::Follow));
-        self.target_at(Some(target), Some(i32::from(t.class.get())), t.position);
+        self.target_at(Some(target), Some(t.class), t.position);
         self.desired_distance = range;
         if range * range < t.gap_squared {
             let seen = Seen {
@@ -238,7 +238,7 @@ impl UnitAi {
         self.set_action(Some(ActionKind::Enter));
         self.target_at(
             Some(target),
-            held.map(|t| i32::from(t.class.get())),
+            held.map(|t| t.class),
             Position::from([-1.0; 3]),
         );
         Ok(true)
@@ -288,11 +288,7 @@ impl UnitAi {
         } else {
             ActionKind::Unload
         }));
-        self.set_target(
-            Some(at.id),
-            i32::from(ClassId::field(at.class)),
-            at.position,
-        );
+        self.set_target(Some(at.id), at.class, at.position);
         Ok(true)
     }
 
@@ -315,7 +311,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::SeekAndDestroy));
-        let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class.get()));
+        let class = Self::world_object(target, at, side)?.map(|t| t.class);
         self.target_at(
             Some(target),
             class,
@@ -370,15 +366,14 @@ impl UnitAi {
             self.ordered_on_target = true;
             return Ok(1);
         }
-        if o.target_type != -1 {
+        if let Some(target_type) = o.target_type {
             // the class of the target's type: its owner's master's, else the type itself
-            let class = if o.target_owner == -1 {
-                o.target_type
-            } else {
-                match side.master_class(o.target_owner, o.target_type)? {
-                    Some(class) => i32::from(class.get()),
+            let class = match o.target_owner {
+                None => target_type.class(),
+                Some(owner) => match side.master_class(owner, target_type.master())? {
+                    Some(class) => class,
                     None => return Ok(0),
-                }
+                },
             };
             let kind = self.resource_kind(class);
             if kind == -1 {
@@ -424,12 +419,12 @@ impl UnitAi {
     /// (`FUN_140c1c4f0`) and the building's (`FUN_140c1c460`, the same switch,
     /// [`civilian_kind`]); the fishing ship's (`FUN_140c1c580`): 2 for classes 5, 31 and 33, 4 for
     /// 63; the base's (`FUN_140c4cc00`) none. −1 for none (the byte 0xff).
-    pub(super) fn resource_kind(&self, target_type: i32) -> i8 {
+    pub(super) const fn resource_kind(&self, class: ClassId) -> i8 {
         match self.ai_type {
-            CIVILIAN | UnitAiType::BUILDING => civilian_kind(target_type),
-            FISHING_AI => match ClassId::of_target_type(target_type) {
-                Some(class::CLASS_5 | class::CLASS_31 | class::CLASS_33) => 2,
-                Some(class::CLASS_63) => 4,
+            CIVILIAN | UnitAiType::BUILDING => civilian_kind(class),
+            FISHING_AI => match class {
+                class::CLASS_5 | class::CLASS_31 | class::CLASS_33 => 2,
+                class::CLASS_63 => 4,
                 _ => -1,
             },
             _ => -1,

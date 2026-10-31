@@ -11,6 +11,7 @@ use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::objects::HpPowerup;
 use genie_core::objects::ObjectId;
+use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
@@ -320,7 +321,7 @@ pub(super) fn town_bell(
         flag: c.town_bell_flag != 0,
         work: BackToWork {
             target: ObjectId::of_field(c.back_to_work1_town_bell_target_id),
-            target_type: c.back_to_work1_town_bell_target_type,
+            target_class: ClassId::of_param(c.back_to_work1_town_bell_target_type)?,
             action: ActionKind::of_field(c.back_to_work1_town_bell_action)?,
             target2: ObjectId::of_field(c.back_to_work1_town_bell_target_id2),
             point: Point::new(
@@ -330,7 +331,7 @@ pub(super) fn town_bell(
         },
         before_building: BackToWork {
             target: ObjectId::of_field(c.back_to_work2_town_bell_target_id),
-            target_type: c.back_to_work2_town_bell_target_type,
+            target_class: ClassId::of_param(c.back_to_work2_town_bell_target_type)?,
             action: ActionKind::of_field(c.back_to_work2_town_bell_action)?,
             target2: ObjectId::of_field(c.back_to_work2_town_bell_target_id2),
             point: Point::new(

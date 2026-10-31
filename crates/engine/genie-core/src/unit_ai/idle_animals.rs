@@ -202,10 +202,10 @@ impl UnitAi {
             classes: &HUNTED_CARED,
             size: at.size,
             pick: Pick::Closest {
-                group: -1,
+                group: None,
                 relation: -1,
                 state: -1,
-                master: -1,
+                master: None,
                 workers: -1,
                 spared: -1,
                 reach: true,
@@ -284,7 +284,7 @@ impl UnitAi {
                 group,
                 relation: 2,
                 state: 2,
-                master: -1,
+                master: None,
                 workers: -1,
                 spared: -1,
                 reach: true,
@@ -302,11 +302,11 @@ impl UnitAi {
             ));
         }
         // each search that queries sets the alert mode (`FUN_140c63e20`)
-        let mut found = side.closest(&search(4))?;
+        let mut found = side.closest(&search(Some(class::VILLAGER)))?;
         self.alert(found, at.dt_seconds);
         // none or a negative id (`JL`)
         if found.id.is_none_or(|id| id.get() < 0) {
-            found = side.closest(&search(-1))?;
+            found = side.closest(&search(None))?;
             self.alert(found, at.dt_seconds);
             if !at.mode_1 {
                 reach = at.los / LION_SIGHT_DIVISOR;

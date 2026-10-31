@@ -235,8 +235,9 @@ fn attacks_walls(me: &Searcher) -> bool {
     let defending =
         // Class 13 (siege), whose units keep the walls' owner flag on the attack move order (`0x2dd`).
         matches!(me.order, Some(crate::unit_ai::OrderKind::AttackMove)) && me.class != Some(class::SIEGE);
-    matches!(me.target_types[0], 27 | 39)
-        || matches!(me.target_types[1], 27 | 39)
+    me.target_classes
+        .iter()
+        .any(|c| matches!(c, Some(class::WALL | class::GATE)))
         || (me.walls_allowed && !defending)
 }
 

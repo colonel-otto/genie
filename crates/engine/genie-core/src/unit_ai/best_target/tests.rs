@@ -202,7 +202,7 @@ fn soldier() -> Searcher {
     Searcher {
         id: object_id(1),
         target: None,
-        target_types: [-1, -1],
+        target_classes: [None, None],
         order: None,
         action: None,
         master: master_id(74),
@@ -397,7 +397,7 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
         ..Ask::default()
     };
     let me = Searcher {
-        target_types: [-1, 27],
+        target_classes: [None, Some(class::WALL)],
         ..soldier()
     };
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
@@ -487,7 +487,7 @@ fn a_gate_answers_at_once_only_among_walls() {
         ..Ask::default()
     };
     let me = Searcher {
-        target_types: [-1, 27],
+        target_classes: [None, Some(class::WALL)],
         ..soldier()
     };
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();

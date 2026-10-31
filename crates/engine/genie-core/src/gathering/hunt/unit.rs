@@ -297,17 +297,13 @@ impl Unit {
         let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
-        let class = if ai.target_type == -1 {
-            i32::from(ClassId::field(hunt.target_class))
-        } else {
-            ai.target_type
-        };
+        let class = ai.target_class.or(hunt.target_class);
         if ai.ai_type != crate::unit_ai::CIVILIAN {
             return Err(GenieError::unsupported(
                 "slot 0x1b0 of another unit AI than the civilian's",
             ));
         }
-        let kind = crate::unit_ai::civilian_kind(class);
+        let kind = class.map_or(-1, crate::unit_ai::civilian_kind);
         let found = if kind == -1 && hunt.target_class == Some(class::PREDATOR) {
             None
         } else if kind == -1 {
@@ -327,7 +323,7 @@ impl Unit {
     fn hunt_closest_object(
         &mut self,
         c: &mut Step<'_>,
-        class: i32,
+        class: Option<ClassId>,
     ) -> Result<Option<ObjectId>, GenieError> {
         let others = OthersRef::of(&c.w.players, c.player)?;
         if self.my_pasture.is_some() {
@@ -348,12 +344,8 @@ impl Unit {
                 group: class,
                 relation: -1,
                 state: -1,
-                master: -1,
-                workers: if ClassId::of_target_type(class) == Some(class::FARM) {
-                    1
-                } else {
-                    -1
-                },
+                master: None,
+                workers: if class == Some(class::FARM) { 1 } else { -1 },
                 spared: -1,
                 reach: true,
             },

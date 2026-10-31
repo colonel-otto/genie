@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
@@ -76,7 +77,7 @@ impl UnitAi {
         if !computer || at.garrisoned {
             return Ok(false);
         }
-        let (classes, radius): (&[i32], f32) = if self.ai_type == FISHING_AI {
+        let (classes, radius): (&[ClassId], f32) = if self.ai_type == FISHING_AI {
             (
                 &FISHING_CARED,
                 civilian_search_radius(at.los, at.search_radius),
@@ -92,10 +93,10 @@ impl UnitAi {
             classes,
             size: at.size,
             pick: Pick::Closest {
-                group: -1,
+                group: None,
                 relation: -1,
                 state: -1,
-                master: -1,
+                master: None,
                 workers: -1,
                 spared: -1,
                 reach: true,
@@ -587,8 +588,8 @@ impl UnitAi {
             order: self.current_order,
             action: self.current_action,
             target: self.current_target,
-            target_type: self.target_type,
-            last_target_type: self.last_target_type,
+            target_class: self.target_class,
+            last_target_class: self.last_target_class,
             patrol_path: self.patrol_path.is_some(),
             target_kind,
         }

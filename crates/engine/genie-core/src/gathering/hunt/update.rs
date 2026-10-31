@@ -5,14 +5,12 @@ use crate::GenieError;
 use crate::combat::attack::{Attack, Fight, set_walker_anim};
 use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{
-    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, SEARCH, TREE_CLASS, WALK,
-    WALK_SEARCH,
+    ATTACK, FACE, GATHER, Herd, HuntAction, HuntNext, HuntReads, LEAD, SEARCH, WALK, WALK_SEARCH,
 };
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
 use crate::objects::lifecycle::seconds;
-use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -224,17 +222,13 @@ impl HuntAction {
         self.set_point_walk(WALK_SEARCH, mover, &walks)
     }
 
-    /// `FUN_140ac4670` with 8 and −1 for a class the unit AI's slot 0x1b0 gives 0 (trees: the
-    /// class its unit AI targets, else the hunt's): the caller's search
-    /// (`Unit::hunt_tree_search`) found none; another one here is not modelled.
+    /// `FUN_140ac4670` with 8 and −1 for a class the unit AI's slot 0x1b0 gives 0 (trees, the
+    /// class [`class::TREE`]: the class its unit AI targets, else the hunt's): the caller's
+    /// search (`Unit::hunt_tree_search`) found none; another one here is not modelled.
     fn no_tree_search(&self, r: &HuntReads) -> Result<(), GenieError> {
-        if let Some(class) = r.ai_class {
-            let class = if class == -1 {
-                i32::from(ClassId::field(self.target_class))
-            } else {
-                class
-            };
-            if class == TREE_CLASS && !r.tree_searched {
+        if r.has_ai {
+            let class = r.ai_class.or(self.target_class);
+            if class == Some(class::TREE) && !r.tree_searched {
                 return Err(GenieError::unsupported(
                     "a hunt's search for another tree (FUN_140ac4670)",
                 ));

@@ -116,9 +116,7 @@ impl crate::world::World {
         clears: bool,
     ) -> Result<(), GenieError> {
         let named = match target.and_then(|id| Some((id, self.object(id)?))) {
-            Some((target, (tp, t))) => {
-                Some((target, i32::from(t.master(&self.masters, tp)?.class.get())))
-            }
+            Some((target, (tp, t))) => Some((target, t.master(&self.masters, tp)?.class)),
             None => None,
         };
         let unit = &mut self.players.player_mut(p)?.objects[i];

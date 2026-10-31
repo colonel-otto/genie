@@ -508,10 +508,10 @@ pub(super) fn closest_kept(
     (player, searcher): (PlayerId, Searcher),
     (moving, shuns, farm): ClosestChecks<'_>,
 ) -> Result<bool, GenieError> {
-    if filter.group != -1 && i32::from(p.class.get()) != filter.group {
+    if filter.group.is_some_and(|g| p.class != g) {
         return Ok(false);
     }
-    if filter.master != -1 && i32::from(p.master.get()) != filter.master {
+    if filter.master.is_some_and(|m| p.master != m) {
         return Ok(false);
     }
     if filter.state != -1 && i32::from(seer.state) != filter.state {
@@ -525,10 +525,12 @@ pub(super) fn closest_kept(
     if filter.state == 0 {
         return Err(GenieError::unsupported("ClosestObject's unbuilt farm test"));
     }
-    if filter.group == PASTURE_CLASS && !farm_kept(id, p, filter, searcher, farm)? {
+    if filter.group == Some(PASTURE_CLASS) && !farm_kept(id, p, filter, searcher, farm)? {
         return Ok(false);
     }
-    if filter.group == LIVESTOCK_CLASS && ((p.player != player && seer.state == 2) || moving(id)) {
+    if filter.group == Some(LIVESTOCK_CLASS)
+        && ((p.player != player && seer.state == 2) || moving(id))
+    {
         return Ok(false);
     }
     if searcher.class_10 && shuns(p)? {
@@ -558,7 +560,7 @@ pub(super) fn farm_kept(
             "ClosestObject over pastures (their workers and livestock)",
         ));
     }
-    if filter.master == -1 {
+    if filter.master.is_none() {
         if 1 <= workers {
             return Ok(false);
         }

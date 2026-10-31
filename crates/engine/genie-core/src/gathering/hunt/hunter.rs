@@ -9,7 +9,6 @@ use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::seconds;
-use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
@@ -85,14 +84,10 @@ impl Unit {
                             .is_some_and(|t| c.w.object_state(t).is_some_and(|s| 6 < s))
                 })
         }) && self.ai.as_ref().is_some_and(|ai| {
-            let class = if ai.target_type == -1 {
-                self.actions
-                    .hunt()
-                    .map_or(-1, |h| i32::from(ClassId::field(h.target_class)))
-            } else {
-                ai.target_type
-            };
-            class == crate::gathering::hunt::TREE_CLASS
+            let class = ai
+                .target_class
+                .or_else(|| self.actions.hunt().and_then(|h| h.target_class));
+            class == Some(class::TREE)
         })
     }
 

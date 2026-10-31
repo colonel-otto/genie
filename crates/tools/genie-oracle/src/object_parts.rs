@@ -8,6 +8,7 @@ use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
+use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
 use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::{ActionKind, OrderKind};
@@ -109,7 +110,7 @@ pub(super) fn unit_ai(
         order_priority: ai.current_order_priority_value,
         current_action: ActionKind::of_field(ai.current_action_value)?,
         current_target: ObjectId::of_field(ai.current_target_value),
-        target_type: ai.current_target_type_value,
+        target_class: ClassId::of_param(ai.current_target_type_value)?,
         target_point: Position::new(
             ai.current_target_xvalue,
             ai.current_target_yvalue,
@@ -120,7 +121,7 @@ pub(super) fn unit_ai(
         last_order: OrderKind::of_field(ai.last_order_value)?,
         last_action: ActionKind::of_field(ai.last_action_value)?,
         last_target: ObjectId::of_field(ai.last_target_value),
-        last_target_type: ai.last_target_type_value,
+        last_target_class: ClassId::of_param(ai.last_target_type_value)?,
         idle_timer: ai.idle_timer_value,
         adjusted_idle_timeout: ai.adjusted_idle_timeout_value,
         idle_timeout: ai.idle_timeout_value,

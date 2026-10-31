@@ -212,7 +212,7 @@ impl World {
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.set_action(Some(ActionKind::Attack));
-            ai.set_target(Some(aim.aimed), i32::from(aim.aimed_class.get()), aim.at);
+            ai.set_target(Some(aim.aimed), aim.aimed_class.or_none(), aim.at);
         }
         self.take(target, self.releaser(player, idx)?)?;
         let unit = self.players.live_mut(player, idx)?;
@@ -221,7 +221,7 @@ impl World {
             ai.notify_work(
                 Some(OrderKind::Attack),
                 Some(ActionKind::Attack),
-                Some((target, i32::from(aim.class.get()))),
+                Some((target, aim.class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),

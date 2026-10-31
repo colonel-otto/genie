@@ -10,6 +10,8 @@ use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterId;
+use crate::players::PlayerId;
 use crate::unit_ai::{
     AiCommand, Attacked, Duel, Effect, Found, Gatherable, NearestAttacker, OffFootprint,
     PatrolPath, ResourceSearch, Search, Seeker, Surroundings, TargetFlags, UnitAi, UnitCommand,
@@ -279,7 +281,11 @@ impl UnitSide for With<'_> {
         self.side.closest_resource(search)
     }
 
-    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<ClassId>, GenieError> {
+    fn master_class(
+        &mut self,
+        player: PlayerId,
+        master: MasterId,
+    ) -> Result<Option<ClassId>, GenieError> {
         self.side.master_class(player, master)
     }
 

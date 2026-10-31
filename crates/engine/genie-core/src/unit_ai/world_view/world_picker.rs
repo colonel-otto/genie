@@ -310,7 +310,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         Ok(crate::unit_ai::best_target::Searcher {
             id: self.me,
             target: seeker.target,
-            target_types: [seeker.target_type, seeker.last_target_type],
+            target_classes: [seeker.target_class, seeker.last_target_class],
             order: seeker.order,
             action: seeker.action,
             master: a.master,

@@ -35,7 +35,7 @@ pub struct Search<'a> {
     /// How far.
     pub radius: f32,
     /// The object classes it cares about.
-    pub classes: &'a [i32],
+    pub classes: &'a [ClassId],
     /// The searcher's radii.
     pub size: Footprint,
     /// What it picks of what it finds.
@@ -107,13 +107,13 @@ pub enum Pick {
     /// any), reachable ones only.
     Closest {
         /// The master class (−1 any).
-        group: i32,
+        group: Option<ClassId>,
         /// The relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself; −1 any).
         relation: i32,
         /// The object state (−1 any).
         state: i32,
         /// The master (−1 any).
-        master: i32,
+        master: Option<MasterId>,
         /// The workers cap (−1 none).
         workers: i32,
         /// The relation passed over (argument 9: 0 friends, 1 neutrals, 2 enemies, 3 itself;
@@ -246,10 +246,10 @@ pub struct Seeker {
     pub action: Option<ActionKind>,
     /// `+0x48`.
     pub target: Option<ObjectId>,
-    /// `+0x4c`.
-    pub target_type: i32,
-    /// `+0x70`.
-    pub last_target_type: i32,
+    /// `+0x4c`: the target's class.
+    pub target_class: Option<ClassId>,
+    /// `+0x70`: the last target's class.
+    pub last_target_class: Option<ClassId>,
     /// `+0x1c0` holds a patrol path.
     pub patrol_path: bool,
     /// The master type of the current target as the world holds it ([`Surroundings::target`]),

@@ -264,12 +264,12 @@ impl World {
             order: OrderKind::Build,
             priority: 100,
             target: Some(foundation),
-            target_owner: fp.index() as i32,
+            target_owner: Some(fp),
             point: Position::new(position.x(), position.y(), 0.0),
             range: 0.0,
             shown: position.ground(),
             ready: true,
-            target_type: i32::from(master.get()),
+            target_type: Some(crate::unit_ai::OrderTargetType::of_master(master)),
         };
         let ai = unit.ai.as_mut().ok_or(GenieError::unsupported(
             "a queued build order without a unit AI",
@@ -291,7 +291,7 @@ impl World {
         (fp, foundation, master): (PlayerId, ObjectId, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
-        let site_class = i32::from(self.master(fp, master)?.class.get());
+        let site_class = self.master(fp, master)?.class;
         if let Some(m) = self.players.live_mut(player, idx)?.body.mover_mut() {
             m.ignore_units.clear();
         }

@@ -77,9 +77,6 @@ pub const WALK_POINT: u8 = 15;
 /// State 11 (`0xb`): walking to the point after the target went on the way to it; its end
 /// searches (`set_state` 3).
 pub const WALK_SEARCH: u8 = 11;
-/// The class of trees, for which the civilian unit AI's slot 0x1b0 (`FUN_140c1c4f0`) gives 0: a
-/// hunt whose target went searches for the next one (`FUN_140ac4670`).
-pub const TREE_CLASS: i32 = 15;
 
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
@@ -226,8 +223,10 @@ pub(crate) struct HuntReads {
     /// The player's attribute 292 is 1: a task whose `attribute_type4` is 0x124 stops the
     /// target's decay (`FUN_140ac44b0`).
     pub(crate) stops_decay: bool,
-    /// The unit AI's target class (`+0x4c`, `FUN_140c4cc50`), None for a unit without one.
-    pub(crate) ai_class: Option<i32>,
+    /// The unit has a unit AI (`FUN_140c4cc50` reads it).
+    pub(crate) has_ai: bool,
+    /// Its unit AI's target class (`+0x4c`).
+    pub(crate) ai_class: Option<ClassId>,
     /// The caller ran the search for the next tree a lost target asks ([`HuntAction::update`]'s
     /// `FUN_140ac4670`, `Unit::hunt_tree_search`) and found none.
     pub(crate) tree_searched: bool,

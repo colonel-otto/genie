@@ -11,6 +11,7 @@ use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, RecordId, SearchCache, Spatial, Tiles, WalkTest,
     tile_record_id,
 };
+use crate::objects::masters::ClassId;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use std::collections::BTreeMap;
@@ -282,7 +283,7 @@ impl Spatial {
 
     /// [`Spatial::check_known`] for a query over the registry's lists of `classes`: a frozen
     /// object of another class has no say.
-    pub fn check_known_classes(&self, rect: Rect, classes: &[i32]) -> Result<(), GenieError> {
+    pub fn check_known_classes(&self, rect: Rect, classes: &[ClassId]) -> Result<(), GenieError> {
         self.check_known_of(rect, false, Some(classes))
     }
 
@@ -290,14 +291,14 @@ impl Spatial {
         &self,
         rect: Rect,
         records: bool,
-        classes: Option<&[i32]>,
+        classes: Option<&[ClassId]>,
     ) -> Result<(), GenieError> {
         // only a frozen object has an unknown place, and each is in `frozen_for`
         let near = self.frozen().find(|&(id, p)| {
             if records && p.obstruction.is_none() {
                 return false;
             }
-            if classes.is_some_and(|c| !c.contains(&i32::from(p.class.get()))) {
+            if classes.is_some_and(|c| !c.contains(&p.class)) {
                 return false;
             }
             p.unknown.is_some_and(|u| {

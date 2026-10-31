@@ -5,6 +5,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -295,7 +296,7 @@ impl UnitAi {
         &self,
         at: &Surroundings,
         computer: bool,
-    ) -> Result<(&'static [i32], f32), GenieError> {
+    ) -> Result<(&'static [ClassId], f32), GenieError> {
         search_area(self.ai_type, at.class, at.los, at.search_radius, computer)
     }
 

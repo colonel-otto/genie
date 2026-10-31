@@ -216,9 +216,9 @@ impl UnitAi {
     pub(crate) fn remove_target(&mut self) {
         if self.current_target.is_some() {
             self.last_target = self.current_target;
-            self.last_target_type = self.target_type;
+            self.last_target_class = self.target_class;
             self.current_target = None;
-            self.target_type = -1;
+            self.target_class = None;
             self.target_point = Position::from([-1.0; 3]);
         }
     }
@@ -288,9 +288,9 @@ impl UnitAi {
     /// debug log behind `DAT_143f0900d`, which changes no state.
     pub(crate) fn forget_targets(&mut self) {
         self.last_target = None;
-        self.last_target_type = -1;
+        self.last_target_class = None;
         self.current_target = None;
-        self.target_type = -1;
+        self.target_class = None;
         self.target_point = Position::from([-1.0; 3]);
     }
 

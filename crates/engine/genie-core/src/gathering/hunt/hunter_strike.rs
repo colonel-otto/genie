@@ -11,7 +11,6 @@ use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites}
 use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::ObjectId;
-use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -106,7 +105,8 @@ impl Unit {
             capacity: f32::from(master.capacity),
             productivity,
             stops_decay: owner.attributes.get(292) == Some(&1.0),
-            ai_class: self.ai.as_ref().map(|ai| ai.target_type),
+            has_ai: self.ai.is_some(),
+            ai_class: self.ai.as_ref().and_then(|ai| ai.target_class),
             tree_searched: tree_lost,
             predator_hunts_end: c.w.settings.predator_hunts_end(),
             sprites: HuntSprites {
@@ -126,14 +126,10 @@ impl Unit {
     /// [`Unit::hunt_search_state`]).
     pub(crate) fn hunt_attack_failed(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let tree = self.ai.as_ref().is_some_and(|ai| {
-            let class = if ai.target_type == -1 {
-                self.actions
-                    .hunt()
-                    .map_or(-1, |h| i32::from(ClassId::field(h.target_class)))
-            } else {
-                ai.target_type
-            };
-            class == crate::gathering::hunt::TREE_CLASS
+            let class = ai
+                .target_class
+                .or_else(|| self.actions.hunt().and_then(|h| h.target_class));
+            class == Some(class::TREE)
         });
         if tree && self.hunt_tree_search(c, None, Some(TREE_NEAR))? {
             return Ok(());

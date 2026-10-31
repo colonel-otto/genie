@@ -48,6 +48,29 @@ impl genie_diff::Diff for PlayerId {
 }
 
 impl PlayerId {
+    /// The value a field takes for none.
+    const NONE: i32 = -1;
+
+    /// The player of a saved field that holds −1 for none (a queued order's target owner).
+    ///
+    /// # Errors
+    ///
+    /// A negative value other than −1 or one past a command's byte.
+    pub fn of_field(value: i32) -> Result<Option<Self>, GenieError> {
+        if value == Self::NONE {
+            return Ok(None);
+        }
+        u8::try_from(value).map(|n| Some(Self(n))).map_err(|_| {
+            GenieError::invalid_input("a player field no player has").with("player", value)
+        })
+    }
+
+    /// The value of a field that holds −1 for none.
+    #[must_use]
+    pub fn field(player: Option<Self>) -> i32 {
+        player.map_or(Self::NONE, |p| i32::from(p.0))
+    }
+
     /// The player of number `number`, as a command's byte holds it (for a constant).
     #[must_use]
     pub const fn new(number: u8) -> Self {
@@ -89,6 +112,22 @@ mod tests {
             let p = PlayerId::from(number);
             assert_eq!((p.get(), p.index()), (number, usize::from(number)));
             assert_eq!(PlayerId::try_from(p.index()), Ok(p));
+        }
+    }
+
+    /// A saved −1 is no player, a number up to a byte a player, any other value an error; each
+    /// converts back to its value.
+    #[test]
+    fn a_player_field_s_minus_one_is_none() {
+        assert_eq!(PlayerId::of_field(-1), Ok(None));
+        assert_eq!(PlayerId::of_field(3), Ok(Some(PlayerId::new(3))));
+        assert_eq!(PlayerId::field(Some(PlayerId::new(3))), 3);
+        assert_eq!(PlayerId::field(None), -1);
+        for bad in [-2, 256] {
+            assert_eq!(
+                PlayerId::of_field(bad).map_err(|e| e.kind()),
+                Err(ErrorKind::InvalidInput)
+            );
         }
     }
 

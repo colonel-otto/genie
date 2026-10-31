@@ -188,12 +188,17 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
 
     /// The player's master table (`FUN_14152fe40`, `+0x28`): the masters the slice holds of each
     /// player.
-    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<ClassId>, GenieError> {
-        let class = usize::try_from(player)
-            .ok()
-            .and_then(|p| self.c.w.masters.get(p))
-            .zip(i16::try_from(master).ok().and_then(MasterId::of_data))
-            .and_then(|(ms, id)| ms.get(id))
+    fn master_class(
+        &mut self,
+        player: PlayerId,
+        master: MasterId,
+    ) -> Result<Option<ClassId>, GenieError> {
+        let class = self
+            .c
+            .w
+            .masters
+            .get(player.index())
+            .and_then(|ms| ms.get(master))
             .map(|m| m.class);
         Ok(class)
     }

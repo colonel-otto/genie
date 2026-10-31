@@ -16,6 +16,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::test_ids::carrying;
+use crate::test_ids::class_of;
 use crate::test_ids::object_id;
 
 use crate::combat::attack::tests::Rig;
@@ -33,7 +34,8 @@ pub(crate) fn hunt_reads() -> HuntReads {
         capacity: 10.0,
         productivity: 1.0,
         stops_decay: false,
-        ai_class: Some(-1),
+        has_ai: true,
+        ai_class: None,
         tree_searched: false,
         predator_hunts_end: false,
         sprites: HuntSprites::default(),
@@ -694,7 +696,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
     };
     let mut rig = Rig::on_the_path(Victim::default());
     let mut r = HuntReads {
-        ai_class: Some(15),
+        ai_class: Some(class::TREE),
         ..hunt_reads()
     };
     let lost = |h: &HuntAction, r: &HuntReads, rig: &mut Rig| {
@@ -706,7 +708,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
     // the caller's search for the next tree found none: the hunt walks to its point
     r.tree_searched = true;
     assert!(lost(&hunt, &r, &mut rig).0.is_ok());
-    (r.tree_searched, r.ai_class) = (false, Some(-1));
+    (r.tree_searched, r.ai_class) = (false, None);
     (_, hunt) = lost(&hunt, &r, &mut rig);
     let to_point = to_point(
         MoveTo::Start,
@@ -1705,7 +1707,7 @@ fn a_hunt_of_a_tree_searches_on_a_failed_walk_or_a_target_let_go() {
                 .for_each(|u| u.life.state = state);
         }
         rig.unit_mut().ai = Some(crate::unit_ai::UnitAi {
-            target_type: 15,
+            target_class: class_of(15),
             ..crate::unit_ai::UnitAi::default()
         });
         rig.unit_mut().actions.set_hunt(Some(HuntAction {

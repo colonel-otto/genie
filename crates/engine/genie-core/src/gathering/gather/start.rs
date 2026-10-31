@@ -169,7 +169,7 @@ impl GatherAction {
             point: target.position,
             timer: 0.0,
             task,
-            target_type: i32::from(target.class.get()),
+            target_class: target.class.or_none(),
             stops,
             current_stop: 0,
             time_per_stop,
@@ -225,7 +225,7 @@ impl GatherAction {
         // a farm another farmer works (`+0x644` above 1 with this one, which the constructor
         // took): set_state(11) to its point, then the farm goes (slot 0x68 with none; the caller
         // lets it go)
-        if self.target_type == i32::from(class::FARM.get()) && 1 < target.workers + 1 {
+        if self.target_class == Some(class::FARM) && 1 < target.workers + 1 {
             let radius = if STOP_FARMS.contains(&target.master) {
                 0.0
             } else {
@@ -298,7 +298,7 @@ impl GatherAction {
         let workers = target.workers + i32::from(Some(target.id) != self.target);
         self.target = Some(target.id);
         self.point = target.position;
-        self.target_type = i32::from(target.class.get());
+        self.target_class = target.class.or_none();
         if farm_stops {
             if STOP_FARMS.contains(&target.master) {
                 self.farm = target.position.ground();

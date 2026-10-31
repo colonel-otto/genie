@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -374,18 +375,14 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let mut class = n.p[1];
-        if class == -1 {
-            class = self.target_type;
-        }
-        if class == -1 {
-            class = self.last_target_type;
-        }
-        if class == -1 {
+        let class = ClassId::of_param(n.p[1])?
+            .or(self.target_class)
+            .or(self.last_target_class);
+        let Some(class) = class else {
             self.remove_target();
             self.stop_current(true, at, side, rng)?;
             return Ok(GO_ON);
-        }
+        };
         let kind = civilian_kind(class);
         let found = if kind == -1 {
             let found = side.closest(&Search {
@@ -394,11 +391,11 @@ impl UnitAi {
                 classes: &CIVILIAN_CARED,
                 size: at.size,
                 pick: Pick::Closest {
-                    group: class,
+                    group: Some(class),
                     relation: -1,
                     state: -1,
-                    master: -1,
-                    workers: if class == 49 { 1 } else { -1 },
+                    master: None,
+                    workers: if class == class::FARM { 1 } else { -1 },
                     spared: -1,
                     reach: true,
                 },
@@ -435,7 +432,7 @@ impl UnitAi {
             }
             return Ok(GO_ON);
         };
-        if class == 49 {
+        if class == class::FARM {
             return Err(GenieError::unsupported("a hunter's search finding a farm"));
         }
         self.hunt_object(found.id, found.class, found.position, at, side, rng)?;
@@ -461,36 +458,27 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let mut class = self.target_type;
-        if class == -1 {
-            class = self.last_target_type;
-        }
-        if class == -1 {
-            class = n.p[1];
-        }
-        if class == -1 {
+        let noted = ClassId::of_param(n.p[1])?;
+        let class = self.target_class.or(self.last_target_class).or(noted);
+        let Some(class) = class else {
             self.remove_target();
             self.stop_current(true, at, side, rng)?;
             return Ok(GO_ON);
-        }
+        };
         let kind = civilian_kind(class);
         let found = if kind == -1 {
             // "Calling closest object for a farm that's alive": the friends' pass over
-            let spared = if n.p[1] == i32::from(class::FARM.get()) {
-                0
-            } else {
-                -1
-            };
+            let spared = if noted == Some(class::FARM) { 0 } else { -1 };
             let found = side.closest(&Search {
                 at: at.position.ground(),
                 radius: civilian_search_radius(at.los, at.search_radius),
                 classes: &CIVILIAN_CARED,
                 size: at.size,
                 pick: Pick::Closest {
-                    group: class,
+                    group: Some(class),
                     relation: -1,
                     state: -1,
-                    master: -1,
+                    master: None,
                     workers: -1,
                     spared,
                     reach: true,
@@ -547,7 +535,7 @@ impl UnitAi {
             rng,
         )?;
         self.set_action(Some(ActionKind::Gather));
-        self.set_target(Some(found.id), found.class, found.position);
+        self.set_target(Some(found.id), found.class.or_none(), found.position);
         Ok(())
     }
 

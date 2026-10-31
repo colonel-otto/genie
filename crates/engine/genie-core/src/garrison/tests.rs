@@ -23,16 +23,19 @@ use crate::orders::action_state::{DONE, FAILED};
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
+use crate::test_ids::class_of;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
 use crate::test_ids::object_ids;
+use crate::test_ids::owner;
 use crate::test_ids::player_id;
 use crate::test_ids::unit_list;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::UnitAiType;
 use crate::world::Player;
 
@@ -1788,7 +1791,7 @@ fn back_to_work_without_its_object_asks_the_unit_ai_to_search() {
         v.ai = Some(crate::unit_ai::UnitAi::default());
         v.town_bell.work = BackToWork {
             target: Some(object_id(7)),
-            target_type: class,
+            target_class: class_of(class),
             action,
             point: Point::new(4.5, 4.5),
             ..BackToWork::NONE
@@ -2064,12 +2067,12 @@ fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
             order: OrderKind::Enter,
             priority: 100,
             target: Some(object_id(100)),
-            target_owner: 1,
+            target_owner: owner(1),
             point: Position::new(10.0, 10.0, 0.0),
             range: 0.0,
             shown: Point::new(10.0, 10.0),
             ready: true,
-            target_type: i32::from(TC.get()),
+            target_type: Some(OrderTargetType::of_master(TC)),
         }]
     );
 }
@@ -2767,8 +2770,8 @@ fn a_trade_boat_s_work_at_its_own_market_makes_a_new_transport() {
     assert_eq!(ship.actions.transport().map(|tr| tr.mode), Some(-1));
     let ai = ship.ai.as_ref().unwrap();
     assert_eq!(
-        (ai.current_target, ai.target_type),
-        (Some(object_id(4000)), 52)
+        (ai.current_target, ai.target_class),
+        (Some(object_id(4000)), class_of(52))
     );
     // a transport ship (class 20) retakes it on the same work
     let (mut t, idx) = transport_task_world();
@@ -3052,7 +3055,7 @@ fn a_villager_beside_a_ship_enters_it_at_once() {
         v.town_bell.work,
         crate::orders::town_bell::BackToWork {
             target: Some(object_id(200)),
-            target_type: -1,
+            target_class: None,
             action: Some(ActionKind::Enter),
             target2: None,
             point: Point::new(5.5, 20.5),

@@ -202,7 +202,7 @@ impl Split {
 struct Followed {
     id: ObjectId,
     place: Point,
-    class: Option<i32>,
+    class: Option<ClassId>,
 }
 
 /// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the

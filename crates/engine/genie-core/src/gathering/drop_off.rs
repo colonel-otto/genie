@@ -83,17 +83,13 @@ impl Unit {
         let Some(ai) = self.ai.as_ref() else {
             return Ok(None);
         };
-        let class = if ai.target_type == -1 {
-            gather.target_type
-        } else {
-            ai.target_type
-        };
+        let class = ai.target_class.or(gather.target_class);
         if ai.ai_type != crate::unit_ai::CIVILIAN {
             return Err(GenieError::unsupported(
                 "slot 0x1b0 of another unit AI than the civilian's",
             ));
         }
-        let kind = crate::unit_ai::civilian_kind(class);
+        let kind = class.map_or(-1, crate::unit_ai::civilian_kind);
         if kind == -1 {
             return Ok(None);
         }
@@ -112,7 +108,7 @@ impl Unit {
     ) -> Result<HeadCode, GenieError> {
         let farm_waits = crate::gathering::gather::waits_for_a_farm(
             self.life.master_id,
-            self.actions.gather().map_or(-1, |g| g.target_type),
+            self.actions.gather().and_then(|g| g.target_class),
         );
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");

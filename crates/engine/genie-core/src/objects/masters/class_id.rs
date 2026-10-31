@@ -38,6 +38,13 @@ impl ClassId {
         Self(value)
     }
 
+    /// The class as a field that holds −1 for none takes it: None for the −1 of a master
+    /// without one.
+    #[must_use]
+    pub const fn or_none(self) -> Option<Self> {
+        if self.0 < 0 { None } else { Some(self) }
+    }
+
     /// The value a field takes for none.
     const NONE: i16 = -1;
 
@@ -62,15 +69,16 @@ impl ClassId {
         }
     }
 
-    /// The class a unit AI's target type holds (`+0x4c`, a gather's or hunt's `target_type`):
-    /// the target's class, or −1 for none. An order's target type may hold a master instead
-    /// (a follow's), which is no class: the caller knows which. None for −1 and for a value
-    /// out of a class's range.
-    #[must_use]
-    pub fn of_target_type(value: i32) -> Option<Self> {
-        i16::try_from(value)
-            .ok()
-            .and_then(|v| Self::try_from(v).ok())
+    /// The class of an `i32` field or parameter that holds −1 for none: a saved gather's or
+    /// hunt's target type (`+0x68`), a notify's class parameter.
+    ///
+    /// # Errors
+    ///
+    /// A negative value other than −1 or one past a class's `i16`.
+    pub fn of_param(value: i32) -> Result<Option<Self>, GenieError> {
+        let short = i16::try_from(value)
+            .map_err(|_| GenieError::invalid_input("a class past an i16").with("class", value))?;
+        Self::of_field(short)
     }
 
     /// A class the code names, in a constant: only [`crate::objects::masters::class`] makes
@@ -126,6 +134,13 @@ mod tests {
             ClassId::try_from(-1).map_err(|e| e.kind()),
             Err(ErrorKind::InvalidInput)
         );
+    }
+
+    /// A master's −1 is no class as an optional field holds it; any other class is itself.
+    #[test]
+    fn a_master_s_minus_one_is_no_class_in_a_field() {
+        assert_eq!(class::NO_CLASS.or_none(), None);
+        assert_eq!(class::FARM.or_none(), Some(class::FARM));
     }
 
     /// A field of −1 is no class, any other value a class, and each converts back to its value.

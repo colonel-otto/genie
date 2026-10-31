@@ -162,13 +162,15 @@ impl World {
                     t: Option<ObjectId>,
                     at: Point|
          -> Result<crate::unit_ai::QueuedOrder, GenieError> {
+            // the target's class, which the order on a gone target reads as a master of the
+            // owner (the game's)
             let (target, owner, class) = match turns.object(t) {
                 Some((tp, u)) => (
                     t,
-                    tp.index() as i32,
-                    i32::from(u.master(&turns.masters, tp)?.class.get()),
+                    Some(tp),
+                    crate::unit_ai::OrderTargetType::of_class(u.master(&turns.masters, tp)?.class),
                 ),
-                None => (None, -1, -1),
+                None => (None, None, None),
             };
             Ok(crate::unit_ai::QueuedOrder {
                 issuer: Some(crate::unit_ai::Issuer::Player(player)),

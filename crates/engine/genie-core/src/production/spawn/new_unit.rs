@@ -142,8 +142,6 @@ impl World {
         queue: &[crate::unit_ai::QueuedOrder],
         z: f32,
     ) -> Result<(), GenieError> {
-        /// The target type whose queued order keeps a monastery's (`FUN_140c417f0` with 0x2a).
-        const RELIC_TYPE: i32 = 0x2a;
         let master = self.players.live(p, new)?.life.master_id;
         for o in queue {
             let target = o
@@ -154,9 +152,13 @@ impl World {
                 .map(|(tp, t)| (tp, t.life.master_id));
             if let Some((tp, tm)) = target {
                 let ai = self.players.live(p, new)?.ai.as_ref();
-                // The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`).
-                let keeps = tm == MONASTERY
-                    && ai.is_some_and(|ai| ai.orders.iter().any(|q| q.target_type == RELIC_TYPE));
+                // The monastery, which a unit carrying a relic's order keeps (`FUN_141188e10`):
+                // an order whose type, read as a class, is the relic's (`FUN_140c417f0` with 0x2a)
+                let relic_order = |q: &crate::unit_ai::QueuedOrder| {
+                    q.target_type.is_some_and(|t| t.class() == class::RELIC)
+                };
+                let keeps =
+                    tm == MONASTERY && ai.is_some_and(|ai| ai.orders.iter().any(relic_order));
                 let t_master = self.master(tp, tm)?;
                 if !keeps
                     && COMBAT <= t_master.kind

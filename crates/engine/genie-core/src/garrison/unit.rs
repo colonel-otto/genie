@@ -535,7 +535,7 @@ impl Unit {
                     ))?;
             self.town_bell.record(crate::orders::town_bell::BackToWork {
                 target,
-                target_type: -1,
+                target_class: None,
                 action,
                 target2: None,
                 point: at.ground(),

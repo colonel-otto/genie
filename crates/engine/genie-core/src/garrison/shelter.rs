@@ -384,12 +384,12 @@ impl World {
                     order: OrderKind::Enter,
                     priority: 100,
                     target: Some(building),
-                    target_owner: owner.index() as i32,
+                    target_owner: Some(owner),
                     point,
                     range: 0.0,
                     shown: point.ground(),
                     ready: true,
-                    target_type: i32::from(master.get()),
+                    target_type: Some(crate::unit_ai::OrderTargetType::of_master(master)),
                 };
                 let ai = self.players.player_mut(p)?.objects[idx]
                     .ai

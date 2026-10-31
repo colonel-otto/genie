@@ -471,7 +471,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
-        self.target_at(Some(target), Some(i32::from(class.get())), position);
+        self.target_at(Some(target), Some(class), position);
         Ok(true)
     }
 }

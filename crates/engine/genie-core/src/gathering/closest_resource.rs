@@ -232,7 +232,7 @@ impl UnitView<'_, '_> {
         Ok(Some(crate::unit_ai::Gatherable {
             id,
             position: u.position(),
-            class: i32::from(class.get()),
+            class,
         }))
     }
 }

@@ -7,6 +7,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::master_type;
+use crate::test_ids::class_id;
 use crate::test_ids::{master_id, object_id};
 use crate::vision::registry::UnitUpdate;
 
@@ -223,10 +224,11 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     let mut v = Visibility::new(120, 120, Vec::new(), Vec::new(), Vec::new(), 0, Vec::new());
     v.registry = Some(r);
     s.sight = Some(v);
+    let villagers = [class::VILLAGER];
     let look = |at| Search {
         at,
         radius: 3.0,
-        classes: &[4],
+        classes: &villagers,
         size: Footprint::new(0.2, 0.2),
         pick: Pick::Look,
         memory: crate::unit_ai::Memory::default(),
@@ -1511,10 +1513,10 @@ fn the_manager_keeps_the_last_ignore_list_set() {
 /// A `ClosestObject` filter that keeps everything: every argument −1, no reach test.
 const fn any_filter() -> Filter {
     Filter {
-        group: -1,
+        group: None,
         relation: -1,
         state: -1,
-        master: -1,
+        master: None,
         workers: -1,
         spared: -1,
         reach: false,
@@ -1623,9 +1625,18 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
         filter
     };
     assert!(kept(any_filter(), &p, 2, plain, checks).unwrap());
-    assert!(kept(with(|f| f.group = 4), &p, 2, plain, checks).unwrap());
-    assert!(!kept(with(|f| f.group = 3), &p, 2, plain, checks).unwrap());
-    assert!(!kept(with(|f| f.master = 5), &p, 2, plain, checks).unwrap());
+    assert!(kept(with(|f| f.group = Some(class_id(4))), &p, 2, plain, checks).unwrap());
+    assert!(!kept(with(|f| f.group = Some(class_id(3))), &p, 2, plain, checks).unwrap());
+    assert!(
+        !kept(
+            with(|f| f.master = Some(master_id(5))),
+            &p,
+            2,
+            plain,
+            checks
+        )
+        .unwrap()
+    );
     assert!(!kept(with(|f| f.state = 3), &p, 2, plain, checks).unwrap());
     assert_eq!(
         kept(with(|f| f.workers = 1), &p, 2, plain, checks)
@@ -1639,7 +1650,7 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
             .reason(),
         "ClosestObject's unbuilt farm test"
     );
-    let livestock = with(|f| f.group = 58);
+    let livestock = with(|f| f.group = Some(class_id(58)));
     let mut sheep = Placed {
         class: class::LIVESTOCK,
         ..p
@@ -1666,7 +1677,7 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
 fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
     use crate::map::spatial::search::{Searcher, closest_kept, farm_kept};
     let filter = Filter {
-        group: 49,
+        group: Some(class_id(49)),
         ..any_filter()
     };
     let farm_of = |master| Placed {
@@ -1695,7 +1706,7 @@ fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
     assert!(!farm_kept(object_id(1), &trap, filter, farmer, &look).unwrap());
     assert!(!farm_kept(object_id(2), &farm, filter, farmer, &look).unwrap());
     let asked = Filter {
-        master: 50,
+        master: Some(master_id(50)),
         ..filter
     };
     assert!(farm_kept(object_id(2), &farm, asked, Searcher::default(), &look).unwrap());

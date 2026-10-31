@@ -42,6 +42,7 @@ mod process_order;
 mod retarget;
 mod side;
 mod surroundings;
+mod target_type;
 pub mod task_finder;
 mod type_notifies;
 pub(crate) mod unit;
@@ -113,6 +114,7 @@ pub use self::surroundings::{
     no_search,
 };
 use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle};
+pub use self::target_type::OrderTargetType;
 use crate::map::Point;
 use crate::map::Position;
 #[cfg(test)]
@@ -120,6 +122,7 @@ use crate::math::rng::Well512;
 #[cfg(test)]
 use crate::movement::PathAsk;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use genie_diff::Diff;
 
@@ -257,7 +260,7 @@ const FISHING_AI: UnitAiType = UnitAiType::FISHING;
 const SHIP_EVADE_REACH: f32 = crate::math::image::unit_ai::SHIP_EVADE_REACH;
 /// The classes of the foundations a fishing ship's builder looks for (`FUN_140c25ca0`, in its
 /// order): buildings, walls, gates, towers and farms.
-const FISHING_BUILDS: [i32; 5] = [3, 27, 39, 52, 49];
+const FISHING_BUILDS: [ClassId; 5] = crate::objects::masters::class::classes([3, 27, 39, 52, 49]);
 /// The fishing ship's builder takes the nearest foundation nearer than this (`FUN_140c25ca0`'s
 /// 9999).
 const FISHING_BUILD_FAR: i32 = 9999;
@@ -295,7 +298,7 @@ pub struct QueuedOrder {
     /// `FUN_140c55c90`).
     pub target: Option<ObjectId>,
     /// The target's owner.
-    pub target_owner: i32,
+    pub target_owner: Option<PlayerId>,
     /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
     pub point: Position,
     /// The range.
@@ -304,8 +307,8 @@ pub struct QueuedOrder {
     pub shown: Point,
     /// `+0x2c` (a byte): 0 leaves the order in the queue.
     pub ready: bool,
-    /// `+0x30`: the target's type (its master id, −1 for none).
-    pub target_type: i32,
+    /// `+0x30`: the target's type, its master id or its class ([`OrderTargetType`]).
+    pub target_type: Option<OrderTargetType>,
 }
 
 /// The four bytes at offset `i` of a saved record.
@@ -337,12 +340,12 @@ impl QueuedOrder {
             order: OrderKind::try_from(w(4)?)?,
             priority: w(8)?,
             target: ObjectId::of_field(w(12)?),
-            target_owner: w(16)?,
+            target_owner: PlayerId::of_field(w(16)?)?,
             point: Position::new(f(20)?, f(24)?, f(28)?),
             range: f(32)?,
             shown: Point::new(f(36)?, f(40)?),
             ready: le_word(b, 44)?[0] != 0,
-            target_type: w(48)?,
+            target_type: OrderTargetType::of_field(w(48)?)?,
         })
     }
 }
@@ -469,7 +472,7 @@ pub struct UnitAi {
     /// `+0x48`.
     pub current_target: Option<ObjectId>,
     /// `+0x4c`, the target's class (−1 for none), and `+0x50`..`+0x58`, its point.
-    pub target_type: i32,
+    pub target_class: Option<ClassId>,
     /// `+0x50`..`+0x58`: the target's point.
     pub target_point: Position,
     /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
@@ -485,7 +488,7 @@ pub struct UnitAi {
     /// `+0x6c`: the target before the current one.
     pub last_target: Option<ObjectId>,
     /// `+0x70`: that target's class.
-    pub last_target_type: i32,
+    pub last_target_class: Option<ClassId>,
     /// `+0x160`.
     pub idle_timer: u32,
     /// `+0x164`, the randomised timeout the idle timer is compared with.

@@ -164,12 +164,12 @@ impl World {
                 },
                 priority: 100,
                 target: None,
-                target_owner: -1,
+                target_owner: None,
                 point: Position::new(-1.0, -1.0, position.z()),
                 range: 1.0,
                 shown: Point::new(-1.0, -1.0),
                 ready: true,
-                target_type: -1,
+                target_type: None,
             };
             // the order at once, its calls on the unit at once
             self.run_ai_calls((p, idx), |ai, side, rng| {

@@ -5,12 +5,14 @@ use crate::map::Position;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::{
     ACTION_COMPLETED, BREAK, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED,
     FOUNDATION_REACH, GO_ON, Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder, SIEGE_TOWER_AI,
@@ -194,7 +196,10 @@ impl UnitAi {
     /// `r * 100 / 0x7fff` is at least the owner's `chance_for_archers_to_maintain_distance`.
     pub(super) fn keeps_distance(&self, at: &Surroundings, ai: &mut Well512) -> bool {
         if !crate::math::fmath::at_most_or_unordered(1.0, at.weapon_range)
-            || matches!(self.target_type, 3 | 27 | 39 | 49 | 4)
+            || matches!(
+                self.target_class,
+                Some(class::BUILDING | class::WALL | class::GATE | class::FARM | class::VILLAGER)
+            )
         {
             return false;
         }
@@ -343,10 +348,10 @@ impl UnitAi {
                 classes: &FISHING_CARED,
                 size: at.size,
                 pick: Pick::Closest {
-                    group: class,
+                    group: Some(class),
                     relation: 3,
                     state: 0,
-                    master: -1,
+                    master: None,
                     workers: -1,
                     spared: -1,
                     reach: true,
@@ -390,12 +395,12 @@ impl UnitAi {
             order,
             priority: self.order_priority,
             target: self.current_target,
-            target_owner: -1,
+            target_owner: None,
             point: self.target_point,
             range: self.desired_distance,
             shown: self.target_point.ground(),
             ready: true,
-            target_type: self.target_type,
+            target_type: self.target_class.and_then(OrderTargetType::of_class),
         };
         self.queue_order(at.state, record, false, false).map(|_| ())
     }
@@ -479,7 +484,7 @@ impl UnitAi {
     pub(super) fn hunt_object(
         &mut self,
         target: ObjectId,
-        class: i32,
+        class: ClassId,
         point: Position,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -488,7 +493,7 @@ impl UnitAi {
         self.stop_current(true, at, side, rng)?;
         side.effect_now(Effect::Command(AiCommand::HuntObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Hunt));
-        self.set_target(Some(target), class, point);
+        self.set_target(Some(target), class.or_none(), point);
         Ok(())
     }
 
@@ -513,12 +518,12 @@ impl UnitAi {
             order,
             priority: self.order_priority,
             target: self.current_target,
-            target_owner: -1,
+            target_owner: None,
             point: self.target_point,
             range: self.desired_distance,
             shown: self.target_point.ground(),
             ready: true,
-            target_type: self.target_type,
+            target_type: self.target_class.and_then(OrderTargetType::of_class),
         };
         let place = (at.position.ground(), at.class);
         self.order_now(
