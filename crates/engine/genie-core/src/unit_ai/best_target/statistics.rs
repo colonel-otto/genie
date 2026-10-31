@@ -4,6 +4,7 @@
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::best_target::ORDER_WINDOW;
+use crate::unit_ai::best_target::{AttackCategory, ByCategory};
 use crate::world::slots::CheckedIndex;
 
 /// The statistics' table holds at most this many objects (`FUN_140c66590`: `+0x1668` below
@@ -44,7 +45,7 @@ pub struct Entry {
     /// `+0x10`: its attack category ([`category`]).
     ///
     /// [`category`]: crate::unit_ai::best_target::category
-    pub category: i32,
+    pub category: Option<AttackCategory>,
     /// `+0x14`: the kill-time score.
     pub kill_score: f32,
     /// `+0x18`: the distance score.
@@ -68,7 +69,7 @@ pub struct Candidate {
     pub distance: f32,
     /// Its attack category (`FUN_140c4c8e0` on it, read where the candidate is made; counted
     /// when not −1).
-    pub category: i32,
+    pub category: Option<AttackCategory>,
     /// Its master's class.
     pub class: ClassId,
     /// Its top speed (slot 0x208).
@@ -111,7 +112,7 @@ pub struct Statistics {
     /// `+0x2c`: the objects within the unit's range against them.
     pub in_reach: i32,
     /// `+0x30`..: the objects per attack category.
-    pub by_category: [i32; 12],
+    pub by_category: ByCategory<i32>,
     /// `+0x60`, `+0x64`: the closest moving object's distance and id.
     pub closest_moving: (f32, Option<ObjectId>),
     /// `+0x68`.., count `+0x1668`.
@@ -133,7 +134,7 @@ impl Default for Statistics {
             moving: 0,
             armed: 0,
             in_reach: 0,
-            by_category: [0; 12],
+            by_category: ByCategory::default(),
             closest_moving: (f32::MAX, None),
             entries: Vec::new(),
             order: Vec::new(),
@@ -196,11 +197,8 @@ impl Statistics {
             category: c.category,
             ..Entry::default()
         };
-        if let Some(n) = usize::try_from(c.category)
-            .ok()
-            .and_then(|k| self.by_category.get_mut(k))
-        {
-            *n += 1;
+        if let Some(k) = c.category {
+            self.by_category[k] += 1;
         }
         if !c.current {
             self.others += 1;
@@ -252,7 +250,7 @@ impl Statistics {
     /// What `armored` does not model.
     pub fn score(
         &mut self,
-        weights: &[f32; 12],
+        weights: &ByCategory<f32>,
         (mode, factor): (i32, i32),
         armored: &mut dyn FnMut(ObjectId) -> Result<bool, crate::GenieError>,
     ) -> Result<(), crate::GenieError> {
@@ -292,10 +290,7 @@ impl Statistics {
                     DISTANCE_SCORE - ((e.distance - distance_low) / distance_span) * DISTANCE_SCORE
                 };
             }
-            e.weight = usize::try_from(e.category)
-                .ok()
-                .and_then(|k| weights.get(k))
-                .map_or(0.0, |w| w * SCORE);
+            e.weight = e.category.map_or(0.0, |k| weights[k] * SCORE);
             e.total = ((e.kill_score + e.distance_score) + e.weight) + e.bonus;
             if mode == 2 && armored(e.id)? {
                 e.total *= factor as f32 * PER_CENT;
@@ -383,15 +378,15 @@ impl Statistics {
 /// adds the rest of the minute over 60000 (`DAT_142efe420`) to its target's category; the first
 /// older one ends the walk.
 #[must_use]
-pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: u32) -> [f32; 12] {
-    let mut w = [0.0f32; 12];
+pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: u32) -> ByCategory<f32> {
+    let mut w = ByCategory::default();
     for r in history {
         let age = now.wrapping_sub(r.time);
         if 60000 < age {
             break;
         }
-        if let Some(slot) = usize::try_from(r.category).ok().and_then(|k| w.get_mut(k)) {
-            *slot += (60000 - age) as f32 / ORDER_WINDOW;
+        if let Some(k) = r.category {
+            w[k] += (60000 - age) as f32 / ORDER_WINDOW;
         }
     }
     w

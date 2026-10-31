@@ -6,6 +6,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::object_list::ObjectList;
+use crate::test_ids::attack_category;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::Attackers;
@@ -364,15 +365,21 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         now: 0,
         mode_680: 0,
     };
-    let c = picker.candidate(&spatial, object_id(50), 1.4, 2).unwrap();
+    let c = picker
+        .candidate(&spatial, object_id(50), 1.4, attack_category(2))
+        .unwrap();
     assert_eq!(
         (c.id, c.distance, c.category, c.class, c.speed),
-        (object_id(50), 1.4, 2, class::CLASS_6, 0.0)
+        (object_id(50), 1.4, attack_category(2), class::CLASS_6, 0.0)
     );
     assert_eq!(
         (c.armed, c.reach, c.damage, c.hp, c.reload),
         (true, 0.5, 6.0, 40.0, 2.0)
     );
     assert_eq!((c.workable, c.current), (false, false));
-    assert!(picker.candidate(&spatial, object_id(77), 1.4, 2).is_err());
+    assert!(
+        picker
+            .candidate(&spatial, object_id(77), 1.4, attack_category(2))
+            .is_err()
+    );
 }

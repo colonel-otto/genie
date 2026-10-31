@@ -49,6 +49,7 @@ use crate::ownership::artifact::Artifact;
 use crate::ownership::change::change_hands;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::attack_category;
 use crate::test_ids::carrying;
 use crate::test_ids::class_id;
 use crate::test_ids::class_of;
@@ -606,7 +607,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
             time: 4321,
             position: GameVector::new(10.0, 0.0, 11.0),
             target: Some(object_id(2)),
-            category: 3,
+            category: attack_category(3),
             target_position: GameVector::new(20.0, 1.0, 21.0),
         }]
     );

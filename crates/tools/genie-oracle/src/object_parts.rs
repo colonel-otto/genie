@@ -11,6 +11,7 @@ use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
 use genie_core::players::attribute::AttributeId;
+use genie_core::unit_ai::best_target::AttackCategory;
 use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{
     PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
@@ -198,7 +199,7 @@ fn home(combat: &TribeCombatObject) -> Option<genie_core::unit_ai::Home> {
 ///
 /// # Errors
 ///
-/// A record's order or action value no order or action holds.
+/// A record's order or action value no order or action holds, or a category past 0 to 11.
 fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderRecord>, GenieError> {
     ai.oh
         .iter()
@@ -210,7 +211,7 @@ fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderReco
                 // the save's 12 bytes are the game's vector, x, height, y
                 position: GameVector::from_xhy(vec3(&e.new_oh_position)),
                 target: ObjectId::of_field(e.new_oh_target_id),
-                category: e.new_oh_target_attack_category,
+                category: AttackCategory::of_field(e.new_oh_target_attack_category)?,
                 target_position: GameVector::from_xhy(vec3(&e.new_oh_target_position)),
             })
         })

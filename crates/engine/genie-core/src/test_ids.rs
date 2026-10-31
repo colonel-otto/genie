@@ -12,6 +12,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::unit_ai::OrderTargetType;
+use crate::unit_ai::best_target::AttackCategory;
 
 /// The object id `value` (not −1); const, so a test's constants name objects too.
 pub(crate) const fn object_id(value: i32) -> ObjectId {
@@ -72,6 +73,16 @@ pub(crate) fn order_type(value: i32) -> Option<OrderTargetType> {
 /// A queued order's target owner `value`, or none for −1.
 pub(crate) fn owner(value: i32) -> Option<PlayerId> {
     PlayerId::of_field(value).expect("a test's owner is −1 or a player")
+}
+
+/// The attack category `value` (0 to 11), or none for −1.
+pub(crate) fn attack_category(value: i32) -> Option<AttackCategory> {
+    AttackCategory::of_field(value).expect("a test's attack category is −1 or 0 to 11")
+}
+
+/// The attack category `value` (0 to 11).
+pub(crate) fn category_of(value: i32) -> AttackCategory {
+    attack_category(value).expect("a test's attack category is 0 to 11")
 }
 
 /// The technology `value` (0 or more).

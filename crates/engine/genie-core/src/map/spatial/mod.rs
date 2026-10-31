@@ -96,7 +96,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
         &mut self,
         id: ObjectId,
         distance: f32,
-        category: i32,
+        category: Option<crate::unit_ai::best_target::AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         self.picker.candidate(self.world, id, distance, category)
     }

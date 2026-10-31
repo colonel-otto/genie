@@ -7,13 +7,14 @@ use crate::players::PlayerId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
+use crate::test_ids::{attack_category, category_of};
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
     Candidate {
         id: object_id(id),
         distance,
-        category: 1,
+        category: attack_category(1),
         class: class::CLASS_6,
         speed,
         armed: true,
@@ -42,7 +43,7 @@ fn the_statistics_count_bound_and_time_each_object() {
     });
     st.add(&Candidate {
         damage: 0.0,
-        category: -1,
+        category: None,
         armed: false,
         ..candidate(3, 7.0, 2.0)
     });
@@ -52,7 +53,7 @@ fn the_statistics_count_bound_and_time_each_object() {
     assert_eq!(st.moving_distance, bounds(3.0, 7.0));
     assert_eq!(st.moving_kill_time, bounds(5.0, f32::MAX));
     assert_eq!((st.others, st.moving, st.armed, st.in_reach), (2, 2, 2, 1));
-    assert_eq!(st.by_category[1], 2);
+    assert_eq!(st.by_category[category_of(1)], 2);
     assert_eq!(st.closest_moving, (3.0, Some(object_id(1))));
     let kill: Vec<f32> = st.entries.iter().map(|e| e.kill_time).collect();
     assert_eq!(kill, [5.0, 5.0, f32::MAX]);
@@ -74,8 +75,8 @@ fn the_scores_rank_and_sort_the_entries() {
         ..candidate(4, 6.0, 1.0)
     });
     st.add(&candidate(9, 4.0, 0.0));
-    let mut weights = [0.0; 12];
-    weights[1] = 0.5;
+    let mut weights = ByCategory::default();
+    weights[category_of(1)] = 0.5;
     st.score(&weights, (0, 0), &mut |_| Ok(false)).unwrap();
     let scores: Vec<(f32, f32, f32, f32)> = st
         .entries
@@ -113,7 +114,7 @@ fn the_scores_rank_and_sort_the_entries() {
 fn the_order_history_weighs_the_last_minute_s_categories() {
     let record = |time, category| crate::unit_ai::OrderRecord {
         time,
-        category,
+        category: attack_category(category),
         ..crate::unit_ai::OrderRecord::default()
     };
     let w = order_weights(
@@ -125,9 +126,9 @@ fn the_order_history_weighs_the_last_minute_s_categories() {
         ],
         100_000,
     );
-    assert_eq!(w[1], 1.0 + 30_000.0 / 60_000.0);
-    assert_eq!(w[3], 0.0);
-    assert_eq!(w[2], 0.0);
+    assert_eq!(w[category_of(1)], 1.0 + 30_000.0 / 60_000.0);
+    assert_eq!(w[category_of(3)], 0.0);
+    assert_eq!(w[category_of(2)], 0.0);
 }
 
 /// A world of objects by id: each a [`Thing`] and its candidate's values; the paths that
@@ -171,7 +172,7 @@ impl Battlefield for Field {
         &mut self,
         id: ObjectId,
         distance: f32,
-        category: i32,
+        category: Option<AttackCategory>,
     ) -> Result<Candidate, crate::GenieError> {
         Ok(Candidate {
             distance,
@@ -411,20 +412,26 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
 /// table is −1.
 #[test]
 fn the_categories_follow_the_classes_and_their_exceptions() {
-    assert_eq!(category(master_id(4), class::CLASS_0), 3);
-    assert_eq!(category(ids::ID_6, class::CLASS_0), 4);
-    assert_eq!(category(ids::ID_7, class::CLASS_23), 4);
-    assert_eq!(category(ids::VILLAGER_MALE, class::VILLAGER), 7);
-    assert_eq!(category(master_id(74), class::CLASS_6), 1);
-    assert_eq!(category(ids::ID_1744, class::CLASS_6), 5);
-    assert_eq!(category(master_id(280), class::SIEGE), 6);
-    assert_eq!(category(ids::ID_35, class::SIEGE), 5);
-    assert_eq!(category(ids::ID_1258, class::CLASS_55), 5);
-    assert_eq!(category(ids::TOWN_CENTRE, class::BUILDING), 0);
-    assert_eq!(category(ids::ID_448, class::CLASS_47), 1);
-    assert_eq!(category(master_id(1), class::ARTIFACT), -1);
-    assert_eq!(category(master_id(1), class::CLASS_63), -1);
-    assert_eq!(category(master_id(1), class::NO_CLASS), -1);
+    assert_eq!(category(master_id(4), class::CLASS_0), attack_category(3));
+    assert_eq!(category(ids::ID_6, class::CLASS_0), attack_category(4));
+    assert_eq!(category(ids::ID_7, class::CLASS_23), attack_category(4));
+    assert_eq!(
+        category(ids::VILLAGER_MALE, class::VILLAGER),
+        attack_category(7)
+    );
+    assert_eq!(category(master_id(74), class::CLASS_6), attack_category(1));
+    assert_eq!(category(ids::ID_1744, class::CLASS_6), attack_category(5));
+    assert_eq!(category(master_id(280), class::SIEGE), attack_category(6));
+    assert_eq!(category(ids::ID_35, class::SIEGE), attack_category(5));
+    assert_eq!(category(ids::ID_1258, class::CLASS_55), attack_category(5));
+    assert_eq!(
+        category(ids::TOWN_CENTRE, class::BUILDING),
+        attack_category(0)
+    );
+    assert_eq!(category(ids::ID_448, class::CLASS_47), attack_category(1));
+    assert_eq!(category(master_id(1), class::ARTIFACT), None);
+    assert_eq!(category(master_id(1), class::CLASS_63), None);
+    assert_eq!(category(master_id(1), class::NO_CLASS), None);
 }
 
 /// `bestUnitToAttack`'s extra objects ([`add_extra`]): each the world holds but

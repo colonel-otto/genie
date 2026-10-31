@@ -410,7 +410,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         spatial: &Spatial,
         id: ObjectId,
         distance: f32,
-        category: i32,
+        category: Option<crate::unit_ai::best_target::AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         let (_, t, _, m) = self.held(id)?.ok_or(NOT_HELD)?;
         let (_, me, _, mm) = self.held(self.me)?.ok_or(GenieError::unsupported(

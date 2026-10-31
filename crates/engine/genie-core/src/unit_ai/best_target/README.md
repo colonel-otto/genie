@@ -16,6 +16,7 @@ candidate by its attack category, its range and the unit AI's order history, the
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`attack_category.rs`](attack_category.rs) | `bestUnitToAttack`'s attack categories and the tables it keeps by category. |
 | [`choice.rs`](choice.rs) | `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice. |
 | [`mod.rs`](mod.rs) | `UnitAIModule::bestUnitToAttack` (158041 `0x140c44680`) and what it keeps: the attack categories (`FUN_140c4c8e0`) by which a unit AI's order history weighs its choice. |
 | [`statistics.rs`](statistics.rs) | `bestUnitToAttack`'s statistics (`Statistics`): the entries, an object's add, the scores, the ranks and the sort, and the order history's weights. |

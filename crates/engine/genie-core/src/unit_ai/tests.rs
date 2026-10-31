@@ -13,6 +13,7 @@ use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::attack_category;
 use crate::test_ids::class_id;
 use crate::test_ids::class_of;
 use crate::test_ids::master_id;
@@ -413,7 +414,7 @@ fn the_order_history_keeps_the_eight_newest_first() {
             action: Some(ActionKind::Attack),
             time: t,
             target: ObjectId::of_field(100 + t as i32),
-            category: 1,
+            category: attack_category(1),
             ..OrderRecord::default()
         });
     }

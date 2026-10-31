@@ -7,6 +7,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
 use crate::unit_ai::best_target::Candidate;
+use crate::unit_ai::best_target::{AttackCategory, ByCategory};
 
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
 pub(super) const ORDER_WINDOW: f32 = crate::math::image::best_target::ORDER_WINDOW;
@@ -55,7 +56,7 @@ pub struct Searcher {
     /// The order history's weights ([`order_weights`]).
     ///
     /// [`order_weights`]: crate::unit_ai::best_target::statistics::order_weights
-    pub weights: [f32; 12],
+    pub weights: ByCategory<f32>,
     /// The AI's retarget entries' targets (`+0x1e0`).
     pub retries: Vec<ObjectId>,
     /// The world's time (`FUN_1415300d0`).
@@ -159,7 +160,7 @@ pub trait Battlefield {
         &mut self,
         id: ObjectId,
         distance: f32,
-        category: i32,
+        category: Option<AttackCategory>,
     ) -> Result<Candidate, crate::GenieError>;
 
     /// The shown armor of object `id` is at least 100 (slot 0x870's first).

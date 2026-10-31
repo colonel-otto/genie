@@ -7,7 +7,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::unit_ai::best_target::{
-    Ask, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
+    Ask, AttackCategory, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
 use crate::world::slots::CheckedIndex;
 
@@ -243,24 +243,24 @@ fn attacks_walls(me: &Searcher) -> bool {
 
 /// The current target's entry, when within the unit's range or the unit moves; outside an idle
 /// check, one within the reference distance that is no building (3) nor farm (49) narrows the
-/// search to its category. The category the search keeps to, −1 for any.
+/// search to its category. The category the search keeps to, none (−1) for any.
 fn add_current(
     me: &Searcher,
     ask: &Ask,
     current: Option<(ObjectId, Thing)>,
     st: &mut Statistics,
     world: &mut dyn Battlefield,
-) -> Result<i32, crate::GenieError> {
+) -> Result<Option<AttackCategory>, crate::GenieError> {
     let Some((target, t)) = current.filter(|(_, t)| t.distance <= me.range || 0.0 < me.speed)
     else {
-        return Ok(-1);
+        return Ok(None);
     };
     let k = category(t.master, t.class);
     st.add(&world.candidate(target, t.distance, k)?);
     let narrows = !ask.idle
         && t.distance <= ask.distance
         && !matches!(t.class, class::BUILDING | class::FARM);
-    Ok(if narrows { k } else { -1 })
+    Ok(if narrows { k } else { None })
 }
 
 /// The extra objects' entries but the current target's, by the attack check: one under the
@@ -299,7 +299,7 @@ pub(super) fn add_extra(
 /// the retry walk, the closest gate and wall (id, gap; none at −1) and whether anything but
 /// walls counted.
 struct Walked {
-    narrowed: i32,
+    narrowed: Option<AttackCategory>,
     walls: bool,
     later: Vec<(ObjectId, usize)>,
     gate: (Option<ObjectId>, f32),
@@ -309,7 +309,7 @@ struct Walked {
 
 impl Walked {
     /// Before the walks: no gate, no wall, nothing left for later.
-    const fn new(narrowed: i32, walls: bool) -> Self {
+    const fn new(narrowed: Option<AttackCategory>, walls: bool) -> Self {
         Self {
             narrowed,
             walls,
@@ -407,7 +407,7 @@ impl Walked {
         kind: usize,
         near: f32,
         world: &mut dyn Battlefield,
-    ) -> Result<Option<(Thing, f32, i32)>, crate::GenieError> {
+    ) -> Result<Option<(Thing, f32, Option<AttackCategory>)>, crate::GenieError> {
         let Some(t) = tested(me, ask, id, kind, world)? else {
             return Ok(None);
         };
@@ -416,7 +416,7 @@ impl Walked {
             return Ok(None);
         }
         let k = category(t.master, t.class);
-        if self.narrowed != -1 && k != self.narrowed {
+        if self.narrowed.is_some_and(|n| k != Some(n)) {
             return Ok(None);
         }
         Ok(Some((t, gap, k)))
@@ -449,7 +449,7 @@ fn rank_entries(
     let ranked = me.attack_priority == 1
         || (me.attack_priority == 0 && !PRIORITY_0_MASTERS.contains(&me.master));
     st.rank(&mut |e| {
-        if !e.fixed || e.category == 6 {
+        if !e.fixed || e.category == Some(AttackCategory::SIEGE) {
             return Ok(i32::from(ranked) << 2);
         }
         if EPSILON < world.weapon_range(e.id)? {

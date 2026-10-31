@@ -592,7 +592,7 @@ pub struct OrderRecord {
     /// The target (`mTargetID`).
     pub target: Option<ObjectId>,
     /// The target's attack category ([`crate::unit_ai::best_target::category`], `mTargetAttackCategory`).
-    pub category: i32,
+    pub category: Option<best_target::AttackCategory>,
     /// The target's slot 0x520 then (`mTargetPosition`).
     pub target_position: crate::math::game_vector::GameVector,
 }

@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::Memory;
+use crate::unit_ai::best_target::AttackCategory;
 
 /// What `bestUnitToAttack` (`FUN_140c44680`, [`crate::unit_ai::best_target::best_unit_to_attack`]) asks
 /// of the world while its unit AI runs: the searching unit ([`AttackPicker::searcher`]) and its
@@ -70,7 +71,7 @@ pub trait AttackPicker {
         world: &Spatial,
         id: ObjectId,
         distance: f32,
-        category: i32,
+        category: Option<AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::armored`].
@@ -152,7 +153,7 @@ impl AttackPicker for NoAttack {
         _: &Spatial,
         _: ObjectId,
         _: f32,
-        _: i32,
+        _: Option<AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         Err(NO_ATTACK)
     }
