@@ -21,6 +21,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -46,10 +47,10 @@ pub struct MakeAction {
     /// `+0x18`.
     pub state: MakeState,
     /// `+0x44`: the food still to make.
-    pub remaining: f32,
+    pub remaining: Amount,
     /// `+0x68`: the food made in all; the constructor's 120.0 never shows, as
     /// [`MakeAction::start`] sets it at once.
-    pub total: f32,
+    pub total: Amount,
     /// `+0x48`: the master's default task.
     pub task: Task,
 }
@@ -66,14 +67,14 @@ impl MakeAction {
         // replaces at once
         let mut make = Self {
             state: MakeState::New,
-            remaining: 0.0,
-            total: 120.0,
+            remaining: Amount::ZERO,
+            total: Amount::new(120.0),
             task,
         };
         make.set_state(MakeState::Making, attributes);
         if task.attribute_type.is_some() && life.attribute_type != task.attribute_type {
             life.attribute_type = task.attribute_type;
-            life.amount = 0.0;
+            life.amount = Amount::ZERO;
         }
         make
     }
@@ -89,7 +90,7 @@ impl MakeAction {
             } else {
                 attribute::FISH_TRAP_FOOD
             };
-            self.remaining = attributes.get(kind.index()).copied().unwrap_or(0.0);
+            self.remaining = Amount::new(attributes.get(kind.index()).copied().unwrap_or(0.0));
             self.total = self.remaining;
         }
     }
@@ -124,15 +125,15 @@ impl MakeAction {
         match self.state {
             // `+0x18`: the state whose update reports the action done (`FUN_140a99e30` returns 1).
             MakeState::Done => return Ok(HeadCode::Deletes),
-            MakeState::Making if 0.0 < self.remaining || self.total <= 0.0 => {
+            MakeState::Making if Amount::ZERO < self.remaining || self.total <= Amount::ZERO => {
                 let rate = (master.work_rate + farm.work_rate_powerup)
                     * self.task.work_val1
                     * c.dt.seconds();
                 let before = farm.life.amount;
                 if self.task.work_flag == 0 {
                     // FUN_14119d320: add, then at most the capacity
-                    farm.life.amount += rate;
-                    let capacity = f32::from(master.capacity);
+                    farm.life.amount += Amount::new(rate);
+                    let capacity = Amount::of_master(master.capacity);
                     if capacity < farm.life.amount {
                         farm.life.amount = capacity;
                     }
@@ -146,7 +147,7 @@ impl MakeAction {
             }
             MakeState::Making
                 if !UNEXHAUSTED.contains(&master.id)
-                    && farm.life.amount <= 0.0
+                    && farm.life.amount <= Amount::ZERO
                     // The first master type whose slot 0xd8 is `FUN_141211340` (70, `TRIBE_Combat_Object`, and 80);
                     // below it slot 0xd8 is `FUN_14118f580` itself.
                     && (master.kind < COMBAT || master.class != NEVER_EXHAUSTED_CLASS) =>
@@ -232,7 +233,7 @@ mod tests {
                 hp: HitPoints::new(480.0),
                 master_id: master,
                 attribute_type: Some(attribute::FARM_FOOD),
-                amount,
+                amount: Amount::new(amount),
                 ..Lifecycle::default()
             },
             ..Unit::default()
@@ -273,7 +274,7 @@ mod tests {
         (
             code,
             *farm.actions.make().unwrap(),
-            farm.life.amount,
+            farm.life.amount.get(),
             farm.life.hp.get(),
         )
     }
@@ -281,8 +282,8 @@ mod tests {
     fn making(remaining: f32, total: f32, task: Task) -> MakeAction {
         MakeAction {
             state: MakeState::Making,
-            remaining,
-            total,
+            remaining: Amount::new(remaining),
+            total: Amount::new(total),
             task,
         }
     }
@@ -291,17 +292,17 @@ mod tests {
     fn the_start_takes_the_farm_food_and_holds_the_task_s_resource_from_nothing() {
         let mut life = Lifecycle {
             attribute_type: Some(attribute::FOOD),
-            amount: 15.0,
+            amount: Amount::new(15.0),
             ..Lifecycle::default()
         };
         let make = MakeAction::start(farm_task(), &attributes(), &mut life);
         assert_eq!(
             (make.state, make.remaining, make.total),
-            (MakeState::Making, 175.0, 175.0)
+            (MakeState::Making, Amount::new(175.0), Amount::new(175.0))
         );
         assert_eq!(
             (life.attribute_type, life.amount),
-            (Some(attribute::FARM_FOOD), 0.0)
+            (Some(attribute::FARM_FOOD), Amount::ZERO)
         );
     }
 
@@ -313,13 +314,17 @@ mod tests {
         };
         let mut life = Lifecycle {
             attribute_type: Some(AttributeId::numbered(17)),
-            amount: 15.0,
+            amount: Amount::new(15.0),
             ..Lifecycle::default()
         };
         let make = MakeAction::start(task, &attributes(), &mut life);
         assert_eq!(
             (make.remaining, life.attribute_type, life.amount),
-            (225.0, Some(AttributeId::numbered(17)), 15.0)
+            (
+                Amount::new(225.0),
+                Some(AttributeId::numbered(17)),
+                Amount::new(15.0)
+            )
         );
     }
 
@@ -330,17 +335,20 @@ mod tests {
         let gained = 15.0f32 - 14.98;
         assert_eq!(
             (code, amount, make.remaining),
-            (HeadCode::Keeps, 15.0, 100.0 - gained)
+            (HeadCode::Keeps, 15.0, Amount::new(100.0 - gained))
         );
         // at the capacity nothing more is made
         let (_, make, _, _) = made(&mut t);
-        assert_eq!(make.remaining, 100.0 - gained);
+        assert_eq!(make.remaining, Amount::new(100.0 - gained));
         // a farmer took 5: the rate's share comes back
-        t.players[1].objects[ListIndex::new(0)].life.amount = 10.0;
+        t.players[1].objects[ListIndex::new(0)].life.amount = Amount::new(10.0);
         let (_, make, amount, _) = made(&mut t);
         let rate = 0.4f32 * 1.0 * 0.104;
         assert_eq!(amount, 10.0 + rate);
-        assert_eq!(make.remaining, 100.0 - gained - (10.0 + rate - 10.0));
+        assert_eq!(
+            make.remaining,
+            Amount::new(100.0 - gained - (10.0 + rate - 10.0))
+        );
     }
 
     /// The farm's powerup (slot 0x6e8, `+0xa30`) adds to its master's work rate.
@@ -374,7 +382,7 @@ mod tests {
         let (_, make, amount, _) = made(&mut t);
         let food = t.players[1].attributes[attribute::FARM_FOOD.index()];
         assert_eq!(food, 0.4 * 0.104);
-        assert_eq!((amount, make.remaining), (0.0, 5.0));
+        assert_eq!((amount, make.remaining), (0.0, Amount::new(5.0)));
     }
 
     #[test]

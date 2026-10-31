@@ -17,6 +17,7 @@ use crate::objects::masters::action_type;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::Seconds;
@@ -174,7 +175,7 @@ impl Unit {
             Some(g)
                 if gather.task.resource.is_some()
                     && self.life.attribute_type == gather.task.resource
-                    && 1 <= self.life.amount as i32 =>
+                    && 1 <= self.life.amount.get() as i32 =>
             {
                 Some(g)
             }
@@ -201,7 +202,7 @@ impl Unit {
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
-            capacity: f32::from(master.capacity),
+            capacity: Amount::of_master(master.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 self.actions.gather().and_then(|g| g.task.productivity),
                 &c.w.players.player(c.player)?.attributes,
@@ -324,7 +325,7 @@ impl Unit {
         others: OthersRef<'_>,
         graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     ) -> Result<Option<ObjectId>, GenieError> {
-        if self.life.amount <= 0.0 {
+        if self.life.amount <= Amount::ZERO {
             return Err(GenieError::unsupported(
                 "a gather's drop-off carrying nothing (set_state 3)",
             ));
@@ -360,7 +361,7 @@ impl Unit {
         others: OthersRef<'_>,
         graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     ) -> Result<Option<ObjectId>, GenieError> {
-        if self.life.amount <= 0.0 {
+        if self.life.amount <= Amount::ZERO {
             return Err(GenieError::unsupported(
                 "a hunt's drop-off carrying nothing (set_state 3)",
             ));

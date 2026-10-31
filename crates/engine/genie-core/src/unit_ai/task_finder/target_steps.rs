@@ -11,6 +11,7 @@ use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::{Master, Task};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::BUILDING;
@@ -101,7 +102,7 @@ pub(super) fn drop_off_finding<'m>(
     // dropping off what the unit carries at its player's finished drop site: the tasks of
     // gathering (5, 110, 111) for what it carries
     if held_kind.is_some()
-        && 0.0 < held_amount
+        && Amount::ZERO < held_amount
         && t.state == ObjectState::Alive
         && t.player == actor.player
         && dip.drops_at(t.master.id, actor)

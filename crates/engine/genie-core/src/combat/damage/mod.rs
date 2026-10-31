@@ -54,6 +54,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 
@@ -138,7 +139,7 @@ pub struct Victim {
     /// Its hit points (`+0x278`), what it holds (`+0x310`), its state and place.
     pub hp: HitPoints,
     /// What it holds (`+0x310`).
-    pub amount: f32,
+    pub amount: Amount,
     /// Its state (`+0x640`).
     pub state: ObjectState,
     /// Its place.
@@ -157,7 +158,7 @@ pub struct Victim {
     /// (`FUN_14113f740`).
     pub height: f32,
     /// Its master's first storage amount (`+0x610`), which a gatherer reads.
-    pub storage: f32,
+    pub storage: Amount,
     /// Its master's `attribute_max_amount`.
     pub capacity: i16,
     /// `+0x644`, `worker_num`: the actions that have it as their target (a farm another farmer

@@ -18,6 +18,7 @@ use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
@@ -144,7 +145,7 @@ impl Unit {
         let attributes = &c.w.players.player(c.player)?.attributes;
         Ok(crate::gathering::gather::GatherReads {
             work_rate: self.work_rate_powerup + master.work_rate,
-            capacity: f32::from(master.capacity),
+            capacity: Amount::of_master(master.capacity),
             productivity: (task.productivity)
                 .and_then(|i| attributes.get(i.index()))
                 .copied()
@@ -256,10 +257,10 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         by: Releaser,
-        (kind, amount): (AttributeId, f32),
+        (kind, amount): (AttributeId, Amount),
         radius: Footprint,
     ) -> Result<HeadCode, GenieError> {
-        c.give_load(kind, amount)?;
+        c.give_load(kind, amount.get())?;
         let gather = self.actions.gather().ok_or(NO_GATHER)?;
         if gather.target.is_none() {
             return self.gather_after_drop(c);

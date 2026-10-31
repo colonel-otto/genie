@@ -19,6 +19,7 @@ use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::world::Seconds;
@@ -156,7 +157,7 @@ impl HuntAction {
         self.timer = Seconds::ZERO;
         let carrying = self.task.resource.is_some()
             && unit.life.attribute_type == self.task.resource
-            && 1 <= unit.life.amount as i32;
+            && 1 <= unit.life.amount.get() as i32;
         let g = match (carrying, r.sprites.carrying) {
             (true, Some(g)) => Some(g),
             _ => r.sprites.moving,
@@ -180,7 +181,11 @@ impl HuntAction {
         let kind = self.task.resource;
         let keeps = crate::gathering::both_food(kind, unit.life.attribute_type);
         if unit.life.attribute_type != kind {
-            unit.life.amount = if keeps { unit.life.amount } else { 0.0 };
+            unit.life.amount = if keeps {
+                unit.life.amount
+            } else {
+                Amount::ZERO
+            };
             unit.life.attribute_type = kind;
         }
         if let Some(g) = r.sprites.working.or(r.sprites.standing) {
@@ -203,7 +208,7 @@ impl HuntAction {
         r: &HuntReads,
     ) -> Result<bool, GenieError> {
         let held = &mut unit.life.amount;
-        let work = (r.work_rate * self.task.work_value) * dt;
+        let work = Amount::new((r.work_rate * self.task.work_value) * dt);
         let take = if work <= victim.amount {
             work
         } else {
@@ -223,7 +228,7 @@ impl HuntAction {
         // the last bit and the storage's share summed first (`0x140ac8e04`)
         if victim.amount < REMAINDER {
             gain += victim.storage * LAST_BIT + victim.amount;
-            victim.amount = 0.0;
+            victim.amount = Amount::ZERO;
         }
         *held += gain;
         let over = (*held - capacity).abs();
@@ -239,6 +244,6 @@ impl HuntAction {
                 "a gold load of class 9 or 10 (its player's attribute 3)",
             ));
         }
-        Ok(!(REMAINDER <= over && 0.0 < victim.amount))
+        Ok(!(REMAINDER <= over && Amount::ZERO < victim.amount))
     }
 }

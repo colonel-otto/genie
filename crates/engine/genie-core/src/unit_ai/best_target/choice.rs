@@ -9,6 +9,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::{ByRelation, UnitRelation};
 use crate::unit_ai::best_target::{
@@ -137,7 +138,7 @@ pub(super) fn kept_by_owner_and_class(me: &Searcher, ask: &Ask, t: &Thing) -> bo
     }
     let captured = COMBAT <= t.kind && t.capture;
     // nothing held (`+0x310` at most 0) and not taken by sight
-    let free = t.held <= 0.0 && !captured;
+    let free = t.held <= Amount::ZERO && !captured;
     if me.computer && t.owner == PlayerId::GAIA && !free {
         return false;
     }

@@ -8,6 +8,7 @@ use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::master_type::{BUILDING, RGE_COMBAT};
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::unit_ai::task_finder::Diplomacy;
 
@@ -80,7 +81,10 @@ pub(crate) fn victim_of(
         master_id: master.id,
         radius: master.radius,
         height: master.height,
-        storage: master.storage.first().map_or(0.0, |s| s.1),
+        storage: master
+            .storage
+            .first()
+            .map_or(Amount::ZERO, |s| Amount::new(s.1)),
         capacity: master.capacity,
         workers: u.workers,
         blast_defense: master.blast_defense,

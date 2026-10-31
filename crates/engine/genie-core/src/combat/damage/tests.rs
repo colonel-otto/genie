@@ -176,7 +176,7 @@ fn a_static_object_takes_a_ready_charge_first() {
 fn a_moving_object_takes_a_hit_as_a_static_one() {
     let bird = |hp: HitPoints| Victim {
         hp,
-        amount: 50.0,
+        amount: Amount::new(50.0),
         kind: master_type::ACTION,
         class: class::CLASS_38,
         goto_sleep: true,
@@ -195,7 +195,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
     .unwrap();
     assert_eq!(
         (t.hp, t.amount, t.goto_sleep),
-        (HitPoints::new(5.0), 50.0, true)
+        (HitPoints::new(5.0), Amount::new(50.0), true)
     );
     take(
         &mut t,
@@ -209,7 +209,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
     // a villager's hit leaves what it holds
     assert_eq!(
         (t.hp, t.amount, t.goto_sleep),
-        (HitPoints::ZERO, 50.0, false)
+        (HitPoints::ZERO, Amount::new(50.0), false)
     );
     let mut archer = hunter.clone();
     archer.source.class = class::CLASS_0;
@@ -223,7 +223,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         0.0,
     )
     .unwrap();
-    assert_eq!((t.hp, t.amount), (HitPoints::ZERO, 0.0));
+    assert_eq!((t.hp, t.amount), (HitPoints::ZERO, Amount::ZERO));
     let mut t = bird(HitPoints::new(f32::NAN));
     take(
         &mut t,
@@ -234,7 +234,7 @@ fn a_moving_object_takes_a_hit_as_a_static_one() {
         0.0,
     )
     .unwrap();
-    assert!(t.hp.get().is_nan() && t.amount == 50.0 && t.goto_sleep);
+    assert!(t.hp.get().is_nan() && t.amount == Amount::new(50.0) && t.goto_sleep);
 }
 
 #[test]
@@ -1688,13 +1688,13 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
     let attacker = hunter();
     let mut t = Victim {
         player: PlayerId::new(2),
-        amount: 5.0,
+        amount: Amount::new(5.0),
         ..sheep()
     };
     fixed_blast(&attacker, &attacker.source, &mut t, -5.0).unwrap();
     assert_eq!((t.hp, t.killed), (HitPoints::new(9.0), None));
     fixed_blast(&attacker, &attacker.source, &mut t, -20.0).unwrap();
-    assert_eq!((t.hp, t.amount), (HitPoints::ZERO, 0.0));
+    assert_eq!((t.hp, t.amount), (HitPoints::ZERO, Amount::ZERO));
     assert_eq!(
         t.killed.map(|k| (k.attacker, k.attacker_player)),
         Some((object_id(10029), 1))

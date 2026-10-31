@@ -18,6 +18,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{CostSlot, Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::CivId;
 use crate::players::PlayerId;
 use crate::players::attribute;
@@ -1060,13 +1061,13 @@ fn the_resource_commands_set_add_and_multiply_an_attribute() {
 #[test]
 fn a_farm_food_change_grows_the_farms_food() {
     let mut farm = unit_of(5, ids::FARM, HitPoints::new(480.0));
-    farm.life.amount = 75.0;
+    farm.life.amount = Amount::new(75.0);
     farm.construction = Some(built());
     farm.actions
         .set_make(Some(crate::gathering::make::MakeAction {
             state: MakeState::Done,
-            remaining: 100.0,
-            total: 175.0,
+            remaining: Amount::new(100.0),
+            total: Amount::new(175.0),
             task: crate::objects::masters::Task::default(),
         }));
     let player = Player {
@@ -1099,7 +1100,7 @@ fn a_farm_food_change_grows_the_farms_food() {
             .copied()
             .unwrap()
             .remaining,
-        175.0
+        Amount::new(175.0)
     );
 }
 

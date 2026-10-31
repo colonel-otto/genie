@@ -22,6 +22,7 @@ use crate::objects::masters::ids;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
@@ -71,7 +72,7 @@ pub struct StopRate {
     /// The work rate.
     pub work_rate: f32,
     /// The capacity.
-    pub capacity: f32,
+    pub capacity: Amount,
     /// The productivity.
     pub productivity: f32,
 }
@@ -82,7 +83,7 @@ impl StopRate {
     #[must_use]
     pub fn time_per_stop(self, work_value: f32, stops: u8) -> Seconds {
         Seconds::new(
-            ((self.capacity * self.productivity) / (self.work_rate * work_value))
+            ((self.capacity.get() * self.productivity) / (self.work_rate * work_value))
                 / f32::from(stops),
         )
     }
@@ -216,13 +217,16 @@ impl GatherAction {
         } = start;
         let kind = self.task.resource;
         let both_food = crate::gathering::both_food(kind, held.kind);
-        let drops = computer && held.amount == 0.0;
+        let drops = computer && held.amount == Amount::ZERO;
         if (!carry_rule && !drops) || held.kind == kind || both_food {
             if held.kind != kind && both_food {
                 held.kind = kind;
             }
         } else {
-            *held = Held { kind, amount: 0.0 };
+            *held = Held {
+                kind,
+                amount: Amount::ZERO,
+            };
         }
         let walks = Walks {
             held: *held,
@@ -241,7 +245,7 @@ impl GatherAction {
             self.target = None;
             return Ok(());
         }
-        if target.player == player && target.drop_site && 0.0 < held.amount {
+        if target.player == player && target.drop_site && Amount::ZERO < held.amount {
             self.target = None;
             self.point = Position::from([-1.0; 3]);
             self.carry_to = Some(target.id);
@@ -292,7 +296,7 @@ impl GatherAction {
                 _ => {}
             }
         }
-        if target.player == player && target.drop_site && 0.0 < held {
+        if target.player == player && target.drop_site && Amount::ZERO < held {
             self.timer = Seconds::ZERO;
             self.target = None;
             self.point = Position::from([-1.0; 3]);
@@ -430,7 +434,7 @@ impl GatherAction {
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         let held = walks.held.amount;
-        match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
+        match target.filter(|t| t.player == player && t.drop_site && Amount::ZERO < held) {
             Some(t) if Some(t.id) == self.carry_to && self.state == GatherState::Drop => Ok(()),
             Some(t) => {
                 self.target = None;

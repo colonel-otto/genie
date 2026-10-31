@@ -10,6 +10,7 @@ use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
@@ -36,7 +37,7 @@ pub struct WorkTarget {
     /// Its hit points (`+0x278`).
     pub hp: HitPoints,
     /// Its master's first storage amount (`+0x610`).
-    pub storage: f32,
+    pub storage: Amount,
     /// Its master's class (`+0x410`).
     pub class: ClassId,
 }
@@ -66,7 +67,7 @@ pub fn generates(
         && WORKING_ACTIONS.contains(&top.kind)
         && top.state == WORKING
         && let Some(t) = top.target
-        && (HitPoints::ZERO < t.hp || 0.0 < t.storage)
+        && (HitPoints::ZERO < t.hp || Amount::ZERO < t.storage)
         && task.for_class(t.class)
     {
         return true;
@@ -199,7 +200,7 @@ impl World {
         let m = u.master(&self.masters, q)?;
         Ok(Some(WorkTarget {
             hp: u.life.hp,
-            storage: m.storage.first().map_or(0.0, |s| s.1),
+            storage: m.storage.first().map_or(Amount::ZERO, |s| Amount::new(s.1)),
             class: m.class,
         }))
     }

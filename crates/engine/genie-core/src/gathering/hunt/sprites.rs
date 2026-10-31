@@ -19,7 +19,7 @@ pub(crate) fn stand_sprite(
     let carrying = task.sprites[3];
     if task.resource.is_some()
         && task.resource == held.kind
-        && 1 <= held.amount as i32
+        && 1 <= held.amount.get() as i32
         && g(carrying).is_some()
     {
         g(carrying)
@@ -86,7 +86,7 @@ impl HuntTask {
     #[must_use]
     pub fn walk_sprite_id(&self, held: Held) -> i16 {
         let carrying =
-            self.resource.is_some() && held.kind == self.resource && 1 <= held.amount as i32;
+            self.resource.is_some() && held.kind == self.resource && 1 <= held.amount.get() as i32;
         if carrying && 0 <= self.sprites[3] {
             self.sprites[3]
         } else {
@@ -104,7 +104,7 @@ pub fn walk_sprite(
     held: Held,
     sprites: &HuntSprites,
 ) -> Option<Graphic> {
-    let carrying = resource.is_some() && held.kind == resource && 1 <= held.amount as i32;
+    let carrying = resource.is_some() && held.kind == resource && 1 <= held.amount.get() as i32;
     match (carrying, sprites.carrying) {
         (true, Some(g)) => Some(g),
         _ => sprites.moving,

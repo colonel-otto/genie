@@ -23,6 +23,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::pathing::Pathing;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::unit_ai::ActionKind;
@@ -333,7 +334,7 @@ impl Unit {
             civ: owner.civ,
         };
         if crate::unit_ai::task_finder::drops_at(&c.w.drop_sites, bm.id, &actor)
-            && 0.0 < self.life.amount
+            && Amount::ZERO < self.life.amount
             && bm.kind == BUILDING
         {
             // the building takes food for the foods a unit carries (15 to 17), the four resources
@@ -353,11 +354,11 @@ impl Unit {
                     c.player,
                     &mut adds,
                     resource,
-                    self.life.amount,
+                    self.life.amount.get(),
                 )?;
                 c.w.players.player_mut(c.player)?.add_attributes(adds)?;
                 self.life.attribute_type = None;
-                self.life.amount = 0.0;
+                self.life.amount = Amount::ZERO;
             }
         }
         if bm.kind == BUILDING

@@ -102,7 +102,7 @@ impl Unit {
             crate::world::lets::torn_down(c, self, (leaves, releases))?;
         }
         let trading = self.top_action_kind() == Some(TRADE_ACTION)
-            && crate::math::fmath::below_or_unordered(0.0, self.life.amount)
+            && crate::math::fmath::below_or_unordered(0.0, self.life.amount.get())
             && self.life.attribute_type.is_some();
         if class != class::LIVESTOCK
             && !trading

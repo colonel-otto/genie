@@ -19,6 +19,7 @@ use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::world::Seconds;
 use crate::world::step::Step;
@@ -141,15 +142,18 @@ impl HuntAction {
             timer: Seconds::ZERO,
             lead: Lead::NEW,
         };
-        if 0.0 < target.amount {
+        if Amount::ZERO < target.amount {
             let kind = task.resource;
             let both_food = crate::gathering::both_food(kind, held.kind);
-            let drops = computer && held.amount == 0.0;
+            let drops = computer && held.amount == Amount::ZERO;
             if held.kind != kind {
                 if both_food {
                     held.kind = kind;
                 } else if drops || carry_rule {
-                    *held = Held { kind, amount: 0.0 };
+                    *held = Held {
+                        kind,
+                        amount: Amount::ZERO,
+                    };
                 }
             }
         }
@@ -162,7 +166,7 @@ impl HuntAction {
         // becomes the second target (FUN_140a7a190), the target goes (slot 0x68 with none; the
         // caller takes and releases it), the point and `+0x68` clear, `set_state(8)`; a hunter
         // carrying nothing does not get there
-        if target.player == player && target.drop_site && 0.0 < held.amount {
+        if target.player == player && target.drop_site && Amount::ZERO < held.amount {
             hunt.set_target(None);
             hunt.point = Position::from([-1.0; 3]);
             hunt.target_class = None;
@@ -255,7 +259,7 @@ impl HuntAction {
                 "a hunt sent to a building whose top action is an Unpack (set_state 15)",
             ));
         }
-        if target.player == player && drops_here && 0.0 < held {
+        if target.player == player && drops_here && Amount::ZERO < held {
             self.set_target(None);
             self.timer = Seconds::ZERO;
             self.point = Position::from([-1.0; 3]);
@@ -303,7 +307,8 @@ impl HuntAction {
                 "a hunter leaving its pasture (FUN_141189ca0)",
             ));
         }
-        if let Some(t) = target.filter(|t| t.player == player && drops_here && 0.0 < held) {
+        if let Some(t) = target.filter(|t| t.player == player && drops_here && Amount::ZERO < held)
+        {
             if Some(t.id) == self.carry_to && self.state == HuntState::Drop {
                 return Ok(true);
             }

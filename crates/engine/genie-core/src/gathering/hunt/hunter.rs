@@ -223,7 +223,7 @@ impl Unit {
                 // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8) and
                 // the local player's tracker (FUN_14097daf0) are not held; a sharing player's
                 // allies' share (+0x1426) is not modelled
-                c.give_load(kind, amount)?;
+                c.give_load(kind, amount.get())?;
                 return self.hunt_after_drop(c);
             }
             crate::gathering::hunt::Dropped::Again => {

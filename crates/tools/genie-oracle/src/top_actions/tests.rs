@@ -568,7 +568,7 @@ fn a_farms_make_takes_its_timers_and_task() {
         .unwrap();
     assert_eq!((m.state, m.task.id), (MakeState::Done, TaskId::of_task(3)));
     assert_eq!(
-        (m.remaining.to_bits(), m.total.to_bits()),
+        (m.remaining.get().to_bits(), m.total.get().to_bits()),
         (1.5_f32.to_bits(), 9.0_f32.to_bits())
     );
     assert_eq!(

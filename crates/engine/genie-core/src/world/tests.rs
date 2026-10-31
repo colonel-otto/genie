@@ -67,6 +67,7 @@ use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
 use crate::ownership::artifact::ArtifactState;
 use crate::ownership::change::change_hands;
+use crate::players::Amount;
 use crate::players::CivId;
 use crate::players::PlayerType;
 use crate::players::Relation;
@@ -736,7 +737,7 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
     let flares: Vec<(i16, f32)> = t.players[2]
         .objects
         .iter()
-        .map(|u| (u.life.master_id.get(), u.life.amount))
+        .map(|u| (u.life.master_id.get(), u.life.amount.get()))
         .collect();
     assert_eq!(flares, [(112, 1.0), (112, 2.0)]);
 }
@@ -862,7 +863,12 @@ fn a_completed_pasture_puts_its_livestock_on_its_edges() {
                 u.life.attribute_type,
                 u.untargetable
             ),
-            (Some(object_id(50)), 100.0, Some(attribute::FOOD), true)
+            (
+                Some(object_id(50)),
+                Amount::new(100.0),
+                Some(attribute::FOOD),
+                true
+            )
         );
         assert_eq!(u.life.state, ObjectState::Alive);
         assert!(u.sprite.is_some() && u.body.mover().is_some());
@@ -961,7 +967,7 @@ fn a_pasture_counts_each_attempt_and_shares_its_food() {
     assert!(
         t.players[1].objects.as_slice()[1..]
             .iter()
-            .all(|u| u.life.amount == food)
+            .all(|u| u.life.amount == Amount::new(food))
     );
 }
 
@@ -2854,7 +2860,7 @@ pub(crate) fn forage_world() -> World {
             hp: HitPoints::new(1.0),
             master_id: master_id(59),
             attribute_type: Some(AttributeId::numbered(17)),
-            amount: 125.0,
+            amount: Amount::new(125.0),
             ..Lifecycle::default()
         },
         pasture: None,
@@ -3124,7 +3130,8 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
     let loaded = || {
         let mut t = forage_world();
         let v = &mut t.players[1].objects[ListIndex::new(0)];
-        (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
+        (v.life.attribute_type, v.life.amount) =
+            (Some(AttributeId::numbered(17)), Amount::new(6.0));
         t
     };
     let carries = |t: &World| {
@@ -3281,7 +3288,7 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         (0, 0)
     );
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), Amount::new(6.0));
     assert_eq!(
         t.move_to_object_with(
             PlayerId::new(1),
@@ -3339,7 +3346,7 @@ fn a_drop_off_order_takes_a_forager_to_its_nearest_drop_site() {
     };
     t.players[1].objects.push(far);
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), Amount::new(6.0));
     let world = t.clone();
     t.unit_order(player_id(1), &object_ids([9175]), 6).unwrap();
     let v = &t.players[1].objects[ListIndex::new(0)];
@@ -3425,7 +3432,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             hp: HitPoints::new(480.0),
             master_id: ids::FARM,
             attribute_type: Some(attribute::FOOD),
-            amount: 175.0,
+            amount: Amount::new(175.0),
             ..Lifecycle::default()
         },
         pasture: None,
@@ -4501,7 +4508,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         (0, 0)
     );
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), Amount::new(6.0));
     assert_eq!(
         t.move_to_object_with(
             PlayerId::new(1),
@@ -4615,7 +4622,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     assert!((h.timer + Seconds::new(0.45)).get().abs() < 1e-6);
     let mut t = wait(Seconds::new(-0.01));
     t.players[1].objects[ListIndex::new(0)].life.attribute_type = Some(attribute::MEAT);
-    t.players[1].objects[ListIndex::new(0)].life.amount = 5.0;
+    t.players[1].objects[ListIndex::new(0)].life.amount = Amount::new(5.0);
     t.players[1].objects[ListIndex::new(2)].workers = 1;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[ListIndex::new(0)]
@@ -4651,7 +4658,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
             h.attack = None;
         });
         let v = &mut t.players[1].objects[ListIndex::new(0)];
-        (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), 5.0);
+        (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), Amount::new(5.0));
         v.place_for_test(Position::new(22.3, 89.5, 0.0));
         t.spatial
             .set_position(object_id(9175), Position::new(22.3, 89.5, 0.0))
@@ -4672,7 +4679,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     let mut t = dropping(MoveTo::Arrived);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let v = &t.players[1].objects[ListIndex::new(0)];
-    assert_eq!(v.life.amount, 0.0);
+    assert_eq!(v.life.amount, Amount::ZERO);
     assert_eq!(t.players[1].resources[0], 5.0);
     let h = v.actions.hunt().copied().unwrap();
     assert_eq!(
@@ -4892,9 +4899,9 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         }
         let deer = &mut t.players[0].objects[ListIndex::new(0)];
         (deer.life.state, deer.life.hp) = (ObjectState::Dying, HitPoints::ZERO);
-        (deer.life.attribute_type, deer.life.amount) = (Some(attribute::MEAT), 100.0);
+        (deer.life.attribute_type, deer.life.amount) = (Some(attribute::MEAT), Amount::new(100.0));
         let v = &mut t.players[1].objects[ListIndex::new(0)];
-        (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), held);
+        (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), Amount::new(held));
         v.place_for_test(Position::new(31.9, 89.5, 0.0));
         t.spatial
             .set_position(object_id(9175), Position::new(31.9, 89.5, 0.0))
@@ -4907,7 +4914,10 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         t.players[1].objects[ListIndex::new(0)].life.amount,
         t.players[0].objects[ListIndex::new(0)].life.amount,
     );
-    assert!((gained - 5.05).abs() < 1e-5 && (left - 99.95).abs() < 1e-4);
+    assert!(
+        (gained - Amount::new(5.05)).abs() < Amount::new(1e-5)
+            && (left - Amount::new(99.95)).abs() < Amount::new(1e-4)
+    );
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
             .actions
@@ -4926,8 +4936,14 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         (h.state, h.carry_to),
         (HuntState::Drop, Some(object_id(700)))
     );
-    assert_eq!(t.players[1].objects[ListIndex::new(0)].life.amount, 9.99);
-    assert_eq!(t.players[0].objects[ListIndex::new(0)].life.amount, 100.0);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)].life.amount,
+        Amount::new(9.99)
+    );
+    assert_eq!(
+        t.players[0].objects[ListIndex::new(0)].life.amount,
+        Amount::new(100.0)
+    );
 }
 
 /// A hunter's work on its dead deer reaches the deer where it ran (the hit's write-back,
@@ -4944,9 +4960,9 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
     }
     let deer = &mut t.players[0].objects[ListIndex::new(0)];
     (deer.life.state, deer.life.hp) = (ObjectState::Dying, HitPoints::ZERO);
-    (deer.life.attribute_type, deer.life.amount) = (Some(attribute::MEAT), 100.0);
+    (deer.life.attribute_type, deer.life.amount) = (Some(attribute::MEAT), Amount::new(100.0));
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), 5.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), Amount::new(5.0));
     v.place_for_test(Position::new(31.9, 89.5, 0.0));
     t.spatial
         .set_position(object_id(9175), Position::new(31.9, 89.5, 0.0))
@@ -4973,7 +4989,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
     );
     assert!(
         left.as_ref()
-            .is_ok_and(|l| l.is_some_and(|l| (l - 99.95).abs() < 1e-4)),
+            .is_ok_and(|l| l.is_some_and(|l| (l - Amount::new(99.95)).abs() < Amount::new(1e-4))),
         "{left:?}"
     );
 }
@@ -5046,7 +5062,7 @@ fn shepherd_world(x: f32) -> World {
             hp: HitPoints::new(7.0),
             master_id: master_id(594),
             attribute_type: Some(attribute::MEAT),
-            amount: 100.0,
+            amount: Amount::new(100.0),
             ..Lifecycle::default()
         },
         body: crate::objects::layers::Body::new(
@@ -5201,7 +5217,7 @@ fn lumber_world(near: f32) -> World {
             hp: HitPoints::new(20.0),
             master_id: master_id(349),
             attribute_type: Some(attribute::WOOD),
-            amount: 100.0,
+            amount: Amount::new(100.0),
             ..Lifecycle::default()
         },
         pasture: None,
@@ -5648,7 +5664,7 @@ fn a_hunt_that_lost_its_tree_takes_the_next_one() {
     assert_eq!(search(&mut t, None, Some(1.5)), Ok(false));
     let mut t = lumber_world(31.5);
     for i in [2, 3] {
-        t.players[0].objects[ListIndex::new(i)].life.amount = 0.0;
+        t.players[0].objects[ListIndex::new(i)].life.amount = Amount::ZERO;
     }
     assert_eq!(search(&mut t, None, None), Ok(false));
 }
@@ -6804,7 +6820,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
 fn a_unit_order_drop_off_takes_any_player_s_unit() {
     let mut t = sent_off_world(vec![]);
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(attribute::WOOD), 5.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::WOOD), Amount::new(5.0));
     let before = t.players[1].objects[ListIndex::new(0)].clone();
     t.unit_order(player_id(1), &object_ids([9175]), 8).unwrap();
     t.unit_order(player_id(0), &object_ids([9175]), 8).unwrap();
@@ -7435,7 +7451,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
         life: Lifecycle {
             master_id: ids::FARM,
             attribute_type: Some(attribute::FOOD),
-            amount: 15.0,
+            amount: Amount::new(15.0),
             ..Lifecycle::default()
         },
         default_make: true,
@@ -7460,7 +7476,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     let make = f.actions.make().copied().unwrap();
     assert_eq!(
         (make.state, make.remaining, make.total),
-        (MakeState::Making, 175.0, 175.0)
+        (MakeState::Making, Amount::new(175.0), Amount::new(175.0))
     );
     assert_eq!(f.life.held(), carrying(Some(attribute::FARM_FOOD), 0.0));
     assert_eq!(
@@ -7475,7 +7491,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     let made = 0.4f32 * 1.0 * Millis::new(104).seconds();
     assert_eq!(
         (f.life.amount, f.actions.make().copied().unwrap().remaining),
-        (made, 175.0 - made)
+        (Amount::new(made), Amount::new(175.0 - made))
     );
     assert!(t.players[0].unsupported.is_none());
 }
@@ -10111,7 +10127,7 @@ fn a_built_building_s_storage_leaves_its_owner_and_its_store() {
         ..Unit::default()
     };
     u.life.attribute_type = Some(attribute::HEADROOM);
-    u.life.amount = 3.0;
+    u.life.amount = Amount::new(3.0);
     let adds = storage_leaves(&mut u, &master);
     assert_eq!(
         adds,
@@ -10171,7 +10187,7 @@ fn deaths_world() -> World {
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
     };
     let gather = crate::gathering::gather::GatherAction::new(chop, &tree, false, rate).unwrap();
@@ -10623,7 +10639,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         life: Lifecycle {
             master_id: VILLAGER_MALE,
             attribute_type: Some(attribute::FOOD),
-            amount: 10.0,
+            amount: Amount::new(10.0),
             ..Lifecycle::default()
         },
         ..Unit::default()
@@ -11828,12 +11844,12 @@ fn a_lent_object_is_the_world_s_for_the_call() {
         unit.life.hp = HitPoints::new(7.0);
         let during = c.lend(unit, |w| {
             let hp = w.object(id).map(|(_, u)| u.life.hp.get());
-            w.object_mut(id).expect("lent").1.life.amount = 3.0;
+            w.object_mut(id).expect("lent").1.life.amount = Amount::new(3.0);
             let _ = w.players[1].objects.swap_remove(ListIndex::new(0)).unwrap();
             Ok(hp)
         })?;
         let out = c.w.object(id).is_none();
-        Ok((during, unit.life.amount, out, unit.id))
+        Ok((during, unit.life.amount.get(), out, unit.id))
     });
     assert_eq!(
         seen.map_err(|e| e.reason().to_owned()),
@@ -12151,7 +12167,7 @@ fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
         life: Lifecycle {
             master_id: master_id(349),
             hp: HitPoints::new(20.0),
-            amount: 100.0,
+            amount: Amount::new(100.0),
             state: ObjectState::Alive,
             goto_sleep: true,
             ..Lifecycle::default()
@@ -12186,7 +12202,7 @@ fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
         };
         t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
         let mut v = t.victim(object_id(50), PlayerId::new(1)).unwrap().unwrap();
-        (v.hp, v.amount, v.goto_sleep) = (hp, 90.0, false);
+        (v.hp, v.amount, v.goto_sleep) = (hp, Amount::new(90.0), false);
         write_hit(&mut t, (PlayerId::new(1), ListIndex::new(0)), v);
         let gaia = &t.players[0];
         let ids = |l: &ObjectList| -> Vec<i32> { l.iter().map(|u| u.id.get()).collect() };
@@ -12194,7 +12210,7 @@ fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
         (
             ids(&gaia.objects),
             ids(&gaia.sleeping),
-            (u.life.hp.get(), u.life.amount, u.life.goto_sleep),
+            (u.life.hp.get(), u.life.amount.get(), u.life.goto_sleep),
         )
     };
     assert_eq!(
@@ -13602,7 +13618,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
     };
     let mut gather = crate::gathering::gather::GatherAction::new(task, &bush, false, rate).unwrap();
@@ -14771,7 +14787,7 @@ fn reseed_world() -> World {
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
     };
     let gather = crate::gathering::gather::GatherAction {
@@ -16596,8 +16612,8 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
             .actions
             .set_make(Some(MakeAction {
                 state: MakeState::Making,
-                remaining: 0.0,
-                total: 0.0,
+                remaining: Amount::ZERO,
+                total: Amount::ZERO,
                 task: crate::objects::masters::Task::default(),
             }));
     };
@@ -18268,7 +18284,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
     );
     t.build_mesh().unwrap();
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), Amount::new(6.0));
     let here = v.position();
     let m = v.body.mover_mut().unwrap();
     m.moved_at = here;
@@ -18300,7 +18316,12 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
         .unwrap();
         let v = &t.players[1].objects[ListIndex::new(0)];
         let b = v.actions.build().copied().unwrap();
-        let now = (b.state, b.move_to.map(|m| m.state), b.site, v.life.amount);
+        let now = (
+            b.state,
+            b.move_to.map(|m| m.state),
+            b.site,
+            v.life.amount.get(),
+        );
         if seen.last().is_none_or(|&(_, last)| last != now) {
             seen.push((n, now));
         }

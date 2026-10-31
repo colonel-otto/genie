@@ -14,6 +14,7 @@ use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::technology::Attributes;
 use crate::world::World;
@@ -137,7 +138,7 @@ impl World {
                     .ok_or(GenieError::unreachable("the livestock just made"))?;
                 u.untargetable = true;
                 u.pasture = Some(id);
-                u.life.amount = food;
+                u.life.amount = Amount::new(food);
                 let graphic = u.sprite.map(|s| s.graphic);
                 if let Some(g) = graphic.filter(|g| g.flags & 4 != 0) {
                     let d = self.streams.get(Stream::Object).rand15() as i32;

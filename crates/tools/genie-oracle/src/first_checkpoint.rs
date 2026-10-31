@@ -6,6 +6,7 @@ use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
+use genie_core::players::Amount;
 use genie_core::world::checkpoint::{CheckpointObject, PlayerState, player_block};
 use genie_rec::de;
 use genie_rec::de::Op;
@@ -58,7 +59,7 @@ pub(super) fn object_state(s: &RgeStaticObject) -> Result<CheckpointObject, Geni
         id: ObjectId::try_from(s.id)?,
         main_id: s.master_obj,
         state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
-        amount_held: s.attribute_amount_held,
+        amount_held: Amount::new(s.attribute_amount_held),
         position: Position::new(s.t_x, s.t_y, s.t_z),
         top_action: None,
         retarget_timer: None,

@@ -16,6 +16,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -904,7 +905,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     let u = &t.players[1].objects[i];
     assert_eq!(
         (u.life.class, u.life.attribute_type, u.life.amount),
-        (Class::Static, Some(attribute::POPULATION), 5.0)
+        (Class::Static, Some(attribute::POPULATION), Amount::new(5.0))
     );
     assert_eq!((u.life.death_facets, u.sprite), (Some(8), None));
     assert_eq!(t.players[1].attributes[4], food + 1.0);

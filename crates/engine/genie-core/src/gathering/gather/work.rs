@@ -15,6 +15,7 @@ use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
@@ -86,7 +87,7 @@ impl GatherAction {
         let held = unit.life.attribute_type;
         if held != kind && !crate::gathering::both_food(kind, held) {
             unit.life.attribute_type = kind;
-            unit.life.amount = 0.0;
+            unit.life.amount = Amount::ZERO;
         }
         Self::show(c, unit, r.sprites.working.or(r.sprites.standing));
     }
@@ -112,7 +113,7 @@ impl GatherAction {
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
         let held = &mut unit.life.amount;
-        let work = (r.work_rate * self.task.work_value) * c.dt.seconds();
+        let work = Amount::new((r.work_rate * self.task.work_value) * c.dt.seconds());
         let take = if work <= target.amount {
             work
         } else {
@@ -125,9 +126,9 @@ impl GatherAction {
         }
         target.amount += -take;
         // the last bit and the storage's share summed first (`0x140a8f751`)
-        if target.amount < REMAINDER && 0.0 < target.amount {
+        if target.amount < REMAINDER && Amount::ZERO < target.amount {
             gain += target.storage * LAST_BIT + target.amount;
-            target.amount = 0.0;
+            target.amount = Amount::ZERO;
         }
         *held += gain;
         let over = (*held - capacity).abs();
@@ -143,10 +144,10 @@ impl GatherAction {
             && unit.life.attribute_type == Some(attribute::FARM_FOOD)
         {
             let sold = std::mem::take(&mut unit.life.amount);
-            c.give_load(attribute::FOOD, sold)?;
+            c.give_load(attribute::FOOD, sold.get())?;
             return Ok(Next::Stay);
         }
-        let empty = target.amount <= 0.0 && !REGATHERED.contains(&target.master_id);
+        let empty = target.amount <= Amount::ZERO && !REGATHERED.contains(&target.master_id);
         Ok(if over < REMAINDER || empty {
             Next::Drop
         } else {
@@ -210,7 +211,7 @@ impl GatherAction {
         let kind = crate::gathering::hunt::resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
         unit.life.attribute_type = None;
-        unit.life.amount = 0.0;
+        unit.life.amount = Amount::ZERO;
         Ok(Dropped::Load(kind, amount))
     }
 

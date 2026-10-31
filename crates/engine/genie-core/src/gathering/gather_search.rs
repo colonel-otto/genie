@@ -18,6 +18,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
@@ -47,7 +48,7 @@ pub struct Candidate {
     /// `+0x308`, `attribute_type_held`, none for −1.
     pub attribute: Option<AttributeId>,
     /// `+0x310`, `attribute_amount_held`.
-    pub amount: f32,
+    pub amount: Amount,
     /// Its master's `enable_auto_gather` (`+0x681`).
     pub auto_gather: bool,
     /// Its master's `resource_gather_group` (`+0x683`).
@@ -594,7 +595,7 @@ fn first_resource(
     let open = |o: &Candidate| o.pasture.is_some() || !o.untargetable;
     let found: Vec<&Candidate> = on_tile
         .iter()
-        .filter(|o| open(o) && o.auto_gather && o.gather_group == kind && 0.0 < o.amount)
+        .filter(|o| open(o) && o.auto_gather && o.gather_group == kind && Amount::ZERO < o.amount)
         .collect();
     match found.as_slice() {
         [one] => Ok(Some(**one)),
@@ -646,7 +647,7 @@ mod tests {
             pasture: None,
             untargetable: false,
             attribute: Some(attribute::WOOD),
-            amount: 100.0,
+            amount: Amount::new(100.0),
             auto_gather: true,
             gather_group: GatherGroup::WOOD,
         }

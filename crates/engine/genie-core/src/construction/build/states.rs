@@ -14,6 +14,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::NotifyKind;
@@ -109,11 +110,11 @@ impl BuildAction {
         c: &mut Step<'_>,
         builder: &mut Unit,
         kind: AttributeId,
-        amount: f32,
+        amount: Amount,
     ) -> Result<(), GenieError> {
-        c.give_load(kind, amount)?;
+        c.give_load(kind, amount.get())?;
         builder.life.attribute_type = None;
-        builder.life.amount = 0.0;
+        builder.life.amount = Amount::ZERO;
         Ok(())
     }
 
@@ -133,7 +134,7 @@ impl BuildAction {
         self.leave(c, builder)?;
         self.state = BuildState::Finished;
         let (amount, kind) = (builder.life.amount, builder.life.attribute_type);
-        let Some(kind) = kind.filter(|_| reads.drop_site && 0.0 < amount) else {
+        let Some(kind) = kind.filter(|_| reads.drop_site && Amount::ZERO < amount) else {
             return Ok(());
         };
         // the foods a unit carries (15 to 17) as food

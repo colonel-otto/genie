@@ -11,6 +11,7 @@ use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
@@ -1048,7 +1049,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     });
     h.stack_made = Some(object_id(10031));
     let v = own(&mut t, BUILDER);
-    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 7.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), Amount::new(7.0));
     let ai = v.ai.as_mut().unwrap();
     (ai.current_order, ai.current_action) = (Some(OrderKind::Build), Some(ActionKind::Build));
     assert_eq!(code(&mut t, 20), HeadCode::Deletes);
@@ -1385,7 +1386,7 @@ fn drop_world(at: Position, b: BuildAction) -> World {
     let mut t = site_world(class::VILLAGER, at, b);
     with_mill(&mut t);
     let v = own(&mut t, BUILDER);
-    (v.life.attribute_type, v.life.amount) = (Some(attribute::WOOD), 10.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::WOOD), Amount::new(10.0));
     t
 }
 
@@ -1395,7 +1396,11 @@ fn wood(t: &World) -> (f32, f32, i32) {
         .objects
         .by_id(object_id(300))
         .map_or(-1, |m| m.workers);
-    (builder(t).life.amount, t.players[1].resources[1], mill)
+    (
+        builder(t).life.amount.get(),
+        t.players[1].resources[1],
+        mill,
+    )
 }
 
 /// State 8's update (`0x140ab0370` case 7) at the `MoveTo`'s end: at a drop site in state 2

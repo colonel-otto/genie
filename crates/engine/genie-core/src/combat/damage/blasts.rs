@@ -15,6 +15,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::{GenieError, math::fmath};
 
@@ -409,9 +410,9 @@ pub(super) fn fixed_blast(
     lose(t, HitPoints::new(share.abs()));
     if t.hp < HitPoints::new(1.0) {
         t.hp = HitPoints::ZERO;
-        t.amount = 0.0;
-        if f32::from(t.capacity) < t.amount {
-            t.amount = f32::from(t.capacity);
+        t.amount = Amount::ZERO;
+        if Amount::of_master(t.capacity) < t.amount {
+            t.amount = Amount::of_master(t.capacity);
         }
         if HitPoints::new(1.0) <= before && t.player != PlayerId::GAIA && t.kind == COMBAT {
             t.killed = Some(Kill {

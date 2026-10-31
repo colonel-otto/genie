@@ -9,6 +9,7 @@ use genie_core::movement::move_to::MOVE_TO;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::{ClassId, Task};
 use genie_core::objects::unit::Unit;
+use genie_core::players::Amount;
 use genie_core::world::Seconds;
 use genie_save::generated::world::Action;
 
@@ -31,8 +32,8 @@ pub(super) fn import_make(
     unit.actions
         .set_make(Some(genie_core::gathering::make::MakeAction {
             state: genie_core::gathering::make::MakeState::of_byte(base.state)?,
-            remaining: base.timer,
-            total: make.work_timer,
+            remaining: Amount::new(base.timer),
+            total: Amount::new(make.work_timer),
             task: saved.task(task_at)?,
         }));
     Ok(())

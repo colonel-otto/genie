@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::technology::ResourceChange;
@@ -237,9 +238,9 @@ impl World {
             let Some(make) = u.actions.make_mut() else {
                 continue;
             };
-            let f = held + make.remaining;
+            let f = (held + make.remaining).get();
             let grown = libm::powf(f / before, exponent);
-            make.remaining = (grown * amount + f) - held;
+            make.remaining = Amount::new((grown * amount + f) - held.get());
         }
         Ok(())
     }

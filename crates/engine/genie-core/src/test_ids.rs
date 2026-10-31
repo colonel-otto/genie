@@ -8,6 +8,7 @@ use crate::objects::lifecycle::Held;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{COST_SLOTS, CostSlot};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
@@ -97,7 +98,10 @@ pub(crate) fn unit_list(ids: Vec<Option<ObjectId>>) -> UnitList {
 
 /// An object's load: `amount` of attribute `kind` (none for an object that carries nothing).
 pub(crate) const fn carrying(kind: Option<AttributeId>, amount: f32) -> Held {
-    Held { kind, amount }
+    Held {
+        kind,
+        amount: Amount::new(amount),
+    }
 }
 
 /// A master's cost slots of `entries` in their order, the slots after them empty.

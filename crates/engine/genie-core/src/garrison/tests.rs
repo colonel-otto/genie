@@ -33,6 +33,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::Relation;
 use crate::players::attribute::AttributeId;
@@ -1777,7 +1778,8 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
 fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
     let with_food = |t: &mut World| {
         let v = t.players[1].objects.last_mut().unwrap();
-        (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
+        (v.life.attribute_type, v.life.amount) =
+            (Some(AttributeId::numbered(17)), Amount::new(6.0));
     };
     let drop_site = |t: &mut World| {
         t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
@@ -1805,7 +1807,10 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
     let (r, t) = enters_the_centre(with_food);
     assert_eq!(r, Ok(()));
     let v = t.object(object_id(400)).unwrap().1;
-    assert_eq!((v.life.inside, v.life.amount), (Some(object_id(100)), 6.0));
+    assert_eq!(
+        (v.life.inside, v.life.amount),
+        (Some(object_id(100)), Amount::new(6.0))
+    );
     let reason = |setup: fn(&mut World)| enters_the_centre(setup).0.unwrap_err().reason();
     let weak: fn(&mut World) =
         |t| t.object_mut(object_id(100)).unwrap().1.life.hp = HitPoints::new(480.0);

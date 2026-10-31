@@ -37,7 +37,7 @@ pub(crate) fn hunt_reads() -> HuntReads {
         defaults: MoveDefaults::default(),
         attack: crate::combat::attack::tests::reads(),
         work_rate: 1.0,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
         stops_decay: false,
         has_ai: true,
@@ -277,7 +277,7 @@ fn tree() -> Quarry {
         kind: master_type::STATIC,
         state: ObjectState::Alive,
         player: PlayerId::new(0),
-        amount: 100.0,
+        amount: Amount::new(100.0),
         allied: false,
         top_action: None,
         drop_site: false,
@@ -534,11 +534,11 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
 fn victim(amount: f32) -> Victim {
     Victim {
         id: object_id(9357),
-        amount,
+        amount: Amount::new(amount),
         state: ObjectState::Dying,
         kind: master_type::STATIC,
         class: class::TREE,
-        storage: 100.0,
+        storage: Amount::new(100.0),
         ..Victim::default()
     }
 }
@@ -571,24 +571,30 @@ fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full
         Ok(false)
     );
     let w = (1.0f32 * 0.39) * 0.02;
-    assert_eq!((unit.life.amount, tree.amount), (w, 100.0 - w));
+    assert_eq!(
+        (unit.life.amount, tree.amount),
+        (Amount::new(w), Amount::new(100.0 - w))
+    );
     // a load 0.1 short of the capacity rounds up, and the full load asks for set_state(8)
-    unit.life.amount = 9.95 - w;
+    unit.life.amount = Amount::new(9.95 - w);
     let mut tree = victim(50.0);
     assert_eq!(
         hunt.gather(Seconds::new(0.02), &mut unit, &mut tree, &r),
         Ok(true)
     );
-    assert_eq!(unit.life.amount, 10.0);
+    assert_eq!(unit.life.amount, Amount::new(10.0));
     // a tree's last bit goes with a thousandth of its master's storage, the empty target
     // asking for set_state(8)
-    unit.life.amount = 0.0;
+    unit.life.amount = Amount::ZERO;
     let mut tree = victim(0.05);
     assert_eq!(
         hunt.gather(Seconds::new(0.02), &mut unit, &mut tree, &r),
         Ok(true)
     );
-    assert_eq!((unit.life.amount, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
+    assert_eq!(
+        (unit.life.amount, tree.amount),
+        (Amount::new(0.05 + 100.0 * 0.001), Amount::ZERO)
+    );
 }
 
 /// Case 6 without a target: a load is carried off (`set_state(8)`), none or a NaN load searches
@@ -608,11 +614,11 @@ fn a_hunt_without_a_target_carries_its_load_off_or_searches() {
         timer: Seconds::ZERO,
         lead: Lead::default(),
     };
-    assert!(h.ends_without_target(0.5));
+    assert!(h.ends_without_target(Amount::new(0.5)));
     assert_eq!(h.state, HuntState::Gather);
     for held in [0.0, -1.0, f32::NAN] {
         h.state = HuntState::Gather;
-        assert!(!h.ends_without_target(held));
+        assert!(!h.ends_without_target(Amount::new(held)));
         assert_eq!(h.state, HuntState::Search);
     }
 }
@@ -928,7 +934,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         (
             rig.unit_mut().life.attribute_type,
             rig.unit_mut().life.amount,
-        ) = (Some(attribute::WOOD), 3.0);
+        ) = (Some(attribute::WOOD), Amount::new(3.0));
         rig.run(100, |c, u, _, _| {
             h.update_drop(c, u, me(HuntState::Drop), None, who)
         })
@@ -1253,7 +1259,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
         (
             rig.unit_mut().life.attribute_type,
             rig.unit_mut().life.amount,
-        ) = (Some(attribute::FOOD), held);
+        ) = (Some(attribute::FOOD), Amount::new(held));
         let mut r = hunt_reads();
         r.attack.computer = computer;
         let me = me(h.state);
@@ -1595,11 +1601,14 @@ fn a_drop_off_gives_the_load_to_the_player() {
         site,
     )
     .unwrap();
-    assert_eq!(got, Dropped::Load(attribute::WOOD, 7.057_053_6));
+    assert_eq!(
+        got,
+        Dropped::Load(attribute::WOOD, Amount::new(7.057_053_6))
+    );
     let life = &rig.unit().life;
     assert_eq!(
         (life.attribute_type, life.amount, hunt.move_to),
-        (None, 0.0, None)
+        (None, Amount::ZERO, None)
     );
     // carried food of a carcass (15) goes as food; a site that does not take it stops
     hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
@@ -1610,7 +1619,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         site,
     )
     .unwrap();
-    assert_eq!(got, Dropped::Load(attribute::FOOD, 2.0));
+    assert_eq!(got, Dropped::Load(attribute::FOOD, Amount::new(2.0)));
     hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let refused = DropOff {
         takes: false,

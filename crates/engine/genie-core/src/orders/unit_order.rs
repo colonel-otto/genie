@@ -14,6 +14,7 @@ use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::object_gone;
 use crate::orders::{HERD_MOST, NO_POINT, Place};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -246,7 +247,10 @@ impl World {
             // order filter none by owner
             let unit = &self.players.live(p, idx)?;
             let kind = unit.master(&self.masters, p)?.kind;
-            if unit.life.state != ObjectState::Alive || kind < ACTION || unit.life.amount <= 0.0 {
+            if unit.life.state != ObjectState::Alive
+                || kind < ACTION
+                || unit.life.amount <= Amount::ZERO
+            {
                 continue;
             }
             if unit.unmodelled_action.is_some() {

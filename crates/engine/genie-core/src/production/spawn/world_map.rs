@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Tile;
 use crate::movement::Speed;
 use crate::objects::masters::master_type::RGE_COMBAT;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::production::spawn::{Near, PlaceMap};
 use crate::world::World;
@@ -122,7 +123,7 @@ impl PlaceMap for WorldMap<'_> {
                                 .map_or(0, |e| e.mask)
                         })
                     }),
-                    holds: 0.0 < unit.life.amount
+                    holds: Amount::ZERO < unit.life.amount
                         && unit
                             .life
                             .attribute_type

@@ -24,6 +24,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::object_list::NOTHING_PUSHED;
 use crate::orders::Place;
 use crate::orders::object_gone;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::game_status::LOST;
 use crate::world::World;
@@ -181,7 +182,7 @@ impl World {
         }
         // The class a unit's slot 0xd8 (`FUN_141211340`) spares, and the livestock it spares while it
         // holds some.
-        if class == class::RELIC || (class == class::LIVESTOCK && 0.0 < unit.life.amount) {
+        if class == class::RELIC || (class == class::LIVESTOCK && Amount::ZERO < unit.life.amount) {
             return Ok(());
         }
         let i = self.wake(id)?;
@@ -672,7 +673,7 @@ mod tests {
             }
         }
         t.players[1].objects[ListIndex::new(1)].life.state = ObjectState::Foundation;
-        t.players[1].objects[ListIndex::new(2)].life.amount = 100.0;
+        t.players[1].objects[ListIndex::new(2)].life.amount = Amount::new(100.0);
         let masters = Masters::new([
             Master {
                 id: ids::VILLAGER_MALE,

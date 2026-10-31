@@ -13,6 +13,7 @@ use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::class_id;
@@ -88,7 +89,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     let t = keshik_gold();
     let target = WorkTarget {
         hp: HitPoints::new(45.0),
-        storage: 0.0,
+        storage: Amount::ZERO,
         class: class::CLASS_0,
     };
     let top = |kind, state, target| {
@@ -150,7 +151,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     // a dead target counts while its master stores some, never with a NaN
     let dead = WorkTarget {
         hp: HitPoints::ZERO,
-        storage: 1.0,
+        storage: Amount::new(1.0),
         ..target
     };
     assert!(generates(
@@ -162,7 +163,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     ));
     let empty = WorkTarget {
         hp: HitPoints::ZERO,
-        storage: 0.0,
+        storage: Amount::ZERO,
         ..target
     };
     assert!(!generates(
@@ -174,7 +175,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
     ));
     let nan = WorkTarget {
         hp: HitPoints::new(f32::NAN),
-        storage: f32::NAN,
+        storage: Amount::new(f32::NAN),
         ..target
     };
     assert!(!generates(
@@ -393,28 +394,28 @@ fn a_movement_damage_strikes_enemies_in_reach() {
 fn a_hit_below_1_hit_point_leaves_0_and_holds_nothing() {
     let mut v = Victim {
         hp: HitPoints::new(0.5),
-        amount: 30.0,
+        amount: Amount::new(30.0),
         capacity: 100,
         ..Victim::default()
     };
     assert!(finish(&mut v));
-    assert_eq!((v.hp, v.amount), (HitPoints::ZERO, 0.0));
+    assert_eq!((v.hp, v.amount), (HitPoints::ZERO, Amount::ZERO));
     // a capacity below 0 is taken as it is
     let mut v = Victim {
         hp: HitPoints::new(-3.0),
-        amount: 30.0,
+        amount: Amount::new(30.0),
         capacity: -1,
         ..Victim::default()
     };
     assert!(finish(&mut v));
-    assert_eq!((v.hp, v.amount), (HitPoints::ZERO, -1.0));
+    assert_eq!((v.hp, v.amount), (HitPoints::ZERO, Amount::new(-1.0)));
     let mut v = Victim {
         hp: HitPoints::new(1.0),
-        amount: 30.0,
+        amount: Amount::new(30.0),
         ..Victim::default()
     };
     assert!(!finish(&mut v));
-    assert_eq!(v.amount, 30.0);
+    assert_eq!(v.amount, Amount::new(30.0));
     let mut v = Victim {
         hp: HitPoints::new(f32::NAN),
         ..Victim::default()
@@ -906,10 +907,10 @@ fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
         HitPoints::new(3.0),
         Point::new(6.5, 5.5),
     );
-    t.players[2].objects[ListIndex::new(0)].life.amount = 10.0;
+    t.players[2].objects[ListIndex::new(0)].life.amount = Amount::new(10.0);
     run(&mut t, PlayerId::new(1), 10);
     let (_, u) = t.object(object_id(20)).unwrap();
-    assert_eq!((u.life.hp, u.life.amount), (HitPoints::ZERO, 0.0));
+    assert_eq!((u.life.hp, u.life.amount), (HitPoints::ZERO, Amount::ZERO));
     // FUN_1412005b0: player 1 a kill (20) of player 2 (302), player 2 a loss (154)
     assert_eq!(t.players[1].attributes[20], 1.0);
     assert_eq!(t.players[1].attributes[302], 1.0);

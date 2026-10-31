@@ -19,6 +19,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::RGE_COMBAT;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::{self, AttributeId};
 
@@ -278,7 +279,7 @@ pub(super) fn take_static(
         t.goto_sleep = false;
         // The villager class (4): its hits leave what a static target holds.
         if src.class != class::VILLAGER {
-            t.amount = 0.0;
+            t.amount = Amount::ZERO;
         }
     }
 }

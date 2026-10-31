@@ -19,6 +19,7 @@ use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
 use crate::orders::{Place, TROPHIES, TROPHY, clear_powerups, damage_share};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
@@ -260,7 +261,7 @@ impl World {
                 // (raw `0x3a`).
                 // The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
                 // (`FUN_140aa0df0`).
-                || (master.class == class::LIVESTOCK && 0.0 < u.life.amount));
+                || (master.class == class::LIVESTOCK && Amount::ZERO < u.life.amount));
         if spared {
             return Ok(());
         }

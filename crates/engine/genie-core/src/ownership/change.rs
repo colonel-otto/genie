@@ -131,7 +131,7 @@ impl World {
             self.unrecord(id);
         }
         if state == ObjectState::Alive {
-            lose_built_storage(self.players.player_mut(old)?, &master, held, amount)?;
+            lose_built_storage(self.players.player_mut(old)?, &master, held, amount.get())?;
         }
         if state == ObjectState::Foundation {
             self.foundation_sight_off(id, placed)?;
@@ -149,7 +149,7 @@ impl World {
         }
         if state == ObjectState::Alive {
             self.built_with_new_owner(owner, id, &master, rice)?;
-            gain_built_storage(self.players.player_mut(owner)?, &master, held, amount)?;
+            gain_built_storage(self.players.player_mut(owner)?, &master, held, amount.get())?;
         }
         self.garrison_leaves(owner, id)?;
         if state < ObjectState::Dying {

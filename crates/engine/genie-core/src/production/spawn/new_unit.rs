@@ -20,6 +20,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::object_list::NOTHING_PUSHED;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
@@ -386,7 +387,7 @@ impl World {
                 state: ObjectState::Alive,
                 hp: HitPoints::of_master(made.hit_points),
                 attribute_type: None,
-                amount: 0.0,
+                amount: Amount::ZERO,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
                 death_spawn: made.death_spawns[0].is_some(),
                 remains: made.death_spawns[1],

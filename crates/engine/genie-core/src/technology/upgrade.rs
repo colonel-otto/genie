@@ -16,6 +16,7 @@ use crate::objects::masters::{Master, Task, master_type, player_master};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::world::World;
@@ -189,7 +190,7 @@ fn share_of(u: &Unit, master: &Master) -> Option<(u8, f32)> {
             .take(3)
             .find(|&&(kind, _, _)| kind == u.life.attribute_type);
         let share = held.map_or(0, |&(_, amount, _)| {
-            crate::math::conversions::cvttss2si(WHOLE - u.life.amount * WHOLE / amount) as u8
+            crate::math::conversions::cvttss2si(WHOLE - u.life.amount.get() * WHOLE / amount) as u8
         });
         return Some((share, hp));
     }
@@ -381,7 +382,7 @@ impl World {
         if master_type::COMBAT <= kind
             // The villager class (4), whose load an upgrade without its master kept goes to its player.
             && old.class == class::VILLAGER
-            && 0.0 < u.life.amount
+            && Amount::ZERO < u.life.amount
             && let Some(kind) = u.life.attribute_type
         {
             // the foods a unit carries (15 to 17) as food
@@ -397,14 +398,14 @@ impl World {
                 p,
                 &mut adds,
                 kind,
-                amount,
+                amount.get(),
             )?;
             for (k, v) in adds {
                 self.players.player_mut(p)?.add_attribute(k, v)?;
             }
             let u = self.object_at_mut(place)?;
             u.life.attribute_type = None;
-            u.life.amount = 0.0;
+            u.life.amount = Amount::ZERO;
         }
         Ok(())
     }
@@ -858,7 +859,7 @@ mod tests {
             ..Master::default()
         };
         let mut u = object(1, master_id(1), ObjectState::Dying, HitPoints::new(20.0));
-        (u.life.attribute_type, u.life.amount) = (Some(attribute::WOOD), 25.0);
+        (u.life.attribute_type, u.life.amount) = (Some(attribute::WOOD), Amount::new(25.0));
         assert_eq!(share_of(&u, &tree), Some((75, 20.0)));
         u.life.attribute_type = Some(attribute::STONE);
         assert_eq!(share_of(&u, &tree), Some((0, 20.0)));
@@ -1014,7 +1015,8 @@ mod tests {
             ObjectState::Alive,
             HitPoints::new(25.0),
         );
-        (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 10.0);
+        (v.life.attribute_type, v.life.amount) =
+            (Some(AttributeId::numbered(17)), Amount::new(10.0));
         v.firepower = 1.0;
         let player = crate::world::Player {
             objects: vec![v].into(),
@@ -1138,8 +1140,8 @@ mod tests {
             )));
         u.actions.set_make(Some(crate::gathering::make::MakeAction {
             state: MakeState::New,
-            remaining: 0.0,
-            total: 0.0,
+            remaining: Amount::ZERO,
+            total: Amount::ZERO,
             task: make,
         }));
         u.actions
@@ -1450,23 +1452,27 @@ mod tests {
             )
         };
         assert_eq!(
-            load(&villager, Some(AttributeId::numbered(17)), 10.0),
+            load(
+                &villager,
+                Some(AttributeId::numbered(17)),
+                Amount::new(10.0)
+            ),
             (Held::default(), [10.0, 0.0], 0.0)
         );
         assert_eq!(
-            load(&villager, Some(attribute::WOOD), 6.0),
+            load(&villager, Some(attribute::WOOD), Amount::new(6.0)),
             (Held::default(), [0.0, 6.0], 0.0)
         );
         assert_eq!(
-            load(&villager, Some(attribute::WOOD), 0.0),
+            load(&villager, Some(attribute::WOOD), Amount::ZERO),
             (carrying(Some(attribute::WOOD), 0.0), [0.0, 0.0], 0.0)
         );
         assert_eq!(
-            load(&villager, None, 6.0),
+            load(&villager, None, Amount::new(6.0)),
             (carrying(None, 6.0), [0.0, 0.0], 0.0)
         );
         assert_eq!(
-            load(&soldier, Some(attribute::WOOD), 6.0).0,
+            load(&soldier, Some(attribute::WOOD), Amount::new(6.0)).0,
             carrying(Some(attribute::WOOD), 6.0)
         );
     }

@@ -15,6 +15,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
@@ -35,7 +36,7 @@ pub struct Converter<'a> {
     /// Its master's id.
     pub master: MasterId,
     /// Its faith (`+0x310`, what it holds).
-    pub faith: f32,
+    pub faith: Amount,
     /// Its owner's attributes (`player+0x100`, count `+0x90`).
     pub attributes: &'a [f32],
     /// Its master's tasks (`+0x788`).
@@ -57,7 +58,7 @@ pub struct Convertee {
 }
 
 /// The faith a priest's conversion asks unless `any` (`DAT_14330ebcc`).
-pub(super) const FULL_FAITH: f32 = crate::math::image::unit_ai::FULL_FAITH;
+pub(super) const FULL_FAITH: Amount = Amount::new(crate::math::image::unit_ai::FULL_FAITH);
 /// The town centres a priest never converts (109, 618 to 621), the relic cart's master 159, the
 /// farms and fish trap (50, 1187, 199).
 pub(super) const NEVER_CONVERTED: [MasterId; 9] = [

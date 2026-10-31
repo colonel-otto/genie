@@ -6,6 +6,7 @@ use genie_core::objects::ObjectState;
 use genie_core::objects::lifecycle::Held;
 use genie_core::objects::masters::ids;
 use genie_core::objects::masters::{Master, Masters};
+use genie_core::players::Amount;
 use genie_core::players::PlayerId;
 use genie_core::players::attribute;
 use genie_core::unit_ai::task_finder::Diplomacy;
@@ -18,7 +19,7 @@ fn object(annex_of: Option<ObjectId>) -> FinderObject {
         state: ObjectState::Alive,
         held: Held {
             kind: Some(attribute::FOOD),
-            amount: 5.0,
+            amount: Amount::new(5.0),
         },
         hp: 25.0,
         max_hp: 30.0,

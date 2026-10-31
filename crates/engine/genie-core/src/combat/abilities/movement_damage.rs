@@ -18,6 +18,7 @@ use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::DOPPELGANGER;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::world::Seconds;
 use crate::world::World;
@@ -135,8 +136,8 @@ pub fn struck(hitter: &Hitter, range: Distance, b: &Bystander) -> bool {
 pub fn finish(v: &mut Victim) -> bool {
     if v.hp < HitPoints::new(ONE) {
         v.hp = HitPoints::ZERO;
-        v.amount = 0.0;
-        let capacity = f32::from(v.capacity);
+        v.amount = Amount::ZERO;
+        let capacity = Amount::of_master(v.capacity);
         if capacity < v.amount {
             v.amount = capacity;
         }

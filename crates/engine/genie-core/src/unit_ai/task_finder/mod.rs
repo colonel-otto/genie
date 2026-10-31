@@ -26,6 +26,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Task};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
@@ -272,7 +273,7 @@ fn wanted(filter: Option<ActionType>, t: &Task) -> bool {
 fn applies(task: &Task, actor: &Actor<'_>, target: &TaskTarget<'_>, dip: &impl Diplomacy) -> bool {
     if task.holding_attr == 1 {
         let Held { kind, amount } = target.held;
-        if kind.is_none() || amount <= 0.0 {
+        if kind.is_none() || amount <= Amount::ZERO {
             return false;
         }
         if task.attribute_type != kind

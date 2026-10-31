@@ -20,6 +20,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::Relation;
 use crate::players::attribute;
@@ -213,7 +214,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     };
     let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
     };
     let gather = add(Unit {

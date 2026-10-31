@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
+use crate::players::Amount;
 
 /// What the block reads from one object of a player's live list.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -19,7 +20,7 @@ pub struct CheckpointObject {
     /// Its state.
     pub state: crate::objects::ObjectState,
     /// What it holds.
-    pub amount_held: f32,
+    pub amount_held: Amount,
     /// Its place.
     pub position: Position,
     /// What word 9 reads of its actions, none without an action.
@@ -82,7 +83,7 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
     for o in &player.live {
         w[2] = w[2].wrapping_add(i32::from(o.main_id) as u32);
         w[3] = w[3].wrapping_add(u32::from(o.state.get()));
-        w[4] = w[4].wrapping_add(cvttss2si(o.amount_held) as u32);
+        w[4] = w[4].wrapping_add(cvttss2si(o.amount_held.get()) as u32);
         for axis in o.position.get() {
             w[7] = w[7].wrapping_add(cvttss2si(axis * 100.0) as u32);
         }
@@ -211,7 +212,7 @@ mod tests {
     fn words_count_state_amount_live_list_and_zero_waypoints() {
         let p = player(vec![
             CheckpointObject {
-                amount_held: 150.7,
+                amount_held: Amount::new(150.7),
                 ..object()
             },
             object(),

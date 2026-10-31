@@ -29,7 +29,7 @@ use crate::world::{Player, World};
 fn reads() -> GatherReads {
     GatherReads {
         work_rate: 0.31,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
         sprites: HuntSprites::default(),
         class: class::VILLAGER,
@@ -113,7 +113,8 @@ impl Rig {
         rig.mover_mut().animated.speed = 1.0;
         let unit = rig.unit_mut();
         unit.life.master_id = ids::VILLAGER_MALE;
-        (unit.life.attribute_type, unit.life.amount) = (Some(AttributeId::numbered(17)), 3.0);
+        (unit.life.attribute_type, unit.life.amount) =
+            (Some(AttributeId::numbered(17)), Amount::new(3.0));
         rig
     }
 
@@ -165,7 +166,7 @@ impl Rig {
     /// It carries `held` of resource `kind`.
     fn set_load(&mut self, kind: Option<AttributeId>, held: f32) {
         let life = &mut self.unit_mut().life;
-        (life.attribute_type, life.amount) = (kind, held);
+        (life.attribute_type, life.amount) = (kind, Amount::new(held));
     }
 
     /// Its animation stopped (`+0x7b8` 0).
@@ -214,7 +215,7 @@ fn bush() -> Resource {
 const fn rate() -> StopRate {
     StopRate {
         work_rate: 1.0,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
     }
 }
@@ -222,11 +223,11 @@ const fn rate() -> StopRate {
 fn target(amount: f32) -> Victim {
     Victim {
         id: object_id(28222),
-        amount,
+        amount: Amount::new(amount),
         state: ObjectState::Alive,
         class: class::CLASS_7,
         master_id: master_id(59),
-        storage: 125.0,
+        storage: Amount::new(125.0),
         ..Victim::default()
     }
 }
@@ -279,7 +280,7 @@ fn a_farm_s_stop_is_a_tile_centre_of_its_footprint_other_than_the_last() {
 fn under_the_farm_setting_a_farm_s_gather_goes_in_four_timed_stops() {
     let rate = StopRate {
         work_rate: 0.33,
-        capacity: 10.0,
+        capacity: Amount::new(10.0),
         productivity: 1.0,
     };
     let g = GatherAction::new(task(), &farm(), true, rate).unwrap();
@@ -443,7 +444,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
             rig.load().amount,
             field.amount
         ),
-        (0.25, 0.25, 0.0, 14.75)
+        (0.25, 0.25, Amount::ZERO, Amount::new(14.75))
     );
 }
 
@@ -724,7 +725,7 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
         drop(&mut g, &mut rig, site(true, DistanceSquared::ZERO)),
         Ok(Dropped::Load(
             crate::gathering::hunt::resource_kind(Some(AttributeId::numbered(17)), 4),
-            3.0
+            Amount::new(3.0)
         ))
     );
     assert_eq!(rig.load(), Held::default());
@@ -1054,7 +1055,7 @@ fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
     g.target = Some(object_id(12557));
     let mut farm = Victim {
         id: object_id(12557),
-        amount: 175.0,
+        amount: Amount::new(175.0),
         state: ObjectState::Alive,
         class: class::FARM,
         master_id: ids::FARM,
@@ -1357,17 +1358,20 @@ fn a_forager_gathers_until_its_load_is_full() {
     };
     let mut bush = target(100.0);
     assert_eq!(gather(&mut rig, &mut bush), Ok(Next::Stay));
-    assert_eq!((rig.load().amount, bush.amount), (0.155, 100.0 - 0.155));
+    assert_eq!(
+        (rig.load().amount, bush.amount),
+        (Amount::new(0.155), Amount::new(100.0 - 0.155))
+    );
     // 0.2 less the work leaves a last bit below 0.1: it goes with the storage's thousandth
     let mut bush = target(0.2);
     let last = 0.2f32 - 0.155;
     assert_eq!(gather(&mut rig, &mut bush), Ok(Next::Drop));
-    assert_eq!(bush.amount, 0.0);
+    assert_eq!(bush.amount, Amount::ZERO);
     assert_eq!(
         rig.load().amount,
-        0.155 + (0.155 + (125.0 * LAST_BIT + last))
+        Amount::new(0.155 + (0.155 + (125.0 * LAST_BIT + last)))
     );
     rig.set_load(Some(AttributeId::numbered(17)), 9.9);
     assert_eq!(gather(&mut rig, &mut target(100.0)), Ok(Next::Drop));
-    assert_eq!(rig.load().amount, 9.9);
+    assert_eq!(rig.load().amount, Amount::new(9.9));
 }

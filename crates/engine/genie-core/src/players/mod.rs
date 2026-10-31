@@ -3,6 +3,7 @@
 //! own update.
 
 pub mod ai_module;
+mod amount;
 pub mod attribute;
 mod civ_id;
 pub mod diplomacy;
@@ -20,6 +21,7 @@ pub mod tribute;
 mod unit_relation;
 pub mod world_player;
 
+pub use self::amount::Amount;
 pub use self::civ_id::CivId;
 pub use self::player_id::PlayerId;
 pub use self::player_type::PlayerType;

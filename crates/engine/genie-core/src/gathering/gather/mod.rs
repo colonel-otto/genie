@@ -25,6 +25,7 @@ use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::world::Seconds;
 use genie_diff::Diff;
@@ -77,7 +78,7 @@ const TRAP_WAITERS: [MasterId; 3] = [
 ];
 
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
-const REMAINDER: f32 = crate::math::image::gather::REMAINDER;
+const REMAINDER: Amount = Amount::new(crate::math::image::gather::REMAINDER);
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
 const LAST_BIT: f32 = crate::math::image::gather::LAST_BIT;
 /// A drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
@@ -200,7 +201,7 @@ pub(crate) struct GatherReads {
     /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
     pub(crate) work_rate: f32,
     /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.
-    pub(crate) capacity: f32,
+    pub(crate) capacity: Amount,
     /// The player's attribute the task's `attribute_type2` names, when above 0; else 1.
     pub(crate) productivity: f32,
     /// The sprites the gather shows.

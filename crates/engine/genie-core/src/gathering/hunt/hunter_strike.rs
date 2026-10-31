@@ -21,6 +21,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::players::Amount;
 use crate::world::TREE_NEAR;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
@@ -106,7 +107,7 @@ impl Unit {
                 (owner.computer, c.w.world_time),
             ),
             work_rate: self.work_rate_powerup + master.work_rate,
-            capacity: f32::from(master.capacity),
+            capacity: Amount::of_master(master.capacity),
             productivity,
             stops_decay: owner.attributes.get(292) == Some(&1.0),
             has_ai: self.ai.is_some(),

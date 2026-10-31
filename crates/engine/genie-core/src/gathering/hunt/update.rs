@@ -11,6 +11,7 @@ use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::world::Seconds;
 use crate::world::step::Step;
 
@@ -198,7 +199,7 @@ impl HuntAction {
         r: &HuntReads,
     ) -> Result<HuntNext, GenieError> {
         self.face_animal(unit, f.victim.position, r.attack.world_time)?;
-        if 0.0 < f.victim.amount {
+        if Amount::ZERO < f.victim.amount {
             self.set_gather(unit, c.w.streams.get(Stream::Sprite), r);
             return Ok(HuntNext::Stay);
         }

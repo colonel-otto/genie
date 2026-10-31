@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::Issuer;
@@ -180,7 +181,7 @@ impl World {
             unit.position().ground(),
         );
         let class = unit.master(&self.masters, p)?.class;
-        let search = if 0.0 < amount {
+        let search = if Amount::ZERO < amount {
             match self.table_drop_site(p, at, held, class)? {
                 None => DropSearch::Nothing,
                 Some(id) => {

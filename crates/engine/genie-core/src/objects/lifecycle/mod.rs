@@ -12,6 +12,7 @@ use crate::math::rng::Well512;
 use crate::objects::HitPoints;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::players::Amount;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
 use genie_diff::Diff;
@@ -49,7 +50,7 @@ pub struct Held {
     /// The attribute, none for −1.
     pub kind: Option<AttributeId>,
     /// The amount.
-    pub amount: f32,
+    pub amount: Amount,
 }
 
 /// The static init's storage (`FUN_1411a45a0`) of a new object of a master with storage
@@ -75,7 +76,7 @@ pub(crate) fn static_storage(
         if flag == 0 {
             held = Held {
                 kind: Some(kind),
-                amount,
+                amount: Amount::new(amount),
             };
         }
     }
@@ -94,7 +95,7 @@ pub struct Lifecycle {
     /// `+0x308`: the attribute of what the object holds, none for −1.
     pub attribute_type: Option<AttributeId>,
     /// `+0x310`: how much it holds.
-    pub amount: f32,
+    pub amount: Amount,
     /// The master's death sprite (`+0x480`, the slot 0x7a0's): an animated object with one plays
     /// it in state 4.
     #[diff(gap = "stays the import's master's after a master change (a villager's new task)")]
@@ -127,7 +128,7 @@ impl Default for Lifecycle {
             state: ObjectState::Alive,
             hp: HitPoints::new(1.0),
             attribute_type: None,
-            amount: 0.0,
+            amount: Amount::ZERO,
             dying_sprite: None,
             death_spawn: false,
             remains: None,
@@ -249,16 +250,16 @@ impl Lifecycle {
         let master = self
             .master
             .ok_or(GenieError::unsupported("no master data for a dead object"))?;
-        if self.attribute_type.is_none() || self.amount <= 0.0 {
+        if self.attribute_type.is_none() || self.amount <= Amount::ZERO {
             if master.undead {
                 return Err(GenieError::unsupported("an undead object (state 6)"));
             }
             // set_state(7), then its death spawn (slot 0x160, the caller's)
             self.state = ObjectState::Removed;
         } else if master.decay > 0.0 {
-            self.amount -= master.decay * dt_seconds;
-            if self.amount < 0.0 {
-                self.amount = 0.0;
+            self.amount -= Amount::new(master.decay * dt_seconds);
+            if self.amount < Amount::ZERO {
+                self.amount = Amount::ZERO;
             }
         }
         Ok(())
@@ -310,7 +311,7 @@ mod tests {
         // the game's states after updates 1 to 13, then it is gone in update 14
         let flare = Lifecycle {
             attribute_type: Some(AttributeId::numbered(12)),
-            amount: 1.0,
+            amount: Amount::new(1.0),
             master: Some(MasterData {
                 decay: 1.0,
                 undead: false,
@@ -341,7 +342,7 @@ mod tests {
         let mut life = Lifecycle {
             state: ObjectState::Dying,
             attribute_type: Some(AttributeId::numbered(12)),
-            amount: 0.05,
+            amount: Amount::new(0.05),
             master: Some(MasterData {
                 decay: 1.0,
                 undead: false,
@@ -351,7 +352,10 @@ mod tests {
         let _ = life
             .update(Millis::new(104).seconds(), &mut Well512::default(), false)
             .unwrap();
-        assert_eq!((life.state, life.amount), (ObjectState::Dying, 0.0));
+        assert_eq!(
+            (life.state, life.amount),
+            (ObjectState::Dying, Amount::ZERO)
+        );
     }
 
     /// `0x141071880`: an animated object in state 3 after the static step (one that holds an
@@ -361,7 +365,7 @@ mod tests {
         let held = |class, dying_sprite| Lifecycle {
             state: ObjectState::Dying,
             attribute_type: Some(attribute::MEAT),
-            amount: 100.0,
+            amount: Amount::new(100.0),
             dying_sprite,
             ..dead(class)
         };
@@ -472,7 +476,7 @@ mod tests {
         // dies (state 3) and its falling sprite takes a random facet from the Object stream
         let mut tree = Lifecycle {
             attribute_type: Some(attribute::WOOD),
-            amount: 100.0,
+            amount: Amount::new(100.0),
             death_spawn: true,
             death_facets: Some(8),
             ..dead(Class::Static)
@@ -482,7 +486,7 @@ mod tests {
         let _ = tree.update(Seconds::new(0.02), &mut object, false).unwrap();
         assert_eq!(
             (tree.state, tree.amount, object.draws),
-            (ObjectState::Dying, 100.0, 1)
+            (ObjectState::Dying, Amount::new(100.0), 1)
         );
         // dead with its wood, it waits (no decay) and draws nothing more
         let _ = tree.update(Seconds::new(0.02), &mut object, false).unwrap();
@@ -521,7 +525,7 @@ mod tests {
             static_storage(&mut owner, &storage),
             Ok(Held {
                 kind: Some(attribute::RELICS_HELD),
-                amount: 1.5
+                amount: Amount::new(1.5)
             })
         );
         assert_eq!(owner.resources, [0.0, 2.0, 0.0, 0.0]);

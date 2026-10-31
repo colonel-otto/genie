@@ -19,6 +19,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::gather::HuntOrder;
 use crate::orders::{ATTACK_TASK, Work};
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -188,7 +189,7 @@ impl World {
             let (kind, held) = (task.attribute_type, unit.life.attribute_type);
             if held != kind && !crate::gathering::both_food(kind, held) {
                 unit.life.attribute_type = kind;
-                unit.life.amount = 0.0;
+                unit.life.amount = Amount::ZERO;
             }
         }
         if matches!(

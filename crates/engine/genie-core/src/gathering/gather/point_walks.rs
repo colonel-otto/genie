@@ -286,7 +286,9 @@ impl GatherAction {
         let resource = self.task.resource;
         let Held { kind, amount } = unit.life.held();
         match r.sprites.carrying {
-            Some(c) if resource.is_some() && kind == resource && 1 <= amount as i32 => Some(c),
+            Some(c) if resource.is_some() && kind == resource && 1 <= amount.get() as i32 => {
+                Some(c)
+            }
             _ => r.sprites.standing,
         }
     }

@@ -6,6 +6,7 @@ use genie_core::objects::HitPoints;
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::Held;
 use genie_core::objects::masters::ActionType;
+use genie_core::players::Amount;
 use genie_core::players::PlayerId;
 use genie_core::players::attribute::AttributeId;
 use genie_rec::de;
@@ -223,7 +224,7 @@ fn finder_object(
         state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
         held: Held {
             kind: AttributeId::of_field(s.attribute_type_held)?,
-            amount: s.attribute_amount_held,
+            amount: Amount::new(s.attribute_amount_held),
         },
         hp: s.hp + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
         max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),

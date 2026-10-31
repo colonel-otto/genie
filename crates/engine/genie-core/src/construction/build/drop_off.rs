@@ -11,6 +11,7 @@ use crate::objects::ObjectState;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::world::Seconds;
@@ -57,7 +58,7 @@ impl BuildAction {
         builder: &mut Unit,
         by: crate::objects::release::Releaser,
     ) -> Result<(), GenieError> {
-        let search = if 0.0 < builder.life.amount {
+        let search = if Amount::ZERO < builder.life.amount {
             Self::drop_search(c, builder, self.task.range)?
         } else {
             DropSearch::Empty

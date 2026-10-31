@@ -8,6 +8,7 @@ use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::unit_ai::best_target::Candidate;
 use crate::unit_ai::best_target::{AttackCategory, ByCategory};
@@ -110,7 +111,7 @@ pub struct Thing {
     /// Its attackable flag (`+0x68a`, `FUN_141188b10`).
     pub attackable: bool,
     /// What it holds (`+0x310`).
-    pub held: f32,
+    pub held: Amount,
     /// The footprints' gap to the unit (`FUN_14118f680`).
     pub distance: Distance,
     /// Its top speed (slot 0x208).

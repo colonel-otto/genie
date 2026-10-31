@@ -17,6 +17,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::CASTLES;
@@ -220,9 +221,9 @@ pub(crate) fn storage_leaves(u: &mut Unit, master: &Master) -> Vec<(AttributeId,
         }
     }
     if u.life.attribute_type == Some(attribute::HEADROOM) {
-        adds.push((attribute::HEADROOM, -u.life.amount));
+        adds.push((attribute::HEADROOM, (-u.life.amount).get()));
         u.life.attribute_type = None;
-        u.life.amount = 0.0;
+        u.life.amount = Amount::ZERO;
     }
     // FUN_1411e6580: each entry of mode 16 leaves its own store, when the store holds it
     for &(kind, amount, flag) in &master.storage {

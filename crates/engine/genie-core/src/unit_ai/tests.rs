@@ -18,6 +18,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::Amount;
 use crate::players::QueryRelation;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::attack_category;
@@ -367,7 +368,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     let monk = Converter {
         class: class::MONK,
         master: master_id(125),
-        faith: 100.0,
+        faith: Amount::new(100.0),
         attributes: &attributes,
         tasks: &tasks,
     };
@@ -379,7 +380,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     };
     assert!(can_convert(&monk, Some(&knight), false));
     let tired = Converter {
-        faith: 99.0,
+        faith: Amount::new(99.0),
         ..monk
     };
     assert!(!can_convert(&tired, Some(&knight), false));

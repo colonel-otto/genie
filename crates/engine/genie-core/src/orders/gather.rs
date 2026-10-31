@@ -18,6 +18,7 @@ use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::Releaser;
 use crate::orders::GATHERED_BUILDING;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -89,7 +90,7 @@ impl World {
         let productivity = unit.actions.gather().and_then(|g| g.task.productivity);
         let rate = crate::gathering::gather::StopRate {
             work_rate: unit.work_rate_powerup + me.work_rate,
-            capacity: f32::from(me.capacity),
+            capacity: Amount::of_master(me.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 productivity,
                 &owner.attributes,
@@ -346,7 +347,7 @@ impl World {
         // powerup, slot 0x6e8), capacity and productivity attribute (none: 1.0)
         let rate = crate::gathering::gather::StopRate {
             work_rate: unit.work_rate_powerup + me.work_rate,
-            capacity: f32::from(me.capacity),
+            capacity: Amount::of_master(me.capacity),
             productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
                 &self.players.player(player)?.attributes,

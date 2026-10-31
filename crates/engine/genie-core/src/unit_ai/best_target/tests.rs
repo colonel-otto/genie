@@ -8,6 +8,7 @@ use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
+use crate::players::Amount;
 use crate::players::ByRelation;
 use crate::players::PlayerId;
 use crate::players::UnitRelation;
@@ -685,7 +686,10 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
         owner: PlayerId::new(0),
         ..thing
     };
-    let holding = Thing { held: 5.0, ..gaia };
+    let holding = Thing {
+        held: Amount::new(5.0),
+        ..gaia
+    };
     let taken = Thing {
         capture: true,
         ..gaia
@@ -693,7 +697,7 @@ fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
     assert!(kept_by_owner_and_class(&computer, &any, &gaia));
     // a held amount that is not a number counts as held (`+0x310 <= 0` fails)
     let unordered = Thing {
-        held: f32::NAN,
+        held: Amount::new(f32::NAN),
         ..gaia
     };
     for t in [holding, taken, unordered] {

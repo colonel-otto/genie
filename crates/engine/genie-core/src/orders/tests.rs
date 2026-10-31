@@ -23,6 +23,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::Amount;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
@@ -251,7 +252,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             master_id: ids::VILLAGER_MALE,
             state: ObjectState::Alive,
             attribute_type: Some(attribute::WOOD),
-            amount: 5.0,
+            amount: Amount::new(5.0),
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         body: crate::objects::layers::Body::new(
@@ -439,7 +440,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     );
     // carrying nothing: not ordered
     let mut t = world();
-    t.players[0].objects[ListIndex::new(0)].life.amount = 0.0;
+    t.players[0].objects[ListIndex::new(0)].life.amount = Amount::ZERO;
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)]
@@ -1740,7 +1741,7 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
             carrying(Some(attribute::WOOD), 10.0),
             task(crate::gathering::gather::GATHER, Some(attribute::GOLD))
         ),
-        (Some(attribute::GOLD), 0.0, 0)
+        (Some(attribute::GOLD), Amount::ZERO, 0)
     );
     // meat (17) held, a hunt of food (0): both food, kept
     assert_eq!(
@@ -1749,7 +1750,7 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
             carrying(Some(AttributeId::numbered(17)), 10.0),
             task(HUNT, Some(attribute::FOOD))
         ),
-        (Some(AttributeId::numbered(17)), 10.0, 0)
+        (Some(AttributeId::numbered(17)), Amount::new(10.0), 0)
     );
     // the same resource: kept
     assert_eq!(
@@ -1758,12 +1759,12 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
             carrying(Some(attribute::GOLD), 4.0),
             task(crate::gathering::gather::GATHER, Some(attribute::GOLD))
         ),
-        (Some(attribute::GOLD), 4.0, 0)
+        (Some(attribute::GOLD), Amount::new(4.0), 0)
     );
     // an attack task: a soldier's retargeting goes off, a villager's stays on
     assert_eq!(
         run(master_id(4), carrying(None, 0.0), task(ATTACK_TASK, None)),
-        (None, 0.0, 1)
+        (None, Amount::ZERO, 1)
     );
     assert_eq!(
         run(
@@ -1771,7 +1772,7 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
             carrying(None, 0.0),
             task(ATTACK_TASK, None)
         ),
-        (None, 0.0, 0)
+        (None, Amount::ZERO, 0)
     );
 }
 
@@ -2900,13 +2901,13 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
         ..Unit::default()
     };
     t.players[1].objects = vec![
-        unit(object_id(11), master_id(4), 0.0),
-        unit(object_id(12), ids::ID_42, 0.0),
-        unit(object_id(13), master_id(58), 50.0),
-        unit(object_id(14), master_id(58), f32::NAN),
+        unit(object_id(11), master_id(4), Amount::ZERO),
+        unit(object_id(12), ids::ID_42, Amount::ZERO),
+        unit(object_id(13), master_id(58), Amount::new(50.0)),
+        unit(object_id(14), master_id(58), Amount::new(f32::NAN)),
     ]
     .into();
-    t.players[1].sleeping = vec![unit(object_id(15), master_id(10), 0.0)].into();
+    t.players[1].sleeping = vec![unit(object_id(15), master_id(10), Amount::ZERO)].into();
     for id in 11..=16 {
         t.shut_in_gate(object_id(id)).unwrap();
     }
@@ -4314,7 +4315,7 @@ fn foraging() -> World {
         .unwrap();
     t.players[1].attributes = vec![0.0; 10];
     let v = &mut t.players[1].objects[ListIndex::new(0)];
-    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), Amount::new(6.0));
     t
 }
 
@@ -4487,7 +4488,7 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
         Some("a UNIT_ORDER drop-off of an action not held")
     );
     let mut t = foraging();
-    t.players[1].objects[ListIndex::new(0)].life.amount = 0.0;
+    t.players[1].objects[ListIndex::new(0)].life.amount = Amount::ZERO;
     let before = t.players[1].objects[ListIndex::new(0)].clone();
     t.unit_order(player_id(1), &object_ids([9175, 12345]), 7)
         .unwrap();

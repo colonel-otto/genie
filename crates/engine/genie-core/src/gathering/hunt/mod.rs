@@ -20,6 +20,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
 use crate::objects::sprite::Graphic;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
@@ -72,7 +73,7 @@ const LEAD_WAIT: Seconds = Seconds::new(-1.0);
 /// A face on dead livestock beyond the task's range plus this walks again (`DAT_142eb5690`).
 const GAP: f32 = crate::math::image::hunt::GAP;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
-const REMAINDER: f32 = crate::math::image::hunt::REMAINDER;
+const REMAINDER: Amount = Amount::new(crate::math::image::hunt::REMAINDER);
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
 const LAST_BIT: f32 = crate::math::image::hunt::LAST_BIT;
 /// A task whose `attribute_type4` is this (`0x124`) stops its target's decay under player
@@ -197,7 +198,7 @@ pub(crate) struct HuntReads {
     /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
     pub(crate) work_rate: f32,
     /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.
-    pub(crate) capacity: f32,
+    pub(crate) capacity: Amount,
     /// The player's attribute the task's `attribute_type2` names, when above 0; else 1.
     pub(crate) productivity: f32,
     /// The player's attribute 292 is 1: a task whose `attribute_type4` is 0x124 stops the
@@ -253,7 +254,7 @@ pub struct Quarry {
     /// Its owner.
     pub player: PlayerId,
     /// What it holds (`+0x310`).
-    pub amount: f32,
+    pub amount: Amount,
     /// The hunter's player counts the target's player as its own or allied (`FUN_141663d90` with
     /// the ally flag).
     pub allied: bool,

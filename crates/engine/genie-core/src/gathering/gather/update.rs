@@ -18,6 +18,7 @@ use crate::movement::{Me, Mover};
 use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
 use crate::world::step::Step;
@@ -165,7 +166,7 @@ impl GatherAction {
                 "a Gather action in a state the slice does not model",
             ));
         }
-        if 0.0 < unit.life.amount {
+        if Amount::ZERO < unit.life.amount {
             return Ok(Next::Drop);
         }
         if waits_for_a_farm(r.master, self.target_class) {
@@ -241,7 +242,7 @@ impl GatherAction {
         if !crate::combat::attack::face_target(mover, at, target.position, c.w.world_time)? {
             return Ok(Next::Stay);
         }
-        if 0.0 < target.amount || REGATHERED.contains(&target.master_id) {
+        if Amount::ZERO < target.amount || REGATHERED.contains(&target.master_id) {
             self.set_work(c, unit, r);
             self.time_at_stop = Seconds::ZERO;
             return Ok(Next::Stay);

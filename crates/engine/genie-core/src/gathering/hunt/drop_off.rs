@@ -16,6 +16,7 @@ use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
 use crate::objects::unit::Unit;
+use crate::players::Amount;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
@@ -28,7 +29,7 @@ pub enum Dropped {
     /// It walks or waits.
     Going,
     /// The load went to the player: its resource and amount, which the caller adds.
-    Load(AttributeId, f32),
+    Load(AttributeId, Amount),
     /// Its wait ended: it tries again (`set_state(8)`, the caller's).
     Again,
     /// The drop site does not take the load: the action idles (`set_state(2)`; the caller lets
@@ -138,7 +139,7 @@ impl HuntAction {
         let kind = resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
         unit.life.attribute_type = None;
-        unit.life.amount = 0.0;
+        unit.life.amount = Amount::ZERO;
         Ok(Dropped::Load(kind, amount))
     }
 
@@ -183,8 +184,8 @@ impl HuntAction {
     /// Case 6 without a target (`0x140ac7a00` at `0x140ac9029`): a load is carried off
     /// (`set_state(8)`, true, the caller's); with none, or one that is not a number (`COMISS`
     /// with `JBE`), the hunt searches (`set_state(3)`: [`HuntState::Search`] here, the rest the caller's).
-    pub(super) fn ends_without_target(&mut self, held: f32) -> bool {
-        if crate::math::fmath::at_most_or_unordered(held, 0.0) {
+    pub(super) fn ends_without_target(&mut self, held: Amount) -> bool {
+        if crate::math::fmath::at_most_or_unordered(held.get(), 0.0) {
             self.state = HuntState::Search;
             false
         } else {

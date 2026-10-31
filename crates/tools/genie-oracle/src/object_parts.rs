@@ -12,6 +12,7 @@ use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
+use genie_core::players::Amount;
 use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::best_target::AttackCategory;
 use genie_core::unit_ai::{ActionKind, OrderKind};
@@ -88,7 +89,7 @@ pub(super) fn lifecycle(
         state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
         hp: HitPoints::new(s.hp),
         attribute_type: AttributeId::of_data(s.attribute_type_held),
-        amount: s.attribute_amount_held,
+        amount: Amount::new(s.attribute_amount_held),
         dying_sprite,
         death_spawn: death_spawn >= 0,
         remains: MasterId::of_data(remains),
