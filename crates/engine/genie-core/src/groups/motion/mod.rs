@@ -9,6 +9,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{self, BVector};
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::Walker;
 use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
@@ -266,7 +267,8 @@ impl World {
             walker: mover.walker(id),
             position: u.position(),
             radius: mover.stats.radius.ground(),
-            moves: mover.stats.speed != 0.0 || u.life.master_id == crate::movement::LONG_PATH_MOVER,
+            moves: mover.stats.speed != Speed::ZERO
+                || u.life.master_id == crate::movement::LONG_PATH_MOVER,
             solid: mover.stats.radius.sized(),
             ignore_units: mover.ignore_units.clone(),
             player: p,

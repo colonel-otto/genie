@@ -6,6 +6,7 @@ use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
@@ -172,8 +173,9 @@ impl World {
             return Ok(None);
         };
         let master = u.master(&self.masters, p)?;
-        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        let moves = MOVING <= master.kind && crate::math::fmath::below_or_unordered(0.0, speed);
+        let speed = master.moving.as_ref().map_or(Speed::ZERO, |m| m.speed);
+        let moves =
+            MOVING <= master.kind && crate::math::fmath::below_or_unordered(0.0, speed.get());
         Ok(moves.then_some(u.position().ground()))
     }
 

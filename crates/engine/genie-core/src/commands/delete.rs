@@ -788,6 +788,7 @@ mod clearing_tests {
     use crate::map::Position;
     use crate::map::Tile;
     use crate::map::spatial::{Placed, Spatial, Tiles};
+    use crate::movement::Speed;
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
@@ -829,7 +830,7 @@ mod clearing_tests {
             obstruction_type: m.obstruction_type,
             buildable_on: m.buildable_on,
             tall: m.tall,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         }

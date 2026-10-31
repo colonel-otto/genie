@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::PathAsk;
+use crate::movement::Speed;
 use crate::movement::move_to::action::ARRIVED;
 use crate::movement::move_to::{
     Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, ask_walk, walk_or_give_up,
@@ -61,13 +62,13 @@ impl MoveToAction {
     /// `speed` (slot 0x208) and fails (13) without (`UCOMISS`, `JP`: a NaN speed starts). A quiet
     /// `MoveTo` shows no standing sprite in states 1 and 13 (`0x140aa29e0`).
     #[must_use]
-    pub fn added(self, unit_state: ObjectState, gap: Distance, speed: f32) -> Option<Self> {
+    pub fn added(self, unit_state: ObjectState, gap: Distance, speed: Speed) -> Option<Self> {
         if ObjectState::Dying <= unit_state {
             return None;
         }
         let state = if gap <= Distance::new(ARRIVED) {
             MoveTo::Arrived
-        } else if speed == 0.0 {
+        } else if speed == Speed::ZERO {
             MoveTo::Failed
         } else {
             MoveTo::Start

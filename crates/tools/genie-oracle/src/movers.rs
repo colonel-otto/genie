@@ -8,6 +8,7 @@ use genie_core::GenieError;
 use genie_core::map::Distance;
 use genie_core::map::{Position, Radii};
 use genie_core::math::fmath::BVector;
+use genie_core::movement::Speed;
 use genie_core::objects::ObjectId;
 use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
@@ -260,11 +261,11 @@ pub(super) fn mover(
             fly_mode: table
                 .fly_mode(civ, objects.dat_master(s.master_obj))
                 .unwrap_or(0),
-            speed,
-            base,
+            speed: Speed::new(speed),
+            base: Speed::new(base),
             turn_rate: genie_core::movement::turn_rate(turn_speed, facets),
             turn_radius: 0.0,
-            turn_radius_speed: f32::MAX,
+            turn_radius_speed: Speed::MAX,
             radius,
             restriction: genie_core::map::RestrictionId::of_field(restriction)?
                 .ok_or(GenieError::unsupported("a negative terrain restriction"))?,

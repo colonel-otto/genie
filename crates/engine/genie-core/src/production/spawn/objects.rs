@@ -8,6 +8,7 @@ use crate::map::Rect;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -257,7 +258,7 @@ impl World {
             obstruction_type: made.obstruction_type,
             buildable_on: made.buildable_on,
             tall: made.tall,
-            speed: moving.as_ref().map_or(0.0, |m| m.speed),
+            speed: moving.as_ref().map_or(Speed::ZERO, |m| m.speed),
             unknown: None,
             obstruction: (made.obstruction_type != ObstructionType::NONE && solid).then_some(
                 Obstruction {

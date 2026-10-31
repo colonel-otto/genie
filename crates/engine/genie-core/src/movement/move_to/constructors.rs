@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::movement::Speed;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveWait, NO_TARGET_GAP, SpriteReads, TargetMoved,
@@ -38,7 +39,7 @@ pub struct MoveToReads<'a> {
     /// The unit's object state.
     pub state: ObjectState,
     /// The unit's speed.
-    pub speed: f32,
+    pub speed: Speed,
     /// The unit's place.
     pub at: Position,
     /// Its master's x and y radii (`+0x5d8`, `+0x5dc`).
@@ -94,7 +95,7 @@ impl<'g> MoveToReads<'g> {
         Self {
             sprites: SpriteReads::of(master, unit.abilities.look.as_ref(), graphics),
             state: unit.life.state,
-            speed: unit.body.mover().map_or(0.0, |m| m.stats.speed),
+            speed: unit.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
             at: unit.position(),
             ground: master.radius,
         }
@@ -108,7 +109,7 @@ impl<'g> MoveToReads<'g> {
         Self {
             sprites,
             state: unit.life.state,
-            speed: mover.map_or(0.0, |m| m.stats.speed),
+            speed: mover.map_or(Speed::ZERO, |m| m.stats.speed),
             at: unit.position(),
             ground: mover.map_or(Footprint::ZERO, |m| m.stats.radius.ground()),
         }
@@ -273,7 +274,7 @@ mod tests {
                 graphics: &graphics,
             },
             state: ObjectState::Alive,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             at: Position::new(10.0, 10.0, 0.0),
             ground: Footprint::new(0.2, 0.2),
         };
@@ -326,7 +327,7 @@ mod tests {
             (MoveTo::Start, -1, house.at)
         );
         let stuck = MoveToReads {
-            speed: 0.0,
+            speed: Speed::ZERO,
             ..move_reads
         };
         assert_eq!(to(&stuck, house, None).state, MoveTo::Failed);

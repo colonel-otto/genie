@@ -208,7 +208,7 @@ impl Fly {
         } else {
             t.work_val1
         };
-        let distance = speed * self.timer * factor;
+        let distance = (speed * self.timer * factor).get();
         let (x, y, z) = (position.x(), position.y(), position.z());
         let (w, h) = (map.width(), map.height());
         let mut tries = 0;
@@ -365,6 +365,7 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::map::Radii;
+    use crate::movement::Speed;
     use crate::movement::move_to::MoveTo;
     use crate::objects::ListIndex;
     use crate::objects::ObjectState;
@@ -384,7 +385,7 @@ mod tests {
     /// it).
     fn wings(speed: f32) -> Mover {
         let mut m = crate::gathering::hunt::tests::walker();
-        m.stats.speed = speed;
+        m.stats.speed = Speed::new(speed);
         m.stats.radius = Radii::new(0.2, 0.2, 0.5);
         m
     }

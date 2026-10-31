@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::DistanceSquared;
 use crate::math::rng::{Stream, Well512};
+use crate::movement::Speed;
 use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
@@ -54,7 +55,7 @@ fn walks(held: Held) -> Walks<'static> {
                 graphics: &NO_GRAPHICS,
             },
             state: ObjectState::Alive,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             at: Position::ORIGIN,
             ground: Footprint::ZERO,
         },

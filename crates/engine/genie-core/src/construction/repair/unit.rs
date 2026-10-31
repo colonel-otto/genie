@@ -9,6 +9,7 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::BVector;
 use crate::movement::Me;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -125,7 +126,7 @@ impl Unit {
             los: master.map_or(Distance::ZERO, |m| m.line_of_sight),
             position: self.position(),
             radius: master.map_or(Footprint::ZERO, |m| m.radius),
-            speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
+            speed: self.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
             scenario,
             firepower: self.firepower,
             capture,
@@ -215,7 +216,7 @@ fn repairee_of(
         position: t.position(),
         radius: tm.radius,
         class: tm.class,
-        moves: MOVING <= tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
+        moves: MOVING <= tm.kind && tm.moving.as_ref().is_some_and(|m| Speed::ZERO < m.speed),
     };
     let counting = if tm.kind == BUILDING {
         t.annex_of.unwrap_or(target)

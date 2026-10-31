@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::GridSize;
 use crate::map::Tile;
+use crate::movement::Speed;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::players::PlayerId;
 use crate::production::spawn::{Near, PlaceMap};
@@ -107,7 +108,10 @@ impl PlaceMap for WorldMap<'_> {
                     state: unit.life.state,
                     desolid: unit.construction.is_some_and(|c| c.desolid),
                     player: owner,
-                    moving: master.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
+                    moving: master
+                        .moving
+                        .as_ref()
+                        .is_some_and(|m| Speed::ZERO < m.speed),
                     fog_visibility: master.fog_visibility,
                     fog_mask: t.spatial.sight.as_ref().and_then(|v| {
                         let umv = v.seer(id).map_or(0, |s| s.umv);

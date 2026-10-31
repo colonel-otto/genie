@@ -13,6 +13,7 @@ use crate::groups::GroupId;
 use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
@@ -166,7 +167,7 @@ struct Splittable {
     kind: MasterKind,
     grouped: bool,
     flag_1: bool,
-    speed: f32,
+    speed: Speed,
     position: Position,
     moved_at: Point,
     state: ObjectState,
@@ -266,7 +267,7 @@ fn splits_together(
     if a.grouped != b.grouped || a.flag_1 != b.flag_1 {
         return Ok(false);
     }
-    if f.by_speed && SPLIT_SPEED_GAP < (a.speed - b.speed).abs() {
+    if f.by_speed && SPLIT_SPEED_GAP < (a.speed - b.speed).get().abs() {
         return Ok(false);
     }
     if member && b.state < ObjectState::Alive {

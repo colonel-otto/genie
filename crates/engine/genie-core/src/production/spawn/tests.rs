@@ -7,6 +7,7 @@ use crate::map::GroundOffset;
 use crate::map::Radii;
 use crate::map::Tile;
 use crate::map::TileOffset;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
@@ -789,7 +790,7 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
         .mover_mut()
         .unwrap()
         .stats
-        .speed = 0.0;
+        .speed = Speed::ZERO;
     t.gather_move(
         PlayerId::new(1),
         ListIndex::new(0),

@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Distance;
 use crate::map::Footprint;
 use crate::math::rng::Well512;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -107,7 +108,7 @@ impl UnitAi {
             && self.current_action.is_none()
         {
             // "BUTA returned -1 and I'm idle without a target": COMISS, JBE (a NaN runs)
-            if at.speed < STILL {
+            if at.speed < Speed::new(STILL) {
                 return Ok(GO_ON);
             }
             let ran = self.run_away(true, at, computer, ai_rng, side)?;

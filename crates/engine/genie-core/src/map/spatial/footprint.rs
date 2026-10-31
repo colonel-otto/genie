@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::{Tile, TileRect};
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::class;
@@ -149,7 +150,7 @@ impl Spatial {
             .iter()
             .filter(|&(&id, o)| {
                 id != site_id
-                    && (obstructs || o.speed <= 0.0)
+                    && (obstructs || o.speed <= Speed::ZERO)
                     && o.buildable_on != 1
                     && o.tall
                     && o.radius.sized()

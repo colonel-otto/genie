@@ -11,6 +11,7 @@ use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
+use crate::movement::Speed;
 use crate::movement::move_to::MoveToReads;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
@@ -141,8 +142,11 @@ impl Attack {
             AiOrder::Order(_) => r.queue_empty,
         };
         if human && waits {
-            let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
-            if r.stance == UnitStance::AGGRESSIVE && 0.0 < speed && f.own.class != class::VILLAGER {
+            let speed = unit.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
+            if r.stance == UnitStance::AGGRESSIVE
+                && Speed::ZERO < speed
+                && f.own.class != class::VILLAGER
+            {
                 // a mover of stance 0 that is not a villager waits where it saw the target:
                 // 0x1fb with 600 and 0x202 for a unit's own Attack, then `set_state(5)`
                 if !self.sub_action {

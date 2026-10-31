@@ -10,6 +10,7 @@ use crate::groups::motion::passes_waypoint;
 use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
 use crate::map::Distance;
 use crate::math::fmath::{BVector, at_most_or_unordered, below_or_unordered};
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::world::Seconds;
@@ -116,7 +117,7 @@ impl World {
                 position: u.position(),
                 radius: mover.stats.radius.ground(),
                 mask: mover.stats.restriction_mask,
-                moves: mover.stats.speed != 0.0
+                moves: mover.stats.speed != Speed::ZERO
                     || u.life.master_id == crate::movement::LONG_PATH_MOVER,
                 ignore_units: &mover.ignore_units,
                 group_units: self.groups.group_units(u.group.id),
@@ -184,7 +185,7 @@ impl World {
             self.set_member_speed(id, top);
             let _ = self.show_walking(id)?;
         } else {
-            self.catch_up_to_slot(group, id, (gap.get(), speed))?;
+            self.catch_up_to_slot(group, id, (gap.get(), speed.get()))?;
         }
         Ok(())
     }
@@ -219,7 +220,7 @@ impl World {
     ) -> Result<(), GenieError> {
         self.groups.held_mut(group)?.flags |= 0x200;
         if at_most_or_unordered(SLOT_REACH, gap) {
-            self.set_member_speed(id, speed);
+            self.set_member_speed(id, Speed::new(speed));
             let _ = self.show_walking(id)?;
             self.groups.held_mut(group)?.flags |= 0x200;
         } else {
@@ -228,7 +229,7 @@ impl World {
             } else {
                 speed + ((speed * CATCH_UP - speed) * gap) / CATCH_UP_SPAN
             };
-            self.set_member_speed(id, v);
+            self.set_member_speed(id, Speed::new(v));
             if !self.show_running(id)? {
                 let _ = self.show_walking(id)?;
             }
@@ -274,7 +275,7 @@ impl World {
     }
 
     /// Slot 0x598 of member `id` ([`crate::movement::Mover::set_speed`]).
-    pub(super) fn set_member_speed(&mut self, id: ObjectId, speed: f32) {
+    pub(super) fn set_member_speed(&mut self, id: ObjectId, speed: Speed) {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.body.mover_mut()
         {
@@ -334,7 +335,7 @@ impl World {
         if !id.is_recyclable()
             // The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
             && kind < BUILDING
-            && speed == 0.0
+            && speed == Speed::ZERO
             && (LINKED_RADIUS < radius.x() || LINKED_RADIUS < radius.y())
             && let Some(v) = self.spatial.sight.as_mut()
         {

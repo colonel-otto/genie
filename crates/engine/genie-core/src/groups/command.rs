@@ -15,6 +15,7 @@ use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::WaypointLevel;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::master_type::COMBAT;
@@ -325,7 +326,7 @@ impl World {
             g.flags |= 0xc000;
         }
         // the top speed below the tolerance (`COMISS`/`JA` at 0x141010cc3)
-        if g.motion.maximum_velocity_forward < EPSILON {
+        if g.motion.maximum_velocity_forward < Speed::new(EPSILON) {
             return Ok(None);
         }
         let mut path = Path::default();
@@ -689,7 +690,7 @@ mod tests {
             ..Member::default()
         }];
         g.motion.flags = 2;
-        g.motion.maximum_velocity_forward = 1.0;
+        g.motion.maximum_velocity_forward = Speed::new(1.0);
         t.groups = UnitGroups {
             groups: vec![g],
             ..UnitGroups::default()

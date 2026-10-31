@@ -7,6 +7,7 @@ use crate::map::Distance;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
+use crate::movement::Speed;
 use crate::movement::move_to::Shown;
 use crate::movement::move_to::{
     Follow, Goal, MoveTo, MoveWait, TargetMoved, Walk, ask_walk, target_left, walk_or_give_up,
@@ -220,7 +221,7 @@ impl MoveToAction {
         let ground = mover.stats.radius.ground();
         let state = if footprint_gap(me, ground, t.position, t.radius) <= Distance::new(ARRIVED) {
             MoveTo::Arrived
-        } else if mover.stats.speed == 0.0 {
+        } else if mover.stats.speed == Speed::ZERO {
             MoveTo::Failed
         } else {
             MoveTo::Start
@@ -288,7 +289,7 @@ impl MoveToAction {
         mover: Option<&mut Mover>,
     ) -> Self {
         let state = match mover {
-            Some(m) if m.stats.speed != 0.0 => MoveTo::Start,
+            Some(m) if m.stats.speed != Speed::ZERO => MoveTo::Start,
             Some(_) | None => MoveTo::Failed,
         };
         Self {
@@ -593,7 +594,7 @@ mod tests {
             (MoveTo::Moving, MoveWaitState::AskedAgain)
         );
         assert_eq!(looks.shown(), Some(13154));
-        assert_eq!(rig.mover_mut().stats.speed, 0.8 * 1.5);
+        assert_eq!(rig.mover_mut().stats.speed, Speed::new(0.8 * 1.5));
         let step = m
             .update(rig.walk(0), PathAsk::default(), looks.shows())
             .unwrap();
@@ -604,7 +605,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (on.state, looks.shown(), rig.mover_mut().stats.speed),
-            (MoveTo::Moving, Some(13153), 0.8)
+            (MoveTo::Moving, Some(13153), Speed::new(0.8))
         );
         let ended = |state| {
             let mut rig = WalkRig::on_the_path();
@@ -668,9 +669,12 @@ mod tests {
         };
         assert_eq!(
             started(Some(RUNNING)),
-            (MoveTo::Moving, Some(13154), 0.8 * 1.5)
+            (MoveTo::Moving, Some(13154), Speed::new(0.8 * 1.5))
         );
-        assert_eq!(started(None), (MoveTo::Moving, Some(13151), 0.8 * 1.25));
+        assert_eq!(
+            started(None),
+            (MoveTo::Moving, Some(13151), Speed::new(0.8 * 1.25))
+        );
         // at the point already: state 1, which shows the standing sprite
         let mut rig = WalkRig::on_the_path();
         rig.body.set_anim_speed(1.0);
@@ -684,7 +688,7 @@ mod tests {
         let _ = at.update(rig.walk(0), ask, looks.shows()).unwrap();
         assert_eq!(at.state, MoveTo::Arrived);
         assert_eq!(looks.shown(), Some(13151));
-        assert_eq!(rig.mover_mut().stats.speed, 0.8 * 1.25);
+        assert_eq!(rig.mover_mut().stats.speed, Speed::new(0.8 * 1.25));
         assert_eq!(rig.mover_mut().animated.speed, 0.0);
     }
 
@@ -823,7 +827,7 @@ mod tests {
         )
         .unwrap();
         assert!(!far.arrived());
-        assert_eq!(walker.stats.speed, 0.8);
+        assert_eq!(walker.stats.speed, Speed::new(0.8));
     }
 
     /// `FUN_140aa0df0` on an object: a live target is held (the caller takes it); a target in
@@ -845,7 +849,7 @@ mod tests {
         let me = Position::new(30.0, 40.0, 0.0);
         let to = |target, livestock, speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
-            walker.stats.speed = speed;
+            walker.stats.speed = Speed::new(speed);
             MoveToAction::to_object(
                 &world,
                 me,
@@ -891,7 +895,7 @@ mod tests {
         let point = Position::new(12.0, 34.0, 1.0);
         let start = |speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
-            walker.stats.speed = speed;
+            walker.stats.speed = Speed::new(speed);
             let m =
                 MoveToAction::to_point(point, Distance::new(0.5), Some(RUNNING), Some(&mut walker));
             (m, walker.stats.speed)
@@ -913,7 +917,7 @@ mod tests {
                 Some(RUNNING)
             )
         );
-        assert_eq!(speed, 0.8);
+        assert_eq!(speed, Speed::new(0.8));
         assert!(!moving.shows_standing());
         assert_eq!(moving.point, point);
         assert_eq!(start(f32::NAN).0.state, MoveTo::Start);
@@ -943,8 +947,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(far.point, Position::new(35.0, 40.0, 0.0));
-        assert_eq!(walker.stats.speed, 0.8);
-        walker.stats.speed = 0.0;
+        assert_eq!(walker.stats.speed, Speed::new(0.8));
+        walker.stats.speed = Speed::ZERO;
         let stuck = MoveToAction::to_target(
             &world,
             me,

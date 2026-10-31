@@ -9,6 +9,7 @@ use crate::map::Rect;
 use crate::map::RestrictionId;
 use crate::map::Tile;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::WaypointLevel;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
@@ -127,7 +128,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: Some(Obstruction {
                     kind: ObstructionType::CIRCLE,

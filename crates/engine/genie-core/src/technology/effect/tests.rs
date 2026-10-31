@@ -4,6 +4,7 @@ use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -217,7 +218,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
                 obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -716,7 +717,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -819,18 +820,18 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
         vec![player],
     );
     let mut m = combat(master_id(4), class::CLASS_6, 60);
-    (m.max_speed, m.move_sprite, m.run_sprite, m.standing_sprite) = (1.5, -1, -1, -1);
+    (m.max_speed, m.move_sprite, m.run_sprite, m.standing_sprite) = (Speed::new(1.5), -1, -1, -1);
     t.masters = vec![Masters::new([m])];
     t.master_followers(PlayerId::new(0), master_id(4), a::MOVEMENT_SPEED)
         .unwrap();
     let speeds = |u: &Unit| u.body.mover().map(|m| (m.stats.base, m.stats.speed));
     assert_eq!(
         speeds(&t.players[0].objects[ListIndex::new(0)]),
-        Some((1.5, 3.0))
+        Some((Speed::new(1.5), Speed::new(3.0)))
     );
     assert_eq!(
         speeds(&t.players[0].objects[ListIndex::new(1)]),
-        Some((1.5, 1.5))
+        Some((Speed::new(1.5), Speed::new(1.5)))
     );
 }
 
@@ -873,7 +874,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -972,7 +973,7 @@ fn a_speed_change_reaches_the_units_movement() {
         vec![player],
     );
     let mut villager = combat(master_id(4), class::VILLAGER, 25);
-    villager.max_speed = 0.8;
+    villager.max_speed = Speed::new(0.8);
     villager.moving = Some(stats);
     t.masters = vec![Masters::new([villager])];
     t.do_effect(PlayerId::new(0), &[attribute(5, -1, 4, 5, 1.1)], None)
@@ -984,9 +985,9 @@ fn a_speed_change_reaches_the_units_movement() {
         .stats;
     // no graphics: the sprites' factors are 0, the speeds the master's
     let speed = 0.8_f32 * 1.1;
-    assert_eq!(s.speed, speed);
+    assert_eq!(s.speed, Speed::new(speed));
     // a speed the loader left at 0 under the moving values stops the change first
-    t.masters[0].get_mut(master_id(4)).unwrap().max_speed = 0.0;
+    t.masters[0].get_mut(master_id(4)).unwrap().max_speed = Speed::ZERO;
     assert!(
         t.do_effect(PlayerId::new(0), &[attribute(5, -1, 4, 5, 1.1)], None)
             .is_err()
@@ -996,7 +997,7 @@ fn a_speed_change_reaches_the_units_movement() {
         .mover()
         .unwrap()
         .stats;
-    assert_eq!(stats.speed, speed);
+    assert_eq!(stats.speed, Speed::new(speed));
 }
 
 /// The resource commands (kind 1, `FUN_141620c70`): mode 0 sets the attribute, any other adds
@@ -1955,7 +1956,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },

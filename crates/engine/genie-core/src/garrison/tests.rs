@@ -14,6 +14,7 @@ use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::movement::move_to::MoveToAction;
 use crate::movement::move_to::MoveWaitState;
 use crate::objects::ListIndex;
@@ -192,8 +193,8 @@ fn the_unload_groups() {
 fn walks_at(t: &mut World, idx: ListIndex, speed: f32) {
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = crate::movement::MoveStats {
-        speed,
-        base: speed,
+        speed: Speed::new(speed),
+        base: Speed::new(speed),
         ..standing()
     };
     t.players[1].objects[idx].body.put_mover(Some(walker));
@@ -301,38 +302,58 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
         EnterAction::in_reach(range, gap, speed, &mut walls(&mut walled, &masters, &stats))
     };
     assert_eq!(
-        reach(Distance::new(1.0), DistanceSquared::new(1.0), 0.0),
+        reach(Distance::new(1.0), DistanceSquared::new(1.0), Speed::ZERO),
         Ok(true)
     );
     assert_eq!(
-        reach(Distance::new(1.0), DistanceSquared::new(1.01), 0.0),
+        reach(Distance::new(1.0), DistanceSquared::new(1.01), Speed::ZERO),
         Ok(false)
     );
     assert_eq!(
-        reach(Distance::new(1.0), DistanceSquared::new(f32::NAN), 0.0),
+        reach(
+            Distance::new(1.0),
+            DistanceSquared::new(f32::NAN),
+            Speed::ZERO
+        ),
         Ok(true)
     );
     assert_eq!(
-        reach(Distance::new(1.5), DistanceSquared::new(0.5), 0.8),
+        reach(
+            Distance::new(1.5),
+            DistanceSquared::new(0.5),
+            Speed::new(0.8)
+        ),
         Ok(true)
     );
     assert_eq!(
-        reach(Distance::new(f32::NAN), DistanceSquared::new(0.5), 0.8),
+        reach(
+            Distance::new(f32::NAN),
+            DistanceSquared::new(0.5),
+            Speed::new(0.8)
+        ),
         Ok(true)
     );
     assert_eq!(
-        reach(Distance::new(1.0), DistanceSquared::new(0.5), f32::NAN),
+        reach(
+            Distance::new(1.0),
+            DistanceSquared::new(0.5),
+            Speed::new(f32::NAN)
+        ),
         Ok(true)
     );
     assert_eq!(
-        reach(Distance::new(1.0), DistanceSquared::new(0.5), 0.8),
+        reach(
+            Distance::new(1.0),
+            DistanceSquared::new(0.5),
+            Speed::new(0.8)
+        ),
         Ok(false)
     );
     assert_eq!(
         EnterAction::in_reach(
             Distance::new(1.0),
             DistanceSquared::new(0.5),
-            0.8,
+            Speed::new(0.8),
             &mut walls(&mut open, &masters, &stats)
         ),
         Ok(true)
@@ -760,7 +781,7 @@ fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
     // place; another state at its place
     let ship = MeetingTarget {
         room: true,
-        speed: 1.1,
+        speed: Speed::new(1.1),
         state: 0,
         class: class::TRANSPORT,
         position: Point::new(79.5, 92.5),
@@ -778,18 +799,18 @@ fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
             ..ship.clone()
         },
         MeetingTarget {
-            speed: 0.0,
+            speed: Speed::ZERO,
             ..ship.clone()
         },
         MeetingTarget {
-            speed: -1.0,
+            speed: Speed::new(-1.0),
             ..ship.clone()
         },
     ] {
         assert_eq!(meet_at(&t), MeetAt::Place);
     }
     let nan = MeetingTarget {
-        speed: f32::NAN,
+        speed: Speed::new(f32::NAN),
         ..ship.clone()
     };
     assert_eq!(meet_at(&nan), MeetAt::Shore);
@@ -885,7 +906,7 @@ fn walled_map(
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: false,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -898,11 +919,11 @@ fn walled_map(
     }
     let stats = crate::movement::MoveStats {
         fly_mode: 0,
-        speed: 0.8,
-        base: 0.8,
+        speed: Speed::new(0.8),
+        base: Speed::new(0.8),
         turn_rate: f32::MAX,
         turn_radius: 0.0,
-        turn_radius_speed: f32::MAX,
+        turn_radius_speed: Speed::MAX,
         radius: Radii::new(0.2, 0.2, 0.5),
         restriction: RestrictionId::named(0),
         restriction_mask: TerrainMask::of_bits(1),
@@ -1485,11 +1506,11 @@ fn unload_picks_the_units_its_flag_names_of_any_player() {
 fn standing() -> crate::movement::MoveStats {
     crate::movement::MoveStats {
         fly_mode: 0,
-        speed: 0.0,
-        base: 0.0,
+        speed: Speed::ZERO,
+        base: Speed::ZERO,
         turn_rate: 0.0,
         turn_radius: 0.0,
-        turn_radius_speed: f32::MAX,
+        turn_radius_speed: Speed::MAX,
         radius: Radii::new(0.2, 0.2, 2.0),
         restriction: RestrictionId::named(0),
         restriction_mask: TerrainMask::ALL,
@@ -1574,7 +1595,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
@@ -1652,7 +1673,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -1716,7 +1737,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -1823,7 +1844,7 @@ pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: MasterId) {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -1987,8 +2008,8 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: Point
         paths: vec![],
         factor: 1.0,
         stats: crate::movement::MoveStats {
-            speed: 0.8,
-            base: 0.8,
+            speed: Speed::new(0.8),
+            base: Speed::new(0.8),
             ..standing()
         },
         waiting: 0,
@@ -2018,7 +2039,7 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: Point
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.8,
+            speed: Speed::new(0.8),
             unknown: None,
             obstruction: None,
         },
@@ -2048,7 +2069,7 @@ pub(crate) fn building_at(
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
@@ -2216,7 +2237,7 @@ fn ship_at(t: &mut World, at: Point) {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             unknown: None,
             obstruction: None,
         },
@@ -2342,8 +2363,8 @@ fn shore_world(at: Point, ship: Point) -> World {
     ship_at(&mut t, ship);
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.stats = crate::movement::MoveStats {
-        speed: 1.1,
-        base: 1.1,
+        speed: Speed::new(1.1),
+        base: Speed::new(1.1),
         ..standing()
     };
     mover.moved_at = ship.with_height(0.0);
@@ -2565,8 +2586,8 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
 fn coast_world(ship: Point) -> World {
     let mut t = sized_world(30, 20);
     let sails = crate::movement::MoveStats {
-        speed: 1.1,
-        base: 1.1,
+        speed: Speed::new(1.1),
+        base: Speed::new(1.1),
         radius: Radii::new(0.5, 0.5, 2.0),
         restriction: RestrictionId::named(1),
         ..standing()

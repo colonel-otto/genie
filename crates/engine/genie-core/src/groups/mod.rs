@@ -16,6 +16,7 @@ use crate::GenieError;
 use crate::map::Distance;
 use crate::math::fmath::BVector;
 use crate::movement::PathData;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::masters::ActionType;
@@ -78,7 +79,7 @@ pub struct Motion {
     /// `mTurnRadius`.
     pub turn_radius: f32,
     /// `mTurnRadiusSpeed`.
-    pub turn_radius_speed: f32,
+    pub turn_radius_speed: Speed,
     /// `mMaximumYawPerSecondMoving`.
     pub maximum_yaw_per_second_moving: f32,
     /// `mStationaryYawRevolutionTime` (its 32 bits).
@@ -92,7 +93,7 @@ pub struct Motion {
     /// `mMotionFlags`.
     pub flags: u32,
     /// `mMaximumVelocityForward`.
-    pub maximum_velocity_forward: f32,
+    pub maximum_velocity_forward: Speed,
     /// `mNumberWaitDelays`.
     pub number_wait_delays: i32,
     /// `+0xc4` (not saved): the group's lead unit (-1 from the constructor), which a formation's
@@ -452,7 +453,7 @@ impl Motion {
         Self {
             position: frame,
             new_position: frame,
-            turn_radius_speed: f32::MAX,
+            turn_radius_speed: Speed::MAX,
             maximum_yaw_per_second_moving: f32::MAX,
             maximum_yaw_per_second_stationary: f32::MAX,
             paths: vec![PathData::without_path()],

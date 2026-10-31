@@ -315,6 +315,7 @@ mod tests {
     use crate::map::GridSize;
     use crate::map::Tile;
     use crate::map::spatial::Placed;
+    use crate::movement::Speed;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
@@ -339,7 +340,7 @@ mod tests {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },

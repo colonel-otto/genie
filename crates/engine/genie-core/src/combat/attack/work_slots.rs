@@ -8,6 +8,7 @@ use crate::combat::attack::{
 use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::movement::Speed;
 use crate::movement::footprint_gap;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -44,7 +45,7 @@ pub struct Wielder {
     /// Its master's `area_effect_range` (`+0x82c`).
     pub area_effect: Distance,
     /// Its top speed (slot 0x208).
-    pub speed: f32,
+    pub speed: Speed,
     /// Its place.
     pub position: Position,
     /// Its master's radii on the ground.
@@ -186,7 +187,7 @@ impl Attack {
                 ..Worked::default()
             };
         }
-        if unit.speed == 0.0 || !can_move(target.id) {
+        if unit.speed == Speed::ZERO || !can_move(target.id) {
             let gap = footprint_gap(unit.position, unit.radius, target.position, target.radius);
             if self.reach() < gap {
                 return Worked::default();

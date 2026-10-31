@@ -9,6 +9,7 @@ use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -601,7 +602,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     assert_eq!(t.show_walking(object_id(10)), Ok(false));
     assert_eq!(t.show_running(object_id(10)), Ok(false));
     t.show_standing(object_id(10)).unwrap();
-    assert_eq!(speed(&t), 0.8);
+    assert_eq!(speed(&t), Speed::new(0.8));
     master(&mut t, class::CLASS_6, [6, 7, 8]);
     // the sprites' factors on the walker's top speed 0.8
     for (id, factor) in [(6, 0.125), (7, 1.125), (8, 1.875)] {
@@ -617,11 +618,11 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
         let _ = t.graphics.insert(id, graphic);
     }
     assert_eq!(t.show_walking(object_id(10)), Ok(true));
-    assert_eq!(speed(&t), 0.8 * 1.125);
+    assert_eq!(speed(&t), Speed::new(0.8 * 1.125));
     assert_eq!(t.show_running(object_id(10)), Ok(true));
-    assert_eq!(speed(&t), 0.8 * 1.875);
+    assert_eq!(speed(&t), Speed::new(0.8 * 1.875));
     t.show_standing(object_id(10)).unwrap();
-    assert_eq!(speed(&t), 0.8 * 0.125);
+    assert_eq!(speed(&t), Speed::new(0.8 * 0.125));
     // a held sprite needs the graphic
     t.graphics.clear();
     let graphic = crate::objects::sprite::Graphic {
@@ -1151,7 +1152,7 @@ fn a_member_s_own_move_walks_its_path() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.8,
+            speed: Speed::new(0.8),
             unknown: None,
             obstruction: None,
         },
@@ -1337,7 +1338,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
     }];
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.owner = 9;
-    g.motion.maximum_velocity_forward = 0.9;
+    g.motion.maximum_velocity_forward = Speed::new(0.9);
     g.members[0].specific_move.reason = 1;
     g.members[1].specific_move.reason = -1;
     g.members[2].specific_move.reason = 0;
@@ -1378,7 +1379,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
 fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
     let t = world();
     let mut g = t.groups.get(group_id(1)).unwrap().clone();
-    g.motion.maximum_velocity_forward = 0.9;
+    g.motion.maximum_velocity_forward = Speed::new(0.9);
     g.current_formation = Some(crate::groups::Formation {
         slots: vec![crate::groups::Slot {
             unit_id: Some(object_id(10)),
@@ -1401,7 +1402,10 @@ fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
     };
     assert_eq!(of(&groups, 10), Ok(None));
     assert_eq!(of(&groups, 11), Ok(Some(GroupSpeed::Free)));
-    assert_eq!(of(&groups, 12), Ok(Some(GroupSpeed::OwnMove(0.9))));
+    assert_eq!(
+        of(&groups, 12),
+        Ok(Some(GroupSpeed::OwnMove(Speed::new(0.9))))
+    );
     let mut moving = groups.clone();
     moving.get_mut(group_id(1)).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
     assert_eq!(of(&moving, 10), Ok(Some(GroupSpeed::Aside)));
@@ -1620,7 +1624,7 @@ fn grounded() -> World {
                     obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: true,
-                    speed: 0.0,
+                    speed: Speed::ZERO,
                     unknown: None,
                     obstruction: None,
                 },
@@ -1785,7 +1789,7 @@ fn attacking(t: &mut World) {
         ..crate::groups::UnitTypeStatistic::default()
     }];
     g.flags = 0;
-    g.motion.maximum_velocity_forward = 1.0;
+    g.motion.maximum_velocity_forward = Speed::new(1.0);
 }
 
 /// Every object of every player in the spatial index at its place (`FUN_14118f8c0`-style gaps and
@@ -1807,7 +1811,7 @@ fn register(t: &mut World) {
                     obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: false,
-                    speed: 0.0,
+                    speed: Speed::ZERO,
                     unknown: None,
                     obstruction: None,
                 },

@@ -1,6 +1,7 @@
 //! The static, animated, moving and action masters' setters.
 
 use crate::map::Distance;
+use crate::movement::Speed;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
@@ -321,8 +322,8 @@ impl Master {
         } else {
             SPEED_CAP
         };
-        if capped && !crate::math::fmath::at_most_or_unordered(self.max_speed, cap) {
-            self.max_speed = cap;
+        if capped && !crate::math::fmath::at_most_or_unordered(self.max_speed.get(), cap) {
+            self.max_speed = Speed::new(cap);
         }
     }
 
@@ -334,7 +335,7 @@ impl Master {
         world: &AttributeWorld<'_>,
     ) {
         if attribute == attribute::MOVEMENT_SPEED {
-            self.max_speed = v;
+            self.max_speed = Speed::new(v);
         } else {
             self.set_static(attribute, v, world);
         }
@@ -348,7 +349,7 @@ impl Master {
         world: &AttributeWorld<'_>,
     ) {
         if attribute == attribute::MOVEMENT_SPEED {
-            self.max_speed += v;
+            self.max_speed += Speed::new(v);
             self.cap_speed(world.capped);
         } else {
             self.add_static(attribute, v, world);

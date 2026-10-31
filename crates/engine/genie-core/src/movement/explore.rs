@@ -636,7 +636,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
                 graphics: &NO_GRAPHICS,
             },
             state: crate::objects::ObjectState::Alive,
-            speed: 1.0,
+            speed: crate::movement::Speed::new(1.0),
             at: Position::ORIGIN,
             ground: crate::map::Footprint::ZERO,
         },
@@ -648,6 +648,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
 mod tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::movement::Speed;
     use crate::objects::ObjectState;
 
     const WALKING: Graphic = Graphic {
@@ -671,7 +672,7 @@ mod tests {
             reads: MoveToReads {
                 sprites: SpriteReads { defaults, graphics },
                 state: ObjectState::Alive,
-                speed: 1.0,
+                speed: Speed::new(1.0),
                 at: Position::ORIGIN,
                 ground: Footprint::ZERO,
             },
@@ -766,7 +767,7 @@ mod tests {
         );
         // a unit without speed fails its MoveTo (13), one in state 3 or later adds none
         let mut stuck = walk;
-        stuck.reads.speed = 0.0;
+        stuck.reads.speed = Speed::ZERO;
         let (b, _) = ExploreAction::new(Position::new(5.0, 5.0, 0.0), &stuck).unwrap();
         assert_eq!(
             b.move_to.map(|m| m.state),

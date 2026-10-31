@@ -8,6 +8,7 @@ use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -266,7 +267,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
                         graphics: &std::collections::BTreeMap::new(),
                     },
                     state: ObjectState::Alive,
-                    speed: 1.0,
+                    speed: Speed::new(1.0),
                     at: Position::new(3.5, 3.5, 0.0),
                     ground: Footprint::new(0.2, 0.2),
                 },

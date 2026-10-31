@@ -695,17 +695,17 @@ fn a_sprite_attribute_takes_only_a_sprite_the_world_has() {
 #[test]
 fn a_capped_speed_stops_at_its_type_s_cap() {
     let mut m = of_type(master_type::COMBAT);
-    m.max_speed = 4.0;
+    m.max_speed = Speed::new(4.0);
     m.add_attribute(attribute::MOVEMENT_SPEED, 1.0, &world(false));
-    assert_eq!(m.max_speed, 5.0);
+    assert_eq!(m.max_speed, Speed::new(5.0));
     m.multiply_attribute(attribute::MOVEMENT_SPEED, 1.1, &world(true));
-    assert_eq!(m.max_speed, 4.5);
+    assert_eq!(m.max_speed, Speed::new(4.5));
     let mut missile = of_type(master_type::MISSILE);
-    missile.max_speed = 7.0;
+    missile.max_speed = Speed::new(7.0);
     missile.multiply_attribute(attribute::MOVEMENT_SPEED, 4.0, &world(true));
-    assert_eq!(missile.max_speed, 20.0);
+    assert_eq!(missile.max_speed, Speed::new(20.0));
     missile.add_attribute(attribute::MOVEMENT_SPEED, f32::NAN, &world(true));
-    assert!(missile.max_speed.is_nan());
+    assert!(missile.max_speed.get().is_nan());
 }
 
 /// `FUN_1410c12b0` and its add and multiply: the amount's high byte names the class, its low
@@ -792,7 +792,7 @@ fn a_missile_s_smart_mode_multiply_sets_it() {
         hit_mode: 0,
         vanish_mode: 0,
         arc: 0.5,
-        speed: 7.0,
+        speed: Speed::new(7.0),
         radius: Radii::ZERO,
         fly_mode: 0,
     });
@@ -985,15 +985,15 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.standing_sprite = 1;
     m.move_sprite = 2;
     m.run_sprite = -1;
-    m.max_speed = 1.0;
+    m.max_speed = Speed::new(1.0);
     m.radius = Footprint::new(0.2, 0.2);
     m.moving = Some(MoveStats {
         fly_mode: 0,
-        speed: 1.5,
-        base: 1.5,
+        speed: Speed::new(1.5),
+        base: Speed::new(1.5),
         turn_rate: 1.0,
         turn_radius: 0.0,
-        turn_radius_speed: f32::MAX,
+        turn_radius_speed: Speed::MAX,
         radius: Radii::new(0.2, 0.2, 2.0),
         restriction: RestrictionId::named(7),
         restriction_mask: TerrainMask::of_bits(1),
@@ -1007,7 +1007,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.multiply_attribute(attribute::MOVEMENT_SPEED, 1.1, &world(false));
     m.follow(attribute::MOVEMENT_SPEED, &graphics, None);
     let s = m.moving.unwrap();
-    assert_eq!((s.base, s.speed), (1.1, 1.1 * 1.5));
+    assert_eq!((s.base, s.speed), (Speed::new(1.1), Speed::new(1.1 * 1.5)));
     m.set_attribute(attribute::SIZE_Z, 1.0, &world(false));
     m.follow(attribute::SIZE_Z, &graphics, None);
     assert!(m.tall);
@@ -1015,7 +1015,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.set_attribute(attribute::RUNNING_GRAPHIC, 3.0, &world(false));
     m.follow(attribute::RUNNING_GRAPHIC, &graphics, None);
     let s = m.moving.unwrap();
-    assert_eq!(s.speed, 1.1 * 0.5);
+    assert_eq!(s.speed, Speed::new(1.1 * 0.5));
     // 8 facets and 16: no common count
     assert_eq!(s.facets, None);
     m.set_attribute(attribute::RUNNING_GRAPHIC, 2.0, &world(false));
@@ -1124,7 +1124,7 @@ fn the_missile_building_and_animated_setters() {
         hit_mode: 1,
         vanish_mode: 0,
         arc: 0.25,
-        speed: 7.0,
+        speed: Speed::new(7.0),
         radius: Radii::ZERO,
         fly_mode: 0,
     });
@@ -1145,7 +1145,7 @@ fn the_missile_building_and_animated_setters() {
     );
     let mut a = of_type(master_type::DOPPELGANGER);
     a.set_attribute(attribute::MOVEMENT_SPEED, 1.2, &world(false));
-    assert_eq!(a.max_speed, 1.2);
+    assert_eq!(a.max_speed, Speed::new(1.2));
 }
 
 /// The master copy (slot 8, `Master::copy_from`): every value but the id, class,

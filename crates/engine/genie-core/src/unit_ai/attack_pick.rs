@@ -6,6 +6,7 @@ use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -194,7 +195,7 @@ pub struct Attacker {
     /// Its master's radii.
     pub radius: Footprint,
     /// Its top speed (slot 0x208).
-    pub speed: f32,
+    pub speed: Speed,
     /// The game mode is a scenario's.
     pub scenario: bool,
     /// Its firepower (`+0xa00`): the units inside a building add theirs.

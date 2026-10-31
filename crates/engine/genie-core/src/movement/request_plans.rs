@@ -3,6 +3,7 @@
 
 use crate::map::Distance;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::world::WorldTime;
 use std::ops::ControlFlow;
 
@@ -171,7 +172,7 @@ impl Mover {
         w: &Way<'_>,
         np: &mut NewPath,
     ) -> Result<(), GenieError> {
-        let target_moves = w.goal.target.is_some_and(|(_, t)| 0.0 < t.speed);
+        let target_moves = w.goal.target.is_some_and(|(_, t)| Speed::ZERO < t.speed);
         let target_radius = w
             .goal
             .target
@@ -399,7 +400,7 @@ impl Mover {
         let target_radius = w
             .goal
             .target
-            .filter(|(_, t)| t.speed <= 0.0)
+            .filter(|(_, t)| t.speed <= Speed::ZERO)
             .map_or(0.0, |(_, t)| t.radius.x());
         let mut other = Path::default();
         let ask = TileAsk {

@@ -9,6 +9,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -128,7 +129,7 @@ pub struct Surroundings {
     pub hp: f32,
     /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
     /// size in tiles and the world's dt in seconds (`world+0x164`).
-    pub speed: f32,
+    pub speed: Speed,
     /// The map's size in tiles.
     pub map: GridSize,
     /// The world's dt in seconds (`world+0x164`).

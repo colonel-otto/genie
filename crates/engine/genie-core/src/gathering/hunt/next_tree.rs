@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HuntRetarget;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
@@ -94,7 +95,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
         let (me_at, them) = (at(self.id)?, at(found)?);
-        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,

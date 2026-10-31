@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Tile;
+use crate::movement::Speed;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, SpriteReads};
 use crate::objects::ObjectState;
 use crate::test_ids::object_id;
@@ -154,7 +155,7 @@ fn ship(loaded: bool) -> Ship<'static> {
                 graphics: &NO_GRAPHICS,
             },
             state: ObjectState::Alive,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             at: Position::new(12.5, 8.5, 0.0),
             ground: Footprint::new(0.5, 0.5),
         },
@@ -212,7 +213,7 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     // a unit without speed: its quiet MoveTo fails at its start
     let still = Ship {
         walk: MoveToReads {
-            speed: 0.0,
+            speed: Speed::ZERO,
             ..s.walk
         },
         ..s

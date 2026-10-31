@@ -4,6 +4,7 @@ use crate::map::GridSize;
 use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Tile;
+use crate::movement::Speed;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -68,7 +69,7 @@ fn on_map(
         obstruction_type: ObstructionType::NONE,
         buildable_on: buildable,
         tall: false,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     }
@@ -466,7 +467,7 @@ pub(crate) fn started_on(
             graphics: &graphics,
         },
         state: ObjectState::Alive,
-        speed: 1.0,
+        speed: Speed::new(1.0),
         at: Position::new(at.x() - gap.get(), at.y(), 0.0),
         ground: Footprint::new(0.2, 0.2),
     };
@@ -503,7 +504,7 @@ fn house() -> crate::map::spatial::Placed {
         obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     }

@@ -9,6 +9,7 @@ use crate::combat::victims::{victim_in, victim_of};
 use crate::map::Tile;
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -232,7 +233,7 @@ impl UnitView<'_, '_> {
         let unit = &mut *self.unit;
         let wielder = crate::combat::attack::Wielder {
             area_effect: master.area_effect,
-            speed: unit.body.mover().map_or(0.0, |m| m.stats.speed),
+            speed: unit.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
             position: unit.position(),
             radius: master.radius,
         };

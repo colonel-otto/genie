@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Distance;
 use crate::map::Footprint;
 use crate::math::rng::{Stream, Well512};
+use crate::movement::Speed;
 use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -104,7 +105,7 @@ impl Unit {
         Ok(Surroundings {
             position: self.position(),
             hp: self.life.hp,
-            speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
+            speed: self.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
             map: c.w.spatial.map,
             dt_seconds: c.dt.seconds(),
             mode_1: (c.w.mode_680 == 1),

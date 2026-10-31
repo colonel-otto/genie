@@ -2,6 +2,7 @@
 //! sprites' speed and facets, a moving unit's values.
 
 use crate::movement::MoveStats;
+use crate::movement::Speed;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::{Master, master_type};
 
@@ -71,7 +72,7 @@ impl Master {
                 } else {
                     self.move_sprite
                 };
-                stats.speed = sprite_speed(self.max_speed, run, graphics);
+                stats.speed = Speed::new(sprite_speed(self.max_speed.get(), run, graphics));
             }
             a::ROTATION_SPEED => stats.turn_time = self.turn_speed,
             a::TERRAIN_RESTRICTION_ID => {

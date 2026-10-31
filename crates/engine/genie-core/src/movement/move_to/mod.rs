@@ -508,6 +508,7 @@ pub fn target_left(
 mod tests {
     use super::*;
     use crate::map::spatial::Placed;
+    use crate::movement::Speed;
     use crate::objects::ObjectState;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
@@ -641,7 +642,7 @@ mod tests {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         }
@@ -856,40 +857,58 @@ mod tests {
         let m = MoveToAction::sub_to_point(Position::new(1.0, 2.0, 0.0), Distance::new(0.5), None);
         let state = |unit_state, gap, speed| m.added(unit_state, gap, speed).map(|a| a.state);
         assert_eq!(
-            state(ObjectState::Alive, Distance::new(0.01), 0.0),
+            state(ObjectState::Alive, Distance::new(0.01), Speed::ZERO),
             Some(MoveTo::Arrived)
         );
         assert_eq!(
-            state(ObjectState::Alive, Distance::ZERO, 1.0),
+            state(ObjectState::Alive, Distance::ZERO, Speed::new(1.0)),
             Some(MoveTo::Arrived)
         );
         assert_eq!(
-            state(ObjectState::Alive, Distance::new(0.010_001), 1.0),
+            state(
+                ObjectState::Alive,
+                Distance::new(0.010_001),
+                Speed::new(1.0)
+            ),
             Some(MoveTo::Start)
         );
         assert_eq!(
-            state(ObjectState::Alive, Distance::new(0.5), 0.0),
+            state(ObjectState::Alive, Distance::new(0.5), Speed::ZERO),
             Some(MoveTo::Failed)
         );
         assert_eq!(
-            state(ObjectState::Alive, Distance::new(f32::NAN), 1.0),
+            state(ObjectState::Alive, Distance::new(f32::NAN), Speed::new(1.0)),
             Some(MoveTo::Start)
         );
         assert_eq!(
-            state(ObjectState::Alive, Distance::new(0.5), f32::NAN),
+            state(ObjectState::Alive, Distance::new(0.5), Speed::new(f32::NAN)),
             Some(MoveTo::Start)
         );
         assert_eq!(
-            state(ObjectState::Foundation, Distance::new(NO_TARGET_GAP), 1.0),
+            state(
+                ObjectState::Foundation,
+                Distance::new(NO_TARGET_GAP),
+                Speed::new(1.0)
+            ),
             Some(MoveTo::Start)
         );
         assert_eq!(
-            state(ObjectState::Alive, Distance::new(NO_TARGET_GAP), 0.0),
+            state(
+                ObjectState::Alive,
+                Distance::new(NO_TARGET_GAP),
+                Speed::ZERO
+            ),
             Some(MoveTo::Failed)
         );
-        assert_eq!(state(ObjectState::Dying, Distance::ZERO, 1.0), None);
-        assert_eq!(state(ObjectState::Removed, Distance::new(0.5), 1.0), None);
-        let added = m.added(ObjectState::Alive, Distance::new(0.5), 1.0);
+        assert_eq!(
+            state(ObjectState::Dying, Distance::ZERO, Speed::new(1.0)),
+            None
+        );
+        assert_eq!(
+            state(ObjectState::Removed, Distance::new(0.5), Speed::new(1.0)),
+            None
+        );
+        let added = m.added(ObjectState::Alive, Distance::new(0.5), Speed::new(1.0));
         assert_eq!(
             added.map(|a| (a.point, a.range, a.quiet)),
             Some((m.point, Distance::new(0.5), true))

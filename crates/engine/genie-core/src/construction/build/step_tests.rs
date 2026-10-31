@@ -3,6 +3,7 @@
 
 use crate::map::GridSize;
 use crate::map::Tile;
+use crate::movement::Speed;
 use crate::movement::move_to::MoveWaitState;
 use crate::objects::ListIndex;
 use crate::objects::ObjectState;
@@ -91,7 +92,7 @@ const fn placed(at: Position, r: f32, class: ClassId, master: MasterId) -> Place
         obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     }
@@ -488,7 +489,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
     };
     let mut t = site_world(class::VILLAGER, Position::new(8.0, 9.0, 0.0), held);
     own(&mut t, HOUSE).life.state = ObjectState::Removed;
-    own(&mut t, BUILDER).body.mover_mut().unwrap().stats.speed = 0.0;
+    own(&mut t, BUILDER).body.mover_mut().unwrap().stats.speed = Speed::ZERO;
     let _ = code(&mut t, 20);
     assert_eq!(walk_state(&t), Some(MoveTo::Failed));
     for end in [Some(MoveTo::Arrived), Some(MoveTo::Failed), None] {
@@ -994,7 +995,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
             object_id(6),
             Placed {
                 position: Position::new(10.6, 10.6, 0.0),
-                speed: 0.8,
+                speed: Speed::new(0.8),
                 ..me
             },
         );
@@ -1592,7 +1593,7 @@ fn villager(t: &mut World, at: Position) {
         object_id(6),
         Placed {
             position: at,
-            speed: 0.8,
+            speed: Speed::new(0.8),
             ..me
         },
     );

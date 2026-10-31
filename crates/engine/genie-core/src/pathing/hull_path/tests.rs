@@ -196,7 +196,7 @@ fn placed(x: f32, y: f32, r: f32, kind: ObstructionType) -> Placed {
         obstruction_type: kind,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: Some(Obstruction {
             kind,
@@ -922,7 +922,7 @@ fn tall(x: f32, y: f32, r: f32, class: ClassId) -> Placed {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     }
@@ -1582,7 +1582,7 @@ fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     let t = Target {
         at: Point::new(10.0, 10.0),
         radius: Footprint::new(0.5, 0.5),
-        speed: 0.0,
+        speed: Speed::ZERO,
     };
     let gy = (13.7f32 - 10.0).abs() - (0.5 + 0.2);
     assert_eq!(
@@ -2413,7 +2413,7 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
     let t = Target {
         at: Point::new(10.5, 5.5),
         radius: Footprint::new(0.5, 0.5),
-        speed: 0.0,
+        speed: Speed::ZERO,
     };
     assert!(p.target_gap(&t, end) <= Distance::new(NUDGE), "{path:?}");
     // ignored, the object is no target: the search ends on the goal itself

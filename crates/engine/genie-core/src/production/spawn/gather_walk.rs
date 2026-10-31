@@ -5,6 +5,7 @@ use crate::commands::GatherPoint;
 use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -62,7 +63,7 @@ impl World {
             ));
         }
         // a unit without speed takes nothing; one not in state 2 would notify without moving
-        if unit.body.mover().map_or(0.0, |m| m.stats.speed) <= 0.0 {
+        if unit.body.mover().map_or(Speed::ZERO, |m| m.stats.speed) <= Speed::ZERO {
             return Ok(());
         }
         if unit.life.state != ObjectState::Alive {

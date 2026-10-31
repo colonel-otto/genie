@@ -34,6 +34,7 @@ use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
 use crate::math::rng::{Stream, Streams, Well512};
+use crate::movement::Speed;
 use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
 use crate::movement::fly::FlyState;
@@ -446,11 +447,11 @@ pub(crate) fn builder_masters() -> Masters {
         // a villager moves (its master's slot 0xe8), which BUILD's last loop asks
         moving: Some(crate::movement::MoveStats {
             fly_mode: 0,
-            speed: 0.8,
-            base: 0.8,
+            speed: Speed::new(0.8),
+            base: Speed::new(0.8),
             turn_rate: f32::MAX,
             turn_radius: 0.0,
-            turn_radius_speed: f32::MAX,
+            turn_radius_speed: Speed::MAX,
             radius: Radii::new(0.2, 0.2, 0.5),
             restriction: RestrictionId::named(7),
             restriction_mask: TerrainMask::of_bits(6),
@@ -973,7 +974,10 @@ fn a_dying_livestock_shows_its_dying_sprite() {
         let u = dying_animal(master_type::MOVING, factor);
         assert_eq!(u.sprite.map(|s| s.graphic.id), Some(13171));
         assert_eq!(u.life.state, ObjectState::DyingSprite);
-        assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(speed));
+        assert_eq!(
+            u.body.mover().map(|m| m.stats.speed),
+            Some(Speed::new(speed))
+        );
     }
 }
 
@@ -1002,7 +1006,7 @@ fn dying_animal(kind: MasterKind, factor: f32) -> Unit {
         for a in all.iter_mut().filter(|a| a.kind == master_type::MOVING) {
             a.kind = kind;
             a.death_sprite = 13171;
-            a.max_speed = 0.737;
+            a.max_speed = Speed::new(0.737);
         }
         *m = Masters::new(all);
     }
@@ -1010,8 +1014,8 @@ fn dying_animal(kind: MasterKind, factor: f32) -> Unit {
     let animal = t.players[1].objects[ListIndex::new(1)].id;
     t.players[1].objects[ListIndex::new(1)].life.hp = 0.0;
     if let Some(m) = t.players[1].objects[ListIndex::new(1)].body.mover_mut() {
-        m.stats.base = 0.737;
-        m.stats.speed = 1.4003;
+        m.stats.base = Speed::new(0.737);
+        m.stats.speed = Speed::new(1.4003);
     }
     for _ in 0..2 {
         t.tick(Millis::new(50));
@@ -1316,7 +1320,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -2224,7 +2228,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
                 obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -2478,7 +2482,7 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -2888,7 +2892,7 @@ pub(crate) fn forage_world() -> World {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -3435,7 +3439,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -3805,7 +3809,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -3973,7 +3977,7 @@ fn cart_world() -> World {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -4018,7 +4022,7 @@ fn footprint_world() -> World {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -4277,7 +4281,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
                 obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -4360,7 +4364,7 @@ pub(crate) fn hunt_world() -> World {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -5061,7 +5065,7 @@ fn shepherd_world(x: f32) -> World {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -5215,7 +5219,7 @@ fn lumber_world(near: f32) -> World {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -5802,7 +5806,7 @@ fn the_unit_ai_s_repair_command_is_the_unit_s_within_its_run() {
         obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -5895,7 +5899,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -5911,7 +5915,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.8,
+            speed: Speed::new(0.8),
             unknown: None,
             obstruction: None,
         },
@@ -6889,7 +6893,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -7396,7 +7400,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -7797,7 +7801,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(record),
         },
@@ -7882,7 +7886,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             20.0,
             class::GATE,
             PlayerId::new(1),
-            0.0,
+            Speed::ZERO,
             ObstructionType::TYPE_2,
         ),
     );
@@ -7892,7 +7896,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             18.5,
             class::GATE,
             PlayerId::new(1),
-            0.0,
+            Speed::ZERO,
             ObstructionType::TYPE_2,
         ),
     );
@@ -7902,7 +7906,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             21.5,
             class::GATE,
             PlayerId::new(1),
-            0.0,
+            Speed::ZERO,
             ObstructionType::TYPE_2,
         ),
     );
@@ -7912,7 +7916,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             19.6,
             class::VILLAGER,
             PlayerId::new(1),
-            0.8,
+            Speed::new(0.8),
             ObstructionType::CIRCLE,
         ),
     );
@@ -7929,7 +7933,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             20.4,
             class::PREDATOR,
             PlayerId::new(0),
-            0.0,
+            Speed::ZERO,
             ObstructionType::CIRCLE,
         ),
     );
@@ -7939,7 +7943,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             20.8,
             class::CLASS_6,
             PlayerId::new(2),
-            0.9,
+            Speed::new(0.9),
             ObstructionType::CIRCLE,
         ),
     );
@@ -7949,7 +7953,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
             21.0,
             class::WALL,
             PlayerId::new(1),
-            0.0,
+            Speed::ZERO,
             ObstructionType::TYPE_2,
         ),
     );
@@ -8072,19 +8076,24 @@ fn gate_world() -> World {
     };
     t.spatial.insert(
         object_id(27745),
-        placed(20.0, class::GATE, 0.0, ObstructionType::TYPE_2),
+        placed(20.0, class::GATE, Speed::ZERO, ObstructionType::TYPE_2),
     );
     t.spatial.insert(
         object_id(27746),
-        placed(18.5, class::GATE, 0.0, ObstructionType::TYPE_2),
+        placed(18.5, class::GATE, Speed::ZERO, ObstructionType::TYPE_2),
     );
     t.spatial.insert(
         object_id(27747),
-        placed(21.5, class::GATE, 0.0, ObstructionType::TYPE_2),
+        placed(21.5, class::GATE, Speed::ZERO, ObstructionType::TYPE_2),
     );
     t.spatial.insert(
         object_id(1),
-        placed(19.6, class::CLASS_6, 0.8, ObstructionType::CIRCLE),
+        placed(
+            19.6,
+            class::CLASS_6,
+            Speed::new(0.8),
+            ObstructionType::CIRCLE,
+        ),
     );
     t
 }
@@ -9232,7 +9241,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: Dist
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -9439,7 +9448,7 @@ fn owner_search_unit(s: &mut Spatial, id: i32, p: PlayerId, x: f32) {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -9648,7 +9657,7 @@ fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -9975,7 +9984,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         home: Point::new(10.0, 10.0),
         task: crate::objects::masters::Task::default(),
     }));
-    bird.body.mover_mut().unwrap().stats.speed = 1.3;
+    bird.body.mover_mut().unwrap().stats.speed = Speed::new(1.3);
     let flying = bird.actions.fly().copied();
     t.clear_actions(PlayerId::new(1), ListIndex::new(1))
         .unwrap();
@@ -10375,7 +10384,7 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -10471,7 +10480,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -10634,7 +10643,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -10731,7 +10740,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -11017,7 +11026,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
                 obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -11188,7 +11197,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -11338,7 +11347,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -11404,7 +11413,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
 fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.velocity = None;
-    walker.stats.speed = 0.8;
+    walker.stats.speed = Speed::new(0.8);
     let sheep = Unit {
         actions: ActionList::default().with_artifact(Some(Artifact::new(true, None))),
         body: crate::objects::layers::Body::Moving(walker),
@@ -11472,7 +11481,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -11503,7 +11512,10 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         Some(Distance::new(3.0))
     );
     // its standing sprite has no factor: the top speed
-    assert_eq!(sheep.body.mover().map(|m| m.stats.speed), Some(0.8));
+    assert_eq!(
+        sheep.body.mover().map(|m| m.stats.speed),
+        Some(Speed::new(0.8))
+    );
     assert_eq!(sheep.actions.artifact().map(|a| a.gaia), Some(false));
     assert_eq!(t.players[1].attributes[16], 100.0);
     assert_eq!(
@@ -11731,7 +11743,7 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -12746,7 +12758,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -13668,7 +13680,7 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
 fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
     let mut u = mover_unit(8);
     let m = u.body.mover_mut().unwrap();
-    m.stats.speed = 0.0;
+    m.stats.speed = Speed::ZERO;
     u.body.set_anim_speed(1.0);
     assert_eq!(
         ai_move_of(&mut u, forced(false), class::CLASS_47),
@@ -13710,8 +13722,8 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         u.life.master_id = master_id(65);
         let m = u.body.mover_mut().unwrap();
         // the deer's speed 0.737 with its standing sprite's factor 1, its walking one's 1.9
-        m.stats.base = 0.737;
-        m.stats.speed = 1.4003;
+        m.stats.base = Speed::new(0.737);
+        m.stats.speed = Speed::new(1.4003);
         u.sprite = Some(crate::objects::sprite::ActiveSprite::start(walking, rng));
         u.body.set_anim_speed(1.0);
         u.actions.set_move_to(Some(MoveToAction::to_point(
@@ -13730,7 +13742,10 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
     )
     .unwrap();
     assert_eq!(u.actions.move_to().map(|m| m.state), Some(MoveTo::Failed));
-    assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(0.737));
+    assert_eq!(
+        u.body.mover().map(|m| m.stats.speed),
+        Some(Speed::new(0.737))
+    );
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(764));
     assert_eq!(u.body.anim_speed(), Some(0.0));
     let mut v = deer(&mut rng);
@@ -13741,7 +13756,10 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
     )
     .unwrap();
     assert_eq!(v.actions.move_to().map(|m| m.state), Some(MoveTo::Waiting));
-    assert_eq!(v.body.mover().map(|m| m.stats.speed), Some(1.4003));
+    assert_eq!(
+        v.body.mover().map(|m| m.stats.speed),
+        Some(Speed::new(1.4003))
+    );
     assert_eq!(v.sprite.map(|s| s.graphic.id), Some(765));
 }
 
@@ -13814,7 +13832,7 @@ fn on_side<R>(
                     los: Distance::new(4.0),
                     position: Position::new(10.0, 10.0, 0.0),
                     radius: Footprint::new(0.2, 0.2),
-                    speed: 1.2,
+                    speed: Speed::new(1.2),
                     scenario: false,
                     firepower: 0.0,
                     capture: 0,
@@ -13884,7 +13902,7 @@ fn scout_attack_on(
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -13912,7 +13930,7 @@ fn scout_attack_on(
     };
     let mut rng = Well512::default();
     let mut walker = crate::gathering::hunt::tests::walker();
-    walker.stats.speed = 1.2;
+    walker.stats.speed = Speed::new(1.2);
     let unit = Unit {
         id: object_id(123),
         body: crate::objects::layers::Body::new(Position::new(10.0, 10.0, 0.0), None, Some(walker)),
@@ -14014,7 +14032,7 @@ fn attack_by(
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -14042,7 +14060,7 @@ fn attack_by(
     };
     let mut rng = Well512::default();
     let mut walker = crate::gathering::hunt::tests::walker();
-    walker.stats.speed = 1.2;
+    walker.stats.speed = Speed::new(1.2);
     let unit = Unit {
         id: object_id(123),
         body: crate::objects::layers::Body::new(Position::new(10.0, 10.0, 0.0), None, Some(walker)),
@@ -14181,7 +14199,7 @@ fn help_view<R>(
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -14434,11 +14452,11 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
 const fn house_moves() -> crate::movement::MoveStats {
     crate::movement::MoveStats {
         fly_mode: 0,
-        speed: 0.0,
-        base: 0.0,
+        speed: Speed::ZERO,
+        base: Speed::ZERO,
         turn_rate: f32::MAX,
         turn_radius: 0.0,
-        turn_radius_speed: f32::MAX,
+        turn_radius_speed: Speed::MAX,
         radius: Radii::new(1.0, 1.0, 1.0),
         restriction: RestrictionId::named(7),
         restriction_mask: TerrainMask::of_bits(6),
@@ -14920,7 +14938,7 @@ fn a_reseed_s_placement_passes_over_the_old_farm() {
                 obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             };
@@ -15356,12 +15374,12 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         life: Some(MasterData::default()),
         recyclable: true,
         moving: Some(crate::movement::MoveStats {
-            speed: 7.0,
-            base: 7.0,
+            speed: Speed::new(7.0),
+            base: Speed::new(7.0),
             ..crate::gathering::hunt::tests::walker().stats
         }),
         missile_stats: Some(crate::combat::missile::MissileStats {
-            speed: 7.0,
+            speed: Speed::new(7.0),
             radius: Radii::new(0.1, 0.1, 0.0),
             ..crate::combat::missile::MissileStats::default()
         }),
@@ -15456,7 +15474,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
@@ -17617,7 +17635,7 @@ pub(crate) fn repairing(at: Position) -> World {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };

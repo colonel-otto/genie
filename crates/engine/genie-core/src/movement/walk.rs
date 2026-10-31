@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::spatial::{RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::{
     ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity,
 };
@@ -201,9 +202,9 @@ impl Mover {
     /// Slot 0x598 (`FUN_14115d050`): the unit's speed along its forward vector (its velocity's
     /// `+8`, `FUN_140f9b880`) becomes `speed`; a unit without velocity data gets them, zeroed
     /// (`FUN_140f8f5b0`), unless `speed` is 0 (`UCOMISS` with `JP`: a NaN gets them).
-    pub(crate) fn set_speed(&mut self, speed: f32) {
+    pub(crate) fn set_speed(&mut self, speed: Speed) {
         if self.velocity.is_none() {
-            if speed == 0.0 {
+            if speed == Speed::ZERO {
                 return;
             }
             self.velocity = Some(Velocity {
@@ -212,7 +213,7 @@ impl Mover {
             });
         }
         if let Some(v) = self.velocity.as_mut() {
-            v.velocity = v.velocity.with_y(speed);
+            v.velocity = v.velocity.with_y(speed.get());
         }
     }
 
@@ -248,7 +249,7 @@ impl Mover {
         let length = fmath::sqrt(d.height() * d.height() + d.x() * d.x() + d.y() * d.y());
         let toward = BVector::new(d.x() / length, d.height() / length, d.y() / length);
         let angle = fmath::angle_between(self.forward, toward);
-        let radius = (self.stats.turn_radius * v.velocity.y()) / self.stats.turn_radius_speed;
+        let radius = (self.stats.turn_radius * v.velocity.y()) / self.stats.turn_radius_speed.get();
         if 0.0 < v.velocity.y() && EPSILON < angle.abs() {
             let mut side = self.right;
             if 0.0 < fmath::cross(toward, self.forward).height() {
@@ -264,7 +265,7 @@ impl Mover {
                 return;
             }
         }
-        if self.stats.speed <= v.velocity.y() {
+        if self.stats.speed <= Speed::new(v.velocity.y()) {
             return;
         }
         v.acceleration = v.acceleration.with_y(f32::MAX);

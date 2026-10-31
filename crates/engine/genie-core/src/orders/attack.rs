@@ -7,6 +7,7 @@ use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -125,7 +126,7 @@ impl World {
             .live(player, idx)?
             .body
             .mover()
-            .map_or(0.0, |m| m.stats.speed);
+            .map_or(Speed::ZERO, |m| m.stats.speed);
         let e = crate::combat::attack::engagement(
             self.players.live(player, idx)?.ai.as_ref(),
             speed,

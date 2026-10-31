@@ -4,6 +4,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::AttackPriority;
@@ -2097,7 +2098,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
     let at = Surroundings {
         id: object_id(20),
         position: Position::new(10.0, 10.0, 0.0),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         class: Some(class::VILLAGER),
         player: PlayerId::new(1),
         state: ObjectState::Alive,
@@ -2468,7 +2469,7 @@ fn the_base_handler_takes_each_kind_it_models() {
         id: object_id(20),
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
-        speed: 1.0,
+        speed: Speed::new(1.0),
         state: ObjectState::Alive,
         ..Surroundings::default()
     };
@@ -2902,7 +2903,7 @@ fn soldier_at() -> Surroundings {
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         los: Distance::new(4.0),
         weapon_range: Distance::ZERO,
         action_state: Some(0),
@@ -3212,7 +3213,7 @@ fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
     assert_eq!(side.attacks, Vec::new());
 
     let still = Surroundings {
-        speed: 0.0,
+        speed: Speed::ZERO,
         ..soldier_at()
     };
     let mut u = idle(UnitAiType::SOLDIER);
@@ -4514,7 +4515,10 @@ fn the_artifact_goes_to_the_owner_of_the_closest_object_one_player_sees() {
         assert_eq!((took, fx), (Ok(false), vec![]));
     }
     // a moving one asks for the reach test
-    let walking = Surroundings { speed: 0.8, ..at };
+    let walking = Surroundings {
+        speed: Speed::new(0.8),
+        ..at
+    };
     let mut side = ArtifactSide::finding(-1, 0, None);
     let _ = ai.process_idle(
         &walking,
@@ -5468,7 +5472,7 @@ fn a_deer_that_sees_an_object_evades_it() {
     };
     let mut r = wander_seed(false);
     let place = Surroundings {
-        speed: 1.2,
+        speed: Speed::new(1.2),
         map: GridSize::new(120, 120),
         ..deer_at(Position::new(31.5, 106.5, 0.0))
     };
@@ -6658,7 +6662,7 @@ const TC: Attacker = Attacker {
     los: Distance::new(8.0),
     position: Position::new(29.0, 94.0, 0.0),
     radius: Footprint::new(2.0, 2.0),
-    speed: 0.0,
+    speed: Speed::ZERO,
     scenario: false,
     firepower: 0.0,
     capture: 0,
@@ -6840,7 +6844,7 @@ const SCOUT: Attacker = Attacker {
     los: Distance::new(4.0),
     position: Position::new(118.5, 183.5, 0.0),
     radius: Footprint::new(0.4, 0.4),
-    speed: 1.2,
+    speed: Speed::new(1.2),
     ..TC
 };
 const STAND_GROUND: Seeker = Seeker {
@@ -8190,7 +8194,7 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
     let mut u = deer();
     let mut r = wander_seed(false);
     let place = Surroundings {
-        speed: 1.2,
+        speed: Speed::new(1.2),
         map: GridSize::new(120, 120),
         ..deer_at(Position::new(31.5, 106.5, 0.0))
     };
@@ -8218,7 +8222,7 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
         .unwrap();
     assert_eq!(moved.point, Position::new(30.5, 105.5, 0.0));
     let near_edge = Surroundings {
-        speed: 1.2,
+        speed: Speed::new(1.2),
         map: GridSize::new(120, 120),
         ..deer_at(Position::new(3.5, 4.5, 0.0))
     };
@@ -8638,7 +8642,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
     let at = Surroundings {
         id: object_id(500),
         position: Position::new(20.0, 30.0, 0.0),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::KING),
@@ -8714,7 +8718,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     let at = Surroundings {
         id: object_id(500),
         position: Position::new(20.0, 30.0, 0.0),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::CLASS_6),
@@ -9607,7 +9611,7 @@ fn attacked_transport() -> (UnitAi, Surroundings) {
     let at = Surroundings {
         id: object_id(500),
         position: Position::new(20.0, 30.0, 0.0),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
@@ -9989,7 +9993,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
     let at = Surroundings {
         id: object_id(500),
         position: Position::new(20.0, 30.0, 0.0),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         map: GridSize::new(64, 64),
         los: Distance::new(4.0),
         player: PlayerId::new(1),
@@ -10320,7 +10324,7 @@ const MANGONEL: Attacker = Attacker {
     los: Distance::new(9.0),
     position: Position::new(20.0, 20.0, 0.0),
     radius: Footprint::new(0.6, 0.6),
-    speed: 0.6,
+    speed: Speed::new(0.6),
     ..TC
 };
 

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Rect;
 use crate::map::spatial::{RecordId, Spatial, WalkQuery};
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
@@ -66,8 +67,8 @@ pub(crate) fn gate_units(
             continue;
         };
         let counts = !matches!(p.class, class::WALL | class::GATE | class::TOWER)
-            && (p.class != class::BUILDING || p.speed != 0.0)
-            && (GATE_EPSILON <= p.speed || p.player != PlayerId::GAIA);
+            && (p.class != class::BUILDING || p.speed != Speed::ZERO)
+            && (GATE_EPSILON <= p.speed.get() || p.player != PlayerId::GAIA);
         if counts {
             units.push(id);
             if spatial.allied_with(owner, p.player) {

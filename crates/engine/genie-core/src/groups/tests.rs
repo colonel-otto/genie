@@ -31,7 +31,7 @@ fn a_new_motion_holds_the_constructor_s_values() {
             m.maximum_yaw_per_second_moving,
             m.maximum_yaw_per_second_stationary
         ),
-        (f32::MAX, f32::MAX, f32::MAX)
+        (Speed::new(f32::MAX), f32::MAX, f32::MAX)
     );
     assert_eq!((m.flags, m.lead, m.number_wait_delays), (3, None, 0));
     assert_eq!((m.velocity, m.acceleration), (BVector::ZERO, BVector::ZERO));
@@ -588,7 +588,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         })
         .collect();
     g.motion.flags = 2;
-    g.motion.maximum_velocity_forward = 1.0;
+    g.motion.maximum_velocity_forward = Speed::new(1.0);
     g.smallest_unit_range = Distance::new(2.5);
     t.groups = UnitGroups {
         groups: vec![g],
@@ -616,7 +616,7 @@ fn register(t: &mut World) {
                     obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: false,
-                    speed: 0.0,
+                    speed: Speed::ZERO,
                     unknown: None,
                     obstruction: None,
                 },
@@ -880,7 +880,7 @@ fn a_general_command_of_a_group_that_cannot_move_does_nothing() {
         .get_mut(group_id(1))
         .unwrap()
         .motion
-        .maximum_velocity_forward = 0.0;
+        .maximum_velocity_forward = Speed::ZERO;
     assert!(
         !t.general_command(
             group_id(1),

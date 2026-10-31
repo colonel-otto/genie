@@ -11,6 +11,7 @@ use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
+use crate::movement::Speed;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -37,7 +38,7 @@ pub struct MeetingTarget {
     /// It has room for the unit (slot 0x198 with the unit).
     pub room: bool,
     /// Its speed (slot 0x208).
-    pub speed: f32,
+    pub speed: Speed,
     /// Its top action's state (slot 0x2b0, `RGE_Action_Object::actionState`; 0 without one).
     pub state: u8,
     /// Its class (`+0x410`).
@@ -67,7 +68,7 @@ pub enum MeetAt {
 /// place; any other state at its place.
 #[must_use]
 pub fn meet_at(t: &MeetingTarget) -> MeetAt {
-    if !t.room || t.speed <= 0.0 {
+    if !t.room || t.speed <= Speed::ZERO {
         return MeetAt::Place;
     }
     if matches!(t.state, 0 | 2) {
@@ -225,7 +226,7 @@ pub(crate) fn meeting_target(
     };
     Ok(MeetingTarget {
         room,
-        speed: t.body.mover().map_or(0.0, |m| m.stats.speed),
+        speed: t.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
         state: t.top_action().map_or(0, |a| a.state),
         class: tm.class,
         position: t.position().ground(),
@@ -394,7 +395,7 @@ pub(crate) fn enter_reach(
         "an Enter's building without a place",
     ))?;
     let gap = footprint_gap_squared(me.position, me.radius, them.position, them.radius);
-    let speed = target_mover.map_or(0.0, |m| m.stats.speed);
+    let speed = target_mover.map_or(Speed::ZERO, |m| m.stats.speed);
     let them_at = target_mover.map_or(them.position, |m| m.moved_at);
     let mut walls = Walls {
         me: moved_at.ground(),

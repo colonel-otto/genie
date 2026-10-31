@@ -12,6 +12,7 @@ use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, RecordId, SearchCache, Spatial, Tiles, WalkTest,
     tile_record_id,
 };
+use crate::movement::Speed;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionType;
 use crate::objects::{ObjectId, ObjectKey};
@@ -257,7 +258,7 @@ impl Spatial {
     pub fn grow_unknown(&mut self, dt: Seconds) {
         for p in self.objects.values_mut() {
             if let Some(u) = p.unknown.as_mut() {
-                *u += p.speed * dt;
+                *u += (p.speed * dt).get();
             }
         }
         for t in self.frozen_for.values_mut() {
@@ -337,7 +338,7 @@ impl Spatial {
                 // Gaia's units (animals) do not work on objects
                 return false;
             }
-            let moved = if 0.0 < q.speed {
+            let moved = if Speed::ZERO < q.speed {
                 u
             } else {
                 self.fastest

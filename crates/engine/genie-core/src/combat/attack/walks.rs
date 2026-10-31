@@ -7,6 +7,7 @@ use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads};
 use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::Me;
+use crate::movement::Speed;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::sprite::Graphic;
@@ -44,7 +45,7 @@ pub(super) fn move_reads<'g>(
 /// # Errors
 ///
 /// A unit that does not move.
-pub(crate) fn speed_of(unit: &Unit) -> Result<f32, GenieError> {
+pub(crate) fn speed_of(unit: &Unit) -> Result<Speed, GenieError> {
     Ok(unit
         .body
         .mover()

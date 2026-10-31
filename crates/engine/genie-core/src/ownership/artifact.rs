@@ -572,6 +572,7 @@ mod tests {
     use super::*;
     use crate::combat::attack::tests::Rig;
     use crate::map::Footprint;
+    use crate::movement::Speed;
     use crate::movement::move_to::MoveWaitState;
     use crate::movement::move_to::{MoveDefaults, MoveToReads, MoveWait, SpriteReads, WalkTo};
     use crate::objects::ObjectId;
@@ -1015,7 +1016,7 @@ mod tests {
             .take_point(Position::new(35.5, 88.5, 0.0), &move_reads(&sprites()))
             .unwrap();
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
-        rig.mover_mut().stats.speed = 0.0;
+        rig.mover_mut().stats.speed = Speed::ZERO;
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
@@ -1085,7 +1086,7 @@ mod tests {
         MoveToReads {
             sprites: *sprites,
             state: ObjectState::Alive,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             at: Position::ORIGIN,
             ground: Footprint::ZERO,
         }
@@ -1213,7 +1214,7 @@ mod tests {
             .unwrap();
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         // the top speed derives from the base and the sprite shown
-        (rig.mover_mut().stats.speed, rig.mover_mut().stats.base) = (0.0, 0.0);
+        (rig.mover_mut().stats.speed, rig.mover_mut().stats.base) = (Speed::ZERO, Speed::ZERO);
         assert_eq!(rig.t.graphics.insert(3, graphic(3)), None);
         rig.mover_mut().in_the_way = vec![object_id(77)];
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))

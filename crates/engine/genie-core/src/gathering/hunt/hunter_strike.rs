@@ -10,6 +10,7 @@ use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
 use crate::map::DistanceSquared;
+use crate::movement::Speed;
 use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::ObjectId;
@@ -168,7 +169,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
         let (me_at, them) = (at(Some(self.id))?, at(action.target)?);
-        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,

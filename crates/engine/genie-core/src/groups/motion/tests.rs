@@ -412,7 +412,7 @@ fn a_walked_level_turns_the_group_toward_its_waypoint() {
     let mut m = Motion::new();
     m.position[0] = BVector::new(5.0, 0.0, 5.0);
     m.new_position[0] = BVector::new(5.0, 0.0, 5.0);
-    m.maximum_velocity_forward = 1.2;
+    m.maximum_velocity_forward = Speed::new(1.2);
     m.paths = vec![level(
         0,
         &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
@@ -538,7 +538,7 @@ fn target_at(y: f32) -> Placed {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: false,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     }
@@ -1086,7 +1086,7 @@ fn what_stands_in_the_way_stops_the_walk() {
     // one that moved before the level was made: the walk goes on at its top speed
     let mut m = walking(None);
     m.paths[0].created = WorldTime::from_millis(70);
-    m.maximum_velocity_forward = 1.2;
+    m.maximum_velocity_forward = Speed::new(1.2);
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
     assert_eq!(
         (m.paths[0].state, m.velocity.y()),

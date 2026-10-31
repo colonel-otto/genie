@@ -232,7 +232,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -501,7 +501,10 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
     assert_eq!(unit.body.anim_speed(), Some(0.0));
-    assert_eq!(unit.body.mover().map(|m| m.stats.speed), Some(0.8));
+    assert_eq!(
+        unit.body.mover().map(|m| m.stats.speed),
+        Some(Speed::new(0.8))
+    );
 }
 
 /// The work command's check of the top Attack (`FUN_14106ff70`, [`World::keep_attack`]): an
@@ -799,7 +802,7 @@ fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
     ]);
     let mut walker = crate::gathering::hunt::tests::walker();
     // the soldier's speed 0.8: its standing sprite's factor 1, its walking one's 1.5
-    walker.stats.speed = 1.2;
+    walker.stats.speed = Speed::new(1.2);
     let soldier = t.masters[1].get_mut(master_id(4)).unwrap();
     soldier.standing_sprite = 300;
     soldier.attack_sprite = 301;
@@ -833,7 +836,7 @@ fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: None,
     };
@@ -2010,7 +2013,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -2068,7 +2071,7 @@ fn switched_in_the_open(
             obstruction_type: old.obstruction_type,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::CIRCLE,
@@ -2460,7 +2463,7 @@ fn followers() -> World {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -3063,7 +3066,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: false,
-        speed: 0.8,
+        speed: Speed::new(0.8),
         unknown: None,
         obstruction: None,
     };
@@ -3221,7 +3224,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
                 obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: None,
             },
@@ -3375,7 +3378,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
         kind: master_type::COMBAT,
         grouped,
         flag_1: false,
-        speed: 1.2,
+        speed: Speed::new(1.2),
         position,
         moved_at: position.ground(),
         state: ObjectState::Alive,

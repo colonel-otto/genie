@@ -7,6 +7,7 @@ use crate::construction::build::{BuildAction, BuildTask};
 use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
 use crate::objects::ListIndex;
@@ -63,9 +64,9 @@ impl World {
                 continue;
             };
             let m = unit.master(&self.masters, q)?;
-            let speed = m.moving.map_or(0.0, |s| s.speed);
+            let speed = m.moving.map_or(Speed::ZERO, |s| s.speed);
             let kind = m.kind;
-            let moves = MOVING <= kind && crate::math::fmath::below_or_unordered(0.0, speed);
+            let moves = MOVING <= kind && crate::math::fmath::below_or_unordered(0.0, speed.get());
             if !moves && !queued {
                 continue;
             }

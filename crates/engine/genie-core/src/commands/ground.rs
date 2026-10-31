@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
@@ -340,7 +341,7 @@ impl World {
             obstruction_type: made.obstruction_type,
             buildable_on: made.buildable_on,
             tall: made.tall,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: (!desolid
                 && !crate::math::fmath::at_most_or_unordered(made.height, 0.0)

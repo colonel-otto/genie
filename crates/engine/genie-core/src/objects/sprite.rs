@@ -436,6 +436,7 @@ pub fn building_death(master: &Master, look: Option<&Look>, build_points: f32) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::movement::Speed;
     use crate::objects::masters::master_type;
     use crate::test_ids::master_id;
 
@@ -482,36 +483,36 @@ mod tests {
             ..CHOP
         };
         let mut stats = crate::gathering::hunt::tests::walker().stats;
-        stats.base = 0.8;
-        stats.speed = 0.0;
+        stats.base = Speed::new(0.8);
+        stats.speed = Speed::ZERO;
         let mut rng = Well512::default();
         let mut sprite = Some(ActiveSprite::start(CHOP, &mut rng));
         let before = rng.clone();
         new_sprite(&mut sprite, Some(&mut stats), walking, &mut rng);
         assert_eq!(sprite.map(|s| s.graphic.id), Some(1));
         assert_ne!(rng, before);
-        assert_eq!(stats.speed, 1.0);
+        assert_eq!(stats.speed, Speed::new(1.0));
         // the sprite shown stays as it runs, and the speed is still the one it reads with it
         if let Some(s) = sprite.as_mut() {
             s.frame = 3;
         }
-        stats.speed = 0.5;
+        stats.speed = Speed::new(0.5);
         let drawn = rng.clone();
         new_sprite(&mut sprite, Some(&mut stats), walking, &mut rng);
         assert_eq!(
             (sprite.map(|s| s.frame), &rng, stats.speed),
-            (Some(3), &drawn, 1.0)
+            (Some(3), &drawn, Speed::new(1.0))
         );
         // a factor of 0 or NaN reads the base alone
         new_sprite(&mut sprite, Some(&mut stats), CHOP, &mut rng);
-        assert_eq!(stats.speed, 0.8);
+        assert_eq!(stats.speed, Speed::new(0.8));
         let nan = Graphic {
             id: 2,
             speed_multiplier: f32::NAN,
             ..CHOP
         };
         new_sprite(&mut sprite, Some(&mut stats), nan, &mut rng);
-        assert_eq!(stats.speed, 0.8);
+        assert_eq!(stats.speed, Speed::new(0.8));
         // an object that does not move shows it alone
         let mut still = None;
         new_sprite(&mut still, None, walking, &mut rng);

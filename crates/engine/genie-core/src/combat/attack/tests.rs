@@ -88,7 +88,7 @@ fn walking_reads(
     MoveToReads {
         sprites: SpriteReads { defaults, graphics },
         state,
-        speed,
+        speed: Speed::new(speed),
         at: Position::ORIGIN,
         ground: Footprint::ZERO,
     }
@@ -185,7 +185,7 @@ fn mark(id: i32, x: f32) -> Mark {
 /// A lion (speed 1.2, radii 0.4) at (10, 10) without an area effect.
 const LION: Wielder = Wielder {
     area_effect: Distance::ZERO,
-    speed: 1.2,
+    speed: Speed::new(1.2),
     position: Position::new(10.0, 10.0, 0.0),
     radius: Footprint::new(0.4, 0.4),
 };
@@ -249,7 +249,10 @@ fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
     let deer = mark(7, 13.0);
     let reach = |range: Distance, speed: f32, can: bool| {
         let mut a = own_attack(7, AttackState::Done, range);
-        let unit = Wielder { speed, ..LION };
+        let unit = Wielder {
+            speed: Speed::new(speed),
+            ..LION
+        };
         a.work(Some(deer), None, &unit, |_| can).kept
     };
     assert!(reach(Distance::ZERO, 1.2, true));
@@ -261,22 +264,36 @@ fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
     let near = mark(7, 11.2);
     let mut a = own_attack(7, AttackState::Done, Distance::new(0.1));
     assert!(
-        a.work(Some(near), None, &Wielder { speed: 0.0, ..LION }, |_| true)
-            .kept
+        a.work(
+            Some(near),
+            None,
+            &Wielder {
+                speed: Speed::ZERO,
+                ..LION
+            },
+            |_| true
+        )
+        .kept
     );
     let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     let farther = mark(7, 11.3);
     assert!(
-        !a.work(Some(farther), None, &Wielder { speed: 0.0, ..LION }, |_| {
-            true
-        })
+        !a.work(
+            Some(farther),
+            None,
+            &Wielder {
+                speed: Speed::ZERO,
+                ..LION
+            },
+            |_| { true }
+        )
         .kept
     );
     // UCOMISS/JP: a NaN speed is not 0, so the unit AI decides
     let mut asked = false;
     let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     let unit = Wielder {
-        speed: f32::NAN,
+        speed: Speed::new(f32::NAN),
         ..LION
     };
     assert!(
@@ -294,8 +311,16 @@ fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
     };
     let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     assert!(
-        a.work(Some(lost), None, &Wielder { speed: 0.0, ..LION }, |_| false)
-            .kept
+        a.work(
+            Some(lost),
+            None,
+            &Wielder {
+                speed: Speed::ZERO,
+                ..LION
+            },
+            |_| false
+        )
+        .kept
     );
 }
 
@@ -439,11 +464,11 @@ fn soldier_mover(speed: f32) -> Mover {
         factor: 1.0,
         stats: MoveStats {
             fly_mode: 0,
-            speed,
-            base: speed,
+            speed: Speed::new(speed),
+            base: Speed::new(speed),
             turn_rate: f32::MAX,
             turn_radius: 0.0,
-            turn_radius_speed: f32::MAX,
+            turn_radius_speed: Speed::MAX,
             radius: Radii::new(0.2, 0.2, 0.5),
             restriction: RestrictionId::named(7),
             restriction_mask: TerrainMask::of_bits(6),
@@ -930,7 +955,7 @@ fn world_with(id: i32, player: PlayerId, class: ClassId, at: Position) -> Spatia
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -1705,7 +1730,7 @@ fn engaged(gap: Distance, speed: f32, can_move: bool, stance: UnitStance) -> Eng
         gap,
         position: Position::new(10.0, 10.0, 0.0),
         target_position: Position::new(10.0 + gap.get(), 10.0, 0.0),
-        speed,
+        speed: Speed::new(speed),
         range: Distance::new(1.0),
         min_range: Distance::ZERO,
         can_move,
@@ -1757,7 +1782,7 @@ fn own_start(
         &NO_GRAPHICS,
         MoveDefaults::default(),
         ObjectState::Alive,
-        e.speed,
+        e.speed.get(),
     );
     let (attack, begun, posted) = Attack::own_start(&cmd, world, mover, &reads)?;
     Ok(Started {
@@ -1777,7 +1802,7 @@ fn own_start(
 #[test]
 fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it() {
     let start = |e: Engagement| {
-        let mut mover = soldier_mover(e.speed);
+        let mut mover = soldier_mover(e.speed.get());
         let world = world_with(7, PlayerId::new(2), class::CLASS_6, e.target_position);
         own_start(
             &world,
@@ -1840,7 +1865,7 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
 #[test]
 fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_found() {
     let start = |e: Engagement, visible: bool| {
-        let mut mover = soldier_mover(e.speed);
+        let mut mover = soldier_mover(e.speed.get());
         mover.animated.speed = 1.0;
         let world = world_with(7, PlayerId::new(2), class::CLASS_6, e.target_position);
         let c = own_start(
@@ -2503,7 +2528,7 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
             Some((MoveTo::Moving, MoveWaitState::AskedAgain)),
             Some(301),
             1.0,
-            1.2
+            Speed::new(1.2)
         )
     );
     let (code, move_to, shown, anim, _) = start(Distance::new(5.0));

@@ -19,6 +19,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
 use crate::map::Tile;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -220,7 +221,7 @@ pub struct Placed {
     /// The master's height radius (`+0x5e0`) is above 0: the tile counts it as tall.
     pub tall: bool,
     /// The top speed, tiles per second; 0 for an object that does not move.
-    pub speed: f32,
+    pub speed: Speed,
     /// How far from `position` the object may be, when its player's update is not modelled: it
     /// grows by its speed every tick ([`Spatial::grow_unknown`]). None for an object the slice
     /// updates.

@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Distance;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
@@ -22,7 +23,7 @@ fn candidate(id: i32, distance: Distance, speed: f32) -> Candidate {
         distance,
         category: attack_category(1),
         class: class::CLASS_6,
-        speed,
+        speed: Speed::new(speed),
         armed: true,
         reach: Distance::new(1.0),
         damage: 4.0,
@@ -220,7 +221,7 @@ fn soldier() -> Searcher {
         sight: Distance::new(12.0),
         range: Distance::new(0.5),
         weapon_range: Distance::new(0.5),
-        speed: 1.0,
+        speed: Speed::new(1.0),
         now: WorldTime::from_millis(10_000),
         ..Searcher::default()
     }
@@ -238,11 +239,11 @@ fn enemy(id: i32, class: ClassId, distance: Distance, hp: f32) -> (Thing, Candid
             targetable: true,
             attackable: true,
             distance,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             ..Thing::default()
         },
         Candidate {
-            speed: 1.0,
+            speed: Speed::new(1.0),
             hp,
             ..candidate(id, distance, 1.0)
         },
@@ -309,8 +310,8 @@ fn failed_paths_become_retarget_entries() {
         enemy(7, class::CLASS_0, Distance::new(3.0), 40.0),
     );
     let mut still = enemy(9, class::CLASS_0, Distance::new(5.0), 10.0);
-    still.0.speed = 0.0;
-    still.1.speed = 0.0;
+    still.0.speed = Speed::ZERO;
+    still.1.speed = Speed::ZERO;
     let _ = field.things.insert(object_id(9), still);
     let lists = ByRelation::new([vec![], vec![], vec![], vec![], object_id_list([7, 9])]);
     let ask = Ask {
@@ -490,7 +491,10 @@ fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
         counted(&me, &mut field),
         [(object_id(40), 3.0), (object_id(41), 0.1_f32 + 0.5 + 1.0)]
     );
-    let still = Searcher { speed: 0.0, ..me };
+    let still = Searcher {
+        speed: Speed::ZERO,
+        ..me
+    };
     assert_eq!(counted(&still, &mut field), [(object_id(40), 3.0)]);
 }
 

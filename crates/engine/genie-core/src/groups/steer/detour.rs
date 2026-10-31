@@ -14,6 +14,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::{BVector, at_most_or_unordered};
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::pathing::tile_path::Path;
 use crate::world::World;
@@ -390,7 +391,8 @@ impl World {
             position: u.position(),
             radius: mover.stats.radius.ground(),
             mask: mover.stats.restriction_mask,
-            moves: mover.stats.speed != 0.0 || u.life.master_id == crate::movement::LONG_PATH_MOVER,
+            moves: mover.stats.speed != Speed::ZERO
+                || u.life.master_id == crate::movement::LONG_PATH_MOVER,
             ignore_units: &mover.ignore_units,
             group_units: self.groups.group_units(u.group.id),
         };

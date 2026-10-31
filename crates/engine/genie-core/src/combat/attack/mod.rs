@@ -19,6 +19,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
+use crate::movement::Speed;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
 use crate::objects::ObjectId;
 use crate::objects::layers::Body;
@@ -233,7 +234,7 @@ pub struct Engagement {
     pub target_position: Position,
     /// The unit's top speed (slot 0x208), its master's weapon range with any bonus against the
     /// target (slot 0x238) and its least range.
-    pub speed: f32,
+    pub speed: Speed,
     /// Its master's weapon range with any bonus against the target (slot 0x238).
     pub range: Distance,
     /// Its least range.

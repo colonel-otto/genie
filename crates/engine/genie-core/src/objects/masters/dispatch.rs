@@ -1,6 +1,7 @@
 //! The attribute setters by master type (slots 0x18, 0x20 and 0x28), the master copy (slot 8),
 //! the loader's defaults and the selected entries.
 
+use crate::movement::Speed;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::{
     AttributeWorld, DamageGraphic, Master, TrainLocation, attribute, master_type,
@@ -110,7 +111,8 @@ impl Master {
         let moving = self.moving.as_ref();
         match attribute {
             a::MOVEMENT_SPEED | a::STANDING_GRAPHIC | a::WALKING_GRAPHIC | a::RUNNING_GRAPHIC
-                if self.max_speed == 0.0 && moving.is_some_and(|m| m.speed != 0.0) =>
+                if self.max_speed == Speed::ZERO
+                    && moving.is_some_and(|m| m.speed != Speed::ZERO) =>
             {
                 Some("a master's speed (+0x740) the loader did not fill")
             }

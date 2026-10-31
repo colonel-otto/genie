@@ -3,6 +3,7 @@
 
 use genie_core::map::Distance;
 use genie_core::map::{GridSize, TileOffset};
+use genie_core::movement::Speed;
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
@@ -258,7 +259,7 @@ pub(super) fn spatial(
                     obstruction_type: m.obstruction_type,
                     buildable_on: m.buildable_on,
                     tall: 0.0 < m.radius.z(),
-                    speed: moving_speed(o, s, section.objects()),
+                    speed: Speed::new(moving_speed(o, s, section.objects())),
                     unknown: None,
                     obstruction,
                 },

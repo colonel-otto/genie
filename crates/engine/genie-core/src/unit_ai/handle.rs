@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::unit_ai::ActionKind;
@@ -131,7 +132,7 @@ impl UnitAi {
                 master: None,
                 workers: -1,
                 spared: None,
-                reach: 0.0 < at.speed,
+                reach: Speed::ZERO < at.speed,
             },
             memory: Memory::default(),
         })?;
@@ -210,7 +211,7 @@ impl UnitAi {
             // move (FUN_140fdd080: a master of type 30 and up with speed) gives the order up
             NotifyKind::OUT_OF_REACH => {
                 if self.current_order == Some(OrderKind::Attack)
-                    && !(MOVING <= at.kind && 0.0 < at.speed)
+                    && !(MOVING <= at.kind && Speed::ZERO < at.speed)
                 {
                     self.current_order = None;
                 }

@@ -7,6 +7,7 @@ use crate::map::Rect;
 use crate::map::TileRect;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::pathing::hull_path::NO_AREA;
 use crate::pathing::hull_path::rounds::Rounds;
@@ -250,7 +251,7 @@ impl HullPather<'_> {
         {
             let (dx, dy) = (to.x() - from.x(), to.y() - from.y());
             let d = dy * dy + dx * dx;
-            if t.speed != 0.0 || d <= NEAR_TARGET {
+            if t.speed != Speed::ZERO || d <= NEAR_TARGET {
                 let len = sqrt(d);
                 goal = Point::new(
                     goal.x() - (dx / len) * (r.get() + t.radius.x()),

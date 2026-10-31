@@ -6,6 +6,7 @@ use crate::map::Radii;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
@@ -61,7 +62,7 @@ pub(crate) fn walks(held: Held) -> Walks<'static> {
                 graphics: &NO_GRAPHICS,
             },
             state: ObjectState::Alive,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             at: Position::ORIGIN,
             ground: Footprint::ZERO,
         },
@@ -232,11 +233,11 @@ pub(crate) fn walker() -> Mover {
         factor: 1.0,
         stats: MoveStats {
             fly_mode: 0,
-            speed: 0.8,
-            base: 0.8,
+            speed: Speed::new(0.8),
+            base: Speed::new(0.8),
             turn_rate: f32::MAX,
             turn_radius: 0.0,
-            turn_radius_speed: f32::MAX,
+            turn_radius_speed: Speed::MAX,
             radius: Radii::new(0.2, 0.2, 0.5),
             restriction: RestrictionId::named(7),
             restriction_mask: TerrainMask::of_bits(6),
@@ -289,7 +290,7 @@ fn engagement() -> Engagement {
         gap: Distance::new(3.726),
         position: Position::new(20.774, 97.5, 0.0),
         target_position: Position::new(24.5, 97.5, 0.0),
-        speed: 0.8,
+        speed: Speed::new(0.8),
         range: Distance::ZERO,
         min_range: Distance::ZERO,
         can_move: true,
@@ -1119,7 +1120,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     };
     assert!(set_walk(&mut hunting(10028), &mut rig, &alive).is_err());
     // a unit without speed: its MoveTo fails at its start (state 13)
-    rig.mover_mut().stats.speed = 0.0;
+    rig.mover_mut().stats.speed = Speed::ZERO;
     let mut h = hunting(10028);
     assert_eq!(set_walk(&mut h, &mut rig, &dead), Ok(()));
     assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Failed));

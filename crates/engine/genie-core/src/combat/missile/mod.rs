@@ -15,6 +15,7 @@ use crate::map::Point;
 use crate::map::Radii;
 use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -74,7 +75,7 @@ pub struct MissileStats {
     /// `projectile_arc` (`ballistics_ratio`).
     pub arc: f32,
     /// Its master's speed (slot 0xe8).
-    pub speed: f32,
+    pub speed: Speed,
     /// Its master's radii (`+0x5d8`..`+0x5e0`).
     pub radius: Radii,
     /// The `.dat`'s `fly_mode` (`+0x608`): 0 holds it on the ground, 1 above it.
@@ -387,10 +388,10 @@ impl MissileAction {
         let (acceleration, velocity) = if way <= 0.0 || stats.arc == 0.0 {
             (0.0, 0.0)
         } else {
-            let t = if stats.speed <= 0.0 {
+            let t = if stats.speed <= Speed::ZERO {
                 0.0
             } else {
-                way / stats.speed
+                way / stats.speed.get()
             };
             let t = t * HALF;
             let rise = if stats.arc <= 0.0 {
@@ -422,9 +423,9 @@ impl MissileAction {
         let mut step = match stats.projectile_type {
             0 => {
                 let way = stats.speed * dt;
-                let d = self.direction.scaled(way);
-                self.timer += way;
-                self.distance -= Distance::new(way);
+                let d = self.direction.scaled(way.get());
+                self.timer += way.get();
+                self.distance -= way;
                 if max_range <= Distance::new(self.timer) && self.distance < BEYOND {
                     // State 1: the missile ends.
                     self.state = MissileState::Done;
@@ -502,7 +503,7 @@ mod tests {
         let stats = MissileStats {
             projectile_type: 0,
             arc: -0.06,
-            speed: 7.0,
+            speed: Speed::new(7.0),
             radius: Radii::new(0.1, 0.1, 0.0),
             ..MissileStats::default()
         };

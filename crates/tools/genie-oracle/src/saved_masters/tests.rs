@@ -68,7 +68,7 @@ fn a_walker_moves_by_its_sprites_speed_factors() {
             .rge_master_static_object
     };
     let stats = moving_stats(&master, s, 1, &table([8; 3])).unwrap();
-    assert_eq!(stats.speed.to_bits(), 3.0_f32.to_bits());
+    assert_eq!(stats.speed.get().to_bits(), 3.0_f32.to_bits());
     assert_eq!((stats.fly_mode, stats.move_algorithm), (2, 1));
     assert_eq!(
         (stats.restriction, stats.restriction_mask),
@@ -83,12 +83,12 @@ fn a_walker_moves_by_its_sprites_speed_factors() {
     let mut no_run = walker();
     master_moving_mut(&mut no_run).run_sprite_id = -1;
     let stats = moving_stats(&no_run, s, 1, &table([8; 3])).unwrap();
-    assert_eq!(stats.speed.to_bits(), 2.0_f32.to_bits());
+    assert_eq!(stats.speed.get().to_bits(), 2.0_f32.to_bits());
     // no factor at all: the top speed
     let plain =
         MasterTable::of_master(1, 83, table([8; 3]).turning(1, 83), 0).with_masks(vec![0, 1]);
     let stats = moving_stats(&master, s, 1, &plain).unwrap();
-    assert_eq!(stats.speed.to_bits(), 1.0_f32.to_bits());
+    assert_eq!(stats.speed.get().to_bits(), 1.0_f32.to_bits());
 }
 
 /// Without a moving part, the data file's turning, or a restriction the table has, no stats.

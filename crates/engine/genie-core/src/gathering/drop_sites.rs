@@ -260,6 +260,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
+    use crate::movement::Speed;
     use crate::objects::actions::ActionList;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::masters::Master;
@@ -347,7 +348,7 @@ mod tests {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         };

@@ -7,6 +7,7 @@ use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::WaypointLevel;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
@@ -240,7 +241,7 @@ impl Mover {
             position: self.position(),
             radius: self.stats.radius.ground(),
             mask: self.stats.restriction_mask,
-            moves: self.stats.speed != 0.0 || master == Some(LONG_PATH_MOVER),
+            moves: self.stats.speed != Speed::ZERO || master == Some(LONG_PATH_MOVER),
             ignore_units: &self.ignore_units,
             group_units: plan.groups.group_units(me.group),
         };
@@ -309,7 +310,7 @@ impl Mover {
             let walled = hits.iter().any(|&h| {
                 world.get(h).is_some_and(|p| {
                     matches!(p.class, class::WALL | class::GATE | class::TOWER)
-                        || (p.class == class::BUILDING && p.speed <= 0.0)
+                        || (p.class == class::BUILDING && p.speed <= Speed::ZERO)
                 })
             });
             if walled {

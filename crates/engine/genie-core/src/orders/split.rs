@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Distance;
 use crate::map::Point;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Interact, MAX_UNGROUPED, Split, Splittable, centroid, splits_together};
@@ -164,7 +165,7 @@ impl World {
                 kind: master.kind,
                 grouped: master.formation_category != 0,
                 flag_1: master.object_flags & 2 != 0,
-                speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
+                speed: u.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
                 position: u.position(),
                 moved_at: u
                     .body
@@ -316,8 +317,8 @@ impl World {
                 continue;
             };
             let master = u.master(&self.masters, p)?;
-            let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-            if (MOVING <= master.kind && 0.0 < speed) || queued {
+            let speed = master.moving.as_ref().map_or(Speed::ZERO, |m| m.speed);
+            if (MOVING <= master.kind && Speed::ZERO < speed) || queued {
                 points.push(u.position().ground());
             }
         }

@@ -3,6 +3,7 @@
 use crate::map::Distance;
 use crate::map::Tile;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::WaypointLevel;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::world::Millis;
@@ -156,7 +157,7 @@ impl Mover {
             position: self.position(),
             radius: ground,
             mask: self.stats.restriction_mask,
-            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            moves: self.stats.speed != Speed::ZERO || master == LONG_PATH_MOVER,
             ignore_units: &self.ignore_units,
             group_units: plan.groups.group_units(me.group),
         };
@@ -177,7 +178,7 @@ impl Mover {
             ),
             range,
             target: long_target,
-            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            moves: self.stats.speed != Speed::ZERO || master == LONG_PATH_MOVER,
             mask: self.stats.restriction_mask,
             computer: plan.computer,
             lowered,
@@ -409,8 +410,8 @@ impl Mover {
             return position;
         };
         let mut next = fmath::add(v.velocity, fmath::scale(dt.get(), v.acceleration));
-        if self.stats.speed < next.y() || next.y() <= 0.0 {
-            next = next.with_y(self.stats.speed);
+        if self.stats.speed < Speed::new(next.y()) || next.y() <= 0.0 {
+            next = next.with_y(self.stats.speed.get());
         }
         fmath::add(position, fmath::scale(dt.get() * next.y(), direction))
     }

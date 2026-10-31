@@ -1,6 +1,7 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
 use crate::map::Distance;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
@@ -153,7 +154,7 @@ pub(super) fn kept_by_owner_and_class(me: &Searcher, ask: &Ask, t: &Thing) -> bo
 /// within the sight.
 pub(super) fn within(me: &Searcher, ask: &Ask, gap: Distance, near: f32) -> bool {
     me.min_range <= gap
-        && (gap <= me.weapon_range || me.speed != 0.0)
+        && (gap <= me.weapon_range || me.speed != Speed::ZERO)
         && (me.can_move || gap <= Distance::new(near))
         && (ask.distance <= Distance::ZERO || gap <= ask.distance)
         && gap <= me.sight
@@ -262,7 +263,8 @@ fn add_current(
     st: &mut Statistics,
     world: &mut dyn Battlefield,
 ) -> Result<Option<AttackCategory>, crate::GenieError> {
-    let Some((target, t)) = current.filter(|(_, t)| t.distance <= me.range || 0.0 < me.speed)
+    let Some((target, t)) =
+        current.filter(|(_, t)| t.distance <= me.range || Speed::ZERO < me.speed)
     else {
         return Ok(None);
     };
@@ -295,7 +297,7 @@ pub(super) fn add_extra(
         }
         let mut gap = t.distance;
         if gap < me.min_range {
-            if me.speed == 0.0 {
+            if me.speed == Speed::ZERO {
                 continue;
             }
             gap = gap + me.weapon_range + Distance::new(ONE);
@@ -540,7 +542,7 @@ fn current_holds(
         return Ok(None);
     };
     let holds = st.moving < FEW_MOVING
-        && ((t.speed < EPSILON && st.moving == 0) || 0.0 < t.speed)
+        && ((t.speed < Speed::new(EPSILON) && st.moving == 0) || Speed::ZERO < t.speed)
         && !ask.idle
         && (world.engages(target)? || st.armed < 1)
         && (ask.paths == 0 || world.path(target, me.range)?);

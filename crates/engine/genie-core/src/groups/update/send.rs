@@ -14,6 +14,7 @@ use crate::math::conversions::cvttss2si_64;
 use crate::math::fmath::at_most_or_unordered;
 use crate::math::image::group::EPSILON;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -228,12 +229,12 @@ impl World {
             return Ok(0.0);
         };
         let speed = mover.stats.speed;
-        if speed == 0.0 {
-            return Ok(speed);
+        if speed == Speed::ZERO {
+            return Ok(speed.get());
         }
         let master = unit.master(&self.masters, player)?;
         if master.kind != CHARGER || master.max_charge <= 0.0 || master.special_attack != 3 {
-            return Ok(speed);
+            return Ok(speed.get());
         }
         Err(SPECIAL_CHARGE_GAP)
     }

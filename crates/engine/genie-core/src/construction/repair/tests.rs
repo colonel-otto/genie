@@ -1,5 +1,6 @@
 use super::*;
 use crate::movement::Me;
+use crate::movement::Speed;
 use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, WalkTo,
 };
@@ -65,7 +66,7 @@ const fn move_reads(
             graphics,
         },
         state: ObjectState::Alive,
-        speed: 1.0,
+        speed: Speed::new(1.0),
         at: Position::new(10.0, 10.0, 0.0),
         ground: Footprint::new(0.2, 0.2),
     }
@@ -404,7 +405,7 @@ fn a_repair_s_move_to_starts_as_its_list_adds_it() {
     };
     assert_eq!(state(beside, move_reads(&g)), Some(MoveTo::Arrived));
     let stuck = MoveToReads {
-        speed: 0.0,
+        speed: Speed::ZERO,
         ..move_reads(&g)
     };
     assert_eq!(state(TARGET, stuck), Some(MoveTo::Failed));

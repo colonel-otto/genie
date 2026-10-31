@@ -400,6 +400,7 @@ mod stack_tests {
     use crate::map::GroundOffset;
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
+    use crate::movement::Speed;
     use crate::objects::ListIndex;
     use crate::objects::ObjectState;
     use crate::objects::lifecycle::{Class, Lifecycle};
@@ -606,7 +607,7 @@ mod stack_tests {
                 obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
-                speed: 0.0,
+                speed: Speed::ZERO,
                 unknown: None,
                 obstruction: Some(Obstruction {
                     kind: ObstructionType::TYPE_2,
@@ -786,11 +787,11 @@ mod stack_tests {
                     // every building holds its movement state
                     m.moving = Some(crate::movement::MoveStats {
                         fly_mode: 0,
-                        speed: 0.0,
-                        base: 0.0,
+                        speed: Speed::ZERO,
+                        base: Speed::ZERO,
                         turn_rate: 0.0,
                         turn_radius: 0.0,
-                        turn_radius_speed: f32::MAX,
+                        turn_radius_speed: Speed::MAX,
                         radius: Radii::new(2.0, 2.0, 0.0),
                         restriction: crate::map::RestrictionId::named(0),
                         restriction_mask: crate::map::TerrainMask::ALL,

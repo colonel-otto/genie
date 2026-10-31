@@ -6,6 +6,7 @@ use crate::groups::{CommandArgs, GroupId};
 use crate::map::Distance;
 use crate::map::Point;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
@@ -80,8 +81,9 @@ impl World {
             .players
             .live(player, idx)?
             .master(&self.masters, player)?;
-        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        let still = master.kind < MOVING || (master.class != class::CLASS_54 && speed <= 0.0);
+        let speed = master.moving.as_ref().map_or(Speed::ZERO, |m| m.speed);
+        let still =
+            master.kind < MOVING || (master.class != class::CLASS_54 && speed <= Speed::ZERO);
         if still {
             // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
             // test, any task) at the order's point, z 0; a queued order then goes on as a mover's

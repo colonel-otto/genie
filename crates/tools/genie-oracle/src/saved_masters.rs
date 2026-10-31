@@ -8,6 +8,7 @@ use genie_core::map::Distance;
 use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
+use genie_core::movement::Speed;
 use genie_core::objects::masters::ClassAmount;
 use genie_core::objects::masters::{
     ActionType, ClassId, MasterId, ObstructionClass, ObstructionType,
@@ -307,7 +308,7 @@ pub(super) fn work_masters(
                 hit_mode: mm.missile_hit_info,
                 vanish_mode: mm.missile_die_info,
                 arc: mm.ballistics_ratio,
-                speed: animated_master(m).map_or(0.0, |a| a.max_speed),
+                speed: animated_master(m).map_or(Speed::ZERO, |a| Speed::new(a.max_speed)),
                 radius: Radii::new(s.radius_x, s.radius_y, s.radius_z),
                 fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
             });
@@ -315,7 +316,7 @@ pub(super) fn work_masters(
         work.damage_sprites = !s.damage_sprite.is_empty();
         // what the masters' attribute setters change: the top and turn speeds (+0x740,
         // +0x758), the damage sprites (+0x638) and the train locations (+0x898)
-        work.max_speed = animated_master(m).map_or(0.0, |a| a.max_speed);
+        work.max_speed = animated_master(m).map_or(Speed::ZERO, |a| Speed::new(a.max_speed));
         work.turn_speed = moving_master(m).map_or(0.0, |mv| mv.turn_speed);
         work.damage_graphics = s
             .damage_sprite
@@ -388,11 +389,15 @@ pub(super) fn moving_stats(
     let facets = table.graphics.get(&moving.move_sprite_id).map(|g| g.facets);
     Some(genie_core::movement::MoveStats {
         fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
-        speed: if 0.0 < factor { base * factor } else { base },
-        base,
+        speed: if 0.0 < factor {
+            Speed::new(base * factor)
+        } else {
+            Speed::new(base)
+        },
+        base: Speed::new(base),
         turn_rate: genie_core::movement::turn_rate(moving.turn_speed, facets),
         turn_radius: 0.0,
-        turn_radius_speed: f32::MAX,
+        turn_radius_speed: Speed::MAX,
         radius: Radii::new(s.radius_x, s.radius_y, s.radius_z),
         restriction,
         restriction_mask: *table.terrain.masks().get(restriction.index())?,

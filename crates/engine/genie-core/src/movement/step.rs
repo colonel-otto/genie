@@ -8,6 +8,7 @@ use crate::map::Rect;
 use crate::map::spatial::{Placed, RecordId, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::movement::{
     ANNEX_GAP, AfterRequest, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion,
     MoveStats, Mover, Next, Planning, RANGE_FLOOR, Reach, footprint_gap, gate_gap, ground,
@@ -44,7 +45,7 @@ pub enum GroupSpeed {
     Free,
     /// An own move of another reason: the group's top speed (`+0xbc`) while the unit's walked
     /// level walks (state 3) unpaused, else the unit stands.
-    OwnMove(f32),
+    OwnMove(Speed),
 }
 
 /// What the walk along the level's path takes of the step ([`Mover::walk`]'s arguments after
@@ -90,12 +91,12 @@ impl Mover {
                     l.state == PathState::Walking
                         && fmath::at_most_or_unordered(l.pause_time.get(), 0.0)
                 });
-                return if walks { speed } else { 0.0 };
+                return if walks { speed.get() } else { 0.0 };
             }
             Some(GroupSpeed::Free) if wanted < UNCAPPED_SPEED => {}
             Some(GroupSpeed::Free) | None => {
-                if self.stats.speed < wanted {
-                    return self.stats.speed;
+                if self.stats.speed.get() < wanted {
+                    return self.stats.speed.get();
                 }
             }
         }
@@ -262,7 +263,7 @@ impl Mover {
         };
         // both clamps read the map's +0x18, its width (0x14116220d for y): on a map that is not
         // square the y clamp takes the width
-        let (x, y) = if EPSILON < self.stats.speed {
+        let (x, y) = if EPSILON < self.stats.speed.get() {
             (
                 inside(x, self.stats.radius.x(), map.width()),
                 inside(y, self.stats.radius.y(), map.width()),
@@ -392,7 +393,7 @@ impl Mover {
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
     ) -> Result<Motion, GenieError> {
-        if self.stats.speed == 0.0 {
+        if self.stats.speed == Speed::ZERO {
             return Ok(Motion::Done);
         }
         let Some(level) = self.paths.first_mut() else {

@@ -10,6 +10,7 @@ use crate::map::DistanceSquared;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::movement::Speed;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{
     GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads, WalkTo,
@@ -274,13 +275,13 @@ impl EnterAction {
     pub fn in_reach(
         range: Distance,
         gap_squared: DistanceSquared,
-        target_speed: f32,
+        target_speed: Speed,
         walls: &mut crate::garrison::Walls<'_>,
     ) -> Result<bool, GenieError> {
         if range.squared() < gap_squared {
             return Ok(false);
         }
-        if range <= ENTER_NEAR && 0.0 < target_speed {
+        if range <= ENTER_NEAR && Speed::ZERO < target_speed {
             return Ok(!walls.walled_off()?);
         }
         Ok(true)

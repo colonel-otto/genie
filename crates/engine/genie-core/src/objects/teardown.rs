@@ -80,7 +80,7 @@ impl Action {
                 stop_if_moving(body, gone.stops)?;
             }
             Self::Fly(f) => {
-                body.set_anim_speed(body.mover().map_or(0.0, |m| m.stats.speed));
+                body.set_anim_speed(body.mover().map_or(0.0, |m| m.stats.speed.get()));
                 stop_if_moving(body, f.move_to.is_some())?;
             }
             Self::Enter(e) => {

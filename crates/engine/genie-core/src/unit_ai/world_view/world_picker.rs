@@ -5,6 +5,7 @@ use crate::combat::victims::victim_of;
 use crate::map::Distance;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
@@ -292,7 +293,7 @@ impl WorldPicker<'_> {
             position: placed.position,
             radius: placed.radius,
         };
-        let moving = 0.0 < t.body.mover().map_or(0.0, |m| m.stats.speed);
+        let moving = Speed::ZERO < t.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
         Ok((target, moving))
     }
 }
@@ -375,7 +376,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
                 placed.position,
                 placed.radius,
             ),
-            speed: t.body.mover().map_or(0.0, |mv| mv.stats.speed),
+            speed: t.body.mover().map_or(Speed::ZERO, |mv| mv.stats.speed),
         }))
     }
 
@@ -426,7 +427,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             distance,
             category,
             class: m.class,
-            speed: t.body.mover().map_or(0.0, |mv| mv.stats.speed),
+            speed: t.body.mover().map_or(Speed::ZERO, |mv| mv.stats.speed),
             armed,
             reach: self.attacker.range_against()?,
             damage,

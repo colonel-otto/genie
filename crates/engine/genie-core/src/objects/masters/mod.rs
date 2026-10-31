@@ -11,6 +11,7 @@ use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Offset;
 use crate::movement::MoveStats;
+use crate::movement::Speed;
 use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::unit_ai::UnitAiType;
@@ -463,7 +464,7 @@ pub struct Master {
     pub moving: Option<MoveStats>,
     /// `+0x740`, `mMaxSpeed` (the `.dat`'s `speed`): the top speed before a sprite's factor, from
     /// which [`Master::moving`]'s speeds and [`crate::combat::missile::MissileStats::speed`] follow.
-    pub max_speed: f32,
+    pub max_speed: Speed,
     /// `+0x758`, `turn_speed` (the `.dat`'s `rotation_speed`), which [`MoveStats::turn_time`]
     /// follows.
     pub turn_speed: f32,

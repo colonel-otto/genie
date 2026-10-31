@@ -30,6 +30,7 @@ use crate::map::Rect;
 use crate::map::TileRect;
 use crate::map::spatial::{RecordId, Spatial};
 use crate::math::fmath::sqrt;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use std::collections::BTreeSet;
 
@@ -248,7 +249,7 @@ impl Waypoints {
 struct Target {
     at: Point,
     radius: Footprint,
-    speed: f32,
+    speed: Speed,
 }
 
 /// One search's query: the start and the goal, the target on the goal (its id -1 for none and for

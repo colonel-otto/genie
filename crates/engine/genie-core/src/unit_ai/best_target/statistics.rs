@@ -2,6 +2,7 @@
 //! the ranks and the sort, and the order history's weights.
 
 use crate::map::Distance;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
@@ -77,7 +78,7 @@ pub struct Candidate {
     /// Its master's class.
     pub class: ClassId,
     /// Its top speed (slot 0x208).
-    pub speed: f32,
+    pub speed: Speed,
     /// It is armed: the sum of its attacks above 0 (slot 0x228, `FUN_141084070`), or its unit AI
     /// could work on the unit (its slot 0x1b8 with 1: a priest's conversion test).
     pub armed: bool,
@@ -207,7 +208,7 @@ impl Statistics {
         if !c.current {
             self.others += 1;
         }
-        if 0.0 < c.speed {
+        if Speed::ZERO < c.speed {
             e.moving = true;
             if self.closest_moving.0 > c.distance.get() {
                 self.closest_moving = (c.distance.get(), Some(c.id));
@@ -231,7 +232,7 @@ impl Statistics {
         };
         self.kill_time.take(Distance::new(e.kill_time));
         e.bonus = if c.current { NO_DAMAGE_KILL } else { 0.0 };
-        if 0.0 < c.speed {
+        if Speed::ZERO < c.speed {
             self.moving_distance.take(c.distance);
             self.moving_kill_time.take(Distance::new(e.kill_time));
         }

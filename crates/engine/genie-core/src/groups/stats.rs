@@ -10,6 +10,7 @@ use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
 use crate::map::Distance;
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type;
@@ -45,7 +46,7 @@ struct MemberView {
     /// Slot 0x520's vector (x, height, y): where the unit last moved to.
     at: BVector,
     /// Slot 0x208: its top speed.
-    speed: f32,
+    speed: Speed,
     /// Slot 0x230: its weapon range.
     range: Distance,
     /// `+0x685`, `under_attack_value` (`FUN_1411a6f80`).
@@ -126,7 +127,7 @@ impl World {
         if g.flags >> 9 & 1 != 0 {
             slowest /= SLOW_GROUP_FACTOR;
         }
-        g.motion.maximum_velocity_forward = slowest;
+        g.motion.maximum_velocity_forward = Speed::new(slowest);
         if under_attack {
             g.seconds_not_under_attack = Seconds::ZERO;
         } else {
@@ -188,7 +189,7 @@ impl World {
                 unit,
                 // the game's vector (x, height, y) of where it last moved to (x, y, height)
                 at: moved_place(u),
-                speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
+                speed: u.body.mover().map_or(Speed::ZERO, |m| m.stats.speed),
                 range: weapon_range(master),
                 under_attack: u.under_attack,
                 attacking: ai.current_action == Some(ActionKind::Attack),
@@ -523,8 +524,8 @@ fn member_totals(
         if r < Distance::new(g.smallest_unit_radius) {
             g.smallest_unit_radius = r.get();
         }
-        if v.speed < slowest {
-            slowest = v.speed;
+        if v.speed < Speed::new(slowest) {
+            slowest = v.speed.get();
         }
         if v.range < g.smallest_unit_range {
             g.smallest_unit_range = v.range;

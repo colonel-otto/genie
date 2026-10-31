@@ -6,6 +6,7 @@ use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -71,8 +72,8 @@ impl World {
             .players
             .live(player, idx)?
             .master(&self.masters, player)?;
-        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        if master.kind < MOVING || speed <= 0.0 {
+        let speed = master.moving.as_ref().map_or(Speed::ZERO, |m| m.speed);
+        if master.kind < MOVING || speed <= Speed::ZERO {
             if order.queued {
                 return Err(GenieError::unsupported(
                     "a queued move of an object that does not move",

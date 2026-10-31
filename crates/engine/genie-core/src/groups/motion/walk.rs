@@ -68,7 +68,9 @@ pub(super) fn steer(
     }
     turn_toward(motion, direction, dt);
     pull_to_members(motion, group);
-    motion.velocity = motion.velocity.with_y(motion.maximum_velocity_forward);
+    motion.velocity = motion
+        .velocity
+        .with_y(motion.maximum_velocity_forward.get());
     Ok(Pass::Done(true))
 }
 

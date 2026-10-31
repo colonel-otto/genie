@@ -119,7 +119,7 @@ impl UnitAi {
         let Some(u) = side.seen_unit(id)? else {
             return Ok(false);
         };
-        let reach = at.speed * SHIP_EVADE_REACH;
+        let reach = (at.speed * SHIP_EVADE_REACH).get();
         let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
         let dx = u.position.x() - x;
         let dy = u.position.y() - y;

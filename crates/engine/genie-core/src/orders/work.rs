@@ -5,6 +5,7 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -551,7 +552,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
-        if !master.moving.is_some_and(|m| 0.0 < m.speed) {
+        if !master.moving.is_some_and(|m| Speed::ZERO < m.speed) {
             return Ok(());
         }
         // slot 0x828 with 1 (the move's order and action) for a unit in state 2, -1 for

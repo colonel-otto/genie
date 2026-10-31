@@ -12,6 +12,7 @@ use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::movement::PathState;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -133,7 +134,7 @@ fn world() -> World {
     let mut g = UnitGroup::new(group_id(1));
     g.owner = 1;
     g.flags = 0;
-    g.motion.maximum_velocity_forward = 0.9;
+    g.motion.maximum_velocity_forward = Speed::new(0.9);
     g.members = [10, 11]
         .map(|id| Member {
             id: object_id(id),
@@ -178,7 +179,7 @@ fn post(x: f32, y: f32) -> Placed {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
@@ -381,7 +382,7 @@ fn a_far_member_turns_and_walks_to_its_slot() {
     let m = mover(&t, 10);
     assert!(0.99 < m.forward.x());
     assert_eq!(m.velocity.unwrap().velocity.y(), 0.8);
-    assert_eq!(m.stats.speed, WALKING);
+    assert_eq!(m.stats.speed, Speed::new(WALKING));
     assert_eq!(t.groups.get(group_id(1)).unwrap().flags & 0x200, 0x200);
     assert_eq!(state(&t, 0), SlotState::Steering);
     assert_eq!(
@@ -420,7 +421,7 @@ fn a_near_member_catches_up_or_takes_the_group_s_speed() {
         t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
         let m = mover(&t, 10);
         assert_eq!(m.velocity.unwrap().velocity.y(), v, "{gap}");
-        assert_eq!(m.stats.speed, shown, "{gap}");
+        assert_eq!(m.stats.speed, Speed::new(shown), "{gap}");
         assert_eq!(
             t.groups.get(group_id(1)).unwrap().flags & 0x200,
             flags,
@@ -448,7 +449,7 @@ fn a_member_about_to_pass_its_slot_stops() {
     assert_eq!(m.animated.speed, 0.0);
     assert_eq!(m.velocity.unwrap().velocity.y(), 0.0);
     // the standing sprite has no factor: the top speed
-    assert_eq!(m.stats.speed, 0.8);
+    assert_eq!(m.stats.speed, Speed::new(0.8));
 }
 
 /// A slot whose time is past: state 1 becomes 2 and the member stops; in state 2 a moving
@@ -516,7 +517,7 @@ fn a_due_slot_takes_its_member() {
     s.time = WorldTime::from_millis(50);
     s.state = SlotState::InPlace;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
-    assert_eq!(mover(&t, 10).stats.speed, 0.8);
+    assert_eq!(mover(&t, 10).stats.speed, Speed::new(0.8));
     assert_eq!(
         unit(&t, 10).ai.as_ref().unwrap().state_position,
         Point::ORIGIN

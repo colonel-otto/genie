@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::movement::Speed;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionType;
@@ -616,7 +617,7 @@ fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, at: Point) {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },

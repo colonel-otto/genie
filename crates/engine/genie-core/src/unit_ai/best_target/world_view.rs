@@ -2,6 +2,7 @@
 //! world ([`Battlefield`]).
 
 use crate::map::Distance;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -51,7 +52,7 @@ pub struct Searcher {
     /// Its least range (slot 0x240).
     pub min_range: Distance,
     /// Its top speed (slot 0x208).
-    pub speed: f32,
+    pub speed: Speed,
     /// The game mode is a scenario's (`FUN_141302540`).
     pub scenario: bool,
     /// Its owner's targeting mode and factor (`player+0x614`, `+0x618`).
@@ -113,7 +114,7 @@ pub struct Thing {
     /// The footprints' gap to the unit (`FUN_14118f680`).
     pub distance: Distance,
     /// Its top speed (slot 0x208).
-    pub speed: f32,
+    pub speed: Speed,
 }
 
 /// What `bestUnitToAttack` asks of the world while its unit AI runs.

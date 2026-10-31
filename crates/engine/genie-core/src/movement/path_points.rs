@@ -9,6 +9,7 @@ use crate::map::spatial::Placed;
 use crate::math::fmath;
 use crate::math::fmath::BVector;
 use crate::math::rng::Well512;
+use crate::movement::Speed;
 use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
@@ -125,7 +126,7 @@ pub struct Turning {
     /// `+0x76c`: the turn radius.
     pub radius: Distance,
     /// `+0x770`: the speed at which the turn radius is its value.
-    pub radius_speed: f32,
+    pub radius_speed: Speed,
     /// `+0x774`: the most the unit turns per second.
     pub rate: f32,
     /// `+0x778`: a revolution's time (slot 0x98, `FUN_1410e39e0`).
@@ -140,7 +141,7 @@ impl Turning {
     /// `0x7f7fffff` at `+0x774` and `+0x77c` (the largest float, then 0 above it).
     pub const PRESET: Self = Self {
         radius: Distance::ZERO,
-        radius_speed: f32::MAX,
+        radius_speed: Speed::MAX,
         rate: f32::MAX,
         revolution: 0.0,
         revolution_rate: f32::MAX,

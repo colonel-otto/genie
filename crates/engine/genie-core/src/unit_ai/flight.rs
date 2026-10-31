@@ -5,6 +5,7 @@ use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::movement::Speed;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -108,7 +109,7 @@ impl UnitAi {
             // The class whose attackers make a computer's unit warn its group (`FUN_140c5e900`: 22).
             class_22 |= u.class == class::WARSHIP;
         }
-        if computer && class_22 && 0.0 < at.speed {
+        if computer && class_22 && Speed::ZERO < at.speed {
             return Err(GenieError::unsupported(
                 "a computer's unit running from class 22 (its group's runs)",
             ));
@@ -118,7 +119,7 @@ impl UnitAi {
                 "a computer's transport ship running away",
             ));
         }
-        let reach = at.speed * RUN_REACH;
+        let reach = (at.speed * RUN_REACH).get();
         let mut d = crate::math::fmath::sqrt(vy * vy + vx * vx);
         if d < RUN_EPSILON {
             let r = ai.rand15() as i32 as f32;

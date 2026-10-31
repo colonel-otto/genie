@@ -13,6 +13,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
+use crate::movement::Speed;
 use crate::movement::move_to::{MoveToReads, TargetMoved};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::objects::ObjectId;
@@ -235,11 +236,11 @@ impl Attack {
         posted: &mut Vec<(crate::unit_ai::NotifyKind, [i32; 3])>,
         reads: &MoveToReads<'_>,
     ) -> Result<Begun, GenieError> {
-        let movable = e.speed != 0.0 && e.can_move;
+        let movable = e.speed != Speed::ZERO && e.can_move;
         let mut failed_first = false;
         let mut ready_end = false;
         if 0 < target_owner && !visible {
-            if e.stance == UnitStance::AGGRESSIVE && 0.0 < e.speed && e.can_move {
+            if e.stance == UnitStance::AGGRESSIVE && Speed::ZERO < e.speed && e.can_move {
                 self.state = AttackState::GotoSeen;
                 self.range = e.range;
                 self.walk_to_seen(reads)?;
@@ -383,7 +384,7 @@ pub fn arms_looking(
 /// its target (placed at `them`).
 pub fn engagement(
     ai: Option<&crate::unit_ai::UnitAi>,
-    speed: f32,
+    speed: Speed,
     master: &crate::objects::masters::Master,
     me: &crate::map::spatial::Placed,
     them: &crate::map::spatial::Placed,

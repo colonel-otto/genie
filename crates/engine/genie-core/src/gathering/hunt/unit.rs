@@ -8,6 +8,7 @@ use crate::gathering::hunt::HuntState;
 use crate::map::Distance;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -223,7 +224,7 @@ impl Unit {
                 .get_known(v.id)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
-        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,
@@ -477,7 +478,7 @@ impl Unit {
                 .get_known(found)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
-        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,

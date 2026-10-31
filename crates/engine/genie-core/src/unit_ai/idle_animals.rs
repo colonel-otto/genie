@@ -131,7 +131,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
         let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
-        let reach = at.speed * EVADE_REACH;
+        let reach = (at.speed * EVADE_REACH).get();
         let (dx, dy) = (other.x() - x, other.y() - y);
         let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
         let point = Position::new(x - (dx / d) * reach, y - (dy / d) * reach, z);

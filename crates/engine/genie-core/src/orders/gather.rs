@@ -6,6 +6,7 @@ use crate::gathering::gather::{GatherRetarget, GatherStart};
 use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -451,7 +452,7 @@ impl World {
             .spatial
             .get_known(target)?
             .ok_or(crate::world::TARGET_UNPLACED)?;
-        let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
+        let speed = unit.body.mover().map_or(Speed::ZERO, |m| m.stats.speed);
         crate::combat::attack::engagement(
             unit.ai.as_ref(),
             speed,

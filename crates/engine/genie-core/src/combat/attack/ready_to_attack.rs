@@ -12,6 +12,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Well512;
+use crate::movement::Speed;
 use crate::movement::footprint_gap;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
@@ -104,7 +105,7 @@ impl Attack {
             .stats
             .speed;
         if target_unseen(g.map, f, &t)? {
-            if r.stance == UnitStance::AGGRESSIVE && 0.0 < speed && r.can_move {
+            if r.stance == UnitStance::AGGRESSIVE && Speed::ZERO < speed && r.can_move {
                 self.wait_at_seen(unit, f, r, g.graphics)?;
                 return Ok(Readiness::Waiting);
             }
@@ -122,7 +123,7 @@ impl Attack {
         } else {
             gap
         };
-        let mobile = MOVING <= f.own.kind && 0.0 < speed;
+        let mobile = MOVING <= f.own.kind && Speed::ZERO < speed;
         if !skip_ready && self.ready_at_once(t.position, near, mobile || r.volley_under_way) {
             return self.face(unit, t.position, f, r);
         }
@@ -130,7 +131,7 @@ impl Attack {
             if !self.sub_action {
                 g.post(unit, NotifyKind::TOO_CLOSE, [-1; 3])?;
             }
-            if speed != 0.0 && r.can_move {
+            if speed != Speed::ZERO && r.can_move {
                 return Ok(Readiness::Waiting);
             }
             return self.fail(unit, g.sprite_rng);
@@ -142,7 +143,7 @@ impl Attack {
                 g.post(unit, NotifyKind::OUT_OF_REACH, [0; 3])?;
             }
             if (r.stance == UnitStance::DEFENSIVE && self.off_leash(t.position, r.state_position))
-                || speed == 0.0
+                || speed == Speed::ZERO
                 || !r.can_move
             {
                 return self.fail(unit, g.sprite_rng);

@@ -49,6 +49,8 @@ mod path_state;
 pub use self::path_state::PathState;
 mod request;
 mod request_plans;
+mod speed;
+pub use self::speed::Speed;
 mod step;
 pub use self::step::GroupSpeed;
 mod unit;
@@ -179,16 +181,16 @@ pub struct MoveStats {
     /// master's speed ([`MoveStats::base`]), times the current sprite's speed factor when that is
     /// above 0. A column derived from the two: the sprite's one transform writes it
     /// ([`crate::objects::sprite::new_sprite`]), and so does a change of the base.
-    pub speed: f32,
+    pub speed: Speed,
     /// The master's speed (`+0x740`, the master's slot 0xe8): the top speed's base.
-    pub base: f32,
+    pub base: Speed,
     /// Master `+0x774`: the most the unit turns per second ([`turn_rate`]).
     pub turn_rate: f32,
     /// Master `+0x76c` and `+0x770`: the turn radius is `turn_radius × speed / turn_radius_speed`
     /// (0 and the largest float for every master the game copies, [`turn_rate`]).
     pub turn_radius: f32,
     /// `+0x770`: the speed at which the turn radius is its value.
-    pub turn_radius_speed: f32,
+    pub turn_radius_speed: Speed,
     /// Master `+0x5d8`, `+0x5dc`, `+0x5e0`.
     #[diff(gap = "an own master's radius (a foundation's, a dying annex's) is not modelled")]
     pub radius: Radii,
@@ -222,7 +224,7 @@ impl MoveStats {
     /// [`MoveStats::speed`] for a unit: a new sprite ([`crate::objects::sprite::new_sprite`]), a
     /// standing show ([`Mover::shows`]) and a change of the base call it.
     pub(crate) fn show(&mut self, shown: Option<&crate::objects::sprite::Graphic>) {
-        self.speed = crate::objects::sprite::top_speed(self.base, shown);
+        self.speed = Speed::new(crate::objects::sprite::top_speed(self.base.get(), shown));
     }
 }
 

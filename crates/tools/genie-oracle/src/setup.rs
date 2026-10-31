@@ -387,7 +387,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                 .filter(|m| m.kind == genie_core::objects::masters::master_type::COMBAT)
         };
         turns.spatial.fastest = all()
-            .filter_map(|m| m.moving.as_ref().map(|s| s.speed))
+            .filter_map(|m| m.moving.as_ref().map(|s| s.speed.get()))
             .fold(0.0, f32::max);
         turns.spatial.reach = Distance::new(
             all()

@@ -44,7 +44,7 @@ fn a_master_s_turn_rate_comes_from_its_turn_speed_and_walking_facets() {
 fn a_master_s_turning_values_follow_its_turn_speed_and_walking_sprite() {
     let before = Turning {
         radius: Distance::new(1.0),
-        radius_speed: 2.0,
+        radius_speed: Speed::new(2.0),
         rate: 3.0,
         revolution: 4.0,
         revolution_rate: 5.0,
@@ -70,11 +70,11 @@ fn a_master_s_turning_values_follow_its_turn_speed_and_walking_sprite() {
 fn stats() -> MoveStats {
     MoveStats {
         fly_mode: 0,
-        speed: 0.8,
-        base: 0.8,
+        speed: Speed::new(0.8),
+        base: Speed::new(0.8),
         turn_rate: f32::MAX,
         turn_radius: 0.0,
-        turn_radius_speed: f32::MAX,
+        turn_radius_speed: Speed::MAX,
         radius: Radii::new(0.2, 0.2, 0.5),
         restriction: RestrictionId::named(7),
         restriction_mask: TerrainMask::of_bits(6),
@@ -245,7 +245,7 @@ fn drop_off_world(class: u8, near: &[(i32, Point, f32, ClassId, PlayerId)]) -> S
         obstruction_type: ObstructionType::CIRCLE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
@@ -477,7 +477,7 @@ fn walled(radius: Distance) -> Spatial {
             obstruction_type: ObstructionType::CIRCLE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::CIRCLE,
@@ -793,7 +793,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         obstruction_type: ObstructionType::CIRCLE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
@@ -888,7 +888,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.8,
+            speed: Speed::new(0.8),
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::CIRCLE,
@@ -1037,12 +1037,12 @@ fn the_orientation_speed_and_pause_slots() {
     assert_eq!(m.right, BVector::new(1.0, 0.0, 0.0));
     assert_eq!(m.angle, 1.0);
     m.velocity = None;
-    m.set_speed(0.0);
+    m.set_speed(Speed::ZERO);
     assert_eq!(m.velocity, None);
-    m.set_speed(f32::NAN);
+    m.set_speed(Speed::new(f32::NAN));
     assert!(m.velocity.unwrap().velocity.y().is_nan());
     m.velocity = None;
-    m.set_speed(1.2);
+    m.set_speed(Speed::new(1.2));
     assert_eq!(
         m.velocity,
         Some(Velocity {
@@ -1051,7 +1051,7 @@ fn the_orientation_speed_and_pause_slots() {
         })
     );
     m.velocity.as_mut().unwrap().acceleration = BVector::new(0.0, 0.0, 5.0);
-    m.set_speed(0.0);
+    m.set_speed(Speed::ZERO);
     assert_eq!(m.velocity.unwrap().velocity.y(), 0.0);
     assert_eq!(m.velocity.unwrap().acceleration.y(), 5.0);
     m.paths = Vec::new();
@@ -1097,7 +1097,7 @@ fn the_position_setter_holds_y_by_the_map_s_width() {
     assert_eq!(at.y(), (40.0f32 - 0.2) - EDGE_GAP);
     // a unit that does not move is not held
     let mut still = builder_9177();
-    still.stats.speed = 0.0;
+    still.stats.speed = Speed::ZERO;
     assert_eq!(
         still
             .set_position(Position::new(10.0, 100.0, 0.0), GridSize::new(40, 120))
@@ -1267,7 +1267,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::TYPE_2,
@@ -1530,7 +1530,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::TYPE_2,
@@ -1617,7 +1617,7 @@ pub(crate) fn world() -> Spatial {
         obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
-        speed: 0.0,
+        speed: Speed::ZERO,
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
@@ -1637,7 +1637,7 @@ pub(crate) fn world() -> Spatial {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: None,
         },
@@ -1761,22 +1761,22 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
     };
     assert_eq!(walled(true, None), (Ok(true), 3));
     assert_eq!(
-        walled(true, Some(obstacle(class::WALL, 0.0, 82.0))),
+        walled(true, Some(obstacle(class::WALL, Speed::ZERO, 82.0))),
         (Ok(true), 2)
     );
     assert_eq!(
-        walled(true, Some(obstacle(class::GATE, 0.0, 87.0))),
+        walled(true, Some(obstacle(class::GATE, Speed::ZERO, 87.0))),
         (Ok(false), 0)
     );
     assert_eq!(
-        walled(true, Some(obstacle(class::TOWER, 0.0, 82.0))),
+        walled(true, Some(obstacle(class::TOWER, Speed::ZERO, 82.0))),
         (Ok(true), 2)
     );
-    let still = obstacle(class::BUILDING, 0.0, 82.0);
+    let still = obstacle(class::BUILDING, Speed::ZERO, 82.0);
     assert_eq!(walled(true, Some(still)), (Ok(true), 2));
-    let moving = obstacle(class::BUILDING, 1.0, 82.0);
+    let moving = obstacle(class::BUILDING, Speed::new(1.0), 82.0);
     assert_eq!(walled(true, Some(moving)), (Ok(true), 3));
-    let wall = obstacle(class::WALL, 0.0, 87.0);
+    let wall = obstacle(class::WALL, Speed::ZERO, 87.0);
     assert_eq!(walled(false, Some(wall)), (Ok(true), 3));
 }
 
@@ -2083,7 +2083,7 @@ fn the_first_step_reaches_top_speed_and_moves_along_the_saved_forward_vector() {
 #[test]
 fn the_speed_slot_caps_the_speed_unless_the_unit_s_group_steers_it() {
     let mut m = builder_9177();
-    m.stats.speed = 1.2;
+    m.stats.speed = Speed::new(1.2);
     assert_eq!(m.next_speed(5.0, None), 1.2);
     assert_eq!(m.next_speed(-1.0, None), 0.0);
     assert_eq!(m.next_speed(0.7, None), 0.7);
@@ -2093,7 +2093,7 @@ fn the_speed_slot_caps_the_speed_unless_the_unit_s_group_steers_it() {
     assert_eq!(m.next_speed(-1.0, Some(GroupSpeed::Free)), 0.0);
     assert_eq!(m.next_speed(10.0, Some(GroupSpeed::Free)), 1.2);
     assert!(m.next_speed(f32::NAN, Some(GroupSpeed::Free)).is_nan());
-    let own = Some(GroupSpeed::OwnMove(1.44));
+    let own = Some(GroupSpeed::OwnMove(Speed::new(1.44)));
     assert_eq!(m.paths[0].state, PathState::Walking);
     assert_eq!(m.next_speed(-1.0, own), 1.44);
     m.paths[0].pause_time = Seconds::new(0.028);
@@ -2118,7 +2118,7 @@ fn the_velocity_step_of_a_paused_member_on_its_own_move_stands() {
         Seconds::new(DT),
         GridSize::new(120, 120),
         None,
-        (WorldTime::ZERO, Some(GroupSpeed::OwnMove(1.2))),
+        (WorldTime::ZERO, Some(GroupSpeed::OwnMove(Speed::new(1.2)))),
     );
     assert_eq!(at, Position::new(28.0, 89.0, 0.0));
     assert_eq!(m.velocity.unwrap().velocity.y(), 0.0);
@@ -2152,7 +2152,7 @@ fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
     // the speed control's turning circle around (10.5, 20) grown to the right by 1: a
     // waypoint inside it brakes, one beyond it speeds up
     m.stats.turn_radius = 2.0;
-    m.stats.turn_radius_speed = 1.0;
+    m.stats.turn_radius_speed = Speed::new(1.0);
     m.right = BVector::new(0.0, 0.0, -1.0);
     m.control_speed(BVector::new(10.5, 0.0, 19.2), false);
     assert_eq!(m.velocity.as_ref().unwrap().acceleration.y(), -f32::MAX);
@@ -2281,7 +2281,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
             obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
-            speed: 1.0,
+            speed: Speed::new(1.0),
             unknown: None,
             obstruction: None,
         };
@@ -2374,7 +2374,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
             obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
-            speed: 0.0,
+            speed: Speed::ZERO,
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::TYPE_2,
@@ -2512,7 +2512,7 @@ fn a_path_request_makes_the_top_level_from_the_unit_to_its_goal() {
 #[test]
 fn a_unit_with_no_speed_or_no_path_is_done() {
     let mut m = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
-    m.stats.speed = 0.0;
+    m.stats.speed = Speed::ZERO;
     let me = Me {
         id: object_id(9177),
         group: None,
@@ -3112,14 +3112,14 @@ fn a_mover_that_shows_a_sprite_has_the_top_speed_of_its_factor() {
         flags: 0,
     };
     let mut m = crate::gathering::hunt::tests::walker();
-    m.stats.base = 0.8;
+    m.stats.base = Speed::new(0.8);
     m.shows(Some(&with(1.5)));
-    assert_eq!(m.stats.speed, 0.8 * 1.5);
+    assert_eq!(m.stats.speed, Speed::new(0.8 * 1.5));
     m.shows(Some(&with(0.0)));
-    assert_eq!(m.stats.speed, 0.8);
+    assert_eq!(m.stats.speed, Speed::new(0.8));
     m.shows(Some(&with(f32::NAN)));
-    assert_eq!(m.stats.speed, 0.8);
+    assert_eq!(m.stats.speed, Speed::new(0.8));
     m.shows(Some(&with(2.0)));
     m.shows(None);
-    assert_eq!(m.stats.speed, 0.8);
+    assert_eq!(m.stats.speed, Speed::new(0.8));
 }
