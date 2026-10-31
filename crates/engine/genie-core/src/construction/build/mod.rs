@@ -411,6 +411,8 @@ mod stack_tests {
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
     use crate::unit_ai::UnitAiType;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
     use crate::world::{Player, World};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
@@ -561,10 +563,10 @@ mod stack_tests {
             ..Unit::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 2],
+            vec![Millis::ZERO; 2],
             vec![
                 Player::default(),
                 Player {
@@ -621,7 +623,7 @@ mod stack_tests {
     #[test]
     fn a_castle_s_completion_records_its_owner_s_id_in_its_history() {
         let mut t = world();
-        t.world_time = 912_000;
+        t.world_time = WorldTime::from_millis(912_000);
         t.players[1].history.add_entry(0, 3.0, 0.0);
         for ms in &mut t.masters {
             let castle = building(
@@ -640,7 +642,7 @@ mod stack_tests {
             [crate::players::history::Event {
                 kind: crate::players::history::EventKind::CASTLE_BUILT,
                 time_slice: 1,
-                world_time: 912_000,
+                world_time: WorldTime::from_millis(912_000),
                 data1: 1.0,
                 data2: 0.0,
                 data3: 0.0,
@@ -772,7 +774,7 @@ mod stack_tests {
     fn a_gate_s_stack_gate_takes_the_foundation_s_lock() {
         for locked in [true, false] {
             let mut t = world();
-            t.world_time = 5000;
+            t.world_time = WorldTime::from_millis(5000);
             for ms in &mut t.masters {
                 for id in [621, 109] {
                     let m = ms.get_mut(master_id(id)).unwrap();
@@ -821,7 +823,7 @@ mod stack_tests {
             let last_move = gate.body.mover().map(|m| m.last_move);
             assert_eq!(
                 last_move,
-                Some(if locked { 5001 } else { 5000 }),
+                Some(WorldTime::from_millis(if locked { 5001 } else { 5000 })),
                 "{locked}"
             );
         }

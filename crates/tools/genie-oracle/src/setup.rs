@@ -4,6 +4,8 @@
 use genie_core::map::GridSize;
 use genie_core::map::Tile;
 use genie_core::objects::ListIndex;
+use genie_core::world::Millis;
+use genie_core::world::WorldTime;
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
@@ -219,10 +221,15 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         .collect();
     let world = &header.world.base_world;
     let mut turns = World::new(
-        world.world_time,
+        WorldTime::from_millis(world.world_time),
         world.current_frame_random_seed,
         PlayerId::try_from(world.player_turn.max(0) as usize).unwrap_or_default(),
-        world.player_time_delta.clone(),
+        world
+            .player_time_delta
+            .iter()
+            .copied()
+            .map(Millis::new)
+            .collect(),
         players,
     );
     // an id of −1 names none: the save is not one a world takes
@@ -340,7 +347,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     turns.settings = settings(&header.file_header.game_options_read.game_options);
     // the Empire Wars start's pass, once in the game's first update (the world's +0x6c6): the
     // mode 13 or the sub-mode's bit 0
-    turns.start_work_due = turns.settings.empire_wars() && turns.world_time == 0;
+    turns.start_work_due = turns.settings.empire_wars() && turns.world_time == WorldTime::ZERO;
     turns.game_state = u32::from(world.temp_game_state);
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     match groups::unit_groups(world) {
@@ -513,7 +520,7 @@ pub fn history(h: &genie_save::generated::world::History) -> genie_core::players
             .map(|e| genie_core::players::history::Event {
                 kind: genie_core::players::history::EventKind::from(e.temp_event),
                 time_slice: e.temp_time_slice,
-                world_time: e.temp_world_time,
+                world_time: WorldTime::from_millis(e.temp_world_time),
                 data1: e.temp_data1,
                 data2: e.temp_data2,
                 data3: e.temp_data3,

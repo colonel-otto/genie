@@ -11,6 +11,7 @@ use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::TREE;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 use crate::GenieError;
@@ -125,7 +126,7 @@ pub struct Unit {
     pub next_volley: u8,
     /// `mReloadWorldtime` (`+0x920`, slots 0x248 and 0x250): the world time its attack timer
     /// runs out at (`FUN_141089820`), 0 for none; once past, the volley under way is over.
-    pub reload_worldtime: u32,
+    pub reload_worldtime: WorldTime,
     /// The objects inside it (`+0x2f8`), in the order they came in (`FUN_141164af0`); one that
     /// leaves takes the last one's place (`FUN_141166450`).
     /// Not saved as a list: a load lists them by each one's `+0x2f0` in the objects' order.
@@ -133,7 +134,7 @@ pub struct Unit {
     pub garrison: Vec<ObjectId>,
     /// A building's `last_garrison_time` (`+0xbe0`): the world time of its last whole second,
     /// on which its garrison heals ([`Unit::building_seconds`]).
-    pub garrison_time: u32,
+    pub garrison_time: WorldTime,
     /// A building's `relic_count` and `specific_relic_count` (`+0xc20`, `+0xc24`).
     pub relics: [i32; 2],
     /// `damaged_lately_timer` (`+0x30d`, saved): 60 after a hit on a building (`FUN_1411cea90`),
@@ -201,7 +202,7 @@ pub struct Unit {
     pub workers: i32,
     /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
     /// (`FUN_140e5e780`, for a unit with a unit AI); an animal's idle check lowers it to 5000.
-    pub last_human_order: u32,
+    pub last_human_order: WorldTime,
     /// A combat object's town-bell flag and back-to-work records ([`crate::orders::town_bell`]).
     pub town_bell: crate::orders::town_bell::TownBell,
     /// The object is a combat object (types 50 and up): its update keeps its sight mask and its

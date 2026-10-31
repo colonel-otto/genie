@@ -28,6 +28,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
 use crate::unit_ai::NotifyKind;
+use crate::world::Millis;
 use crate::world::Player;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
@@ -456,7 +457,7 @@ fn soldier_mover(speed: f32) -> Mover {
         waiting: 0,
         wait_delays: 0,
         attack_moving: false,
-        last_move: 0,
+        last_move: WorldTime::ZERO,
         moved_at: Position::ORIGIN,
         substitute_count: 0,
         ignore_units: Vec::new(),
@@ -493,7 +494,7 @@ pub(crate) fn reads() -> AttackReads {
         armed: true,
         swing_sprites: SwingSprites::default(),
         computer: false,
-        world_time: 0,
+        world_time: WorldTime::ZERO,
         can_move: true,
         stance: UnitStance::AGGRESSIVE,
         state_position: Point::ORIGIN,
@@ -530,7 +531,13 @@ impl Rig {
     /// `victim` as [`soldier`].
     pub(crate) fn on(map: Spatial, speed: f32, victim: Victim) -> Self {
         let players = (0..3).map(|_| Player::default()).collect();
-        let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 3], players);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            0,
+            PlayerId::new(0),
+            vec![Millis::ZERO; 3],
+            players,
+        );
         t.spatial = map;
         t.players[1].objects.push(Unit {
             id: object_id(1),
@@ -1640,7 +1647,7 @@ fn engaged(gap: f32, speed: f32, can_move: bool, stance: UnitStance) -> Engageme
         can_move,
         stance,
         state_position: Point::new(10.0, 10.0),
-        world_time: 0,
+        world_time: WorldTime::ZERO,
         master: master_id(4),
         target_class: class::CLASS_6,
         same_owner: false,

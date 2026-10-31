@@ -21,6 +21,7 @@ use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is
@@ -270,7 +271,7 @@ impl World {
         for id in ids {
             // FUN_1415417a0 finds a sleeping member too
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.clear_notifies(world_time)?;
+                ai.clear_notifies(world_time.since_start())?;
             }
         }
         let owner = self.groups.held(group)?.owner_player()?;
@@ -604,7 +605,7 @@ fn move_level(
     path: Option<Path>,
     path_flags: u32,
     repath_time: f32,
-    world_time: u32,
+    world_time: WorldTime,
     range: f32,
     target: Option<ObjectId>,
 ) -> PathData {
@@ -646,6 +647,7 @@ mod tests {
     use crate::test_ids::group_id;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
     use crate::world::Player;
 
     /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at
@@ -664,7 +666,13 @@ mod tests {
                 ..Player::default()
             },
         ];
-        let mut t = World::new(50, 0, PlayerId::new(0), vec![0, 0], players);
+        let mut t = World::new(
+            WorldTime::from_millis(50),
+            0,
+            PlayerId::new(0),
+            vec![Millis::ZERO, Millis::ZERO],
+            players,
+        );
         let master = Master {
             id: master_id(4),
             kind: COMBAT,
@@ -850,7 +858,7 @@ mod tests {
             .ai
             .as_ref()
             .unwrap();
-        assert_eq!(ai.last_update_time, 50);
+        assert_eq!(ai.last_update_time, Millis::new(50));
         let mut t = moving_world();
         assert!(
             t.command_move_to(

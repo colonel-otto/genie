@@ -15,7 +15,6 @@ use crate::movement::move_to::{
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
@@ -309,7 +308,7 @@ impl EnterAction {
             // The failed Enter (`set_state(13)`), whose update returns 3.
             EnterState::Done | EnterState::Failed => return Ok(HeadCode::Deletes),
             EnterState::Wait => {
-                self.timer -= seconds(c.dt);
+                self.timer -= c.dt.seconds();
                 if self.timer <= 0.0 {
                     let _ = self.again(c, unit, &t, reads)?;
                 }

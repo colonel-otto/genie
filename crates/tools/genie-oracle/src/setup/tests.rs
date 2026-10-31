@@ -7,6 +7,7 @@ use crate::test_ids::action_type;
 use crate::test_ids::object_id;
 use genie_core::players::PlayerId;
 use genie_core::technology::ResearchState;
+use genie_core::world::WorldTime;
 use genie_save::generated::world::{Action, Object, RgeAction, TechPlayerTree, TribeActionWonder};
 
 /// A wonder whose action is in state `state` with the timer `timer`.
@@ -87,7 +88,7 @@ fn the_slice_takes_the_worlds_and_the_players_fields() {
             turns.next_object_id.get(),
             turns.local_player
         ),
-        (1500, 300, PlayerId::new(1))
+        (WorldTime::from_millis(1500), 300, PlayerId::new(1))
     );
     assert_eq!(turns.recycling.next_id, object_id(-5));
     assert_eq!(turns.teams[..2], [0, 2]);

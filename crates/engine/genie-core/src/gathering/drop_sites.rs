@@ -266,6 +266,7 @@ mod tests {
     use crate::players::PlayerId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::world::WorldTime;
 
     /// The town centre (master 109) and the mill (master 68), the villager's drop sites.
     const SITES: [MasterId; 2] = [MasterId::named(109), MasterId::named(68)];
@@ -371,7 +372,7 @@ mod tests {
         let groups = crate::groups::UnitGroups::default();
         let mut plan = Planning {
             pathing: &mut pathing,
-            now: 0,
+            now: WorldTime::ZERO,
             computer: false,
             object: &mut object,
             construction_rate: 1.0,

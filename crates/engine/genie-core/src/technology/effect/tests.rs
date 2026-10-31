@@ -25,7 +25,9 @@ use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::tech_id;
+use crate::world::Millis;
 use crate::world::Player;
+use crate::world::WorldTime;
 
 /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
 /// `;`): a set and an add keep the charge's share of the maximum, without a maximum a set
@@ -137,10 +139,10 @@ fn an_attack_takes_its_master_s_sprites_but_its_task_s() {
 #[test]
 fn a_population_set_moves_each_storage_entry_to_the_new_value() {
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             attributes: vec![0.0; 40],
             ..Player::default()
@@ -187,10 +189,10 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         u
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![
                 unit(object_id(1), ObjectState::Alive, None),
@@ -331,7 +333,13 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         .into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.masters = vec![Masters::new([Master {
         id: ids::VILLAGER_MALE,
         kind: master_type::COMBAT,
@@ -415,7 +423,13 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
         .into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.masters = vec![Masters::new([
         combat(master_id(4), class::CLASS_6, 60),
         combat(master_id(5), class::CLASS_6, 60),
@@ -457,7 +471,13 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
         objects: vec![tower, archer].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut tower_master = combat(master_id(79), class::TOWER, 1020);
     tower_master.kind = master_type::BUILDING;
     tower_master.reload = 2.0;
@@ -502,7 +522,13 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
         objects: vec![main, annex, foundation].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let building = |id: i16, hit_points, head_unit: i16, annexes| Master {
         id: master_id(id),
         kind: master_type::BUILDING,
@@ -540,10 +566,10 @@ fn a_team_effect_reaches_the_mutual_allies() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0; 4],
+        vec![Millis::ZERO; 4],
         vec![
             player(vec![0, 3, 3, 3]),
             player(vec![3, 0, 0, 3]),
@@ -588,7 +614,13 @@ fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
         attributes: vec![0.0; 40],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut house = combat(ids::HOUSE, class::BUILDING, 550);
     house.storage = vec![
         (Some(attribute::HEADROOM), 5.0, 4),
@@ -623,7 +655,13 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             attributes: vec![0.0; 40],
             ..Player::default()
         };
-        let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            0,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         let stone = Master {
             id: ids::FARM,
             kind: master_type::STATIC,
@@ -772,7 +810,13 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
         objects: vec![shows, moving(2)].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut m = combat(master_id(4), class::CLASS_6, 60);
     (m.max_speed, m.move_sprite, m.run_sprite, m.standing_sprite) = (1.5, -1, -1, -1);
     t.masters = vec![Masters::new([m])];
@@ -803,7 +847,13 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         sleeping: vec![unit_of(2, master_id(4), 30.0)].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut m = combat(master_id(4), class::CLASS_6, 60);
     (m.death_sprite, m.death_spawns) = (7, [Some(master_id(0)), Some(master_id(9))]);
     (m.build_time, m.obstruction_type, m.obstruction_class) =
@@ -910,7 +960,13 @@ fn a_speed_change_reaches_the_units_movement() {
         objects: vec![walker].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut villager = combat(master_id(4), class::VILLAGER, 25);
     villager.max_speed = 0.8;
     villager.moving = Some(stats);
@@ -948,7 +1004,13 @@ fn the_resource_commands_set_add_and_multiply_an_attribute() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.players[0].attributes[69] = 2.0;
     t.do_effect(PlayerId::new(0), &[attribute(1, 78, 0, -1, 0.15)], None)
         .unwrap();
@@ -987,7 +1049,13 @@ fn a_farm_food_change_grows_the_farms_food() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut master = combat(ids::FARM, class::FARM, 480);
     master.kind = master_type::BUILDING;
     t.masters = vec![Masters::new([master])];
@@ -1022,10 +1090,10 @@ fn the_resource_commands_side_effects() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0; 3],
+        vec![Millis::ZERO; 3],
         vec![
             player(vec![0, 3, 3]),
             player(vec![3, 0, 0]),
@@ -1075,7 +1143,13 @@ fn barracks_tech() -> World {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.techs = vec![TechDef {
         required: [-1; 6],
         locations: vec![(12, 30)],
@@ -1215,7 +1289,13 @@ fn a_technology_change_s_location_stacking_and_effect_override() {
 #[test]
 fn an_upgrade_copies_the_new_master_into_the_old() {
     let player = Player::default();
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut militia = combat(master_id(74), class::CLASS_6, 40);
     militia.available = true;
     let mut man_at_arms = combat(master_id(75), class::CLASS_6, 45);
@@ -1256,7 +1336,13 @@ fn spawns_and_cost_entries() {
         objects: vec![centre].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let mut tc = combat(ids::TOWN_CENTRE, ClassId::of_master(80), 2400);
     tc.kind = master_type::BUILDING;
     let mut serjeant = combat(master_id(1658), class::CLASS_6, 60);
@@ -1293,7 +1379,13 @@ fn spawns_and_cost_entries() {
 /// 203 to 206 need the effect's object, which a research has not.
 #[test]
 fn the_object_kinds_without_an_object_do_nothing() {
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![Player::default()]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![Player::default()],
+    );
     t.masters = vec![Masters::new([combat(ids::CASTLE, class::TOWER, 4800)])];
     for kind in 200..=206 {
         t.do_effect(PlayerId::new(0), &[attribute(kind, 82, -1, 8, 770.0)], None)
@@ -1314,7 +1406,13 @@ fn the_object_kinds_without_an_object_do_nothing() {
 /// is disabled; master 0x26d is never enabled in game mode 11.
 #[test]
 fn the_enable_command_sets_available_unless_disabled() {
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![Player::default()]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![Player::default()],
+    );
     let mut locked = combat(master_id(5), class::CLASS_6, 10);
     locked.disabled = true;
     t.masters = vec![Masters::new([
@@ -1359,7 +1457,13 @@ fn a_research_whose_effect_needs_its_building_stops() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let def = |effect| TechDef {
         required: [-1; 6],
         effect_id: 7,
@@ -1402,7 +1506,13 @@ fn an_age_adds_its_event_to_the_history() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.techs = vec![
         TechDef {
             required: [-1; 6],
@@ -1410,7 +1520,7 @@ fn an_age_adds_its_event_to_the_history() {
         };
         104
     ];
-    t.world_time = 612_345;
+    t.world_time = WorldTime::from_millis(612_345);
     t.players[0].history.entries = vec![[3, 0]; 20];
     assert_eq!(
         t.complete_research(PlayerId::new(0), tech_id(100), None),
@@ -1427,7 +1537,7 @@ fn an_age_adds_its_event_to_the_history() {
         [crate::players::history::Event {
             kind: crate::players::history::EventKind::CASTLE_AGE,
             time_slice: 20,
-            world_time: 612_345,
+            world_time: WorldTime::from_millis(612_345),
             ..crate::players::history::Event::default()
         }]
     );
@@ -1456,7 +1566,13 @@ fn a_dependent_technology_done_already_completes_with_its_requirement() {
         techs: vec![TechState::default(), free.clone(), free.clone(), free],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.techs = vec![def(-1, 0), def(0, 1), def(1, 1), def(0, 2)];
     assert_eq!(
         t.complete_research(PlayerId::new(0), tech_id(0), None),
@@ -1485,7 +1601,13 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
             techs: vec![TechState::default(); 5],
             ..Player::default()
         };
-        let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            0,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         t.settings.full_tech_tree = full_tech_tree;
         t.techs = vec![
             def(-1, 0, 0),
@@ -1528,7 +1650,13 @@ fn the_technology_commands_disable_and_adjust_costs() {
         ],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let kind = |k: crate::technology::TechType| TechDef {
         kind: k,
         costs: [
@@ -1598,7 +1726,13 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
         ],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.techs = vec![TechDef::default(); 3];
     let disable = |d: f32| EffectCommand::of_data(b'f', -1, -1, -1, d).unwrap();
     t.do_effect(PlayerId::new(0), &[disable(65538.0)], None)
@@ -1620,7 +1754,13 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
         techs: vec![TechState::default()],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.techs = vec![TechDef {
         costs: [
             Cost {
@@ -1668,7 +1808,13 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         }],
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.techs = vec![TechDef {
         required: [-1; 6],
         ..TechDef::default()
@@ -1718,7 +1864,13 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
         objects: vec![shown(1, 0), shown(2, 1), exploring].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.masters = vec![Masters::new([Master {
         standing_sprite: 300,
         ..combat(master_id(4), class::CLASS_6, 60)
@@ -1767,7 +1919,13 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         objects: vec![house, soldier].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     t.masters = vec![Masters::new([
         combat(master_id(4), class::CLASS_6, 60),
         Master {

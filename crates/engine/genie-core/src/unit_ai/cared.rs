@@ -12,6 +12,7 @@ use crate::unit_ai::{
     BOAR_AI, FISHING_AI, HUNTED_SIGHT_GROWTH, LION_AI, LIVESTOCK_AI, PREDATOR_AI, PRIEST_AI,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
 };
+use crate::world::Millis;
 
 /// The hunted animal evades by its speed times this (`FUN_140c1eea0`, `DAT_142eb1c98`), and a
 /// point at the map's far edge goes this far in (`FUN_140c4d140`, `DAT_14330eb8c`).
@@ -252,8 +253,9 @@ pub(crate) fn search_radius(los: f32, search_radius: f32) -> f32 {
 }
 
 /// `UpdateAdjustedIdleTimeout` (`0x140c41e00`): `r % (base / 2) + 3 * base / 4`, one AI draw.
-pub(super) fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
-    ai.rand15() % (base >> 1) + ((base * 3) >> 2)
+pub(super) fn adjusted_idle_timeout(base: Millis, ai: &mut Well512) -> Millis {
+    let base = base.get();
+    Millis::new(ai.rand15() % (base >> 1) + ((base * 3) >> 2))
 }
 
 /// The classes a transport ship cares about (`+0x190`, `TribeTransportShipUnitAIModule`'s

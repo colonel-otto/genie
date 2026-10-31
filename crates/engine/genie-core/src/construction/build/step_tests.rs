@@ -15,6 +15,8 @@ use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
 use crate::test_ids::carrying;
 use crate::unit_ai::NotifyKind;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 use super::tests::{MOVING_TASK, TASK, started};
 use super::*;
@@ -176,10 +178,10 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -350,7 +352,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     );
     assert_eq!(annex_of(&t).map(|k| k.builders), Some(0));
     let _ = code(&mut t, 30);
-    let rate = 1.0f32 * 1.0 * crate::objects::lifecycle::seconds(30);
+    let rate = 1.0f32 * 1.0 * Millis::new(30).seconds();
     let n = 2.0f32;
     assert_eq!(
         annex_of(&t).map(|k| k.progress),

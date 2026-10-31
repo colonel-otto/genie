@@ -5,16 +5,16 @@ use crate::GenieError;
 use crate::commands::Command;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
 use crate::players::PlayerId;
+use crate::world::Millis;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
 impl World {
     /// One world update of `dt` game milliseconds without commands.
-    pub fn tick(&mut self, dt: u32) {
+    pub fn tick(&mut self, dt: Millis) {
         self.tick_with(dt, &[]);
     }
 
@@ -24,10 +24,10 @@ impl World {
     /// For a check of the commands against the game's state there (the tick oracle's
     /// `snapshot_at` at `0x141552990`); the schedule's first step
     /// ([`crate::world::schedule::WorldStep::Commands`]).
-    pub fn command_phase(&mut self, dt: u32, commands: &[Command]) {
+    pub fn command_phase(&mut self, dt: Millis, commands: &[Command]) {
         self.ticks += 1;
-        self.world_time = self.world_time.wrapping_add(dt);
-        self.dt_seconds = seconds(dt);
+        self.world_time = self.world_time.after(dt);
+        self.dt_seconds = dt.seconds();
         self.dt = dt;
         self.streams.seed_all(self.frame_seed);
         self.sync_moving();
@@ -125,7 +125,7 @@ impl World {
     pub(super) fn update_objects(
         &mut self,
         p: PlayerId,
-        (dt, turn): (u32, Option<u32>),
+        (dt, turn): (Millis, Option<Millis>),
     ) -> Result<(), GenieError> {
         // the loop's count, which goes on past each object but one that leaves
         let mut i = ListIndex::FIRST;

@@ -20,6 +20,7 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitStance;
+use crate::world::WorldTime;
 use crate::world::step::Step;
 
 impl Attack {
@@ -383,7 +384,7 @@ pub fn engagement(
     master: &crate::objects::masters::Master,
     me: &crate::map::spatial::Placed,
     them: &crate::map::spatial::Placed,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<Engagement, GenieError> {
     if matches!(master.charge_type, 6 | 7) {
         return Err(GenieError::unsupported(

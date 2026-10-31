@@ -30,7 +30,9 @@ use crate::players::tracker::ListKey;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::TaskTarget;
+use crate::world::Millis;
 use crate::world::World;
+use crate::world::WorldTime;
 
 mod actions;
 mod attack;
@@ -468,9 +470,9 @@ const fn clear_powerups(unit: &mut Unit) {
 /// order's `i`th entry: 750 ms and the world's dt (`world+0x7c`) more for each six before it
 /// (`(i / 6) as f64 * dt as f64`, `CVTTSD2SI` to 64 bits, the low 32 plus 750; the product
 /// stays below 2^42, so the conversion never sees a value it cannot hold).
-fn patrol_timeout(i: usize, dt: u32) -> u32 {
-    let stagger = ((i / 6) as f64 * f64::from(dt)) as i64;
-    (stagger as u32).wrapping_add(750)
+fn patrol_timeout(i: usize, dt: Millis) -> Millis {
+    let stagger = ((i / 6) as f64 * f64::from(dt.get())) as i64;
+    Millis::new((stagger as u32).wrapping_add(750))
 }
 
 /// What `FUN_14161b970` is told besides its units, its waypoints and its target (none here):
@@ -546,7 +548,7 @@ pub(crate) fn set_stance(
 /// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
 /// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
 /// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
-pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), GenieError> {
+pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: WorldTime) -> Result<(), GenieError> {
     let gate = unit.gate.as_mut().ok_or(GenieError::unsupported(
         "a GATE of a building without its gate state",
     ))?;
@@ -557,7 +559,7 @@ pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), G
             .ok_or(GenieError::unsupported(
                 "a locked gate without its moving part",
             ))?
-            .last_move = now.wrapping_add(1);
+            .last_move = now.after(Millis::new(1));
     }
     Ok(())
 }

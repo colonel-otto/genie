@@ -4,6 +4,8 @@ use crate::map::Tile;
 use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::objects::{ObjectId, ObjectKey};
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 use crate::map::Point;
 use crate::map::Position;
@@ -245,7 +247,7 @@ impl Mover {
         goal: Position,
         range: f32,
         target: Option<ObjectId>,
-        now: u32,
+        now: WorldTime,
     ) {
         self.request_path_asked(from, goal, range, target, now, PathAsk::default());
     }
@@ -260,7 +262,7 @@ impl Mover {
         &mut self,
         points: Vec<BVector>,
         length: f32,
-        now: u32,
+        now: WorldTime,
         planned: bool,
     ) {
         let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
@@ -304,7 +306,7 @@ impl Mover {
         goal: Position,
         range: f32,
         target: Option<ObjectId>,
-        now: u32,
+        now: WorldTime,
         ask: PathAsk,
     ) {
         let start = from.vector();
@@ -424,7 +426,7 @@ impl Mover {
         (id, other): (ObjectId, &Placed),
         projected: BVector,
         world: &Spatial,
-        now: u32,
+        now: WorldTime,
     ) -> bool {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
@@ -432,7 +434,7 @@ impl Mover {
         let o = other.position.vector();
         let now_overlap = overlap(self.position().vector(), ground, o, other.radius);
         let next_overlap = overlap(projected, ground, o, other.radius);
-        let last_move = world.gait(id).map_or(0, |g| g.last_move);
+        let last_move = world.gait(id).map_or(WorldTime::ZERO, |g| g.last_move);
         let mut pushed = false;
         if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
             if top.created == now
@@ -479,7 +481,7 @@ impl Mover {
         hits: &[RecordId],
         projected: BVector,
         dt: f32,
-        (now, computer): (u32, bool),
+        (now, computer): (WorldTime, bool),
     ) -> Result<Avoided, GenieError> {
         let level = &self.paths[0];
         let player = world
@@ -532,7 +534,8 @@ impl Mover {
             });
         }
         let mut pauses = Vec::new();
-        if level.waypoint < 2 || (level.waypoint < 3 && level.created.wrapping_add(500) < now) {
+        if level.waypoint < 2 || (level.waypoint < 3 && level.created.after(Millis::new(500)) < now)
+        {
             for &hit in hits {
                 let Some((id, other)) = met(hit)? else {
                     continue;

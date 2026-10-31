@@ -11,9 +11,9 @@ use crate::gathering::hunt::{
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
-use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::world::WorldTime;
 use crate::world::step::Step;
 
 impl HuntAction {
@@ -53,7 +53,7 @@ impl HuntAction {
         &self,
         unit: &mut Unit,
         to: Position,
-        now: u32,
+        now: WorldTime,
     ) -> Result<(), GenieError> {
         let at = unit.body.position();
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
@@ -89,7 +89,7 @@ impl HuntAction {
             self.start_attack(c, unit, &herd)?;
             return Ok(HuntNext::Stay);
         }
-        self.timer += seconds(c.dt);
+        self.timer += c.dt.seconds();
         if self.timer < 0.0 {
             return Ok(HuntNext::Stay);
         }

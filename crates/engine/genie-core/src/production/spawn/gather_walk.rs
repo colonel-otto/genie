@@ -84,7 +84,7 @@ impl World {
             if notified {
                 ai.orders.clear();
             }
-            ai.clear_notifies(world_time)?;
+            ai.clear_notifies(world_time.since_start())?;
         }
         if villager {
             unit.town_bell.flag = false;

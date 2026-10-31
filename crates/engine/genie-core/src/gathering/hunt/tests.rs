@@ -22,6 +22,7 @@ use crate::test_ids::carrying;
 use crate::test_ids::class_of;
 use crate::test_ids::object_id;
 use crate::unit_ai::UnitStance;
+use crate::world::WorldTime;
 
 use crate::combat::attack::tests::Rig;
 use crate::movement::{Me, MoveStats, Velocity};
@@ -252,7 +253,7 @@ pub(crate) fn walker() -> Mover {
         waiting: 1,
         wait_delays: 0,
         attack_moving: false,
-        last_move: 0,
+        last_move: WorldTime::ZERO,
         moved_at: Position::ORIGIN,
         substitute_count: 0,
         ignore_units: Vec::new(),
@@ -294,7 +295,7 @@ fn engagement() -> Engagement {
         can_move: true,
         stance: UnitStance::AGGRESSIVE,
         state_position: Point::ORIGIN,
-        world_time: 0,
+        world_time: WorldTime::ZERO,
         master: ids::VILLAGER_MALE,
         target_class: class::TREE,
         same_owner: false,

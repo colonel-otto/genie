@@ -10,6 +10,7 @@ use crate::test_ids::object_id;
 use crate::{Decoder, Dumps, Error, TickReport, listed};
 use genie_core::GenieError;
 use genie_core::objects::ListIndex;
+use genie_core::world::WorldTime;
 use genie_core::world::{GameState, World};
 use genie_save::Header;
 
@@ -323,14 +324,17 @@ fn a_frames_command_phase_moves_the_time_on() {
     let mut turns = slice(&save, None);
     let mut decoder = Decoder::default();
     frame_commands(&mut turns, &mut decoder, None);
-    assert_eq!((turns.ticks, turns.world_time), (0, 0));
+    assert_eq!((turns.ticks, turns.world_time), (0, WorldTime::ZERO));
     let frame = Frame {
         dt: 40,
         checkpoint: None,
         commands: Vec::new(),
     };
     frame_commands(&mut turns, &mut decoder, Some(&frame));
-    assert_eq!((turns.ticks, turns.world_time), (1, 40));
+    assert_eq!(
+        (turns.ticks, turns.world_time),
+        (1, WorldTime::from_millis(40))
+    );
 }
 
 /// Bytes that are no recording are the parse's error, before any run.
@@ -365,7 +369,10 @@ fn a_run_from_a_save_starts_after_its_update() {
     let turns = crate::run_from_save(&save, &rec, 0, 2, None, Dumps::default()).unwrap();
     assert_eq!(turns.ticks, 3);
     let phase = crate::command_phase_from_save(&save, &rec, 1, None, Dumps::default()).unwrap();
-    assert_eq!((phase.ticks, phase.world_time), (3, 50));
+    assert_eq!(
+        (phase.ticks, phase.world_time),
+        (3, WorldTime::from_millis(50))
+    );
     let groups = crate::saved_groups(&save, Some("group_commands 3\n")).unwrap();
     assert_eq!(groups.commands, 3);
     assert!(crate::spatial_from_save(&save).is_ok());

@@ -13,6 +13,8 @@ use genie_core::objects::masters::MasterId;
 use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::best_target::AttackCategory;
 use genie_core::unit_ai::{ActionKind, OrderKind};
+use genie_core::world::Millis;
+use genie_core::world::WorldTime;
 use genie_save::generated::world::{
     PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
 };
@@ -127,14 +129,14 @@ pub(super) fn unit_ai(
         last_action: ActionKind::of_field(ai.last_action_value)?,
         last_target: ObjectId::of_field(ai.last_target_value),
         last_target_class: ClassId::of_param(ai.last_target_type_value)?,
-        idle_timer: ai.idle_timer_value,
-        adjusted_idle_timeout: ai.adjusted_idle_timeout_value,
-        idle_timeout: ai.idle_timeout_value,
-        secondary_timer: ai.secondary_timer_value,
-        look_around_timer: ai.look_around_timer_value,
-        look_around_timeout: ai.look_around_timeout_value,
-        last_retarget_time: ai.last_retarget_time,
-        retarget_timer: ai.randomized_retarget_timer,
+        idle_timer: Millis::new(ai.idle_timer_value),
+        adjusted_idle_timeout: Millis::new(ai.adjusted_idle_timeout_value),
+        idle_timeout: Millis::new(ai.idle_timeout_value),
+        secondary_timer: Millis::new(ai.secondary_timer_value),
+        look_around_timer: Millis::new(ai.look_around_timer_value),
+        look_around_timeout: Millis::new(ai.look_around_timeout_value),
+        last_retarget_time: WorldTime::from_millis(ai.last_retarget_time),
+        retarget_timer: Millis::new(ai.randomized_retarget_timer),
         stance: genie_core::unit_ai::UnitStance::of_byte(ai.state_value),
         formation_type: genie_core::groups::FormationKind::of_byte(ai.formation_type),
         state_position: Point::new(ai.state_position_xvalue, ai.state_position_yvalue),
@@ -146,13 +148,18 @@ pub(super) fn unit_ai(
         stop_after_kill: ai.stop_after_target_killed_value != 0,
         home: home(combat),
         hunted: None,
-        last_update_time: ai.last_update_time_value,
+        last_update_time: Millis::new(ai.last_update_time_value),
         attackers: genie_core::unit_ai::Attackers::of_saved(&ai.temp_int),
         order_history: order_history(ai)?,
         retries: ai
             .retarget_entries
             .iter()
-            .map(|e| Ok((ObjectId::try_from(e.target_id)?, e.timeout)))
+            .map(|e| {
+                Ok((
+                    ObjectId::try_from(e.target_id)?,
+                    WorldTime::from_millis(e.timeout),
+                ))
+            })
             .collect::<Result<_, GenieError>>()?,
         best_this_update: ObjectId::of_field(ai.best_unit_to_attack_this_update),
         orders: queue(&ai.temp_order, own, players)?,
@@ -211,7 +218,7 @@ fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderReco
             Ok(genie_core::unit_ai::OrderRecord {
                 order: OrderKind::of_field(e.new_oh_order)?,
                 action: ActionKind::of_field(e.new_oh_action)?,
-                time: e.new_oh_time,
+                time: WorldTime::from_millis(e.new_oh_time),
                 // the save's 12 bytes are the game's vector, x, height, y
                 position: GameVector::from_xhy(vec3(&e.new_oh_position)),
                 target: ObjectId::of_field(e.new_oh_target_id),

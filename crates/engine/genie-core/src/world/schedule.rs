@@ -1,12 +1,12 @@
 //! The world update as a declared schedule (FD-045-D13): its steps in the game's order, each
 //! with the game routine it ports, and the update that runs them with an observer.
 
+use crate::world::Millis;
 use std::fmt;
 
 use crate::GenieError;
 use crate::commands::Command;
 use crate::math::rng::Stream;
-use crate::objects::lifecycle::seconds;
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -173,7 +173,7 @@ impl fmt::Display for UpdateStep {
 /// What an update's steps hand on to its later steps.
 struct UpdateRun<'a> {
     /// The update's game milliseconds.
-    dt: u32,
+    dt: Millis,
     /// The commands recorded in the update.
     commands: &'a [Command],
     /// Which players' gates are open (`BaseWorld::update`'s flags), from `OpenGates` to
@@ -192,7 +192,7 @@ const NO_CLOCK: GenieError = GenieError::unreachable("a player without a time sl
 impl World {
     /// One world update of `dt` game milliseconds, with the commands recorded in it: the
     /// schedule's steps in turn ([`World::tick_observed`]).
-    pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
+    pub fn tick_with(&mut self, dt: Millis, commands: &[Command]) {
         self.tick_observed(dt, commands, &mut |_, _| {});
     }
 
@@ -202,7 +202,7 @@ impl World {
     /// world as the step left it. A step's error stops its player, a world step's every player.
     pub fn tick_observed(
         &mut self,
-        dt: u32,
+        dt: Millis,
         commands: &[Command],
         observe: &mut dyn FnMut(&Self, UpdateStep),
     ) {
@@ -210,7 +210,7 @@ impl World {
             target: crate::trace::UPDATE,
             "update",
             tick = self.ticks + 1,
-            world_time = self.world_time.wrapping_add(dt)
+            world_time = self.world_time.after(dt).millis()
         )
         .entered();
         let mut run = UpdateRun {
@@ -250,7 +250,7 @@ impl World {
     /// # Errors
     ///
     /// A player without a slot.
-    fn clock_mut(&mut self, p: PlayerId) -> Result<&mut u32, GenieError> {
+    fn clock_mut(&mut self, p: PlayerId) -> Result<&mut Millis, GenieError> {
         self.player_time
             .get_mut(p.index())
             .ok_or_else(|| NO_CLOCK.with("player", p))
@@ -285,7 +285,7 @@ impl World {
                 run.start_work = std::mem::take(&mut self.start_work_due);
             }
             WorldStep::Draw => {
-                self.spatial.grow_unknown(seconds(run.dt));
+                self.spatial.grow_unknown(run.dt.seconds());
                 run.seed = self.streams.get(Stream::World).rand15();
             }
             // every player's ghosts (FUN_141166550 on +0x40), then every player's watched list
@@ -307,7 +307,7 @@ impl World {
             }
             WorldStep::Reseed => self.streams.seed_all(run.seed),
             WorldStep::Turn => {
-                *self.clock_mut(self.player_turn)? = 0;
+                *self.clock_mut(self.player_turn)? = Millis::ZERO;
                 self.player_turn =
                     PlayerId::try_from((self.player_turn.index() + 1) % self.players.len())?;
             }
@@ -378,7 +378,9 @@ impl World {
 #[cfg(test)]
 mod tests {
     use crate::players::PlayerId;
+    use crate::world::Millis;
     use crate::world::World;
+    use crate::world::WorldTime;
     use crate::world::player::Player;
     use crate::world::schedule::{
         AFTER_PLAYERS, BEFORE_PLAYERS, EACH_PLAYER, PlayerStep, UpdateStep, WorldStep,
@@ -387,10 +389,10 @@ mod tests {
     /// A world of `n` players without objects, its turn at player 1.
     fn bare(n: usize) -> World {
         World::new(
-            0,
+            WorldTime::ZERO,
             29910,
             PlayerId::new(1),
-            vec![0; n],
+            vec![Millis::ZERO; n],
             vec![Player::default(); n],
         )
     }
@@ -452,7 +454,7 @@ mod tests {
     fn the_update_runs_each_player_s_steps_between_the_world_s() {
         let mut w = bare(3);
         let mut seen = Vec::new();
-        w.tick_observed(10, &[], &mut |_, step| seen.push(step));
+        w.tick_observed(Millis::new(10), &[], &mut |_, step| seen.push(step));
         let mut expected: Vec<UpdateStep> = BEFORE_PLAYERS.map(UpdateStep::World).to_vec();
         for p in 0..3 {
             expected.extend(
@@ -471,24 +473,25 @@ mod tests {
     fn an_observer_sees_the_world_as_each_step_left_it() {
         let mut w = bare(3);
         let (mut clocks, mut turns) = (Vec::new(), Vec::new());
-        w.tick_observed(10, &[], &mut |w, step| match step {
+        w.tick_observed(Millis::new(10), &[], &mut |w, step| match step {
             UpdateStep::Player(PlayerStep::Clock, _) => clocks.push(w.player_time.clone()),
             UpdateStep::World(WorldStep::Turn) => {
                 turns.push((w.player_turn, w.player_time.clone()));
             }
             _ => {}
         });
-        assert_eq!(clocks, [[10, 0, 0], [10, 10, 0], [10, 10, 10]]);
+        let ms = |v: [u32; 3]| v.map(Millis::new).to_vec();
+        assert_eq!(clocks, [ms([10, 0, 0]), ms([10, 10, 0]), ms([10, 10, 10])]);
         // player 1's turn ends: its time starts over and the turn passes to player 2
-        assert_eq!(turns, [(PlayerId::new(2), vec![10, 0, 10])]);
+        assert_eq!(turns, [(PlayerId::new(2), ms([10, 0, 10]))]);
     }
 
     /// An observed update leaves the world as the update without an observer does.
     #[test]
     fn an_observed_update_is_the_update() {
         let (mut a, mut b) = (bare(3), bare(3));
-        a.tick(10);
-        b.tick_observed(10, &[], &mut |_, _| {});
+        a.tick(Millis::new(10));
+        b.tick_observed(Millis::new(10), &[], &mut |_, _| {});
         assert_eq!(a, b);
     }
 

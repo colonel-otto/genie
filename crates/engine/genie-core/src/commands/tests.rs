@@ -18,6 +18,8 @@ use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::test_ids::unit_list;
 use crate::unit_ai::UnitStance;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// A GAME command of `issuer`'s for player 0, its operands 0.
 fn game_of(issuer: u8) -> GameCommand {
@@ -254,7 +256,13 @@ fn a_patrol_reads_one_to_ten_waypoints() {
 #[test]
 fn a_trade_of_another_commodity_does_nothing() {
     let player = crate::world::Player::default();
-    let mut w = crate::world::World::new(0, 1, PlayerId::new(1), vec![0; 2], vec![player; 2]);
+    let mut w = crate::world::World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(1),
+        vec![Millis::ZERO; 2],
+        vec![player; 2],
+    );
     let before = w.clone();
     for attribute in [3, 0x0103] {
         TradeCommand {

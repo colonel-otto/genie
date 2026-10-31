@@ -40,6 +40,7 @@ use crate::objects::masters::ClassMask;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids;
 use crate::players::attribute::AttributeId;
+use crate::world::WorldTime;
 
 mod counts;
 mod income;
@@ -59,7 +60,7 @@ const MINUTE: f32 = crate::math::image::world_player::MINUTE;
 /// The livestock food over which a mill's yield grows by one e-fold (`DAT_142eb0f54`).
 const LIVESTOCK_SCALE: f32 = crate::math::image::world_player::LIVESTOCK_SCALE;
 /// Until this world time (ms) the scout map takes only the explored tiles the player sees.
-const EARLY_SCOUTING_MS: u32 = 5000;
+const EARLY_SCOUTING_MS: WorldTime = WorldTime::from_millis(5000);
 
 /// The town centres' masters (`FUN_141658970`'s and `FUN_141658a30`'s keys 0x6d and 0x1bc).
 const TOWN_CENTRES: [MasterId; 2] = [ids::TOWN_CENTRE, ids::TOWN_CENTRE_444];

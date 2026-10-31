@@ -8,6 +8,7 @@ use genie_core::GenieError;
 use genie_core::map::{Position, Radii};
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
+use genie_core::world::WorldTime;
 use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
 };
@@ -127,7 +128,9 @@ pub(super) fn path_level(
         pause_time: f32::from_bits(d.pause_time),
         flags: d.flags_m_bits,
         length: path.map_or(0.0, |p| p.path_length_value),
-        created: path.map_or(0, |p| p.creation_time_value),
+        created: path.map_or(WorldTime::ZERO, |p| {
+            WorldTime::from_millis(p.creation_time_value)
+        }),
         continue_counter: d.continue_counter,
         repath_time: d.repath_time,
         ignore: path.map_or_else(
@@ -282,7 +285,7 @@ pub(super) fn mover(
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,
         attack_moving: m.attack_moving != 0,
-        last_move: m.last_move_time_value,
+        last_move: WorldTime::from_millis(m.last_move_time_value),
         // the save's x, height, y
         moved_at: {
             let f = |i: usize| {

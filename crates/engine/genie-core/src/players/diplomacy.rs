@@ -398,7 +398,9 @@ const NO_POINT: f32 = crate::math::image::diplomacy::NO_POINT;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// Gaia and three players, all enemies, with the walk's and the queries' copies.
     fn world() -> World {
@@ -409,10 +411,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 4],
+            vec![Millis::ZERO; 4],
             (0..4).map(player).collect(),
         );
         t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
@@ -524,10 +526,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 9],
+            vec![Millis::ZERO; 9],
             (0..9).map(|_| player()).collect(),
         );
         // pairs (1, 2), (3, 4), (5, 6), (7, 8), each allied both ways

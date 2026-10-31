@@ -22,13 +22,14 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
 use crate::players::PlayerId;
+use crate::world::Millis;
 use crate::world::World;
 
 /// The retarget timer of a unit sent at a target is the milliseconds it needs to get there at
 /// its speed, drawn around (the immediate `2000`, as a 32-bit product).
 const TRAVEL_MS: i32 = 2000;
 /// The span of a unit that does not move ([`Travel::Any`]): the immediate `1000`.
-const STANDING_SPAN: u32 = 1000;
+const STANDING_SPAN: Millis = Millis::new(1000);
 /// A combat unit of this type (`'F'`) gets the charge's speed.
 const CHARGER: MasterKind = master_type::COMBAT;
 
@@ -136,7 +137,7 @@ impl World {
             Travel::Any if speed == 0.0 => STANDING_SPAN,
             _ => {
                 let gap = self.footprint_gap(unit, part)?;
-                (cvttss2si_64(gap / speed) as i32).wrapping_mul(TRAVEL_MS) as u32
+                Millis::new((cvttss2si_64(gap / speed) as i32).wrapping_mul(TRAVEL_MS) as u32)
             }
         };
         let rng = self.streams.get(Stream::Ai);

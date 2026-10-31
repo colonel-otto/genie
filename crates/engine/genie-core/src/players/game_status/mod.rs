@@ -16,6 +16,7 @@ use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterId;
 #[cfg(test)]
 use crate::world::World;
+use crate::world::WorldTime;
 
 /// The player still plays.
 pub const PLAYING: u8 = 0;
@@ -28,7 +29,7 @@ pub const LOST: u8 = 2;
 const BATTLE_ROYALE: i32 = 12;
 /// A defeated player's objects stop once the game is this old, in milliseconds (`FUN_141639860`;
 /// in a recording's playback the session check that would stop them earlier passes).
-const STOP_AFTER_MS: u32 = 60_000;
+const STOP_AFTER_MS: WorldTime = WorldTime::from_millis(60_000);
 /// The defeat's event weighs the players below this id (`FUN_141639860`'s `CMP R14D, 0x19`).
 const DEFEAT_IDS: usize = 25;
 /// The first of the attributes a defeat's event reads (300 + a player's id).

@@ -21,6 +21,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::NotifyKind;
+use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
 
 use crate::world::World;
@@ -451,7 +452,7 @@ pub(crate) fn change_hands(
     (old, new): (usize, PlayerId),
     masters: &[Masters],
     spatial: &mut Spatial,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<bool, GenieError> {
     spatial.records_owner(u.id, new)?;
     let Some(to) = player_master(masters, new, u.life.master_id) else {
@@ -488,7 +489,7 @@ pub(crate) fn change_hands(
         a.gaia = new == PlayerId::GAIA;
     }
     if let Some(ai) = u.ai.as_mut() {
-        ai.clear_notifies(world_time)?;
+        ai.clear_notifies(world_time.since_start())?;
     }
     u.post_own(NotifyKind::OWNER_CHANGED, [new.index() as i32, 0, 0])?;
     Ok(true)

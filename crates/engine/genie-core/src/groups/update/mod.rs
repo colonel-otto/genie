@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::groups::UnitGroup;
 use crate::objects::masters::ActionType;
+use crate::world::Millis;
 
 mod attack;
 mod awake;
@@ -48,7 +49,7 @@ const CLOSE: f32 = crate::math::image::group::CLOSE;
 /// many (`DAT_143f15860`: `0x8b < n` ends the list).
 const DIFFERENTIATORS: usize = 0x8c;
 /// The idle timer past which an idle group draws it anew (the immediate `0xbb8`).
-pub const IDLE_LIMIT: u32 = 3000;
+pub const IDLE_LIMIT: Millis = Millis::new(3000);
 /// A trade cart's standing and walking sprites are its trade task's while it carries goods
 /// (`FUN_14106a940`: its carried attributes, `+0x7a0`, which the slice does not hold).
 const TRADE_CART_SPRITES: GenieError =

@@ -7,6 +7,8 @@ use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::objects::layers::Body;
 use crate::objects::sprite::{ActiveSprite, Graphic};
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// The sprites a swing of a unit (its terrain look `look`, its master `master`) takes before its
 /// Attack's own ([`SwingSprites`]): its look's attack sprite while it shows its look, its
@@ -46,9 +48,9 @@ pub struct SwingSprites {
 
 /// `FUN_141089820`: the unit's attack timer becomes `t` and its reload world time the world's
 /// time `now` plus `t` in whole milliseconds (slot 0x248).
-pub(super) fn set_attack_timer(unit: &mut crate::objects::unit::Unit, now: u32, t: f32) {
+pub(super) fn set_attack_timer(unit: &mut crate::objects::unit::Unit, now: WorldTime, t: f32) {
     unit.attack_timer = t;
-    unit.reload_worldtime = now.wrapping_add((t * RELOAD_MS) as i64 as u32);
+    unit.reload_worldtime = now.after(Millis::new((t * RELOAD_MS) as i64 as u32));
 }
 
 /// `FUN_14120c0a0`'s test of `master`: it has a volley missile or a charge projectile its player
@@ -101,7 +103,7 @@ pub(crate) fn face_target(
     mover: &mut Mover,
     at: Position,
     to: Position,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<bool, GenieError> {
     let facets = mover.facets().ok_or(GenieError::unsupported(
         "a unit facing a target whose sprites differ in their facets",

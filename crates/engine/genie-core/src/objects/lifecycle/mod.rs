@@ -138,12 +138,6 @@ impl Default for Lifecycle {
     }
 }
 
-/// `world+0x164`, the tick's dt in seconds: `cvtsi2ss` then `divss` by 1000 in f32.
-#[must_use]
-pub fn seconds(dt: u32) -> f32 {
-    dt as f32 / 1000.0
-}
-
 impl Lifecycle {
     /// What the object holds.
     #[must_use]
@@ -276,13 +270,14 @@ mod tests {
     use crate::players::attribute::AttributeId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
 
     /// The states after each update until the object leaves, and the update (1-based) it leaves in.
-    fn run(mut life: Lifecycle, dt: u32, limit: usize) -> (Vec<ObjectState>, Option<usize>) {
+    fn run(mut life: Lifecycle, dt: Millis, limit: usize) -> (Vec<ObjectState>, Option<usize>) {
         let mut states = Vec::new();
         for i in 1..=limit {
             if life
-                .update(seconds(dt), &mut Well512::default(), false)
+                .update(dt.seconds(), &mut Well512::default(), false)
                 .unwrap()
             {
                 return (states, Some(i));
@@ -303,7 +298,7 @@ mod tests {
 
     #[test]
     fn an_object_with_hit_points_stays_alive() {
-        let (states, left) = run(Lifecycle::default(), 104, 20);
+        let (states, left) = run(Lifecycle::default(), Millis::new(104), 20);
         assert_eq!((states, left), (vec![ObjectState::Alive; 20], None));
     }
 
@@ -320,7 +315,7 @@ mod tests {
             }),
             ..dead(Class::Static)
         };
-        let (states, left) = run(flare, 104, 20);
+        let (states, left) = run(flare, Millis::new(104), 20);
         let mut expected = vec![ObjectState::Dying; 11];
         expected.extend([ObjectState::Removed, ObjectState::Gone]);
         assert_eq!((states, left), (expected, Some(14)));
@@ -329,7 +324,7 @@ mod tests {
     #[test]
     fn a_dead_animated_object_without_a_death_sprite_leaves_in_its_fourth_update() {
         // PLACEHOLDER2 and the empty town-centre annex of the same recording
-        let (states, left) = run(dead(Class::Animated), 104, 20);
+        let (states, left) = run(dead(Class::Animated), Millis::new(104), 20);
         assert_eq!(
             (states, left),
             (
@@ -352,7 +347,7 @@ mod tests {
             ..dead(Class::Static)
         };
         let _ = life
-            .update(seconds(104), &mut Well512::default(), false)
+            .update(Millis::new(104).seconds(), &mut Well512::default(), false)
             .unwrap();
         assert_eq!((life.state, life.amount), (ObjectState::Dying, 0.0));
     }

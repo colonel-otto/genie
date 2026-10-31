@@ -23,6 +23,7 @@ use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
+use crate::world::Millis;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -373,7 +374,7 @@ impl Artifact {
     /// change are the caller's).
     pub fn step(
         &mut self,
-        dt_ms: u32,
+        dt_ms: Millis,
         owner: Option<PlayerId>,
     ) -> Result<Option<Handover>, GenieError> {
         match self.state {
@@ -390,7 +391,7 @@ impl Artifact {
             }
             ArtifactState::Wait => {
                 // world+0x164 is `dt / 1000.0f`; the subtraction is f32
-                self.timer -= dt_ms as f32 / 1000.0;
+                self.timer -= dt_ms.seconds();
                 if self.timer <= 0.0 {
                     self.state = ArtifactState::Check;
                 }
@@ -571,7 +572,7 @@ mod tests {
     #[test]
     fn a_check_finds_no_owner_and_waits_one_second() {
         let mut a = Artifact::new(false, None);
-        let _ = a.step(50, None).unwrap();
+        let _ = a.step(Millis::new(50), None).unwrap();
         assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
     }
 
@@ -732,7 +733,7 @@ mod tests {
         // the check that finds an owner deletes it too
         let mut c = Artifact::new(false, None);
         c.enter = Some(e);
-        let found = c.step(50, Some(PlayerId::new(2))).unwrap();
+        let found = c.step(Millis::new(50), Some(PlayerId::new(2))).unwrap();
         assert_eq!(
             found,
             Some(Handover::Taken {
@@ -787,29 +788,29 @@ mod tests {
     #[test]
     fn gaia_waits_half_a_second() {
         let mut a = Artifact::new(true, None);
-        let _ = a.step(50, None).unwrap();
+        let _ = a.step(Millis::new(50), None).unwrap();
         assert_eq!(a.timer, 0.5);
     }
 
     #[test]
     fn the_wait_ends_when_the_timer_reaches_zero_then_one_check_follows() {
         let mut a = Artifact::new(false, None);
-        let _ = a.step(50, None).unwrap();
+        let _ = a.step(Millis::new(50), None).unwrap();
         // 1.0 - 20 × 0.05 in f32 is -1.56e-7, so the 20th update ends the wait
         let waits = (0..30).take_while(|_| {
-            let _ = a.step(50, None).unwrap();
+            let _ = a.step(Millis::new(50), None).unwrap();
             a.state == ArtifactState::Wait
         });
         assert_eq!(waits.count(), 19);
         assert_eq!(a.state, ArtifactState::Check);
-        let _ = a.step(50, None).unwrap();
+        let _ = a.step(Millis::new(50), None).unwrap();
         assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
     }
 
     #[test]
     fn a_check_that_finds_a_new_owner_hands_the_animal_over_and_stays_a_check() {
         let mut a = Artifact::new(true, None);
-        let found = a.step(50, Some(PlayerId::new(2))).unwrap();
+        let found = a.step(Millis::new(50), Some(PlayerId::new(2))).unwrap();
         assert_eq!(
             (found, a.state),
             (
@@ -822,7 +823,7 @@ mod tests {
         );
         // no owner found (a combat-type animal whose +0x924 is 0 never asks): it waits
         let mut b = Artifact::new(true, None);
-        let found = b.step(50, None).unwrap();
+        let found = b.step(Millis::new(50), None).unwrap();
         assert_eq!((found, b.state), (None, ArtifactState::Wait));
         // the conversion's stop: the check again, no MoveTo went
         assert_eq!(b.stop(), (SubActionsGone::default(), None));
@@ -874,7 +875,7 @@ mod tests {
         a.goal = Some(Position::new(5.0, 6.0, 0.0));
         a.target = Some(object_id(9149));
         a.move_to = Some(to_object(9149, MoveTo::Moving));
-        let found = a.step(50, Some(PlayerId::new(1))).unwrap();
+        let found = a.step(Millis::new(50), Some(PlayerId::new(1))).unwrap();
         assert_eq!(
             found,
             Some(Handover::Taken {
@@ -905,7 +906,7 @@ mod tests {
             state: ArtifactState::ToGaia,
             ..Artifact::new(false, None)
         };
-        let found = a.step(50, None).unwrap();
+        let found = a.step(Millis::new(50), None).unwrap();
         assert_eq!(
             (found, a.state),
             (Some(Handover::ToGaia), ArtifactState::Check)
@@ -1346,7 +1347,7 @@ mod tests {
         rig.mover_mut().animated.speed = 1.0;
         let mut b = Artifact::new(false, None);
         b.enter = Some(e);
-        let found = b.step(50, Some(PlayerId::new(2))).unwrap();
+        let found = b.step(Millis::new(50), Some(PlayerId::new(2))).unwrap();
         let Some(Handover::Taken { new, gone }) = found else {
             panic!("a handover to player 2: {found:?}");
         };

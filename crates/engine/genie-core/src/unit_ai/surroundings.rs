@@ -14,6 +14,7 @@ use crate::objects::masters::MasterKind;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::unit_ai::Search;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 /// What a [`Search`] answers: the object picked, if any, and whether the lists it read hold
@@ -38,7 +39,7 @@ pub struct Found {
     pub distance: i32,
     /// The retarget entries `bestUnitToAttack`'s failed paths add (`FUN_140c42320`: a target and
     /// the world time until which it is ignored; at most three), the unit AI's.
-    pub retries: [Option<(ObjectId, u32)>; 3],
+    pub retries: [Option<(ObjectId, WorldTime)>; 3],
 }
 
 impl Found {

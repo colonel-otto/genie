@@ -10,7 +10,7 @@
 //! is made and the farmers took the last of it, the farm's slot 0xd8 sets its hit points to 0.
 
 use crate::GenieError;
-use crate::objects::lifecycle::{Lifecycle, seconds};
+use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -126,7 +126,7 @@ impl MakeAction {
             MakeState::Making if 0.0 < self.remaining || self.total <= 0.0 => {
                 let rate = (master.work_rate + farm.work_rate_powerup)
                     * self.task.work_val1
-                    * seconds(c.dt);
+                    * c.dt.seconds();
                 let before = farm.life.amount;
                 if self.task.work_flag == 0 {
                     // FUN_14119d320: add, then at most the capacity
@@ -185,6 +185,8 @@ mod tests {
     use crate::players::attribute::AttributeId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
     use crate::world::{Player, World};
 
     /// The farm's default task in build 158041's `.dat` (master 50, task 0).
@@ -241,10 +243,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(1),
-            vec![0, 0],
+            vec![Millis::ZERO, Millis::ZERO],
             vec![Player::default(), owner],
         );
         let wall = Master {

@@ -343,7 +343,7 @@ impl World {
         if unit.ai.is_some() {
             // a completion's stop (slot 0xb0 with 1): the unit's stopAction at once
             self.run_ai_calls((player, idx), |ai, side, rng| {
-                ai.clear_notifies_at(world_time, place, side, rng)
+                ai.clear_notifies_at(world_time.since_start(), place, side, rng)
             })?;
         }
         let unit = self.players.live_mut(player, idx)?;

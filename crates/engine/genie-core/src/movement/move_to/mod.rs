@@ -18,6 +18,7 @@ use crate::objects::layers::Body;
 use crate::objects::masters::ActionType;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite};
 use crate::unit_ai::UnitStance;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 mod action;
@@ -248,7 +249,7 @@ pub fn ask_walk(
         }
         Goal::Point(p) => (p, None, Footprint::ZERO),
     };
-    let now = walk.plan.as_ref().map_or(0, |p| p.now);
+    let now = walk.plan.as_ref().map_or(WorldTime::ZERO, |p| p.now);
     let mover = walk.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
     let here = mover.position();
     let ground = mover.stats.radius.ground();

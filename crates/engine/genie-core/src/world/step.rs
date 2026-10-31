@@ -7,12 +7,13 @@ use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::UnitAi;
+use crate::world::Millis;
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
 
 pub(crate) struct Step<'a> {
@@ -26,11 +27,11 @@ pub(crate) struct Step<'a> {
     /// The tick's dt in milliseconds (`world+0x164`; in seconds, [`seconds`]).
     ///
     /// [`seconds`]: crate::objects::lifecycle::seconds
-    pub(crate) dt: u32,
+    pub(crate) dt: Millis,
     /// The ticks so far, this one included.
     pub(crate) tick: u32,
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
-    pub(crate) turn: Option<u32>,
+    pub(crate) turn: Option<Millis>,
     /// The objects about the target of a unit with an area effect (or about the unit, for its
     /// blast at death), which its blast may reach, read as the update starts; each hit writes
     /// them back where it ran ([`crate::combat::victims::write_back`]).
@@ -54,7 +55,7 @@ pub(crate) struct Step<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct Pace {
     pub(crate) dt: f32,
-    pub(crate) now: u32,
+    pub(crate) now: WorldTime,
     pub(crate) computer: bool,
     pub(crate) construction_rate: f32,
 }
@@ -216,7 +217,7 @@ impl Step<'_> {
     /// What a walk takes of the update beside the world ([`World::walk_beside`]).
     pub(crate) fn pace(&self) -> Pace {
         Pace {
-            dt: seconds(self.dt),
+            dt: self.dt.seconds(),
             now: self.w.world_time,
             computer: self.w.players[self.player.index()].computer,
             construction_rate: self.w.players[self.player.index()].construction_rate,
@@ -236,7 +237,7 @@ impl Step<'_> {
             Walk {
                 body,
                 me,
-                dt: seconds(self.dt),
+                dt: self.dt.seconds(),
                 world: &mut self.w.spatial,
                 plan: Some(Planning {
                     pathing: &mut self.w.pathing,

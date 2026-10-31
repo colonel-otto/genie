@@ -10,6 +10,7 @@
 
 use crate::map::Point;
 use crate::math::fmath::{self, BVector};
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 const TWO_PI: f32 = crate::math::image::facing::TWO_PI;
@@ -178,9 +179,6 @@ pub fn face(at: Point, angle: f32, to: Point, s: Option<SpriteFacets>) -> f32 {
     wrapped((off * TWO_PI) / n as f32 + angle)
 }
 
-/// The world time in milliseconds a second (`DAT_14330ebe0`).
-const MS_PER_SECOND: f32 = crate::math::image::facing::MS_PER_SECOND;
-
 /// `FUN_141162db0` for a unit with a turn time (its master's `+0x758`, seconds): facing `to`
 /// from `at` within half a facet it faces; else, once `turn_time` passed since its last step
 /// (`+0x7ec`, the world time in seconds, a float division of the milliseconds), its angle steps
@@ -195,14 +193,14 @@ pub fn turn_toward(
     s: Option<SpriteFacets>,
     turn_time: f32,
     last_turn: f32,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> (f32, f32, bool) {
     let n = s.map_or(8, |s| if s.count < 8 { 8 } else { i32::from(s.count) });
     let off = facets_to(at, angle, to, s);
     if (MINUS_HALF..=HALF).contains(&off) {
         return (angle, last_turn, true);
     }
-    let now = world_time as f32 / MS_PER_SECOND;
+    let now = world_time.seconds();
     if now - last_turn < turn_time {
         return (angle, last_turn, false);
     }
@@ -276,14 +274,38 @@ mod tests {
         assert!(1.5 < off.abs());
         let step = TWO_PI / 16.0;
         // half a second since the last step: one facet toward the target, now the last step
-        let (a, last, faces) = turn_toward(at, 0.0, to, Some(VILLAGER), 0.5, 0.0, 1000);
+        let (a, last, faces) = turn_toward(
+            at,
+            0.0,
+            to,
+            Some(VILLAGER),
+            0.5,
+            0.0,
+            WorldTime::from_millis(1000),
+        );
         assert_eq!(a, wrapped(if 0.0 <= off { step } else { -step }));
         assert_eq!((last, faces), (1.0, false));
         // 0.2 seconds later it waits
-        let (b, last2, faces2) = turn_toward(at, a, to, Some(VILLAGER), 0.5, last, 1200);
+        let (b, last2, faces2) = turn_toward(
+            at,
+            a,
+            to,
+            Some(VILLAGER),
+            0.5,
+            last,
+            WorldTime::from_millis(1200),
+        );
         assert_eq!((b, last2, faces2), (a, 1.0, false));
         // facing within half a facet it faces at once, whatever the time
-        let facing = turn_toward(at, 0.0, Point::new(14.0, 10.0), Some(VILLAGER), 0.5, 0.0, 0);
+        let facing = turn_toward(
+            at,
+            0.0,
+            Point::new(14.0, 10.0),
+            Some(VILLAGER),
+            0.5,
+            0.0,
+            WorldTime::ZERO,
+        );
         assert_eq!(
             facing,
             (

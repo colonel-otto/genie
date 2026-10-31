@@ -18,6 +18,8 @@ use crate::test_ids::class_id;
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 fn task(action_type: ActionType) -> Task {
     Task {
@@ -538,7 +540,13 @@ fn world() -> World {
         player(vec![3, 0, 3]),
         player(vec![3, 3, 0]),
     ];
-    let mut t = World::new(0, 1, PlayerId::new(0), vec![0; 3], players);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO; 3],
+        players,
+    );
     t.dt_seconds = 0.5;
     t.spatial = Spatial::new(GridSize::new(20, 20));
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();

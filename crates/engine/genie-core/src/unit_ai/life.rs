@@ -22,6 +22,8 @@ use crate::unit_ai::{
     Surroundings, TOWER_AI, TOWER_IDLE_TIMEOUT, UnitAi, UnitSeen, UnitSide, adjusted_idle_timeout,
     notify_capacity, siege_stance, soldier_stance,
 };
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 impl UnitAi {
@@ -137,9 +139,9 @@ impl UnitAi {
         position: Position,
         ai: &mut Well512,
     ) -> Self {
-        let last_retarget_time = ai.rand15() % 500;
+        let last_retarget_time = WorldTime::from_millis(ai.rand15() % 500);
         let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
-        let retarget_timer = 750 + ai.rand15() % 500;
+        let retarget_timer = Millis::new(750 + ai.rand15() % 500);
         Self {
             ai_type,
             current_order: None,
@@ -154,12 +156,12 @@ impl UnitAi {
             last_action: None,
             last_target: None,
             last_target_class: None,
-            idle_timer: 0,
+            idle_timer: Millis::ZERO,
             adjusted_idle_timeout,
             idle_timeout: IDLE_TIMEOUT,
-            secondary_timer: 750,
-            look_around_timer: 0,
-            look_around_timeout: 1000,
+            secondary_timer: Millis::new(750),
+            look_around_timer: Millis::ZERO,
+            look_around_timeout: Millis::new(1000),
             last_retarget_time,
             retarget_timer,
             stance: UnitStance::NO_ATTACK,
@@ -175,7 +177,7 @@ impl UnitAi {
             stop_after_kill: false,
             home: None,
             hunted: None,
-            last_update_time: 0,
+            last_update_time: Millis::ZERO,
             orders: Vec::new(),
             building_orders: Vec::new(),
             notifies: Vec::new(),
@@ -223,7 +225,7 @@ impl UnitAi {
     /// What the world's lookup does not model.
     pub fn expire_retries(
         &mut self,
-        now: u32,
+        now: WorldTime,
         seen: &mut dyn FnMut(ObjectId) -> Result<Option<UnitSeen>, GenieError>,
     ) -> Result<(), GenieError> {
         let mut i = 0;
@@ -244,7 +246,7 @@ impl UnitAi {
 
     /// `FUN_140c41bc0`: the idle timeout (`+0x168`) is `timeout`, then slot 0x1a8 redraws the
     /// adjusted one ([`UnitAi::update_adjusted_idle_timeout`]).
-    pub(super) fn set_idle_timeout(&mut self, timeout: u32, ai: &mut Well512) {
+    pub(super) fn set_idle_timeout(&mut self, timeout: Millis, ai: &mut Well512) {
         self.idle_timeout = timeout;
         self.update_adjusted_idle_timeout(ai);
     }
@@ -256,10 +258,10 @@ impl UnitAi {
     /// capped at 750.
     pub fn reset_for_order(&mut self, ai: &mut Well512) {
         self.zero_patrol();
-        if self.adjusted_idle_timeout > 749 {
+        if self.adjusted_idle_timeout > Millis::new(749) {
             self.update_adjusted_idle_timeout(ai);
         }
-        self.secondary_timer = self.secondary_timer.min(750);
+        self.secondary_timer = self.secondary_timer.min(Millis::new(750));
     }
 
     /// `zeroPatrolInformation` (`FUN_140c68de0`): the saved patrol goes and its waypoint is 0.
@@ -297,12 +299,12 @@ impl UnitAi {
             } else {
                 (OrderKind::Patrol, OrderKind::AttackMove)
             };
-            if self.current_order == Some(other) && self.adjusted_idle_timeout == 750 {
+            if self.current_order == Some(other) && self.adjusted_idle_timeout == Millis::new(750) {
                 self.update_adjusted_idle_timeout(ai);
             }
             self.current_order = Some(order);
         }
-        self.secondary_timer = 750;
+        self.secondary_timer = Millis::new(750);
         Ok(true)
     }
 
@@ -353,7 +355,7 @@ impl UnitAi {
     /// (`0x140c41e00`); a deer's or fox's (factory type 2, `FUN_140c17170`) is 5/4 of it.
     pub(super) fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
         self.adjusted_idle_timeout = if self.ai_type == UnitAiType::HUNTED {
-            self.idle_timeout.wrapping_mul(5) >> 2
+            Millis::new(self.idle_timeout.get().wrapping_mul(5) >> 2)
         } else {
             adjusted_idle_timeout(self.idle_timeout, ai)
         };
@@ -376,11 +378,11 @@ impl UnitAi {
     ) {
         let leaving = |o| self.current_order == Some(o) && order != Some(o);
         if leaving(OrderKind::Patrol) || leaving(OrderKind::AttackMove) {
-            if self.adjusted_idle_timeout == 750 {
+            if self.adjusted_idle_timeout == Millis::new(750) {
                 self.update_adjusted_idle_timeout(ai);
             }
-            if 750 < self.secondary_timer as i32 {
-                self.secondary_timer = 750;
+            if 750 < self.secondary_timer.get() as i32 {
+                self.secondary_timer = Millis::new(750);
             }
         }
         if history {
@@ -466,7 +468,7 @@ impl UnitAi {
         let (id, class) = target.map_or((None, None), |(id, class)| (Some(id), class.or_none()));
         self.set_target(id, class, point);
         if clears {
-            self.clear_notifies(0)?;
+            self.clear_notifies(Millis::ZERO)?;
         }
         Ok(())
     }

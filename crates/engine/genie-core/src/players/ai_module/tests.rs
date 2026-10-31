@@ -11,6 +11,8 @@ use crate::players::ai_module::search::{DEAD_END, EXPLORED, PUNTED, UNEXPLORED};
 use crate::players::ai_module::{
     AiModule, AiModules, InfoModule, SLOTS, SearchArea, SearchUnit, TacticalModule,
 };
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 fn module() -> AiModule {
     AiModule {
@@ -78,7 +80,13 @@ fn the_table_holds_a_module_by_player() {
 #[test]
 fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     use crate::vision::visibility::{Visibility, VisibleMap};
-    let mut t = crate::world::World::new(0, 1, PlayerId::new(0), vec![0; 3], Vec::new());
+    let mut t = crate::world::World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO; 3],
+        Vec::new(),
+    );
     let n = 16 * 16;
     let mut v = Visibility::new(
         GridSize::new(16, 16),

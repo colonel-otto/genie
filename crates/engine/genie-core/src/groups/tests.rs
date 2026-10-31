@@ -233,7 +233,7 @@ fn a_new_group_holds_the_constructor_s_values() {
             g.attack_plan_type,
             g.idle_timer
         ),
-        (0, 1, 0, 0)
+        (0, 1, 0, Millis::ZERO)
     );
     assert_eq!((g.previous_formation, g.current_formation), (None, None));
     assert!(g.members.is_empty() && g.unit_types.is_empty() && g.command_queue.is_empty());
@@ -278,10 +278,10 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
     let mut attributes = vec![0.0; 100];
     attributes[90] = owner_range;
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             crate::world::Player::default(),
             crate::world::Player {
@@ -521,10 +521,10 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         ..Unit::default()
     };
     let mut t = World::new(
-        50,
+        WorldTime::from_millis(50),
         0,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             crate::world::Player::default(),
             crate::world::Player {
@@ -707,7 +707,7 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
     register(&mut t);
     for u in &mut t.players[1].objects {
         u.ai = Some(crate::unit_ai::UnitAi {
-            retarget_timer: 7,
+            retarget_timer: Millis::new(7),
             ..crate::unit_ai::UnitAi::default()
         });
         u.body
@@ -723,7 +723,7 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
     let timers: Vec<u32> = t.players[1]
         .objects
         .iter()
-        .map(|u| u.ai.as_ref().unwrap().retarget_timer)
+        .map(|u| u.ai.as_ref().unwrap().retarget_timer.get())
         .collect();
     assert_eq!(timers, [7, 750 + draw % 500]);
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);

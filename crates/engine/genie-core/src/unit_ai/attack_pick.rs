@@ -27,6 +27,7 @@ use crate::unit_ai::{
     TRADE_AI, TRANSPORT_AI, civilian_may_attack, defend_patrol_range, lion_may_attack,
     siege_can_attack,
 };
+use crate::world::WorldTime;
 
 /// A unit AI's search (`FUN_140c63e20`) as the idle checks run it: it queries its player's
 /// objects in sight of `classes` within `radius` of `at` for a searcher of radii `size`
@@ -97,7 +98,7 @@ impl AttackAsk {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Memory<'a> {
     /// The retarget entries.
-    pub retries: &'a [(ObjectId, u32)],
+    pub retries: &'a [(ObjectId, WorldTime)],
     /// The order history, the newest first.
     pub history: &'a [OrderRecord],
 }

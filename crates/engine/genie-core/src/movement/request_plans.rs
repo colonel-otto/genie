@@ -2,6 +2,7 @@
 //! the short pather's tail, the long pather for a far waypoint and the tile pathfinder again.
 
 use crate::movement::PathState;
+use crate::world::WorldTime;
 use std::ops::ControlFlow;
 
 use crate::GenieError;
@@ -32,7 +33,7 @@ pub(super) struct NewPath {
 
 impl NewPath {
     /// A new level made `now`, its path empty, nothing found.
-    pub(super) fn new(now: u32) -> Self {
+    pub(super) fn new(now: WorldTime) -> Self {
         Self {
             new: PathData::new(now),
             path: Path::default(),
@@ -313,7 +314,7 @@ impl Mover {
     pub(super) fn waypoint_in_range(
         &mut self,
         w: &Way<'_>,
-        now: u32,
+        now: WorldTime,
     ) -> Result<AfterRequest, GenieError> {
         let reach = if w.goal.target.is_none() || 0.0 < w.range {
             w.range

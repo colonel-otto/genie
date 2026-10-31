@@ -12,6 +12,7 @@ use crate::groups::update::{
 use crate::groups::{SpecificMove, UnitGroup};
 use crate::math::fmath::BVector;
 use crate::objects::{ObjectId, ObjectKey};
+use crate::world::Millis;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -469,10 +470,10 @@ impl World {
     }
 
     /// The update's milliseconds (`world+0x7c`), of which [`World::dt_seconds`] (`world+0x164`)
-    /// is [`crate::objects::lifecycle::seconds`]: the round trip gives the milliseconds back exactly for
+    /// is [`Millis::seconds`]: the round trip gives the milliseconds back exactly for
     /// any update below 2^22 of them.
-    pub(super) fn dt_ms(&self) -> u32 {
-        (self.dt_seconds * 1000.0).round() as u32
+    pub(super) fn dt_ms(&self) -> Millis {
+        Millis::new((self.dt_seconds * 1000.0).round() as u32)
     }
 }
 
@@ -495,7 +496,7 @@ impl World {
         }
         let draw = self.streams.get(crate::math::rng::Stream::World).rand15();
         if let Some(g) = self.groups.get_mut(group) {
-            g.idle_timer = draw % IDLE_SPAN;
+            g.idle_timer = Millis::new(draw % IDLE_SPAN.get());
         }
     }
 

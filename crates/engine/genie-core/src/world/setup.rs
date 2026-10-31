@@ -11,6 +11,8 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::player::Player;
 use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, World};
 
@@ -28,10 +30,10 @@ impl World {
     /// The world as the header save holds it: its time, frame seed, turn order and players.
     #[must_use]
     pub fn new(
-        world_time: u32,
+        world_time: WorldTime,
         frame_seed: u32,
         player_turn: PlayerId,
-        player_time: Vec<u32>,
+        player_time: Vec<Millis>,
         players: Vec<Player>,
     ) -> Self {
         Self {
@@ -65,7 +67,7 @@ impl World {
             groups: crate::groups::UnitGroups::default(),
             last_commanded: Vec::new(),
             dt_seconds: 0.0,
-            dt: 0,
+            dt: Millis::ZERO,
             history_period: HISTORY_PERIOD,
             allow_gaia_capture: Vec::new(),
             local_player: PlayerId::new(0),

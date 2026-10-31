@@ -45,8 +45,8 @@ impl UnitAi {
     /// The full update of an idle unit (no order, action or target), with its move.
     fn update_idle(
         &mut self,
-        dt: u32,
-        world_time: u32,
+        dt: Millis,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -63,8 +63,8 @@ impl UnitAi {
     /// rest an order on a target leaves.
     fn update_after(
         &mut self,
-        dt: u32,
-        world_time: u32,
+        dt: Millis,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -85,8 +85,8 @@ impl UnitAi {
     /// The full update's calls on the unit ([`UnitAi::update_after`]).
     fn update_fx(
         &mut self,
-        dt: u32,
-        world_time: u32,
+        dt: Millis,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -114,7 +114,7 @@ impl UnitAi {
     fn after_order_fx(
         &mut self,
         after: AfterOrder,
-        world_time: u32,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -147,9 +147,9 @@ fn idle(ai_type: UnitAiType) -> UnitAi {
         current_order: None,
         current_action: None,
         current_target: None,
-        adjusted_idle_timeout: 3000,
-        look_around_timeout: 1000,
-        retarget_timer: 900,
+        adjusted_idle_timeout: Millis::new(3000),
+        look_around_timeout: Millis::new(1000),
+        retarget_timer: Millis::new(900),
         best_this_update: None,
         ..UnitAi::default()
     }
@@ -169,7 +169,7 @@ struct Recorder {
     attacks: Vec<(ObjectId, bool)>,
     under_attack: Option<bool>,
     stops: Vec<usize>,
-    caps: Vec<(u32, usize)>,
+    caps: Vec<(WorldTime, usize)>,
     /// The unit's calls, in order.
     fx: Vec<Effect>,
     /// The drop-site table's building it answers, and the top action's target.
@@ -416,7 +416,7 @@ fn the_order_history_keeps_the_eight_newest_first() {
         ai.remember_order(OrderRecord {
             order: Some(OrderKind::Attack),
             action: Some(ActionKind::Attack),
-            time: t,
+            time: WorldTime::from_millis(t),
             target: ObjectId::of_field(100 + t as i32),
             category: attack_category(1),
             ..OrderRecord::default()
@@ -448,27 +448,32 @@ fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
     };
     let mut ai = UnitAi {
         retries: vec![
-            (object_id(1), 900),
-            (object_id(2), 1100),
-            (object_id(3), 1000),
+            (object_id(1), WorldTime::from_millis(900)),
+            (object_id(2), WorldTime::from_millis(1100)),
+            (object_id(3), WorldTime::from_millis(1000)),
         ],
         ..UnitAi::default()
     };
-    ai.expire_retries(1000, &mut |_| Ok(Some(seen(5.0))))
+    ai.expire_retries(WorldTime::from_millis(1000), &mut |_| Ok(Some(seen(5.0))))
         .unwrap();
-    assert_eq!(ai.retries, [(object_id(2), 1100)]);
+    assert_eq!(ai.retries, [(object_id(2), WorldTime::from_millis(1100))]);
     let mut ai = UnitAi {
-        retries: vec![(object_id(1), 2000), (object_id(2), 2000)],
+        retries: vec![
+            (object_id(1), WorldTime::from_millis(2000)),
+            (object_id(2), WorldTime::from_millis(2000)),
+        ],
         ..UnitAi::default()
     };
-    ai.expire_retries(1000, &mut |id| Ok((id == object_id(1)).then(|| seen(5.0))))
-        .unwrap();
+    ai.expire_retries(WorldTime::from_millis(1000), &mut |id| {
+        Ok((id == object_id(1)).then(|| seen(5.0)))
+    })
+    .unwrap();
     assert_eq!(ai.retries, []);
     let mut ai = UnitAi {
-        retries: vec![(object_id(1), 2000)],
+        retries: vec![(object_id(1), WorldTime::from_millis(2000))],
         ..UnitAi::default()
     };
-    ai.expire_retries(1000, &mut |_| Ok(Some(seen(0.5))))
+    ai.expire_retries(WorldTime::from_millis(1000), &mut |_| Ok(Some(seen(0.5))))
         .unwrap();
     assert_eq!(ai.retries, []);
 }
@@ -699,7 +704,14 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
         ..Surroundings::default()
     };
     let fx = u
-        .update_fx(50, 22643, false, &at, &mut rng(), &mut side)
+        .update_fx(
+            Millis::new(50),
+            WorldTime::from_millis(22643),
+            false,
+            &at,
+            &mut rng(),
+            &mut side,
+        )
         .unwrap();
     assert_eq!(
         fx,
@@ -1620,7 +1632,7 @@ fn a_boar_attacks_its_first_attacker_and_keeps_it() {
     let mut fx = Vec::new();
     let r = u.boar_damaged(
         hit(Some(object_id(10049))),
-        0,
+        Millis::ZERO,
         &at,
         &mut rng(),
         &mut With::new(&mut side, &mut fx),
@@ -1644,7 +1656,7 @@ fn a_boar_attacks_its_first_attacker_and_keeps_it() {
     // the nearer second attacker is the closest now, but the attack is not forced
     let _ = u.boar_damaged(
         hit(Some(object_id(10050))),
-        0,
+        Millis::ZERO,
         &at,
         &mut rng(),
         &mut With::new(&mut side, &mut fx),
@@ -1675,7 +1687,7 @@ fn a_stop_before_an_attack_command_runs_first() {
         NotifyKind::ACTION_COMPLETED,
         [600, 31126, 0],
     );
-    let r = u.handle(done, 0, &at, false, &mut rng(), &mut side);
+    let r = u.handle(done, Millis::ZERO, &at, false, &mut rng(), &mut side);
     assert_eq!((r, side.fx.clone()), (Ok(GO_ON), vec![Effect::Stop]));
     let hit = Notify {
         caller: Some(object_id(27240)),
@@ -1683,7 +1695,7 @@ fn a_stop_before_an_attack_command_runs_first() {
         kind: NotifyKind::DAMAGED,
         p: [27240, 3, 33],
     };
-    let _ = u.handle(hit, 0, &at, false, &mut rng(), &mut side);
+    let _ = u.handle(hit, Millis::ZERO, &at, false, &mut rng(), &mut side);
     // the stop came with no attack before it, the attack after it
     assert_eq!(
         (side.stops, side.attacks),
@@ -1741,7 +1753,7 @@ fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
     };
     let r = boar.handle(
         n,
-        0,
+        Millis::ZERO,
         &at(1),
         false,
         &mut rng(),
@@ -1755,7 +1767,7 @@ fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
     };
     let r = wolf.handle(
         n,
-        0,
+        Millis::ZERO,
         &at(4),
         false,
         &mut rng(),
@@ -1773,7 +1785,7 @@ fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
     let mut side = Recorder::default();
     let _ = defensive.handle(
         n,
-        0,
+        Millis::ZERO,
         &at(4),
         false,
         &mut rng(),
@@ -2103,7 +2115,7 @@ fn a_villager_evades_another_player_s_attacker() {
     let mut fx = Vec::new();
     let r = u.villager_damaged(
         hit,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -2463,7 +2475,7 @@ fn the_base_handler_takes_each_kind_it_models() {
         let n = Notify::own(caller, kind, [0, 0, 0]);
         let r = u.base_notify(
             n,
-            0,
+            Millis::ZERO,
             at,
             false,
             &mut rng(),
@@ -2552,7 +2564,7 @@ fn a_villager_dodges_a_missile_s_warning_or_takes_it_as_damage() {
     assert_eq!(
         u.handle(
             warning,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut ai,
@@ -2565,7 +2577,7 @@ fn a_villager_dodges_a_missile_s_warning_or_takes_it_as_damage() {
     assert_eq!(
         u.handle(
             warning,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -2593,7 +2605,7 @@ fn a_villager_attacks_a_harmless_attacker_back() {
     let mut fx = Vec::new();
     let r = u.villager_damaged(
         hit,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -2618,7 +2630,7 @@ fn a_moving_villager_keeps_its_way() {
     let walking = u.clone();
     let r = u.villager_damaged(
         hit,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -2633,7 +2645,7 @@ fn a_moving_villager_keeps_its_way() {
     let mut u = walking.clone();
     let r = u.villager_damaged(
         hit,
-        0,
+        Millis::ZERO,
         &nan,
         false,
         &mut rng(),
@@ -2648,7 +2660,7 @@ fn a_moving_villager_keeps_its_way() {
     let mut u = walking.clone();
     let r = u.villager_damaged(
         hit,
-        0,
+        Millis::ZERO,
         &still,
         false,
         &mut rng(),
@@ -2665,7 +2677,7 @@ fn a_moving_villager_keeps_its_way() {
     assert!(
         u.villager_damaged(
             hit,
-            0,
+            Millis::ZERO,
             &unknown,
             false,
             &mut rng(),
@@ -2904,7 +2916,7 @@ fn the_damage_case_lets_known_dead_allied_and_ordered_ones_be() {
     let mut fx = Vec::new();
     let mut u = UnitAi {
         attackers: Attackers::of_saved(&[7]),
-        retries: vec![(object_id(3), 900)],
+        retries: vec![(object_id(3), WorldTime::from_millis(900))],
         ..idle(UnitAiType::SOLDIER)
     };
     let mut side = DamageSide {
@@ -2915,7 +2927,7 @@ fn the_damage_case_lets_known_dead_allied_and_ordered_ones_be() {
     };
     let r = u.damaged(
         damage(7, 20),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -2933,7 +2945,7 @@ fn the_damage_case_lets_known_dead_allied_and_ordered_ones_be() {
     };
     let r = u.damaged(
         damage(7, 0),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -2956,7 +2968,7 @@ fn the_damage_case_lets_known_dead_allied_and_ordered_ones_be() {
     };
     let r = u.damaged(
         damage(7, 20),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -2977,7 +2989,7 @@ fn the_damage_case_lets_known_dead_allied_and_ordered_ones_be() {
     };
     let r = u.damaged(
         damage(7, 20),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -3139,7 +3151,7 @@ fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
     };
     let r = u.damaged(
         damage(7, 20),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -3154,7 +3166,7 @@ fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
     );
     let r = u.damaged(
         damage(8, 20),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -3176,7 +3188,7 @@ fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
     };
     let r = u.damaged(
         damage(7, 20),
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -3197,7 +3209,7 @@ fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
     };
     let r = u.damaged(
         damage(7, 20),
-        0,
+        Millis::ZERO,
         &still,
         false,
         &mut rng(),
@@ -3219,9 +3231,9 @@ fn a_soldier_with_a_target_attacks_back_from_buildings_only() {
             current_order: order,
             current_action: Some(ActionKind::Attack),
             current_target: Some(object_id(9)),
-            idle_timeout: 3000,
-            adjusted_idle_timeout: 750,
-            secondary_timer: 900,
+            idle_timeout: Millis::new(3000),
+            adjusted_idle_timeout: Millis::new(750),
+            secondary_timer: Millis::new(900),
             ..idle(UnitAiType::SOLDIER)
         };
         let mut side = DamageSide {
@@ -3234,7 +3246,7 @@ fn a_soldier_with_a_target_attacks_back_from_buildings_only() {
         let r = u
             .damaged(
                 damage(7, 20),
-                0,
+                Millis::ZERO,
                 &at,
                 false,
                 &mut rng(),
@@ -3257,8 +3269,8 @@ fn a_soldier_with_a_target_attacks_back_from_buildings_only() {
     assert_eq!(u.current_order, None);
     assert_eq!(u.patrol_waypoint, 2);
     assert!(u.patrol_path.is_some());
-    assert_eq!(u.secondary_timer, 750);
-    assert_ne!(u.adjusted_idle_timeout, 750);
+    assert_eq!(u.secondary_timer, Millis::new(750));
+    assert_ne!(u.adjusted_idle_timeout, Millis::new(750));
 }
 
 /// The computer player's end of the damage case: a wonder target, a tower against a tower,
@@ -3473,9 +3485,9 @@ fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(25954)),
         target_point: Position::new(5.0, 6.0, 0.0),
-        idle_timeout: 3000,
-        adjusted_idle_timeout: 750,
-        secondary_timer: 900,
+        idle_timeout: Millis::new(3000),
+        adjusted_idle_timeout: Millis::new(750),
+        secondary_timer: Millis::new(900),
         ..idle(UnitAiType::SOLDIER)
     };
     let at = Surroundings {
@@ -3500,9 +3512,9 @@ fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
         .unwrap();
     assert_eq!(
         (scout.current_order, scout.last_order, scout.secondary_timer),
-        (None, Some(OrderKind::Patrol), 750)
+        (None, Some(OrderKind::Patrol), Millis::new(750))
     );
-    assert_ne!(scout.adjusted_idle_timeout, 750);
+    assert_ne!(scout.adjusted_idle_timeout, Millis::new(750));
 }
 
 /// processMisc's retarget check past its timer (`0x140c567c0`): a scout on the attack order
@@ -3627,7 +3639,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     let mut fx = Vec::new();
     let r = u.villager_damaged(
         hit,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -3658,7 +3670,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     assert!(
         u.villager_damaged(
             hit,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -3734,7 +3746,7 @@ fn a_released_attacker_leaves_the_set_through_notify_699() {
     assert_eq!(u.notifies, vec![released(Some(object_id(10049)))]);
     let r = u.base_notify(
         released(Some(object_id(10049))),
-        0,
+        Millis::ZERO,
         &Surroundings::default(),
         false,
         &mut rng(),
@@ -3751,9 +3763,9 @@ fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
         current_order: Some(OrderKind::Build),
         current_action: Some(ActionKind::Build),
         current_target: Some(object_id(10028)),
-        idle_timer: 120,
-        secondary_timer: 10,
-        look_around_timer: 990,
+        idle_timer: Millis::new(120),
+        secondary_timer: Millis::new(10),
+        look_around_timer: Millis::new(990),
         ..idle(UnitAiType::CIVILIAN)
     };
     let mut r = rng();
@@ -3765,13 +3777,20 @@ fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
         ..Surroundings::default()
     };
     let _ = u
-        .update_fx(50, 0, false, &at, &mut r, &mut no_search)
+        .update_fx(
+            Millis::new(50),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut r,
+            &mut no_search,
+        )
         .unwrap();
     assert_eq!(
         (u.idle_timer, u.secondary_timer, u.look_around_timer),
-        (0, 0, 0)
+        (Millis::ZERO, Millis::ZERO, Millis::ZERO)
     );
-    assert_eq!(u.look_around_timeout, 4500 + 7241 % 1000);
+    assert_eq!(u.look_around_timeout, Millis::new(4500 + 7241 % 1000));
     assert_eq!(r.draws, 1);
     // the state position follows a unit with an order
     assert_eq!(u.state_position, Point::new(29.5, 89.5));
@@ -3779,7 +3798,14 @@ fn a_builder_s_idle_timer_stays_0_and_its_look_around_is_redrawn() {
     // processMisc stops the action and ends the order (slot 0xb0 with 0)
     u.current_order = Some(OrderKind::Attack);
     let fx = u
-        .update_fx(50, 0, false, &at, &mut r, &mut no_search)
+        .update_fx(
+            Millis::new(50),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut r,
+            &mut no_search,
+        )
         .unwrap();
     assert_eq!(fx, [Effect::Stop]);
     assert_eq!(
@@ -3794,9 +3820,9 @@ fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
         current_order: Some(OrderKind::Build),
         current_action: Some(ActionKind::Build),
         current_target: Some(object_id(10028)),
-        adjusted_idle_timeout: 750,
-        idle_timeout: 3000,
-        secondary_timer: 900,
+        adjusted_idle_timeout: Millis::new(750),
+        idle_timeout: Millis::new(3000),
+        secondary_timer: Millis::new(900),
         ..idle(UnitAiType::CIVILIAN)
     };
     let mut r = rng();
@@ -3828,8 +3854,8 @@ fn a_work_notify_sets_the_order_and_redraws_a_timeout_left_by_order_711() {
         &mut r,
     )
     .unwrap();
-    assert_eq!((r.draws, u.secondary_timer), (1, 750));
-    assert_ne!(u.adjusted_idle_timeout, 750);
+    assert_eq!((r.draws, u.secondary_timer), (1, Millis::new(750)));
+    assert_ne!(u.adjusted_idle_timeout, Millis::new(750));
 }
 
 #[test]
@@ -3843,7 +3869,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
             current_action: Some(ActionKind::Build),
             current_target: Some(object_id(4321)),
             state_position: Point::new(10.0, 10.0),
-            retarget_timer: u32::MAX,
+            retarget_timer: Millis::new(u32::MAX),
             ..idle(UnitAiType::SOLDIER)
         };
         let at = Surroundings {
@@ -3858,7 +3884,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
     let mut r = rng();
     assert!(
         u.retarget_check(
-            0,
+            WorldTime::ZERO,
             false,
             &at,
             &mut r,
@@ -3872,7 +3898,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
     let (mut u, at) = defender(15.6);
     assert_eq!(
         u.retarget_check(
-            0,
+            WorldTime::ZERO,
             false,
             &at,
             &mut r,
@@ -3905,19 +3931,19 @@ fn retarget_waits_for_the_timer() {
     let mut r = rng();
     let _ = u
         .update_idle(
-            50,
-            899,
+            Millis::new(50),
+            WorldTime::from_millis(899),
             false,
             &Surroundings::default(),
             &mut r,
             &mut no_search,
         )
         .unwrap();
-    assert_eq!((u.retarget_timer, r.draws), (900, 0));
+    assert_eq!((u.retarget_timer, r.draws), (Millis::new(900), 0));
     let _ = u
         .update_idle(
-            50,
-            900,
+            Millis::new(50),
+            WorldTime::from_millis(900),
             false,
             &Surroundings::default(),
             &mut r,
@@ -3927,28 +3953,31 @@ fn retarget_waits_for_the_timer() {
     // the first rand15 after seed 0 is 7241
     assert_eq!(
         (u.last_retarget_time, u.retarget_timer),
-        (900, 750 + 7241 % 500)
+        (WorldTime::from_millis(900), Millis::new(750 + 7241 % 500))
     );
 }
 
 #[test]
 fn a_last_retarget_ahead_of_the_world_time_wraps_and_retargets() {
     let mut u = UnitAi {
-        last_retarget_time: 400,
+        last_retarget_time: WorldTime::from_millis(400),
         ..idle(UnitAiType::TOWER)
     };
     let mut r = rng();
     let _ = u
         .update_idle(
-            50,
-            100,
+            Millis::new(50),
+            WorldTime::from_millis(100),
             false,
             &Surroundings::default(),
             &mut r,
             &mut no_search,
         )
         .unwrap();
-    assert_eq!((u.last_retarget_time, r.draws), (100, 1));
+    assert_eq!(
+        (u.last_retarget_time, r.draws),
+        (WorldTime::from_millis(100), 1)
+    );
 }
 
 #[test]
@@ -3958,15 +3987,19 @@ fn villagers_and_livestock_never_retarget() {
         let mut r = rng();
         let _ = u
             .update_idle(
-                50,
-                5000,
+                Millis::new(50),
+                WorldTime::from_millis(5000),
                 false,
                 &Surroundings::default(),
                 &mut r,
                 &mut no_search,
             )
             .unwrap();
-        assert_eq!((u.retarget_timer, r.draws), (900, 0), "type {t}");
+        assert_eq!(
+            (u.retarget_timer, r.draws),
+            (Millis::new(900), 0),
+            "type {t}"
+        );
     }
 }
 
@@ -3979,19 +4012,19 @@ fn the_look_around_timeout_is_redrawn_once_exceeded() {
     let mut r = rng();
     let _ = u
         .update_idle(
-            1000,
-            0,
+            Millis::new(1000),
+            WorldTime::ZERO,
             false,
             &Surroundings::default(),
             &mut r,
             &mut no_search,
         )
         .unwrap();
-    assert_eq!((u.look_around_timer, r.draws), (1000, 0));
+    assert_eq!((u.look_around_timer, r.draws), (Millis::new(1000), 0));
     let _ = u
         .update_idle(
-            1,
-            0,
+            Millis::new(1),
+            WorldTime::ZERO,
             false,
             &Surroundings::default(),
             &mut r,
@@ -4000,29 +4033,29 @@ fn the_look_around_timeout_is_redrawn_once_exceeded() {
         .unwrap();
     assert_eq!(
         (u.look_around_timer, u.look_around_timeout),
-        (0, 4500 + 7241 % 1000)
+        (Millis::ZERO, Millis::new(4500 + 7241 % 1000))
     );
 }
 
 #[test]
 fn retarget_draws_before_look_around() {
     let mut u = UnitAi {
-        look_around_timer: 1000,
+        look_around_timer: Millis::new(1000),
         ..idle(UnitAiType::SOLDIER)
     };
     let mut r = rng();
     let _ = u
         .update_idle(
-            1,
-            900,
+            Millis::new(1),
+            WorldTime::from_millis(900),
             false,
             &Surroundings::default(),
             &mut r,
             &mut no_search,
         )
         .unwrap();
-    assert_eq!(u.retarget_timer, 750 + 7241 % 500);
-    assert_eq!(u.look_around_timeout, 4500 + 25269 % 1000);
+    assert_eq!(u.retarget_timer, Millis::new(750 + 7241 % 500));
+    assert_eq!(u.look_around_timeout, Millis::new(4500 + 25269 % 1000));
 }
 
 /// `FUN_140c64cf0`: the timer is a draw of the stream modulo half the span plus three
@@ -4030,35 +4063,38 @@ fn retarget_draws_before_look_around() {
 #[test]
 fn the_randomized_retarget_timer_draws_around_its_span() {
     let mut u = idle(UnitAiType::CIVILIAN);
-    u.set_randomized_retarget_timer(4000, &mut rng());
-    assert_eq!(u.retarget_timer, 7241 % 2000 + 3000);
-    u.set_randomized_retarget_timer(10, &mut rng());
-    assert_eq!(u.retarget_timer, 7241 % 500 + 750);
-    u.set_randomized_retarget_timer(u32::MAX, &mut rng());
+    u.set_randomized_retarget_timer(Millis::new(4000), &mut rng());
+    assert_eq!(u.retarget_timer, Millis::new(7241 % 2000 + 3000));
+    u.set_randomized_retarget_timer(Millis::new(10), &mut rng());
+    assert_eq!(u.retarget_timer, Millis::new(7241 % 500 + 750));
+    u.set_randomized_retarget_timer(Millis::new(u32::MAX), &mut rng());
     assert_eq!(
         u.retarget_timer,
-        7241_u32.wrapping_add(u32::MAX.wrapping_mul(3) >> 2)
+        Millis::new(7241_u32.wrapping_add(u32::MAX.wrapping_mul(3) >> 2))
     );
 }
 
 #[test]
 fn the_idle_timer_restarts_after_its_timeout_and_the_secondary_timer_stops_at_0() {
     let mut u = UnitAi {
-        secondary_timer: 750,
+        secondary_timer: Millis::new(750),
         ..idle(UnitAiType::CIVILIAN)
     };
     let mut r = rng();
     let _ = u
         .update_idle(
-            3001,
-            0,
+            Millis::new(3001),
+            WorldTime::ZERO,
             false,
             &Surroundings::default(),
             &mut r,
             &mut no_search,
         )
         .unwrap();
-    assert_eq!((u.idle_timer, u.secondary_timer), (0, 0));
+    assert_eq!(
+        (u.idle_timer, u.secondary_timer),
+        (Millis::ZERO, Millis::ZERO)
+    );
 }
 
 #[test]
@@ -4070,8 +4106,8 @@ fn non_idle_units_and_unknown_types_are_unsupported() {
     };
     assert!(
         busy.update_idle(
-            1,
-            0,
+            Millis::new(1),
+            WorldTime::ZERO,
             false,
             &Surroundings::default(),
             &mut r,
@@ -4083,8 +4119,8 @@ fn non_idle_units_and_unknown_types_are_unsupported() {
     assert!(
         idle(UnitAiType::of_value(99))
             .update_idle(
-                1,
-                0,
+                Millis::new(1),
+                WorldTime::ZERO,
                 false,
                 &Surroundings::default(),
                 &mut r,
@@ -4123,14 +4159,14 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             last_action: None,
             last_target: None,
             last_target_class: None,
-            idle_timer: 0,
-            adjusted_idle_timeout: b % 1500 + 2250,
-            idle_timeout: 3000,
-            secondary_timer: 750,
-            look_around_timer: 0,
-            look_around_timeout: 1000,
-            last_retarget_time: a % 500,
-            retarget_timer: 750 + c % 500,
+            idle_timer: Millis::ZERO,
+            adjusted_idle_timeout: Millis::new(b % 1500 + 2250),
+            idle_timeout: Millis::new(3000),
+            secondary_timer: Millis::new(750),
+            look_around_timer: Millis::ZERO,
+            look_around_timeout: Millis::new(1000),
+            last_retarget_time: WorldTime::from_millis(a % 500),
+            retarget_timer: Millis::new(750 + c % 500),
             stance: UnitStance::AGGRESSIVE,
             formation_type: FormationKind::HORDE,
             state_position: Point::new(30.0, 88.0),
@@ -4143,7 +4179,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             home: None,
             hunted: None,
             order_priority: -1,
-            last_update_time: 0,
+            last_update_time: Millis::ZERO,
             orders: Vec::new(),
             building_orders: Vec::new(),
             notifies: Vec::new(),
@@ -4192,10 +4228,10 @@ fn a_new_artifact_unit_ai_draws_four_timers() {
         ),
         (
             ARTIFACT_AI,
-            a % 500,
-            750 + c % 500,
-            5000,
-            d % 2500 + 3750,
+            WorldTime::from_millis(a % 500),
+            Millis::new(750 + c % 500),
+            Millis::new(5000),
+            Millis::new(d % 2500 + 3750),
             0,
             5
         )
@@ -4401,9 +4437,9 @@ fn rock_church() -> (UnitAi, Surroundings) {
         current_order: None,
         current_action: None,
         current_target: None,
-        idle_timeout: 5000,
-        adjusted_idle_timeout: 3881,
-        retarget_timer: 1224,
+        idle_timeout: Millis::new(5000),
+        adjusted_idle_timeout: Millis::new(3881),
+        retarget_timer: Millis::new(1224),
         ..UnitAi::default()
     };
     let at = Surroundings {
@@ -4463,21 +4499,35 @@ fn the_artifact_goes_to_the_owner_of_the_closest_object_one_player_sees() {
 #[test]
 fn the_artifact_s_update_hands_it_over_then_stops() {
     let (mut ai, at) = rock_church();
-    ai.idle_timer = 900;
+    ai.idle_timer = Millis::new(900);
     let mut side = ArtifactSide::finding(500, 1, Some(PlayerId::new(3)));
     let fx = ai
-        .update_fx(100, 5000, false, &at, &mut rng(), &mut side)
+        .update_fx(
+            Millis::new(100),
+            WorldTime::from_millis(5000),
+            false,
+            &at,
+            &mut rng(),
+            &mut side,
+        )
         .unwrap();
     assert_eq!(fx, [Effect::ChangeOwner(PlayerId::new(3)), Effect::Stop]);
-    assert_eq!((ai.current_target, ai.idle_timer), (None, 0));
+    assert_eq!((ai.current_target, ai.idle_timer), (None, Millis::ZERO));
     // nobody near: nothing, the idle timer runs
     let (mut ai, at) = rock_church();
     let mut side = ArtifactSide::finding(-1, 0, None);
     let fx = ai
-        .update_fx(100, 5000, false, &at, &mut rng(), &mut side)
+        .update_fx(
+            Millis::new(100),
+            WorldTime::from_millis(5000),
+            false,
+            &at,
+            &mut rng(),
+            &mut side,
+        )
         .unwrap();
     assert_eq!(fx, []);
-    assert_eq!(ai.idle_timer, 100);
+    assert_eq!(ai.idle_timer, Millis::new(100));
 }
 
 /// The artifact's notify handler (`FUN_140c21f70`): the kinds it lets be go on; a unit
@@ -4497,7 +4547,7 @@ fn the_artifact_s_notifies_stop_it_or_go_on() {
         let mut fx = Vec::new();
         let r = ai.handle(
             n,
-            0,
+            Millis::ZERO,
             at,
             false,
             &mut rng(),
@@ -4600,7 +4650,14 @@ fn a_new_tower_unit_ai_draws_four_timers() {
             ai.adjusted_idle_timeout,
             ai.stance.get(),
         ),
-        (TOWER_AI, a % 500, 750 + c % 500, 1000, d % 500 + 750, 0)
+        (
+            TOWER_AI,
+            WorldTime::from_millis(a % 500),
+            Millis::new(750 + c % 500),
+            Millis::new(1000),
+            Millis::new(d % 500 + 750),
+            0
+        )
     );
 }
 
@@ -4673,13 +4730,13 @@ fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
             ),
             (
                 ai_type,
-                a % 500,
-                750 + c % 500,
-                timeout,
-                adjusted,
+                WorldTime::from_millis(a % 500),
+                Millis::new(750 + c % 500),
+                Millis::new(timeout),
+                Millis::new(adjusted),
                 stance,
                 capacity,
-                Point::new(12.5, 40.0),
+                Point::new(12.5, 40.0)
             ),
             "type {ai_type}"
         );
@@ -4772,7 +4829,11 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
     let _ = (expected.rand15(), expected.rand15(), expected.rand15());
     assert_eq!(
         (ai.idle_timeout, ai.adjusted_idle_timeout, ai.stance.get()),
-        (1500, expected.rand15() % 750 + 1125, 1)
+        (
+            Millis::new(1500),
+            Millis::new(expected.rand15() % 750 + 1125),
+            1
+        )
     );
     let stance = |f: &dyn Fn(&mut NewObject)| {
         let mut new = placed(Position::ORIGIN, class::CLASS_6);
@@ -4949,9 +5010,9 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
 fn an_order_redraws_an_adjusted_idle_timeout_of_750_or_more_and_caps_the_secondary_timer() {
     // FUN_140e6cfc0 for each unit of an INTERACT, MOVE or RETREAT
     let mut u = UnitAi {
-        idle_timeout: 3000,
-        adjusted_idle_timeout: 2600,
-        secondary_timer: 900,
+        idle_timeout: Millis::new(3000),
+        adjusted_idle_timeout: Millis::new(2600),
+        secondary_timer: Millis::new(900),
         patrol_path: Some(PatrolPath::default()),
         patrol_waypoint: 3,
         ..idle(UnitAiType::SOLDIER)
@@ -4960,28 +5021,28 @@ fn an_order_redraws_an_adjusted_idle_timeout_of_750_or_more_and_caps_the_seconda
     u.reset_for_order(&mut r);
     assert_eq!(
         (u.adjusted_idle_timeout, u.secondary_timer),
-        (7241 % 1500 + 2250, 750)
+        (Millis::new(7241 % 1500 + 2250), Millis::new(750))
     );
     // FUN_140c68de0 first: the patrol path and its waypoint go
     assert_eq!((u.patrol_path, u.patrol_waypoint), (None, 0));
     let mut low = UnitAi {
-        idle_timeout: 3000,
-        adjusted_idle_timeout: 749,
+        idle_timeout: Millis::new(3000),
+        adjusted_idle_timeout: Millis::new(749),
         ..idle(UnitAiType::SOLDIER)
     };
     let mut r = rng();
     low.reset_for_order(&mut r);
-    assert_eq!((low.adjusted_idle_timeout, r.draws), (749, 0));
+    assert_eq!((low.adjusted_idle_timeout, r.draws), (Millis::new(749), 0));
 }
 
 /// MarvinBlue/426048731's boar 9732 (type 4) at its origin (23.5, 105.5), as saved after 680.
 fn boar() -> UnitAi {
     UnitAi {
-        idle_timer: 3000,
-        adjusted_idle_timeout: 3005,
-        idle_timeout: 3000,
-        look_around_timeout: 5426,
-        retarget_timer: 1205,
+        idle_timer: Millis::new(3000),
+        adjusted_idle_timeout: Millis::new(3005),
+        idle_timeout: Millis::new(3000),
+        look_around_timeout: Millis::new(5426),
+        retarget_timer: Millis::new(1205),
         target_class: None,
         target_point: Position::new(-1.0, -1.0, -1.0),
         last_order: None,
@@ -5029,15 +5090,18 @@ fn a_boar_at_home_draws_its_leash_and_mostly_stays() {
     let mut u = boar();
     let mut r = seed_for(false);
     let moved = u.update_idle(
-        10,
-        0,
+        Millis::new(10),
+        WorldTime::ZERO,
         false,
         &at(Position::new(23.5, 105.5, 0.0)),
         &mut r,
         &mut no_search,
     );
     assert_eq!(moved, Ok(None));
-    assert_eq!((u.idle_timer, u.current_action, r.draws), (0, None, 2));
+    assert_eq!(
+        (u.idle_timer, u.current_action, r.draws),
+        (Millis::ZERO, None, 2)
+    );
 }
 
 #[test]
@@ -5050,8 +5114,8 @@ fn a_boar_wanders_up_to_three_tiles_once_in_seven() {
     let (dx, dy) = (e.rand15() % 6, e.rand15() % 6);
     let moved = u
         .update_idle(
-            10,
-            0,
+            Millis::new(10),
+            WorldTime::ZERO,
             false,
             &at(Position::new(23.5, 105.5, 0.0)),
             &mut r,
@@ -5089,8 +5153,8 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
     let mut r = seed_for(true);
     let moved = u
         .update_idle(
-            10,
-            0,
+            Millis::new(10),
+            WorldTime::ZERO,
             false,
             &at(Position::new(26.0, 105.5, 0.5)),
             &mut r,
@@ -5104,8 +5168,8 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
     let mut far = boar();
     let mut r = seed_for(false);
     let moved = far.update_idle(
-        10,
-        0,
+        Millis::new(10),
+        WorldTime::ZERO,
         false,
         &at(Position::new(43.5, 105.5, 0.0)),
         &mut r,
@@ -5122,8 +5186,8 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
     };
     let mut r = seed_for(false);
     let moved = heading.update_idle(
-        10,
-        0,
+        Millis::new(10),
+        WorldTime::ZERO,
         false,
         &at(Position::new(43.5, 105.5, 0.0)),
         &mut r,
@@ -5140,7 +5204,14 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
             ..at(Position::new(23.5, 105.5, 0.0))
         };
         assert_eq!(
-            u.update_idle(10, 0, false, &place, &mut r, &mut no_search),
+            u.update_idle(
+                Millis::new(10),
+                WorldTime::ZERO,
+                false,
+                &place,
+                &mut r,
+                &mut no_search
+            ),
             Ok(None)
         );
         assert_eq!((r.draws, u.home.unwrap().furious), (0, false));
@@ -5151,13 +5222,13 @@ fn a_boar_away_from_home_goes_back_and_a_furious_one_stays() {
 fn a_deer_s_adjusted_idle_timeout_is_five_quarters_of_its_idle_timeout() {
     // FUN_140c17170, the deer's and fox's slot 0x1a8: no draw
     let mut u = UnitAi {
-        idle_timeout: 4000,
-        adjusted_idle_timeout: 3000,
+        idle_timeout: Millis::new(4000),
+        adjusted_idle_timeout: Millis::new(3000),
         ..idle(UnitAiType::HUNTED)
     };
     let mut r = rng();
     u.reset_for_order(&mut r);
-    assert_eq!((u.adjusted_idle_timeout, r.draws), (5000, 0));
+    assert_eq!((u.adjusted_idle_timeout, r.draws), (Millis::new(5000), 0));
 }
 
 #[test]
@@ -5198,8 +5269,8 @@ fn an_idle_transport_ship_retargets_like_a_soldier() {
     let mut r = rng();
     let _ = u
         .update_idle(
-            50,
-            900,
+            Millis::new(50),
+            WorldTime::from_millis(900),
             false,
             &Surroundings::default(),
             &mut r,
@@ -5208,17 +5279,17 @@ fn an_idle_transport_ship_retargets_like_a_soldier() {
         .unwrap();
     assert_eq!(
         (u.last_retarget_time, u.retarget_timer),
-        (900, 750 + 7241 % 500)
+        (WorldTime::from_millis(900), Millis::new(750 + 7241 % 500))
     );
 }
 
 fn deer() -> UnitAi {
     UnitAi {
-        idle_timer: 5000,
-        adjusted_idle_timeout: 5000,
-        idle_timeout: 4000,
-        look_around_timeout: 5424,
-        retarget_timer: 1212,
+        idle_timer: Millis::new(5000),
+        adjusted_idle_timeout: Millis::new(5000),
+        idle_timeout: Millis::new(4000),
+        look_around_timeout: Millis::new(5424),
+        retarget_timer: Millis::new(1212),
         target_class: None,
         target_point: Position::new(-1.0, -1.0, -1.0),
         last_order: None,
@@ -5268,7 +5339,14 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
     let mut r = wander_seed(false);
     let place = deer_at(Position::new(31.5, 106.5, 0.0));
     let moved = u
-        .update_idle(10, 0, false, &place, &mut r, &mut nothing)
+        .update_idle(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &place,
+            &mut r,
+            &mut nothing,
+        )
         .unwrap();
     assert_eq!(moved, None);
     // the search reaches the line of sight plus 1, the search radius being shorter
@@ -5285,9 +5363,14 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
     let step = |n: u32| if 3 <= n { n as i32 - 6 } else { n as i32 + 1 };
     let (dx, dy) = (step(e.rand15() % 6), step(e.rand15() % 6));
     let moved = u
-        .update_idle(10, 0, false, &place, &mut r, &mut |_: &Search<'_>| {
-            Ok(Found::NONE)
-        })
+        .update_idle(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &place,
+            &mut r,
+            &mut |_: &Search<'_>| Ok(Found::NONE),
+        )
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -5304,9 +5387,14 @@ fn a_deer_away_from_home_goes_back_and_one_beyond_its_leash_at_once() {
     let mut r = wander_seed(true);
     let away = deer_at(Position::new(34.5, 106.5, 0.5));
     let moved = u
-        .update_idle(10, 0, false, &away, &mut r, &mut |_: &Search<'_>| {
-            Ok(Found::NONE)
-        })
+        .update_idle(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &away,
+            &mut r,
+            &mut |_: &Search<'_>| Ok(Found::NONE),
+        )
         .unwrap()
         .unwrap();
     assert_eq!((moved.point, r.draws), (Position::new(31.5, 106.5, 0.5), 1));
@@ -5316,7 +5404,14 @@ fn a_deer_away_from_home_goes_back_and_one_beyond_its_leash_at_once() {
     u.hunted.as_mut().unwrap().leash = 2.5;
     let mut r = wander_seed(false);
     let moved = u
-        .update_idle(10, 0, false, &away, &mut r, &mut no_search)
+        .update_idle(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &away,
+            &mut r,
+            &mut no_search,
+        )
         .unwrap()
         .unwrap();
     assert_eq!((moved.point, r.draws), (Position::new(31.5, 106.5, 0.5), 0));
@@ -5349,7 +5444,14 @@ fn a_deer_that_sees_an_object_evades_it() {
         })
     };
     let moved = u
-        .update_idle(10, 0, false, &place, &mut r, &mut enemy.clone())
+        .update_idle(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &place,
+            &mut r,
+            &mut enemy.clone(),
+        )
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -5372,15 +5474,25 @@ fn a_deer_that_sees_an_object_evades_it() {
 fn an_animal_whose_wander_ended_drops_its_move_action_and_turns_idle() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::Move),
-        idle_timer: 10,
+        idle_timer: Millis::new(10),
         ..deer()
     };
     let mut r = wander_seed(false);
     let place = deer_at(Position::new(31.5, 106.5, 0.0));
     let moved = u
-        .update_fx(10, 0, false, &place, &mut r, &mut no_search)
+        .update_fx(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &place,
+            &mut r,
+            &mut no_search,
+        )
         .unwrap();
-    assert_eq!((moved, u.current_action, u.idle_timer), (vec![], None, 20));
+    assert_eq!(
+        (moved, u.current_action, u.idle_timer),
+        (vec![], None, Millis::new(20))
+    );
     // while it walks, its timers run and nothing else happens
     let mut u = UnitAi {
         current_action: Some(ActionKind::Move),
@@ -5391,11 +5503,18 @@ fn an_animal_whose_wander_ended_drops_its_move_action_and_turns_idle() {
         ..place
     };
     let _ = u
-        .update_fx(10, 0, false, &walking, &mut r, &mut no_search)
+        .update_fx(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &walking,
+            &mut r,
+            &mut no_search,
+        )
         .unwrap();
     assert_eq!(
         (u.current_action, u.idle_timer, u.state_position),
-        (Some(ActionKind::Move), 5010, Point::ORIGIN)
+        (Some(ActionKind::Move), Millis::new(5010), Point::ORIGIN)
     );
 }
 
@@ -5518,8 +5637,8 @@ fn a_completed_move_on_its_order_ends_the_order_and_stops_the_unit() {
     let mut r = rng();
     let fx = u
         .update_fx(
-            60,
-            900,
+            Millis::new(60),
+            WorldTime::from_millis(900),
             false,
             &scout_at(true, false),
             &mut r,
@@ -5536,7 +5655,7 @@ fn a_completed_move_on_its_order_ends_the_order_and_stops_the_unit() {
         (Some(OrderKind::Move), Some(ActionKind::Move))
     );
     assert_eq!(u.state_position, Point::new(93.5, 58.25));
-    assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
+    assert_eq!((u.notifies.len(), u.last_update_time), (0, Millis::new(60)));
 }
 
 #[test]
@@ -5687,7 +5806,7 @@ fn an_animal_s_completed_wander_becomes_its_last_action() {
     // the base: no order, its action completed
     let mut u = UnitAi {
         current_action: Some(ActionKind::Move),
-        idle_timer: 0,
+        idle_timer: Millis::ZERO,
         notifies: vec![Notify::own(
             object_id(9851),
             NotifyKind::ACTION_COMPLETED,
@@ -5698,8 +5817,8 @@ fn an_animal_s_completed_wander_becomes_its_last_action() {
     let mut r = wander_seed(false);
     let fx = u
         .update_fx(
-            60,
-            0,
+            Millis::new(60),
+            WorldTime::ZERO,
             false,
             &deer_at(Position::new(31.5, 106.5, 0.0)),
             &mut r,
@@ -5760,8 +5879,8 @@ fn a_livestock_s_ownership_notify_drops_its_action_value_and_breaks_off() {
     let mut r = rng();
     let fx = u
         .update_fx(
-            60,
-            0,
+            Millis::new(60),
+            WorldTime::ZERO,
             false,
             &Surroundings::default(),
             &mut r,
@@ -5773,7 +5892,7 @@ fn a_livestock_s_ownership_notify_drops_its_action_value_and_breaks_off() {
         (u.current_action, u.last_action),
         (None, Some(ActionKind::Move))
     );
-    assert_eq!((u.notifies.len(), u.last_update_time), (0, 60));
+    assert_eq!((u.notifies.len(), u.last_update_time), (0, Millis::new(60)));
 }
 
 /// Slot 0x28: a unit past state 2 takes no order; one in front goes before the first queued
@@ -5899,7 +6018,7 @@ fn builder_done() -> UnitAi {
         current_target: Some(object_id(10028)),
         target_class: class_of(3),
         target_point: Position::new(30.0, 88.0, 0.0),
-        idle_timeout: 3000,
+        idle_timeout: Millis::new(3000),
         ..idle(UnitAiType::CIVILIAN)
     }
 }
@@ -5913,8 +6032,8 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Make),
         current_target: target,
-        idle_timer: 4000,
-        adjusted_idle_timeout: 1080,
+        idle_timer: Millis::new(4000),
+        adjusted_idle_timeout: Millis::new(1080),
         ..UnitAi::default()
     };
     let at = Surroundings {
@@ -5936,20 +6055,20 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
     };
     let mut u = tc(Some(object_id(29826)));
     run(&mut u, &at).unwrap();
-    assert_eq!(u.idle_timer, 4000);
+    assert_eq!(u.idle_timer, Millis::new(4000));
     let mut u = UnitAi {
-        idle_timer: 900,
+        idle_timer: Millis::new(900),
         ..tc(None)
     };
     run(&mut u, &at).unwrap();
-    assert_eq!(u.idle_timer, 900);
+    assert_eq!(u.idle_timer, Millis::new(900));
     // past it without a target the timer restarts and processIdle runs: the tower's search
     let mut u = tc(None);
     assert_eq!(
         run(&mut u, &at),
         Err(GenieError::unsupported("no search here"))
     );
-    assert_eq!(u.idle_timer, 0);
+    assert_eq!(u.idle_timer, Millis::ZERO);
     // a building without a missile and a single volley forgets its target, then searches
     let single = Surroundings {
         ranged: false,
@@ -5974,7 +6093,7 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
     run(&mut u, &manned).unwrap();
     assert_eq!(
         (u.current_target, u.idle_timer),
-        (Some(object_id(29826)), 4000)
+        (Some(object_id(29826)), Millis::new(4000))
     );
 }
 
@@ -6031,13 +6150,20 @@ fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
             current_order: order,
             current_action: action,
             current_target: Some(object_id(14230)),
-            adjusted_idle_timeout: 9000,
-            look_around_timeout: 9000,
-            retarget_timer: 90_000,
+            adjusted_idle_timeout: Millis::new(9000),
+            look_around_timeout: Millis::new(9000),
+            retarget_timer: Millis::new(90_000),
             home: (ai_type == BOAR_AI).then(Home::default),
             ..UnitAi::default()
         };
-        let r = u.update_fx(10, 100, false, &at, &mut rng(), &mut TailSide::default());
+        let r = u.update_fx(
+            Millis::new(10),
+            WorldTime::from_millis(100),
+            false,
+            &at,
+            &mut rng(),
+            &mut TailSide::default(),
+        );
         assert_eq!(r, Ok(Vec::new()), "{ai_type} {order:?} {action:?}");
         assert_eq!(
             u.current_target,
@@ -6090,7 +6216,7 @@ fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
     )
     .unwrap();
     assert_eq!((u.current_target, u.target_class), (None, class_of(3)));
-    assert_eq!(u.idle_timer, 3000);
+    assert_eq!(u.idle_timer, Millis::new(3000));
     // inside another, a unit drops its target before the lookup
     let inside = Surroundings {
         garrisoned: true,
@@ -6309,7 +6435,14 @@ fn a_moved_target_notify_runs_process_idle_with_a_saved_patrol() {
     let (mut r, mut side) = (rng(), Recorder::default());
     let mut fx = Vec::new();
     assert_eq!(
-        u.base_notify(n, 0, &at, false, &mut r, &mut With::new(&mut side, &mut fx)),
+        u.base_notify(
+            n,
+            Millis::ZERO,
+            &at,
+            false,
+            &mut r,
+            &mut With::new(&mut side, &mut fx)
+        ),
         Ok(GO_ON)
     );
     assert_eq!(fx, vec![]);
@@ -6317,7 +6450,14 @@ fn a_moved_target_notify_runs_process_idle_with_a_saved_patrol() {
     u.patrol_path = Some(PatrolPath::default());
     u.current_order = None;
     assert_eq!(
-        u.base_notify(n, 0, &at, false, &mut r, &mut With::new(&mut side, &mut fx)),
+        u.base_notify(
+            n,
+            Millis::ZERO,
+            &at,
+            false,
+            &mut r,
+            &mut With::new(&mut side, &mut fx)
+        ),
         Ok(GO_ON)
     );
     assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
@@ -6326,8 +6466,8 @@ fn a_moved_target_notify_runs_process_idle_with_a_saved_patrol() {
 /// The scout 9185 in update 1518: idle (its MOVE done), stance 2 at its state position.
 fn idle_scout() -> (UnitAi, Surroundings) {
     let u = UnitAi {
-        idle_timer: 504,
-        adjusted_idle_timeout: 503,
+        idle_timer: Millis::new(504),
+        adjusted_idle_timeout: Millis::new(503),
         stance: UnitStance::STAND_GROUND,
         state_position: Point::new(21.947_916, 92.489_586),
         ..idle(UnitAiType::SOLDIER)
@@ -6356,15 +6496,25 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
         Ok(Found::NONE)
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut closest)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut closest,
+        )
         .unwrap();
-    assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
+    assert_eq!(
+        fx,
+        vec![Effect::CapHumanOrder(WorldTime::from_millis(5000))]
+    );
     // the search radius: its line of sight plus 1; Gaia's objects too (not a scenario)
     assert!(matches!(
         searched[..],
         [(5.0, 39, Pick::Attack { lowest: 0, .. })]
     ));
-    assert_eq!(u.idle_timer, 0);
+    assert_eq!(u.idle_timer, Millis::ZERO);
     // something found would be attacked, which is not modelled
     let (mut u, at) = idle_scout();
     let mut found = |_: &Search<'_>| {
@@ -6379,8 +6529,15 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
         })
     };
     assert!(
-        u.update_fx(28, 0, false, &at, &mut rng(), &mut found)
-            .is_err()
+        u.update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut found
+        )
+        .is_err()
     );
     // away from its state position, a stance-2 soldier walks back ("I'm in Defend or
     // StandGround, returning to state pos.", FUN_140c5e7d0), which its processIdle does not
@@ -6389,12 +6546,19 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
     u.state_position = Point::new(25.0, 92.5);
     let mut none = |_: &Search<'_>| Ok(Found::NONE);
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut none)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut none,
+        )
         .unwrap();
     assert_eq!(
         fx,
         vec![
-            Effect::CapHumanOrder(5000),
+            Effect::CapHumanOrder(WorldTime::from_millis(5000)),
             Effect::Move(AiMove {
                 point: Position::new(25.0, 92.5, 0.0),
                 range: 1.0,
@@ -6418,9 +6582,19 @@ fn a_gaia_soldier_that_takes_owners_by_sight_does_not_search() {
         ..at
     };
     let fx = u
-        .update_fx(28, 0, false, &gaia, &mut rng(), &mut no_search)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &gaia,
+            &mut rng(),
+            &mut no_search,
+        )
         .unwrap();
-    assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
+    assert_eq!(
+        fx,
+        vec![Effect::CapHumanOrder(WorldTime::from_millis(5000))]
+    );
 }
 
 /// Player 2's town centre 9156 in MarvinBlue/426048731's update 1506.
@@ -6685,8 +6859,8 @@ fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position(
 #[test]
 fn an_idle_tower_searches_with_its_classes() {
     let mut u = UnitAi {
-        idle_timer: 504,
-        adjusted_idle_timeout: 503,
+        idle_timer: Millis::new(504),
+        adjusted_idle_timeout: Millis::new(503),
         ..idle(UnitAiType::TOWER)
     };
     let at = Surroundings {
@@ -6705,9 +6879,19 @@ fn an_idle_tower_searches_with_its_classes() {
         Ok(Found::NONE)
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut closest)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut closest,
+        )
         .unwrap();
-    assert_eq!(fx, vec![Effect::CapHumanOrder(5000)]);
+    assert_eq!(
+        fx,
+        vec![Effect::CapHumanOrder(WorldTime::from_millis(5000))]
+    );
     assert_eq!(searched, vec![(9.0, TOWER_CARED.to_vec())]);
 }
 
@@ -7122,13 +7306,20 @@ fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
         Ok(Found::NONE)
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut look)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut look,
+        )
         .unwrap();
     assert_eq!(picks, vec![Pick::Look]);
     assert_eq!(
         fx,
         vec![
-            Effect::CapHumanOrder(5000),
+            Effect::CapHumanOrder(WorldTime::from_millis(5000)),
             Effect::Move(AiMove {
                 point: Position::new(25.0, 92.5, 0.0),
                 range: 1.0,
@@ -7171,8 +7362,8 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         })
     };
     let ship = || UnitAi {
-        idle_timer: 3001,
-        adjusted_idle_timeout: 3000,
+        idle_timer: Millis::new(3001),
+        adjusted_idle_timeout: Millis::new(3000),
         ..idle(UnitAiType::TRANSPORT)
     };
     let at = |group| Surroundings {
@@ -7183,7 +7374,14 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         ..Surroundings::default()
     };
     let run = |u: &mut UnitAi, at: &Surroundings| {
-        u.update_fx(28, 0, false, at, &mut rng(), &mut no_search)
+        u.update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            at,
+            &mut rng(),
+            &mut no_search,
+        )
     };
     // an idle group of a still unit: the idle check runs, the state position follows
     let mut u = ship();
@@ -7194,7 +7392,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     for g in [group(false, true, false), group(true, false, true)] {
         let mut u = ship();
         assert_eq!(run(&mut u, &at(g)), Ok(vec![]));
-        assert_eq!(u.idle_timer, 3029);
+        assert_eq!(u.idle_timer, Millis::new(3029));
     }
     // a group without a command: the state position stays
     let mut u = ship();
@@ -7232,7 +7430,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         run(&mut u, &at(g)),
         Ok(vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)])
     );
-    assert_eq!(u.secondary_timer, 750);
+    assert_eq!(u.secondary_timer, Millis::new(750));
     // a target of a unit in a patrolling group: FUN_140c41690 answers 0 for a human player
     let mut g = group(true, false, false);
     g.as_mut().unwrap().patrol = true;
@@ -7304,8 +7502,8 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
 #[test]
 fn an_idle_transport_ship_s_check_caps_its_human_order_time_and_does_nothing() {
     let mut u = UnitAi {
-        idle_timer: 3001,
-        adjusted_idle_timeout: 3000,
+        idle_timer: Millis::new(3001),
+        adjusted_idle_timeout: Millis::new(3000),
         ..idle(UnitAiType::TRANSPORT)
     };
     let at = Surroundings {
@@ -7314,10 +7512,17 @@ fn an_idle_transport_ship_s_check_caps_its_human_order_time_and_does_nothing() {
         ..Surroundings::default()
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut no_search)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut no_search,
+        )
         .unwrap();
     assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
-    assert_eq!(u.idle_timer, 0);
+    assert_eq!(u.idle_timer, Millis::ZERO);
     // the building's (FUN_140c1e600) and the livestock's (FUN_140c1fea0) return 5 alone
     for ai_type in [UnitAiType::BUILDING, UnitAiType::LIVESTOCK] {
         let mut u = idle(ai_type);
@@ -7424,8 +7629,8 @@ fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
 #[test]
 fn a_no_attack_tower_only_searches() {
     let mut u = UnitAi {
-        idle_timer: 504,
-        adjusted_idle_timeout: 503,
+        idle_timer: Millis::new(504),
+        adjusted_idle_timeout: Millis::new(503),
         stance: UnitStance::NO_ATTACK,
         ..idle(UnitAiType::TOWER)
     };
@@ -7452,7 +7657,14 @@ fn a_no_attack_tower_only_searches() {
         })
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut closest)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut closest,
+        )
         .unwrap();
     assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
     assert_eq!(searched, vec![(9.0, TOWER_CARED.len(), Pick::Look)]);
@@ -7464,8 +7676,8 @@ fn a_no_attack_tower_only_searches() {
 #[test]
 fn an_idle_tower_attacks_what_its_search_found() {
     let mut u = UnitAi {
-        idle_timer: 504,
-        adjusted_idle_timeout: 503,
+        idle_timer: Millis::new(504),
+        adjusted_idle_timeout: Millis::new(503),
         ..idle(UnitAiType::TOWER)
     };
     let at = Surroundings {
@@ -7484,7 +7696,14 @@ fn an_idle_tower_attacks_what_its_search_found() {
         refuses: false,
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut side)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut side,
+        )
         .unwrap();
     assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
     assert_eq!(side.attacks, vec![(object_id(9731), true)]);
@@ -7694,7 +7913,7 @@ fn handled(
     let mut fx = Vec::new();
     let r = u.handle(
         n,
-        0,
+        Millis::ZERO,
         at,
         computer,
         &mut rng(),
@@ -7713,8 +7932,8 @@ fn a_boar_whose_move_aside_completed_heads_home_next() {
         current_action: Some(ActionKind::MoveAside),
         current_target: Some(object_id(50)),
         target_class: class_of(4),
-        adjusted_idle_timeout: 3100,
-        idle_timeout: 3000,
+        adjusted_idle_timeout: Millis::new(3100),
+        idle_timeout: Millis::new(3000),
         ..hit_boar()
     };
     let n = Notify::own(
@@ -7725,7 +7944,7 @@ fn a_boar_whose_move_aside_completed_heads_home_next() {
     let (r, fx, _) = handled(&mut u, n, &Surroundings::default(), false);
     assert_eq!(r, Ok(GO_ON));
     assert_eq!(fx, vec![Effect::Stop]);
-    assert_eq!(u.idle_timeout, 3101);
+    assert_eq!(u.idle_timeout, Millis::new(3101));
     assert_eq!(
         (u.current_target, u.last_target),
         (None, Some(object_id(50)))
@@ -7742,7 +7961,7 @@ fn a_lion_s_completed_attack_resets_its_idle_timeout_and_stops() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(700)),
-        idle_timeout: 6000,
+        idle_timeout: Millis::new(6000),
         ..idle(UnitAiType::LION)
     };
     let n = Notify::own(
@@ -7751,18 +7970,21 @@ fn a_lion_s_completed_attack_resets_its_idle_timeout_and_stops() {
         [ActionKind::Attack.value(), 0, 0],
     );
     let mut r = rng();
-    let expected = adjusted_idle_timeout(1000, &mut rng());
+    let expected = adjusted_idle_timeout(Millis::new(1000), &mut rng());
     let mut fx = Vec::new();
     let result = u.handle(
         n,
-        0,
+        Millis::ZERO,
         &Surroundings::default(),
         false,
         &mut r,
         &mut With::new(&mut Recorder::default(), &mut fx),
     );
     assert_eq!(result, Ok(GO_ON));
-    assert_eq!((u.idle_timeout, u.adjusted_idle_timeout), (1000, expected));
+    assert_eq!(
+        (u.idle_timeout, u.adjusted_idle_timeout),
+        (Millis::new(1000), expected)
+    );
     assert_eq!(r.draws, 1);
     assert_eq!(fx, vec![Effect::Stop, Effect::Stop]);
     assert_eq!(
@@ -7943,7 +8165,14 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
         })
     };
     let moved = u
-        .update_idle(10, 0, false, &place, &mut r, &mut on_top.clone())
+        .update_idle(
+            Millis::new(10),
+            WorldTime::ZERO,
+            false,
+            &place,
+            &mut r,
+            &mut on_top.clone(),
+        )
         .unwrap()
         .unwrap();
     assert_eq!(moved.point, Position::new(30.5, 105.5, 0.0));
@@ -7966,8 +8195,8 @@ fn a_deer_evading_an_object_on_its_own_point_steps_off_by_one() {
     };
     let moved = u
         .update_idle(
-            10,
-            0,
+            Millis::new(10),
+            WorldTime::ZERO,
             false,
             &near_edge,
             &mut wander_seed(false),
@@ -8196,8 +8425,8 @@ fn the_order_setter_caps_by_a_signed_compare_and_may_keep_the_last_order() {
     let mut u = UnitAi {
         current_order: Some(OrderKind::Patrol),
         last_order: Some(OrderKind::Wait),
-        adjusted_idle_timeout: 3000,
-        secondary_timer: 0x8000_0000,
+        adjusted_idle_timeout: Millis::new(3000),
+        secondary_timer: Millis::new(0x8000_0000),
         ..idle(UnitAiType::SOLDIER)
     };
     u.set_order_with(Some(OrderKind::Attack), false, &mut rng());
@@ -8205,12 +8434,12 @@ fn the_order_setter_caps_by_a_signed_compare_and_may_keep_the_last_order() {
         (u.current_order, u.last_order),
         (Some(OrderKind::Attack), Some(OrderKind::Wait))
     );
-    assert_eq!(u.secondary_timer, 0x8000_0000);
+    assert_eq!(u.secondary_timer, Millis::new(0x8000_0000));
     let mut u = UnitAi {
         current_order: Some(OrderKind::AttackMove),
-        adjusted_idle_timeout: 750,
-        idle_timeout: 3000,
-        secondary_timer: 900,
+        adjusted_idle_timeout: Millis::new(750),
+        idle_timeout: Millis::new(3000),
+        secondary_timer: Millis::new(900),
         ..idle(UnitAiType::SOLDIER)
     };
     let mut r = rng();
@@ -8219,7 +8448,7 @@ fn the_order_setter_caps_by_a_signed_compare_and_may_keep_the_last_order() {
         (u.current_order, u.last_order),
         (None, Some(OrderKind::AttackMove))
     );
-    assert_eq!(u.secondary_timer, 750);
+    assert_eq!(u.secondary_timer, Millis::new(750));
     assert_eq!(r.draws, 1);
 }
 
@@ -8392,7 +8621,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
     let mut fx = Vec::new();
     let r = u.hunted_damaged(
         n,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -8415,7 +8644,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
     };
     let r = u.hunted_damaged(
         n,
-        0,
+        Millis::ZERO,
         &at,
         true,
         &mut rng(),
@@ -8726,9 +8955,9 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
     let u = UnitAi {
         current_order: Some(OrderKind::Patrol),
         current_action: Some(ActionKind::Move),
-        idle_timeout: 3000,
-        adjusted_idle_timeout: 750,
-        secondary_timer: secondary,
+        idle_timeout: Millis::new(3000),
+        adjusted_idle_timeout: Millis::new(750),
+        secondary_timer: Millis::new(secondary),
         ..idle(SOLDIER_AI)
     };
     let at = Surroundings {
@@ -8757,12 +8986,19 @@ fn a_patrol_waits_for_its_secondary_timer() {
         refuses: false,
     };
     let fx = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut side)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut side,
+        )
         .unwrap();
     assert_eq!(fx, vec![]);
     assert_eq!(
         (u.secondary_timer, u.current_order),
-        (272, Some(OrderKind::Patrol))
+        (Millis::new(272), Some(OrderKind::Patrol))
     );
     assert_eq!(side.attacks, Vec::new());
 }
@@ -8786,15 +9022,24 @@ fn a_patrol_saves_itself_and_attacks_what_it_finds() {
         refuses: false,
     };
     let mut r = rng();
-    let _ = u.update_fx(28, 0, false, &at, &mut r, &mut side).unwrap();
+    let _ = u
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut r,
+            &mut side,
+        )
+        .unwrap();
     assert_eq!(side.attacks, vec![(object_id(77), true)]);
     assert_eq!(
         (u.current_order, u.last_order),
         (None, Some(OrderKind::Wait))
     );
     assert_eq!((u.patrol_path, u.patrol_waypoint), (Some(saved), 2));
-    assert_eq!(u.secondary_timer, 750);
-    assert_ne!(u.adjusted_idle_timeout, 750);
+    assert_eq!(u.secondary_timer, Millis::new(750));
+    assert_ne!(u.adjusted_idle_timeout, Millis::new(750));
     assert!(0 < r.draws);
 }
 
@@ -8816,10 +9061,17 @@ fn a_patrol_attacking_a_building_keeps_at_it() {
         refuses: false,
     };
     let _ = u
-        .update_fx(28, 0, false, &at, &mut rng(), &mut side)
+        .update_fx(
+            Millis::new(28),
+            WorldTime::ZERO,
+            false,
+            &at,
+            &mut rng(),
+            &mut side,
+        )
         .unwrap();
     assert_eq!(side.attacks, Vec::new());
-    assert_eq!(u.secondary_timer, 750);
+    assert_eq!(u.secondary_timer, Millis::new(750));
 }
 
 /// The soldier's idle check (`FUN_140c20db0`) takes its top action's target within its
@@ -8956,11 +9208,17 @@ fn a_soldier_stopped_in_the_update_finds_no_top_action_s_target() {
     };
     assert_eq!(read(&[]), Ok(Some(object_id(50))));
     assert_eq!(
-        read(&[Effect::CapHumanOrder(5000)]),
+        read(&[Effect::CapHumanOrder(WorldTime::from_millis(5000))]),
         Ok(Some(object_id(50)))
     );
     assert_eq!(read(&[Effect::Stop]), Ok(None));
-    assert_eq!(read(&[Effect::Stop, Effect::CapHumanOrder(5000)]), Ok(None));
+    assert_eq!(
+        read(&[
+            Effect::Stop,
+            Effect::CapHumanOrder(WorldTime::from_millis(5000))
+        ]),
+        Ok(None)
+    );
 }
 
 /// The soldier's idle check with nothing to attack and a saved patrol, in no group:
@@ -8993,7 +9251,7 @@ fn a_soldier_with_nothing_to_attack_goes_back_to_its_patrol() {
     );
     assert_eq!(
         (u.current_order, u.secondary_timer),
-        (Some(OrderKind::Patrol), 750)
+        (Some(OrderKind::Patrol), Millis::new(750))
     );
     u.current_order = None;
     at.attack_moving = true;
@@ -9017,14 +9275,17 @@ fn an_attack_move_not_busy_ends_and_a_patrol_stays() {
     let at = Surroundings::default();
     let mut u = UnitAi {
         current_order: Some(OrderKind::AttackMove),
-        idle_timeout: 3000,
-        adjusted_idle_timeout: 750,
-        secondary_timer: 900,
+        idle_timeout: Millis::new(3000),
+        adjusted_idle_timeout: Millis::new(750),
+        secondary_timer: Millis::new(900),
         ..idle(SOLDIER_AI)
     };
     u.check_order(&at, &mut rng());
-    assert_eq!((u.current_order, u.secondary_timer), (None, 750));
-    assert_ne!(u.adjusted_idle_timeout, 750);
+    assert_eq!(
+        (u.current_order, u.secondary_timer),
+        (None, Millis::new(750))
+    );
+    assert_ne!(u.adjusted_idle_timeout, Millis::new(750));
     let mut u = UnitAi {
         current_order: Some(OrderKind::Patrol),
         ..idle(SOLDIER_AI)
@@ -9041,8 +9302,8 @@ fn a_stop_ends_a_patrol_order_with_its_secondary_timer_capped() {
     let mut u = UnitAi {
         current_order: Some(OrderKind::Patrol),
         current_action: Some(ActionKind::Move),
-        adjusted_idle_timeout: 2600,
-        secondary_timer: 900,
+        adjusted_idle_timeout: Millis::new(2600),
+        secondary_timer: Millis::new(900),
         ..idle(SOLDIER_AI)
     };
     let mut fx = Vec::new();
@@ -9055,7 +9316,7 @@ fn a_stop_ends_a_patrol_order_with_its_secondary_timer_capped() {
     .unwrap();
     assert_eq!(
         (u.current_order, u.last_order, u.secondary_timer),
-        (None, Some(OrderKind::Patrol), 750)
+        (None, Some(OrderKind::Patrol), Millis::new(750))
     );
     assert_eq!(
         (fx, u.state_position),
@@ -9063,7 +9324,7 @@ fn a_stop_ends_a_patrol_order_with_its_secondary_timer_capped() {
     );
     let mut u = UnitAi {
         current_order: Some(OrderKind::AttackMove),
-        adjusted_idle_timeout: 750,
+        adjusted_idle_timeout: Millis::new(750),
         ..idle(SOLDIER_AI)
     };
     assert!(
@@ -9083,8 +9344,8 @@ fn leaving_a_patrol_order_caps_its_secondary_timer() {
     };
     let patrolling = || UnitAi {
         current_order: Some(OrderKind::Patrol),
-        adjusted_idle_timeout: 2600,
-        secondary_timer: 900,
+        adjusted_idle_timeout: Millis::new(2600),
+        secondary_timer: Millis::new(900),
         ..idle(SOLDIER_AI)
     };
     let tail = |u: &mut UnitAi, o: QueuedOrder| {
@@ -9100,16 +9361,16 @@ fn leaving_a_patrol_order_caps_its_secondary_timer() {
     assert_eq!(tail(&mut u, order(OrderKind::Move)), 1);
     assert_eq!(
         (u.current_order, u.secondary_timer),
-        (Some(OrderKind::Move), 750)
+        (Some(OrderKind::Move), Millis::new(750))
     );
     let mut u = patrolling();
     assert_eq!(tail(&mut u, order(OrderKind::Patrol)), 1);
-    assert_eq!(u.secondary_timer, 900);
+    assert_eq!(u.secondary_timer, Millis::new(900));
     let mut u = patrolling();
     u.end_order_and_action().unwrap();
     assert_eq!(
         (u.current_order, u.last_order, u.secondary_timer),
-        (None, Some(OrderKind::Patrol), 750)
+        (None, Some(OrderKind::Patrol), Millis::new(750))
     );
 }
 
@@ -9124,10 +9385,10 @@ fn ordered(ai_type: UnitAiType) -> UnitAi {
             ready: true,
             ..QueuedOrder::default()
         }],
-        idle_timer: 5000,
-        look_around_timer: 2000,
-        last_retarget_time: 0,
-        retarget_timer: 900,
+        idle_timer: Millis::new(5000),
+        look_around_timer: Millis::new(2000),
+        last_retarget_time: WorldTime::ZERO,
+        retarget_timer: Millis::new(900),
         ..idle(ai_type)
     }
 }
@@ -9150,7 +9411,14 @@ fn a_full_update_stops_at_its_order_on_a_target() {
         ..Surroundings::default()
     };
     let (fx, after) = u
-        .update_after(100, 10_000, false, &at, &mut r, &mut no_search)
+        .update_after(
+            Millis::new(100),
+            WorldTime::from_millis(10_000),
+            false,
+            &at,
+            &mut r,
+            &mut no_search,
+        )
         .unwrap();
     assert_eq!(fx, vec![Effect::OrderOnTarget(order)]);
     assert_eq!(
@@ -9168,7 +9436,7 @@ fn a_full_update_stops_at_its_order_on_a_target() {
             u.retarget_timer,
             u.orders.len()
         ),
-        (5100, 2100, 900, 0)
+        (Millis::new(5100), Millis::new(2100), Millis::new(900), 0)
     );
 }
 
@@ -9197,7 +9465,7 @@ fn the_rest_after_an_order_that_gave_an_action_reads_it() {
     let fx = u
         .after_order_fx(
             AfterOrder::default(),
-            10_000,
+            WorldTime::from_millis(10_000),
             false,
             &at,
             &mut r,
@@ -9216,7 +9484,14 @@ fn the_rest_after_an_order_that_gave_an_action_reads_it() {
             u.look_around_timeout,
             r.draws
         ),
-        (10_000, 750 + retarget % 500, 0, 0, 4500 + look % 1000, 2)
+        (
+            WorldTime::from_millis(10_000),
+            Millis::new(750 + retarget % 500),
+            Millis::ZERO,
+            Millis::ZERO,
+            Millis::new(4500 + look % 1000),
+            2
+        )
     );
 }
 
@@ -9236,7 +9511,7 @@ fn the_rest_after_an_order_that_gave_no_action_runs_the_idle_check() {
     let fx = u
         .after_order_fx(
             AfterOrder::default(),
-            10_000,
+            WorldTime::from_millis(10_000),
             false,
             &at,
             &mut r,
@@ -9244,7 +9519,7 @@ fn the_rest_after_an_order_that_gave_no_action_runs_the_idle_check() {
         )
         .unwrap();
     assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
-    assert_eq!((u.idle_timer, r.draws), (0, 1));
+    assert_eq!((u.idle_timer, r.draws), (Millis::ZERO, 1));
     let mut u = ordered(CIVILIAN);
     u.orders.clear();
     u.current_target = Some(object_id(77));
@@ -9253,18 +9528,32 @@ fn the_rest_after_an_order_that_gave_no_action_runs_the_idle_check() {
         group: None,
     };
     let fx = u
-        .after_order_fx(busy, 10_000, false, &at, &mut rng(), &mut no_search)
+        .after_order_fx(
+            busy,
+            WorldTime::from_millis(10_000),
+            false,
+            &at,
+            &mut rng(),
+            &mut no_search,
+        )
         .unwrap();
-    assert_eq!((fx, u.idle_timer), (Vec::<Effect>::new(), 0));
+    assert_eq!((fx, u.idle_timer), (Vec::<Effect>::new(), Millis::ZERO));
     // Gaia's unit keeps its timer
     let mut u = ordered(CIVILIAN);
     u.orders.clear();
     u.current_target = Some(object_id(77));
     let gaia = Surroundings::default();
     let _ = u
-        .after_order_fx(busy, 10_000, false, &gaia, &mut rng(), &mut no_search)
+        .after_order_fx(
+            busy,
+            WorldTime::from_millis(10_000),
+            false,
+            &gaia,
+            &mut rng(),
+            &mut no_search,
+        )
         .unwrap();
-    assert_eq!(u.idle_timer, 5000);
+    assert_eq!(u.idle_timer, Millis::new(5000));
 }
 
 /// A human player's transport ship at (20, 30) attacked by unit 77 two tiles east of it,
@@ -9312,7 +9601,7 @@ fn the_transport_ship_passes_other_notifies_to_the_base_handler() {
     let (mut fx, mut base_fx) = (Vec::new(), Vec::new());
     let r = u.handle(
         n,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -9320,7 +9609,7 @@ fn the_transport_ship_passes_other_notifies_to_the_base_handler() {
     );
     let b = base.base_notify(
         n,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -9346,7 +9635,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9370,7 +9659,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9387,7 +9676,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9401,7 +9690,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert_eq!(
         u.handle(
             dead,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9413,7 +9702,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             true,
             &mut rng(),
@@ -9428,7 +9717,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9457,7 +9746,7 @@ fn a_transport_ship_dodges_a_missile_s_warning_by_its_owner_s_chance() {
     assert_eq!(
         u.handle(
             warning,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut ai,
@@ -9472,7 +9761,7 @@ fn a_transport_ship_dodges_a_missile_s_warning_by_its_owner_s_chance() {
     assert_eq!(
         u.handle(
             warning,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9523,7 +9812,7 @@ fn a_siege_tower_in_a_busy_group_ignores_its_damage() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9540,7 +9829,7 @@ fn a_siege_tower_in_a_busy_group_ignores_its_damage() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9754,7 +10043,7 @@ fn a_trade_ship_whose_action_needs_a_search_stops() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9771,7 +10060,7 @@ fn a_trade_ship_whose_action_needs_a_search_stops() {
         assert!(
             u.handle(
                 n,
-                0,
+                Millis::ZERO,
                 &at,
                 false,
                 &mut rng(),
@@ -9796,7 +10085,7 @@ fn a_trade_ship_stops_and_runs_from_its_attackers() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9814,7 +10103,7 @@ fn a_trade_ship_stops_and_runs_from_its_attackers() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9839,7 +10128,7 @@ fn a_fishing_ship_on_the_move_takes_its_damage_without_running() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9855,7 +10144,7 @@ fn a_fishing_ship_on_the_move_takes_its_damage_without_running() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9911,7 +10200,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9946,7 +10235,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -9959,7 +10248,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
     assert_eq!(
         u.handle(
             n,
-            0,
+            Millis::ZERO,
             &at,
             true,
             &mut rng(),
@@ -10463,7 +10752,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     assert!(
         u.handle(
             under,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -10475,7 +10764,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     assert_eq!(
         u.handle(
             executed,
-            0,
+            Millis::ZERO,
             &at,
             false,
             &mut rng(),
@@ -10488,7 +10777,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     assert_eq!(
         u.handle(
             executed,
-            0,
+            Millis::ZERO,
             &at,
             true,
             &mut r,
@@ -10506,7 +10795,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     assert_eq!(
         on_house.handle(
             executed,
-            0,
+            Millis::ZERO,
             &at,
             true,
             &mut r,
@@ -10544,10 +10833,10 @@ fn a_priest_retargets_but_on_an_order_on_a_target() {
     };
     let priest = |order| UnitAi {
         current_order: order,
-        retarget_timer: 900,
-        last_retarget_time: 0,
-        adjusted_idle_timeout: 9000,
-        look_around_timeout: 9000,
+        retarget_timer: Millis::new(900),
+        last_retarget_time: WorldTime::ZERO,
+        adjusted_idle_timeout: Millis::new(9000),
+        look_around_timeout: Millis::new(9000),
         ..idle(PRIEST_AI)
     };
     for (order, computer, draws) in [
@@ -10560,7 +10849,7 @@ fn a_priest_retargets_but_on_an_order_on_a_target() {
         let _ = u.update_tail(
             UpdateTail {
                 retarget: Retarget::Priest,
-                world_time: 10_000,
+                world_time: WorldTime::from_millis(10_000),
                 computer,
                 busy: false,
                 group: None,
@@ -10921,14 +11210,14 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
         state_position: Point::new(10.0, 10.0),
         current_action: action,
         current_target: Some(object_id(500)),
-        retarget_timer: 100_000,
+        retarget_timer: Millis::new(100_000),
         ..idle(UnitAiType::SOLDIER)
     };
     let mut u = standing(Some(ActionKind::Attack));
     let mut fx = Vec::new();
     assert_eq!(
         u.retarget_check(
-            0,
+            WorldTime::ZERO,
             false,
             &at,
             &mut rng(),
@@ -10980,7 +11269,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
         let mut fx = Vec::new();
         let _ = u
             .retarget_check(
-                0,
+                WorldTime::ZERO,
                 false,
                 at,
                 &mut rng(),
@@ -10997,7 +11286,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     let mut fx = Vec::new();
     let _ = u
         .retarget_check(
-            0,
+            WorldTime::ZERO,
             false,
             &at,
             &mut rng(),
@@ -11080,15 +11369,15 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
         state_position: Point::new(10.0, 30.0),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(500)),
-        retarget_timer: 0,
-        last_retarget_time: 0,
+        retarget_timer: Millis::ZERO,
+        last_retarget_time: WorldTime::ZERO,
         patrol_path: Some(path.clone()),
         ..idle(UnitAiType::SOLDIER)
     };
     let run = |u: &mut UnitAi, at: &Surroundings| {
         let mut fx = Vec::new();
         let r = u.retarget_check(
-            1000,
+            WorldTime::from_millis(1000),
             false,
             at,
             &mut rng(),
@@ -11100,7 +11389,7 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
     let mut u = unit(UnitStance::STAND_GROUND);
     let (r, fx) = run(&mut u, &at(10.0));
     assert_eq!((r, fx), (Ok(true), vec![]));
-    assert_eq!(u.last_retarget_time, 1000);
+    assert_eq!(u.last_retarget_time, WorldTime::from_millis(1000));
     // beyond it: stop, the target forgotten, the patrol walked on (10)
     let mut u = unit(UnitStance::STAND_GROUND);
     let (r, fx) = run(&mut u, &at(11.0));
@@ -11110,13 +11399,13 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
     );
     assert_eq!(
         (u.current_target, u.current_order, u.secondary_timer),
-        (None, Some(OrderKind::Patrol), 750)
+        (None, Some(OrderKind::Patrol), Millis::new(750))
     );
     // the defend stance within 5 ends slot 73 before the retarget check (9)
     let mut u = unit(UnitStance::DEFENSIVE);
     let (r, fx) = run(&mut u, &at(11.0));
     assert_eq!((r, fx), (Ok(false), vec![]));
-    assert_eq!(u.last_retarget_time, 0);
+    assert_eq!(u.last_retarget_time, WorldTime::ZERO);
     // beyond 5 it walks the patrol on
     let mut u = unit(UnitStance::DEFENSIVE);
     let (r, fx) = run(&mut u, &at(16.0));
@@ -11136,7 +11425,7 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(18842)),
         target_class: class_of(10),
-        idle_timer: 400,
+        idle_timer: Millis::new(400),
         ..idle(UnitAiType::CIVILIAN)
     };
     let at = Surroundings {
@@ -11154,10 +11443,17 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
         ..Surroundings::default()
     };
     let fx = u
-        .update_fx(10, 1000, false, &at, &mut rng(), &mut TailSide::default())
+        .update_fx(
+            Millis::new(10),
+            WorldTime::from_millis(1000),
+            false,
+            &at,
+            &mut rng(),
+            &mut TailSide::default(),
+        )
         .unwrap();
     assert_eq!(fx, Vec::<Effect>::new());
-    assert_eq!(u.idle_timer, 0);
+    assert_eq!(u.idle_timer, Millis::ZERO);
     assert_eq!(
         (u.current_order, u.current_action, u.current_target),
         (
@@ -12098,9 +12394,9 @@ fn the_wait_order_waits_and_leaves_a_patrol_order() {
         current_order: Some(OrderKind::Patrol),
         current_action: Some(ActionKind::Move),
         last_action: Some(ActionKind::Heal),
-        adjusted_idle_timeout: 750,
-        idle_timeout: 3000,
-        secondary_timer: 900,
+        adjusted_idle_timeout: Millis::new(750),
+        idle_timeout: Millis::new(3000),
+        secondary_timer: Millis::new(900),
         ..idle(SOLDIER_AI)
     };
     let wait = OrderKind::Wait;
@@ -12120,8 +12416,8 @@ fn the_wait_order_waits_and_leaves_a_patrol_order() {
             Some(ActionKind::Heal)
         )
     );
-    assert_eq!(u.secondary_timer, 750);
-    assert_ne!(u.adjusted_idle_timeout, 750);
+    assert_eq!(u.secondary_timer, Millis::new(750));
+    assert_ne!(u.adjusted_idle_timeout, Millis::new(750));
 }
 
 #[test]
@@ -12149,7 +12445,7 @@ fn the_attack_roundup_passes_its_own_target_and_one_it_cannot_reach() {
     // without one it attacks, and the order becomes 700, leaving a patrol order
     let mut u = UnitAi {
         current_order: Some(OrderKind::Patrol),
-        secondary_timer: 900,
+        secondary_timer: Millis::new(900),
         ..idle(SOLDIER_AI)
     };
     assert_eq!(
@@ -12158,7 +12454,11 @@ fn the_attack_roundup_passes_its_own_target_and_one_it_cannot_reach() {
     );
     assert_eq!(
         (u.current_order, u.current_action, u.secondary_timer),
-        (Some(OrderKind::Attack), Some(ActionKind::Attack), 750)
+        (
+            Some(OrderKind::Attack),
+            Some(ActionKind::Attack),
+            Millis::new(750)
+        )
     );
 }
 
@@ -12328,9 +12628,9 @@ fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
     let patrolling = |order| UnitAi {
         current_order: order,
         order_priority: 7,
-        adjusted_idle_timeout: 750,
-        idle_timeout: 3000,
-        secondary_timer: 2000,
+        adjusted_idle_timeout: Millis::new(750),
+        idle_timeout: Millis::new(3000),
+        secondary_timer: Millis::new(2000),
         current_target: Some(object_id(70)),
         ..idle(SOLDIER_AI)
     };
@@ -12355,7 +12655,7 @@ fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
             u.secondary_timer,
             r.draws
         ),
-        (Some(OrderKind::Move), 40, 750, 1)
+        (Some(OrderKind::Move), 40, Millis::new(750), 1)
     );
     // staying on it does nothing to the timers
     let mut u = patrolling(Some(OrderKind::AttackMove));
@@ -12369,7 +12669,7 @@ fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
     );
     assert_eq!(
         (u.secondary_timer, u.adjusted_idle_timeout, r.draws),
-        (2000, 750, 0)
+        (Millis::new(2000), Millis::new(750), 0)
     );
     // the stop ends the order and its priority
     let mut u = patrolling(Some(OrderKind::Patrol));
@@ -12382,7 +12682,7 @@ fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
     );
     assert_eq!(
         (u.current_order, u.order_priority, u.secondary_timer),
-        (None, -1, 750)
+        (None, -1, Millis::new(750))
     );
     // the attack move's attack and the roundup become the attack order
     let mut u = patrolling(Some(OrderKind::AttackMove));
@@ -12395,7 +12695,7 @@ fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
     );
     assert_eq!(
         (u.current_order, u.secondary_timer),
-        (Some(OrderKind::Attack), 750)
+        (Some(OrderKind::Attack), Millis::new(750))
     );
     // a class-18 unit's attack order: the target goes, the order is -1
     let mut u = patrolling(None);
@@ -12480,7 +12780,7 @@ fn a_villager_drops_another_resource_at_the_table_s_building() {
     let mut fx = Vec::new();
     let r = idle(CIVILIAN).handle(
         other,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -12498,7 +12798,7 @@ fn a_villager_drops_another_resource_at_the_table_s_building() {
     let mut fx = Vec::new();
     let r = idle(CIVILIAN).handle(
         other,
-        0,
+        Millis::ZERO,
         &at,
         false,
         &mut rng(),
@@ -12597,7 +12897,7 @@ fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
     let mut fx = Vec::new();
     let r = u.handle(
         done,
-        0,
+        Millis::ZERO,
         &at(Position::new(43.5, 105.5, 0.0)),
         false,
         &mut seed_for(false),
@@ -12678,7 +12978,7 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
     let mut fx = Vec::new();
     let r = u.handle(
         n,
-        0,
+        Millis::ZERO,
         &at,
         true,
         &mut rng(),
@@ -12700,7 +13000,7 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
     let mut fx = Vec::new();
     let r = u.handle(
         stranger,
-        0,
+        Millis::ZERO,
         &at,
         true,
         &mut rng(),
@@ -12711,7 +13011,7 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
     let dead = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 0, 0]);
     let r = u.handle(
         dead,
-        0,
+        Millis::ZERO,
         &at,
         true,
         &mut rng(),

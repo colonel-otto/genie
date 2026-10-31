@@ -17,6 +17,7 @@ use crate::unit_ai::{
     Surroundings, UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, closest_undiscovered_tile,
     search_area,
 };
+use crate::world::Millis;
 
 impl UnitAi {
     /// The hunted animal's damage notify (`FUN_140c26420`, case 500, "I took some damage from
@@ -30,7 +31,7 @@ impl UnitAi {
     pub(super) fn hunted_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -220,7 +221,7 @@ impl UnitAi {
     pub(super) fn boar_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
@@ -243,7 +244,7 @@ impl UnitAi {
             true
         } else {
             let _ = self.attack_object(target, true, false, at, side)?;
-            self.idle_timer = 0;
+            self.idle_timer = Millis::ZERO;
             villager
         };
         let home = self.home.as_mut().ok_or(GenieError::unsupported(

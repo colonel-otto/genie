@@ -13,7 +13,6 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::move_to::{MoveToAction, graphic_of};
 use crate::movement::{Me, Mover};
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
@@ -121,7 +120,7 @@ impl Fly {
     ) -> Result<(), GenieError> {
         let _ = bird.body.mover().ok_or(NO_MOVER)?;
         if 0.0 < self.timer {
-            self.timer -= seconds(c.dt);
+            self.timer -= c.dt.seconds();
         }
         let rest = self.task.wait_time;
         match self.state {
@@ -368,6 +367,8 @@ mod tests {
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::unit_ai::UnitAi;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
     use crate::world::{Player, World};
 
     /// The hawk's place.
@@ -428,7 +429,13 @@ mod tests {
             objects: vec![bird].into(),
             ..Player::default()
         };
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![gaia]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![gaia],
+        );
         t.spatial = crate::map::spatial::Spatial::new(GridSize::new(120, 120));
         t.streams.get(Stream::Action).set_seed(seed);
         t.graphics = hawk_graphics();

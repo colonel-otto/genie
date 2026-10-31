@@ -12,6 +12,7 @@ use crate::{
 use genie_core::commands::Command;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::action_type;
+use genie_core::world::Millis;
 use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::Header;
@@ -346,7 +347,7 @@ pub(super) fn frame_commands(turns: &mut World, decoder: &mut Decoder, frame: Op
             .iter()
             .filter_map(|p| decoder.command(p))
             .collect();
-        turns.command_phase(frame.dt, &commands);
+        turns.command_phase(Millis::new(frame.dt), &commands);
     }
 }
 

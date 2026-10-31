@@ -25,6 +25,8 @@ use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
 #[test]
@@ -65,10 +67,10 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         ..crate::world::Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![crate::world::Player::default(), player],
     );
     let master = |id: MasterId, category: u8| crate::objects::masters::Master {
@@ -869,7 +871,7 @@ fn level(points: &[BVector], waypoint: i32, flags: u32) -> PathData {
         pause_time: 0.0,
         flags: 0,
         length: 0.0,
-        created: 0,
+        created: WorldTime::ZERO,
         continue_counter: 10,
         repath_time: 0.0,
         ignore: Vec::new(),
@@ -895,10 +897,10 @@ fn type_world(paths: Vec<PathData>) -> World {
         ..crate::world::Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![crate::world::Player::default(), player],
     );
     let masters = crate::objects::masters::Masters::new([crate::objects::masters::Master {
@@ -1076,7 +1078,16 @@ fn group_of(category: i32, count: usize, spacing: f32, types: &[(u32, u32)]) -> 
 fn a_line_of_two_unit_types_alternates_its_slots() {
     let g = group_of(3, 10, 1.0, &[(4, 5), (24, 5)]);
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (false, false), 77).unwrap());
+    assert!(
+        column_line_slots(
+            &mut f,
+            &g,
+            false,
+            (false, false),
+            WorldTime::from_millis(77)
+        )
+        .unwrap()
+    );
     assert_eq!(
         (f.kind, f.maximum_width, f.maximum_depth),
         (FormationKind::LINE, 5, 2)
@@ -1103,23 +1114,32 @@ fn a_staggered_line_shifts_its_lines_and_a_flanked_one_parts_them() {
             .collect()
     };
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (true, false), 0).unwrap());
+    assert!(column_line_slots(&mut f, &g, false, (true, false), WorldTime::ZERO).unwrap());
     assert_eq!(f.kind, FormationKind::STAGGERED);
     assert_eq!(offsets(&f, 0), [-3.5, -1.5, 0.5, 2.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.5, -2.5, -0.5, 1.5, 3.5]);
     assert_eq!(f.lines[1].distance_back, 2.0);
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (false, true), 0).unwrap());
+    assert!(column_line_slots(&mut f, &g, false, (false, true), WorldTime::ZERO).unwrap());
     assert_eq!(f.kind, FormationKind::FLANKED);
     assert_eq!(offsets(&f, 0), [-4.5, -3.5, 2.5, 3.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.0, -3.0, 2.0, 3.0, 4.0]);
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, true, (false, false), 0).unwrap());
+    assert!(column_line_slots(&mut f, &g, true, (false, false), WorldTime::ZERO).unwrap());
     assert_eq!(
         (f.kind, f.maximum_width, f.maximum_depth),
         (FormationKind::COLUMN, 2, 5)
     );
-    assert!(!column_line_slots(&mut f, &UnitGroup::default(), false, (false, false), 0).unwrap());
+    assert!(
+        !column_line_slots(
+            &mut f,
+            &UnitGroup::default(),
+            false,
+            (false, false),
+            WorldTime::ZERO
+        )
+        .unwrap()
+    );
 }
 
 /// Two sub-formations: the narrower (three of category 0) takes one line of the widest's
@@ -1135,7 +1155,7 @@ fn a_narrow_sub_formation_takes_one_line_ahead_of_a_wider_one() {
         ..crate::groups::Member::default()
     }));
     let mut f = Formation::new();
-    assert!(column_line_slots(&mut f, &g, false, (false, false), 0).unwrap());
+    assert!(column_line_slots(&mut f, &g, false, (false, false), WorldTime::ZERO).unwrap());
     assert_eq!((f.maximum_width, f.maximum_depth), (5, 3));
     let first: Vec<(f32, i32)> = f.slots[..3]
         .iter()

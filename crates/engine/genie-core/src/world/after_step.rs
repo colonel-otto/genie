@@ -4,9 +4,9 @@
 use crate::GenieError;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::players::PlayerId;
+use crate::world::Millis;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -35,7 +35,7 @@ impl World {
     pub(super) fn step_object(
         &mut self,
         (p, i): (PlayerId, ListIndex),
-        (dt, turn, full): (u32, Option<u32>, bool),
+        (dt, turn, full): (Millis, Option<Millis>, bool),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Stepped, GenieError> {
         let id = self.players.live(p, i)?.id;
@@ -71,12 +71,12 @@ impl World {
     fn finish_own_update(
         &mut self,
         (p, i, id): (PlayerId, ListIndex, ObjectId),
-        (dt, own_update): (u32, bool),
+        (dt, own_update): (Millis, bool),
         outcome: &Outcome,
     ) -> Result<(), GenieError> {
         // TRIBE_Combat_Object::update's regeneration after RGE_Combat_Object::update
         if own_update {
-            self.regenerate_object((p, i, id), seconds(dt))?;
+            self.regenerate_object((p, i, id), dt.seconds())?;
         }
         // TRIBE_Combat_Object::update's passive abilities (FUN_1412072f0) as the object's owner
         // after its update; a removal reward's command comes back as the recording's own
@@ -92,7 +92,7 @@ impl World {
         }
         // TRIBE_Building_Object::update: the production after the combat update
         if matches!(outcome, Outcome::Stay) && own_update {
-            self.building_production(p, i, seconds(dt))?;
+            self.building_production(p, i, dt.seconds())?;
         }
         Ok(())
     }

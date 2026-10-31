@@ -19,6 +19,8 @@ use crate::players::attribute::{self, AttributeId};
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::{Player, World};
 use std::collections::BTreeMap;
 
@@ -637,10 +639,10 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
 fn site_world(spatial: Spatial, masters: Vec<Master>, units: Vec<Unit>) -> World {
     let ms = crate::objects::masters::Masters::new(masters);
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0; 2],
+        vec![Millis::ZERO; 2],
         vec![
             Player::default(),
             Player {
@@ -1063,7 +1065,7 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
     world.set_gait(
         object_id(33439),
         Some(crate::map::spatial::Gait {
-            last_move: 7000,
+            last_move: WorldTime::from_millis(7000),
             ..crate::map::spatial::Gait::default()
         }),
     );
@@ -1087,13 +1089,13 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
         Some(&mut mover),
         &mut world,
         &mut Pathing::default(),
-        8280,
+        WorldTime::from_millis(8280),
     );
     assert_eq!(started, Ok(true));
-    assert_eq!(mover.last_move, 8281);
+    assert_eq!(mover.last_move, WorldTime::from_millis(8281));
     assert_eq!(
         world.gait(object_id(33439)).map(|g| g.last_move),
-        Some(8281)
+        Some(WorldTime::from_millis(8281))
     );
 }
 

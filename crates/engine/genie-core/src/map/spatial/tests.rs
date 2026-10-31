@@ -630,13 +630,16 @@ fn a_last_move_set_outside_the_object_s_update_reaches_the_walk() {
     s.set_gait(
         object_id(33439),
         Some(Gait {
-            last_move: 7000,
+            last_move: WorldTime::from_millis(7000),
             ..Gait::default()
         }),
     );
-    s.set_last_move(object_id(33439), 8281);
-    assert_eq!(s.gait(object_id(33439)).map(|g| g.last_move), Some(8281));
-    s.set_last_move(object_id(33440), 8281);
+    s.set_last_move(object_id(33439), WorldTime::from_millis(8281));
+    assert_eq!(
+        s.gait(object_id(33439)).map(|g| g.last_move),
+        Some(WorldTime::from_millis(8281))
+    );
+    s.set_last_move(object_id(33440), WorldTime::from_millis(8281));
     assert_eq!(s.gait(object_id(33440)), None);
 }
 

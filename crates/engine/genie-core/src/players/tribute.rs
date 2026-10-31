@@ -122,7 +122,9 @@ mod tests {
     use crate::objects::masters::{Master, Masters};
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     fn gift(attribute: u16, amount: f32, fee: f32) -> Gift {
         Gift {
@@ -162,10 +164,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 3],
+            vec![Millis::ZERO; 3],
             vec![Player::default(), player(), player()],
         );
         let masters = Masters::new([Master {

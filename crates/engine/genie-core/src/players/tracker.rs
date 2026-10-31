@@ -548,6 +548,8 @@ mod tests {
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
 
     fn building(id: i16, class: ClassId, stack: i16, head: i16, annex: i16) -> Master {
         Master {
@@ -909,10 +911,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             0,
             PlayerId::new(0),
-            vec![0; 2],
+            vec![Millis::ZERO; 2],
             vec![Player::default(), player],
         );
         t.masters = vec![masters(), masters()];

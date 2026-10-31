@@ -16,7 +16,6 @@ use crate::movement::{Me, footprint_gap};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::layers::Body;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
@@ -72,7 +71,7 @@ impl Attack {
         r: &AttackReads,
         master_class: ClassId,
     ) -> Result<u8, GenieError> {
-        self.timer += seconds(c.dt);
+        self.timer += c.dt.seconds();
         let gives_up = GiveUp {
             waits: !r.computer && master_class == class::VILLAGER,
             stance: r.stance,
@@ -131,7 +130,7 @@ impl Attack {
         f: &mut Fight,
         r: &AttackReads,
     ) -> Result<u8, GenieError> {
-        self.timer += seconds(c.dt);
+        self.timer += c.dt.seconds();
         // a dead tree (class 15) up to state 5 keeps a non-villager's attack going: its update
         // goes on, the target not alive (`0x140a8342e`)
         let alive = f.victim.state <= ObjectState::Alive;

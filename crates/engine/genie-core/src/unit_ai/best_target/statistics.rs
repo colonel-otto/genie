@@ -6,6 +6,8 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
 use crate::unit_ai::best_target::ORDER_WINDOW;
 use crate::unit_ai::best_target::{AttackCategory, ByCategory};
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// The statistics' table holds at most this many objects (`FUN_140c66590`: `+0x1668` below
@@ -378,15 +380,15 @@ impl Statistics {
 /// adds the rest of the minute over 60000 (`DAT_142efe420`) to its target's category; the first
 /// older one ends the walk.
 #[must_use]
-pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: u32) -> ByCategory<f32> {
+pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: WorldTime) -> ByCategory<f32> {
     let mut w = ByCategory::default();
     for r in history {
-        let age = now.wrapping_sub(r.time);
-        if 60000 < age {
+        let age = now.since(r.time);
+        if Millis::new(60000) < age {
             break;
         }
         if let Some(k) = r.category {
-            w[k] += (60000 - age) as f32 / ORDER_WINDOW;
+            w[k] += (60000 - age.get()) as f32 / ORDER_WINDOW;
         }
     }
     w

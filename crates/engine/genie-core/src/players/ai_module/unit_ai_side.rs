@@ -11,6 +11,7 @@ use crate::map::Point;
 use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::unit_ai::NotifyKind;
+use crate::world::WorldTime;
 
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
@@ -21,7 +22,7 @@ use crate::unit_ai::{ActionKind, Notify, alert_owner};
 
 /// The world time (ms) before which an explorer's wait slot of -1 sends the search around the
 /// player's town centre instead of straight to the unit's place.
-const EARLY: u32 = 300_000;
+const EARLY: WorldTime = WorldTime::from_millis(300_000);
 /// The slot of the tactical module that holds the explorer's wait, in seconds.
 const WAIT_SLOT: u32 = 0x100;
 
@@ -116,7 +117,7 @@ impl UnitView<'_, '_> {
         let mut search = |info: &mut crate::players::ai_module::InfoModule, from: Point| {
             info.closest_unexplored_tile(&unit, from, &mut area, (map, &mut unsynced))
         };
-        let waited = slot.wrapping_mul(1000) as u32;
+        let waited = WorldTime::from_millis(slot.wrapping_mul(1000) as u32);
         // the wait slot says the search starts at the unit's place; else the AI looks around
         let here = (slot != -1 || EARLY <= now) && waited <= now;
         if here {

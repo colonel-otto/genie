@@ -21,6 +21,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::world::Millis;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -230,8 +231,8 @@ impl World {
                 .ok_or(GenieError::unsupported(
                     "a shut gate without its moving part",
                 ))?
-                .last_move = now.wrapping_add(1);
-            self.spatial.set_last_move(id, now.wrapping_add(1));
+                .last_move = now.after(Millis::new(1));
+            self.spatial.set_last_move(id, now.after(Millis::new(1)));
         }
         Ok(())
     }

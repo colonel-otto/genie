@@ -17,6 +17,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::HullPather;
 use crate::pathing::tile_path::{Path, Request};
+use crate::world::WorldTime;
 use crate::{GenieError, math::fmath, pathing::short_path};
 
 impl Mover {
@@ -127,7 +128,7 @@ impl Mover {
             level.points.clear();
             level.path_flags = 0;
             level.length = 0.0;
-            level.created = 0;
+            level.created = WorldTime::ZERO;
         }
         self.paths.insert(0, new);
         AfterRequest::Walk
@@ -264,7 +265,7 @@ impl Mover {
     /// After a short path (`FUN_140f9e540`) for the new level: when the top path (`FUN_140f960f0`
     /// of the walked level) was made this tick, the new path takes the unit's ignore units
     /// (`FUN_140f9b7a0`).
-    pub(super) fn give_ignored(&self, new: &mut PathData, now: u32) {
+    pub(super) fn give_ignored(&self, new: &mut PathData, now: WorldTime) {
         if self.paths.last().is_some_and(|t| t.created == now) {
             new.ignored.clone_from(&self.ignore_units);
         }

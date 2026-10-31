@@ -12,6 +12,7 @@ use crate::groups::update::{
 };
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
+use crate::world::Millis;
 use crate::world::World;
 
 impl World {
@@ -412,7 +413,7 @@ impl World {
 }
 
 /// The idle timer's span (`FUN_14102d370`'s `% 0x2ee`, its division at `0x14102d395`).
-pub const IDLE_SPAN: u32 = 750;
+pub const IDLE_SPAN: Millis = Millis::new(750);
 
 /// [`World::awake_update`]'s end before the motion: the group goes without members, and without
 /// a queued command or a current one when its formation has every slot in state 3 (or has none).

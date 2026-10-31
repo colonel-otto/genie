@@ -29,6 +29,7 @@ use crate::players::PlayerId;
 use crate::players::{ByRelation, QueryRelation, UnitRelation};
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 use std::collections::BTreeMap;
 
@@ -182,15 +183,15 @@ pub struct Gait {
     /// other than 6 and 7.
     pub waits: bool,
     /// Its last move time (`+0x870`, slot 0x5e8).
-    pub last_move: u32,
+    pub last_move: WorldTime,
     /// Its current path level's pause time (slot 0x528), none without a level.
     pub pause: Option<f32>,
     /// `+0x650`, `mLastHumanOrderTime`: a met unit's rank against a human walker.
-    pub human_order: u32,
+    pub human_order: WorldTime,
     /// When its current path level's path was made (slot 0x528's `+0x18`, the path's `+8`), none
     /// without a level or a path: a drop-off walker's ignore list passes a worker whose path is
     /// this update's.
-    pub path_made: Option<u32>,
+    pub path_made: Option<WorldTime>,
     /// Its unit group (`mGroupID`, `+0x6d0`), none for −1: a walker of the same group ranks it by
     /// the group's member order.
     pub group: Option<crate::groups::GroupId>,

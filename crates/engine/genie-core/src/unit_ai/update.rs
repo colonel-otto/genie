@@ -20,6 +20,8 @@ use crate::unit_ai::{
     LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget, Search,
     Surroundings, UnitAi, UnitSide, civilian_kind, civilian_search_radius, retarget_kind,
 };
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// What the full update's tail takes besides the surroundings ([`UnitAi::update_tail`]'s
@@ -29,7 +31,7 @@ pub(super) struct UpdateTail {
     /// Which retarget check slot 73 runs.
     pub(super) retarget: Retarget,
     /// The world's time.
-    pub(super) world_time: u32,
+    pub(super) world_time: WorldTime,
     /// The owner's type test (`player+0x10 == 3`).
     pub(super) computer: bool,
     /// The unit was busy after the notifies, as the update read it before its order queue.
@@ -56,8 +58,8 @@ impl UnitAi {
     /// ([`UnitAi::best_this_update`]).
     pub fn update(
         &mut self,
-        dt: u32,
-        world_time: u32,
+        dt: Millis,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -135,7 +137,7 @@ impl UnitAi {
     pub fn after_order(
         &mut self,
         after: AfterOrder,
-        world_time: u32,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -277,7 +279,7 @@ impl UnitAi {
             && !home.furious
             && self.adjusted_idle_timeout < self.idle_timer
         {
-            self.idle_timer = 0;
+            self.idle_timer = Millis::ZERO;
             let _ = self.process_idle(at, computer, ai, side)?;
         }
         self.calm_down();

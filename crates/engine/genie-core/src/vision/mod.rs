@@ -149,7 +149,9 @@ mod tests {
     use crate::objects::ObjectState;
     use crate::players::Relation;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// Gaia and two teams of two (players 1 and 3 against 2 and 4), every player's allied
     /// vision on: each sees with its team's bits, as records/425906646's players do after the
@@ -162,10 +164,10 @@ mod tests {
             ..Player::default()
         };
         World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 5],
+            vec![Millis::ZERO; 5],
             vec![
                 Player::default(),
                 player(vec![0, 1, 3, 0, 3]),
@@ -252,7 +254,7 @@ mod tests {
                 .map(|u| (u.id.get(), u.position()))
                 .collect()
         };
-        t.tick_with(50, &[]);
+        t.tick_with(Millis::new(50), &[]);
         assert_eq!(flares(&t), []);
         // the masks are the rebuilt ones even where they were not
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
@@ -266,10 +268,10 @@ mod tests {
             },
             ..crate::objects::unit::Unit::default()
         });
-        t.tick_with(50, &[]);
+        t.tick_with(Millis::new(50), &[]);
         assert_eq!(flares(&t), [(100, Position::new(7.0, 8.0, 0.0))]);
         assert_eq!(t.players[2].tc_flared.get(1), Some(&true));
-        t.tick_with(50, &[]);
+        t.tick_with(Millis::new(50), &[]);
         assert_eq!(flares(&t).len(), 1);
     }
 }

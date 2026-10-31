@@ -14,6 +14,7 @@ use crate::movement::{
 };
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
+use crate::world::WorldTime;
 use crate::{GenieError, math::fmath};
 
 /// [`Mover::level_gaps`]'s measure: the target with its place (none for a level without one or
@@ -59,7 +60,7 @@ pub(super) struct WalkStep<'a> {
     /// The goal the level walks to.
     pub(super) goal: Goal<'a>,
     /// The world's time.
-    pub(super) now: u32,
+    pub(super) now: WorldTime,
     /// Whether the unit's player is a computer.
     pub(super) computer: bool,
     /// The objects the old pather tests even moving.
@@ -108,7 +109,7 @@ impl Mover {
         dt: f32,
         map: GridSize,
         terrain: Option<&crate::map::terrain::Terrain>,
-        (now, group): (u32, Option<GroupSpeed>),
+        (now, group): (WorldTime, Option<GroupSpeed>),
     ) -> Position {
         let Some(v) = self.velocity.as_ref() else {
             return position;
@@ -155,7 +156,7 @@ impl Mover {
     pub(crate) const fn new_object(
         stats: MoveStats,
         at: Position,
-        now: u32,
+        now: WorldTime,
         angle: f32,
         sprite_facets: Option<crate::objects::facing::SpriteFacets>,
     ) -> Self {
@@ -186,7 +187,7 @@ impl Mover {
 
     /// The position setter's end (`FUN_141161950`): a place `at` more than 1e-7 off where it
     /// last moved to on any axis is a move at `now` (`+0x870`), and where it last moved to.
-    pub(crate) fn mark_move(&mut self, at: Position, now: u32) {
+    pub(crate) fn mark_move(&mut self, at: Position, now: WorldTime) {
         if moved_far(self.moved_at, at) {
             self.last_move = now;
             self.moved_at = at;
@@ -420,7 +421,7 @@ impl Mover {
                 to_end,
             };
             if self.paths[0].flags & 1 != 0 {
-                let now = plan.as_deref().map_or(0, |p| p.now);
+                let now = plan.as_deref().map_or(WorldTime::ZERO, |p| p.now);
                 let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
                 match self.reached(me, world, pathing, goal, now)? {
                     Next::Again => continue,
@@ -436,7 +437,9 @@ impl Mover {
                 Next::Dispatch => {}
                 Next::LoopEnd => unreachable!("only a reached waypoint ends a loop's step"),
             }
-            let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
+            let (now, computer) = plan
+                .as_deref()
+                .map_or((WorldTime::ZERO, false), |p| (p.now, p.computer));
             let groups = plan.as_deref().map(|p| p.groups);
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
             let step = self.walk(

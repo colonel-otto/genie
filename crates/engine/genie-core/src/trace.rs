@@ -239,6 +239,8 @@ mod tests {
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
     use crate::world::{Player, World};
     use std::fmt::Write;
     use std::sync::{Arc, Mutex};
@@ -327,7 +329,13 @@ mod tests {
             objects: objects.into(),
             ..Player::default()
         };
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         crate::world::tests::stock_masters(&mut t);
         t
     }
@@ -377,7 +385,7 @@ mod tests {
             id: object_id(7),
             ..Unit::default()
         }]);
-        let lines = heard(|| t.tick(10));
+        let lines = heard(|| t.tick(Millis::new(10)));
         // each step of the schedule in its span, the player's in the player's
         assert_eq!(
             lines[..10],
@@ -406,7 +414,7 @@ mod tests {
             unmodelled_action: Some(why),
             ..Unit::default()
         }]);
-        let lines = heard(|| t.tick(10));
+        let lines = heard(|| t.tick(Millis::new(10)));
         let warned: Vec<_> = lines.iter().filter(|l| l.starts_with("WARN")).collect();
         assert_eq!(
             warned,
@@ -425,7 +433,7 @@ mod tests {
         let mut t = one(Vec::new());
         let lines = heard(|| {
             t.tick_with(
-                104,
+                Millis::new(104),
                 &[Command::Unmodelled(UnmodelledCommand {
                     player: player_id(0),
                     packet: Vec::new(),
@@ -454,7 +462,7 @@ mod tests {
             ..Unit::default()
         }]);
         let before = t.players[0].objects[ListIndex::new(0)].life.state;
-        let lines = heard(|| t.tick(10));
+        let lines = heard(|| t.tick(Millis::new(10)));
         let after = t.players[0].objects[ListIndex::new(0)].life.state;
         assert_ne!(before, after, "{lines:#?}");
         assert!(lines.contains(&format!(

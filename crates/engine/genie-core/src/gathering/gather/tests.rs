@@ -18,6 +18,7 @@ use crate::test_ids::class_of;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::UnitStance;
+use crate::world::WorldTime;
 use crate::world::step::Step;
 use crate::world::{Player, World};
 
@@ -630,7 +631,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     mover.angle = 0.0;
     let before = mover.angle;
     let mut rig = Rig::on_the_path();
-    rig.t.world_time = 5000;
+    rig.t.world_time = WorldTime::from_millis(5000);
     rig.set_load(None, 0.0);
     rig.unit_mut().body =
         crate::objects::layers::Body::new(Position::new(30.0, 40.0, 0.0), None, Some(mover));

@@ -17,6 +17,7 @@ use crate::orders::{
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::world::Millis;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
@@ -128,7 +129,7 @@ impl World {
         let dt = self.dt;
         for (i, &id) in ids.iter().enumerate() {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.idle_timer = 0;
+                ai.idle_timer = Millis::ZERO;
                 let timeout = patrol_timeout(i, dt);
                 ai.adjusted_idle_timeout = timeout;
                 ai.secondary_timer = timeout;

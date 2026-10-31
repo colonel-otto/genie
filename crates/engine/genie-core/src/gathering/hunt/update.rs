@@ -9,7 +9,6 @@ use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads};
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -46,7 +45,7 @@ impl HuntAction {
             HuntState::Walk if self.timer < 0.0 => {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-                self.wait_then_walk(seconds(c.dt), mover, &walks)?;
+                self.wait_then_walk(c.dt.seconds(), mover, &walks)?;
                 Ok(HuntNext::Stay)
             }
             HuntState::Walk => self.update_walk(c, unit, me, f, r),
@@ -62,7 +61,7 @@ impl HuntAction {
                 })
             }
             HuntState::Gather => {
-                let full = self.gather(seconds(c.dt), unit, &mut f.victim, r)?;
+                let full = self.gather(c.dt.seconds(), unit, &mut f.victim, r)?;
                 write_target_back(c, unit, f)?;
                 Ok(if full { HuntNext::Drop } else { HuntNext::Stay })
             }

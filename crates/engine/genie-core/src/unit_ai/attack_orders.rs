@@ -17,6 +17,7 @@ use crate::unit_ai::{
     ARTIFACT_AI, CIVILIAN, Notify, QueuedOrder, SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi,
     UnitSide, civilian_may_attack, lion_may_attack,
 };
+use crate::world::Millis;
 use crate::world::slots::CheckedIndex;
 
 impl UnitAi {
@@ -64,8 +65,8 @@ impl UnitAi {
             self.stop_with(true, place, side, ai)?;
         }
         match &world {
-            Some((at, _)) => self.end_notifies(0, at, side, ai)?,
-            None => self.clear_notifies(0)?,
+            Some((at, _)) => self.end_notifies(Millis::ZERO, at, side, ai)?,
+            None => self.clear_notifies(Millis::ZERO)?,
         }
         let front = *self.orders.checked(0)?;
         if self.process_order(&front, world, place, ai, side)? != 0xe {

@@ -8,6 +8,7 @@ use genie_core::commands::Command;
 use genie_core::objects::ListIndex;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
+use genie_core::world::Millis;
 use genie_core::world::checkpoint::{ActionTerm, CheckpointObject, TopAction, player_block};
 use genie_core::world::{Player, World};
 use genie_rec::de;
@@ -76,7 +77,7 @@ pub(super) fn run(turns: &mut World, decoder: &mut Decoder, frames: &[Frame<'_>]
                 eprintln!("update {}: {c:?}", turns.ticks + 1);
             }
         }
-        turns.tick_with(frame.dt, &commands);
+        turns.tick_with(Millis::new(frame.dt), &commands);
     }
 }
 
@@ -151,7 +152,7 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
             state: unit.life.state,
             amount_held: unit.life.amount,
             position: unit.position(),
-            retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
+            retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer.get() as i32),
             top_action: checkpoint_action(unit),
         })
         .collect();
@@ -227,7 +228,10 @@ pub fn word9_terms(
                 .artifact()
                 .map_or(-1, |_| i32::from(ARTIFACT_TYPE.get())),
             state: unit.actions.artifact().map_or(0, |a| a.state.get()),
-            retarget: unit.ai.as_ref().map_or(0, |ai| ai.retarget_timer as i32),
+            retarget: unit
+                .ai
+                .as_ref()
+                .map_or(0, |ai| ai.retarget_timer.get() as i32),
         })
         .collect())
 }

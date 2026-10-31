@@ -20,10 +20,12 @@ use crate::unit_ai::{
     Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state, patrol_distance,
     point_gap_squared, searches_on_class,
 };
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// The least span [`UnitAi::set_randomized_retarget_timer`] draws around (`999 < span`: the
 /// immediate `1000`).
-const RETARGET_SPAN_LEAST: u32 = 1000;
+const RETARGET_SPAN_LEAST: Millis = Millis::new(1000);
 
 impl UnitAi {
     /// The idle part of the full update (`0x140c66b10` after slot 73): a unit without an action
@@ -49,7 +51,7 @@ impl UnitAi {
             && group_lets_idle(group)
         {
             // slot 0x240 with 1; the idle part reads no result
-            self.idle_timer = 0;
+            self.idle_timer = Millis::ZERO;
             let _ = self.process_idle(at, computer, ai, side)?;
             return Ok(());
         }
@@ -84,11 +86,11 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        if self.secondary_timer != 0 {
+        if self.secondary_timer != Millis::ZERO {
             return Ok(());
         }
-        self.secondary_timer = 750;
-        if self.adjusted_idle_timeout == 750 {
+        self.secondary_timer = Millis::new(750);
+        if self.adjusted_idle_timeout == Millis::new(750) {
             self.update_adjusted_idle_timeout(ai);
         }
         if Self::top_target_live(at, side)?.is_some_and(|t| t.kind == BUILDING) {
@@ -130,7 +132,7 @@ impl UnitAi {
         if self.idle_timer <= self.adjusted_idle_timeout || self.current_target.is_some() {
             return Ok(());
         }
-        self.idle_timer = 0;
+        self.idle_timer = Millis::ZERO;
         self.process_idle(at, computer, ai, side).map(|_| ())
     }
 
@@ -168,7 +170,7 @@ impl UnitAi {
         if (self.current_action.is_some() || self.current_target.is_some())
             && player != PlayerId::GAIA
         {
-            self.idle_timer = 0;
+            self.idle_timer = Millis::ZERO;
         }
         Ok(())
     }
@@ -195,7 +197,7 @@ impl UnitAi {
     /// timer ran out.
     pub(super) fn retarget_check(
         &mut self,
-        world_time: u32,
+        world_time: WorldTime,
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
@@ -217,11 +219,11 @@ impl UnitAi {
         if self.retarget_disabled != 0 {
             return Ok(false);
         }
-        if world_time.wrapping_sub(self.last_retarget_time) < self.retarget_timer {
+        if world_time.since(self.last_retarget_time) < self.retarget_timer {
             return Ok(false);
         }
         self.last_retarget_time = world_time;
-        self.retarget_timer = 750 + ai.rand15() % 500;
+        self.retarget_timer = Millis::new(750 + ai.rand15() % 500);
         let target = at.target.map(|t| (t.owner, t.class));
         let listed = at.action_state.map(|_| at.attack_listed);
         if let Some(search) =
@@ -660,9 +662,10 @@ impl UnitAi {
     /// `setRandomizedRetargetTimer` (`FUN_140c64cf0`): the retarget timer (`+0x1cc`) becomes a
     /// draw of the AI stream (`rand15`) modulo half of `span` milliseconds (at least 1000) plus
     /// three quarters of it, so between three and five quarters of it.
-    pub fn set_randomized_retarget_timer(&mut self, span: u32, ai: &mut Well512) {
-        let span = span.max(RETARGET_SPAN_LEAST);
-        self.retarget_timer = (ai.rand15() % (span >> 1)).wrapping_add(span.wrapping_mul(3) >> 2);
+    pub fn set_randomized_retarget_timer(&mut self, span: Millis, ai: &mut Well512) {
+        let span = span.max(RETARGET_SPAN_LEAST).get();
+        self.retarget_timer =
+            Millis::new((ai.rand15() % (span >> 1)).wrapping_add(span.wrapping_mul(3) >> 2));
     }
 
     /// The boar's end of its full update: without a target it is no longer furious.
@@ -687,8 +690,8 @@ impl UnitAi {
                     "look-around timer of a computer player",
                 ));
             }
-            self.look_around_timer = 0;
-            self.look_around_timeout = 4500 + ai.rand15() % 1000;
+            self.look_around_timer = Millis::ZERO;
+            self.look_around_timeout = Millis::new(4500 + ai.rand15() % 1000);
         }
         Ok(())
     }

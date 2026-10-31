@@ -11,6 +11,7 @@ use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use crate::pathing::tile_path::Path;
+use crate::world::WorldTime;
 
 /// `FUN_140f98dd0`: the path ends before its point `i` (the points from `i` on go) and is
 /// measured again (`FUN_140f95a60`, true); an index outside the path, or an empty path, changes
@@ -215,7 +216,7 @@ pub struct Planning<'a> {
     /// The planners, the mesh and the short pather.
     pub pathing: &'a mut Pathing,
     /// The world's time this update (`FUN_1415300d0`), which a new path records.
-    pub now: u32,
+    pub now: WorldTime,
     /// The owner is a computer player (`FUN_141659cf0`, `player+0x10 == 3`): its plans may stop
     /// near the goal.
     pub computer: bool,

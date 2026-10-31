@@ -111,7 +111,9 @@ mod tests {
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::unit::Unit;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// Gaia and three players; player 1 holds 500 gold and is allied with 3.
     fn world() -> World {
@@ -123,10 +125,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 4],
+            vec![Millis::ZERO; 4],
             (0..4).map(player).collect(),
         );
         t.players[1].resources[attribute::GOLD.index()] = 500.0;

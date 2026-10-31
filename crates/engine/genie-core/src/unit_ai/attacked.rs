@@ -19,6 +19,7 @@ use crate::unit_ai::{
     Pick, QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
     alert_owner, closest_undiscovered_tile,
 };
+use crate::world::Millis;
 
 impl UnitAi {
     /// The base handler's damage case (`FUN_140c589c0`, cases 500 and a missile's warning, 0x20f:
@@ -61,7 +62,7 @@ impl UnitAi {
     pub(super) fn damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,

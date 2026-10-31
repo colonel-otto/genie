@@ -36,6 +36,7 @@ use crate::test_ids::tech_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
+use crate::world::Millis;
 use crate::world::Player;
 
 /// An entry of `count` villagers of master `master` that paid `food` each.
@@ -99,10 +100,10 @@ fn game() -> World {
         ..Player::default()
     };
     let mut t = World::new(
-        61_000,
+        WorldTime::from_millis(61_000),
         1,
         PlayerId::new(0),
-        vec![0; 3],
+        vec![Millis::ZERO; 3],
         vec![
             Player::default(),
             player(vec![tc].into()),
@@ -154,14 +155,14 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     t.players[3].attributes[303] = 7.9;
     t.players[1].attributes[301] = 50.0;
     t.players[1].history.entries = vec![[1, 0]; 4];
-    t.world_time = 5_000;
+    t.world_time = WorldTime::from_millis(5_000);
     t.defeat_event(PlayerId::new(1)).unwrap();
     assert_eq!(
         t.players[1].history.events,
         [crate::players::history::Event {
             kind: crate::players::history::EventKind::DEFEAT,
             time_slice: 4,
-            world_time: 5_000,
+            world_time: WorldTime::from_millis(5_000),
             data1: 3.0,
             data2: 7.0,
             data3: 0.0,
@@ -901,7 +902,7 @@ fn a_make_action_the_queue_did_not_pay_for_refunds_its_master_s_costs() {
 #[test]
 fn early_in_the_game_a_resignation_leaves_the_objects_alone() {
     let mut t = game();
-    t.world_time = 60_000;
+    t.world_time = WorldTime::from_millis(60_000);
     t.resign(player_id(1), true).unwrap();
     assert_eq!((t.players[1].resigned, t.players[1].dropped), (true, true));
     assert_eq!(t.players[1].resources[0], 0.0);

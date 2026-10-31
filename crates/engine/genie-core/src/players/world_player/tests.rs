@@ -24,6 +24,7 @@ use crate::technology::ResearchState;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::vision::visibility::{Visibility, VisibleMap};
+use crate::world::Millis;
 use crate::world::Player;
 
 /// Attributes 0 to 299, all 0.
@@ -54,10 +55,10 @@ fn world() -> World {
         ..Player::default()
     };
     let mut t = World::new(
-        10_000,
+        WorldTime::from_millis(10_000),
         1,
         PlayerId::new(0),
-        vec![0; 4],
+        vec![Millis::ZERO; 4],
         vec![gaia, human(), human(), human()],
     );
     t.dt_seconds = 1.0;
@@ -678,14 +679,14 @@ fn the_scout_map_takes_the_new_tiles() {
         PlayerId::new(1),
         crate::movement::explore::InfluenceMap::new(GridSize::new(10, 10), 0),
     );
-    t.world_time = 4999;
+    t.world_time = WorldTime::from_millis(4999);
     t.world_player_tail(PlayerId::new(1)).unwrap();
     let m = t.spatial.scout_map(PlayerId::new(1)).unwrap();
     assert_eq!(
         (m.get(Tile::new(0, 0)), m.get(Tile::new(1, 0))),
         (Some(1), Some(0))
     );
-    t.world_time = 5000;
+    t.world_time = WorldTime::from_millis(5000);
     t.world_player_tail(PlayerId::new(1)).unwrap();
     assert_eq!(
         t.spatial

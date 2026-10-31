@@ -9,6 +9,7 @@ use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
 use crate::unit_ai::best_target::Candidate;
 use crate::unit_ai::best_target::{AttackCategory, ByCategory};
+use crate::world::WorldTime;
 
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
 pub(super) const ORDER_WINDOW: f32 = crate::math::image::best_target::ORDER_WINDOW;
@@ -61,7 +62,7 @@ pub struct Searcher {
     /// The AI's retarget entries' targets (`+0x1e0`).
     pub retries: Vec<ObjectId>,
     /// The world's time (`FUN_1415300d0`).
-    pub now: u32,
+    pub now: WorldTime,
 }
 
 /// `bestUnitToAttack`'s arguments past its reference point (the search's, the caller's).

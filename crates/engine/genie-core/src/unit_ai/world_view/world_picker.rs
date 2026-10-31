@@ -13,6 +13,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::NearestAttacker;
 use crate::unit_ai::world_view::Foreign;
+use crate::world::WorldTime;
 use crate::world::others::OthersRef;
 
 /// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
@@ -62,7 +63,7 @@ pub(crate) struct WorldPicker<'a> {
     /// Its owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
     /// The world's time.
-    pub(crate) now: u32,
+    pub(crate) now: WorldTime,
     /// The game's setting `+0x680`.
     pub(crate) mode_680: i32,
 }

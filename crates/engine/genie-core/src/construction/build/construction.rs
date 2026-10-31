@@ -22,6 +22,8 @@ use crate::players::attribute::CASTLES_BUILT;
 use crate::players::attribute::MONASTERIES;
 use crate::players::attribute::WONDERS;
 use crate::players::attribute::WONDERS_BUILT;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// The completion's storage ([`crate::world::World::complete_building`]): its master's entries of modes 4, 8 and 64 go to its
 /// owner (slot 0xf8, into `attributes`), those of mode 16 to its own `store` (`FUN_1411abad0`: an
@@ -191,7 +193,7 @@ impl Construction {
         mover: Option<&mut crate::movement::Mover>,
         world: &mut Spatial,
         pathing: &mut Pathing,
-        now: u32,
+        now: WorldTime,
     ) -> Result<bool, GenieError> {
         if !c.desolid {
             return Ok(false);
@@ -211,7 +213,7 @@ impl Construction {
             pathing.moved(id, p, false);
         }
         if let Some(m) = mover {
-            m.last_move = now.wrapping_add(1);
+            m.last_move = now.after(Millis::new(1));
             world.set_last_move(id, m.last_move);
         }
         Ok(true)

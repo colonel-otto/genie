@@ -404,6 +404,8 @@ mod tests {
     use crate::test_ids::group_id;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
 
     /// `FUN_141049e10` facing x with up y: right is `y × x`, (0, 0, -1), the constructor's.
     #[test]
@@ -444,10 +446,10 @@ mod tests {
         use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
         use crate::map::terrain::{Terrain, TerrainKind};
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0],
+            vec![Millis::ZERO],
             vec![crate::world::Player {
                 objects: units.clone().into(),
                 ..crate::world::Player::default()

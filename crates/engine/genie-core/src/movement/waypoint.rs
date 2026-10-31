@@ -15,6 +15,7 @@ use crate::movement::{
 };
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
+use crate::world::WorldTime;
 use crate::{GenieError, math::fmath};
 
 impl Mover {
@@ -35,7 +36,7 @@ impl Mover {
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
-        now: u32,
+        now: WorldTime,
     ) -> Result<Next, GenieError> {
         let ground_radius = self.stats.radius.ground();
         if self.paths[0].flags & 2 != 0 {
@@ -116,7 +117,7 @@ impl Mover {
         me: &Me,
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
-        now: u32,
+        now: WorldTime,
     ) -> Result<(), GenieError> {
         let level = &self.paths[0];
         if level.waypoint < level.points.len() as i32 {
@@ -180,7 +181,7 @@ impl Mover {
         let own = world.get(me.id).map(|p| p.player);
         let yields = self.stats.weapon_range == 0.0
             && goal.target.is_some_and(|(target, t)| {
-                let moved = world.gait(target).map_or(0, |g| g.last_move);
+                let moved = world.gait(target).map_or(WorldTime::ZERO, |g| g.last_move);
                 moved > created
                     || (moved == created && (own.is_some_and(|o| o < t.player) || me.id < target))
             });
@@ -357,10 +358,10 @@ impl Mover {
         let level = &mut self.paths[0];
         *level = PathData {
             repath_time: level.repath_time,
-            created: 0,
+            created: WorldTime::ZERO,
             has_path: false,
             path_flags: 0,
-            ..PathData::new(0)
+            ..PathData::new(WorldTime::ZERO)
         };
     }
 
@@ -424,7 +425,7 @@ impl Mover {
         at: Position,
         world: &mut Spatial,
         pathing: Option<&mut Pathing>,
-        now: u32,
+        now: WorldTime,
     ) -> Result<(), GenieError> {
         self.mark_move(at, now);
         self.new_position(me.id, at, (world, pathing))?;

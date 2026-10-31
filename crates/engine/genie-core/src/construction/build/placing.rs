@@ -12,7 +12,6 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::map::spatial::Placed;
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::unit::Unit;
@@ -318,7 +317,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         let site = Self::site_unit(c, reads)?.ok_or(FOREIGN_SITE)?;
-        let mut rate = self.task.work_rate * self.task.work_value * seconds(c.dt);
+        let mut rate = self.task.work_rate * self.task.work_value * c.dt.seconds();
         let mut factor = c.w.players.player(c.player)?.construction_rate;
         if site.life.master_id == WONDER && WONDER_RATE < factor {
             factor = WONDER_RATE;

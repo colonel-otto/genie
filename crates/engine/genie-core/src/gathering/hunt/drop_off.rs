@@ -14,7 +14,6 @@ use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
 use crate::players::attribute::AttributeId;
 use crate::world::slots::PlayerSlots;
@@ -98,7 +97,7 @@ impl HuntAction {
         who: PointWalker,
     ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
-            self.timer += seconds(c.dt);
+            self.timer += c.dt.seconds();
             if self.timer < 0.0 {
                 return Ok(Dropped::Going);
             }

@@ -44,7 +44,7 @@ use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
-use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
+use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData};
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
@@ -155,9 +155,9 @@ fn building() -> UnitAi {
         current_order: None,
         current_action: None,
         current_target: None,
-        adjusted_idle_timeout: 3000,
-        look_around_timeout: 1000,
-        retarget_timer: 1,
+        adjusted_idle_timeout: Millis::new(3000),
+        look_around_timeout: Millis::new(1000),
+        retarget_timer: Millis::new(1),
         ..UnitAi::default()
     }
 }
@@ -165,10 +165,10 @@ fn building() -> UnitAi {
 #[test]
 fn the_turn_rotates_and_only_the_turn_player_updates() {
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             player(vec![Some(building())]),
             player(vec![Some(building())]),
@@ -176,16 +176,16 @@ fn the_turn_rotates_and_only_the_turn_player_updates() {
         ],
     );
     stock_masters(&mut t);
-    t.tick(10);
+    t.tick(Millis::new(10));
     assert_eq!(t.player_turn, PlayerId::new(2));
-    assert_eq!(t.player_time, [10, 0, 10]);
+    assert_eq!(t.player_time, [10, 0, 10].map(Millis::new));
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)]
             .ai
             .as_ref()
             .unwrap()
             .last_retarget_time,
-        0
+        WorldTime::ZERO
     );
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
@@ -193,29 +193,35 @@ fn the_turn_rotates_and_only_the_turn_player_updates() {
             .as_ref()
             .unwrap()
             .last_retarget_time,
-        10
+        WorldTime::from_millis(10)
     );
     stock_masters(&mut t);
-    t.tick(10);
+    t.tick(Millis::new(10));
     stock_masters(&mut t);
-    t.tick(10);
+    t.tick(Millis::new(10));
     // turns 2 (no objects), then 0; back at player 1
     assert_eq!(t.player_turn, PlayerId::new(1));
-    assert_eq!(t.player_time, [0, 20, 10]);
+    assert_eq!(t.player_time, [0, 20, 10].map(Millis::new));
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)]
             .ai
             .as_ref()
             .unwrap()
             .last_retarget_time,
-        30
+        WorldTime::from_millis(30)
     );
 }
 
 #[test]
 fn the_frame_seed_chains_through_two_world_draws() {
-    let mut t = World::new(0, 29910, PlayerId::new(0), vec![0], vec![player(vec![])]);
-    t.tick(10);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        29910,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player(vec![])],
+    );
+    t.tick(Millis::new(10));
     // SeedAll(29910); s1 = World.rand15 = 19550 (see rng); SeedAll(19550); World.rand15
     let mut s = Streams::default();
     s.seed_all(19550);
@@ -238,7 +244,13 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
             ..Player::default()
         },
     ];
-    let mut t = World::new(0, 1, PlayerId::new(0), vec![0, 0], players);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO, Millis::ZERO],
+        players,
+    );
     let state = |t: &World, p: usize| {
         t.players[p].objects[ListIndex::new(0)]
             .actions
@@ -248,13 +260,13 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
             .state
     };
     stock_masters(&mut t);
-    t.tick(50);
+    t.tick(Millis::new(50));
     assert_eq!(
         (state(&t, 0), state(&t, 1)),
         (ArtifactState::Check, ArtifactState::Check)
     );
     stock_masters(&mut t);
-    t.tick(50);
+    t.tick(Millis::new(50));
     assert_eq!(
         (state(&t, 0), state(&t, 1)),
         (ArtifactState::Wait, ArtifactState::Wait)
@@ -267,16 +279,16 @@ fn an_unsupported_unit_stops_and_is_recorded() {
     // a unit-AI type the slice does not model
     odd.ai_type = UnitAiType::of_value(99);
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![player(vec![Some(odd)])],
     );
     stock_masters(&mut t);
-    t.tick(10);
+    t.tick(Millis::new(10));
     stock_masters(&mut t);
-    t.tick(10);
+    t.tick(Millis::new(10));
     assert_eq!(
         t.players[0].unsupported,
         Some((
@@ -306,7 +318,7 @@ fn live(id: i32) -> Unit {
     Unit {
         id: object_id(id),
         ai: Some(UnitAi {
-            retarget_timer: 40,
+            retarget_timer: Millis::new(40),
             ..building()
         }),
         ..Unit::default()
@@ -321,7 +333,7 @@ fn retarget(t: &World) -> Vec<u32> {
     t.players[0]
         .objects
         .iter()
-        .map(|o| o.ai.as_ref().unwrap().retarget_timer)
+        .map(|o| o.ai.as_ref().unwrap().retarget_timer.get())
         .collect()
 }
 
@@ -330,10 +342,10 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
     // RGE_Object_List::update: the dead building leaves in its fourth update; the last object
     // takes its slot and updates there, so it draws before the object behind the slot
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![dead_building(), live(2), live(3)].into(),
             ..Player::default()
@@ -341,16 +353,16 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
     );
     for _ in 0..4 {
         stock_masters(&mut t);
-        t.tick(10);
+        t.tick(Millis::new(10));
     }
     assert_eq!(ids(&t), [3, 2]);
     // the same ticks with the two live buildings in that order from the start: their timers
     // fall due in the fourth tick, so its draws depend only on the order
     let mut reordered = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![live(3), live(2)].into(),
             ..Player::default()
@@ -358,7 +370,7 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
     );
     for _ in 0..4 {
         stock_masters(&mut reordered);
-        reordered.tick(10);
+        reordered.tick(Millis::new(10));
     }
     assert_eq!(retarget(&t), retarget(&reordered));
 }
@@ -367,17 +379,17 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
 fn a_dead_objects_unit_ai_draws_nothing() {
     let one = |objects| {
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             29910,
             PlayerId::new(0),
-            vec![0],
+            vec![Millis::ZERO],
             vec![Player {
                 objects,
                 ..Player::default()
             }],
         );
         stock_masters(&mut t);
-        t.tick(10);
+        t.tick(Millis::new(10));
         t
     };
     let with_dead = one(vec![dead_building(), live(2)].into());
@@ -589,10 +601,10 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             player(vec![].into()),
             player(
@@ -618,7 +630,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
         master(master_id(4), class::CLASS_0),
     ]);
     t.masters = vec![table.clone(), table.clone(), table];
-    t.world_time = 4321;
+    t.world_time = WorldTime::from_millis(4321);
     t.remember_order(
         PlayerId::new(1),
         ListIndex::new(0),
@@ -644,7 +656,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
         [crate::unit_ai::OrderRecord {
             order: Some(OrderKind::Attack),
             action: Some(ActionKind::Attack),
-            time: 4321,
+            time: WorldTime::from_millis(4321),
             position: GameVector::new(10.0, 0.0, 11.0),
             target: Some(object_id(2)),
             category: attack_category(3),
@@ -664,10 +676,10 @@ fn a_flare_at_a_point_stands_on_the_ground() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![player(), player(), player()],
     );
     placeable(&mut t);
@@ -698,10 +710,10 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![player(), player(), player()],
     );
     placeable(&mut t);
@@ -737,7 +749,13 @@ fn pasture_game(at: Position, livestock: f32, livestock_masters: &[MasterId]) ->
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = World::new(0, 1, PlayerId::new(0), vec![0, 0], vec![player(), player()]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO, Millis::ZERO],
+        vec![player(), player()],
+    );
     t.spatial = Spatial::new(GridSize::new(120, 120));
     placeable(&mut t);
     t.players[1].attributes[289] = livestock;
@@ -995,7 +1013,7 @@ fn dying_animal(kind: MasterKind, factor: f32) -> Unit {
         m.stats.speed = 1.4003;
     }
     for _ in 0..2 {
-        t.tick(50);
+        t.tick(Millis::new(50));
     }
     t.object(animal).unwrap().1.clone()
 }
@@ -1248,10 +1266,10 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 sleeping: vec![
@@ -1347,10 +1365,10 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: vec![
@@ -1403,15 +1421,15 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
             .map(|p| (v.resources[p].lists[0].len(), v.resources[p].lists[1].len()))
             .collect()
     };
-    t.tick(10);
+    t.tick(Millis::new(10));
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].life.state,
         ObjectState::Removed
     );
     assert_eq!(held(&t), [(0, 1), (0, 1)]);
-    t.tick(10);
+    t.tick(Millis::new(10));
     assert_eq!(held(&t), [(0, 1), (0, 1)]);
-    t.tick(10);
+    t.tick(Millis::new(10));
     assert_eq!(t.players[0].objects, []);
     assert_eq!(held(&t), [(0, 0), (0, 0)]);
 }
@@ -1433,10 +1451,10 @@ fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(1),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![Player::default(), Player::default(), Player::default()],
     );
     let master = |id, auto_gather| Master {
@@ -1643,10 +1661,10 @@ fn build_world() -> World {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -1706,7 +1724,7 @@ fn a_human_build_with_a_target_places_nothing_and_a_house_keeps_its_sprite_overr
 fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     let mut t = build_world();
     t.tick_with(
-        50,
+        Millis::new(50),
         &[Command::Build(BuildCommand {
             player: player_id(1),
             master: master_id(70),
@@ -1841,10 +1859,10 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -1963,10 +1981,10 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -3542,11 +3560,11 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
     let mut t = forage_world();
     t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
-    t.players[1].objects[ListIndex::new(0)].last_human_order = 900;
+    t.players[1].objects[ListIndex::new(0)].last_human_order = WorldTime::from_millis(900);
     with_effects(
         &mut t,
         vec![
-            Effect::CapHumanOrder(300),
+            Effect::CapHumanOrder(WorldTime::from_millis(300)),
             Effect::MoveToObject {
                 target: object_id(601),
                 state: ObjectState::Alive,
@@ -3558,7 +3576,7 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         (v.actions.gather().copied(), v.last_human_order),
-        (None, 300)
+        (None, WorldTime::from_millis(300))
     );
     assert!(v.actions.move_to().is_some());
     assert_eq!(t.players[0].objects[ListIndex::new(0)].workers, 0);
@@ -3720,8 +3738,9 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
         let v = &mut t.players[1].objects[ListIndex::new(0)];
         v.life.hp = 20.0;
         let ai = v.ai.as_mut().unwrap();
-        (ai.idle_timer, ai.look_around_timer) = (5000, 2000);
-        t.update_objects(PlayerId::new(1), (50, Some(50))).unwrap();
+        (ai.idle_timer, ai.look_around_timer) = (Millis::new(5000), Millis::new(2000));
+        t.update_objects(PlayerId::new(1), (Millis::new(50), Some(Millis::new(50))))
+            .unwrap();
         let v = &t.players[1].objects[ListIndex::new(0)];
         let ai = v.ai.as_ref().unwrap();
         (
@@ -3739,7 +3758,7 @@ fn an_order_on_a_target_and_the_rest_after_it_run_inside_the_one_update() {
     );
     assert_eq!(regen, idle_regen);
     assert!(
-        look < 2000,
+        look < Millis::new(2000),
         "the rest after the order ran its look-around check"
     );
 }
@@ -4117,10 +4136,10 @@ fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
         attributes[4] = 25.0;
         attributes[134] = count;
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0, 0],
+            vec![Millis::ZERO, Millis::ZERO],
             vec![
                 Player::default(),
                 Player {
@@ -4201,10 +4220,10 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![
                 house(object_id(1), ObjectState::Alive, None, false, ids::HOUSE),
@@ -4512,7 +4531,7 @@ pub(crate) fn in_update<R>(
     f: impl FnOnce(&mut Unit, &mut step::Step<'_>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
     let mut answer = None;
-    let _ = t.step_object((p, i), (dt, None, false), |u, c| {
+    let _ = t.step_object((p, i), (Millis::new(dt), None, false), |u, c| {
         answer = Some(f(u, c)?);
         Ok(crate::objects::unit::Outcome::Stay)
     })?;
@@ -5716,7 +5735,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     };
     let world = |repairer: bool| repairer_world(vec![order], repairer);
     let mut t = world(true);
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.life.master_id, master_id(156));
     let r = v.actions.repair().copied().expect("the Repair");
@@ -5735,7 +5754,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
         (Some(ActionKind::Repair), Some(object_id(10028)))
     );
     let mut t = world(false);
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         (v.life.master_id, v.actions.repair().copied()),
@@ -6207,7 +6226,7 @@ fn an_inside_unit_s_update_deletes_its_top_action() {
             None,
             None,
         )));
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.actions.move_to().copied(), None);
     assert_eq!(v.top_action_kind(), None);
@@ -6345,8 +6364,8 @@ fn an_entered_enter_of_a_unit_let_out_goes_at_its_update() {
     t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_enter(Some(e));
-    t.tick(50);
-    t.tick(50);
+    t.tick(Millis::new(50));
+    t.tick(Millis::new(50));
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
             .actions
@@ -6378,7 +6397,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
         target_type: order_type(80),
     };
     let mut t = enter_world(vec![order], 5);
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert!(
         v.actions
@@ -6394,7 +6413,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
         (Some(ActionKind::Enter), Some(object_id(10028)))
     );
     let mut t = enter_world(vec![order], 0);
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         (t.players[1].freezes.len(), v.actions.enter().copied()),
@@ -6427,7 +6446,7 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
         target_type: order_type(70),
     };
     let mut t = sent_off_world(vec![order]);
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert!(!v.stopped, "{:?}", t.players[1].objects[ListIndex::new(0)]);
     assert_eq!(v.life.master_id, ids::BUILDER);
@@ -6446,8 +6465,8 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     );
     assert_eq!(ai.orders, vec![]);
     // player 0's update, then player 1's: the wait reads 0 build points and stays
-    t.tick(50);
-    t.tick(50);
+    t.tick(Millis::new(50));
+    t.tick(Millis::new(50));
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)].top_action_kind(),
         Some(crate::construction::wait_solidify::WAIT_SOLIDIFY)
@@ -6457,8 +6476,8 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
         .as_mut()
         .unwrap()
         .progress = 0.5;
-    t.tick(50);
-    t.tick(50);
+    t.tick(Millis::new(50));
+    t.tick(Millis::new(50));
     assert_eq!(t.players[1].freezes, vec![]);
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.actions.wait_solidify().copied(), None);
@@ -6490,9 +6509,9 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
     {
         let ai = t.players[1].objects[ListIndex::new(0)].ai.as_mut().unwrap();
         ai.current_order = Some(OrderKind::Patrol);
-        ai.secondary_timer = 900;
-        ai.adjusted_idle_timeout = 750;
-        ai.idle_timeout = 3000;
+        ai.secondary_timer = Millis::new(900);
+        ai.adjusted_idle_timeout = Millis::new(750);
+        ai.idle_timeout = Millis::new(3000);
     }
     let draws = t.streams.get(Stream::Ai).draws;
     // the unit AI runs the order (slot 0x230) and gives the build command, which runs at once
@@ -6523,8 +6542,8 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
             Some(object_id(10028))
         )
     );
-    assert_eq!(ai.secondary_timer, 750);
-    assert_ne!(ai.adjusted_idle_timeout, 750);
+    assert_eq!(ai.secondary_timer, Millis::new(750));
+    assert_ne!(ai.adjusted_idle_timeout, Millis::new(750));
     assert_eq!(t.streams.get(Stream::Ai).draws, draws + 1);
 }
 
@@ -6934,10 +6953,10 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
     // BUILD here: it needs no builder that can build it)
     let world = |objects: Vec<Unit>| {
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             29910,
             PlayerId::new(1),
-            vec![0, 0],
+            vec![Millis::ZERO, Millis::ZERO],
             vec![
                 Player {
                     resources: [0.0, 100.0, 0.0, 0.0],
@@ -6959,7 +6978,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
     let mut built = world(vec![live(2)]);
     stock_masters(&mut built);
     built.tick_with(
-        40,
+        Millis::new(40),
         &[Command::Build(BuildCommand {
             player: player_id(0),
             master: master_id(70),
@@ -6995,14 +7014,14 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
     assert_eq!(foundation.ai, Some(first));
     let next = 750 + ai.rand15() % 500;
     stock_masters(&mut by_hand);
-    by_hand.tick(40);
+    by_hand.tick(Millis::new(40));
     assert_eq!(
         built.players[1].objects[ListIndex::new(0)]
             .ai
             .as_ref()
             .unwrap()
             .retarget_timer,
-        next
+        Millis::new(next)
     );
     assert_ne!(
         by_hand.players[1].objects[ListIndex::new(0)]
@@ -7010,7 +7029,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
             .as_ref()
             .unwrap()
             .retarget_timer,
-        next
+        Millis::new(next)
     );
 }
 
@@ -7021,17 +7040,17 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
     let ordered = |id| Unit {
         id,
         ai: Some(UnitAi {
-            idle_timeout: 3000,
-            adjusted_idle_timeout: 3000,
+            idle_timeout: Millis::new(3000),
+            adjusted_idle_timeout: Millis::new(3000),
             ..building()
         }),
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: vec![ordered(object_id(7)), ordered(object_id(8))].into(),
@@ -7045,7 +7064,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
     );
     stock_masters(&mut t);
     t.tick_with(
-        40,
+        Millis::new(40),
         &[Command::Order(OrderCommand {
             player: player_id(0),
             units: unit_list(object_ids([8, 99, 7])),
@@ -7069,7 +7088,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
             timeout(&t, ListIndex::new(1)),
             timeout(&t, ListIndex::new(0))
         ),
-        (eight, seven)
+        (Millis::new(eight), Millis::new(seven))
     );
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
@@ -7077,7 +7096,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
             .as_ref()
             .unwrap()
             .retarget_timer,
-        next
+        Millis::new(next)
     );
     assert!(t.players[0].unsupported.is_some());
 }
@@ -7092,10 +7111,16 @@ fn an_unmodelled_action_stops_its_player_unless_the_object_dies_first() {
         ..Unit::default()
     };
     let run = |unit| {
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player(vec![])]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player(vec![])],
+        );
         t.players[0].objects.push(unit);
         stock_masters(&mut t);
-        t.tick(10);
+        t.tick(Millis::new(10));
         t.players[0].unsupported.clone()
     };
     assert_eq!(
@@ -7150,10 +7175,10 @@ fn livestock_without_actions_starts_its_artifact_again() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -7172,7 +7197,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
             ..Master::default()
         }]),
     ];
-    t.tick(50);
+    t.tick(Millis::new(50));
     let a = t.players[1].objects[ListIndex::new(0)]
         .actions
         .artifact()
@@ -7180,7 +7205,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
         .expect("the Artifact again");
     assert_eq!(a, Artifact::new(false, None));
     // its first update checks for a new owner, finds none and waits a second
-    t.tick(50);
+    t.tick(Millis::new(50));
     let a = t.players[1].objects[ListIndex::new(0)]
         .actions
         .artifact()
@@ -7352,10 +7377,10 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![player(vec![].into()), player(vec![sheep].into())],
     );
     t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
@@ -7374,9 +7399,9 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         obstruction: None,
     };
     t.spatial.insert(object_id(40), placed);
-    t.tick(50);
+    t.tick(Millis::new(50));
     assert_eq!(t.players[1].objects.len(), 1);
-    t.tick(50);
+    t.tick(Millis::new(50));
     assert_eq!(
         (
             t.players[0].unsupported.clone(),
@@ -7409,10 +7434,10 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     let mut attributes = vec![0.0; 100];
     attributes[attribute::FARM_FOOD_AMOUNT.index()] = 175.0;
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![farm].into(),
             attributes,
@@ -7420,7 +7445,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
         }],
     );
     t.masters = vec![Masters::new([farm_master()])];
-    t.tick(104);
+    t.tick(Millis::new(104));
     let f = &t.players[0].objects[ListIndex::new(0)];
     let make = f.actions.make().copied().unwrap();
     assert_eq!(
@@ -7435,9 +7460,9 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
             state: 6
         })
     );
-    t.tick(104);
+    t.tick(Millis::new(104));
     let f = &t.players[0].objects[ListIndex::new(0)];
-    let made = 0.4f32 * 1.0 * seconds(104);
+    let made = 0.4f32 * 1.0 * Millis::new(104).seconds();
     assert_eq!(
         (f.life.amount, f.actions.make().copied().unwrap().remaining),
         (made, 175.0 - made)
@@ -7475,10 +7500,10 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![barracks].into(),
             attributes: vec![0.0; 300],
@@ -7494,13 +7519,13 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         ..Master::default()
     }])];
     let timer = |t: &World| t.players[0].objects[ListIndex::new(0)].damaged_lately;
-    t.tick(500);
+    t.tick(Millis::new(500));
     assert_eq!(timer(&t), 2);
-    t.tick(2600);
+    t.tick(Millis::new(2600));
     assert_eq!(timer(&t), 1);
-    t.tick(1000);
+    t.tick(Millis::new(1000));
     assert_eq!(timer(&t), 0);
-    t.tick(1000);
+    t.tick(Millis::new(1000));
     assert_eq!(timer(&t), 0);
     assert!(t.players[0].unsupported.is_none());
 }
@@ -7584,8 +7609,8 @@ fn an_order_resets_its_units_sleeping_ones_too() {
         ai: Some(UnitAi {
             patrol_path: Some(crate::unit_ai::PatrolPath::default()),
             patrol_waypoint: 2,
-            adjusted_idle_timeout: 100,
-            secondary_timer: 900,
+            adjusted_idle_timeout: Millis::new(100),
+            secondary_timer: Millis::new(900),
             ..UnitAi::default()
         }),
         ..Unit::default()
@@ -7596,16 +7621,19 @@ fn an_order_resets_its_units_sleeping_ones_too() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![Player::default(), player],
     );
     t.reset_order_units(&object_ids([2, 9, 1])).unwrap();
     for u in t.players[1].objects.iter().chain(&t.players[1].sleeping) {
         let ai = u.ai.as_ref().unwrap();
-        assert_eq!((ai.patrol_path.is_none(), ai.secondary_timer), (true, 750));
+        assert_eq!(
+            (ai.patrol_path.is_none(), ai.secondary_timer),
+            (true, Millis::new(750))
+        );
     }
 }
 
@@ -7663,10 +7691,10 @@ fn only_a_standing_unlocked_transforming_gate_lets_an_ally_pass() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0; 2],
+        vec![Millis::ZERO; 2],
         vec![
             player(Vec::new()),
             player(vec![
@@ -7724,10 +7752,10 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0; 4],
+        vec![Millis::ZERO; 4],
         vec![
             player(Vec::new(), vec![0, 3, 3, 3]),
             player(Vec::new(), vec![3, 0, 0, 3]),
@@ -7981,10 +8009,10 @@ fn gate_world() -> World {
     gate.body
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -8009,7 +8037,7 @@ fn gate_world() -> World {
             },
         ],
     );
-    t.world_time = 400;
+    t.world_time = WorldTime::from_millis(400);
     t.masters = vec![
         Masters::default(),
         Masters::new([
@@ -8076,11 +8104,11 @@ fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
         )
     };
     t.toggle_gate(PlayerId::new(1), ListIndex::new(0)).unwrap();
-    assert_eq!(state(&t), (91, Some(401), 0.0));
+    assert_eq!(state(&t), (91, Some(WorldTime::from_millis(401)), 0.0));
     t.players[1].objects[ListIndex::new(3)].life.hp = 10.0;
-    t.world_time = 500;
+    t.world_time = WorldTime::from_millis(500);
     t.toggle_gate(PlayerId::new(1), ListIndex::new(0)).unwrap();
-    assert_eq!(state(&t), (88, Some(401), 10.0));
+    assert_eq!(state(&t), (88, Some(WorldTime::from_millis(401)), 10.0));
     t.players[1].objects[ListIndex::new(0)].life.master_id = master_id(92);
     t.toggle_gate(PlayerId::new(1), ListIndex::new(0)).unwrap();
     assert_eq!(
@@ -8203,8 +8231,8 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
     let game = GameState {
         frame_seed: 77,
         players: vec![vec![
-            game_unit(object_id(7), 900),
-            game_unit(object_id(8), 901),
+            game_unit(object_id(7), Millis::new(900)),
+            game_unit(object_id(8), Millis::new(901)),
         ]],
         resources: vec![[1.0, 2.0, 3.0, 4.0]],
         ..GameState::default()
@@ -8229,9 +8257,9 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
     // a game object the slice never made is named, not added
     let made = GameState {
         players: vec![vec![
-            game_unit(object_id(7), 900),
-            game_unit(object_id(8), 901),
-            game_unit(object_id(10), 5),
+            game_unit(object_id(7), Millis::new(900)),
+            game_unit(object_id(8), Millis::new(901)),
+            game_unit(object_id(10), Millis::new(5)),
         ]],
         ..GameState::default()
     };
@@ -8293,10 +8321,10 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
     let mut attributes = vec![0.0; 250];
     (attributes[4], attributes[11], attributes[32]) = (5.0, 4.0, 10.0);
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: objects.into(),
             resources,
@@ -8356,7 +8384,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
 #[test]
 fn a_queue_pays_its_cost_and_the_building_starts_making() {
     let mut t = one_player(vec![centre(9)], [200.0; 4]);
-    t.tick_with(104, &[queue(9, 83, 1)]);
+    t.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let p = &t.players[0];
     assert_eq!(p.resources, [154.0, 200.0, 200.0, 200.0]);
     let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
@@ -8383,7 +8411,7 @@ fn a_queue_pays_its_cost_and_the_building_starts_making() {
 #[test]
 fn a_queued_villager_is_male_or_female_by_an_action_stream_draw() {
     let mut t = one_player(vec![centre(9)], [200.0; 4]);
-    t.tick_with(104, &[queue(9, 83, 1)]);
+    t.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let mut streams = Streams::default();
     streams.seed_all(29910);
     let r = streams.get(Stream::Action).raw64();
@@ -8409,7 +8437,7 @@ fn a_queue_the_player_cannot_pay_or_at_a_missing_building_queues_nothing() {
     // too little food for the villager (46 here): no entry, no cost, no draw (records/
     // 425906646's update 31: player 5's refused QUEUE leaves player 6's draws alone)
     let mut poor = one_player(vec![centre(9)], [40.0, 0.0, 0.0, 0.0]);
-    poor.tick_with(104, &[queue(9, 83, 1)]);
+    poor.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     assert!(poor.players[0].unsupported.is_none());
     assert_eq!(poor.players[0].resources[0], 40.0);
     let tc = &poor.players[0].objects[ListIndex::new(0)];
@@ -8419,14 +8447,14 @@ fn a_queue_the_player_cannot_pay_or_at_a_missing_building_queues_nothing() {
             .is_none_or(|p| p.queue.entries().is_empty())
     );
     let mut idle = one_player(vec![centre(9)], [40.0, 0.0, 0.0, 0.0]);
-    idle.tick_with(104, &[]);
+    idle.tick_with(Millis::new(104), &[]);
     assert_eq!(
         poor.streams.get(Stream::Action).draws,
         idle.streams.get(Stream::Action).draws
     );
     // the packet's check drops a building the world lacks and refuses the packet
     let mut missing = one_player(vec![centre(9)], [200.0; 4]);
-    missing.tick_with(104, &[queue(9 - 1, 83, 1)]);
+    missing.tick_with(Millis::new(104), &[queue(9 - 1, 83, 1)]);
     assert!(missing.players[0].unsupported.is_none());
     assert_eq!(missing.players[0].resources, [200.0; 4]);
 }
@@ -8453,14 +8481,14 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
             .map_or(0, |p| p.queue.total)
     };
     let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
-    t.tick_with(104, &[several(5)]);
+    t.tick_with(Millis::new(104), &[several(5)]);
     assert_eq!(
         (total(&t, ListIndex::new(0)), total(&t, ListIndex::new(1))),
         (3, 2)
     );
     // a centre with work queued: 25 seconds less the work done the update gave it
     let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
-    t.tick_with(104, &[queue(9, 99, 1)]);
+    t.tick_with(Millis::new(104), &[queue(9, 99, 1)]);
     let Some(crate::production::Making::Unit(make)) = t.players[0].objects[ListIndex::new(0)]
         .production
         .as_ref()
@@ -8479,7 +8507,7 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
         0.0
     );
     // the empty one takes the first, then the loaded one the second (25 above its load)
-    t.tick_with(104, &[several(2)]);
+    t.tick_with(Millis::new(104), &[several(2)]);
     assert_eq!(
         (total(&t, ListIndex::new(0)), total(&t, ListIndex::new(1))),
         (2, 1)
@@ -8523,7 +8551,7 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
         button: -1,
     });
     let mut t = with_trophy(vec![trophy(9), centre(10)]);
-    t.tick_with(104, &[both]);
+    t.tick_with(Millis::new(104), &[both]);
     assert!(t.players[0].unsupported.is_none());
     assert_eq!(
         (total(&t, ListIndex::new(0)), total(&t, ListIndex::new(1))),
@@ -8531,7 +8559,7 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
     );
     // the trophy alone: no room, nothing queued, nothing paid
     let mut alone = with_trophy(vec![trophy(9)]);
-    alone.tick_with(104, &[queue(9, 83, 1)]);
+    alone.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     assert!(alone.players[0].unsupported.is_none());
     assert_eq!(alone.players[0].resources, [200.0; 4]);
     assert!(
@@ -8553,13 +8581,13 @@ fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
         other.objects = vec![centre(10)].into();
         other.resources = [100.0, 0.0, 0.0, 0.0];
         t.players.push(other);
-        t.player_time.push(0);
+        t.player_time.push(Millis::ZERO);
         t.masters.push(t.masters[0].clone());
         t.settings.cheats_enabled = cheats;
         t
     };
     let mut t = two(true);
-    t.tick_with(104, &[queue(10, 83, 1)]);
+    t.tick_with(Millis::new(104), &[queue(10, 83, 1)]);
     assert!(t.players.iter().all(|p| p.unsupported.is_none()));
     assert_eq!(t.players[0].resources, [200.0; 4]);
     assert_eq!(t.players[1].resources[0], 54.0);
@@ -8569,7 +8597,7 @@ fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
         .unwrap();
     assert_eq!(production.queue.total, 1);
     let mut t = two(false);
-    t.tick_with(104, &[queue(10, 83, 1)]);
+    t.tick_with(Millis::new(104), &[queue(10, 83, 1)]);
     assert_eq!(t.players[1].resources[0], 100.0);
     assert!(t.players[1].objects[ListIndex::new(0)].production.is_none());
 }
@@ -8590,7 +8618,7 @@ fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
         amount: 2,
         button: -1,
     });
-    t.tick_with(104, &[both]);
+    t.tick_with(Millis::new(104), &[both]);
     assert!(t.players[0].unsupported.is_none());
     let production = t.players[0].objects[ListIndex::new(0)]
         .production
@@ -8610,7 +8638,7 @@ fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
 #[test]
 fn a_research_at_several_buildings_takes_the_least_loaded() {
     let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
-    t.tick_with(104, &[queue(9, 99, 1)]);
+    t.tick_with(Millis::new(104), &[queue(9, 99, 1)]);
     let at = |player, building, count, buildings: Vec<i32>| ResearchCommand {
         player,
         building,
@@ -8937,12 +8965,12 @@ fn a_research_s_unmodelled_parts_fail() {
 #[test]
 fn a_queue_counts_its_units_population_as_queued() {
     let mut t = one_player(vec![centre(9)], [1000.0; 4]);
-    t.tick_with(104, &[queue(9, 83, 3)]);
+    t.tick_with(Millis::new(104), &[queue(9, 83, 3)]);
     let a = &t.players[0].attributes;
     assert_eq!((a[80], a[81]), (3.0, 1.0));
     // a unit without population (master 99, no storage of kind 4) adds none
     let mut other = one_player(vec![centre(9)], [1000.0; 4]);
-    other.tick_with(104, &[queue(9, 99, 2)]);
+    other.tick_with(Millis::new(104), &[queue(9, 99, 2)]);
     assert_eq!(other.players[0].attributes[80], 0.0);
 }
 
@@ -8950,9 +8978,9 @@ fn a_queue_counts_its_units_population_as_queued() {
 fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
     // food for two of three: two entries, two draws
     let mut two = one_player(vec![centre(9)], [100.0, 0.0, 0.0, 0.0]);
-    two.tick_with(104, &[queue(9, 83, 3)]);
+    two.tick_with(Millis::new(104), &[queue(9, 83, 3)]);
     let mut one = one_player(vec![centre(9)], [100.0, 0.0, 0.0, 0.0]);
-    one.tick_with(104, &[queue(9, 83, 1)]);
+    one.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let queued = |t: &World| {
         t.players[0].objects[ListIndex::new(0)]
             .production
@@ -8969,12 +8997,12 @@ fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
     );
     // 14 queued: room for one of five
     let mut full = one_player(vec![centre(9)], [1000.0; 4]);
-    full.tick_with(104, &[queue(9, 99, 14), queue(9, 99, 5)]);
+    full.tick_with(Millis::new(104), &[queue(9, 99, 14), queue(9, 99, 5)]);
     assert_eq!(queued(&full), 15);
     // a computer player fills to 2
     let mut computer = one_player(vec![centre(9)], [1000.0; 4]);
     computer.players[0].computer = true;
-    computer.tick_with(104, &[queue(9, 99, 5)]);
+    computer.tick_with(Millis::new(104), &[queue(9, 99, 5)]);
     assert_eq!(queued(&computer), 2);
 }
 
@@ -8994,7 +9022,7 @@ fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
         })
     };
     let mut t = one_player(vec![centre(9)], [1000.0; 4]);
-    t.tick_with(104, &[with(2, -1), with(3, -1), with(1, 1)]);
+    t.tick_with(Millis::new(104), &[with(2, -1), with(3, -1), with(1, 1)]);
     let q = &t.players[0].objects[ListIndex::new(0)]
         .production
         .as_ref()
@@ -9009,7 +9037,7 @@ fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
     assert_eq!(t.players[0].tracker.queued, 6);
     let mut t = one_player(vec![centre(9)], [1000.0; 4]);
     let alternating: Vec<_> = (0..11).map(|k| with(1, k % 2)).collect();
-    t.tick_with(104, &alternating);
+    t.tick_with(Millis::new(104), &alternating);
     let q = &t.players[0].objects[ListIndex::new(0)]
         .production
         .as_ref()
@@ -9028,7 +9056,7 @@ fn a_computer_player_s_housed_building_cancels_its_queue() {
     let mut t = one_player(vec![centre(9)], [1000.0; 4]);
     t.players[0].computer = true;
     t.players[0].attributes[4] = 0.5;
-    t.tick_with(104, &[queue(9, 83, 1)]);
+    t.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let p = &t.players[0];
     assert_eq!(
         (p.resources[0], p.attributes[80], p.attributes[81]),
@@ -9045,7 +9073,7 @@ fn a_computer_player_s_housed_building_cancels_its_queue() {
         },
         ..crate::production::Production::default()
     });
-    t.tick_with(104, &[queue(9, 83, 1)]);
+    t.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let p = &t.players[0];
     assert_eq!((p.attributes[80], p.attributes[81]), (1.0, 0.0));
     assert!(
@@ -9064,8 +9092,8 @@ fn a_computer_player_s_housed_building_cancels_its_queue() {
 fn game_mode_16_queues_one_military_unit_at_a_time() {
     let mut t = one_player(vec![centre(9)], [1000.0; 4]);
     t.settings.game_mode = 16;
-    t.tick_with(104, &[queue(9, 99, 3)]);
-    t.tick_with(104, &[queue(9, 99, 2)]);
+    t.tick_with(Millis::new(104), &[queue(9, 99, 3)]);
+    t.tick_with(Millis::new(104), &[queue(9, 99, 2)]);
     let q = &t.players[0].objects[ListIndex::new(0)]
         .production
         .as_ref()
@@ -9080,7 +9108,7 @@ fn an_unmodelled_command_stops_its_player() {
     let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
     let why = GenieError::unsupported("QUEUE at two buildings");
     t.tick_with(
-        104,
+        Millis::new(104),
         &[Command::Unmodelled(UnmodelledCommand {
             player: player_id(0),
             packet: Vec::new(),
@@ -9238,7 +9266,13 @@ fn a_taken_gaia_archer_keeps_a_copy_of_gaia_s_master_with_its_new_owner_s_fog() 
     let mut s = hands_world(21712, PlayerId::new(0), class::CLASS_0, master_id(4), 6.0);
     let mut u = hands_unit(21712, master_id(4));
     assert_eq!(
-        change_hands(&mut u, (0, PlayerId::new(1)), &masters, &mut s, 1250),
+        change_hands(
+            &mut u,
+            (0, PlayerId::new(1)),
+            &masters,
+            &mut s,
+            WorldTime::from_millis(1250)
+        ),
         Ok(true)
     );
     let own = u.own_master.as_deref().unwrap();
@@ -9260,7 +9294,7 @@ fn a_taken_gaia_archer_keeps_a_copy_of_gaia_s_master_with_its_new_owner_s_fog() 
     assert_eq!(v.maps[0].counts[tile(10, 10)], 0);
     assert_eq!(v.maps[1].counts[tile(16, 10)], 1);
     let ai = u.ai.as_ref().unwrap();
-    assert_eq!(ai.last_update_time, 1250);
+    assert_eq!(ai.last_update_time, Millis::new(1250));
     assert_eq!(
         ai.notifies,
         [Notify::own(
@@ -9287,7 +9321,13 @@ fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
     );
     let mut u = hands_unit(9520, master_id(705));
     assert_eq!(
-        change_hands(&mut u, (1, PlayerId::new(2)), &masters, &mut s, 0),
+        change_hands(
+            &mut u,
+            (1, PlayerId::new(2)),
+            &masters,
+            &mut s,
+            WorldTime::ZERO
+        ),
         Ok(true)
     );
     let own = u.own_master.as_deref().unwrap();
@@ -9298,7 +9338,13 @@ fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
     assert_eq!(v.maps[2].counts[10 * 40 + 14], 1);
     // back to player 1: the copy stays, with player 1's fog and line of sight
     assert_eq!(
-        change_hands(&mut u, (2, PlayerId::new(1)), &masters, &mut s, 0),
+        change_hands(
+            &mut u,
+            (2, PlayerId::new(1)),
+            &masters,
+            &mut s,
+            WorldTime::ZERO
+        ),
         Ok(true)
     );
     let own = u.own_master.as_deref().unwrap();
@@ -9307,7 +9353,13 @@ fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
     let mut s = hands_world(7, PlayerId::new(1), class::CLASS_0, master_id(4), 7.0);
     let mut a = hands_unit(7, master_id(4));
     assert_eq!(
-        change_hands(&mut a, (1, PlayerId::new(0)), &masters, &mut s, 0),
+        change_hands(
+            &mut a,
+            (1, PlayerId::new(0)),
+            &masters,
+            &mut s,
+            WorldTime::ZERO
+        ),
         Ok(true)
     );
     assert_eq!(a.dead_master, None);
@@ -9319,7 +9371,13 @@ fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
     });
     a.dead_master = Some(held.clone());
     assert_eq!(
-        change_hands(&mut a, (0, PlayerId::new(1)), &masters, &mut s, 0),
+        change_hands(
+            &mut a,
+            (0, PlayerId::new(1)),
+            &masters,
+            &mut s,
+            WorldTime::ZERO
+        ),
         Ok(true)
     );
     assert_eq!(a.dead_master, Some(held));
@@ -9593,7 +9651,13 @@ fn an_ownership_change_without_the_master_writes_the_records_alone() {
     let before = s.sight.as_ref().unwrap().maps.clone();
     let mut u = hands_unit(21712, master_id(4));
     assert_eq!(
-        change_hands(&mut u, (0, PlayerId::new(2)), &masters, &mut s, 9),
+        change_hands(
+            &mut u,
+            (0, PlayerId::new(2)),
+            &masters,
+            &mut s,
+            WorldTime::from_millis(9)
+        ),
         Ok(false)
     );
     let v = s.sight.as_ref().unwrap();
@@ -9614,7 +9678,13 @@ fn an_ownership_change_without_the_master_writes_the_records_alone() {
     assert_eq!(u.ai.as_ref().unwrap().notifies.len(), 1);
     u.life.inside = Some(object_id(100));
     assert_eq!(
-        change_hands(&mut u, (0, PlayerId::new(1)), &masters, &mut s, 9),
+        change_hands(
+            &mut u,
+            (0, PlayerId::new(1)),
+            &masters,
+            &mut s,
+            WorldTime::from_millis(9)
+        ),
         Ok(true)
     );
     let v = s.sight.as_ref().unwrap();
@@ -9638,10 +9708,10 @@ fn an_ownership_change_without_the_master_writes_the_records_alone() {
 fn a_gaia_archer_a_player_sees_goes_to_that_player() {
     let world = |masters: Vec<Masters>, computer: bool, mode: i32| {
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0, 0, 0],
+            vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
             vec![
                 Player {
                     objects: vec![Unit {
@@ -9679,7 +9749,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
         t
     };
     let mut t = world(hands_masters(), false, 0);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].objects.len(), 0);
     let ids: Vec<ObjectId> = t.players[1].objects.iter().map(|u| u.id).collect();
     assert_eq!(ids, [object_id(500), object_id(21712)]);
@@ -9702,7 +9772,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
     let mut masters = hands_masters();
     masters[1] = Masters::new([]);
     let mut t = world(masters, false, 0);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].objects[ListIndex::new(0)].capture_flag, 1);
     assert_eq!(
         t.spatial.get(object_id(21712)).map(|p| p.player),
@@ -9710,7 +9780,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
     );
     // a computer player 1 in a scenario passes it to player 2
     let mut t = world(hands_masters(), true, 3);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[2].objects.len(), 1);
     assert_eq!(
         t.spatial.get(object_id(21712)).map(|p| p.player),
@@ -9719,7 +9789,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
     // unless it allows taking Gaia's units
     let mut t = world(hands_masters(), true, 3);
     t.allow_gaia_capture = vec![false, true, false];
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         t.spatial.get(object_id(21712)).map(|p| p.player),
         Some(PlayerId::new(1))
@@ -9780,10 +9850,10 @@ fn teardown_world() -> World {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -10119,10 +10189,10 @@ fn deaths_world() -> World {
     };
     // player 1's turn: the boar's unit AI keeps its attackers
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: gaia.into(),
@@ -10161,7 +10231,7 @@ fn deaths_world() -> World {
 #[test]
 fn a_dead_unit_s_actions_go_and_let_their_targets_go_in_the_update_of_its_death() {
     let mut t = deaths_world();
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         (
             t.players[0].unsupported.clone(),
@@ -10209,7 +10279,7 @@ fn a_build_on_an_annex_counts_its_builder_in_the_main_building() {
     );
     assert_eq!(t.counted_building(object_id(50)), Ok(Some(object_id(50))));
     assert_eq!(t.counted_building(object_id(999)), Ok(None));
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         (
             t.players[0].unsupported.clone(),
@@ -10367,7 +10437,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
             obstruction: None,
         },
     );
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         (
             t.players[0].unsupported.clone(),
@@ -10436,7 +10506,7 @@ fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
             ..Unit::default()
         };
         t.players[1].objects = vec![walker].into();
-        t.tick(100);
+        t.tick(Millis::new(100));
         assert_eq!(t.players[1].unsupported.clone(), None);
         let m = t.players[1].objects[ListIndex::new(0)]
             .actions
@@ -10466,10 +10536,10 @@ fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
 #[test]
 fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![Player::default(), Player::default()],
     );
     placeable(&mut t);
@@ -10545,7 +10615,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
             zones: &mut t.zones,
             pathing: &mut t.pathing,
             object: t.streams.get(Stream::Object),
-            world_time: 0,
+            world_time: WorldTime::ZERO,
             computer: false,
             construction_rate: 1.0,
             groups: &t.groups,
@@ -10590,7 +10660,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
         .hunt_mut()
         .unwrap()
         .carry_to = Some(object_id(9149));
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         (
             t.players[0].unsupported.clone(),
@@ -10639,7 +10709,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
         }));
     let mut gone = t.clone();
     gone.spatial = Spatial::default();
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         (
             t.players[0].unsupported.clone(),
@@ -10655,7 +10725,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
             .map(|h| h.carry_to),
         Some(None)
     );
-    gone.tick(100);
+    gone.tick(Millis::new(100));
     assert_eq!(workers(&gone), 1);
     assert_eq!(
         gone.players[1].objects[ListIndex::new(1)]
@@ -10678,7 +10748,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
             carry_to: Some(object_id(9149)),
             ..crate::gathering::hunt::tests::hunting(-1)
         }));
-    failed.tick(100);
+    failed.tick(Millis::new(100));
     assert_eq!(failed.players[1].unsupported, None);
     assert_eq!(workers(&failed), 0);
     assert_eq!(
@@ -10739,10 +10809,10 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
         ..unit(id, master)
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -10987,9 +11057,9 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             current_order: None,
             current_action: None,
             current_target: None,
-            idle_timeout: 5000,
-            adjusted_idle_timeout: 4000,
-            retarget_timer: 1000,
+            idle_timeout: Millis::new(5000),
+            adjusted_idle_timeout: Millis::new(4000),
+            retarget_timer: Millis::new(1000),
             ..UnitAi::default()
         }),
         life: Lifecycle {
@@ -11025,10 +11095,10 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         ..hands_unit(500, VILLAGER_MALE)
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: vec![torch].into(),
@@ -11102,7 +11172,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         new: 0b11,
     })
     .unwrap();
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[0].objects.len(), 0);
     let ids: Vec<ObjectId> = t.players[1].objects.iter().map(|u| u.id).collect();
@@ -11162,9 +11232,9 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
             current_order: None,
             current_action: None,
             current_target: None,
-            idle_timeout: 5000,
-            adjusted_idle_timeout: 4000,
-            retarget_timer: 1000,
+            idle_timeout: Millis::new(5000),
+            adjusted_idle_timeout: Millis::new(4000),
+            retarget_timer: Millis::new(1000),
             ..UnitAi::default()
         }),
         ..hands_unit(7, ids::ID_854)
@@ -11175,10 +11245,10 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         ..hands_unit(500, VILLAGER_MALE)
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: vec![torch].into(),
@@ -11246,7 +11316,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         new: 0b11,
     })
     .unwrap();
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].objects.len(), 0);
     let ids: Vec<ObjectId> = t.players[1].objects.iter().map(|u| u.id).collect();
     assert_eq!(ids, [object_id(500), object_id(7)]);
@@ -11268,7 +11338,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
             [1, 0, 0]
         )]
     );
-    assert_eq!(ai.idle_timer, 0);
+    assert_eq!(ai.idle_timer, Millis::ZERO);
 }
 
 /// The livestock capture in a tick (`FUN_140aab570` from the Artifact's check in the second
@@ -11293,10 +11363,10 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         ..hands_unit(500, VILLAGER_MALE)
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: vec![sheep].into(),
@@ -11367,9 +11437,9 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
             kind: master_type::COMBAT,
         },
     );
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].objects.len(), 1);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].objects.len(), 0);
     let ids: Vec<ObjectId> = t.players[1].objects.iter().map(|u| u.id).collect();
     assert_eq!(ids, [object_id(500), object_id(9520)]);
@@ -11403,10 +11473,10 @@ fn the_standard_modes_are_all_but_the_scenario_ones() {
 #[test]
 fn an_object_changing_hands_takes_its_storage_and_class_counts_along() {
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 attributes: vec![0.0; 300],
@@ -11459,10 +11529,10 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
     };
     let world = |attacker_kind| {
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 3],
+            vec![Millis::ZERO; 3],
             vec![
                 player(
                     PlayerType::GAIA,
@@ -11572,10 +11642,10 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
     }
     .into();
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 attributes: vec![0.0; 500],
@@ -11700,7 +11770,7 @@ fn a_kill_in_the_step_reports_the_object_s_new_slot() {
     let stepped = t
         .step_object(
             (PlayerId::new(1), ListIndex::new(1)),
-            (0, None, false),
+            (Millis::ZERO, None, false),
             |u, c| {
                 if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
                     crate::combat::victims::file_kill(c, u, k)?;
@@ -11793,13 +11863,17 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let before = ids(&t);
     let last = ListIndex::new(before.len() - 1);
     let stepped = t
-        .step_object((PlayerId::new(1), last), (50, None, false), |_, c| {
-            let _ = c.w.players[1]
-                .objects
-                .swap_remove(ListIndex::new(0))
-                .unwrap();
-            Ok(Outcome::Stay)
-        })
+        .step_object(
+            (PlayerId::new(1), last),
+            (Millis::new(50), None, false),
+            |_, c| {
+                let _ = c.w.players[1]
+                    .objects
+                    .swap_remove(ListIndex::new(0))
+                    .unwrap();
+                Ok(Outcome::Stay)
+            },
+        )
         .unwrap();
     assert_eq!(stepped.slot, ListIndex::new(0));
     assert_eq!(ids(&t)[0], before[last.get()]);
@@ -11807,7 +11881,7 @@ fn a_step_puts_its_object_back_where_its_stand_in_went() {
     let failed = t
         .step_object(
             (PlayerId::new(1), ListIndex::new(0)),
-            (50, None, false),
+            (Millis::new(50), None, false),
             |_, c| {
                 c.w.players[1].objects.truncate(0);
                 Ok(Outcome::Stay)
@@ -11868,10 +11942,10 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         ..Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             player(vec![].into()),
             player(vec![building(9, ids::CASTLE, None)].into()),
@@ -11984,10 +12058,10 @@ fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
     };
     let hit = |hp: f32| {
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0, 0],
+            vec![Millis::ZERO, Millis::ZERO],
             vec![
                 Player {
                     objects: vec![tree(object_id(51))].into(),
@@ -12098,7 +12172,7 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
         })
     };
     t.tick_with(
-        25,
+        Millis::new(25),
         &[set(
             Some(object_id(9520)),
             Point::new(107.2451, 46.075_863),
@@ -12115,9 +12189,9 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
             target_master: Some(master_id(705)),
         })
     );
-    t.tick_with(25, &[set(None, Point::new(-1.0, -1.0), false)]);
+    t.tick_with(Millis::new(25), &[set(None, Point::new(-1.0, -1.0), false)]);
     assert_eq!(t.players[0].objects[ListIndex::new(0)].gather_point, None);
-    t.tick_with(25, &[set(None, Point::new(-1.0, -1.0), true)]);
+    t.tick_with(Millis::new(25), &[set(None, Point::new(-1.0, -1.0), true)]);
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)]
             .gather_point
@@ -12161,19 +12235,19 @@ fn set_gather_state_makes_the_building_its_own_gather_point_or_clears_it() {
             target_master: Some(ids::TOWN_CENTRE),
         })
     };
-    t.tick_with(25, &[set(Some(GatherPointState::POINT))]);
+    t.tick_with(Millis::new(25), &[set(Some(GatherPointState::POINT))]);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].gather_point,
         own(GatherPointState::POINT)
     );
     // the state byte is the state, 0xff included
-    t.tick_with(25, &[set(Some(GatherPointState::KEPT))]);
+    t.tick_with(Millis::new(25), &[set(Some(GatherPointState::KEPT))]);
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].gather_point,
         own(GatherPointState::KEPT)
     );
-    t.tick_with(25, &[set(None)]);
+    t.tick_with(Millis::new(25), &[set(None)]);
     assert_eq!(t.players[0].objects[ListIndex::new(0)].gather_point, None);
 }
 
@@ -12204,10 +12278,10 @@ fn set_gather_state_leaves_a_building_that_takes_no_gather_point_and_a_gone_obje
         })
     };
     let held = t.players[0].objects[ListIndex::new(0)].gather_point;
-    t.tick_with(25, &[set(Some(GatherPointState::KEPT))]);
+    t.tick_with(Millis::new(25), &[set(Some(GatherPointState::KEPT))]);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[0].objects[ListIndex::new(0)].gather_point, held);
-    t.tick_with(25, &[set(None)]);
+    t.tick_with(Millis::new(25), &[set(None)]);
     assert_eq!(t.players[0].objects[ListIndex::new(0)].gather_point, None);
 }
 
@@ -12239,7 +12313,7 @@ fn set_gather_point_keeps_the_target_of_a_kept_gather_point() {
             own,
         })
     };
-    t.tick_with(25, &[set(Some(9520), false)]);
+    t.tick_with(Millis::new(25), &[set(Some(9520), false)]);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].gather_point,
@@ -12255,7 +12329,7 @@ fn set_gather_point_keeps_the_target_of_a_kept_gather_point() {
         .as_mut()
         .unwrap()
         .target = Some(object_id(9520));
-    t.tick_with(25, &[set(None, true)]);
+    t.tick_with(Millis::new(25), &[set(None, true)]);
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].gather_point,
         Some(GatherPoint {
@@ -12304,7 +12378,7 @@ fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
         target_master: None,
         own: false,
     });
-    t.tick_with(25, &[set]);
+    t.tick_with(Millis::new(25), &[set]);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].gather_point,
@@ -12354,8 +12428,8 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
             point,
         })
     };
-    t.tick_with(25, &[step(Point::new(50.0, 60.0))]);
-    t.tick_with(25, &[step(Point::new(70.0, 80.0))]);
+    t.tick_with(Millis::new(25), &[step(Point::new(50.0, 60.0))]);
+    t.tick_with(Millis::new(25), &[step(Point::new(70.0, 80.0))]);
     assert_eq!(t.players[0].unsupported, None);
     let tc = &t.players[0].objects[ListIndex::new(0)];
     assert_eq!(tc.gather_point, None);
@@ -12370,7 +12444,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     let at = |x, y| (OrderKind::Move, None, Position::new(x, y, -1.0), -1, false);
     assert_eq!(steps, vec![at(30.5, 40.5), at(50.0, 60.0), at(70.0, 80.0)]);
     t.tick_with(
-        25,
+        Millis::new(25),
         &[Command::GatherPoint(GatherPointCommand {
             player: player_id(0),
             units: unit_list(object_ids([9149])),
@@ -12392,11 +12466,11 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
 fn a_unit_due_to_spawn_stops_the_player() {
     let mut t = one_player(vec![centre(9)], [200.0; 4]);
     let quick = queue(9, 97, 1);
-    t.tick_with(1000, &[quick]);
+    t.tick_with(Millis::new(1000), &[quick]);
     // the building makes the make action in its update: one unit in production
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[0].attributes[81], 1.0);
-    t.tick(1000);
+    t.tick(Millis::new(1000));
     assert_eq!(
         t.players[0].freezes.first().map(|f| f.2.clone()),
         Some(GenieError::unsupported(
@@ -12537,10 +12611,10 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 objects: vec![unit(
@@ -12651,7 +12725,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         object_id(0),
         placed(95.5, class::TREE, PlayerId::new(0), master_id(1250)),
     );
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[1].objects[ListIndex::new(0)].life.hp, 980.0);
     // the sleeping tree is among the objects the blast walks; a petard's blast (its weapon
@@ -12734,10 +12808,10 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 attributes: vec![0.0; 250],
@@ -12762,7 +12836,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         Masters::new([gate(master_id(88)), gate(master_id(95))]),
     ];
     t.graphics = std::collections::BTreeMap::from([(1751, g)]);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].unsupported, None);
     let states: Vec<(i32, ObjectState)> = t.players[1]
         .objects
@@ -12851,10 +12925,10 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player {
                 attributes: vec![0.0; 250],
@@ -12906,7 +12980,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             .map(|u| (u.id, u.life.state, u.life.hp, u.annex_of))
             .collect()
     };
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].unsupported, None);
     assert_eq!(
         looks(&t),
@@ -12916,7 +12990,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             (object_id(34600), ObjectState::DyingSprite, 0.0, None)
         ]
     );
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].unsupported, None);
     let states: Vec<(ObjectId, ObjectState)> = looks(&t).iter().map(|l| (l.0, l.1)).collect();
     assert_eq!(
@@ -13083,17 +13157,17 @@ fn the_attack_timer_runs_down_at_the_object_s_rate() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![unit].into(),
             ..Player::default()
         }],
     );
     stock_masters(&mut t);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].attack_timer,
         1.0 - 0.1 * 0.5
@@ -13166,10 +13240,10 @@ fn building_short_of_its_build_time_dies(state: ObjectState) {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![Player {
             objects: vec![foundation].into(),
             attributes: vec![0.0; 300],
@@ -13180,7 +13254,7 @@ fn building_short_of_its_build_time_dies(state: ObjectState) {
     t.graphics = [(207, g(207)), (389, g(389)), (2573, g(2573))]
         .into_iter()
         .collect();
-    t.tick(10);
+    t.tick(Millis::new(10));
     assert_eq!(t.players[0].unsupported, None);
     let u = &t.players[0].objects[ListIndex::new(0)];
     assert_eq!(u.life.state, ObjectState::DyingSprite);
@@ -13640,7 +13714,13 @@ fn on_side<R>(
         tracker,
         ..Player::default()
     };
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0, 0], vec![gaia, scout]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO, Millis::ZERO],
+        vec![gaia, scout],
+    );
     (t.spatial, t.masters, t.graphics, t.groups) = (spatial, every, graphics, groups);
     let answer = in_update(
         &mut t,
@@ -14317,10 +14397,10 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
     let house = masters.get_mut(ids::HOUSE).unwrap();
     house.moving = Some(house_moves());
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -14351,7 +14431,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         ],
     );
     t.next_object_id = object_id(10028);
-    t.world_time = 72890;
+    t.world_time = WorldTime::from_millis(72890);
     t.masters = vec![Masters::default(), masters];
     placeable(&mut t);
     t.run(&Command::Build(BuildCommand {
@@ -14377,7 +14457,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         (
             BVector::new(1.0, 0.0, 0.0),
             0,
-            72890,
+            WorldTime::from_millis(72890),
             Position::new(30.0, 88.0, 0.0),
             0
         )
@@ -14389,7 +14469,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         .expect("the walk's view of the building");
     assert_eq!(
         (gait.moving, gait.last_move, gait.pause),
-        (false, 72890, None)
+        (false, WorldTime::from_millis(72890), None)
     );
 }
 
@@ -14407,10 +14487,10 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
         house.standing_sprite = 588;
         house.moving = Some(house_moves());
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             29910,
             PlayerId::new(1),
-            vec![0, 0],
+            vec![Millis::ZERO, Millis::ZERO],
             vec![
                 Player::default(),
                 Player {
@@ -14573,10 +14653,10 @@ fn reseed_world() -> World {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -14804,10 +14884,10 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
         ..crate::unit_ai::QueuedOrder::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         29910,
         PlayerId::new(1),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             Player::default(),
             Player {
@@ -14909,7 +14989,7 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
     let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
     stock_masters(&mut t);
     t.tick_with(
-        104,
+        Millis::new(104),
         &[Command::Unmodelled(UnmodelledCommand {
             player: player_id(0),
             packet: Vec::new(),
@@ -14922,7 +15002,13 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
         [("command", "Unmodelled")]
     );
     let task = GenieError::unsupported("a default task the slice does not model");
-    let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player(vec![])]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player(vec![])],
+    );
     t.players[0].objects.push(Unit {
         id: object_id(5),
         unmodelled_action: Some(task),
@@ -14933,7 +15019,7 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
         ..Unit::default()
     });
     stock_masters(&mut t);
-    t.tick(10);
+    t.tick(Millis::new(10));
     let (_, _, frozen) = t.players[0].freezes[0].clone();
     assert_eq!(
         frozen.context().collect::<Vec<_>>(),
@@ -15000,20 +15086,38 @@ fn a_unit_s_human_order_count_down_is_the_walk_s_view_at_once() {
     let mut t = enter_world(vec![], 5);
     let mut counted = |before: u32| {
         let v = &mut t.players[1].objects[ListIndex::new(0)];
-        v.last_human_order = before;
+        v.last_human_order = WorldTime::from_millis(before);
         let id = v.id;
         t.spatial.set_gait(id, v.gait());
-        v.count_down_human_order(33, &mut t.spatial);
+        v.count_down_human_order(Millis::new(33), &mut t.spatial);
         let seen = t.spatial.gait(id).map(|g| g.human_order);
         (
             t.players[1].objects[ListIndex::new(0)].last_human_order,
             seen,
         )
     };
-    assert_eq!(counted(2034), (2001, Some(2001)));
-    assert_eq!(counted(5000), (4967, Some(4967)));
-    assert_eq!(counted(20), (0, Some(0)));
-    assert_eq!(counted(5001), (5001, Some(5001)));
+    assert_eq!(
+        counted(2034),
+        (
+            WorldTime::from_millis(2001),
+            Some(WorldTime::from_millis(2001))
+        )
+    );
+    assert_eq!(
+        counted(5000),
+        (
+            WorldTime::from_millis(4967),
+            Some(WorldTime::from_millis(4967))
+        )
+    );
+    assert_eq!(counted(20), (WorldTime::ZERO, Some(WorldTime::ZERO)));
+    assert_eq!(
+        counted(5001),
+        (
+            WorldTime::from_millis(5001),
+            Some(WorldTime::from_millis(5001))
+        )
+    );
 }
 
 /// `RGE_Action_Object::update` runs the actions of a unit not inside another, else its inside
@@ -15043,7 +15147,7 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     );
     assert_eq!(t.players[1].objects[ListIndex::new(0)].life.inside, None);
     // the first update runs no Artifact (its first update is in the second)
-    t.tick(50);
+    t.tick(Millis::new(50));
     // its walk arrived at the house's edge: the next update of the Enter gets it in
     place(&mut t, Position::new(30.0, 89.1, 0.0));
     let art = t.players[1].objects[ListIndex::new(0)]
@@ -15053,7 +15157,7 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     if let Some(m) = art.enter.as_mut().and_then(|e| e.move_to.as_mut()) {
         m.state = MoveTo::Arrived;
     }
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.life.inside, Some(object_id(10028)));
     assert_eq!(
@@ -15062,7 +15166,7 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     );
     // inside at the next update's start: no Artifact step, the inside update deletes it
     let before = v.actions.artifact().map(|a| (a.state, a.timer));
-    t.tick(50);
+    t.tick(Millis::new(50));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         (v.actions.artifact().copied(), v.top_action_kind()),
@@ -15087,7 +15191,7 @@ fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
         .go_inside(object_id(9175), Position::new(30.0, 88.0, 0.0));
     let mut kinds = Vec::new();
     for _ in 0..4 {
-        t.tick(50);
+        t.tick(Millis::new(50));
         let v = &t.players[1].objects[ListIndex::new(0)];
         kinds.push(v.actions.artifact().map(|a| a.state));
     }
@@ -15127,7 +15231,7 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
             frame: 0,
         })
     };
-    t.tick_with(50, &[build(vec![9181])]);
+    t.tick_with(Millis::new(50), &[build(vec![9181])]);
     let p = &t.players[1];
     assert_eq!(
         (p.resources, p.objects.len()),
@@ -15135,7 +15239,7 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
     );
     assert_eq!(t.next_object_id, object_id(10028));
     assert_eq!(p.freezes, vec![]);
-    t.tick_with(50, &[build(vec![9181, 9175])]);
+    t.tick_with(Millis::new(50), &[build(vec![9181, 9175])]);
     let p = &t.players[1];
     assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
     assert_eq!(p.objects.last().map(|f| f.id.get()), Some(10028));
@@ -15220,7 +15324,13 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
     let mut players: Vec<Player> = (0..2).map(|_| Player::default()).collect();
     players[0].relations = relation_row([0, 3]);
     players[1].relations = relation_row([3, 0]);
-    let mut t = World::new(0, 29910, PlayerId::new(1), vec![0; 2], players);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        29910,
+        PlayerId::new(1),
+        vec![Millis::ZERO; 2],
+        players,
+    );
     t.spatial = Spatial::new(GridSize::new(40, 40));
     let mut terrain = crate::map::terrain::Terrain::new(
         GridSize::new(40, 40),
@@ -15375,7 +15485,7 @@ fn assert_near(a: Position, b: Position) {
 fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
     let mut t = archer_world(100, 0, 0.0);
     for _ in 0..5 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(missiles(&t), vec![]);
     let way = [3.0f32, 0.0, -0.5];
@@ -15388,14 +15498,14 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
         )
     };
     for k in 1..=3 {
-        t.tick(100);
+        t.tick(Millis::new(100));
         let m = missiles(&t);
         assert_eq!((m.len(), m[0].0, m[0].1), (1, -2, 363));
         assert_near(m[0].2, flown(k as f32));
         assert_eq!(deer_hp(&t), 5.0);
     }
     // the fourth step ends 0.1 short of the deer's footprint (12.8): its sweep meets it
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_near(missiles(&t)[0].2, flown(4.0));
     assert_eq!(deer_hp(&t), 4.0);
     let action = t.players[1].objects[ListIndex::new(1)]
@@ -15407,17 +15517,17 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
         Some((crate::combat::missile::MissileState::Done, 1))
     );
     for _ in 0..3 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(missiles(&t).len(), 1);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(missiles(&t), vec![]);
     assert_eq!(t.recycling.missiles, vec![(object_id(-2), true)]);
     for _ in 0..12 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(missiles(&t), vec![]);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(missiles(&t).iter().map(|m| m.0).collect::<Vec<_>>(), [-2]);
     assert_eq!(t.recycling.missiles, vec![]);
 }
@@ -15429,7 +15539,7 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
 fn a_fired_missile_joins_its_owner_s_list_at_its_making() {
     let mut t = archer_world(100, 0, 0.0);
     for _ in 0..5 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     let made = in_update(
         &mut t,
@@ -15470,16 +15580,16 @@ fn a_missed_missile_strays_and_lands_on_the_ground() {
         m.get_mut(master_id(4)).unwrap().missed_spread = 2.0;
     }
     for _ in 0..6 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     let at = missiles(&t)[0].2;
     assert_ne!(at.y(), 10.0);
     for _ in 0..4 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(missiles(&t)[0].2.z(), 0.0);
     for _ in 0..2 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(missiles(&t), vec![]);
     assert_eq!(t.recycling.missiles, vec![(object_id(-2), false)]);
@@ -15487,7 +15597,7 @@ fn a_missed_missile_strays_and_lands_on_the_ground() {
     // the next shot takes the landed missile again: on the ground by its fly mode, a tile up
     // again once it is placed (its new position's height is the weapon offset's)
     for _ in 0..14 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(missiles(&t).iter().map(|m| m.0).collect::<Vec<_>>(), [-2]);
     assert_eq!(t.recycling.missiles, vec![]);
@@ -15502,7 +15612,7 @@ fn a_missed_missile_strays_and_lands_on_the_ground() {
 fn a_volley_fires_its_missiles_over_swings_scattered_by_its_spread() {
     let mut t = archer_world(100, 3, 0.5);
     for _ in 0..6 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     let first = missiles(&t);
     let fired = t.players[1].objects[ListIndex::new(0)].next_volley;
@@ -15512,18 +15622,18 @@ fn a_volley_fires_its_missiles_over_swings_scattered_by_its_spread() {
     assert_eq!(main.0, -i32::from(fired) - 1);
     assert!(scattered.iter().all(|m| m.2 != main.2));
     for _ in 0..3 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(deer_hp(&t), 5.0 - f32::from(fired));
     // the next swing, six updates after the first, fires the rest
-    t.tick(100);
-    t.tick(100);
+    t.tick(Millis::new(100));
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].objects[ListIndex::new(0)].next_volley, fired);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].objects[ListIndex::new(0)].next_volley, 0);
     let mut one = archer_world(100, 3, 0.0);
     for _ in 0..6 {
-        one.tick(100);
+        one.tick(Millis::new(100));
     }
     assert_eq!(
         (
@@ -15566,7 +15676,7 @@ fn a_volley_s_own_missiles_hit_without_the_shooter() {
         *m = Masters::new(all);
     }
     for _ in 0..6 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     let fired = t.players[1].objects[ListIndex::new(0)].next_volley;
     let first = missiles(&t);
@@ -15582,7 +15692,7 @@ fn a_volley_s_own_missiles_hit_without_the_shooter() {
     expected.push(Some(object_id(123)));
     assert_eq!(shooters, expected);
     for _ in 0..3 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     assert_eq!(deer_hp(&t), 5.0 - f32::from(fired));
 }
@@ -15610,8 +15720,8 @@ fn a_new_missile_s_sprite_draws_as_a_new_object_s() {
         m.get_mut(master_id(363)).unwrap().standing_sprite = 302;
     }
     for _ in 0..6 {
-        plain.tick(100);
-        drawn.tick(100);
+        plain.tick(Millis::new(100));
+        drawn.tick(Millis::new(100));
     }
     assert_eq!(missiles(&plain), missiles(&drawn));
     let mut more = |stream| drawn.streams.get(stream).draws - plain.streams.get(stream).draws;
@@ -15687,7 +15797,7 @@ fn the_missile_chain_s_unmodelled_cases_stop_the_player_with_their_reason() {
         let mut t = archer_world(100, 0, 0.0);
         change(&mut t);
         for _ in 0..6 {
-            t.tick(100);
+            t.tick(Millis::new(100));
         }
         let stopped = t.players[1].unsupported.as_ref().map(|u| u.2.to_string());
         assert!(
@@ -15704,22 +15814,22 @@ fn the_missile_chain_s_unmodelled_cases_stop_the_player_with_their_reason() {
 fn a_missile_whose_target_died_flies_on_without_it_and_lands() {
     let mut t = archer_world(100, 0, 0.0);
     for _ in 0..7 {
-        t.tick(100);
+        t.tick(Millis::new(100));
     }
     t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
-    t.tick(100);
+    t.tick(Millis::new(100));
     let target = t.players[1].objects[ListIndex::new(1)]
         .actions
         .missile()
         .map(|a| a.target);
     assert_eq!(target, Some(None));
     // the update the live deer took its hit in passes it by
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(deer_hp(&t), 5.0);
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(missiles(&t)[0].2.z(), 0.0);
-    t.tick(100);
-    t.tick(100);
+    t.tick(Millis::new(100));
+    t.tick(Millis::new(100));
     assert_eq!(missiles(&t), vec![]);
     assert_eq!(t.recycling.missiles, vec![(object_id(-2), false)]);
     assert_eq!(deer_hp(&t), 5.0);
@@ -16293,7 +16403,7 @@ fn drop_site_sought(
         zones: &mut t.zones,
         pathing: &mut t.pathing,
         object: t.streams.get(Stream::Object),
-        world_time: 0,
+        world_time: WorldTime::ZERO,
         computer: false,
         construction_rate: 1.0,
         groups: &t.groups,
@@ -16533,7 +16643,7 @@ fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
     assert_eq!(r, Ok(()));
     let fly = fly.unwrap();
     assert_eq!((fly.state, fly.move_to), (FlyState::Resting, None));
-    assert_eq!(fly.timer, 2.0 - seconds(50) + 2.0);
+    assert_eq!(fly.timer, 2.0 - Millis::new(50).seconds() + 2.0);
     assert_eq!(
         heard,
         [(NotifyKind::ACTION_FAILED, [ActionKind::Move.value(), 0, 0])]
@@ -17317,7 +17427,7 @@ fn centre_seconds(setup: impl FnOnce(&mut World)) -> Result<(f32, u32), GenieErr
         });
         masters.get_mut(master_id(120)).unwrap().hit_points = 25;
     }
-    t.world_time = 3000;
+    t.world_time = WorldTime::from_millis(3000);
     t.players[1].objects[ListIndex::new(2)].garrison = vec![object_id(9175)];
     t.players[1].objects[ListIndex::new(0)].life.hp = 10.0;
     setup(&mut t);
@@ -17328,7 +17438,12 @@ fn centre_seconds(setup: impl FnOnce(&mut World)) -> Result<(f32, u32), GenieErr
         Unit::building_seconds,
     )?;
     let hp = t.players[1].objects[ListIndex::new(0)].life.hp;
-    Ok((hp, t.players[1].objects[ListIndex::new(2)].garrison_time))
+    Ok((
+        hp,
+        t.players[1].objects[ListIndex::new(2)]
+            .garrison_time
+            .millis(),
+    ))
 }
 
 /// A built building's whole seconds (`0x1411c9000`): since its garrison time, which moves on by
@@ -17341,7 +17456,10 @@ fn centre_seconds(setup: impl FnOnce(&mut World)) -> Result<(f32, u32), GenieErr
 fn a_building_heals_its_garrison_each_whole_second() {
     let reason = |r: Result<(f32, u32), GenieError>| r.unwrap_err().reason();
     assert_eq!(centre_seconds(|_| ()), Ok((12.0, 3000)));
-    assert_eq!(centre_seconds(|t| t.world_time = 999), Ok((10.0, 0)));
+    assert_eq!(
+        centre_seconds(|t| t.world_time = WorldTime::from_millis(999)),
+        Ok((10.0, 0))
+    );
     assert_eq!(
         centre_seconds(|t| t.players[1].objects[ListIndex::new(0)].life.hp = 25.0),
         Ok((25.0, 3000))
@@ -18046,7 +18164,7 @@ fn finished_with(
     (p, i): (PlayerId, ListIndex),
     step: impl FnOnce(&mut step::Step<'_>) -> Result<crate::objects::unit::Outcome, GenieError>,
 ) -> Result<crate::objects::unit::Outcome, GenieError> {
-    t.step_object((p, i), (50, None, false), |_, c| step(c))
+    t.step_object((p, i), (Millis::new(50), None, false), |_, c| step(c))
         .map(|s| s.outcome)
 }
 
@@ -18485,7 +18603,7 @@ fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
     v.actions.build_mut().unwrap().task.work_value = 1.0;
     let mut seen = Vec::new();
     for n in 0..520 {
-        t.tick(50);
+        t.tick(Millis::new(50));
         let b = t.players[1].objects[ListIndex::new(0)]
             .actions
             .build()

@@ -15,7 +15,6 @@ use crate::movement::move_to::{GiveUp, MoveTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectState;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::players::attribute::AttributeId;
@@ -105,7 +104,7 @@ impl GatherAction {
             }
             .time_per_stop(self.task.work_value, self.stops);
         }
-        let dt = seconds(c.dt);
+        let dt = c.dt.seconds();
         match self.state {
             GatherState::Done => return Ok(Next::Done),
             GatherState::Idle => return Ok(Next::Stay),
@@ -259,7 +258,7 @@ impl GatherAction {
         target: &mut Victim,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        let dt = seconds(c.dt);
+        let dt = c.dt.seconds();
         if 1 < self.stops {
             self.time_at_stop += dt;
             if self.time_per_stop <= self.time_at_stop

@@ -10,7 +10,6 @@ use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
@@ -333,7 +332,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        self.timer -= seconds(c.dt);
+        self.timer -= c.dt.seconds();
         if 0.0 < self.timer {
             return Ok(());
         }

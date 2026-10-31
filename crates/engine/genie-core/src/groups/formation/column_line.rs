@@ -10,6 +10,7 @@ use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{BVector, add, scale, sub};
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// The formation categories' count, as an array's length.
@@ -96,7 +97,7 @@ pub(crate) fn column_line_slots(
     group: &UnitGroup,
     column: bool,
     (staggered, flanked): (bool, bool),
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<bool, GenieError> {
     if group.members.is_empty() {
         return Ok(false);
@@ -233,7 +234,7 @@ struct Style {
     staggered: bool,
     flanked: bool,
     depth: i32,
-    world_time: u32,
+    world_time: WorldTime,
 }
 
 /// What the layout carries from line to line: the next line's and slot's indices, the distance

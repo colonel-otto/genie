@@ -27,6 +27,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::BUILDING_COST;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
+use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
 use crate::world::{Gate, World};
 
@@ -288,7 +289,7 @@ impl World {
             attackable: true,
             untargetable: false,
             under_attack: false,
-            last_human_order: 0,
+            last_human_order: WorldTime::ZERO,
             town_bell: crate::orders::town_bell::TownBell::default(),
             pasture: None,
             my_pasture: None,
@@ -305,9 +306,9 @@ impl World {
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
             firepower: player_master(&self.masters, player, master).map_or(0.0, |m| m.volley_fire),
             next_volley: 0,
-            reload_worldtime: 0,
+            reload_worldtime: WorldTime::ZERO,
             garrison: Vec::new(),
-            garrison_time: 0,
+            garrison_time: WorldTime::ZERO,
             relics: [0; 2],
             damaged_lately: 0,
             livestock_summation: 0.0,

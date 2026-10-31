@@ -11,6 +11,7 @@ use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::others::OthersRef;
 use crate::world::player::Player;
 use crate::world::slots::PlayerSlots;
@@ -39,7 +40,7 @@ pub(crate) struct DropWorld<'a> {
     pub zones: &'a mut crate::pathing::zones::Zones,
     pub pathing: &'a mut Pathing,
     pub object: &'a mut Well512,
-    pub world_time: u32,
+    pub world_time: WorldTime,
     pub computer: bool,
     pub construction_rate: f32,
     pub groups: &'a crate::groups::UnitGroups,

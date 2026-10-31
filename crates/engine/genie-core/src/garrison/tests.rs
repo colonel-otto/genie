@@ -49,7 +49,9 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::UnitStance;
+use crate::world::Millis;
 use crate::world::Player;
+use crate::world::WorldTime;
 
 /// An Enter task of work range `range` and class `class` without sprites.
 pub(crate) fn enter_task(range: f32, class: ClassId) -> Task {
@@ -152,7 +154,13 @@ fn garrison_world() -> World {
     players[1].relations = relation_row([1, 0, 0, 3]);
     players[2].relations = relation_row([1, 0, 0, 3]);
     players[3].relations = relation_row([1, 3, 3, 0]);
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO; 4],
+        players,
+    );
     t.masters = (0..4).map(|_| garrison_masters()).collect();
     t.players[1].objects.push(unit(100, TC, 2400.0));
     t.players[1].objects.push(unit(200, SHIP, 100.0));
@@ -1925,7 +1933,7 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: Point
         waiting: 0,
         wait_delays: 0,
         attack_moving: false,
-        last_move: 0,
+        last_move: WorldTime::ZERO,
         moved_at: Position::ORIGIN,
         substitute_count: 0,
         ignore_units: Vec::new(),
@@ -3437,7 +3445,7 @@ fn transport_ticked(
         .actions
         .transport_mut()
         .unwrap());
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].unsupported, None);
     t
 }
@@ -3559,7 +3567,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         .actions
         .transport_mut()
         .unwrap());
-    t.tick(100);
+    t.tick(Millis::new(100));
     let stop = t.players[1]
         .unsupported
         .as_ref()

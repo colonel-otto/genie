@@ -16,7 +16,6 @@ use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -157,7 +156,7 @@ impl GatherAction {
         if 0.0 <= self.timer {
             return Ok(Next::Stay);
         }
-        self.timer += seconds(c.dt);
+        self.timer += c.dt.seconds();
         if self.timer < 0.0 {
             return Ok(Next::Stay);
         }

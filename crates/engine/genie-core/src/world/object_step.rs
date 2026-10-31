@@ -6,6 +6,7 @@ use crate::construction::building_update::blasts_at_death;
 use crate::objects::ListIndex;
 use crate::objects::unit::{Outcome, Unit};
 use crate::players::PlayerId;
+use crate::world::Millis;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -21,7 +22,7 @@ impl World {
     pub(super) fn run_object(
         &mut self,
         (p, i): (PlayerId, ListIndex),
-        (dt, turn): (u32, Option<u32>),
+        (dt, turn): (Millis, Option<Millis>),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Outcome, GenieError> {
         let mut unit = self.players.player_mut(p)?.objects.take_out(i)?;
@@ -83,7 +84,7 @@ impl World {
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let mut answer = None;
-        let _ = self.step_object((p, i), (0, None, false), |unit, c| {
+        let _ = self.step_object((p, i), (Millis::ZERO, None, false), |unit, c| {
             answer = Some(f(unit, c)?);
             Ok(Outcome::Stay)
         })?;
@@ -111,7 +112,7 @@ impl World {
         ) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let mut answer = None;
-        let _ = self.step_object((p, i), (0, None, false), |unit, c| {
+        let _ = self.step_object((p, i), (Millis::ZERO, None, false), |unit, c| {
             answer = Some(unit.run_calls(c, f)?);
             Ok(Outcome::Stay)
         })?;
@@ -139,7 +140,7 @@ impl World {
             &mut crate::math::rng::Well512,
         ) -> Result<(), GenieError>,
     ) -> Result<(), GenieError> {
-        let stepped = self.step_object((p, i), (0, None, false), |unit, c| {
+        let stepped = self.step_object((p, i), (Millis::ZERO, None, false), |unit, c| {
             unit.run_ai(c, f).map(|()| Outcome::Stay)
         })?;
         match stepped.outcome {

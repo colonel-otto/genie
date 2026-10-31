@@ -221,7 +221,9 @@ impl World {
 mod tests {
     use super::*;
     use crate::test_ids::player_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     fn market() -> Market {
         let at = |price| Commodity {
@@ -307,10 +309,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 2],
+            vec![Millis::ZERO; 2],
             vec![Player::default(), player],
         );
         t.market = market();

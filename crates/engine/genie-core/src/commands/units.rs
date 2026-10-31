@@ -103,6 +103,8 @@ mod tests {
     use crate::test_ids::object_ids;
     use crate::test_ids::player_id;
     use crate::test_ids::unit_list;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
     use crate::world::{Player, World};
 
     /// Gaia, a human player and a computer player.
@@ -112,10 +114,10 @@ mod tests {
             ..Player::default()
         };
         World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(1),
-            vec![0; 3],
+            vec![Millis::ZERO; 3],
             vec![player(false), player(false), player(true)],
         )
     }

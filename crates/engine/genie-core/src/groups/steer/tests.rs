@@ -29,7 +29,9 @@ use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
+use crate::world::Millis;
 use crate::world::Player;
+use crate::world::WorldTime;
 
 /// The walking and the running sprite's top speeds of the hunt tests' walker (speed 0.8): its
 /// factors 1.125 and 1.875.
@@ -80,7 +82,7 @@ fn slot(unit: i32, x: f32, y: f32) -> Slot {
     Slot {
         unit_id: ObjectId::of_field(unit),
         transform_position: BVector::new(x, 0.0, y),
-        time: 100,
+        time: WorldTime::from_millis(100),
         ..Slot::default()
     }
 }
@@ -98,8 +100,14 @@ fn world() -> World {
             ..Player::default()
         },
     ];
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 2], players);
-    t.world_time = 100;
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO; 2],
+        players,
+    );
+    t.world_time = WorldTime::from_millis(100);
     t.dt_seconds = DT;
     let master = Master {
         id: master_id(4),
@@ -448,7 +456,7 @@ fn a_due_slot_takes_its_member() {
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.motion.velocity = BVector::new(0.0, 0.0, 1.0);
     let s = &mut g.current_formation.as_mut().unwrap().slots[0];
-    s.time = 50;
+    s.time = WorldTime::from_millis(50);
     s.state = SlotState::Arriving;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), SlotState::InPlace);
@@ -476,14 +484,14 @@ fn a_due_slot_takes_its_member() {
         .as_mut()
         .unwrap()
         .slots[0];
-    s.time = 50;
+    s.time = WorldTime::from_millis(50);
     s.state = SlotState::Stopping;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), SlotState::InPlace);
     assert_eq!(unit(&t, 10).position(), Position::new(10.0, 5.0, 0.0));
     let m = mover(&t, 10);
     assert_eq!(m.moved_at, Position::new(10.0, 5.0, 0.0));
-    assert_eq!(m.last_move, 100);
+    assert_eq!(m.last_move, WorldTime::from_millis(100));
     assert_eq!(m.forward, BVector::new(1.0, 0.0, 0.0));
     assert_eq!(m.right, BVector::new(0.0, 0.0, -1.0));
     assert_eq!(
@@ -500,7 +508,7 @@ fn a_due_slot_takes_its_member() {
         .as_mut()
         .unwrap()
         .slots[0];
-    s.time = 50;
+    s.time = WorldTime::from_millis(50);
     s.state = SlotState::InPlace;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
     assert_eq!(mover(&t, 10).stats.speed, 0.8);

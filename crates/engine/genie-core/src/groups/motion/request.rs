@@ -19,6 +19,7 @@ use crate::movement::{
 };
 use crate::objects::ObjectId;
 use crate::pathing::tile_path::Path;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// What the request plans toward: the walked level's number, range and target, its waypoint,
@@ -273,7 +274,7 @@ fn in_range(
     motion: &mut Motion,
     reach: f32,
     target_gap2: f32,
-    now: u32,
+    now: WorldTime,
 ) -> Result<Pass, GenieError> {
     if reach < target_gap2 {
         let level = motion.paths.checked(0)?;
@@ -380,7 +381,7 @@ pub(super) fn link(
     lead: &Lead,
     path: Path,
     (found, planned): (bool, bool),
-    now: u32,
+    now: WorldTime,
 ) -> Result<Option<Pass>, GenieError> {
     let level = motion.paths.checked(0)?;
     if (level.level == WaypointLevel::TOP && !found) || path.points.len() < 2 {

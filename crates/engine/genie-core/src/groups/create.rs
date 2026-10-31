@@ -437,6 +437,8 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
 
     use crate::players::relation_row;
     use crate::players::relations;
@@ -479,10 +481,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             0,
             PlayerId::new(0),
-            vec![0, 0],
+            vec![Millis::ZERO, Millis::ZERO],
             vec![Player::default(), player],
         );
         let master = |id: MasterId, category: u8| Master {

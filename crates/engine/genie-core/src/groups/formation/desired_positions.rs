@@ -12,6 +12,7 @@ use crate::math::fmath::{BVector, Rotation, add, sub};
 use crate::movement::PathData;
 use crate::objects::ObjectKey;
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// `FUN_140f96030`: the walked level's top ancestor (the paths are walked first), none for a
@@ -261,7 +262,7 @@ pub(super) fn transform_slot(
     point: BVector,
     index: i32,
     transform_type: i32,
-    (world_time, map): (u32, GridSize),
+    (world_time, map): (WorldTime, GridSize),
 ) -> Result<bool, GenieError> {
     if index < 0 || formation.slots.len() as i32 <= index {
         return Ok(false);

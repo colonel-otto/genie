@@ -601,7 +601,9 @@ mod tests {
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// Gaia and two players: player 1's villager 10, house foundation 11 (build time 25, cost 25
     /// wood paid) and sheep 12, and player 2's villager 20.
@@ -624,10 +626,10 @@ mod tests {
             ..Unit::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 3],
+            vec![Millis::ZERO; 3],
             vec![
                 Player::default(),
                 Player {
@@ -797,7 +799,9 @@ mod clearing_tests {
     use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// A live object `id` of `master` at `x`, `y`, outside any pasture.
     fn object(id: i32, master: MasterId, x: f32, y: f32) -> Unit {
@@ -898,10 +902,10 @@ mod clearing_tests {
     fn world(gaia: Vec<Unit>, asleep: Vec<Unit>, own: Vec<Unit>) -> World {
         let ms = masters();
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 2],
+            vec![Millis::ZERO; 2],
             vec![
                 Player {
                     objects: gaia.into(),

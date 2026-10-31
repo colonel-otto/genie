@@ -29,6 +29,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 pub(crate) mod ai_moves;
@@ -148,7 +149,7 @@ pub struct PathData {
     pub length: f32,
     /// The path's creation time (its `+8`, `mCreationTimeValue`): the world's time when it was
     /// made.
-    pub created: u32,
+    pub created: WorldTime,
     /// `+0x38`, `mContinueCounter`: the plans the level may still try before it gives up.
     pub continue_counter: i32,
     /// `+0x40`, `mRepathTime`.
@@ -247,7 +248,7 @@ pub struct Mover {
     /// `+0x7fb`, `mAttackMoving`: a level spends no try, and one without a path pauses.
     pub attack_moving: bool,
     /// `+0x870`, `lastMoveTimeValue`: the world's time when the unit last moved.
-    pub last_move: u32,
+    pub last_move: WorldTime,
     /// `+0x824`..`+0x82c`, `positionValue`: where it last moved to (x, y, height), which the
     /// position setter compares the new place with (`FUN_141161950`).
     pub moved_at: Position,
@@ -409,7 +410,7 @@ impl PathData {
     }
 
     /// A new level (`FUN_140f8f670`) with a new path (`FUN_14152eea0`, flags 6, made `now`).
-    pub(crate) const fn new(now: u32) -> Self {
+    pub(crate) const fn new(now: WorldTime) -> Self {
         Self {
             level: WaypointLevel::WALKED,
             linked_type: 0,
@@ -448,7 +449,7 @@ impl PathData {
             pause_time: 0.0,
             flags: 0,
             length: 0.0,
-            created: 0,
+            created: WorldTime::ZERO,
             continue_counter: CONTINUE,
             repath_time: 0.0,
             ignore: Vec::new(),
@@ -563,8 +564,8 @@ fn pause_rank(
     world: &Spatial,
     groups: Option<&crate::groups::UnitGroups>,
 ) -> Option<bool> {
-    let mine = world.gait(me.id).map_or(0, |g| g.human_order);
-    let theirs = world.gait(id).map_or(0, |g| g.human_order);
+    let mine = world.gait(me.id).map_or(WorldTime::ZERO, |g| g.human_order);
+    let theirs = world.gait(id).map_or(WorldTime::ZERO, |g| g.human_order);
     Some(if !computer && (other.player != player || theirs != mine) {
         theirs < mine
     } else if let Some(group) = me.group

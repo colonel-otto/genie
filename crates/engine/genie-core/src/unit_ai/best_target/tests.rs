@@ -13,6 +13,7 @@ use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
 use crate::test_ids::{attack_category, category_of};
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
+use crate::world::WorldTime;
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
     Candidate {
@@ -123,12 +124,12 @@ fn the_order_history_weighs_the_last_minute_s_categories() {
     };
     let w = order_weights(
         &[
-            record(100_000, 1),
-            record(70_000, 1),
-            record(30_000, 3),
-            record(99_000, 2),
+            record(WorldTime::from_millis(100_000), 1),
+            record(WorldTime::from_millis(70_000), 1),
+            record(WorldTime::from_millis(30_000), 3),
+            record(WorldTime::from_millis(99_000), 2),
         ],
-        100_000,
+        WorldTime::from_millis(100_000),
     );
     assert_eq!(w[category_of(1)], 1.0 + 30_000.0 / 60_000.0);
     assert_eq!(w[category_of(3)], 0.0);
@@ -219,7 +220,7 @@ fn soldier() -> Searcher {
         range: 0.5,
         weapon_range: 0.5,
         speed: 1.0,
-        now: 10_000,
+        now: WorldTime::from_millis(10_000),
         ..Searcher::default()
     }
 }
@@ -290,7 +291,7 @@ fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
             ('p', object_id(9))
         ]
     );
-    assert_eq!(c.retries, [(object_id(7), 11_000)]);
+    assert_eq!(c.retries, [(object_id(7), WorldTime::from_millis(11_000))]);
 }
 
 /// Each of the first three whose path fails is ignored for 1 s (a moving object) or 2 s
@@ -317,7 +318,13 @@ fn failed_paths_become_retarget_entries() {
     assert_eq!(c.target, None);
     let mut retries = c.retries;
     retries.sort_unstable();
-    assert_eq!(retries, [(object_id(7), 11_000), (object_id(9), 12_000)]);
+    assert_eq!(
+        retries,
+        [
+            (object_id(7), WorldTime::from_millis(11_000)),
+            (object_id(9), WorldTime::from_millis(12_000))
+        ]
+    );
     let me = Searcher {
         retries: vec![object_id(9)],
         ..soldier()

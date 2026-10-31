@@ -23,6 +23,8 @@ use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
 /// villager takes the closest tree of Gaia's (by centre) within its sight of the point,
@@ -39,10 +41,10 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             crate::world::Player {
                 sleeping: vec![

@@ -30,6 +30,8 @@ use crate::test_ids::object_id_list;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::{Player, World};
 
 /// A unit of master 4 at (`x`, `y`) in state 2 with 50 hit points and a unit AI.
@@ -75,7 +77,13 @@ fn world() -> World {
             ..Player::default()
         },
     ];
-    let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        0,
+        PlayerId::new(0),
+        vec![Millis::ZERO; 4],
+        players,
+    );
     let master = Master {
         id: master_id(4),
         terrain_restriction: Some(crate::map::RestrictionId::named(0)),
@@ -1121,7 +1129,7 @@ fn a_member_s_own_move_walks_its_path() {
     walker.take_record_path(
         vec![BVector::new(1.0, 0.0, 1.0), BVector::new(5.0, 0.0, 1.0)],
         4.0,
-        0,
+        WorldTime::ZERO,
         false,
     );
     t.players[1].objects[ListIndex::new(0)]
@@ -1195,14 +1203,21 @@ fn a_group_update_leaves_its_members_gaits_current() {
 #[test]
 fn due_orders_leave_the_queue() {
     let mut t = world();
-    t.world_time = 100;
+    t.world_time = WorldTime::from_millis(100);
     let order = |execute_time| crate::groups::GroupOrder {
         execute_time,
         ..crate::groups::GroupOrder::default()
     };
-    t.groups.get_mut(group_id(1)).unwrap().order_queue = vec![order(99), order(101), order(100)];
+    t.groups.get_mut(group_id(1)).unwrap().order_queue = vec![
+        order(WorldTime::from_millis(99)),
+        order(WorldTime::from_millis(101)),
+        order(WorldTime::from_millis(100)),
+    ];
     t.drop_due_orders(group_id(1));
-    assert_eq!(t.groups.get(group_id(1)).unwrap().order_queue, [order(101)]);
+    assert_eq!(
+        t.groups.get(group_id(1)).unwrap().order_queue,
+        [order(WorldTime::from_millis(101))]
+    );
 }
 
 /// The idle timer: an idle group adds the update's milliseconds and draws anew past 3000; a
@@ -1210,21 +1225,27 @@ fn due_orders_leave_the_queue() {
 #[test]
 fn the_idle_timer_counts_while_idle() {
     let mut t = world();
-    t.dt_seconds = crate::objects::lifecycle::seconds(69);
-    t.groups.get_mut(group_id(1)).unwrap().idle_timer = 2931;
+    t.dt_seconds = Millis::new(69).seconds();
+    t.groups.get_mut(group_id(1)).unwrap().idle_timer = Millis::new(2931);
     t.idle_timer_step(group_id(1)).unwrap();
-    assert_eq!(t.groups.get(group_id(1)).unwrap().idle_timer, 3000);
+    assert_eq!(
+        t.groups.get(group_id(1)).unwrap().idle_timer,
+        Millis::new(3000)
+    );
     let mut streams = t.streams.clone();
     let draw = streams.get(crate::math::rng::Stream::World).rand15();
     t.idle_timer_step(group_id(1)).unwrap();
-    assert_eq!(t.groups.get(group_id(1)).unwrap().idle_timer, draw % 750);
+    assert_eq!(
+        t.groups.get(group_id(1)).unwrap().idle_timer,
+        Millis::new(draw % 750)
+    );
     t.groups.get_mut(group_id(1)).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
-    t.groups.get_mut(group_id(1)).unwrap().idle_timer = 5;
+    t.groups.get_mut(group_id(1)).unwrap().idle_timer = Millis::new(5);
     t.idle_timer_step(group_id(1)).unwrap();
-    assert!(t.groups.get(group_id(1)).unwrap().idle_timer < 750);
+    assert!(t.groups.get(group_id(1)).unwrap().idle_timer < Millis::new(750));
     for dt in 0..=100_000 {
-        t.dt_seconds = crate::objects::lifecycle::seconds(dt);
-        assert_eq!(t.dt_ms(), dt);
+        t.dt_seconds = Millis::new(dt).seconds();
+        assert_eq!(t.dt_ms(), Millis::new(dt));
     }
 }
 
@@ -1275,7 +1296,7 @@ fn a_player_s_groups_update_before_its_objects() {
         u.ai = None;
     }
     let before = t.object(object_id(10)).unwrap().1.position();
-    t.tick(69);
+    t.tick(Millis::new(69));
     let u = t.object(object_id(10)).unwrap().1;
     assert_eq!(u.group.id, None);
     assert_eq!(u.position(), before);
@@ -1319,7 +1340,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
         .into_iter()
         .map(|id| t.object(id).unwrap().1.position())
         .collect();
-    t.tick(100);
+    t.tick(Millis::new(100));
     assert_eq!(t.players[1].unsupported, None);
     let speed = |t: &World, id| {
         t.object(object_id(id))
@@ -1434,7 +1455,13 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
         .into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let member = |id| Member {
         id,
         ..Member::default()
@@ -1469,7 +1496,13 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
         objects: vec![held].into(),
         ..Player::default()
     };
-    let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+    let mut t = World::new(
+        WorldTime::ZERO,
+        1,
+        PlayerId::new(0),
+        vec![Millis::ZERO],
+        vec![player],
+    );
     let member = |id| Member {
         id,
         ..Member::default()
@@ -1488,7 +1521,7 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
     let mut streams = t.streams.clone();
     let draw = streams.get(crate::math::rng::Stream::World).rand15();
     t.reset_idle_timer(group_id(1));
-    assert_eq!(t.groups.groups[0].idle_timer, draw % 750);
+    assert_eq!(t.groups.groups[0].idle_timer, Millis::new(draw % 750));
     assert_eq!(t.streams, streams);
     // idle: standing; not while moving or waiting for a path; idle again with bit 5, or on a
     // move with bit 11
@@ -2032,7 +2065,7 @@ fn a_released_special_unit_draws_its_retarget_timer() {
     g.current_target.disable_retargeting = 1;
     for u in &mut t.players[1].objects {
         u.ai.as_mut().unwrap().orders = vec![crate::unit_ai::QueuedOrder::default()];
-        u.ai.as_mut().unwrap().retarget_timer = 7;
+        u.ai.as_mut().unwrap().retarget_timer = Millis::new(7);
     }
     let mut reference = t.streams.clone();
     let draw = reference.get(crate::math::rng::Stream::Ai).rand15();
@@ -2041,7 +2074,7 @@ fn a_released_special_unit_draws_its_retarget_timer() {
     let timers: Vec<u32> = t.players[1]
         .objects
         .iter()
-        .map(|u| u.ai.as_ref().unwrap().retarget_timer)
+        .map(|u| u.ai.as_ref().unwrap().retarget_timer.get())
         .collect();
     assert_eq!(timers, [7, 3000 + draw % 2000, 7]);
     assert!(

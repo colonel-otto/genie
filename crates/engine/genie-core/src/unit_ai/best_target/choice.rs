@@ -12,6 +12,8 @@ use crate::players::{ByRelation, UnitRelation};
 use crate::unit_ai::best_target::{
     Ask, AttackCategory, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// The boats' classes (2, 20, 21, 22, 53), which a computer player's land unit passes over.
@@ -53,8 +55,8 @@ pub(super) const BOAT_HUNTERS: [MasterId; 3] = [
 /// The moving targets past which the current target and the closest moving one answer.
 pub(super) const FEW_MOVING: i32 = 5;
 /// The retarget entries' times: a moving object's 1 s, another's 2 s.
-pub(super) const RETRY_MOVING: u32 = 1000;
-pub(super) const RETRY_OTHER: u32 = 2000;
+pub(super) const RETRY_MOVING: Millis = Millis::new(1000);
+pub(super) const RETRY_OTHER: Millis = Millis::new(2000);
 
 /// What `bestUnitToAttack` found: the object to attack (none for none) and the retarget entries
 /// its failed paths add (`FUN_140c42320`: each target and the world time until which it is
@@ -64,7 +66,7 @@ pub struct Choice {
     /// The object, if any.
     pub target: Option<ObjectId>,
     /// The retarget entries to add, in order.
-    pub retries: Vec<(ObjectId, u32)>,
+    pub retries: Vec<(ObjectId, WorldTime)>,
 }
 
 /// The object tests the statistics' main and retry walks share: the world's attack checks
@@ -568,7 +570,7 @@ fn path_pick(
     st: &Statistics,
     tried: Option<ObjectId>,
     world: &mut dyn Battlefield,
-    retries: &mut Vec<(ObjectId, u32)>,
+    retries: &mut Vec<(ObjectId, WorldTime)>,
 ) -> Result<Option<ObjectId>, crate::GenieError> {
     for &i in st.order.iter().take(3) {
         let e = *st.entries.checked(i)?;
@@ -576,7 +578,7 @@ fn path_pick(
             return Ok(Some(e.id));
         }
         let wait = if e.moving { RETRY_MOVING } else { RETRY_OTHER };
-        retries.push((e.id, me.now.wrapping_add(wait)));
+        retries.push((e.id, me.now.after(wait)));
     }
     Ok(None)
 }

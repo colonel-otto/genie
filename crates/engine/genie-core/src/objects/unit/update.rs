@@ -6,7 +6,6 @@ use crate::movement::{Me, Mover};
 use crate::objects::ObjectState;
 use crate::objects::actions::Action;
 use crate::objects::lifecycle::Class;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::object_master;
@@ -200,7 +199,7 @@ impl Unit {
     /// then its idle swap, which reads the loop this update's clock made.
     pub(crate) fn animate(&mut self, c: &mut Step<'_>) {
         if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.body.anim_speed()) {
-            sprite.update(seconds(c.dt), speed);
+            sprite.update(c.dt.seconds(), speed);
             if let Ok(master) = object_master(
                 self.own_master.as_deref(),
                 (self.id, self.life.master_id),

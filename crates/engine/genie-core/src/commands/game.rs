@@ -331,7 +331,9 @@ mod tests {
     use crate::test_ids::costs;
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// Gaia and three players with 300 attributes each.
     fn world() -> World {
@@ -341,10 +343,10 @@ mod tests {
             ..Player::default()
         };
         World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 4],
+            vec![Millis::ZERO; 4],
             vec![player(), player(), player(), player()],
         )
     }

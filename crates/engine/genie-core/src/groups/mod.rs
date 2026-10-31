@@ -20,6 +20,8 @@ use crate::objects::ObjectKey;
 use crate::objects::masters::ActionType;
 use crate::players::PlayerId;
 use crate::unit_ai::UnitStance;
+use crate::world::Millis;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 mod formation_kind;
@@ -138,7 +140,7 @@ pub struct Slot {
     /// `mTransformPosition`.
     pub transform_position: BVector,
     /// `mTime`.
-    pub time: u32,
+    pub time: WorldTime,
     /// `mState`.
     pub state: SlotState,
     /// `mDepth`.
@@ -317,7 +319,7 @@ pub struct GroupOrder {
     /// `mPoint`.
     pub point: BVector,
     /// `mExecuteTime`.
-    pub execute_time: u32,
+    pub execute_time: WorldTime,
 }
 
 /// A command of the group's queue (`newCommand`).
@@ -395,7 +397,7 @@ pub struct UnitGroup {
     /// `mAttackPlanType`.
     pub attack_plan_type: i32,
     /// `mIdleTimer`.
-    pub idle_timer: u32,
+    pub idle_timer: Millis,
     /// The order queue.
     pub order_queue: Vec<GroupOrder>,
     /// `mHibernating`.

@@ -9,7 +9,6 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Lifecycle;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -21,6 +20,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
+use crate::world::Millis;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -78,7 +78,7 @@ impl Unit {
             if gate.close_timer <= 0.0 {
                 gate.close_timer = GATE_CLOSE_DELAY;
             } else {
-                gate.close_timer -= seconds(c.dt);
+                gate.close_timer -= c.dt.seconds();
                 if gate.close_timer <= 0.0 {
                     gate.close_timer = 0.0;
                     return self.toggle_own_gate(c, height <= 0.0);
@@ -251,11 +251,11 @@ impl Unit {
                 "a building whose master attribute 255 names (FUN_1411c39b0)",
             ));
         }
-        let seconds = c.w.world_time.wrapping_sub(self.garrison_time) / 1000;
+        let seconds = c.w.world_time.since(self.garrison_time).get() / 1000;
         if seconds == 0 {
             return Ok(());
         }
-        self.garrison_time = self.garrison_time.wrapping_add(seconds * 1000);
+        self.garrison_time = self.garrison_time.after(Millis::new(seconds * 1000));
         if self.damaged_lately != 0 {
             self.damaged_lately -= 1;
         }
@@ -411,9 +411,9 @@ impl Unit {
     /// counts down by the world's dt (`+0x7c`, in ms), not below 0. The walk reads the field
     /// live, so the world's view follows at once: the unit's own walk later in this update ranks
     /// the units it meets by the counted-down time.
-    pub(crate) fn count_down_human_order(&mut self, dt: u32, spatial: &mut Spatial) {
+    pub(crate) fn count_down_human_order(&mut self, dt: Millis, spatial: &mut Spatial) {
         if self.last_human_order <= crate::unit_ai::HUMAN_ORDER_CAP {
-            self.last_human_order = self.last_human_order.saturating_sub(dt);
+            self.last_human_order = self.last_human_order.saturating_before(dt);
             spatial.set_human_order(self.id, self.last_human_order);
         }
     }

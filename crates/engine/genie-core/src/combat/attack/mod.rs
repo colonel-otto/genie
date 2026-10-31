@@ -31,6 +31,7 @@ use crate::unit_ai::UnitAiType;
 use crate::unit_ai::UnitStance;
 use crate::unit_ai::{OrderKind, UnitAi};
 use crate::world::World;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 mod attack_state;
@@ -242,7 +243,7 @@ pub struct Engagement {
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the leash's centre.
     pub state_position: Point,
     /// The world's time (`FUN_1415300d0`), which a facing over time reads.
-    pub world_time: u32,
+    pub world_time: WorldTime,
     /// The unit's master, of which 1704 and 1706 do not turn to face their target.
     pub master: MasterId,
     /// The target's master's class, whose 39 (a gate) readyToAttack measures by its parts.
@@ -275,7 +276,7 @@ pub(crate) struct AttackReads {
     /// The unit's player is a computer (`player+0x10 == 3`, `FUN_141659cf0`).
     pub(crate) computer: bool,
     /// The world's time (`FUN_1415300d0`), which a facing over time and the reload read.
-    pub(crate) world_time: u32,
+    pub(crate) world_time: WorldTime,
     /// The unit AI's canMoveToAttack (slot 0x1d0, `FUN_140c48420`), which readyToAttack reads
     /// of a target out of reach.
     pub(crate) can_move: bool,
@@ -305,7 +306,7 @@ impl AttackReads {
         master: &Master,
         (masters, graphics): (Option<&Masters>, &std::collections::BTreeMap<i16, Graphic>),
         ai: Option<&UnitAi>,
-        (computer, now): (bool, u32),
+        (computer, now): (bool, WorldTime),
     ) -> Self {
         Self {
             standing: graphics.get(&master.standing_sprite).copied(),

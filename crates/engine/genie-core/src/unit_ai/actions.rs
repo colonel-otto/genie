@@ -14,6 +14,7 @@ use crate::unit_ai::{
     AiMove, ENDED_ACTIONS, Effect, GO_ON, Notify, PRODUCED, QueuedOrder, Surroundings, UnitAi,
     UnitSide, WALK_BACK, point_gap_squared,
 };
+use crate::world::Millis;
 use crate::world::slots::CheckedIndex;
 
 impl UnitAi {
@@ -376,7 +377,7 @@ impl UnitAi {
         matches!(
             self.current_order,
             Some(OrderKind::Patrol | OrderKind::AttackMove)
-        ) && self.adjusted_idle_timeout == 750
+        ) && self.adjusted_idle_timeout.get() == 750
     }
 
     /// The rest of leaving a patrol order (711, 733) once the redraw is not due
@@ -385,9 +386,9 @@ impl UnitAi {
         if matches!(
             self.current_order,
             Some(OrderKind::Patrol | OrderKind::AttackMove)
-        ) && 750 < self.secondary_timer as i32
+        ) && 750 < self.secondary_timer.get() as i32
         {
-            self.secondary_timer = 750;
+            self.secondary_timer = Millis::new(750);
         }
     }
 
@@ -399,11 +400,11 @@ impl UnitAi {
             self.current_order,
             Some(OrderKind::Patrol | OrderKind::AttackMove)
         ) {
-            if self.adjusted_idle_timeout == 750 {
+            if self.adjusted_idle_timeout == Millis::new(750) {
                 self.update_adjusted_idle_timeout(ai);
             }
-            if 750 < self.secondary_timer as i32 {
-                self.secondary_timer = 750;
+            if 750 < self.secondary_timer.get() as i32 {
+                self.secondary_timer = Millis::new(750);
             }
         }
     }

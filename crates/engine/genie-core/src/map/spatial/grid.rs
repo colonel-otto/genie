@@ -11,6 +11,7 @@ use crate::map::{Rect, Segment};
 use crate::objects::masters::ObstructionType;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
+use crate::world::WorldTime;
 
 /// A walk's obstruction query ([`Spatial::walk_hits`]'s arguments).
 #[derive(Clone, Copy, Debug)]
@@ -216,7 +217,7 @@ impl Spatial {
 
     /// The walk's view of the moving object `id`'s last human order time (`+0x650`) as the field
     /// changes; nothing for an object without one.
-    pub fn set_human_order(&mut self, id: impl ObjectKey, human_order: u32) {
+    pub fn set_human_order(&mut self, id: impl ObjectKey, human_order: WorldTime) {
         let Some(id) = id.key() else {
             return;
         };
@@ -229,7 +230,7 @@ impl Spatial {
     /// the field changes outside its own update (a construction's start, a gate that shuts or
     /// locks): a later walker of the same update reads it at once; nothing for an object without
     /// movement state.
-    pub fn set_last_move(&mut self, id: impl ObjectKey, last_move: u32) {
+    pub fn set_last_move(&mut self, id: impl ObjectKey, last_move: WorldTime) {
         let Some(id) = id.key() else {
             return;
         };

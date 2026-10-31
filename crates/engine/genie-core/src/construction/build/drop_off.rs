@@ -7,7 +7,6 @@ use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
-use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -215,7 +214,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
         if crate::math::fmath::below_or_unordered(self.timer, 0.0) {
-            self.timer += seconds(c.dt);
+            self.timer += c.dt.seconds();
             if self.timer < 0.0 {
                 return Ok(HeadCode::Keeps);
             }

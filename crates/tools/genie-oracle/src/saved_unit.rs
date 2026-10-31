@@ -20,6 +20,7 @@ use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
 use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::{ActionKind, UnitAi};
+use genie_core::world::WorldTime;
 use genie_save::generated::world::{Path, PlayerObjects, RgeStaticObject};
 
 /// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from
@@ -103,7 +104,7 @@ pub(super) fn unit(
         regen_powerup: object.combat().map_or(0.0, |c| c.regeneration_rate_powerup),
         regen_stinger: object.combat().map_or(0.0, |c| c.regeneration_stinger),
         workers: s.worker_num,
-        last_human_order: s.last_human_order_time,
+        last_human_order: WorldTime::from_millis(s.last_human_order_time),
         town_bell,
         combat: object.combat().is_some(),
         next_volley: object.combat().map_or(0, |c| c.next_volley),
@@ -111,7 +112,9 @@ pub(super) fn unit(
         garrison_time: object
             .tribe_building_object
             .as_deref()
-            .map_or(0, |b| b.last_garrison_time),
+            .map_or(WorldTime::ZERO, |b| {
+                WorldTime::from_millis(b.last_garrison_time)
+            }),
         relics: object
             .tribe_building_object
             .as_deref()
@@ -124,10 +127,12 @@ pub(super) fn unit(
         livestock: lists.livestock,
         pasture_workers: lists.pasture_workers,
         attacking_units: lists.attacking_units,
-        reload_worldtime: object
-            .combat()
-            .and_then(|c| c.rge_combat_object.reload_worldtime)
-            .unwrap_or(0),
+        reload_worldtime: WorldTime::from_millis(
+            object
+                .combat()
+                .and_then(|c| c.rge_combat_object.reload_worldtime)
+                .unwrap_or(0),
+        ),
         // the load's (FUN_14121ec90): the master's volley fire; the shares of the units inside
         // follow in `garrison_firepower`
         firepower: objects

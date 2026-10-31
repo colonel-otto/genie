@@ -694,6 +694,8 @@ mod tests {
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
+    use crate::world::Millis;
+    use crate::world::WorldTime;
 
     /// An animated graphic of `frames` frames with a random first frame (flags 5).
     const fn graphic(id: i16) -> Graphic {
@@ -938,7 +940,13 @@ mod tests {
             .into(),
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         t.masters = vec![Masters::new([
             old,
             new,
@@ -1005,7 +1013,13 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         t.masters = vec![Masters::new([old, new])];
         t.players[0].attributes[37] = 1.0;
         t.upgrade_objects(PlayerId::new(0), master_id(83), master_id(6), 0, None)
@@ -1161,7 +1175,13 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         t.masters = vec![Masters::new([
             soldier(master_id(4), 40),
             soldier(master_id(5), 60),
@@ -1257,7 +1277,13 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = World::new(0, 1, PlayerId::new(0), vec![0], vec![player]);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            1,
+            PlayerId::new(0),
+            vec![Millis::ZERO],
+            vec![player],
+        );
         t.masters = vec![Masters::new(masters)];
         t.graphics = graphics.iter().map(|&id| (id, graphic(id))).collect();
         t

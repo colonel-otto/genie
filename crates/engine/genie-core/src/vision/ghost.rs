@@ -688,7 +688,9 @@ mod tests {
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::vision::visibility::{Seer, Visibility};
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// A gold mine's master (it leaves ghosts), a house's and the ghosts' own.
     const MINE: MasterId = MasterId::named(66);
@@ -739,7 +741,13 @@ mod tests {
     /// and player 1's house 9 at (2.5, 1.5) (its footprint's UMV entry 1).
     fn world(recyclable: bool) -> World {
         let players = (0..3).map(|_| Player::default()).collect();
-        let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 3], players);
+        let mut t = World::new(
+            WorldTime::ZERO,
+            0,
+            PlayerId::new(0),
+            vec![Millis::ZERO; 3],
+            players,
+        );
         t.masters = (0..3).map(|_| masters(recyclable)).collect();
         t.players[0].objects.push(object(
             5,

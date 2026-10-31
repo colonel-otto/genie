@@ -2,6 +2,7 @@
 //! update schedule against the game's save at the end of the same step (the tick oracle's probe
 //! `step_saves`), for the first step where they part. Dev only.
 
+use genie_core::world::Millis;
 use genie_core::world::World;
 use genie_core::world::schedule::UpdateStep;
 
@@ -47,7 +48,7 @@ pub fn steps_from_save(
         .collect();
     let mut steps = Vec::new();
     let mut failed = None;
-    turns.tick_observed(frame.dt, &commands, &mut |w, step| {
+    turns.tick_observed(Millis::new(frame.dt), &commands, &mut |w, step| {
         let compared = game_at(step)
             .map(|(save, globals)| step_report(w, start, (&save, globals.as_deref()), masters))
             .transpose();

@@ -5,7 +5,6 @@ use crate::map::Footprint;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterKind;
@@ -106,7 +105,7 @@ impl Unit {
             hp: self.life.hp,
             speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
             map: c.w.spatial.map,
-            dt_seconds: seconds(c.dt),
+            dt_seconds: c.dt.seconds(),
             mode_1: (c.w.mode_680 == 1),
             busy,
             player,
@@ -393,7 +392,7 @@ impl Unit {
             && !self.life.is_alive()
             && let Some(ai) = self.ai.as_mut()
         {
-            ai.time_since_enemy += seconds(c.dt);
+            ai.time_since_enemy += c.dt.seconds();
         }
         let runs = turn.is_some() || self.life.inside.is_none();
         let Some(orders) = self

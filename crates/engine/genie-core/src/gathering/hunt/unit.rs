@@ -10,7 +10,6 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
@@ -399,7 +398,7 @@ impl Unit {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
-        ai.alert(result, seconds(c.dt));
+        ai.alert(result, c.dt.seconds());
         Ok(result.id)
     }
 

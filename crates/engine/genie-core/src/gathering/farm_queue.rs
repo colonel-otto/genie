@@ -413,7 +413,9 @@ mod tests {
     use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
+    use crate::world::Millis;
     use crate::world::Player;
+    use crate::world::WorldTime;
 
     /// A master of type 70 costing `cost` (attribute, amount, paid).
     fn master(id: MasterId, cost: &[(AttributeId, i16, bool)]) -> Master {
@@ -434,10 +436,10 @@ mod tests {
             ..Player::default()
         };
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0; 2],
+            vec![Millis::ZERO; 2],
             vec![Player::default(), player],
         );
         let masters = Masters::new([

@@ -15,7 +15,8 @@
 //! Build action with its walk), then its unit AI. An object whose update returns 1 leaves: the
 //! last object takes its slot and updates there in the same tick.
 //!
-//! The module's files: the world as the header save holds it (`setup`), one world update
+//! The module's files: the world as the header save holds it (`setup`), its clock (`clock`), one
+//! world update
 //! (`world_update`), one object's step (`object_step`) with what it reads and writes (`step`),
 //! a player (`player`) and the checked reach into its lists (`slots`), the game options (`settings`), the checkpoint's state block
 //! (`checkpoint`) and the forced replay (`forced`).
@@ -51,6 +52,7 @@ pub use crate::world::player::{AiSettings, Formations, Player};
 use genie_diff::Diff;
 
 mod after_step;
+mod clock;
 mod forced;
 mod object_step;
 pub mod schedule;
@@ -58,6 +60,7 @@ pub mod settings;
 mod setup;
 mod world_update;
 
+pub use self::clock::{Millis, WorldTime};
 pub use self::forced::GameState;
 pub use self::world_update::{scenario_mode, standard_mode};
 
@@ -224,14 +227,14 @@ pub(crate) const fn villager(draw: u64) -> MasterId {
 /// World state the slice carries from tick to tick. All of it is in the header save.
 #[derive(Clone, Debug, PartialEq)]
 pub struct World {
-    /// The world's time in milliseconds (`world_time`).
-    pub world_time: u32,
+    /// The world's time (`world_time`).
+    pub world_time: WorldTime,
     /// `world+0x7d0`.
     pub frame_seed: u32,
     /// `world+0x188`, `player_turn` in the save.
     pub player_turn: PlayerId,
     /// `world+0x18c[p]`, the time each player accumulated since its last turn.
-    pub player_time: Vec<u32>,
+    pub player_time: Vec<Millis>,
     /// Every player, Gaia first.
     pub players: Vec<Player>,
     /// The updates run so far.
@@ -298,7 +301,7 @@ pub struct World {
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
     /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).
-    pub dt: u32,
+    pub dt: Millis,
     /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads
     /// after its constructor's [`HISTORY_PERIOD`] ([`crate::players::history::History::update`]).
     pub history_period: i32,

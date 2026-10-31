@@ -16,6 +16,7 @@ use crate::movement::PathState;
 use crate::movement::{Planning, footprint_gap};
 use crate::objects::ObjectKey;
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
@@ -138,7 +139,7 @@ fn weigh_hits(
         if level.targets(id) {
             on_target = true;
         }
-        let last_move = spatial.gait(id).map_or(0, |g| g.last_move);
+        let last_move = spatial.gait(id).map_or(WorldTime::ZERO, |g| g.last_move);
         if level.created < last_move {
             newer += 1;
         }

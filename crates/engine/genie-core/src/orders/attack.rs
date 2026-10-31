@@ -12,6 +12,7 @@ use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
+use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
@@ -40,7 +41,7 @@ impl World {
         player: PlayerId,
         idx: ListIndex,
         target: ObjectId,
-        (master, world_time): (&crate::objects::masters::Master, u32),
+        (master, world_time): (&crate::objects::masters::Master, WorldTime),
     ) -> Result<Option<crate::combat::attack::ReadyReads>, GenieError> {
         let u = self.players.live(player, idx)?;
         let held = self.players.player(player)?;

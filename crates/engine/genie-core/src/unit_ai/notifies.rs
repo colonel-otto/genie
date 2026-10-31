@@ -9,6 +9,7 @@ use crate::objects::masters::ClassId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::{BREAK, DEAD, GO_ON, Notify, PRODUCED, Surroundings, UnitAi, UnitSide};
+use crate::world::Millis;
 use crate::world::slots::CheckedIndex;
 
 /// A unit's notifies to itself (its slot 0x328, [`UnitAi::post`]), borrowed beside its body: its
@@ -55,7 +56,7 @@ impl UnitAi {
     /// do not occur in the slice.
     pub(super) fn process_notifies(
         &mut self,
-        dt: u32,
+        dt: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -94,7 +95,7 @@ impl UnitAi {
     /// `+0x15c` takes `time`.
     pub fn end_notifies(
         &mut self,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -128,7 +129,7 @@ impl UnitAi {
     /// What the stop does not model.
     pub fn clear_notifies_at(
         &mut self,
-        time: u32,
+        time: Millis,
         place: (Point, Option<ClassId>),
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -147,7 +148,7 @@ impl UnitAi {
     /// # Errors
     ///
     /// A completion that would stop the action.
-    pub fn clear_notifies(&mut self, time: u32) -> Result<(), GenieError> {
+    pub fn clear_notifies(&mut self, time: Millis) -> Result<(), GenieError> {
         if self.completes() {
             return Err(GenieError::unsupported(
                 "a completion stopping the action outside the full update",

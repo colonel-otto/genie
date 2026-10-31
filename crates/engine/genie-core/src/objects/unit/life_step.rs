@@ -5,7 +5,6 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::{Outcome, Unit};
 use crate::world::slots::PlayerSlots;
@@ -32,7 +31,7 @@ impl Unit {
         let leaves =
             if self
                 .life
-                .update(seconds(c.dt), c.w.streams.get(Stream::Object), animating)?
+                .update(c.dt.seconds(), c.w.streams.get(Stream::Object), animating)?
             {
                 Outcome::Leave
             } else {

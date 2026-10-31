@@ -13,7 +13,6 @@ use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
@@ -124,7 +123,7 @@ impl Unit {
                 ));
             }
         }
-        let (step, flying) = action.fly(seconds(c.dt), missile.max_range, &stats)?;
+        let (step, flying) = action.fly(c.dt.seconds(), missile.max_range, &stats)?;
         missile.step = step;
         missile.flying = flying;
         let old = self.position();

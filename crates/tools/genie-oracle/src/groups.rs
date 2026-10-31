@@ -14,6 +14,8 @@ use genie_core::groups::{
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
 use genie_core::unit_ai::UnitStance;
+use genie_core::world::Millis;
+use genie_core::world::WorldTime;
 use genie_save::generated::world as saved;
 
 use crate::{object_ids, path_level, vec3};
@@ -78,7 +80,7 @@ fn formation(f: &saved::Formation) -> Result<Formation, GenieError> {
                     unit_id: ObjectId::of_field(s.slots_unit_id),
                     offset: vec3(&s.slots_offset),
                     transform_position: vec3(&s.slots_transform_position),
-                    time: s.slots_time,
+                    time: WorldTime::from_millis(s.slots_time),
                     state: SlotState::of_int(s.slots_state)?,
                     depth: s.slots_depth,
                     desired_transform_position: vec3(&s.slots_desired_transform_position),
@@ -202,7 +204,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             certain_action: ActionType::of_data(t.certain_action),
         },
         attack_plan_type: g.attack_plan_type,
-        idle_timer: g.idle_timer,
+        idle_timer: Millis::new(g.idle_timer),
         order_queue: g
             .order_queue
             .iter()
@@ -211,7 +213,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
                 target_id: ObjectId::of_field(o.new_order_target_id),
                 parm: o.new_order_parm,
                 point: vec3(&o.new_order_point),
-                execute_time: o.new_order_execute_time,
+                execute_time: WorldTime::from_millis(o.new_order_execute_time),
             })
             .collect(),
         hibernating: g.hibernating,
@@ -418,6 +420,20 @@ impl<T: Flat, const N: usize> Flat for [T; N] {
         for (i, v) in self.iter().enumerate() {
             v.flat(&format!("{path}[{i}]"), out);
         }
+    }
+}
+
+/// A moment of the world's clock flattens as its milliseconds, as the save holds them.
+impl Flat for WorldTime {
+    fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
+        self.millis().flat(path, out);
+    }
+}
+
+/// A span of the world's clock flattens as its milliseconds, as the save holds them.
+impl Flat for Millis {
+    fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
+        self.get().flat(path, out);
     }
 }
 

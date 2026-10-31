@@ -129,6 +129,8 @@ use crate::movement::PathAsk;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
+use crate::world::Millis;
+use crate::world::WorldTime;
 use genie_diff::Diff;
 
 /// A notify to a unit AI (the save's `temp_notify`, 0x18 bytes): from `caller` to `recipient`, of
@@ -325,7 +327,7 @@ pub enum Effect {
     /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
     Move(AiMove),
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
-    CapHumanOrder(u32),
+    CapHumanOrder(WorldTime),
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
     /// then the order's priority becomes the AI's (`World::order_on_target`, on the unit back in
     /// its slot); the full update's rest then reads what it gave the AI ([`AfterOrder`]).
@@ -454,21 +456,21 @@ pub struct UnitAi {
     /// `+0x70`: that target's class.
     pub last_target_class: Option<ClassId>,
     /// `+0x160`.
-    pub idle_timer: u32,
+    pub idle_timer: Millis,
     /// `+0x164`, the randomised timeout the idle timer is compared with.
-    pub adjusted_idle_timeout: u32,
+    pub adjusted_idle_timeout: Millis,
     /// `+0x168`, the base the adjusted timeout is drawn around.
-    pub idle_timeout: u32,
+    pub idle_timeout: Millis,
     /// `+0x16c`.
-    pub secondary_timer: u32,
+    pub secondary_timer: Millis,
     /// `+0x170`.
-    pub look_around_timer: u32,
+    pub look_around_timer: Millis,
     /// `+0x174`.
-    pub look_around_timeout: u32,
+    pub look_around_timeout: Millis,
     /// `+0xbc`, the world time of the last retarget.
-    pub last_retarget_time: u32,
+    pub last_retarget_time: WorldTime,
     /// `+0x1cc`, `mRandomizedRetargetTimer`: the word-9 input.
-    pub retarget_timer: u32,
+    pub retarget_timer: Millis,
     /// `+0x1a9`: defensive and stand ground add leash checks to slot 73.
     pub stance: UnitStance,
     /// `+0x1d4`, `mFormationType`: the formation the unit's group last took for it, which its
@@ -501,7 +503,7 @@ pub struct UnitAi {
     pub hunted: Option<Hunted>,
     /// `+0x15c`, `last_update_time_value`: what `FUN_140c5dc10` last cleared the notifies with
     /// (the owner's time on its turn, the world time on a MOVE or an ownership change).
-    pub last_update_time: u32,
+    pub last_update_time: Millis,
     /// The order queue, oldest first.
     pub orders: Vec<QueuedOrder>,
     /// A building's or tower's command queue (`+0x1f0`..`+0x1f8`, 0x34-byte orders the
@@ -534,7 +536,7 @@ pub struct UnitAi {
     /// The retarget entries (`+0x1d8` count, `+0x1e0` array): targets `bestUnitToAttack` could
     /// not path to, each with the world time until which it ignores them (`FUN_140c42320`); the
     /// full update lets the expired go ([`UnitAi::expire_retries`]).
-    pub retries: Vec<(ObjectId, u32)>,
+    pub retries: Vec<(ObjectId, WorldTime)>,
     /// `+0x1d0`, `mBestUnitToAttackThisUpdate`: what the damage notify's `bestUnitToAttack`
     /// found this update ([`UnitAi::damaged`]), none before one ran (the constructor's −1, and
     /// the full update's start) or when it found none; the update's later damage notifies take
@@ -550,7 +552,7 @@ pub struct OrderRecord {
     /// The action (`mAction`), None for −1.
     pub action: Option<ActionKind>,
     /// The world time it was given (`mTime`).
-    pub time: u32,
+    pub time: WorldTime,
     /// The unit's slot 0x520 then (`mPosition`: where it last moved to).
     pub position: crate::math::game_vector::GameVector,
     /// The target (`mTargetID`).

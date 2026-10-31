@@ -22,6 +22,7 @@ use crate::unit_ai::{
     UnitSeen, UnitSide, alert_owner, civilian_search_radius, closest_undiscovered_tile,
     held_action_state,
 };
+use crate::world::Millis;
 
 impl UnitAi {
     /// The villager's damage notify (`FUN_140c22bf0`, case 500, "I took some damage from Unit
@@ -51,7 +52,7 @@ impl UnitAi {
     pub(super) fn villager_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -158,7 +159,7 @@ impl UnitAi {
     pub(super) fn transport_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -250,7 +251,7 @@ impl UnitAi {
     pub(super) fn trade_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -295,7 +296,7 @@ impl UnitAi {
     pub(super) fn fishing_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -424,7 +425,7 @@ impl UnitAi {
     pub(super) fn building_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,

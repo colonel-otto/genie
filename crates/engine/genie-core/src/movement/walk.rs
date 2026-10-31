@@ -11,6 +11,7 @@ use crate::movement::{
 };
 use crate::objects::ObjectKey;
 use crate::players::PlayerId;
+use crate::world::WorldTime;
 use crate::{GenieError, math::fmath};
 
 impl Mover {
@@ -48,8 +49,8 @@ impl Mover {
                 continue;
             };
             let outranks = if player == PlayerId::GAIA || other.player != PlayerId::GAIA {
-                let mine = world.gait(me.id).map_or(0, |g| g.human_order);
-                let theirs = world.gait(id).map_or(0, |g| g.human_order);
+                let mine = world.gait(me.id).map_or(WorldTime::ZERO, |g| g.human_order);
+                let theirs = world.gait(id).map_or(WorldTime::ZERO, |g| g.human_order);
                 if !computer && (other.player != player || theirs != mine) {
                     theirs < mine
                 } else {

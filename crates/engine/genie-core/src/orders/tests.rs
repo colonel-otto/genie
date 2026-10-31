@@ -52,10 +52,10 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
         ..Unit::default()
     };
     let t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             crate::world::Player {
                 objects: vec![unit(object_id(1)), unit(object_id(2))].into(),
@@ -117,10 +117,10 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         ..Unit::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0],
+        vec![Millis::ZERO],
         vec![crate::world::Player {
             objects: vec![goose].into(),
             ..crate::world::Player::default()
@@ -302,10 +302,10 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     };
     let world = || {
         let mut t = World::new(
-            0,
+            WorldTime::ZERO,
             1,
             PlayerId::new(0),
-            vec![0],
+            vec![Millis::ZERO],
             vec![crate::world::Player {
                 objects: vec![villager.clone(), foundation.clone(), mill.clone()].into(),
                 ..crate::world::Player::default()
@@ -515,7 +515,7 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
         true,
     )
     .unwrap();
-    t.world_time = 3500;
+    t.world_time = WorldTime::from_millis(3500);
     assert_eq!(
         t.keep_attack(
             PlayerId::new(1),
@@ -544,7 +544,7 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
             .as_ref()
             .map(|a| a.last_retarget_time)
     };
-    assert_ne!(ai(&t), Some(3500));
+    assert_ne!(ai(&t), Some(WorldTime::from_millis(3500)));
     assert_eq!(
         t.keep_attack(
             PlayerId::new(1),
@@ -556,7 +556,7 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
         ),
         Ok(true)
     );
-    assert_eq!(ai(&t), Some(3500));
+    assert_eq!(ai(&t), Some(WorldTime::from_millis(3500)));
 }
 
 /// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
@@ -614,7 +614,7 @@ fn an_attack_task_aims_at_its_target_or_an_annex_s_main_building() {
 fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     let (mut t, _) = work_attack(UnitStance::AGGRESSIVE);
     annexed(&mut t);
-    t.world_time = 1730;
+    t.world_time = WorldTime::from_millis(1730);
     let aim = t.attack_aim(object_id(61)).unwrap();
     t.attack_notifies(
         PlayerId::new(1),
@@ -639,7 +639,11 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     );
     assert_eq!(
         (ai.last_target, ai.last_target_class, ai.last_retarget_time),
-        (Some(object_id(60)), class_of(3), 1730)
+        (
+            Some(object_id(60)),
+            class_of(3),
+            WorldTime::from_millis(1730)
+        )
     );
     let record = ai.order_history.last().expect("the order history");
     assert_eq!(
@@ -647,7 +651,7 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
         (
             Some(OrderKind::Attack),
             Some(ActionKind::Attack),
-            1730,
+            WorldTime::from_millis(1730),
             Some(object_id(61))
         )
     );
@@ -889,10 +893,10 @@ fn soldiers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
         })
         .collect();
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![
             crate::world::Player::default(),
             crate::world::Player {
@@ -1170,8 +1174,8 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
     };
     t.players[1].objects[ListIndex::new(0)].ai = Some(crate::unit_ai::UnitAi {
         orders: vec![order],
-        idle_timer: 5,
-        adjusted_idle_timeout: 300,
+        idle_timer: Millis::new(5),
+        adjusted_idle_timeout: Millis::new(300),
         ..crate::unit_ai::UnitAi::default()
     });
     let ai = t.players[1].objects[ListIndex::new(0)].ai.clone();
@@ -1187,7 +1191,7 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
     t.stop_command(player_id(1), &object_ids([11, 12, 99, 30, 40]))
         .unwrap();
     let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
-    assert_eq!((ai.orders.len(), ai.idle_timer), (0, 300));
+    assert_eq!((ai.orders.len(), ai.idle_timer), (0, Millis::new(300)));
     assert_eq!(t.players[1].objects[ListIndex::new(0)].group.id, None);
     assert_eq!(t.players[1].objects[ListIndex::new(1)].group.id, None);
     assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
@@ -1210,7 +1214,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     let mut t = soldiers(&[(11, 83, Point::new(20.0, 20.0))], &[]);
     t.settings.cheats_enabled = true;
     t.players.push(crate::world::Player::default());
-    t.player_time.push(0);
+    t.player_time.push(Millis::ZERO);
     t.masters.push(crate::objects::masters::Masters::new([]));
     let walker = crate::gathering::hunt::tests::walker();
     if let Some(m) = t.masters[1].get_mut(ids::VILLAGER_MALE) {
@@ -1367,7 +1371,7 @@ fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
 fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     let units = [(11, 4, Point::new(20.0, 20.0))];
     let mut t = soldiers(&units, &[]);
-    t.world_time = 400;
+    t.world_time = WorldTime::from_millis(400);
     t.players.push(crate::world::Player::default());
     t.masters.push(crate::objects::masters::Masters::new([]));
     t.masters[1] = crate::objects::masters::Masters::new([
@@ -1398,13 +1402,13 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
         (b.gate.unwrap().locked, b.body.mover().unwrap().last_move)
     };
     t.gate(player_id(1), object_id(50)).unwrap();
-    assert_eq!(building(&t), (true, 401));
-    t.world_time = 500;
+    assert_eq!(building(&t), (true, WorldTime::from_millis(401)));
+    t.world_time = WorldTime::from_millis(500);
     t.gate(player_id(2), object_id(50)).unwrap();
-    assert_eq!(building(&t), (true, 401));
+    assert_eq!(building(&t), (true, WorldTime::from_millis(401)));
     t.settings.cheats_enabled = true;
     t.gate(player_id(2), object_id(50)).unwrap();
-    assert_eq!(building(&t), (false, 401));
+    assert_eq!(building(&t), (false, WorldTime::from_millis(401)));
     t.gate(player_id(1), object_id(11)).unwrap();
     t.gate(player_id(1), object_id(99)).unwrap();
     assert_eq!(t.players[1].objects[ListIndex::new(0)].gate, None);
@@ -3140,10 +3144,10 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
         ..crate::world::Player::default()
     };
     let mut t = World::new(
-        0,
+        WorldTime::ZERO,
         1,
         PlayerId::new(0),
-        vec![0, 0, 0],
+        vec![Millis::ZERO, Millis::ZERO, Millis::ZERO],
         vec![
             player(vec![].into(), relation_row([0, 3, 3])),
             player(
@@ -3401,11 +3405,11 @@ fn a_point_off_the_map_stays_inside_its_edge() {
 /// count), the world's dt more for each six after.
 #[test]
 fn a_patrol_staggers_its_units_timeouts_by_sixes() {
-    assert_eq!(patrol_timeout(0, 100), 750);
-    assert_eq!(patrol_timeout(5, 100), 750);
-    assert_eq!(patrol_timeout(6, 100), 850);
-    assert_eq!(patrol_timeout(13, 33), 816);
-    assert_eq!(patrol_timeout(499, 0), 750);
+    assert_eq!(patrol_timeout(0, Millis::new(100)), Millis::new(750));
+    assert_eq!(patrol_timeout(5, Millis::new(100)), Millis::new(750));
+    assert_eq!(patrol_timeout(6, Millis::new(100)), Millis::new(850));
+    assert_eq!(patrol_timeout(13, Millis::new(33)), Millis::new(816));
+    assert_eq!(patrol_timeout(499, Millis::ZERO), Millis::new(750));
 }
 
 /// `FUN_14161b970`'s filter: a waypoint less than a tile from the last one kept on both x
@@ -3438,7 +3442,7 @@ fn a_patrol_passes_over_a_waypoint_within_a_tile_of_the_last() {
 /// world dt of 100 ms.
 fn patrollers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
     let mut t = soldiers(units, members);
-    t.dt = 100;
+    t.dt = Millis::new(100);
     for u in &mut t.players[1].objects {
         u.body
             .put_mover(Some(crate::gathering::hunt::tests::walker()));
@@ -3448,9 +3452,9 @@ fn patrollers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
             current_action: None,
             current_target: None,
             target_class: None,
-            idle_timer: 400,
-            adjusted_idle_timeout: 2000,
-            secondary_timer: 3000,
+            idle_timer: Millis::new(400),
+            adjusted_idle_timeout: Millis::new(2000),
+            secondary_timer: Millis::new(3000),
             patrol_path: Some(crate::unit_ai::PatrolPath::default()),
             patrol_waypoint: 2,
             ..crate::unit_ai::UnitAi::default()
@@ -3589,7 +3593,7 @@ fn a_lone_unit_patrols_to_its_waypoint() {
     );
     assert_eq!(
         (ai.idle_timer, ai.adjusted_idle_timeout, ai.secondary_timer),
-        (0, 750, 750)
+        (Millis::ZERO, Millis::new(750), Millis::new(750))
     );
     assert_eq!((ai.patrol_path.is_none(), ai.patrol_waypoint), (true, 0));
     assert_eq!(t.groups.commands, 1);
@@ -3675,7 +3679,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
         .ai
         .as_mut()
         .unwrap()
-        .idle_timeout = 3000;
+        .idle_timeout = Millis::new(3000);
     t.attack_move(
         player_id(1),
         &object_ids([11]),
@@ -3699,7 +3703,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
     );
     assert_eq!(
         (ai.idle_timer, ai.adjusted_idle_timeout, ai.secondary_timer),
-        (0, 750, 750)
+        (Millis::ZERO, Millis::new(750), Millis::new(750))
     );
     assert!(ai.patrol_path.is_none());
     // unforced: the MoveTo to the same point stands
@@ -3760,7 +3764,7 @@ fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
             .ai
             .as_mut()
             .unwrap()
-            .idle_timeout = 3000;
+            .idle_timeout = Millis::new(3000);
         t
     };
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))]);
@@ -3998,7 +4002,7 @@ fn an_attack_moving_group_holds_its_path_to_the_last_waypoint() {
     };
     let mut t = two_patrollers();
     for u in &mut t.players[1].objects {
-        u.ai.as_mut().unwrap().idle_timeout = 3000;
+        u.ai.as_mut().unwrap().idle_timeout = Millis::new(3000);
     }
     t.attack_move(
         player_id(1),
@@ -4051,7 +4055,7 @@ fn a_patrolling_group_walks_a_loop_through_its_waypoints() {
     let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
     assert_eq!(
         (ai.adjusted_idle_timeout, ai.patrol_path.is_none()),
-        (750, true)
+        (Millis::new(750), true)
     );
 }
 

@@ -13,6 +13,7 @@ use crate::unit_ai::{
     BREAK, DEAD, Effect, GO_ON, LION_ATTACKED_TIMEOUT, Notify, PACKED_UNIT_CLASS, Surroundings,
     UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, back_up, dodges,
 };
+use crate::world::Millis;
 
 impl UnitAi {
     /// The hunted animal's handler (`TribeHuntedAnimalUnitAIModule`, `FUN_140c26420`): its
@@ -21,7 +22,7 @@ impl UnitAi {
     pub(super) fn hunted_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -42,7 +43,7 @@ impl UnitAi {
     pub(super) fn boar_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -52,7 +53,7 @@ impl UnitAi {
             NotifyKind::DAMAGED => self.boar_damaged(n, time, at, ai_rng, side),
             NotifyKind::ACTION_COMPLETED => {
                 if self.current_action == Some(ActionKind::MoveAside) {
-                    self.idle_timeout = self.adjusted_idle_timeout.wrapping_add(1);
+                    self.idle_timeout = self.adjusted_idle_timeout.wrapping_add(Millis::new(1));
                     self.remove_target();
                     if let Some(home) = self.home.as_mut() {
                         home.go_home = true;
@@ -72,7 +73,7 @@ impl UnitAi {
     pub(super) fn lion_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -102,7 +103,7 @@ impl UnitAi {
     pub(super) fn lion_target_moved(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -154,7 +155,7 @@ impl UnitAi {
     pub(super) fn villager_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -262,7 +263,7 @@ impl UnitAi {
     pub(super) fn transport_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -282,7 +283,7 @@ impl UnitAi {
     pub(super) fn trader_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -303,7 +304,7 @@ impl UnitAi {
     pub(super) fn fishing_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -328,7 +329,7 @@ impl UnitAi {
     pub(super) fn siege_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -356,7 +357,7 @@ impl UnitAi {
     pub(super) fn packed_damaged(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -380,7 +381,7 @@ impl UnitAi {
     pub(super) fn soldier_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -403,7 +404,7 @@ impl UnitAi {
     pub(super) fn tower_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -447,7 +448,7 @@ impl UnitAi {
     pub(super) fn building_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -479,7 +480,7 @@ impl UnitAi {
     pub(super) fn livestock_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,

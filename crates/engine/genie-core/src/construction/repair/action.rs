@@ -14,7 +14,6 @@ use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::{Me, footprint_gap};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -212,7 +211,7 @@ impl RepairAction {
         repairer: &mut Unit,
         reads: &RepairReads,
     ) -> Result<(), GenieError> {
-        self.timer -= seconds(c.dt);
+        self.timer -= c.dt.seconds();
         if crate::math::fmath::below_or_unordered(0.0, self.timer) {
             return Ok(());
         }
@@ -374,7 +373,7 @@ impl RepairAction {
             self.point = t.position;
         }
         let repairers = reads.counted_in.map(|(_, n)| n);
-        let amount = work_amount(reads.rate, self.task.work_value, seconds(c.dt), repairers);
+        let amount = work_amount(reads.rate, self.task.work_value, c.dt.seconds(), repairers);
         let (answer, kind) = crate::construction::repair::repair_target(c, self.target, amount)?;
         match answer {
             1 => {

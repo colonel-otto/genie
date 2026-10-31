@@ -12,6 +12,7 @@ use crate::unit_ai::{
     ARTIFACT_AI, ARTIFACT_CARED, Effect, FISHING_AI, GO_ON, Memory, Notify, Pick, SIEGE_AI,
     SIEGE_TOWER_AI, Search, Surroundings, TRADE_AI, UnitAi, UnitSide, search_radius,
 };
+use crate::world::Millis;
 
 impl UnitAi {
     /// Slot 0x238 per factory type: each type's handler (`type_notifies.rs`), most of which pass
@@ -19,7 +20,7 @@ impl UnitAi {
     pub(super) fn handle(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -60,7 +61,7 @@ impl UnitAi {
     pub(super) fn artifact_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,
@@ -159,7 +160,7 @@ impl UnitAi {
         if self.artifact_idle(at, side, rng)? {
             self.remove_target();
             self.stop_current(true, at, side, rng)?;
-            self.idle_timer = 0;
+            self.idle_timer = Millis::ZERO;
         }
         Ok(())
     }
@@ -171,7 +172,7 @@ impl UnitAi {
     pub(super) fn base_notify(
         &mut self,
         n: Notify,
-        time: u32,
+        time: Millis,
         at: &Surroundings,
         computer: bool,
         ai_rng: &mut Well512,

@@ -34,6 +34,7 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 | --- | --- |
 | [`after_step.rs`](after_step.rs) | An object's step and what follows it (`World::step_object`): what its `Step` gathered, applied to the world in the order the game's update makes them. |
 | [`checkpoint.rs`](checkpoint.rs) | The per-player 11-word state block that recorded games checkpoint every N syncs. |
+| [`clock.rs`](clock.rs) | The world's clock in the game's milliseconds: a moment of it (`WorldTime`) and a span (`Millis`). |
 | [`forced.rs`](forced.rs) | The forced replay (dev only): the game's state after a tick (`GameState`) and the step that forces it on the world. |
 | [`lets.rs`](lets.rs) | What an object's update does to the objects its actions take and let go (slots 0x178 and 0x180) and to the building a counted builder leaves: each the world's call where the game makes it (FD-045-D07, D28; `World::take`, `World::release`, `World::leave_builders`), which runs `Lets` on a view of the whole world; the unit AI's side runs them so too, its own AI's notifies held until its call returns (`World::with_lets_for`). |
 | [`mod.rs`](mod.rs) | The world: its state and its tick. |

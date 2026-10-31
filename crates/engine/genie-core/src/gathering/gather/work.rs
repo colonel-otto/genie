@@ -12,7 +12,6 @@ use crate::gathering::hunt::Dropped;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::ObjectState;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
 use crate::objects::unit::Unit;
@@ -112,7 +111,7 @@ impl GatherAction {
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
         let held = &mut unit.life.amount;
-        let work = (r.work_rate * self.task.work_value) * seconds(c.dt);
+        let work = (r.work_rate * self.task.work_value) * c.dt.seconds();
         let take = if work <= target.amount {
             work
         } else {
@@ -177,7 +176,7 @@ impl GatherAction {
         site: Option<crate::gathering::hunt::DropOff>,
     ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
-            self.timer += seconds(c.dt);
+            self.timer += c.dt.seconds();
             if self.timer < 0.0 {
                 return Ok(Dropped::Going);
             }

@@ -6,7 +6,6 @@ use crate::math::rng::Stream;
 use crate::movement::ASIDE;
 use crate::movement::move_to::{MoveTo, Shows};
 use crate::movement::{GroupSpeed, Me};
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{sprite_id, standing};
 use crate::objects::teardown::HeadCode;
@@ -46,7 +45,7 @@ impl Unit {
             let here = mover.position();
             let at = mover.step_velocity(
                 here,
-                seconds(c.dt),
+                c.dt.seconds(),
                 c.w.spatial.map,
                 c.w.spatial.terrain.as_ref(),
                 (c.w.world_time, group),

@@ -23,6 +23,7 @@ use crate::GenieError;
 use crate::math::conversions::{cvttss2si, cvttss2si_64};
 use crate::math::image::history::{BATTLE_RECORD, BATTLE_START};
 use crate::players::attribute;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// A history event's kind (`event`, `+0x0`): an age reached, a castle or wonder built or
@@ -90,7 +91,7 @@ pub struct Event {
     /// `time_slice` (`+0x4`): the number of entries when it happened.
     pub time_slice: i32,
     /// `world_time` (`+0x8`): the world's time then, in milliseconds.
-    pub world_time: u32,
+    pub world_time: WorldTime,
     /// `data1` (`+0xc`).
     pub data1: f32,
     /// `data2` (`+0x10`).
@@ -192,7 +193,7 @@ impl History {
         data1: f32,
         data2: f32,
         data3: u8,
-        world_time: u32,
+        world_time: WorldTime,
     ) {
         if self.entries.is_empty() {
             return;
@@ -286,8 +287,8 @@ impl History {
     /// of the event of the player's age (attribute 6 through `CVTTSS2SI`: 1 Feudal, 2 Castle, 3
     /// Imperial) when the history holds one; for another age the world's seconds.
     #[must_use]
-    pub fn age_time(&self, current_age: f32, world_time: u32) -> u32 {
-        let now = world_time / 1000;
+    pub fn age_time(&self, current_age: f32, world_time: WorldTime) -> u32 {
+        let now = world_time.millis() / 1000;
         let kind = match cvttss2si(current_age) {
             1 => EventKind::FEUDAL_AGE,
             2 => EventKind::CASTLE_AGE,
@@ -295,7 +296,7 @@ impl History {
             _ => return now,
         };
         self.event_of_kind(kind)
-            .map_or(now, |e| now.wrapping_sub(e.world_time / 1000))
+            .map_or(now, |e| now.wrapping_sub(e.world_time.millis() / 1000))
     }
 
     /// `update` (`FUN_141569450`), once a game second with the player's `attributes`, the world's
@@ -314,7 +315,7 @@ impl History {
     pub fn update(
         &mut self,
         attributes: &[f32],
-        world_time: u32,
+        world_time: WorldTime,
         period: i32,
     ) -> Result<(), GenieError> {
         self.update_count = self.update_count.wrapping_add(1);
@@ -423,7 +424,7 @@ impl History {
         &mut self,
         attributes: &[f32],
         value: i32,
-        world_time: u32,
+        world_time: WorldTime,
     ) -> Result<(), GenieError> {
         let a = |i: usize| attributes.get(i).copied().unwrap_or(0.0);
         let players = self.old_player_kill_bv.len();
@@ -519,18 +520,36 @@ mod tests {
     #[test]
     fn an_event_needs_an_entry_and_joins_the_head() {
         let mut h = History::default();
-        h.add_event(EventKind::CASTLE_BUILT, 2.0, 0.0, 0, 5000);
+        h.add_event(
+            EventKind::CASTLE_BUILT,
+            2.0,
+            0.0,
+            0,
+            WorldTime::from_millis(5000),
+        );
         assert_eq!(h.events, []);
         h.entries = vec![[0, 0]; 3];
-        h.add_event(EventKind::FEUDAL_AGE, 0.0, 0.0, 0, 5000);
-        h.add_event(EventKind::CASTLE_BUILT, 2.0, 0.5, 7, 9000);
+        h.add_event(
+            EventKind::FEUDAL_AGE,
+            0.0,
+            0.0,
+            0,
+            WorldTime::from_millis(5000),
+        );
+        h.add_event(
+            EventKind::CASTLE_BUILT,
+            2.0,
+            0.5,
+            7,
+            WorldTime::from_millis(9000),
+        );
         assert_eq!(
             h.events,
             vec![
                 Event {
                     kind: EventKind::CASTLE_BUILT,
                     time_slice: 3,
-                    world_time: 9000,
+                    world_time: WorldTime::from_millis(9000),
                     data1: 2.0,
                     data2: 0.5,
                     data3: 7.0,
@@ -538,7 +557,7 @@ mod tests {
                 Event {
                     kind: EventKind::FEUDAL_AGE,
                     time_slice: 3,
-                    world_time: 5000,
+                    world_time: WorldTime::from_millis(5000),
                     ..Event::default()
                 },
             ]
@@ -552,12 +571,12 @@ mod tests {
     fn a_fourth_battle_pushes_out_the_weakest_of_the_newest_three() {
         let mut h = with_entry();
         for d in [0.2, 0.9, 0.3] {
-            h.add_event(EventKind::BATTLE, 1.0, d, 0, 0);
+            h.add_event(EventKind::BATTLE, 1.0, d, 0, WorldTime::ZERO);
         }
         assert_eq!(h.events.len(), 3);
         assert!(h.events.iter().all(|e| e.data3 == 1.0));
         // the newest three are 0.5 (new), 0.3, 0.9: 0.3 lies furthest below
-        h.add_event(EventKind::BATTLE, 1.0, 0.5, 0, 0);
+        h.add_event(EventKind::BATTLE, 1.0, 0.5, 0, WorldTime::ZERO);
         let d: Vec<f32> = h.events.iter().map(|e| e.data2).collect();
         assert_eq!(d, vec![0.5, 0.9, 0.2]);
         // a new battle below the newest three goes itself; 0.2 is fourth and not compared
@@ -568,7 +587,7 @@ mod tests {
                 ..Event::default()
             },
         );
-        h.add_event(EventKind::BATTLE, 1.0, 0.4, 0, 0);
+        h.add_event(EventKind::BATTLE, 1.0, 0.4, 0, WorldTime::ZERO);
         assert_eq!(
             h.events
                 .iter()
@@ -589,7 +608,7 @@ mod tests {
     fn equal_gaps_push_out_the_newer_battle() {
         let mut h = with_entry();
         h.events = vec![battle(0.1), Event::default(), battle(0.1), battle(0.9)];
-        h.add_event(EventKind::BATTLE, 3.0, 0.6, 0, 0);
+        h.add_event(EventKind::BATTLE, 3.0, 0.6, 0, WorldTime::ZERO);
         let d: Vec<f32> = h.events.iter().map(|e| e.data2).collect();
         assert_eq!(d, vec![0.6, 0.0, 0.1, 0.9]);
     }
@@ -603,19 +622,19 @@ mod tests {
                 Event {
                     kind: EventKind::CASTLE_AGE,
                     time_slice: 4,
-                    world_time: 9000,
+                    world_time: WorldTime::from_millis(9000),
                     ..Event::default()
                 },
                 Event {
                     kind: EventKind::FEUDAL_AGE,
                     time_slice: 2,
-                    world_time: 4000,
+                    world_time: WorldTime::from_millis(4000),
                     ..Event::default()
                 },
                 Event {
                     kind: EventKind::FEUDAL_AGE,
                     time_slice: 2,
-                    world_time: 1000,
+                    world_time: WorldTime::from_millis(1000),
                     ..Event::default()
                 },
             ],
@@ -623,7 +642,7 @@ mod tests {
         };
         assert_eq!(
             h.event_of_kind(EventKind::FEUDAL_AGE).map(|e| e.world_time),
-            Some(4000)
+            Some(WorldTime::from_millis(4000))
         );
         assert_eq!(h.event_of_kind(EventKind::IMPERIAL_AGE), None);
         assert_eq!(h.events_at(2), Some((2, 2)));
@@ -637,15 +656,15 @@ mod tests {
         let h = History {
             events: vec![Event {
                 kind: EventKind::CASTLE_AGE,
-                world_time: 600_999,
+                world_time: WorldTime::from_millis(600_999),
                 ..Event::default()
             }],
             ..History::default()
         };
-        assert_eq!(h.age_time(2.0, 900_500), 300);
-        assert_eq!(h.age_time(1.9, 900_500), 900);
-        assert_eq!(h.age_time(3.0, 900_500), 900);
-        assert_eq!(h.age_time(0.0, 900_500), 900);
+        assert_eq!(h.age_time(2.0, WorldTime::from_millis(900_500)), 300);
+        assert_eq!(h.age_time(1.9, WorldTime::from_millis(900_500)), 900);
+        assert_eq!(h.age_time(3.0, WorldTime::from_millis(900_500)), 900);
+        assert_eq!(h.age_time(0.0, WorldTime::from_millis(900_500)), 900);
     }
 
     fn attributes() -> Vec<f32> {
@@ -669,9 +688,9 @@ mod tests {
         a[attribute::BUILDINGS_VALUE.index()] = 900.7;
         a[KILL_VALUE_OF + 2] = 45.0;
         a[RAZING_VALUE_OF + 1] = 5_000_000_000.0;
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!((h.update_count, h.entries.len()), (29, 0));
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!((h.update_count, h.entries.clone()), (0, vec![[12, 3]]));
         assert_eq!(
             (h.old_total_kills, h.old_current_build_value_buildings),
@@ -683,7 +702,7 @@ mod tests {
         // a negative population sum gives an entry of zeros
         a[attribute::MILITARY_POPULATION.index()] = -13.0;
         h.update_count = 29;
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!(h.entries[1], [0, 0]);
     }
 
@@ -713,7 +732,7 @@ mod tests {
         a[KILL_VALUE_OF + 2] = 40.0;
         a[RAZING_VALUE_OF + 2] = 20_000.0;
         // (30 + 100) / 1000: the battle starts; all four: 160 / 1000
-        h.update(&a, 30_000, 30).unwrap();
+        h.update(&a, WorldTime::from_millis(30_000), 30).unwrap();
         assert_eq!(h.battle_flag, 1);
         assert_eq!(
             (h.running_total_bv_kills, h.running_total_bv_razings),
@@ -729,7 +748,7 @@ mod tests {
         // nothing more: the share falls to 0, the battle ends with its event; player 2's
         // 20000 / 1000 + 40 outweighs player 1's 50
         h.update_count = 29;
-        h.update(&a, 60_000, 30).unwrap();
+        h.update(&a, WorldTime::from_millis(60_000), 30).unwrap();
         assert_eq!(h.battle_flag, 0);
         assert_eq!(h.running_ave_bv_percent, 0.0);
         assert_eq!(
@@ -737,7 +756,7 @@ mod tests {
             vec![Event {
                 kind: EventKind::BATTLE,
                 time_slice: 2,
-                world_time: 60_000,
+                world_time: WorldTime::from_millis(60_000),
                 data1: 2.0,
                 data2: 160.0 / 1000.0,
                 data3: 1.0,
@@ -763,17 +782,17 @@ mod tests {
         let mut a = attributes();
         a[attribute::UNITS_VALUE.index()] = 1000.0;
         a[attribute::KILLS_VALUE.index()] = 130.0;
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!(h.battle_flag, 2);
         h.update_count = 29;
         h.running_ave_bv_percent = 0.149_999;
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!((h.battle_flag, h.events.len()), (0, 0));
         // a NaN sum fails the record's COMISD (JC): no event either
         h.update_count = 29;
         h.battle_flag = 1;
         h.running_ave_bv_percent = f32::NAN;
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!((h.battle_flag, h.events.len()), (0, 0));
         assert_eq!(h.running_ave_bv_percent, 0.0);
     }
@@ -790,7 +809,7 @@ mod tests {
         let mut a = attributes();
         a[attribute::UNITS_VALUE.index()] = 1000.0;
         a[attribute::KILLS_VALUE.index()] = 120.0;
-        h.update(&a, 0, 30).unwrap();
+        h.update(&a, WorldTime::ZERO, 30).unwrap();
         assert_eq!(h.battle_flag, 0);
     }
 }

@@ -13,6 +13,8 @@ use crate::unit_ai::{
     ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
 };
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// What slot 73 does for a factory type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,11 +67,11 @@ pub(super) const fn retarget_kind(ai_type: UnitAiType) -> Result<Retarget, Genie
 }
 
 /// The base idle timeout (`+0x168`) the constructor sets; the adjusted one is drawn around it.
-pub(super) const IDLE_TIMEOUT: u32 = 3000;
+pub(super) const IDLE_TIMEOUT: Millis = Millis::new(3000);
 /// The tower's idle timeout (`FUN_140c12960`'s `FUN_140c41bc0` with 1000).
-pub(super) const TOWER_IDLE_TIMEOUT: u32 = 1000;
+pub(super) const TOWER_IDLE_TIMEOUT: Millis = Millis::new(1000);
 /// The artifact's idle timeout (`FUN_140c11340`'s `FUN_140c41bc0` with 5000).
-pub(super) const ARTIFACT_IDLE_TIMEOUT: u32 = 5000;
+pub(super) const ARTIFACT_IDLE_TIMEOUT: Millis = Millis::new(5000);
 /// The desired target distance (`+0x5c`) the constructor sets.
 pub(super) const DESIRED_DISTANCE: f32 = 2.0;
 
@@ -142,13 +144,13 @@ pub(super) const HUNTED_STEP: i32 = 3;
 pub(super) const HUNTED_SIGHT_GROWTH: f32 = 1.0;
 /// What an idle check lowers the unit's last human order time to (`FUN_140fe0d10`), and below
 /// which the moving object's update counts it down.
-pub const HUMAN_ORDER_CAP: u32 = 5000;
+pub const HUMAN_ORDER_CAP: WorldTime = WorldTime::from_millis(5000);
 /// The master whose idle soldier does nothing (`FUN_140c20db0`, raw `0x635e`).
 pub(super) const SOLDIER_IDLE_MASTER: MasterId = MasterId::named(706);
 /// The lion's idle timeout (`FUN_140c1fb70`, as its constructor `FUN_140c11bd0`).
-pub(super) const LION_IDLE_TIMEOUT: u32 = 6000;
+pub(super) const LION_IDLE_TIMEOUT: Millis = Millis::new(6000);
 /// The lion's idle timeout once its attack completed (`FUN_140c266f0`).
-pub(super) const LION_ATTACKED_TIMEOUT: u32 = 1000;
+pub(super) const LION_ATTACKED_TIMEOUT: Millis = Millis::new(1000);
 /// Outside mode 1 the lion attacks within this share of its line of sight (`FUN_140c1fb70`,
 /// `DAT_142e7f384`).
 pub(super) const LION_SIGHT_SHARE: f32 = crate::math::image::unit_ai::LION_SIGHT_SHARE;
@@ -323,15 +325,15 @@ impl NewObject {
 }
 
 /// The hunted animal's idle timeout (`FUN_140c11920`'s `FUN_140c41bc0` with 4000).
-pub(super) const HUNTED_IDLE_TIMEOUT: u32 = 4000;
+pub(super) const HUNTED_IDLE_TIMEOUT: Millis = Millis::new(4000);
 /// The priest's idle timeout (`FUN_140c11e30`'s `FUN_140c41bc0` with 500).
-pub(super) const PRIEST_IDLE_TIMEOUT: u32 = 500;
+pub(super) const PRIEST_IDLE_TIMEOUT: Millis = Millis::new(500);
 /// The soldier's idle timeout (`FUN_140c12300`'s `FUN_140c41bc0`): 500, a computer player's
 /// 1500.
-pub(super) const SOLDIER_IDLE_TIMEOUT: u32 = 500;
-pub(super) const COMPUTER_SOLDIER_IDLE_TIMEOUT: u32 = 1500;
+pub(super) const SOLDIER_IDLE_TIMEOUT: Millis = Millis::new(500);
+pub(super) const COMPUTER_SOLDIER_IDLE_TIMEOUT: Millis = Millis::new(1500);
 /// The siege unit's idle timeout (`FUN_140c12040`'s `FUN_140c41bc0` with 1000).
-pub(super) const SIEGE_IDLE_TIMEOUT: u32 = 1000;
+pub(super) const SIEGE_IDLE_TIMEOUT: Millis = Millis::new(1000);
 /// The masters whose soldier is defensive (`FUN_140c12300`, raw `0x62ab`, `0x62ac`, `0x64ec`).
 pub(super) const DEFENSIVE_MASTERS: [MasterId; 3] = [
     MasterId::named(527),

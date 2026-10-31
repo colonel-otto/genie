@@ -118,7 +118,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         attributes: &[],
         relations: &[Relation::ALLY, Relation::ALLY, Relation::ALLY],
         ai_settings: crate::world::player::AiSettings::default(),
-        now: 0,
+        now: WorldTime::ZERO,
         mode_680: 0,
     };
     picker.harmless(&spatial, object_id(50)).unwrap()
@@ -228,7 +228,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         attributes: &[],
         relations: &[Relation::ALLY, Relation::ALLY, Relation::ALLY],
         ai_settings: crate::world::player::AiSettings::default(),
-        now: 0,
+        now: WorldTime::ZERO,
         mode_680: 0,
     };
     assert_eq!(
@@ -383,7 +383,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         attributes: &[],
         relations: &[Relation::ALLY, Relation::ALLY, Relation::ALLY],
         ai_settings: crate::world::player::AiSettings::default(),
-        now: 0,
+        now: WorldTime::ZERO,
         mode_680: 0,
     };
     let c = picker

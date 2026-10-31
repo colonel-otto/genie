@@ -12,6 +12,8 @@ use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::test_ids::object_id;
+use crate::world::Millis;
+use crate::world::WorldTime;
 
 /// Slot 0x280 (`FUN_141082d60`) passes only a target id above -1 the world holds: a
 /// recycled object's negative id gives -1 like none.
@@ -34,10 +36,10 @@ fn a_top_target_below_minus_one_is_none() {
         ..Player::default()
     };
     let t = World::new(
-        0,
+        WorldTime::ZERO,
         0,
         PlayerId::new(0),
-        vec![0, 0],
+        vec![Millis::ZERO, Millis::ZERO],
         vec![Player::default(), player],
     );
     assert_eq!(t.top_target_object(&hunter(7)), Some(object_id(7)));
@@ -367,7 +369,7 @@ impl Fixture {
     fn step(&mut self, m: &mut Motion, group: &GroupView, lead: &Lead) -> bool {
         let mut plan = Planning {
             pathing: &mut self.pathing,
-            now: 100,
+            now: WorldTime::from_millis(100),
             computer: false,
             object: &mut self.object,
             construction_rate: 0.0,
@@ -495,7 +497,7 @@ impl Fixture {
     ) -> Option<Pass> {
         let mut plan = Planning {
             pathing: &mut self.pathing,
-            now: 100,
+            now: WorldTime::from_millis(100),
             computer: false,
             object: &mut self.object,
             construction_rate: 0.0,
@@ -619,7 +621,10 @@ fn a_top_level_without_a_planner_plans_the_straight_way() {
         new.points,
         [BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 30.0)]
     );
-    assert_eq!((new.length, new.created), (25.0, 100));
+    assert_eq!(
+        (new.length, new.created),
+        (25.0, WorldTime::from_millis(100))
+    );
     assert_eq!((top.state, top.continue_counter), (PathState::Idle, 10));
 }
 
@@ -639,7 +644,7 @@ fn a_near_waypoint_without_a_way_is_reached_or_arrived_at() {
         fx.request(&mut m, &lead, false, None, f32::MAX),
         Some(Pass::Reached)
     ));
-    m.paths[0].created = 100;
+    m.paths[0].created = WorldTime::from_millis(100);
     m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(
         fx.request(&mut m, &lead, false, None, f32::MAX),
@@ -757,7 +762,14 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
     };
     let last = [Point::new(5.0, 5.0), Point::new(5.0, 9.0)];
     let end = |m: &mut Motion, lead: &Lead, found| {
-        link(m, lead, Path::default(), (found, false), 100).unwrap()
+        link(
+            m,
+            lead,
+            Path::default(),
+            (found, false),
+            WorldTime::from_millis(100),
+        )
+        .unwrap()
     };
     let mut m = at(2, &last, 2);
     assert!(matches!(
@@ -904,7 +916,7 @@ impl Fixture {
     fn pass(&mut self, m: &mut Motion, lead: &Lead) -> Pass {
         let mut plan = Planning {
             pathing: &mut self.pathing,
-            now: 100,
+            now: WorldTime::from_millis(100),
             computer: false,
             object: &mut self.object,
             construction_rate: 0.0,
@@ -1003,7 +1015,7 @@ fn what_stands_in_the_way_stops_the_walk() {
         let mut m = requesting(0, 9.0);
         m.paths[0].state = PathState::Walking;
         m.paths[0].target = target;
-        m.paths[0].created = 50;
+        m.paths[0].created = WorldTime::from_millis(50);
         m
     };
     fx.spatial.insert(object_id(9), placed_at(5.0, 5.3));
@@ -1014,7 +1026,7 @@ fn what_stands_in_the_way_stops_the_walk() {
     fx.spatial.set_gait(
         object_id(8),
         Some(Gait {
-            last_move: 60,
+            last_move: WorldTime::from_millis(60),
             ..Gait::default()
         }),
     );
@@ -1041,7 +1053,7 @@ fn what_stands_in_the_way_stops_the_walk() {
     );
     // one that moved before the level was made: the walk goes on at its top speed
     let mut m = walking(None);
-    m.paths[0].created = 70;
+    m.paths[0].created = WorldTime::from_millis(70);
     m.maximum_velocity_forward = 1.2;
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
     assert_eq!(
@@ -1096,7 +1108,7 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
         };
         let mut plan = Planning {
             pathing: &mut fx.pathing,
-            now: 100,
+            now: WorldTime::from_millis(100),
             computer: false,
             object: &mut fx.object,
             construction_rate: 0.0,

@@ -15,7 +15,6 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::ObjectId;
-use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
@@ -162,7 +161,7 @@ impl Attack {
             self.arms.fire_frame
         };
         if !ranged {
-            self.swing -= seconds(c.dt);
+            self.swing -= c.dt.seconds();
         }
         if fire != 0 && !sprite.reached(fire) {
             return Ok(());

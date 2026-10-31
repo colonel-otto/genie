@@ -11,6 +11,7 @@ use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, BVector};
 use crate::objects::ObjectId;
 use crate::world::World;
+use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
@@ -67,7 +68,7 @@ pub(crate) fn slots_by_place(
     group: &UnitGroup,
     members: &[Option<MemberPlace>],
     user_defined: bool,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<bool, GenieError> {
     let n = group.members.len();
     if n == 0 {
@@ -193,7 +194,7 @@ fn next_statistic(group: &UnitGroup, current: Option<usize>, placed: &mut usize)
 pub(crate) fn phalanx_slots(
     formation: &mut Formation,
     group: &UnitGroup,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<bool, GenieError> {
     let n = group.members.len() as i32;
     if n < 1 {
@@ -455,7 +456,7 @@ pub fn create_lines(formation: &mut Formation) -> Result<(), GenieError> {
 pub(crate) fn box_slots(
     formation: &mut Formation,
     group: &UnitGroup,
-    world_time: u32,
+    world_time: WorldTime,
 ) -> Result<bool, GenieError> {
     if group.members.is_empty() {
         return Ok(false);
@@ -678,7 +679,7 @@ mod tests {
             None,
             Some(place(9, 20.0, 10.0, 3)),
         ];
-        assert!(slots_by_place(&mut f, &g, &members, false, 640).unwrap());
+        assert!(slots_by_place(&mut f, &g, &members, false, WorldTime::from_millis(640)).unwrap());
         assert_eq!(
             (
                 f.kind,
@@ -708,14 +709,14 @@ mod tests {
                 s.active,
                 s.desired_category
             ),
-            (1, 640, 1, 1, 1)
+            (1, WorldTime::from_millis(640), 1, 1, 1)
         );
         assert_eq!(s.desired_sub_category, -1);
         assert_eq!((f.slots[1].unit_id, f.slots[1].active), (None, 0));
         assert_eq!(f.slots[2].offset, BVector::new(5.0, 0.0, 0.0));
         // no members, no layout
         let mut f = Formation::new();
-        assert!(!slots_by_place(&mut f, &group(0, 1.0, &[]), &[], false, 0).unwrap());
+        assert!(!slots_by_place(&mut f, &group(0, 1.0, &[]), &[], false, WorldTime::ZERO).unwrap());
         assert_eq!(f, Formation::new());
     }
 
@@ -730,7 +731,7 @@ mod tests {
             None,
             Some(place(9, 20.0, 10.0, 3)),
         ];
-        assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
+        assert!(slots_by_place(&mut f, &g, &members, true, WorldTime::from_millis(640)).unwrap());
         assert_eq!((f.kind, f.transform_type), (FormationKind::USER_DEFINED, 1));
         let offsets: Vec<BVector> = f.slots.iter().map(|s| s.offset).collect();
         assert_eq!(
@@ -754,7 +755,7 @@ mod tests {
             Some(place(9, 20.0, 10.0, 3)),
             Some(place(7, f32::NAN, 10.0, 1)),
         ];
-        assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
+        assert!(slots_by_place(&mut f, &g, &members, true, WorldTime::from_millis(640)).unwrap());
         // the farthest ahead stays finite, so the finite member's offset moves back by it
         assert!(f.slots[0].offset.x().is_finite(), "{:?}", f.slots[0].offset);
     }
@@ -939,7 +940,7 @@ mod tests {
     #[test]
     fn a_box_of_a_nan_spacing_is_i32_min_wide() {
         let mut f = Formation::new();
-        assert!(box_slots(&mut f, &group(2, f32::NAN, &[(1, 2)]), 0).unwrap());
+        assert!(box_slots(&mut f, &group(2, f32::NAN, &[(1, 2)]), WorldTime::ZERO).unwrap());
         assert_eq!((f.maximum_width, f.maximum_depth), (i32::MIN, i32::MIN));
     }
 
@@ -947,7 +948,7 @@ mod tests {
     fn a_phalanx_grows_by_a_slot_a_line() {
         let g = group(4, 2.0, &[(3, 1), (1, 3)]);
         let mut f = Formation::new();
-        assert!(phalanx_slots(&mut f, &g, 99).unwrap());
+        assert!(phalanx_slots(&mut f, &g, WorldTime::from_millis(99)).unwrap());
         assert_eq!(
             (
                 f.kind,
@@ -981,11 +982,11 @@ mod tests {
         assert!(
             f.slots
                 .iter()
-                .all(|s| (s.unit_id, s.active, s.time) == (None, 1, 99))
+                .all(|s| (s.unit_id, s.active, s.time) == (None, 1, WorldTime::from_millis(99)))
         );
         // without statistics the slots take no category
         let mut f = Formation::new();
-        assert!(phalanx_slots(&mut f, &group(2, 2.0, &[]), 0).unwrap());
+        assert!(phalanx_slots(&mut f, &group(2, 2.0, &[]), WorldTime::ZERO).unwrap());
         assert!(f.slots.iter().all(|s| s.desired_category == -1));
     }
 
@@ -1119,7 +1120,7 @@ mod tests {
     fn a_box_rings_its_categories_from_the_middle_out() {
         let g = group(4, 2.0, &[(1, 3), (5, 1)]);
         let mut f = Formation::new();
-        assert!(box_slots(&mut f, &g, 5).unwrap());
+        assert!(box_slots(&mut f, &g, WorldTime::from_millis(5)).unwrap());
         assert_eq!(
             (f.kind, f.transform_type, f.maximum_width, f.maximum_depth),
             (FormationKind::BOX, 1, 4, 4)
@@ -1143,6 +1144,6 @@ mod tests {
         assert_eq!(f.number_lines, 3);
         // more than the buffer holds of one category
         let g = group(61, 2.0, &[(1, 61)]);
-        assert!(box_slots(&mut Formation::new(), &g, 5).is_err());
+        assert!(box_slots(&mut Formation::new(), &g, WorldTime::from_millis(5)).is_err());
     }
 }
