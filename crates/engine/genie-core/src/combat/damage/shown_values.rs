@@ -80,10 +80,10 @@ pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
         .filter(|t| t.action_type == BONUS_DAMAGE)
     {
         let any = t.object_id.is_none()
-            && t.object_group == -1
+            && t.object_group.is_none()
             && (matches!(target.class, class::CLASS_51 | class::CLASS_54)
                 || target.kind < BUILDING);
-        if !(any || t.object_id == Some(target.master_id) || t.object_group == target.class.get()) {
+        if !(any || t.object_id == Some(target.master_id) || t.for_class(target.class)) {
             continue;
         }
         let whose = if fmath::at_most_or_unordered(t.work_range, 0.0) {

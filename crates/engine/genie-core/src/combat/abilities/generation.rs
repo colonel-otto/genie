@@ -64,7 +64,7 @@ pub fn generates(
         && top.state == WORKING
         && let Some(t) = top.target
         && (0.0 < t.hp || 0.0 < t.storage)
-        && t.class.get() == task.object_group
+        && task.for_class(t.class)
     {
         return true;
     }

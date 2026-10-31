@@ -47,7 +47,7 @@ use crate::world::Player;
 pub(crate) fn enter_task(range: f32, class: ClassId) -> Task {
     Task {
         work_range: range,
-        object_group: class.get(),
+        object_group: Some(class),
         ..Task::default()
     }
 }
@@ -61,7 +61,7 @@ const GATE: MasterId = MasterId::named(88);
 fn task(action_type: ActionType, object_group: i16) -> Task {
     Task {
         action_type,
-        object_group,
+        object_group: class_of(object_group),
         ..Task::default()
     }
 }
@@ -2646,7 +2646,7 @@ fn transport_task_world() -> (World, usize) {
             s.tasks.push(Task {
                 id: TaskId::test(7),
                 action_type: transport::TRANSPORT,
-                object_group: -1,
+                object_group: None,
                 object_id: None,
                 terrain: 0,
                 ..Task::default()

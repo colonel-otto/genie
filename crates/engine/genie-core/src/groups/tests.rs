@@ -10,6 +10,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{ClassId, class};
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::unit::Unit;
+use crate::test_ids::class_id;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -986,7 +987,7 @@ fn attack_task() -> crate::objects::masters::Task {
     crate::objects::masters::Task {
         action_type: crate::objects::masters::action_type::COMBAT,
         owner_type: 2,
-        object_group: 3,
+        object_group: Some(class_id(3)),
         work_range: 1.5,
         ..crate::objects::masters::Task::default()
     }

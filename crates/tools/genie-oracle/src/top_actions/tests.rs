@@ -3,6 +3,7 @@
 use crate::OTHER_SUB_ACTION;
 use crate::fixtures::{action_list, combat_master, combat_mut, combat_object, with_masters};
 use crate::test_ids::action_type;
+use crate::test_ids::class_id;
 use crate::test_ids::object_id;
 use crate::top_actions::saved_actions;
 use genie_core::GenieError;
@@ -29,7 +30,7 @@ fn task(id: i16, range: f32) -> Task {
     Task {
         id: TaskId::of_task(id),
         action_type: action_type(0),
-        object_group: 3,
+        object_group: Some(class_id(3)),
         object_id: None,
         combat_level: 0,
         combat_level_flag: 0,
@@ -953,7 +954,7 @@ fn an_enter_takes_its_task_and_retry() {
     let m = e.move_to.unwrap();
     assert_eq!(
         (e.state, m.state, m.quiet, e.task_class),
-        (DONE, MoveTo::Moving, true, 3)
+        (DONE, MoveTo::Moving, true, Some(class_id(3)))
     );
     assert!(e.retry);
     assert_eq!((e.range.to_bits(), m.wait.state), (2.0_f32.to_bits(), 2));

@@ -12,6 +12,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::class_id;
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -26,7 +27,7 @@ fn task(action_type: ActionType) -> Task {
 /// The Feitoria's first task (1021, task 0): food from attribute 205 at 1.6 a second.
 fn feitoria_food() -> Task {
     Task {
-        object_group: -1,
+        object_group: None,
         attribute_type2: Some(AttributeId::numbered(205)),
         attribute_type3: Some(attribute::FOOD),
         work_val1: 1.6,
@@ -38,7 +39,7 @@ fn feitoria_food() -> Task {
 /// The Keshik's task 5 (1228): gold from attribute 213 at 0.01 while it fights class 0.
 fn keshik_gold() -> Task {
     Task {
-        object_group: 0,
+        object_group: Some(class_id(0)),
         attribute_type2: Some(AttributeId::numbered(213)),
         attribute_type3: Some(attribute::GOLD),
         work_val1: 0.01,

@@ -263,7 +263,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     let task = |object_group: i16, object_id: Option<MasterId>, range: f32, lacking: i16| {
         crate::objects::masters::Task {
             action_type: BONUS_DAMAGE,
-            object_group,
+            object_group: crate::test_ids::class_of(object_group),
             object_id,
             work_range: range,
             attribute_type4: AttributeId::of_data(lacking),

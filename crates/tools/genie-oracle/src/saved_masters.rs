@@ -131,7 +131,7 @@ pub(super) fn core_task(
     Ok(genie_core::objects::masters::Task {
         id: genie_core::objects::masters::TaskId::of_task(t.id),
         action_type: ActionType::try_from(t.action_type)?,
-        object_group: t.object_group,
+        object_group: ClassId::of_field(t.object_group)?,
         object_id: MasterId::of_data(t.object_id),
         combat_level: t.combat_level,
         combat_level_flag: t.combat_level_flag,

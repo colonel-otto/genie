@@ -352,7 +352,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
         },
         crate::objects::masters::Task {
             action_type: crate::objects::masters::action_type::CONVERT,
-            object_group: 3,
+            object_group: Some(class_id(3)),
             attribute_type4: Some(AttributeId::numbered(28)),
             ..crate::objects::masters::Task::default()
         },

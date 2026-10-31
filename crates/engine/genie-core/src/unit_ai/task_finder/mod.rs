@@ -335,9 +335,7 @@ fn general<'m>(
         }) {
             return Some(task);
         }
-        if let Some(task) = first(list, |task| {
-            task.object_group == t.master.class.get() && usable(task)
-        }) {
+        if let Some(task) = first(list, |task| task.for_class(t.master.class) && usable(task)) {
             return Some(task);
         }
     }
@@ -562,7 +560,7 @@ fn finder_tail<'m>(
     {
         return Ok(first(list, |task| {
             task.action_type == crate::gathering::hunt::HUNT
-                && (task.object_group == class::LIVESTOCK.get() || inside)
+                && (task.for_class(class::LIVESTOCK) || inside)
                 && wanted(filter, task)
         }));
     }
@@ -598,7 +596,7 @@ mod tests {
     fn task(action_type: ActionType, object_group: i16, object_id: i16, work_val1: f32) -> Task {
         Task {
             action_type,
-            object_group,
+            object_group: crate::test_ids::class_of(object_group),
             object_id: crate::test_ids::opt_master(object_id),
             work_val1,
             ..Task::default()

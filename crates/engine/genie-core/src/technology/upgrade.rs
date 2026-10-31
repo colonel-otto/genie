@@ -685,6 +685,7 @@ mod tests {
     use crate::players::attribute;
     use crate::players::attribute::AttributeId;
     use crate::test_ids::carrying;
+    use crate::test_ids::class_id;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
@@ -1041,25 +1042,29 @@ mod tests {
         t.gather_command(PlayerId::new(1), 0, object_id(600))
             .unwrap();
         let mut old = t.masters[1].get(master_id(120)).unwrap().clone();
-        old.tasks
-            .push(task(TaskId::test(3), action_type::BUILD, 3, 0.25));
-        let make = task(TaskId::test(4), crate::gathering::make::MAKE, -1, 0.0);
+        old.tasks.push(task(
+            TaskId::test(3),
+            action_type::BUILD,
+            Some(class_id(3)),
+            0.25,
+        ));
+        let make = task(TaskId::test(4), crate::gathering::make::MAKE, None, 0.0);
         let waiting = task(
             TaskId::test(9),
             crate::construction::wait_solidify::WAIT_SOLIDIFY,
-            3,
+            Some(class_id(3)),
             0.0,
         );
         let new = Master {
             id: master_id(121),
             tasks: vec![
-                task(TaskId::test(5), GATHER, 7, 0.5),
-                task(TaskId::test(6), GATHER, 7, 0.75),
+                task(TaskId::test(5), GATHER, Some(class_id(7)), 0.5),
+                task(TaskId::test(6), GATHER, Some(class_id(7)), 0.75),
                 Task {
                     sprites: [12, -1, -1, -1],
-                    ..task(TaskId::test(7), action_type::BUILD, 3, 1.5)
+                    ..task(TaskId::test(7), action_type::BUILD, Some(class_id(3)), 1.5)
                 },
-                task(TaskId::test(8), crate::gathering::make::MAKE, -1, 2.0),
+                task(TaskId::test(8), crate::gathering::make::MAKE, None, 2.0),
             ],
             ..old.clone()
         };

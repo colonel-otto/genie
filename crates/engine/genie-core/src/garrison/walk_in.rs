@@ -15,6 +15,7 @@ use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ActionType;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
@@ -71,8 +72,8 @@ pub struct EnterAction {
     pub timer: f32,
     /// `+0x68`, 1 at first: a `MoveTo` that fails (code 3) asks once more.
     pub retry: bool,
-    /// `+0x6c`: the task's class (its `+0x10`).
-    pub task_class: i16,
+    /// `+0x6c`: the task's class (its `+0x10`), none for any.
+    pub task_class: Option<ClassId>,
     /// The task's moving sprite (`+0x40`), which its `MoveTo`s take; None for none.
     pub moving: Option<i16>,
 }

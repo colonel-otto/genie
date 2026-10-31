@@ -123,10 +123,10 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
         .iter()
         .filter(|k| k.action_type == crate::objects::masters::action_type::CONVERT)
     {
-        if k.object_group == -1 && k.object_id.is_none() {
+        if k.object_group.is_none() && k.object_id.is_none() {
             task = Some(k);
         }
-        if k.object_id == Some(t.master) || k.object_group == t.class.get() {
+        if k.object_id == Some(t.master) || k.for_class(t.class) {
             task = Some(k);
             break;
         }

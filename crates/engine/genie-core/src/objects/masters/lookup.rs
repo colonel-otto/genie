@@ -115,12 +115,13 @@ impl Masters {
                 }) else {
                     return Ok(Some((candidate.id, task)));
                 };
-                if by_class.is_none()
-                    && task.object_group == target.master.class.get()
-                    && 0.0 < task.work_val1
+                if by_class.is_none() && task.for_class(target.master.class) && 0.0 < task.work_val1
                 {
                     by_class = Some((candidate.id, task));
-                } else if generic.is_none() && task.object_group == -1 && task.object_id.is_none() {
+                } else if generic.is_none()
+                    && task.object_group.is_none()
+                    && task.object_id.is_none()
+                {
                     generic = Some((candidate.id, task));
                 }
             }

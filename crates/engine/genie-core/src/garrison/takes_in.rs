@@ -85,14 +85,14 @@ pub(super) fn has_garrison_task(tasks: &[Task], action: ActionType, class: Class
     let byte = |v: i16| u16::from(v.to_le_bytes()[0]);
     tasks.iter().any(|t| {
         t.action_type.get().cast_unsigned() == byte(action.get())
-            && t.object_group.cast_unsigned() == byte(class.get())
+            && ClassId::field(t.object_group).cast_unsigned() == byte(class.get())
     })
 }
 
 /// A garrison task (action type 3) on buildings (class 3).
 #[must_use]
 pub fn is_garrison_task(task: &Task) -> bool {
-    task.action_type == GARRISON && task.object_group == class::BUILDING.get()
+    task.action_type == GARRISON && task.object_group == Some(class::BUILDING)
 }
 
 impl World {

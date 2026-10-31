@@ -46,8 +46,8 @@ pub struct Task {
     pub id: TaskId,
     /// `+0xe`: the action the task makes the unit do.
     pub action_type: ActionType,
-    /// `+0x10`: the target class the task is for, -1 for any.
-    pub object_group: i16,
+    /// `+0x10`: the target class the task is for, none (−1) for any.
+    pub object_group: Option<ClassId>,
     /// `+0x12`: the target master, -1 for any.
     pub object_id: Option<MasterId>,
     /// `+0x14`, `combat_level` (`enable_targeting`): the task is for a target's combat level.
@@ -94,13 +94,22 @@ pub struct Task {
     pub sound_events: [i32; 2],
 }
 
+impl Task {
+    /// The task is for objects of class `class`: the game compares its `+0x10` short with the
+    /// class, so a task for any class (−1) is for a class of −1 too.
+    #[must_use]
+    pub const fn for_class(&self, class: ClassId) -> bool {
+        ClassId::field(self.object_group) == class.get()
+    }
+}
+
 /// A task for any target, with no resource, terrain or requirement.
 impl Default for Task {
     fn default() -> Self {
         Self {
             id: TaskId::default(),
             action_type: ActionType::default(),
-            object_group: -1,
+            object_group: None,
             object_id: None,
             combat_level: 0,
             combat_level_flag: 0,

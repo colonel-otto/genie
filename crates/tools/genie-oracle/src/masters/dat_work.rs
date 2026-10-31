@@ -56,7 +56,7 @@ fn dat_task(
     Ok(work::Task {
         id: genie_core::objects::masters::TaskId::of_task(t.id),
         action_type: ActionType::try_from(t.action_type)?,
-        object_group: t.class_id,
+        object_group: genie_core::objects::masters::ClassId::of_field(t.class_id)?,
         object_id: MasterId::of_data(t.unit_id),
         combat_level: t.enable_targeting,
         combat_level_flag: t.combat_level_flag,

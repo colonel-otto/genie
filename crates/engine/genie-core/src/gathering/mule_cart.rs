@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::ObjectId;
 use crate::objects::masters::GatherGroup;
+use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
@@ -104,16 +105,16 @@ impl World {
         }
         let master = self.players.live(p, idx)?.master(&self.masters, p)?;
         let mut kinds = Vec::new();
-        let mut class = -1;
+        let mut cart_class = None;
         for t in &master.tasks {
             if t.action_type == crate::construction::build::CART_TASK {
-                class = t.object_group;
+                cart_class = t.object_group;
             }
-            let kind = match class {
-                7 => GatherGroup::FORAGE,
-                8 => GatherGroup::STONE,
-                15 => GatherGroup::WOOD,
-                32 | 63 => GatherGroup::GOLD,
+            let kind = match cart_class {
+                Some(class::CLASS_7) => GatherGroup::FORAGE,
+                Some(class::CLASS_8) => GatherGroup::STONE,
+                Some(class::TREE) => GatherGroup::WOOD,
+                Some(class::CLASS_32 | class::CLASS_63) => GatherGroup::GOLD,
                 _ => continue,
             };
             kinds.push(kind);

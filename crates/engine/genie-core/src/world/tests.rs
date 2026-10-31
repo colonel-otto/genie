@@ -423,14 +423,14 @@ pub(crate) fn builder_masters() -> Masters {
     };
     let base = || {
         vec![
-            task(action_type::COMBAT, -1),
-            task(crate::garrison::ENTER, 3),
+            task(action_type::COMBAT, None),
+            task(crate::garrison::ENTER, Some(class_id(3))),
         ]
     };
     let builder = || {
         vec![
-            task(action_type::BUILD, -1),
-            task(crate::garrison::ENTER, 3),
+            task(action_type::BUILD, None),
+            task(crate::garrison::ENTER, Some(class_id(3))),
         ]
     };
     Masters::new([
@@ -1914,7 +1914,7 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
 fn task(action_type: ActionType) -> crate::objects::masters::Task {
     crate::objects::masters::Task {
         action_type,
-        object_group: -1,
+        object_group: None,
         ..crate::objects::masters::Task::default()
     }
 }
@@ -2626,7 +2626,7 @@ pub(crate) fn forage_world() -> World {
             tasks: vec![crate::objects::masters::Task {
                 id: TaskId::test(2),
                 action_type: crate::gathering::gather::GATHER,
-                object_group: 7,
+                object_group: Some(class_id(7)),
                 attribute_type: Some(AttributeId::numbered(17)),
                 work_range: 0.25,
                 work_val1: 0.31,
@@ -3107,7 +3107,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             .push(crate::objects::masters::Task {
                 id: TaskId::test(3),
                 action_type: crate::gathering::gather::GATHER,
-                object_group: 49,
+                object_group: Some(class_id(49)),
                 attribute_type: Some(attribute::FOOD),
                 work_range: 0.25,
                 ..crate::objects::masters::Task::default()
@@ -3619,7 +3619,7 @@ fn cart_world() -> World {
             moving: Some(crate::gathering::hunt::tests::walker().stats),
             tasks: vec![crate::objects::masters::Task {
                 action_type: crate::construction::build::CART_TASK,
-                object_group: 7,
+                object_group: Some(class_id(7)),
                 ..crate::objects::masters::Task::default()
             }],
             ..Master::default()
@@ -3680,7 +3680,7 @@ fn a_mule_cart_finds_the_nearest_resource_of_its_task_s_class() {
         Ok((Some(object_id(600)), Position::new(32.5, 89.5, 0.0)))
     );
     let mut t = cart_world();
-    t.masters[1].get_mut(ids::MASTER_1808).unwrap().tasks[0].object_group = 99;
+    t.masters[1].get_mut(ids::MASTER_1808).unwrap().tasks[0].object_group = Some(class_id(99));
     assert_eq!(
         t.cart_find(PlayerId::new(1), 3),
         Ok((None, Position::new(24.5, 89.5, 0.0)))
@@ -3962,7 +3962,7 @@ pub(crate) fn hunt_world() -> World {
             drop_sites: vec![ids::TOWN_CENTRE],
             tasks: vec![crate::objects::masters::Task {
                 action_type: crate::gathering::hunt::HUNT,
-                object_group: 9,
+                object_group: Some(class_id(9)),
                 work_range: 0.5,
                 ..crate::objects::masters::Task::default()
             }],
@@ -4586,7 +4586,7 @@ fn shepherd_world(x: f32) -> World {
             .tasks
             .push(crate::objects::masters::Task {
                 action_type: crate::gathering::hunt::HUNT,
-                object_group: 58,
+                object_group: Some(class_id(58)),
                 work_range: 0.5,
                 ..crate::objects::masters::Task::default()
             });
@@ -4712,7 +4712,7 @@ fn lumber_world(near: f32) -> World {
         hunter.line_of_sight = 4.0;
         hunter.tasks.push(crate::objects::masters::Task {
             action_type: crate::gathering::hunt::HUNT,
-            object_group: 15,
+            object_group: Some(class_id(15)),
             work_range: 0.5,
             ..crate::objects::masters::Task::default()
         });
@@ -5492,7 +5492,7 @@ fn livestock_enter_world() -> World {
         tasks: vec![crate::objects::masters::Task {
             id: TaskId::test(1),
             action_type: crate::garrison::ENTER,
-            object_group: 3,
+            object_group: Some(class_id(3)),
             ..crate::objects::masters::Task::default()
         }],
         moving: Some(crate::gathering::hunt::tests::walker().stats),
@@ -6232,7 +6232,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
             id: master_id(122),
             tasks: vec![crate::objects::masters::Task {
                 action_type: crate::gathering::hunt::HUNT,
-                object_group: 9,
+                object_group: Some(class_id(9)),
                 work_range: 0.5,
                 ..crate::objects::masters::Task::default()
             }],
@@ -9203,7 +9203,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             range: 0.0,
             timer: 0.0,
             retry: true,
-            task_class: 0,
+            task_class: Some(class_id(0)),
             moving: None,
         }));
     // a walking villager: an Enter without a MoveTo does not stop it

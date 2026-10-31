@@ -401,7 +401,7 @@ mod tests {
             home: Point::new(78.5, 103.5),
             task: Task {
                 action_type: FLY,
-                object_group: -1,
+                object_group: None,
                 work_val2: 0.0,
                 sprites: [846, 1595, 846, -1],
                 ..Task::default()

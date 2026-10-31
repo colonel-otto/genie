@@ -11,7 +11,7 @@ use crate::test_ids::object_id;
 fn task(action_type: ActionType, object_group: i16, object_id: i16, work_val1: f32) -> Task {
     Task {
         action_type,
-        object_group,
+        object_group: crate::test_ids::class_of(object_group),
         object_id: crate::test_ids::opt_master(object_id),
         work_val1,
         ..Task::default()
@@ -1192,8 +1192,15 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             general: Some(&site),
             terrain: None,
         };
-        m.work_master(&actor, &on, None, &Alone)
-            .map(|w| w.map(|(id, t)| (id.get(), t.object_group, MasterId::field(t.object_id))))
+        m.work_master(&actor, &on, None, &Alone).map(|w| {
+            w.map(|(id, t)| {
+                (
+                    id.get(),
+                    ClassId::field(t.object_group),
+                    MasterId::field(t.object_id),
+                )
+            })
+        })
     };
     let own = |m: &Masters| m.get(ids::VILLAGER_MALE).unwrap().clone();
     let generic = master(master_id(120), 1, vec![gather(-1, -1, 1.0)]);

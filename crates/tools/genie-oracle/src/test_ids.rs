@@ -3,6 +3,7 @@
 use genie_core::groups::GroupId;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ActionType;
+use genie_core::objects::masters::ClassId;
 
 /// The object id `value` (not −1).
 pub(crate) const fn object_id(value: i32) -> ObjectId {
@@ -26,4 +27,9 @@ pub(crate) const fn action_type(value: i16) -> ActionType {
         Some(kind) => kind,
         None => panic!("a test's action type is 0 or more"),
     }
+}
+
+/// The class `value` (0 or more).
+pub(crate) fn class_id(value: i16) -> ClassId {
+    ClassId::try_from(value).expect("a test's class is 0 or more")
 }

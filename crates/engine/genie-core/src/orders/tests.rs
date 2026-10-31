@@ -2754,7 +2754,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
     let mut t = soldiers(&units, &[]);
     let task = |action_type, object_id| crate::objects::masters::Task {
         action_type,
-        object_group: -1,
+        object_group: None,
         object_id,
         work_val1: 1.0,
         ..crate::objects::masters::Task::default()
@@ -4554,7 +4554,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         tasks: vec![crate::objects::masters::Task {
             action_type: action_type::COMBAT,
             owner_type: 2,
-            object_group: class::BUILDING.get(),
+            object_group: Some(class::BUILDING),
             ..crate::objects::masters::Task::default()
         }],
         ..t.masters[1].get(master_id(4)).unwrap().clone()
