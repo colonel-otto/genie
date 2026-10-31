@@ -1,6 +1,7 @@
 //! What the attribute setters share: the caps, the truncations, the sprite and class amounts,
 //! the damage sprites' and train locations' entries.
 
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{DamageGraphic, TrainLocation, attribute};
 
@@ -129,7 +130,7 @@ pub(super) fn handicapped(handicap: Option<f32>, class: i16) -> Option<f32> {
 
 /// The resource a cost attribute names (`FUN_1412661d0`'s 100, 103 to 106): −1 every paid one,
 /// then food, wood, gold (3) and stone (2).
-pub(super) const fn cost_resource(attribute: u8) -> i16 {
+pub(super) const fn cost_resource(attribute: MasterAttribute) -> i16 {
     match attribute {
         attribute::FOOD_COSTS => 0,
         attribute::WOOD_COSTS => 1,

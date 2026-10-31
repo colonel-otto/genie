@@ -1,5 +1,6 @@
 //! The static, animated, moving and action masters' setters.
 
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{
     AttributeWorld, MISSILE_SPEED_CAP, Master, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short,
@@ -9,7 +10,12 @@ use crate::objects::masters::{
 
 impl Master {
     /// `FUN_141126400`, the static master's slot 0x18.
-    pub(super) fn set_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_static(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si_64;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -69,7 +75,7 @@ impl Master {
 
     /// [`Master::set_static`]'s flags and levels (`FUN_141126400`): available, disabled, the
     /// interface kind, the combat level, the interaction and minimap modes.
-    pub(super) fn set_static_level(&mut self, attribute: u8, v: f32) {
+    pub(super) fn set_static_level(&mut self, attribute: MasterAttribute, v: f32) {
         use crate::objects::masters::attribute as a;
         match attribute {
             // the save's byte, which the slice holds as its test against 0
@@ -85,7 +91,12 @@ impl Master {
 
     /// [`Master::set_static`]'s sprites (`FUN_141126400`): standing, second standing, dying and
     /// undead, each a sprite the world's table holds.
-    pub(super) fn set_static_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_static_sprite(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -103,7 +114,12 @@ impl Master {
 
     /// [`Master::set_static`]'s damage sprites (`FUN_141126400`): the selected entry's sprite,
     /// percent and apply mode, the selection (at most the last) and the count.
-    pub(super) fn set_damage_graphic(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_damage_graphic(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -139,7 +155,12 @@ impl Master {
     }
 
     /// `FUN_141126af0`, the static master's slot 0x20.
-    pub(super) fn add_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_static(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si_64;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -187,7 +208,12 @@ impl Master {
 
     /// [`Master::add_static`]'s sprites (`FUN_141126af0`): standing, second standing, dying and
     /// undead, each its id plus the amount ([`add_sprite`]).
-    pub(super) fn add_static_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_static_sprite(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::STANDING_GRAPHIC => add_sprite(&mut self.standing_sprite, v, world),
@@ -204,7 +230,12 @@ impl Master {
 
     /// [`Master::add_static`]'s damage sprites (`FUN_141126af0`): the selected entry's sprite,
     /// percent and apply mode, the selection and the count, each from the selected entry.
-    pub(super) fn add_damage_graphic(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_damage_graphic(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -243,7 +274,12 @@ impl Master {
     }
 
     /// `FUN_1411271e0`, the static master's slot 0x28.
-    pub(super) fn multiply_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_static(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = multiply_short(self.hit_points, v, world.capped),
@@ -292,7 +328,12 @@ impl Master {
     }
 
     /// `FUN_1410a8b00`, the animated master's slot 0x18.
-    pub(super) fn set_animated(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_animated(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         if attribute == attribute::MOVEMENT_SPEED {
             self.max_speed = v;
         } else {
@@ -301,7 +342,12 @@ impl Master {
     }
 
     /// `FUN_1410a8b60`, the animated master's slot 0x20.
-    pub(super) fn add_animated(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_animated(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         if attribute == attribute::MOVEMENT_SPEED {
             self.max_speed += v;
             self.cap_speed(world.capped);
@@ -311,7 +357,12 @@ impl Master {
     }
 
     /// `FUN_1410a8c00`, the animated master's slot 0x28.
-    pub(super) fn multiply_animated(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_animated(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         if attribute == attribute::MOVEMENT_SPEED {
             self.max_speed *= v;
             self.cap_speed(world.capped);
@@ -321,7 +372,12 @@ impl Master {
     }
 
     /// `FUN_1410e1c00`, the moving master's slot 0x18.
-    pub(super) fn set_moving(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_moving(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -336,7 +392,12 @@ impl Master {
     }
 
     /// `FUN_1410e1da0`, the moving master's slot 0x20.
-    pub(super) fn add_moving(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_moving(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed += v,
@@ -353,7 +414,12 @@ impl Master {
     }
 
     /// `FUN_1410e1f60`, the moving master's slot 0x28.
-    pub(super) fn multiply_moving(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_moving(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match attribute {
             attribute::ROTATION_SPEED => self.turn_speed *= v,
             attribute::TRAIL_DENSITY => self.trail.density *= v,
@@ -362,31 +428,49 @@ impl Master {
     }
 
     /// `FUN_14109fbb0`, the action master's slot 0x18.
-    pub(super) fn set_action(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_action(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match attribute {
             attribute::WORK_RATE => self.work_rate = v,
             attribute::SEARCH_RADIUS => self.search_radius = v,
             attribute::RUN_PATTERN => self.run_pattern = low8(v),
             // the command and move sounds (132 to 135) are the interface's
-            attribute::COMMAND_SOUND..=135 => {}
+            attribute::COMMAND_SOUND
+            | attribute::COMMAND_SOUND_EVENT
+            | attribute::MOVE_SOUND
+            | attribute::MOVE_SOUND_EVENT => {}
             _ => self.set_moving(attribute, v, world),
         }
     }
 
     /// `FUN_14109fdb0`, the action master's slot 0x20.
-    pub(super) fn add_action(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_action(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match attribute {
             attribute::WORK_RATE => self.work_rate += v,
             attribute::SEARCH_RADIUS => self.search_radius += v,
             attribute::RUN_PATTERN => self.run_pattern = self.run_pattern.wrapping_add(low8(v)),
             // the command and move sounds (through slot 0x18) are the interface's
-            attribute::COMMAND_SOUND | 134 => {}
+            attribute::COMMAND_SOUND | attribute::MOVE_SOUND => {}
             _ => self.add_moving(attribute, v, world),
         }
     }
 
     /// `FUN_14109fea0`, the action master's slot 0x28.
-    pub(super) fn multiply_action(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_action(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match attribute {
             attribute::WORK_RATE => self.work_rate *= v,
             attribute::SEARCH_RADIUS => self.search_radius *= v,

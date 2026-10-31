@@ -1,5 +1,6 @@
 //! The RGE combat and missile masters' setters: the armor and attack amounts.
 
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{
     AttributeWorld, Master, PERCENT, ROUND, add_sprite, attribute, class_amount, handicapped, low8,
@@ -15,7 +16,12 @@ impl Master {
     /// `FUN_1410c12b0`, the RGE combat master's slot 0x18: an armor or attack amount
     /// ([`class_amount`]) replaces its class's; an attack class at 0 the handicap raises
     /// ([`handicapped`]) takes the amount times the factor.
-    pub(super) fn set_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_combat(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -51,7 +57,12 @@ impl Master {
     /// [`Master::set_combat`]'s armor and attack amounts (`FUN_1410c12b0`): the amount
     /// ([`class_amount`]) replaces its class's; an attack class at 0 the handicap raises takes the
     /// amount times the factor.
-    pub(super) fn set_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_class_amount(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
@@ -75,7 +86,12 @@ impl Master {
 
     /// `FUN_1410c16e0`, the RGE combat master's slot 0x20: an armor or attack amount adds to its
     /// class's (an attack class at 0 the handicap raises takes the amount times the factor).
-    pub(super) fn add_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_combat(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed += v,
@@ -126,7 +142,12 @@ impl Master {
     /// [`Master::add_combat`]'s armor and attack amounts (`FUN_1410c16e0`): the amount
     /// ([`class_amount`]) adds to its class's; an attack class at 0 the handicap raises takes the
     /// amount times the factor.
-    pub(super) fn add_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_class_amount(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
@@ -151,7 +172,12 @@ impl Master {
     /// `FUN_1410c1bf0`, the RGE combat master's slot 0x28: an armor or attack amount is a
     /// percentage of its class's (`amount / 100 × value + 0.5`, truncated; an attack class at 0
     /// the handicap raises scales the amount by the factor first).
-    pub(super) fn multiply_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_combat(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed *= v,
@@ -201,7 +227,7 @@ impl Master {
     /// the handicap raises scales the amount by the factor first).
     pub(super) fn multiply_class_amount(
         &mut self,
-        attribute: u8,
+        attribute: MasterAttribute,
         v: f32,
         world: &AttributeWorld<'_>,
     ) {
@@ -229,7 +255,12 @@ impl Master {
 
     /// `FUN_1410d5a20`, the missile master's slot 0x18: its own four values, then always the RGE
     /// combat master's setter (which none of them reaches).
-    pub(super) fn set_missile(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_missile(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         if let Some(m) = self.missile_stats.as_mut() {
             match attribute {
                 attribute::PROJECTILE_SMART_MODE => m.smart_mode = low8(v),
@@ -243,7 +274,12 @@ impl Master {
     }
 
     /// `FUN_1410d5ab0`, the missile master's slot 0x20, as [`Master::set_missile`].
-    pub(super) fn add_missile(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_missile(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         if let Some(m) = self.missile_stats.as_mut() {
             match attribute {
                 attribute::PROJECTILE_SMART_MODE => {
@@ -262,7 +298,12 @@ impl Master {
 
     /// `FUN_1410d5b50`, the missile master's slot 0x28, as [`Master::set_missile`]; its smart
     /// mode takes the amount (the game's set, not a product).
-    pub(super) fn multiply_missile(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_missile(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         if let Some(m) = self.missile_stats.as_mut() {
             match attribute {
                 attribute::PROJECTILE_SMART_MODE => m.smart_mode = low8(v),

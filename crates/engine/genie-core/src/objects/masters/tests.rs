@@ -130,7 +130,7 @@ fn stocked(kind: MasterKind) -> Master {
 
 /// Each row (attribute, its field, the field after a set of 3, then after an add of 2, then
 /// after a multiply by 2) on a fresh [`stocked`] master of `kind`.
-fn sets_adds_multiplies(kind: MasterKind, rows: &[(u8, Read, [f32; 3])]) {
+fn sets_adds_multiplies(kind: MasterKind, rows: &[(MasterAttribute, Read, [f32; 3])]) {
     let w = world(false);
     for &(a, read, [set, add, multiply]) in rows {
         let mut m = stocked(kind);
@@ -149,7 +149,7 @@ fn sets_adds_multiplies(kind: MasterKind, rows: &[(u8, Read, [f32; 3])]) {
 #[test]
 fn each_static_attribute_sets_adds_and_multiplies_its_field() {
     use attribute as a;
-    let rows: &[(u8, Read, [f32; 3])] = &[
+    let rows: &[(MasterAttribute, Read, [f32; 3])] = &[
         (a::HIT_POINTS, |m| f32::from(m.hit_points), [3.0, 5.0, 10.0]),
         (a::LINE_OF_SIGHT, |m| m.line_of_sight, [3.0, 5.0, 10.0]),
         (
@@ -346,7 +346,7 @@ fn a_combat_multiply_takes_a_percentage_of_the_class_s_amount() {
 #[test]
 fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
     use attribute as a;
-    let rows: &[(u8, Read, [f32; 3])] = &[
+    let rows: &[(MasterAttribute, Read, [f32; 3])] = &[
         (a::ROTATION_SPEED, |m| m.turn_speed, [3.0, 5.0, 10.0]),
         (a::ATTACK_RELOAD_TIME, |m| m.reload, [3.0, 5.0, 10.0]),
         (
@@ -429,7 +429,7 @@ fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
 #[test]
 fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
     use attribute as a;
-    let rows: &[(u8, Read, [f32; 3])] = &[
+    let rows: &[(MasterAttribute, Read, [f32; 3])] = &[
         (a::HERO_STATUS, |m| f32::from(m.hero_flag), [3.0, 5.0, 5.0]),
         (
             a::TRAIN_LOCATION,
@@ -719,7 +719,7 @@ fn some_combat_shorts_multiply_by_the_truncated_amount() {
     assert_eq!(m.shown.attack, 21);
     m.add_attribute(attribute::ROTATION_SPEED, 0.25, &world(false));
     assert_eq!(m.turn_speed, 0.25);
-    m.set_attribute(attribute::DISPLACEMENT_X + 1, 0.75, &world(false));
+    m.set_attribute(attribute::DISPLACEMENT_Y, 0.75, &world(false));
     assert_eq!(m.weapon_offset, Offset::new(0.0, 0.75, 0.0));
 }
 
@@ -999,7 +999,7 @@ fn the_combat_master_s_own_values_change() {
     m.set_attribute(attribute::TOTAL_MISSILES, 2.0, &world(false));
     m.multiply_attribute(attribute::MAXIMUM_TOTAL_MISSILES, 3.0, &world(false));
     m.add_attribute(attribute::ATTACK_GRAPHIC_2, 2.0, &world(false));
-    m.set_attribute(attribute::SPAWNING_AREA_WIDTH + 2, 0.5, &world(false));
+    m.set_attribute(attribute::SPAWNING_AREA_RANDOMNESS, 0.5, &world(false));
     m.set_attribute(attribute::SECONDARY_PROJECTILE_UNIT, -1.0, &world(false));
     m.set_attribute(attribute::CHARGE_PROJECTILE_UNIT, 1500.0, &world(false));
     let before = m.clone();

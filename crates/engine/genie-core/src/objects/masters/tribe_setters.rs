@@ -1,6 +1,7 @@
 //! The TRIBE combat and building masters' setters: the costs, the charge, the sprites and the
 //! train locations.
 
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{
     AttributeWorld, Master, ROUND, add_sprite, attribute, cost_resource, id_of,
@@ -11,7 +12,10 @@ impl Master {
     /// The cost entries a cost attribute (100, 103 to 106) changes (`FUN_1412661d0`): those of
     /// its resource, or for 100 the paid ones. The slice holds the entries of a resource (the
     /// game's of −1, which nothing reads, are not held).
-    pub(super) fn costs_of(&mut self, attribute: u8) -> impl Iterator<Item = &mut i16> {
+    pub(super) fn costs_of(
+        &mut self,
+        attribute: MasterAttribute,
+    ) -> impl Iterator<Item = &mut i16> {
         let resource = cost_resource(attribute);
         self.cost
             .iter_mut()
@@ -20,7 +24,12 @@ impl Master {
     }
 
     /// `FUN_1412661d0`, the combat master's slot 0x18.
-    pub(super) fn set_tribe_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_tribe_combat(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -44,7 +53,7 @@ impl Master {
             | a::GARRISON_GRAPHIC
             | a::ATTACK_GRAPHIC_2 => self.set_tribe_sprite(attribute, v, world),
             a::SPECIAL_ABILITY => self.special_attack = low8(v),
-            a::RESOURCE_COSTS | a::FOOD_COSTS..=a::STONE_COSTS => {
+            a::RESOURCE_COSTS | a::FOOD_COSTS | a::WOOD_COSTS | a::GOLD_COSTS | a::STONE_COSTS => {
                 for c in self.costs_of(attribute) {
                     *c = low16(v);
                 }
@@ -67,7 +76,9 @@ impl Master {
                     }
                 }
             }
-            a::MIN_CONVERSION_TIME_MODIFIER..=a::CONVERSION_CHANCE_MODIFIER => {
+            a::MIN_CONVERSION_TIME_MODIFIER
+            | a::MAX_CONVERSION_TIME_MODIFIER
+            | a::CONVERSION_CHANCE_MODIFIER => {
                 *a::lane_mut(
                     &mut self.conversion,
                     attribute,
@@ -81,7 +92,7 @@ impl Master {
             a::REGENERATION_HP_PERCENT => self.regeneration = f32::from(self.hit_points) * v,
             a::ATTACK_PRIORITY => self.attack_priority = low8(v),
             a::INVULNERABILITY_LEVEL => self.invulnerability = v,
-            a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
+            a::SPAWNING_AREA_WIDTH | a::SPAWNING_AREA_LENGTH | a::SPAWNING_AREA_RANDOMNESS => {
                 *a::lane_mut(
                     &mut self.volley_spread,
                     attribute,
@@ -89,14 +100,17 @@ impl Master {
                 ) = v;
             }
             // the ability's button, tooltips and hotkey action are the interface's
-            a::ABILITY_BUTTON_ICON_ID..=a::ABILITY_HOTKEY_ACTION => {}
+            a::ABILITY_BUTTON_ICON_ID
+            | a::ABILITY_SHORT_TOOLTIP_ID
+            | a::ABILITY_EXTENDED_TOOLTIP_ID
+            | a::ABILITY_HOTKEY_ACTION => {}
             _ => self.set_combat(attribute, v, world),
         }
     }
 
     /// [`Master::set_tribe_combat`]'s charge (`FUN_1412661d0`): its most, its recharge rate, its
     /// event, its type and its projectile.
-    pub(super) fn set_charge(&mut self, attribute: u8, v: f32) {
+    pub(super) fn set_charge(&mut self, attribute: MasterAttribute, v: f32) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -111,7 +125,12 @@ impl Master {
 
     /// [`Master::set_tribe_combat`]'s sprites (`FUN_1412661d0`): special, idle attack, hero glow,
     /// garrison and second attack, each a sprite the world's table holds.
-    pub(super) fn set_tribe_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_tribe_sprite(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -128,7 +147,7 @@ impl Master {
 
     /// [`Master::set_tribe_combat`]'s train locations (`FUN_1412661d0`): the selected entry's
     /// location, button, hotkey and time, the selection (at most the last) and the count.
-    pub(super) fn set_train_attribute(&mut self, attribute: u8, v: f32) {
+    pub(super) fn set_train_attribute(&mut self, attribute: MasterAttribute, v: f32) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -171,7 +190,12 @@ impl Master {
     /// `FUN_141266a60`, the combat master's slot 0x20. Its sprite adds read the sprite's id
     /// without the others' test for none (a crash on none, which no recording reaches): none
     /// counts as −1.
-    pub(super) fn add_tribe_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_tribe_combat(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -187,7 +211,7 @@ impl Master {
             a::IDLE_ATTACK_GRAPHIC => add_sprite(&mut self.idle_attack_sprite, v, world),
             a::HERO_GLOW_GRAPHIC => add_sprite(&mut self.hero_glow_sprite, v, world),
             a::GARRISON_GRAPHIC => add_sprite(&mut self.garrison_sprite, v, world),
-            a::RESOURCE_COSTS | a::FOOD_COSTS..=a::STONE_COSTS => {
+            a::RESOURCE_COSTS | a::FOOD_COSTS | a::WOOD_COSTS | a::GOLD_COSTS | a::STONE_COSTS => {
                 for c in self.costs_of(attribute) {
                     *c = c.wrapping_add(low16(v));
                 }
@@ -200,7 +224,9 @@ impl Master {
             a::TOTAL_MISSILES => self.volley_fire += v,
             a::MAXIMUM_TOTAL_MISSILES => self.max_volley = self.max_volley.wrapping_add(low8(v)),
             a::REGENERATION_RATE => self.regeneration += v,
-            a::MIN_CONVERSION_TIME_MODIFIER..=a::CONVERSION_CHANCE_MODIFIER => {
+            a::MIN_CONVERSION_TIME_MODIFIER
+            | a::MAX_CONVERSION_TIME_MODIFIER
+            | a::CONVERSION_CHANCE_MODIFIER => {
                 *a::lane_mut(
                     &mut self.conversion,
                     attribute,
@@ -216,7 +242,7 @@ impl Master {
             a::INVULNERABILITY_LEVEL => self.invulnerability += v,
             // FUN_141533c70 tests the new id; the game takes the sprite from the same table
             a::ATTACK_GRAPHIC_2 => add_sprite(&mut self.attack_sprite2, v, world),
-            a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
+            a::SPAWNING_AREA_WIDTH | a::SPAWNING_AREA_LENGTH | a::SPAWNING_AREA_RANDOMNESS => {
                 *a::lane_mut(
                     &mut self.volley_spread,
                     attribute,
@@ -238,7 +264,10 @@ impl Master {
                     count,
                 );
             }
-            a::ABILITY_BUTTON_ICON_ID..=a::ABILITY_HOTKEY_ACTION => {}
+            a::ABILITY_BUTTON_ICON_ID
+            | a::ABILITY_SHORT_TOOLTIP_ID
+            | a::ABILITY_EXTENDED_TOOLTIP_ID
+            | a::ABILITY_HOTKEY_ACTION => {}
             _ => self.add_combat(attribute, v, world),
         }
     }
@@ -246,7 +275,7 @@ impl Master {
     /// `FUN_141267040`, the combat master's slot 0x28.
     pub(super) fn multiply_tribe_combat(
         &mut self,
-        attribute: u8,
+        attribute: MasterAttribute,
         v: f32,
         world: &AttributeWorld<'_>,
     ) {
@@ -257,7 +286,7 @@ impl Master {
             }
             a::MAXIMUM_CHARGE => self.max_charge *= v,
             a::RECHARGE_RATE => self.recharge_rate *= v,
-            a::RESOURCE_COSTS | a::FOOD_COSTS..=a::STONE_COSTS => {
+            a::RESOURCE_COSTS | a::FOOD_COSTS | a::WOOD_COSTS | a::GOLD_COSTS | a::STONE_COSTS => {
                 for c in self.costs_of(attribute) {
                     *c = low16(f32::from(*c) * v + ROUND);
                 }
@@ -273,7 +302,9 @@ impl Master {
                 self.max_volley = low8(f32::from(self.max_volley) * v + ROUND);
             }
             a::REGENERATION_RATE => self.regeneration *= v,
-            a::MIN_CONVERSION_TIME_MODIFIER..=a::CONVERSION_CHANCE_MODIFIER => {
+            a::MIN_CONVERSION_TIME_MODIFIER
+            | a::MAX_CONVERSION_TIME_MODIFIER
+            | a::CONVERSION_CHANCE_MODIFIER => {
                 *a::lane_mut(
                     &mut self.conversion,
                     attribute,
@@ -284,7 +315,7 @@ impl Master {
                 ) *= v;
             }
             a::INVULNERABILITY_LEVEL => self.invulnerability *= v,
-            a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
+            a::SPAWNING_AREA_WIDTH | a::SPAWNING_AREA_LENGTH | a::SPAWNING_AREA_RANDOMNESS => {
                 *a::lane_mut(
                     &mut self.volley_spread,
                     attribute,
@@ -308,7 +339,12 @@ impl Master {
 
     /// `FUN_14123d310`, the building master's slot 0x18. Its six sprites (85 to 90) go to a copy
     /// of the field (the game's local), which changes nothing; its sounds are the interface's.
-    pub(super) fn set_building(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn set_building(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::BUILDING_ICON_OVERRIDE => self.building_facet = low16(v),
@@ -327,14 +363,27 @@ impl Master {
                     b.garrison_heal_rate = v;
                 }
             }
-            a::CONSTRUCTION_GRAPHIC..=a::RESEARCH_COMPLETED_GRAPHIC
-            | 136..=a::TRANSFORM_SOUND_EVENT => {}
+            a::CONSTRUCTION_GRAPHIC
+            | a::SNOW_GRAPHIC
+            | a::DESTRUCTION_GRAPHIC
+            | a::DESTRUCTION_RUBBLE_GRAPHIC
+            | a::RESEARCHING_GRAPHIC
+            | a::RESEARCH_COMPLETED_GRAPHIC
+            | a::CONSTRUCTION_SOUND
+            | a::CONSTRUCTION_SOUND_EVENT
+            | a::TRANSFORM_SOUND
+            | a::TRANSFORM_SOUND_EVENT => {}
             _ => self.set_tribe_combat(attribute, v, world),
         }
     }
 
     /// `FUN_14123d530`, the building master's slot 0x20, as [`Master::set_building`].
-    pub(super) fn add_building(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn add_building(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::BUILDING_ICON_OVERRIDE => {
@@ -355,13 +404,25 @@ impl Master {
                     b.garrison_heal_rate += v;
                 }
             }
-            a::CONSTRUCTION_GRAPHIC..=a::RESEARCH_COMPLETED_GRAPHIC | 136 | 138 => {}
+            a::CONSTRUCTION_GRAPHIC
+            | a::SNOW_GRAPHIC
+            | a::DESTRUCTION_GRAPHIC
+            | a::DESTRUCTION_RUBBLE_GRAPHIC
+            | a::RESEARCHING_GRAPHIC
+            | a::RESEARCH_COMPLETED_GRAPHIC
+            | a::CONSTRUCTION_SOUND
+            | a::TRANSFORM_SOUND => {}
             _ => self.add_tribe_combat(attribute, v, world),
         }
     }
 
     /// `FUN_14123d730`, the building master's slot 0x28.
-    pub(super) fn multiply_building(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub(super) fn multiply_building(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match (attribute, self.building.as_mut()) {
             (attribute::GARRISON_HEAL_RATE, Some(b)) => {
                 b.garrison_heal_rate *= v;

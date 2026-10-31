@@ -1,6 +1,7 @@
 //! The attribute setters by master type (slots 0x18, 0x20 and 0x28), the master copy (slot 8),
 //! the loader's defaults and the selected entries.
 
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::{
     AttributeWorld, DamageGraphic, Master, TrainLocation, attribute, master_type,
 };
@@ -14,7 +15,12 @@ impl Master {
     /// for the spectator (`FUN_1417785e0`, not simulation). The interface's values (icons, names,
     /// tooltips, hotkey actions) and the sounds are not held. The followers of the values
     /// (`Master::follow`) are the caller's.
-    pub fn set_attribute(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub fn set_attribute(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match self.kind {
             master_type::BUILDING => self.set_building(attribute, v, world),
             master_type::COMBAT => self.set_tribe_combat(attribute, v, world),
@@ -32,7 +38,12 @@ impl Master {
     /// Slot 0x20 (`add`): `v` adds to attribute `attribute`, by its type's setter
     /// (`FUN_14123d530`, `FUN_141266a60`, `FUN_1410d5ab0`, `FUN_1410c16e0`, `FUN_14109fdb0`,
     /// `FUN_1410e1da0`, `FUN_1410a8b60`, `FUN_141126af0`), as [`Master::set_attribute`].
-    pub fn add_attribute(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub fn add_attribute(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match self.kind {
             master_type::BUILDING => self.add_building(attribute, v, world),
             master_type::COMBAT => self.add_tribe_combat(attribute, v, world),
@@ -50,7 +61,12 @@ impl Master {
     /// Slot 0x28 (`multiply`): attribute `attribute` is multiplied by `v`, by its type's setter
     /// (`FUN_14123d730`, `FUN_141267040`, `FUN_1410d5b50`, `FUN_1410c1bf0`, `FUN_14109fea0`,
     /// `FUN_1410e1f60`, `FUN_1410a8c00`, `FUN_1411271e0`), as [`Master::set_attribute`].
-    pub fn multiply_attribute(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    pub fn multiply_attribute(
+        &mut self,
+        attribute: MasterAttribute,
+        v: f32,
+        world: &AttributeWorld<'_>,
+    ) {
         match self.kind {
             master_type::BUILDING => self.multiply_building(attribute, v, world),
             master_type::COMBAT => self.multiply_tribe_combat(attribute, v, world),
@@ -89,7 +105,7 @@ impl Master {
     /// their ids; the damage sprites under the flag that it has some): the change would derive
     /// from the default. None when the master holds it.
     #[must_use]
-    pub fn unloaded_for(&self, attribute: u8) -> Option<&'static str> {
+    pub fn unloaded_for(&self, attribute: MasterAttribute) -> Option<&'static str> {
         use crate::objects::masters::attribute as a;
         let moving = self.moving.as_ref();
         match attribute {
@@ -127,7 +143,7 @@ impl Master {
     }
 
     /// The resource storage `attribute` (21, 26, 27) names: the first, second or third entry.
-    pub(super) fn storage_mut(&mut self, attribute: u8) -> Option<&mut f32> {
+    pub(super) fn storage_mut(&mut self, attribute: MasterAttribute) -> Option<&mut f32> {
         let i = match attribute {
             attribute::STORAGE_1 => 0,
             attribute::STORAGE_2 => 1,

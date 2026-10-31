@@ -2,6 +2,7 @@
 //! sprites' speed and facets, a moving unit's values.
 
 use crate::movement::MoveStats;
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::{Master, master_type};
 
 /// A sprite's speed factor (the `.dat` graphic's `speed_multiplier`): the master's speed times
@@ -54,7 +55,7 @@ impl Master {
     pub fn follow_moving(
         &self,
         stats: &mut MoveStats,
-        attribute: u8,
+        attribute: MasterAttribute,
         graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
         terrain: Option<&crate::map::terrain::Terrain>,
     ) {
@@ -104,7 +105,7 @@ impl Master {
     /// ([`Master::follow_moving`]).
     pub fn follow(
         &mut self,
-        attribute: u8,
+        attribute: MasterAttribute,
         graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
         terrain: Option<&crate::map::terrain::Terrain>,
     ) {

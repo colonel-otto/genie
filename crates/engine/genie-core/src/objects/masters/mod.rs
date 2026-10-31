@@ -579,6 +579,7 @@ mod master_id;
 mod master_kind;
 pub mod master_type;
 
+pub use self::attribute::MasterAttribute;
 pub use self::class_id::ClassId;
 pub use self::master_id::MasterId;
 pub use self::master_kind::MasterKind;

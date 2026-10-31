@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
 use crate::objects::unit::Unit;
@@ -118,7 +119,7 @@ impl World {
         id: ObjectId,
         change: Change,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<bool, GenieError> {
         let Some((owner, u)) = self.object(id) else {
             return Ok(false);
@@ -148,7 +149,7 @@ impl World {
         master: &Master,
         change: Change,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         match attribute {
@@ -234,7 +235,7 @@ impl World {
         master: &Master,
         change: Change,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         match (attribute, change) {
@@ -299,7 +300,7 @@ impl World {
         master: &Master,
         change: Change,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         match (attribute, change) {
@@ -354,12 +355,6 @@ pub(super) fn build_points_after(points: f32, time: i16, change: Change, v: f32)
 /// [`Masters`] hold no count past their last master, which stands for the table's end.
 pub(super) fn within_table(masters: &Masters, unit: MasterId) -> bool {
     masters.iter().any(|m| unit <= m.id)
-}
-
-/// The sprite attributes whose change shows on the objects after it (`FUN_140fde290`: 70 to 77,
-/// 82 to 91 and 131).
-pub(super) const fn shows_sprite(attribute: u8) -> bool {
-    matches!(attribute, 70..=77 | 82..=91 | 131)
 }
 
 /// The object has an action in its list (`+0x880`'s first node; a building producing has its

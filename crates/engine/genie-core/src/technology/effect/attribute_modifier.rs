@@ -5,12 +5,11 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
 use crate::players::PlayerId;
-use crate::technology::effect::{
-    CAPPED, Change, OBJECT_GONE, has_actions, shows_sprite, within_table,
-};
+use crate::technology::effect::{CAPPED, Change, OBJECT_GONE, has_actions, within_table};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -27,7 +26,7 @@ impl World {
         unit: Option<MasterId>,
         class: Option<ClassId>,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         if let Some(why) = self.reached_masters(p, unit, class).iter().find_map(|&id| {
             self.masters
@@ -46,7 +45,7 @@ impl World {
     /// or building's volleys lose the shares of the combat units inside before the change
     /// (`FUN_141217ac0`) and take them again after (`FUN_14120b910`), as the change may move
     /// them. The objects' abilities (`+0x928`, `+0x930`, `FUN_14107da40` and `FUN_14107b830`) are
-    /// not held: none taken. After a change of a sprite ([`shows_sprite`]) each object of the
+    /// not held: none taken. After a change of a sprite ([`MasterAttribute::shows_sprite`]) each object of the
     /// master or class shows it ([`World::show_changed_sprite`]).
     pub(super) fn effect_hooks(
         &mut self,
@@ -54,7 +53,7 @@ impl World {
         after: bool,
         unit: Option<MasterId>,
         class: Option<ClassId>,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         let ids: Vec<ObjectId> = self
             .players
@@ -73,7 +72,7 @@ impl World {
                 self.garrison_volleys(p, id, after)?;
             }
             if after
-                && shows_sprite(attribute)
+                && attribute.shows_sprite()
                 && (Some(master_class) == class || Some(master_id) == unit)
             {
                 self.show_changed_sprite(p, id, attribute)?;
@@ -144,7 +143,7 @@ impl World {
         &mut self,
         p: PlayerId,
         id: ObjectId,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         let Some((_, u)) = self.object(id) else {
@@ -217,7 +216,7 @@ impl World {
         unit: Option<MasterId>,
         class: Option<ClassId>,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         let Some(masters) = self.masters.get(p.index()) else {
             return Ok(());
@@ -303,7 +302,7 @@ impl World {
         change: Change,
         unit: MasterId,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         let master = self.master(p, unit)?.clone();
@@ -414,7 +413,7 @@ impl World {
         id: MasterId,
         change: Change,
         v: f32,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         {
             let sprite = Self::attribute_world(&self.graphics);
@@ -446,7 +445,7 @@ impl World {
         &mut self,
         p: PlayerId,
         id: MasterId,
-        attribute: u8,
+        attribute: MasterAttribute,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
         let Some(master) = player_master(&self.masters, p, id).cloned() else {

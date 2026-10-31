@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::technology::EffectCommand;
@@ -151,7 +152,7 @@ impl World {
         party: Party,
         c: &EffectCommand,
     ) -> Result<(), GenieError> {
-        let attribute = (c.c & 0xff) as u8;
+        let attribute = MasterAttribute::of_effect(c.c);
         let change = match c.kind % 10 {
             kind::SET => Change::Set,
             kind::ADD => Change::Add,
