@@ -440,7 +440,7 @@ pub(crate) fn short_path_including(
         return Ok(result);
     }
     let tiles = world.tiles();
-    let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
+    let words = |x: u32, y: u32| tiles.word(Tile::new(x as i32, y as i32)).unwrap_or(0);
     let (mesh, pather) = plan
         .pathing
         .mesh_and_pather()

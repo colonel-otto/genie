@@ -233,7 +233,7 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
 fn drop_off_world(class: u8, near: &[(i32, Point, f32, ClassId, PlayerId)]) -> Spatial {
     let mut w = Spatial::with_tiles(
         GridSize::new(16, 16),
-        crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
+        crate::map::spatial::Tiles::new(crate::map::GridSize::new(16, 16), vec![class; 256]),
     );
     let placed = |at: Point, r: f32, class, player| Placed {
         position: at.with_height(0.0),
@@ -417,7 +417,7 @@ fn the_drop_off_walker_s_start_is_blocked_in_terrain_its_mask_lacks() {
     let test = |class: u8| {
         let world = Spatial::with_tiles(
             GridSize::new(16, 16),
-            crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
+            crate::map::spatial::Tiles::new(crate::map::GridSize::new(16, 16), vec![class; 256]),
         );
         let mut pathing = Pathing::default();
         pathing.start_mesh(16);
@@ -455,7 +455,7 @@ fn walled(radius: f32) -> Spatial {
     }
     let mut w = Spatial::with_tiles(
         GridSize::new(20, 20),
-        crate::map::spatial::Tiles::new(20, 20, classes),
+        crate::map::spatial::Tiles::new(crate::map::GridSize::new(20, 20), classes),
     );
     w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
@@ -768,7 +768,7 @@ fn kept_hits_join_the_include_list_up_to_its_room() {
 fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
     let mut w = Spatial::with_tiles(
         GridSize::new(20, 20),
-        crate::map::spatial::Tiles::new(20, 20, vec![4; 400]),
+        crate::map::spatial::Tiles::new(crate::map::GridSize::new(20, 20), vec![4; 400]),
     );
     let unit = |x: f32, r: f32| Placed {
         position: Position::new(x, 5.5, 0.0),
@@ -861,7 +861,7 @@ fn world_target() -> Placed {
 fn the_reach_test_starts_where_the_unit_last_moved_to() {
     let mut world = Spatial::with_tiles(
         GridSize::new(40, 40),
-        crate::map::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
+        crate::map::spatial::Tiles::new(crate::map::GridSize::new(40, 40), vec![4; 40 * 40]),
     );
     world.insert(
         object_id(9177),
@@ -1425,7 +1425,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
     // land of a terrain class the unit's mask (6) has
     let mut w = Spatial::with_tiles(
         GridSize::new(120, 120),
-        crate::map::spatial::Tiles::new(120, 120, vec![2; 14400]),
+        crate::map::spatial::Tiles::new(crate::map::GridSize::new(120, 120), vec![2; 14400]),
     );
     // on open ground: waypoint 3 is beyond 10 tiles, waypoint 2 within, so it takes 2
     assert_eq!(m.look_ahead(&me, &mut w), Ok(true));
@@ -1588,7 +1588,7 @@ pub(crate) fn world() -> Spatial {
 /// pather reads.
 pub(crate) fn tiled_world(classes: Vec<u8>) -> Spatial {
     let objects = world();
-    let tiles = crate::map::spatial::Tiles::new(120, 120, classes);
+    let tiles = crate::map::spatial::Tiles::new(crate::map::GridSize::new(120, 120), classes);
     let mut s = Spatial::with_tiles(GridSize::new(120, 120), tiles);
     for id in [9175, 9177, 10028] {
         s.insert(

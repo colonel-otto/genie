@@ -42,7 +42,7 @@ pub struct GameState {
     pub next_reusable_id: ObjectId,
     /// The map tiles' object lists in the game's order (`x`, `y`, ids; each tile of two objects
     /// or more), when the oracle dumped them: the order is the game's history, no save holds it.
-    pub tile_lists: Option<Vec<(i32, i32, Vec<ObjectId>)>>,
+    pub tile_lists: Option<Vec<(crate::map::Tile, Vec<ObjectId>)>>,
     /// The pool of recycled missiles ([`Recycling::missiles`]), when the oracle dumped it: no
     /// save holds it.
     ///

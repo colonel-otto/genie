@@ -313,6 +313,7 @@ mod tests {
     use super::*;
     use crate::map::Footprint;
     use crate::map::GridSize;
+    use crate::map::Tile;
     use crate::map::spatial::Placed;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
@@ -425,12 +426,12 @@ mod tests {
             Some(Position::new(2.5, 1.25, 0.0))
         );
         assert_eq!(
-            world.tiles().list(2, 1),
+            world.tiles().list(Tile::new(2, 1)),
             [object_id(7)],
             "it joins its new tile's list"
         );
         assert!(
-            world.tiles().list(1, 1).is_empty(),
+            world.tiles().list(Tile::new(1, 1)).is_empty(),
             "and leaves its old one"
         );
     }
@@ -449,7 +450,10 @@ mod tests {
             world.get(object_id(7)).map(|p| p.position),
             Some(Position::new(4.0, 5.0, 0.5))
         );
-        assert!(world.tiles().list(1, 1).is_empty(), "it leaves its tile");
+        assert!(
+            world.tiles().list(Tile::new(1, 1)).is_empty(),
+            "it leaves its tile"
+        );
         base.inside_at(object_id(7), Position::new(4.0, 5.0, 1.0), &mut world);
         assert_eq!(
             base.position(),
@@ -475,7 +479,7 @@ mod tests {
             Some(Position::new(2.5, 2.5, 0.0))
         );
         assert_eq!(
-            world.tiles().list(2, 2),
+            world.tiles().list(Tile::new(2, 2)),
             [object_id(7)],
             "back on a tile's list"
         );

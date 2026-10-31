@@ -17,6 +17,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -307,8 +308,7 @@ impl Grid {
 /// What the game keeps per tile, row by row.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tiles {
-    width: i32,
-    height: i32,
+    size: GridSize,
     /// The obstruction manager's word (`DAT_143f0a088 + 0x98`): bits 0 to 7 the terrain's class,
     /// bits 8 to 13 a static record's obstruction class, [`BLOCKED`], bit 15 for class 5, bits 16
     /// to 22 the record's player, bits 23 and up a bit per player that marked the tile.
@@ -329,58 +329,65 @@ impl Tiles {
     /// # Panics
     ///
     /// When `classes` does not hold one class per tile of the map.
-    pub fn new(width: i32, height: i32, classes: Vec<u8>) -> Self {
+    pub fn new(size: GridSize, classes: Vec<u8>) -> Self {
         let n = classes.len();
         assert_eq!(
             n,
-            (width.max(0) * height.max(0)) as usize,
+            (size.width().max(0) * size.height().max(0)) as usize,
             "one class per tile"
         );
         Self {
-            width,
-            height,
+            size,
             words: classes.into_iter().map(u64::from).collect(),
             tall: vec![0; n],
             lists: vec![Vec::new(); n],
         }
     }
 
-    fn index(&self, x: i32, y: i32) -> Option<usize> {
-        (0 <= x && x < self.width && 0 <= y && y < self.height)
-            .then(|| (y * self.width + x) as usize)
+    /// The map's size in tiles.
+    #[must_use]
+    pub const fn size(&self) -> GridSize {
+        self.size
     }
 
-    /// Tile (`x`, `y`)'s word: its terrain class and the obstruction manager's marks.
+    /// `tile`'s word: its terrain class and the obstruction manager's marks.
     #[must_use]
-    pub fn word(&self, x: i32, y: i32) -> Option<u64> {
-        self.index(x, y).and_then(|i| self.words.get(i).copied())
+    pub fn word(&self, tile: Tile) -> Option<u64> {
+        self.size
+            .index(tile)
+            .and_then(|i| self.words.get(i).copied())
     }
 
-    /// How many tall objects stand on tile (`x`, `y`).
+    /// How many tall objects stand on `tile`.
     #[must_use]
-    pub fn tall(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).and_then(|i| self.tall.get(i).copied())
+    pub fn tall(&self, tile: Tile) -> Option<u8> {
+        self.size
+            .index(tile)
+            .and_then(|i| self.tall.get(i).copied())
     }
 
-    /// How many objects stand on tile (`x`, `y`).
+    /// How many objects stand on `tile`.
     #[must_use]
-    pub fn objects(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y)
+    pub fn objects(&self, tile: Tile) -> Option<u8> {
+        self.size
+            .index(tile)
             .and_then(|i| self.lists.get(i))
             .map(|l| l.len() as u8)
     }
 
-    /// The objects on tile (`x`, `y`) in the tile's order; none off the map.
+    /// The objects on `tile` in the tile's order; none off the map.
     #[must_use]
-    pub fn list(&self, x: i32, y: i32) -> &[ObjectId] {
-        self.index(x, y)
+    pub fn list(&self, tile: Tile) -> &[ObjectId] {
+        self.size
+            .index(tile)
             .and_then(|i| self.lists.get(i))
             .map_or(&[], Vec::as_slice)
     }
 
     /// The tile of a centre, if it is on the map.
-    fn tile_of(&self, position: Position) -> Option<usize> {
-        self.index(position.x() as i32, position.y() as i32)
+    const fn tile_of(&self, position: Position) -> Option<usize> {
+        self.size
+            .index(Tile::new(position.x() as i32, position.y() as i32))
     }
 
     /// The object goes last on tile `i` (`FUN_140f5f0a0`). An empty tile's list takes it and
@@ -428,17 +435,17 @@ impl Tiles {
         *count = list.iter().filter(|&&o| tall(o)).count() as u8;
     }
 
-    /// Marks (`bits`) on tile (`x`, `y`)'s word, for a test's map.
+    /// Marks (`bits`) on `tile`'s word, for a test's map.
     #[cfg(test)]
-    pub(crate) fn mark_for_test(&mut self, x: i32, y: i32, bits: u64) {
-        let i = self.index(x, y).expect("a tile on the map");
+    pub(crate) fn mark_for_test(&mut self, tile: Tile, bits: u64) {
+        let i = self.size.index(tile).expect("a tile on the map");
         self.words[i] |= bits;
     }
 
-    /// A tall object on tile (`x`, `y`), for a test's map.
+    /// A tall object on `tile`, for a test's map.
     #[cfg(test)]
-    pub(crate) fn add_tall_for_test(&mut self, x: i32, y: i32) {
-        let i = self.index(x, y).expect("a tile on the map");
+    pub(crate) fn add_tall_for_test(&mut self, tile: Tile) {
+        let i = self.size.index(tile).expect("a tile on the map");
         self.lists[i].push(crate::objects::unit::TAKEN_OUT);
         self.tall[i] += 1;
     }
@@ -452,15 +459,16 @@ impl Tiles {
         let (x, y) = (p.position.x(), p.position.y());
         let (rx, ry) = (p.radius.x(), p.radius.y());
         let hold = |v: i32, size: i32| v.clamp(0, size - 1);
-        let xs = hold((x - rx) as i32, self.width)..=hold(((x + rx) - 0.001) as i32, self.width);
-        let ys = hold((y - ry) as i32, self.height)..=hold(((y + ry) - 0.001) as i32, self.height);
+        let (w, h) = (self.size.width(), self.size.height());
+        let xs = hold((x - rx) as i32, w)..=hold(((x + rx) - 0.001) as i32, w);
+        let ys = hold((y - ry) as i32, h)..=hold(((y + ry) - 0.001) as i32, h);
         (xs, ys)
     }
 
     /// The word indices of the covered tiles, row by row: each is on the map.
     fn covered_indices(&self, p: &Placed) -> impl Iterator<Item = usize> + use<> {
-        let width = self.width;
-        let on_map = 0 < self.width && 0 < self.height;
+        let width = self.size.width();
+        let on_map = 0 < self.size.width() && 0 < self.size.height();
         let (xs, ys) = if on_map {
             self.covered(p)
         } else {

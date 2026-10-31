@@ -82,7 +82,7 @@ impl Spatial {
             }
             let (x, y) = (t.x(), t.y());
             let was_empty = empty;
-            let count = self.tiles.objects(x, y);
+            let count = self.tiles.objects(Tile::new(x, y));
             if empty && count.is_some_and(|n| n != 0) {
                 continue;
             }
@@ -195,14 +195,14 @@ impl Spatial {
         use crate::math::conversions::cvttss2si;
         let (sx, sy) = (site.position.x(), site.position.y());
         let (rx, ry) = (site.radius.x(), site.radius.y());
-        let (w, h) = (self.tiles.width, self.tiles.height);
+        let (w, h) = (self.tiles.size.width(), self.tiles.size.height());
         let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));
         let x1 = cvttss2si((sx + rx) - 0.001).min(w - 1);
         let y1 = cvttss2si((sy + ry) - 0.001).min(h - 1);
         let own = 1u32 << (site.player.index() as u32 & 0x1f);
         (y0..=y1).any(|y| {
             (x0..=x1).any(|x| {
-                let players = (self.tiles.word(x, y).unwrap_or(0) >> 23) as u32;
+                let players = (self.tiles.word(Tile::new(x, y)).unwrap_or(0) >> 23) as u32;
                 players != 0 && players != own
             })
         })
@@ -225,7 +225,7 @@ impl Spatial {
     ) -> Result<bool, GenieError> {
         let (x, y) = (point.x(), point.y());
         let (tx, ty) = (x as i32, y as i32);
-        let Some(word) = self.tiles.word(tx, ty) else {
+        let Some(word) = self.tiles.word(Tile::new(tx, ty)) else {
             return Ok(false);
         };
         if word & mask.blocked() != 0 {
@@ -257,9 +257,8 @@ impl Spatial {
         mask: crate::map::TerrainMask,
         ignore: &[ObjectId],
     ) -> Result<bool, GenieError> {
-        use crate::math::conversions::cvttss2si;
         // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
-        let Some(word) = self.tiles.word(cvttss2si(point.x()), cvttss2si(point.y())) else {
+        let Some(word) = self.tiles.word(point.tile()) else {
             return Ok(false);
         };
         if word & mask.blocked() != 0 {
@@ -357,7 +356,7 @@ impl Spatial {
     pub fn makes_tile_record(&self, point: Point, mask: crate::map::TerrainMask) -> bool {
         let (x, y) = (point.x() as i32, point.y() as i32);
         self.tiles
-            .word(x, y)
+            .word(Tile::new(x, y))
             .is_some_and(|w| w & (mask.classes() | 0x80) == 0)
             && !self.tile_records.contains(&(y, x))
     }

@@ -154,7 +154,7 @@ pub(super) fn spatial(
         .iter()
         .flat_map(|r| r.tiles.iter().map(|t| terrain.class(t.terrain_type)))
         .collect();
-    let tiles = Tiles::new(map.map_width, map.map_height, classes);
+    let tiles = Tiles::new(GridSize::new(map.map_width, map.map_height), classes);
     let mut out = Spatial::with_tiles(GridSize::new(map.map_width, map.map_height), tiles);
     out.terrain = Some(map_terrain(header, terrain));
     // what each player's queries make of the others' objects (player +0x278, the load's

@@ -22,7 +22,10 @@ impl Spatial {
     #[must_use]
     pub fn new(map: GridSize) -> Self {
         let n = (map.width().max(0) * map.height().max(0)) as usize;
-        Self::with_tiles(map, Tiles::new(map.width(), map.height(), vec![0; n]))
+        Self::with_tiles(
+            map,
+            Tiles::new(GridSize::new(map.width(), map.height()), vec![0; n]),
+        )
     }
 
     /// A map with the given tiles.
@@ -81,11 +84,11 @@ impl Spatial {
         self.refile(id);
     }
 
-    /// Whether an object on tile (`x`, `y`) (its centre there) satisfies `pred`.
-    pub fn object_on_tile(&self, x: i32, y: i32, pred: impl Fn(&Placed) -> bool) -> bool {
+    /// Whether an object on `tile` (its centre there) satisfies `pred`.
+    pub fn object_on_tile(&self, tile: Tile, pred: impl Fn(&Placed) -> bool) -> bool {
         self.objects
             .values()
-            .any(|o| o.position.x() as i32 == x && o.position.y() as i32 == y && pred(o))
+            .any(|o| Tile::new(o.position.x() as i32, o.position.y() as i32) == tile && pred(o))
     }
 
     /// Object `id`'s place in its tile's object list ([`Spatial::objects_on`]'s order, ghosts
@@ -95,23 +98,23 @@ impl Spatial {
         self.objects.get(&id).map_or(0, |o| {
             let list = self
                 .tiles
-                .list(o.position.x() as i32, o.position.y() as i32);
+                .list(Tile::new(o.position.x() as i32, o.position.y() as i32));
             list.iter().position(|&t| t == id).unwrap_or(0)
         })
     }
 
-    /// The map tile's object list (`+0x1b` count, `+0x28` array) of tile (`x`, `y`) in its
-    /// order, the ghosts' ids among them; none off the map.
+    /// The map tile's object list (`+0x1b` count, `+0x28` array) of `tile` in its order, the
+    /// ghosts' ids among them; none off the map.
     #[must_use]
-    pub fn tile_list(&self, x: i32, y: i32) -> &[ObjectId] {
-        self.tiles.list(x, y)
+    pub fn tile_list(&self, tile: Tile) -> &[ObjectId] {
+        self.tiles.list(tile)
     }
 
-    /// The objects whose centre is on tile (`x`, `y`): the map tile's object list (`+0x1b` count,
-    /// `+0x28` array), in its order, without the ghosts.
-    pub fn objects_on(&self, x: i32, y: i32) -> impl Iterator<Item = (ObjectId, &Placed)> + '_ {
+    /// The objects whose centre is on `tile`: the map tile's object list (`+0x1b` count, `+0x28`
+    /// array), in its order, without the ghosts.
+    pub fn objects_on(&self, tile: Tile) -> impl Iterator<Item = (ObjectId, &Placed)> + '_ {
         self.tiles
-            .list(x, y)
+            .list(tile)
             .iter()
             .filter_map(|id| self.objects.get(id).map(|o| (*id, o)))
     }
@@ -579,7 +582,7 @@ impl Spatial {
         let impassable = mask.classes();
         for y in y0..=y1 {
             for x in x0..=x1 {
-                let Some(word) = self.tiles.word(x, y) else {
+                let Some(word) = self.tiles.word(Tile::new(x, y)) else {
                     continue;
                 };
                 if word & (impassable | 0x80) == 0 {

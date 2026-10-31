@@ -575,7 +575,7 @@ mod stack_tests {
         );
         t.spatial = Spatial::with_tiles(
             GridSize::new(200, 200),
-            Tiles::new(200, 200, vec![0; 200 * 200]),
+            Tiles::new(GridSize::new(200, 200), vec![0; 200 * 200]),
         );
         t.spatial.terrain = Some(crate::map::terrain::Terrain::new(
             GridSize::new(200, 200),

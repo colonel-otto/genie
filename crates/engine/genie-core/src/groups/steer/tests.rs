@@ -116,7 +116,10 @@ fn world() -> World {
     for (id, factor) in [(6, 0.0), (7, 1.125), (8, 1.875)] {
         let _ = t.graphics.insert(id, graphic(id, factor));
     }
-    t.spatial = Spatial::with_tiles(GridSize::new(32, 32), Tiles::new(32, 32, vec![2; 32 * 32]));
+    t.spatial = Spatial::with_tiles(
+        GridSize::new(32, 32),
+        Tiles::new(GridSize::new(32, 32), vec![2; 32 * 32]),
+    );
     let mut g = UnitGroup::new(group_id(1));
     g.owner = 1;
     g.flags = 0;

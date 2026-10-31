@@ -806,7 +806,7 @@ fn walled_map(
     for &(x, y) in blocked {
         words[(y * w + x) as usize] = 0x02;
     }
-    let mut spatial = Spatial::with_tiles(size, Tiles::new(w, h, words));
+    let mut spatial = Spatial::with_tiles(size, Tiles::new(GridSize::new(w, h), words));
     let at = |(x, y): (i32, i32), master: MasterId| Placed {
         position: Position::new(x as f32 + 0.5, y as f32 + 0.5, 0.0),
         radius: Footprint::new(0.2, 0.2),

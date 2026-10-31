@@ -1,6 +1,7 @@
 //! `Process_New_Tiles` at the end of a player's update and a new object's visible resources.
 
 use crate::GenieError;
+use crate::map::Tile;
 use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -34,7 +35,7 @@ impl World {
         let mut found = Vec::new();
         for &pair in tiles {
             let (x, y) = (pair.x(), pair.y());
-            for (id, _) in self.spatial.objects_on(x, y) {
+            for (id, _) in self.spatial.objects_on(Tile::new(x, y)) {
                 let Some((owner, unit)) = self.object(id) else {
                     continue;
                 };

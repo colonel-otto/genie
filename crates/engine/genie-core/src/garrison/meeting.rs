@@ -195,7 +195,7 @@ fn buildings_on(
     y: i32,
 ) -> Result<usize, GenieError> {
     let mut n = 0;
-    for (_, o) in spatial.objects_on(x, y) {
+    for (_, o) in spatial.objects_on(Tile::new(x, y)) {
         let m = player_master(masters, o.player, o.master).ok_or(GenieError::unsupported(
             "an object on a tile of a master the slice lacks",
         ))?;

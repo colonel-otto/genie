@@ -8,6 +8,7 @@ use crate::groups::GroupTarget;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::RestrictionId;
+use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
@@ -1949,7 +1950,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         (record.master, record.radius),
         (master_id(5), Footprint::new(0.3, 0.3))
     );
-    assert!(!spatial.tile_list(5, 5).contains(&object_id(7)));
+    assert!(!spatial.tile_list(Tile::new(5, 5)).contains(&object_id(7)));
 }
 
 /// Slot 0x90's unit part ([`switch_master`]) of `unit`, at (3.5, 3.5) in the open, from `old`
@@ -3780,7 +3781,7 @@ fn searchable(mut t: World) -> World {
     // the group's statistics search the members' surroundings
     let mut s = crate::map::spatial::Spatial::with_tiles(
         GridSize::new(60, 60),
-        crate::map::spatial::Tiles::new(60, 60, vec![1; 3600]),
+        crate::map::spatial::Tiles::new(GridSize::new(60, 60), vec![1; 3600]),
     );
     let kind = crate::map::terrain::TerrainKind {
         shown: true,

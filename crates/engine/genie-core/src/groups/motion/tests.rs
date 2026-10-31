@@ -691,7 +691,7 @@ fn open_fixture() -> Fixture {
     let mut fx = Fixture::new();
     fx.spatial = Spatial::with_tiles(
         GridSize::new(40, 40),
-        crate::map::spatial::Tiles::new(40, 40, vec![4; 40 * 40]),
+        crate::map::spatial::Tiles::new(GridSize::new(40, 40), vec![4; 40 * 40]),
     );
     fx
 }

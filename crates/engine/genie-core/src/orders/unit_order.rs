@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -131,7 +132,7 @@ impl World {
                 if !self.spatial.sees_tile(p, tx, ty) {
                     continue;
                 }
-                let ids = self.spatial.tiles().list(tx, ty).to_vec();
+                let ids = self.spatial.tiles().list(Tile::new(tx, ty)).to_vec();
                 for id in ids {
                     let Some(Place::Live(q, i)) = self.place(id) else {
                         continue;

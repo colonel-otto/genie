@@ -116,7 +116,7 @@ impl UnitView<'_, '_> {
             &self.c.w.spatial,
         );
         let foundation_on = |x: i32, y: i32| -> Result<Option<ObjectId>, GenieError> {
-            for (id, p) in spatial.objects_on(x, y) {
+            for (id, p) in spatial.objects_on(Tile::new(x, y)) {
                 if p.player != player {
                     continue;
                 }

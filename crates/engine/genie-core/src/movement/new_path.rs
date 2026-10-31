@@ -3,6 +3,7 @@
 
 use crate::map::Point;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::movement::PathState;
 use crate::movement::WaypointLevel;
@@ -250,7 +251,7 @@ impl Mover {
             blocked: self.stats.restriction_mask.blocked(),
         };
         let tiles = world.tiles();
-        let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
+        let words = |x: u32, y: u32| tiles.word(Tile::new(x as i32, y as i32)).unwrap_or(0);
         let (mesh, pather) = plan
             .pathing
             .mesh_and_pather()

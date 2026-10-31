@@ -4,6 +4,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -133,7 +134,7 @@ pub(crate) fn footprint_clearing(
     let mut cleared = Vec::new();
     for y in y0..=y1 {
         for x in x0..=x1 {
-            for (id, o) in world.objects_on(i32::from(x), i32::from(y)) {
+            for (id, o) in world.objects_on(Tile::new(i32::from(x), i32::from(y))) {
                 if let Some(c) = clearing_takes(site, id, o, looks)? {
                     cleared.push(c);
                 }
@@ -154,7 +155,7 @@ pub(crate) fn clearing_objects(world: &Spatial, at: Point) -> Vec<ObjectId> {
         for x in x0..=x1 {
             ids.extend(
                 world
-                    .objects_on(i32::from(x), i32::from(y))
+                    .objects_on(Tile::new(i32::from(x), i32::from(y)))
                     .map(|(id, _)| id),
             );
         }

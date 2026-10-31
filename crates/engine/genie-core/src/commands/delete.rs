@@ -8,6 +8,7 @@
 
 use crate::GenieError;
 use crate::construction::build::held;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -131,7 +132,7 @@ impl World {
         let mut gone = Vec::new();
         for ty in y0..=y1 {
             for tx in x0..=x1 {
-                for (oid, o) in self.spatial.objects_on(tx, ty) {
+                for (oid, o) in self.spatial.objects_on(Tile::new(tx, ty)) {
                     if oid == id || gone.iter().any(|&(_, g)| g == oid) {
                         continue;
                     }
@@ -773,6 +774,7 @@ mod clearing_tests {
     use crate::map::GridSize;
     use crate::map::Point;
     use crate::map::Position;
+    use crate::map::Tile;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::ObstructionClass;
@@ -904,7 +906,10 @@ mod clearing_tests {
                 },
             ],
         );
-        t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
+        t.spatial = Spatial::with_tiles(
+            GridSize::new(20, 20),
+            Tiles::new(GridSize::new(20, 20), vec![0; 400]),
+        );
         for p in PlayerId::each(2) {
             let all: Vec<Unit> = t.players[p.index()]
                 .objects
@@ -943,7 +948,7 @@ mod clearing_tests {
             vec![],
         );
         assert_eq!(
-            t.spatial.tiles().list(10, 10),
+            t.spatial.tiles().list(Tile::new(10, 10)),
             [object_id(6084), object_id(6083)]
         );
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)

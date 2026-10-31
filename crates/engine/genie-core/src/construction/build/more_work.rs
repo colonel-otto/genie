@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
@@ -92,7 +93,7 @@ impl Unit {
         let spatial: &Spatial = &c.w.spatial;
         let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial
-                .objects_on(x, y)
+                .objects_on(Tile::new(x, y))
                 .map(|(id, p)| {
                     if id == me_id {
                         return Ok(me);

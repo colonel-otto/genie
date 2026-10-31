@@ -1259,7 +1259,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
     ];
     t.spatial = Spatial::with_tiles(
         GridSize::new(120, 120),
-        crate::map::spatial::Tiles::new(120, 120, vec![0; 120 * 120]),
+        crate::map::spatial::Tiles::new(GridSize::new(120, 120), vec![0; 120 * 120]),
     );
     placeable(&mut t);
     for u in &t.players[0].sleeping {
@@ -2157,7 +2157,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
     t.players[1].objects.push(annex);
     t.spatial = Spatial::with_tiles(
         GridSize::new(120, 120),
-        crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
+        crate::map::spatial::Tiles::new(GridSize::new(120, 120), vec![4; 14400]),
     );
     for (id, x) in [(10028, 30.0), (10031, 32.0)] {
         t.spatial.insert(
@@ -2655,7 +2655,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
 pub(crate) fn open_map(t: &mut World) {
     t.spatial = Spatial::with_tiles(
         GridSize::new(120, 120),
-        crate::map::spatial::Tiles::new(120, 120, vec![4; 120 * 120]),
+        crate::map::spatial::Tiles::new(GridSize::new(120, 120), vec![4; 120 * 120]),
     );
     placeable(t);
     if let Some(terrain) = t.spatial.terrain.as_mut() {
@@ -5456,7 +5456,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     t.spatial = Spatial::with_tiles(
         GridSize::new(120, 120),
-        crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
+        crate::map::spatial::Tiles::new(GridSize::new(120, 120), vec![4; 14400]),
     );
     t.spatial.insert(
         object_id(10028),
@@ -7253,7 +7253,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
     t.masters = (0..4).map(|_| Masters::new([master.clone()])).collect();
     t.spatial = Spatial::with_tiles(
         GridSize::new(20, 20),
-        crate::map::spatial::Tiles::new(20, 20, vec![1; 400]),
+        crate::map::spatial::Tiles::new(GridSize::new(20, 20), vec![1; 400]),
     );
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
     let record = crate::map::spatial::Obstruction {
@@ -7279,7 +7279,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
     let blocked = |t: &World| {
         t.spatial
             .tiles()
-            .word(9, 10)
+            .word(Tile::new(9, 10))
             .is_some_and(|w| w & crate::map::spatial::BLOCKED != 0)
     };
     assert!(blocked(&t));
@@ -7327,7 +7327,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
 fn a_gate_counts_the_moving_units_between_its_posts() {
     let mut s = Spatial::with_tiles(
         GridSize::new(40, 40),
-        crate::map::spatial::Tiles::new(40, 40, vec![1; 1600]),
+        crate::map::spatial::Tiles::new(GridSize::new(40, 40), vec![1; 1600]),
     );
     s.relations = vec![
         relation_row([0, 3, 3]),
@@ -7525,7 +7525,7 @@ fn gate_world() -> World {
     ];
     t.spatial = Spatial::with_tiles(
         GridSize::new(40, 40),
-        crate::map::spatial::Tiles::new(40, 40, vec![1; 1600]),
+        crate::map::spatial::Tiles::new(GridSize::new(40, 40), vec![1; 1600]),
     );
     t.spatial.relations = vec![relation_row([0, 3]), relation_row([3, 0])];
     let placed = |x: f32, class, speed, kind| Placed {

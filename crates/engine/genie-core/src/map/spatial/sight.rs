@@ -6,6 +6,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -108,8 +109,8 @@ impl Spatial {
         let livestock = p.class == class::LIVESTOCK;
         // the tiles' lists row by row, each in its order: an object a full tile did not file is
         // not met
-        let on_tiles =
-            (y0..=y1).flat_map(|ty| (x0..=x1).flat_map(move |tx| self.objects_on(tx, ty)));
+        let on_tiles = (y0..=y1)
+            .flat_map(|ty| (x0..=x1).flat_map(move |tx| self.objects_on(Tile::new(tx, ty))));
         for (id, q) in on_tiles {
             let Some(s) = v.seer(id) else { continue };
             if s.kind != COMBAT || s.state != ObjectState::Alive || KEPT.contains(&q.class) {
@@ -446,32 +447,33 @@ impl Spatial {
         }
     }
 
-    /// The tiles' lists in the game's order (`x`, `y`, ids), each a tile of two objects or more
+    /// The tiles' lists in the game's order (the tile, its ids), each a tile of two objects or more
     /// (a single object's tile follows from the positions); the order is the game's history,
     /// which no save holds. Returns the tiles whose objects the slice does not hold as the game
     /// does (the same ids, in any order), with the slice's list; those keep the slice's.
     pub fn force_tile_lists(
         &mut self,
-        lists: &[(i32, i32, Vec<ObjectId>)],
-    ) -> Vec<(i32, i32, Vec<ObjectId>)> {
+        lists: &[(Tile, Vec<ObjectId>)],
+    ) -> Vec<(Tile, Vec<ObjectId>)> {
         let mut differ = Vec::new();
-        for (x, y, ids) in lists {
-            let Some(tile) = self
+        for (tile, ids) in lists {
+            let Some(list) = self
                 .tiles
-                .index(*x, *y)
+                .size
+                .index(*tile)
                 .and_then(|i| self.tiles.lists.get_mut(i))
             else {
-                differ.push((*x, *y, Vec::new()));
+                differ.push((*tile, Vec::new()));
                 continue;
             };
-            let mut mine = tile.clone();
+            let mut mine = list.clone();
             let mut theirs = ids.clone();
             mine.sort_unstable();
             theirs.sort_unstable();
             if mine == theirs {
-                tile.clone_from(ids);
+                list.clone_from(ids);
             } else {
-                differ.push((*x, *y, tile.clone()));
+                differ.push((*tile, list.clone()));
             }
         }
         differ
@@ -482,7 +484,7 @@ impl Spatial {
     #[must_use]
     pub fn standable(&self, x: i32, y: i32, mask: crate::map::TerrainMask) -> bool {
         self.tiles
-            .word(x, y)
+            .word(Tile::new(x, y))
             .is_some_and(|w| w & (mask.blocked() | BLOCKED) == 0)
     }
 
@@ -504,7 +506,10 @@ impl Spatial {
         me: ObjectId,
         radius_x: f32,
     ) -> Result<bool, GenieError> {
-        let (Some(word), Some(tall)) = (self.tiles.word(x, y), self.tiles.tall(x, y)) else {
+        let (Some(word), Some(tall)) = (
+            self.tiles.word(Tile::new(x, y)),
+            self.tiles.tall(Tile::new(x, y)),
+        ) else {
             return Ok(false);
         };
         if word & (mask.blocked() | BLOCKED) != 0 {

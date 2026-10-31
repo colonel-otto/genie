@@ -194,7 +194,7 @@ impl World {
                 {
                     return Ok(());
                 }
-                for id in self.spatial.tile_list(x, y).to_vec() {
+                for id in self.spatial.tile_list(Tile::new(x, y)).to_vec() {
                     let Some(b) = self.bystander(id, owner)? else {
                         continue;
                     };

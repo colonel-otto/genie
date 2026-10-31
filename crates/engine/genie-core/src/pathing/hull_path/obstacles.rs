@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::map::spatial::RecordId;
 use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
@@ -139,7 +140,7 @@ impl HullPather<'_> {
         player: i32,
     ) -> Result<(), GenieError> {
         let world = &*self.world;
-        for &id in world.tiles().list(x, y) {
+        for &id in world.tiles().list(Tile::new(x, y)) {
             let Some(p) = world.get(id) else {
                 continue;
             };
@@ -214,7 +215,7 @@ impl HullPather<'_> {
         if x < 0 || y < 0 || w <= x || h <= y {
             return Ok(());
         }
-        let word = self.world.tiles().word(x, y).unwrap_or(0);
+        let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
         if word & self.mask.blocked() != 0 {
             let id = tile_record_id(x, y);
             if !self.ignore.contains(&id) {
@@ -268,7 +269,7 @@ impl HullPather<'_> {
             let mut run: Option<i32> = None;
             let mut x = self.area[0];
             while x <= self.area[2] {
-                let word = self.world.tiles().word(x, y).unwrap_or(0);
+                let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
                 let open =
                     word & not_mask == 0 && ((word >> 14) & 1 == 0 || word & 0x3f00 == 0x500);
                 if open {
@@ -322,7 +323,7 @@ impl HullPather<'_> {
     /// `FUN_140f8a890`: a cliff tile's objects (its word's static class 6), each to its own place
     /// ([`HullPather::add_tile_objects`] with no hull and player -1: no gate passes).
     pub(super) fn cliff(&mut self, x: i32, y: i32) -> Result<(), GenieError> {
-        let word = self.world.tiles().word(x, y).unwrap_or(0);
+        let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
         if word & 0x3f00 == 0x600 {
             self.add_tile_objects(x, y, None, -1)?;
         }

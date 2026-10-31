@@ -2,6 +2,7 @@
 
 use crate::map::Footprint;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use std::collections::BTreeSet;
 
@@ -127,7 +128,7 @@ impl<'w> HullPather<'w> {
             let (x, y) = (p.position.x(), p.position.y());
             if p.radius == Footprint::new(HALF, HALF) && x % ONE == HALF && y % ONE == HALF {
                 let (tx, ty) = (cvttss2si(x.floor()), cvttss2si(y.floor()));
-                let word = world.tiles().word(tx, ty).unwrap_or(0);
+                let word = world.tiles().word(Tile::new(tx, ty)).unwrap_or(0);
                 if word & mask.blocked() != 0 {
                     ignore.push(tile_record_id(tx, ty));
                 }

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
@@ -131,7 +132,7 @@ pub(crate) fn closest_resource_of(
     let me = candidate(me_id, player, unit, unit.position())?;
     let objects = |spatial: &Spatial, x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
         spatial
-            .objects_on(x, y)
+            .objects_on(Tile::new(x, y))
             .map(|(id, p)| {
                 if id == me_id {
                     return Ok(me);
@@ -170,7 +171,12 @@ pub(crate) fn closest_resource_of(
             map: c.spatial.map,
             world: c.spatial,
             explored: &|spatial, x, y| spatial.explored(player, x, y),
-            passable: &|spatial, x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+            passable: &|spatial, x, y| {
+                spatial
+                    .tiles()
+                    .word(Tile::new(x, y))
+                    .is_some_and(|w| w & blocked == 0)
+            },
             objects: &objects,
             reach: &mut |spatial, id| {
                 mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id)

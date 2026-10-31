@@ -434,11 +434,11 @@ impl<'a> Grid<'a> {
     }
 
     fn word(&self, x: i32, y: i32) -> u64 {
-        self.tiles.word(x, y).unwrap_or(0)
+        self.tiles.word(Tile::new(x, y)).unwrap_or(0)
     }
 
     fn tall(&self, x: i32, y: i32) -> u8 {
-        let Some(t) = self.tiles.tall(x, y) else {
+        let Some(t) = self.tiles.tall(Tile::new(x, y)) else {
             return 0;
         };
         t.wrapping_sub(
@@ -686,14 +686,17 @@ mod tests {
                 classes.push(if c == '#' { 2 } else { 1 });
             }
         }
-        let mut t = Tiles::new(w, h, classes);
+        let mut t = Tiles::new(GridSize::new(w, h), classes);
         for (y, r) in rows.iter().enumerate() {
             for (x, c) in r.chars().enumerate() {
                 if c == 'T' {
-                    t.add_tall_for_test(x as i32, y as i32);
+                    t.add_tall_for_test(Tile::new(x as i32, y as i32));
                 }
                 if c == 'G' {
-                    t.mark_for_test(x as i32, y as i32, BLOCKED | GATE_CLASS_BITS | 4 << 16);
+                    t.mark_for_test(
+                        Tile::new(x as i32, y as i32),
+                        BLOCKED | GATE_CLASS_BITS | 4 << 16,
+                    );
                 }
             }
         }

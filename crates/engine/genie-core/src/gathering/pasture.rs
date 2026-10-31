@@ -6,6 +6,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
@@ -253,7 +254,7 @@ impl World {
     /// Whether the objects on tile (`x`, `y`) (its list, `+0x28`) hold a livestock master
     /// ([`LIVESTOCK`]) of the pasture `pasture` (`+0x790`). A ghost on it is not of a pasture.
     fn holds_livestock_of(&self, pasture: ObjectId, x: i32, y: i32) -> bool {
-        self.spatial.tile_list(x, y).iter().any(|&o| {
+        self.spatial.tile_list(Tile::new(x, y)).iter().any(|&o| {
             self.object(o).is_some_and(|(_, u)| {
                 u.pasture == Some(pasture) && LIVESTOCK.contains(&u.life.master_id)
             })

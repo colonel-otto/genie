@@ -370,7 +370,10 @@ fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses
 fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     let mut classes = vec![1u8; 100];
     classes[2 * 10 + 7] = 2;
-    let mut s = Spatial::with_tiles(GridSize::new(10, 10), Tiles::new(10, 10, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(10, 10),
+        Tiles::new(crate::map::GridSize::new(10, 10), classes),
+    );
     s.insert(object_id(7), villager(4.0, 5.0));
     let line = |s: &Spatial, ignore: &[RecordId]| {
         s.still_line_hit(Point::new(1.0, 5.0), Point::new(8.0, 5.0), 0.0, ignore)
@@ -413,7 +416,10 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
             .unwrap()
     );
     // a line 0.3 beside the standing villager (radius 0.2): met only with a buffer of 0.2
-    let mut t = Spatial::with_tiles(GridSize::new(10, 10), Tiles::new(10, 10, vec![1; 100]));
+    let mut t = Spatial::with_tiles(
+        GridSize::new(10, 10),
+        Tiles::new(crate::map::GridSize::new(10, 10), vec![1; 100]),
+    );
     t.insert(object_id(8), villager(4.0, 5.0));
     assert!(
         !t.still_line_hit(Point::new(1.0, 5.3), Point::new(8.0, 5.3), 0.0, &[])
@@ -432,7 +438,10 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
 fn a_point_is_clear_among_the_ignored_objects() {
     let mut classes = vec![1u8; 100];
     classes[5 * 10 + 4] = 2;
-    let mut s = Spatial::with_tiles(GridSize::new(10, 10), Tiles::new(10, 10, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(10, 10),
+        Tiles::new(crate::map::GridSize::new(10, 10), classes),
+    );
     s.insert(object_id(7), villager(4.0, 6.5));
     assert!(
         !s.point_clear_among(
@@ -527,7 +536,10 @@ fn a_point_is_clear_among_the_ignored_objects() {
 fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
     let mut classes = vec![1u8; 100];
     classes[5 * 10 + 5] = 2;
-    let mut s = Spatial::with_tiles(GridSize::new(10, 10), Tiles::new(10, 10, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(10, 10),
+        Tiles::new(crate::map::GridSize::new(10, 10), classes),
+    );
     s.insert(object_id(7), villager(4.0, 5.5));
     s.set_manager_buffer(Some(0.2));
     let hits = s
@@ -622,7 +634,10 @@ fn a_last_move_set_outside_the_object_s_update_reaches_the_walk() {
 fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     let mut classes = vec![1u8; 100];
     classes[5 * 10 + 4] = 2;
-    let mut s = Spatial::with_tiles(GridSize::new(10, 10), Tiles::new(10, 10, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(10, 10),
+        Tiles::new(crate::map::GridSize::new(10, 10), classes),
+    );
     assert_eq!((s.manager_buffer(), s.manager_grow()), (None, 0.0));
     s.set_manager_buffer(Some(0.1));
     assert_eq!(s.manager_grow(), 0.1);
@@ -767,7 +782,7 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     // query's tiles are 32..32
     let mut s = Spatial::with_tiles(
         GridSize::new(220, 220),
-        Tiles::new(220, 220, vec![1; 220 * 220]),
+        Tiles::new(crate::map::GridSize::new(220, 220), vec![1; 220 * 220]),
     );
     assert_eq!(s.grid, Grid { levels: 6 });
     let mut bush = villager(31.5, 154.5);
@@ -796,7 +811,7 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
     // nothing
     let mut s = Spatial::with_tiles(
         GridSize::new(220, 220),
-        Tiles::new(220, 220, vec![1; 220 * 220]),
+        Tiles::new(crate::map::GridSize::new(220, 220), vec![1; 220 * 220]),
     );
     let mut bush = villager(140.5, 3.5);
     bush.radius = Footprint::new(0.5, 0.5);
@@ -809,11 +824,15 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
     s.insert(object_id(0), bush);
     let _ = s.take_changes();
     s.remove(object_id(0));
-    assert!(s.tiles().word(140, 3).is_some_and(|w| w & BLOCKED != 0));
+    assert!(
+        s.tiles()
+            .word(Tile::new(140, 3))
+            .is_some_and(|w| w & BLOCKED != 0)
+    );
     assert_eq!(s.take_changes(), Vec::<[i16; 4]>::new());
     // alone, it clears its tile
     s.remove(object_id(808));
-    assert_eq!(s.tiles().word(140, 3), Some(1));
+    assert_eq!(s.tiles().word(Tile::new(140, 3)), Some(1));
     assert_eq!(s.take_changes(), vec![[140, 3, 140, 3]]);
 }
 
@@ -822,7 +841,10 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
 /// its player's marks (false); a unit (type 5) drops its record (true).
 #[test]
 fn a_record_goes_by_its_master_s_obstruction_type() {
-    let mut s = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![1; 400]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        Tiles::new(crate::map::GridSize::new(20, 20), vec![1; 400]),
+    );
     let mut rock = villager(5.5, 5.5);
     rock.radius = Footprint::new(0.5, 0.5);
     rock.obstruction_type = ObstructionType::TYPE_1;
@@ -831,9 +853,13 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
         class: ObstructionClass::RESOURCE,
     });
     s.insert(object_id(1), rock);
-    assert!(s.tiles().word(5, 5).is_some_and(|w| w & BLOCKED != 0));
+    assert!(
+        s.tiles()
+            .word(Tile::new(5, 5))
+            .is_some_and(|w| w & BLOCKED != 0)
+    );
     assert!(s.dropped_record(object_id(1)));
-    assert_eq!(s.tiles().word(5, 5), Some(1));
+    assert_eq!(s.tiles().word(Tile::new(5, 5)), Some(1));
     assert_eq!(
         s.get(object_id(1)).and_then(|p| p.obstruction),
         rock.obstruction
@@ -843,7 +869,11 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     other.position = Position::new(8.5, 8.5, 0.0);
     s.insert(object_id(2), other);
     assert!(!s.dropped_record(object_id(2)));
-    assert!(s.tiles().word(8, 8).is_some_and(|w| w & BLOCKED != 0));
+    assert!(
+        s.tiles()
+            .word(Tile::new(8, 8))
+            .is_some_and(|w| w & BLOCKED != 0)
+    );
     // a foundation of player 2 without its record on a tile player 2 marked
     let mut wall = rock;
     wall.obstruction_type = ObstructionType::TYPE_2;
@@ -858,7 +888,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     s.insert(object_id(4), site);
     s.objects.get_mut(&object_id(3)).unwrap().obstruction = None;
     assert!(!s.dropped_record(object_id(4)));
-    assert_eq!(s.tiles().word(12, 12), Some(1));
+    assert_eq!(s.tiles().word(Tile::new(12, 12)), Some(1));
     let unit = villager(15.5, 15.5);
     let mut unit5 = unit;
     unit5.obstruction_type = ObstructionType::CIRCLE;
@@ -959,7 +989,10 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
 /// with the words the game's obstruction manager holds for their tiles.
 #[test]
 fn a_static_record_marks_its_tiles_with_its_class_and_player() {
-    let mut s = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(crate::map::GridSize::new(4, 4), vec![4; 16]),
+    );
     let centre = Placed {
         position: Position::new(2.0, 2.0, 0.0),
         radius: Footprint::new(1.0, 1.0),
@@ -995,46 +1028,61 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
     };
     s.insert(object_id(48), tree);
     let t = s.tiles();
-    assert_eq!(t.word(1, 1), Some(0x202_4304));
-    assert_eq!(t.word(2, 2), Some(0x202_4304));
-    assert_eq!(t.word(3, 3), Some(4));
-    assert_eq!(t.word(0, 0), Some(0x80_4104));
-    assert_eq!((t.objects(2, 2), t.tall(2, 2)), (Some(1), Some(1)));
+    assert_eq!(t.word(Tile::new(1, 1)), Some(0x202_4304));
+    assert_eq!(t.word(Tile::new(2, 2)), Some(0x202_4304));
+    assert_eq!(t.word(Tile::new(3, 3)), Some(4));
+    assert_eq!(t.word(Tile::new(0, 0)), Some(0x80_4104));
+    assert_eq!(
+        (t.objects(Tile::new(2, 2)), t.tall(Tile::new(2, 2))),
+        (Some(1), Some(1))
+    );
     s.remove(object_id(9157));
-    assert_eq!(s.tiles().word(1, 1), Some(4));
-    assert_eq!(s.tiles().objects(2, 2), Some(0));
+    assert_eq!(s.tiles().word(Tile::new(1, 1)), Some(4));
+    assert_eq!(s.tiles().objects(Tile::new(2, 2)), Some(0));
 }
 
 #[test]
 fn a_unit_counts_on_the_tile_its_centre_is_on_and_marks_nothing() {
-    let mut s = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(crate::map::GridSize::new(4, 4), vec![4; 16]),
+    );
     s.insert(object_id(9177), villager(1.9, 1.0));
-    assert_eq!(s.tiles().objects(1, 1), Some(1));
-    assert_eq!(s.tiles().word(1, 1), Some(4));
+    assert_eq!(s.tiles().objects(Tile::new(1, 1)), Some(1));
+    assert_eq!(s.tiles().word(Tile::new(1, 1)), Some(4));
     s.set_position(object_id(9177), Position::new(2.05, 1.0, 0.0))
         .unwrap();
     assert_eq!(
-        (s.tiles().objects(1, 1), s.tiles().objects(2, 1)),
+        (
+            s.tiles().objects(Tile::new(1, 1)),
+            s.tiles().objects(Tile::new(2, 1))
+        ),
         (Some(0), Some(1))
     );
-    assert_eq!(s.tiles().tall(2, 1), Some(1));
+    assert_eq!(s.tiles().tall(Tile::new(2, 1)), Some(1));
 }
 
 #[test]
 fn a_tile_s_list_keeps_the_game_s_order() {
-    let mut s = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(crate::map::GridSize::new(4, 4), vec![4; 16]),
+    );
     for (id, x) in [(9171, 1.1), (10029, 1.5), (9173, 1.9)] {
         s.insert(object_id(id), villager(x, 1.0));
     }
     assert_eq!(
-        s.tiles().list(1, 1),
+        s.tiles().list(Tile::new(1, 1)),
         [object_id(9171), object_id(10029), object_id(9173)]
     );
     assert_eq!(s.tile_place(object_id(9173)), 2);
     // the leaving object's slot goes to the last
     s.set_position(object_id(9171), Position::new(2.1, 1.0, 0.0))
         .unwrap();
-    assert_eq!(s.tiles().list(1, 1), [object_id(9173), object_id(10029)]);
+    assert_eq!(
+        s.tiles().list(Tile::new(1, 1)),
+        [object_id(9173), object_id(10029)]
+    );
     assert_eq!(
         (s.tile_place(object_id(9173)), s.tile_place(object_id(9171))),
         (0, 0)
@@ -1043,27 +1091,32 @@ fn a_tile_s_list_keeps_the_game_s_order() {
     s.set_position(object_id(9173), Position::new(1.2, 1.0, 0.0))
         .unwrap();
     s.change_master(object_id(9173), villager(1.2, 1.0));
-    assert_eq!(s.tiles().list(1, 1), [object_id(9173), object_id(10029)]);
+    assert_eq!(
+        s.tiles().list(Tile::new(1, 1)),
+        [object_id(9173), object_id(10029)]
+    );
     s.set_position(object_id(9171), Position::new(1.0, 1.0, 0.0))
         .unwrap();
     assert_eq!(
-        s.tiles().list(1, 1),
+        s.tiles().list(Tile::new(1, 1)),
         [object_id(9173), object_id(10029), object_id(9171)]
     );
     assert_eq!(
-        (s.tiles().objects(1, 1), s.tiles().tall(1, 1)),
+        (
+            s.tiles().objects(Tile::new(1, 1)),
+            s.tiles().tall(Tile::new(1, 1))
+        ),
         (Some(3), Some(3))
     );
     assert_eq!(
         s.force_tile_lists(&[(
-            1,
-            1,
+            Tile::new(1, 1),
             vec![object_id(9171), object_id(9173), object_id(10029)]
         )]),
         Vec::new()
     );
     assert_eq!(
-        s.tiles().list(1, 1),
+        s.tiles().list(Tile::new(1, 1)),
         [object_id(9171), object_id(9173), object_id(10029)]
     );
 }
@@ -1072,44 +1125,50 @@ fn a_tile_s_list_keeps_the_game_s_order() {
 /// `FUN_140f5f560`: an object not on the list leaves nothing changed (no recount).
 #[test]
 fn a_full_tile_takes_no_object_and_one_not_on_it_leaves_its_count() {
-    let mut s = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(crate::map::GridSize::new(4, 4), vec![4; 16]),
+    );
     for id in 0..250 {
         s.insert(object_id(id), villager(1.5, 1.5));
     }
-    assert_eq!(s.tiles().objects(1, 1), Some(250));
-    assert_eq!(s.tiles().tall(1, 1), Some(250));
+    assert_eq!(s.tiles().objects(Tile::new(1, 1)), Some(250));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(250));
     // object 0 is no longer tall; the game does not redo the count
     s.set_tall(object_id(0), false);
     s.insert(object_id(250), villager(1.5, 1.5));
-    assert_eq!(s.tiles().objects(1, 1), Some(250));
-    assert!(!s.tiles().list(1, 1).contains(&object_id(250)));
-    assert_eq!(s.tiles().tall(1, 1), Some(250));
+    assert_eq!(s.tiles().objects(Tile::new(1, 1)), Some(250));
+    assert!(!s.tiles().list(Tile::new(1, 1)).contains(&object_id(250)));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(250));
     // 250 leaves a tile whose list never held it: no recount
     s.remove(object_id(250));
-    assert_eq!(s.tiles().tall(1, 1), Some(250));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(250));
     // one that is on it leaves: the count is redone over the list, 0 not tall
     s.remove(object_id(249));
-    assert_eq!(s.tiles().tall(1, 1), Some(248));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(248));
 }
 
 /// A ghost enters and leaves a tile's list as any object does (`FUN_140f5f0a0`,
 /// `FUN_140f5f560`): the tile's tall count is redone over the list.
 #[test]
 fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
-    let mut s = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(crate::map::GridSize::new(4, 4), vec![4; 16]),
+    );
     s.insert(object_id(1), villager(1.5, 1.5));
     s.insert(object_id(2), villager(1.5, 1.5));
     s.set_tall(object_id(1), false);
-    assert_eq!(s.tiles().tall(1, 1), Some(2));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(2));
     s.insert_ghost(object_id(-5), Position::new(1.5, 1.5, 0.0));
     assert_eq!(
-        s.tiles().list(1, 1),
+        s.tiles().list(Tile::new(1, 1)),
         [object_id(1), object_id(2), object_id(-5)]
     );
-    assert_eq!(s.tiles().tall(1, 1), Some(1));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(1));
     s.set_tall(object_id(2), false);
     s.remove_ghost(object_id(-5), Position::new(1.5, 1.5, 0.0));
-    assert_eq!(s.tiles().tall(1, 1), Some(0));
+    assert_eq!(s.tiles().tall(Tile::new(1, 1)), Some(0));
 }
 
 /// The house foundation 10028 at (30, 88) of MarvinBlue/426048731 with its builder 9175 on its
@@ -1117,7 +1176,7 @@ fn a_ghost_entering_or_leaving_a_tile_redoes_its_tall_count() {
 fn site() -> (Spatial, Placed) {
     let mut s = Spatial::with_tiles(
         GridSize::new(40, 120),
-        Tiles::new(40, 120, vec![4; 40 * 120]),
+        Tiles::new(crate::map::GridSize::new(40, 120), vec![4; 40 * 120]),
     );
     s.insert(object_id(9175), villager(30.0, 89.0));
     let mut house = villager(30.0, 88.0);
@@ -1407,13 +1466,13 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
 fn foreign_marks_read_the_players_in_32_bits_and_skip_a_nan_place() {
     let (mut s, mut house) = site();
     // player 2 of 30.0, 88.0: tile (29, 87) marked by player 3, then a bit past 32 players
-    s.tiles.mark_for_test(29, 87, 0x80_0000 << 3);
+    s.tiles.mark_for_test(Tile::new(29, 87), 0x80_0000 << 3);
     assert!(s.foreign_marks(&house));
     let (mut t, _) = site();
-    t.tiles.mark_for_test(29, 87, 1 << 60);
+    t.tiles.mark_for_test(Tile::new(29, 87), 1 << 60);
     assert!(!t.foreign_marks(&house));
     // a NaN place reads nothing, not tile 0 (here marked by player 3)
-    s.tiles.mark_for_test(0, 0, 0x80_0000 << 3);
+    s.tiles.mark_for_test(Tile::new(0, 0), 0x80_0000 << 3);
     house.position = Position::new(f32::NAN, f32::NAN, 0.0);
     assert!(!s.foreign_marks(&house));
 }
@@ -1421,7 +1480,10 @@ fn foreign_marks_read_the_players_in_32_bits_and_skip_a_nan_place() {
 #[test]
 fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     // tiles of class 1 everywhere: a unit with mask 1 crosses them all
-    let mut s = Spatial::with_tiles(GridSize::new(16, 16), Tiles::new(16, 16, vec![1; 256]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(16, 16),
+        Tiles::new(crate::map::GridSize::new(16, 16), vec![1; 256]),
+    );
     let mut house = villager(8.0, 8.0);
     house.radius = Footprint::new(1.0, 1.0);
     house.obstruction = Some(Obstruction {
@@ -1473,7 +1535,10 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
 fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
     let mut classes = vec![1; 256];
     classes[5 * 16 + 9] = 2;
-    let mut s = Spatial::with_tiles(GridSize::new(16, 16), Tiles::new(16, 16, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(16, 16),
+        Tiles::new(crate::map::GridSize::new(16, 16), classes),
+    );
     assert!(s.segment_blocked(
         Point::new(2.0, 5.5),
         Point::new(14.0, 5.5),
@@ -1505,7 +1570,10 @@ fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
 fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
     let mut classes = vec![1; 64 * 64];
     classes[5 * 64 + 5] = 0;
-    let mut s = Spatial::with_tiles(GridSize::new(64, 64), Tiles::new(64, 64, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(64, 64),
+        Tiles::new(crate::map::GridSize::new(64, 64), classes),
+    );
     let (a, b) = (Point::new(6.5, 6.5), Point::new(7.5, 7.5));
     assert!(
         !s.pather_blocked(a, b, Some(0.5), TerrainMask::of_bits(1), &[])
@@ -1557,7 +1625,10 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
 /// modelled.
 #[test]
 fn a_pather_walk_off_the_map_meets_its_edge_first() {
-    let mut s = Spatial::with_tiles(GridSize::new(16, 16), Tiles::new(16, 16, vec![1; 256]));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(16, 16),
+        Tiles::new(crate::map::GridSize::new(16, 16), vec![1; 256]),
+    );
     let mut house = villager(4.0, 8.0);
     house.radius = Footprint::new(1.0, 1.0);
     house.obstruction = Some(Obstruction {
@@ -1643,7 +1714,10 @@ fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
     let mut classes = vec![1; 128 * 128];
     classes[90 * 128 + 78] = 0;
     classes[87 * 128 + 78] = 0;
-    let mut s = Spatial::with_tiles(GridSize::new(128, 128), Tiles::new(128, 128, classes));
+    let mut s = Spatial::with_tiles(
+        GridSize::new(128, 128),
+        Tiles::new(crate::map::GridSize::new(128, 128), classes),
+    );
     let (first, second) = (
         (Point::new(77.5, 90.5), Point::new(76.5, 91.5)),
         (Point::new(77.5, 91.5), Point::new(76.5, 92.5)),

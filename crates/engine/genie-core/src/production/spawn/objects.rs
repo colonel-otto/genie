@@ -57,10 +57,9 @@ impl World {
                 self.spatial
                     .check_known(Rect::new(fx, fy, fx + 1.0, fy + 1.0))?;
             }
-            *wall = tiles.iter().all(|t| {
-                self.spatial
-                    .object_on_tile(t.x(), t.y(), |o| o.class == class::WALL)
-            });
+            *wall = tiles
+                .iter()
+                .all(|t| self.spatial.object_on_tile(*t, |o| o.class == class::WALL));
         }
         let site = Site {
             position,

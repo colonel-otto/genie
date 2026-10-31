@@ -93,7 +93,10 @@ const fn seen(hp: f32, height: f32) -> ClearLook {
 #[test]
 fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     use crate::map::spatial::Tiles;
-    let mut world = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
+    let mut world = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        Tiles::new(GridSize::new(20, 20), vec![0; 400]),
+    );
     let objects = [
         (
             5,
@@ -204,7 +207,10 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
 #[test]
 fn the_clearing_reads_the_objects_on_its_tiles() {
     use crate::map::spatial::Tiles;
-    let mut world = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
+    let mut world = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        Tiles::new(GridSize::new(20, 20), vec![0; 400]),
+    );
     for (id, x, y) in [
         (1, 14.9, 6.0),
         (2, 6.0, 6.2),
@@ -237,7 +243,10 @@ fn the_clearing_reads_the_objects_on_its_tiles() {
 #[test]
 fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
     use crate::map::spatial::Tiles;
-    let mut world = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
+    let mut world = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        Tiles::new(GridSize::new(20, 20), vec![0; 400]),
+    );
     let looks = [
         (1, seen(1.0, 1.0)),
         (2, seen(1.0, f32::NAN)),
@@ -691,7 +700,10 @@ fn built_master(id: MasterId, cost: &[(AttributeId, i16, bool)]) -> Master {
 fn small_map() -> Spatial {
     use crate::map::spatial::Tiles;
     use crate::map::terrain::{Terrain, TerrainKind};
-    let mut world = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut world = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(GridSize::new(4, 4), vec![4; 16]),
+    );
     let kind = TerrainKind {
         shown: true,
         flags: 0x20,
@@ -715,7 +727,10 @@ fn small_map() -> Spatial {
 fn the_work_that_reaches_the_build_time_completes_the_building() {
     use crate::map::spatial::Tiles;
     use crate::map::terrain::{Terrain, TerrainKind};
-    let mut world = Spatial::with_tiles(GridSize::new(4, 4), Tiles::new(4, 4, vec![4; 16]));
+    let mut world = Spatial::with_tiles(
+        GridSize::new(4, 4),
+        Tiles::new(GridSize::new(4, 4), vec![4; 16]),
+    );
     world.insert(
         object_id(10026),
         crate::map::spatial::Placed {
@@ -899,7 +914,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles(
         GridSize::new(120, 120),
-        Tiles::new(120, 120, vec![4; 120 * 120]),
+        Tiles::new(GridSize::new(120, 120), vec![4; 120 * 120]),
     );
     world.insert(object_id(10028), house());
     let life = Lifecycle {
@@ -941,7 +956,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
             .obstruction
             .is_some()
     );
-    assert!(t.spatial.tiles().word(29, 87).unwrap() & crate::map::spatial::BLOCKED != 0);
+    assert!(t.spatial.tiles().word(Tile::new(29, 87)).unwrap() & crate::map::spatial::BLOCKED != 0);
 }
 
 /// A gate's foundation (master 665) with its two posts (1192, annexes of a building type):
@@ -952,7 +967,7 @@ fn the_work_starts_the_desolid_annexes_first() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles(
         GridSize::new(120, 120),
-        Tiles::new(120, 120, vec![4; 120 * 120]),
+        Tiles::new(GridSize::new(120, 120), vec![4; 120 * 120]),
     );
     let at = |x: f32, id: MasterId| crate::map::spatial::Placed {
         position: Position::new(x, 88.0, 0.0),
@@ -1036,7 +1051,7 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
     use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles(
         GridSize::new(120, 120),
-        Tiles::new(120, 120, vec![4; 120 * 120]),
+        Tiles::new(GridSize::new(120, 120), vec![4; 120 * 120]),
     );
     world.insert(
         object_id(33439),

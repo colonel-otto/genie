@@ -2,6 +2,7 @@
 //! World fixtures: the state of the builder, its foundation and the world after each update.
 
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::movement::move_to::MoveWaitState;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
@@ -195,7 +196,10 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         (TASK_SPRITE, graphic(TASK_SPRITE)),
         (7, graphic(7)),
     ]);
-    t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
+    t.spatial = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        Tiles::new(GridSize::new(20, 20), vec![0; 400]),
+    );
     t.spatial
         .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE));
     let me = Placed {
@@ -570,7 +574,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     let mut t = site_world(class::VILLAGER, Position::new(30.0, 89.0, 0.0), b);
     t.spatial = Spatial::with_tiles(
         GridSize::new(40, 120),
-        Tiles::new(40, 120, vec![4; 40 * 120]),
+        Tiles::new(GridSize::new(40, 120), vec![4; 40 * 120]),
     );
     t.spatial.insert(
         HOUSE,
@@ -718,7 +722,7 @@ fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
     let marked: fn(&mut World) = |t| {
         t.spatial
             .tiles_mut_for_test()
-            .mark_for_test(10, 10, 0x80_0000 << 3);
+            .mark_for_test(Tile::new(10, 10), 0x80_0000 << 3);
     };
     // no players' sight in this world: its owner sees nothing, so it waits
     assert_eq!(
@@ -729,7 +733,7 @@ fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
     let seen: fn(&mut World) = |t| {
         t.spatial
             .tiles_mut_for_test()
-            .mark_for_test(10, 10, 0x80_0000 << 3);
+            .mark_for_test(Tile::new(10, 10), 0x80_0000 << 3);
         t.spatial.sight = Some(crate::vision::visibility::Visibility::new(
             20,
             20,
@@ -882,7 +886,7 @@ fn stump(t: &mut World) {
             )
         },
     );
-    assert_ne!(t.spatial.tiles().word(10, 10).unwrap() >> 23, 0);
+    assert_ne!(t.spatial.tiles().word(Tile::new(10, 10)).unwrap() >> 23, 0);
 }
 
 /// The players' sight and the terrain the Build's placement test reads
@@ -917,7 +921,7 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
         t.spatial.get(object_id(77)).map(|p| p.obstruction),
         Some(None)
     );
-    assert_eq!(t.spatial.tiles().word(10, 10).unwrap() >> 23, 0);
+    assert_eq!(t.spatial.tiles().word(Tile::new(10, 10)).unwrap() >> 23, 0);
     let tree = t.players[0].objects.by_id(object_id(77)).unwrap();
     assert_eq!(
         (tree.life.state, tree.life.hp, tree.roo_called),
@@ -947,7 +951,7 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
         // player 3's mark on a tile of the footprint (10, 10)
         t.spatial
             .tiles_mut_for_test()
-            .mark_for_test(10, 10, 0x80_0000 << 3);
+            .mark_for_test(Tile::new(10, 10), 0x80_0000 << 3);
         let _ = code(&mut t, 20);
         let b = build(&t);
         assert_eq!(
@@ -1671,7 +1675,10 @@ fn an_annex_s_test_sends_its_units_off_or_halts_the_build() {
 #[test]
 fn a_builder_on_an_annex_walks_off_it() {
     let mut t = site_world(class::VILLAGER, Position::new(12.4, 10.5, 0.0), placing());
-    t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
+    t.spatial = Spatial::with_tiles(
+        GridSize::new(20, 20),
+        Tiles::new(GridSize::new(20, 20), vec![4; 400]),
+    );
     t.spatial
         .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE));
     let me = Placed {

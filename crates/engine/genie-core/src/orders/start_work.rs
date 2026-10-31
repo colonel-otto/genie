@@ -19,6 +19,7 @@
 use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
@@ -153,7 +154,7 @@ impl World {
         let (x, y) = (at.x() as i32, at.y() as i32);
         self.spatial
             .check_known(Rect::new(at.x(), at.y(), at.x(), at.y()))?;
-        for (id, _) in self.spatial.objects_on(x, y) {
+        for (id, _) in self.spatial.objects_on(Tile::new(x, y)) {
             let (owner, o) = self.object(id).ok_or(GenieError::unsupported(
                 "an object on a tile the slice does not hold",
             ))?;
@@ -265,7 +266,7 @@ impl World {
                        y: i32|
          -> Result<Vec<Candidate>, GenieError> {
             spatial
-                .objects_on(x, y)
+                .objects_on(Tile::new(x, y))
                 .map(|(id, _)| candidate(spatial, id))
                 .collect()
         };
@@ -288,7 +289,10 @@ impl World {
                 world: &mut self.spatial,
                 explored: &|spatial, x, y| spatial.explored(p, x, y),
                 passable: &|spatial, x, y| {
-                    spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0)
+                    spatial
+                        .tiles()
+                        .word(Tile::new(x, y))
+                        .is_some_and(|w| w & blocked == 0)
                 },
                 objects: &objects,
                 reach: &mut |spatial, id| {

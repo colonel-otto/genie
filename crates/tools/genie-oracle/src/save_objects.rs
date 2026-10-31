@@ -4,6 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{Error, listed, run_from_save};
 use genie_core::GenieError;
+use genie_core::map::Tile;
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
 use genie_core::vision::visibility::Visibility;
@@ -148,7 +149,7 @@ pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<ObjectId>, Error> {
 /// The map tiles' object lists as the tick oracle dumps them (`state_dumps.tile_lists_text`):
 /// `x y id...` per tile of two objects or more, in the tile's order (an id signed, or its 32
 /// bits unsigned as the first dumps wrote a missile's).
-pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<ObjectId>)>, Error> {
+pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(Tile, Vec<ObjectId>)>, Error> {
     let word = |v: &str| {
         v.parse::<i64>()
             .ok()
@@ -164,7 +165,7 @@ pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<ObjectId>)>
                 .map(word)
                 .collect::<Result<Vec<_>, _>>()?;
             match words[..] {
-                [x, y, ..] => Ok((x, y, ids(&words[2..])?)),
+                [x, y, ..] => Ok((Tile::new(x, y), ids(&words[2..])?)),
                 _ => Err(Error::BadTileDump),
             }
         })
@@ -184,11 +185,12 @@ fn ids(words: &[i32]) -> Result<Vec<ObjectId>, Error> {
 /// differ are left out: their objects' places differ.
 pub(super) fn tile_order_differences(
     spatial: &genie_core::map::spatial::Spatial,
-    game: &[(i32, i32, Vec<ObjectId>)],
+    game: &[(Tile, Vec<ObjectId>)],
 ) -> Vec<String> {
     game.iter()
-        .filter_map(|(x, y, ids)| {
-            let mine = spatial.tiles().list(*x, *y);
+        .filter_map(|(tile, ids)| {
+            let (x, y) = (tile.x(), tile.y());
+            let mine = spatial.tiles().list(*tile);
             let (mut a, mut b) = (mine.to_vec(), ids.clone());
             a.sort_unstable();
             b.sort_unstable();

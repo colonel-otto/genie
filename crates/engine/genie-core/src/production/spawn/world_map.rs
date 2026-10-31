@@ -97,7 +97,7 @@ impl PlaceMap for WorldMap<'_> {
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
         let t = self.turns;
         t.spatial
-            .objects_on(x, y)
+            .objects_on(Tile::new(x, y))
             .map(|(id, placed)| {
                 let (owner, unit) = t.object(id).ok_or(GenieError::unsupported(
                     "an object near a spawn point the slice does not update",

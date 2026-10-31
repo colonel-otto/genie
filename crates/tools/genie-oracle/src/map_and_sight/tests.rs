@@ -110,6 +110,7 @@ mod spatial {
     use crate::masters::TerrainTable;
     use crate::test_ids::object_id;
     use genie_core::map::Radii;
+    use genie_core::map::Tile;
     use genie_core::map::spatial::Spatial;
     use genie_core::objects::masters::class;
     use genie_core::players::PlayerId;
@@ -205,7 +206,7 @@ mod spatial {
                 genie_core::objects::masters::ObstructionClass::BUILDING
             )
         );
-        assert_eq!(out.tile_list(1, 1), [object_id(10)]);
+        assert_eq!(out.tile_list(Tile::new(1, 1)), [object_id(10)]);
         let seer = out.sight.as_ref().unwrap().seer(object_id(10)).unwrap();
         assert_eq!(
             (seer.kind, seer.capture, seer.umv),
@@ -248,8 +249,8 @@ mod spatial {
     fn inside_masterless_and_ghost_objects() {
         let out = placed();
         assert!(out.get(object_id(13)).is_some());
-        assert!(!out.tile_list(2, 2).contains(&object_id(13)));
+        assert!(!out.tile_list(Tile::new(2, 2)).contains(&object_id(13)));
         assert!(out.get(object_id(14)).is_none());
-        assert!(out.tile_list(3, 3).contains(&object_id(20)));
+        assert!(out.tile_list(Tile::new(3, 3)).contains(&object_id(20)));
     }
 }

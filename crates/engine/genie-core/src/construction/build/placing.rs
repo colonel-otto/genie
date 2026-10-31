@@ -285,9 +285,8 @@ impl BuildAction {
             let (a, b) = beside_diagonal(bx, by, dx, dy);
             let player = placed.player;
             let walled = |t: Tile| {
-                c.w.spatial.object_on_tile(t.x(), t.y(), |o| {
-                    o.class == class::WALL && o.player != player
-                })
+                c.w.spatial
+                    .object_on_tile(t, |o| o.class == class::WALL && o.player != player)
             };
             if walled(a) && walled(b) {
                 return Err(GenieError::unsupported(
