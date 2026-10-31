@@ -17,6 +17,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::Tile;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -267,11 +268,11 @@ impl World {
     pub fn build_watched(&mut self) -> Result<(), GenieError> {
         // each id's object as [`World::object`] finds it (the first player in order, its live list
         // before its sleeping list), looked up once: the loop changes only the watched lists
-        let mut first: std::collections::HashMap<ObjectId, (PlayerId, bool, usize)> =
+        let mut first: std::collections::HashMap<ObjectId, (PlayerId, bool, ListIndex)> =
             std::collections::HashMap::new();
         for (q, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             for (sleeping, list) in [(false, &player.objects), (true, &player.sleeping)] {
-                for (k, u) in list.iter().enumerate() {
+                for (k, u) in list.indexed() {
                     let _ = first.entry(u.id).or_insert((q, sleeping, k));
                 }
             }
@@ -835,7 +836,7 @@ mod tests {
         t.players[2].computer = true;
         set_tile(&mut t, 1, 2, 0x0000_000f_0000_0002);
         t.recycling.ghosts = vec![object_id(-3)];
-        t.players[0].objects[0].life.state = ObjectState::Dying;
+        t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
         assert_eq!(t.ghosts_at_death(0, object_id(5)), Ok(()));
         assert!(t.players[0].ghosts.is_empty() && t.players[1].ghosts.is_empty());
         // a computer viewer gets its ghost as any other (the notify is the watched list's)
@@ -861,12 +862,12 @@ mod tests {
         // a master that leaves no ghosts, or an id below 0, gives none and no watch
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0004_0000_0000);
-        t.players[0].objects[0].life.master_id = TREE;
+        t.players[0].objects[ListIndex::new(0)].life.master_id = TREE;
         assert_eq!(t.ghosts_at_death(0, object_id(5)), Ok(()));
         assert!(t.players[2].ghosts.is_empty() && t.players[0].watched.is_empty());
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0004_0000_0000);
-        t.players[0].objects[0].id = object_id(-5);
+        t.players[0].objects[ListIndex::new(0)].id = object_id(-5);
         assert_eq!(t.ghosts_at_death(0, object_id(-5)), Ok(()));
         assert!(t.players[2].ghosts.is_empty() && t.players[0].watched.is_empty());
     }
@@ -1033,7 +1034,7 @@ mod tests {
         assert_eq!((g.original_id, g.original_master), (None, Some(HOUSE)));
         // an original past state 6 takes its master with it
         t.players[2].ghosts[0].original = Some(object_id(9));
-        t.players[1].objects[0].life.state = ObjectState::Removed;
+        t.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Removed;
         t.update_ghosts(PlayerId::new(2)).unwrap();
         assert_eq!(t.players[2].ghosts[0].original_master, None);
         // states 7, then 8, then it leaves; a master not recyclable gives the pool nothing
@@ -1258,7 +1259,7 @@ mod tests {
             .collect();
         // Gaia's mine 5 dead (state 3), house 9's annexes 10 (a gate) and 11, a class-51
         // building 12, master 1808's 13, a desolid foundation 14 in the sleeping list
-        t.players[0].objects[0].life.state = ObjectState::Dying;
+        t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
         let mut g = object(
             10,
             master_id(88),

@@ -8,6 +8,7 @@ use crate::map::Rect;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::static_storage;
@@ -21,6 +22,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::masters::master_type::STATIC;
+use crate::objects::object_list::NOTHING_PUSHED;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -39,7 +41,7 @@ impl World {
     pub(crate) fn spot_beside(
         &self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         made: &crate::objects::masters::Master,
         toward: Option<Point>,
     ) -> Result<Point, GenieError> {
@@ -194,7 +196,7 @@ impl World {
         made: &crate::objects::masters::Master,
         at: Position,
         facing: Facing,
-    ) -> Result<usize, GenieError> {
+    ) -> Result<ListIndex, GenieError> {
         remains_supported(made)?;
         // its place (slot 0x58, the static new_position): the ground's height by its master's
         // fly mode (slot 0x60, FUN_141193a10)
@@ -321,7 +323,7 @@ impl World {
             sprite: sprite.filter(|_| facing == Facing::Drawn),
             ..Unit::default()
         });
-        let idx = owner.objects.len() - 1;
+        let idx = owner.objects.last_place().ok_or(NOTHING_PUSHED)?;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
         self.track_add(p, id, master).map(|()| idx)
     }
@@ -370,7 +372,7 @@ impl World {
     ) -> Result<(), GenieError> {
         /// The flare a hit leaves (`0x70`, FLARE).
         const HIT_FLARE: MasterId = MasterId::named(112);
-        let before = self.players.player(p)?.objects.len();
+        let before = self.players.player(p)?.objects.next_place();
         self.remains(p, HIT_FLARE, at, None)?;
         self.made_new_object(p)?;
         if doubled && let Some(f) = self.players.player_mut(p)?.objects.get_mut(before) {

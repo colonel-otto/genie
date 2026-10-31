@@ -6,6 +6,7 @@ use crate::gathering::hunt::HuntRetarget;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -37,7 +38,7 @@ impl World {
     fn attack_ready(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         (master, world_time): (&crate::objects::masters::Master, u32),
     ) -> Result<Option<crate::combat::attack::ReadyReads>, GenieError> {
@@ -82,7 +83,7 @@ impl World {
     pub(super) fn start_attack(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &crate::objects::masters::Task,
         point: Position,
@@ -205,7 +206,7 @@ impl World {
     pub(super) fn attack_notifies(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, aim): (ObjectId, &Aim),
         point: Position,
         clears: bool,
@@ -243,7 +244,7 @@ impl World {
     pub(super) fn retarget_hunt(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let quarry = self.quarry(player, target)?;
@@ -315,7 +316,7 @@ impl World {
     pub(crate) fn retarget_action(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         old: Option<ObjectId>,
         new: ObjectId,
         quiet: bool,

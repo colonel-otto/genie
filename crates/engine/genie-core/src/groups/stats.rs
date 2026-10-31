@@ -566,6 +566,7 @@ mod tests {
     use crate::map::GridSize;
     use crate::map::Point;
     use crate::map::Position;
+    use crate::objects::ListIndex;
     use crate::objects::masters::{ClassId, class};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::masters::{MasterId, ids};
@@ -600,7 +601,7 @@ mod tests {
         };
         charging(&mut t, 6, -1);
         assert_eq!(range(&t, Some(object_id(20))), 1.0);
-        t.players[1].objects[0].charge = 1.0;
+        t.players[1].objects[ListIndex::new(0)].charge = 1.0;
         assert_eq!(range(&t, Some(object_id(20))), 3.0);
         assert_eq!(range(&t, None), 1.0);
         charging(&mut t, 7, 1 << 5);
@@ -741,7 +742,7 @@ mod tests {
     #[test]
     fn a_member_s_search_lists_its_enemies_then_the_neutrals_it_attacks() {
         let mut t = searched_world();
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .ai
             .as_mut()
             .unwrap()
@@ -749,7 +750,7 @@ mod tests {
         let mut objects = Vec::new();
         t.member_objects(object_id(10), &mut objects).unwrap();
         assert_eq!(objects, [object_id(20), object_id(30)]);
-        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
         assert_eq!((ai.alert_mode, ai.time_since_enemy), (true, 0.0));
         t.member_objects(object_id(10), &mut objects).unwrap();
         assert_eq!(objects, [object_id(20), object_id(30)]);
@@ -768,7 +769,7 @@ mod tests {
     fn a_member_s_search_takes_its_type_s_classes_radius_and_neutral_test() {
         let world = |ai_type: UnitAiType| {
             let mut t = searched_world();
-            let mut far = t.players[2].objects[0].clone();
+            let mut far = t.players[2].objects[ListIndex::new(0)].clone();
             far.id = object_id(22);
             far.place_for_test(Position::new(13.0, 5.0, 0.0));
             t.players[2].objects.push(far);
@@ -787,7 +788,11 @@ mod tests {
                     new: 1 << 1,
                 })
                 .unwrap();
-            t.players[1].objects[0].ai.as_mut().unwrap().ai_type = ai_type;
+            t.players[1].objects[ListIndex::new(0)]
+                .ai
+                .as_mut()
+                .unwrap()
+                .ai_type = ai_type;
             t
         };
         let found = |ai_type: UnitAiType| {
@@ -796,7 +801,11 @@ mod tests {
             t.member_objects(object_id(10), &mut objects).unwrap();
             (
                 objects,
-                t.players[1].objects[0].ai.as_ref().unwrap().alert_mode,
+                t.players[1].objects[ListIndex::new(0)]
+                    .ai
+                    .as_ref()
+                    .unwrap()
+                    .alert_mode,
             )
         };
         assert_eq!(found(UnitAiType::TRANSPORT), (vec![], false));
@@ -872,7 +881,7 @@ mod tests {
                     m
                 }));
             }
-            let mut stray = t.players[1].objects[0].clone();
+            let mut stray = t.players[1].objects[ListIndex::new(0)].clone();
             stray.id = object_id(11);
             stray.place_for_test(Position::new(6.0, 6.0, 0.0));
             stray
@@ -880,7 +889,7 @@ mod tests {
                 .put_mover(Some(crate::gathering::hunt::tests::walker()));
             stray.body.mover_mut().unwrap().moved_at = Position::new(6.0, 6.0, 0.0);
             stray.group.id = Some(group_id(1));
-            t.players[1].objects[0].group.id = Some(group_id(1));
+            t.players[1].objects[ListIndex::new(0)].group.id = Some(group_id(1));
             t.players[1].objects.push(stray);
             let g = t.groups.get_mut(group_id(1)).unwrap();
             g.flags = 0;

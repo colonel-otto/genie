@@ -5,6 +5,7 @@ use crate::combat::damage::Victim;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
@@ -151,7 +152,7 @@ impl Step<'_> {
     pub(crate) fn lend_at<R>(
         &mut self,
         me: &mut Unit,
-        f: impl FnOnce(&mut World, PlayerId, usize) -> Result<R, GenieError>,
+        f: impl FnOnce(&mut World, PlayerId, ListIndex) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let (p, id) = (self.player, self.me);
         self.lend(me, |w| {

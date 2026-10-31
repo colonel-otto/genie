@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Tile;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -439,7 +440,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     assert_eq!(t.players[1].game_status, PLAYING);
     assert_eq!(t.first_town_centre(PlayerId::new(1)), Some(object_id(5)));
     // the town centre falls (state 3): the villager no longer keeps the player
-    t.players[1].objects[1].life.state = ObjectState::Dying;
+    t.players[1].objects[ListIndex::new(1)].life.state = ObjectState::Dying;
     assert_eq!(t.first_town_centre(PlayerId::new(1)), None);
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, LOST);

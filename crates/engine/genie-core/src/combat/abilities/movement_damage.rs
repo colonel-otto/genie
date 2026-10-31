@@ -7,6 +7,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -162,7 +163,7 @@ impl World {
     /// model.
     pub(super) fn movement_damage(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (usize, ListIndex),
         owner: PlayerId,
         master: Own,
         task: &Task,

@@ -7,6 +7,7 @@ use crate::commands::GatherPointState;
 use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -23,7 +24,7 @@ use crate::world::slots::PlayerSlots;
 impl World {
     /// The player and live index of the unit `id` inside a building or a transport, whoever's
     /// it is.
-    pub(crate) fn live_inside(&self, id: ObjectId) -> Result<(PlayerId, usize), GenieError> {
+    pub(crate) fn live_inside(&self, id: ObjectId) -> Result<(PlayerId, ListIndex), GenieError> {
         match self.place(id) {
             Some(crate::orders::Place::Live(p, i)) => Ok((p, i)),
             _ => Err(GenieError::unsupported(
@@ -57,7 +58,7 @@ impl World {
     pub(crate) fn let_out(
         &mut self,
         player: PlayerId,
-        building: usize,
+        building: ListIndex,
         id: ObjectId,
         point: Point,
         (work_on, _sound): (Option<ObjectId>, bool),
@@ -138,8 +139,8 @@ impl World {
     /// cases.
     pub(crate) fn leave_container(
         &mut self,
-        (player, container): (PlayerId, usize),
-        (up, ui): (usize, usize),
+        (player, container): (PlayerId, ListIndex),
+        (up, ui): (usize, ListIndex),
         made: &Master,
         at: Position,
     ) -> Result<(), GenieError> {
@@ -229,7 +230,7 @@ impl World {
     pub(super) fn came_out(
         &mut self,
         up: PlayerId,
-        ui: usize,
+        ui: ListIndex,
         class: ClassId,
         (point, gather, bid, work_on): (Point, Option<GatherPoint>, ObjectId, Option<ObjectId>),
     ) -> Result<bool, GenieError> {
@@ -299,7 +300,7 @@ impl World {
     pub(super) fn let_out_from_the_map(
         &mut self,
         up: PlayerId,
-        ui: usize,
+        ui: ListIndex,
         (made, at): (&Master, Position),
         rest: (Point, Option<GatherPoint>, ObjectId, Option<ObjectId>),
     ) -> Result<bool, GenieError> {

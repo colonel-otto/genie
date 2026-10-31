@@ -5,6 +5,7 @@ use crate::masters::MasterTable;
 use crate::{Decoder, Error, Frame, frames, hunted_origins, listed, player_totals, slice};
 use genie_core::GenieError;
 use genie_core::commands::Command;
+use genie_core::objects::ListIndex;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_core::world::checkpoint::{ActionTerm, CheckpointObject, TopAction, player_block};
@@ -48,7 +49,7 @@ pub struct Word9 {
     /// The first command before the checkpoint, by any player, that may create a unit group.
     pub group_command: Option<GroupCommand>,
     /// The first unit update of this player the slice could not model.
-    pub unsupported: Option<(u32, usize, GenieError)>,
+    pub unsupported: Option<(u32, ListIndex, GenieError)>,
 }
 
 /// Whether the runs list each decoded command with the update it runs in ([`trace_commands`]).
@@ -293,7 +294,9 @@ pub(super) fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Wo
 pub(super) fn watch_at_load(turns: &mut World) {
     if let Err(e) = turns.build_watched() {
         for p in &mut turns.players {
-            let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
+            let _ = p
+                .unsupported
+                .get_or_insert_with(|| (0, ListIndex::new(0), e.clone()));
             p.stopped = true;
         }
     }

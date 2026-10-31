@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::count_class;
@@ -32,7 +33,7 @@ impl World {
     /// attributes ([`World::hand_over_attributes`]). Its only callers give livestock, which
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
-    pub(crate) fn give_gaia(&mut self, q: PlayerId, j: usize) -> Result<(), GenieError> {
+    pub(crate) fn give_gaia(&mut self, q: PlayerId, j: ListIndex) -> Result<(), GenieError> {
         let mut unit = self.players.player_mut(q)?.objects.take_out(j)?;
         let changed = change_hands(
             &mut unit,
@@ -184,7 +185,7 @@ impl World {
     fn clear_for_hand_over(
         &mut self,
         old: PlayerId,
-        (idx, id): (usize, ObjectId),
+        (idx, id): (ListIndex, ObjectId),
         watched: bool,
     ) -> Result<(), GenieError> {
         self.clear_actions(old, idx)?;
@@ -282,7 +283,7 @@ impl World {
     pub(crate) fn hand_building_over(
         &mut self,
         old: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         new: PlayerId,
         id: ObjectId,
     ) -> Result<PlayerId, GenieError> {

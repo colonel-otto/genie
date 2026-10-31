@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::class;
@@ -34,7 +35,7 @@ impl World {
     pub(crate) fn gather_move(
         &mut self,
         p: PlayerId,
-        new: usize,
+        new: ListIndex,
         point: Position,
         notified: bool,
     ) -> Result<(), GenieError> {
@@ -117,7 +118,7 @@ impl World {
     pub(super) fn lost_gather_target(
         &self,
         p: PlayerId,
-        new: usize,
+        new: ListIndex,
         g: GatherPoint,
     ) -> Result<Option<ObjectId>, GenieError> {
         let class = self
@@ -161,7 +162,7 @@ impl World {
             );
             Ok((gy * gy + gx * gx <= los * los).then_some(u.id))
         };
-        if let Some(id) = closest(&gaia.objects)? {
+        if let Some(id) = closest(gaia.objects.as_slice())? {
             return Ok(Some(id));
         }
         if matches!(
@@ -172,7 +173,7 @@ impl World {
                 "a gather point's lost target of class 5, 29 or 33 (the unit AI's slot 0x80)",
             ));
         }
-        closest(&gaia.sleeping)
+        closest(gaia.sleeping.as_slice())
     }
 
     /// The new unit's walk to the gather point of its building `building` (`FUN_140ace9c0` with a
@@ -187,7 +188,7 @@ impl World {
     pub(crate) fn gather(
         &mut self,
         p: PlayerId,
-        new: usize,
+        new: ListIndex,
         g: GatherPoint,
         building: ObjectId,
         notified: bool,

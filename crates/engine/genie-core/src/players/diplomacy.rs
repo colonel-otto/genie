@@ -15,6 +15,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
@@ -149,11 +150,11 @@ impl World {
         if let Some(row) = self.spatial.unit_diplomacy.get_mut(p.index()) {
             set_lane(row, q, Some(unit_kind(p, q, relation)));
         }
-        let mut i = 0;
-        while i < self.players.player(p)?.objects.len() {
+        let mut i = ListIndex::FIRST;
+        while self.players.player(p)?.objects.holds(i) {
             let id = self.players.live(p, i)?.id;
             self.notify_of_relation(p, id, q, relation)?;
-            i += 1;
+            i = i.next();
         }
         Ok(())
     }
@@ -295,7 +296,7 @@ impl World {
     }
 
     /// The index of object `id` in player `p`'s live list.
-    fn live_index(&self, p: PlayerId, id: ObjectId) -> Result<usize, GenieError> {
+    fn live_index(&self, p: PlayerId, id: ObjectId) -> Result<ListIndex, GenieError> {
         self.players
             .player(p)?
             .objects

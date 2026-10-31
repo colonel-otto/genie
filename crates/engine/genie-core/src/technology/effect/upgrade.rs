@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterAttribute;
@@ -137,7 +138,7 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::orders::Place;
         use crate::technology::upgrade::upgradable;
-        for i in 0..self.players.player(p)?.objects.len() {
+        for i in self.players.player(p)?.objects.places() {
             let place = Place::Live(p, i);
             let u = &self.players.live(p, i)?;
             let table = u.own_master.is_none();
@@ -161,7 +162,7 @@ impl World {
                 }
             }
         }
-        for i in 0..self.players.player(p)?.sleeping.len() {
+        for i in self.players.player(p)?.sleeping.places() {
             let u = &self.players.asleep(p, i)?;
             if u.own_master.is_none() && u.life.master_id == from {
                 self.upgrade_object(p, Place::Sleeping(p, i), (old, new), keep)?;
@@ -197,7 +198,7 @@ impl World {
     pub(super) fn own_and_dead_master(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         old: &Master,
     ) -> Result<(), GenieError> {
         let dead = old.death_spawns[0]

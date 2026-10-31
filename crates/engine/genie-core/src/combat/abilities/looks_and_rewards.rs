@@ -1,6 +1,7 @@
 //! The terrain look tasks (action type 159) and the removal reward tasks (161).
 
 use crate::combat::abilities::{Look, ONE, Reward};
+use crate::objects::ListIndex;
 use crate::objects::masters::CostSlot;
 use crate::objects::masters::Task;
 use crate::players::PlayerId;
@@ -84,7 +85,7 @@ impl World {
     /// is the one under where the object last moved to (slot 0x520: `+0x824`, `+0x82c`,
     /// truncated; a building's place); without the map's terrain no tile matches. False when
     /// the task's terrain mask throws ([`terrain_mask`]): the routine ends.
-    pub(super) fn terrain_look(&mut self, (p, i): (usize, usize), task: &Task) -> bool {
+    pub(super) fn terrain_look(&mut self, (p, i): (usize, ListIndex), task: &Task) -> bool {
         let Some(mask) = terrain_mask(task.terrain) else {
             return false;
         };

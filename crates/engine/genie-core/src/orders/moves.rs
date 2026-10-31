@@ -5,6 +5,7 @@ use crate::combat::attack::gaps;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::Master;
@@ -162,7 +163,7 @@ impl World {
     pub(crate) fn move_to_point(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         point: Position,
     ) -> Result<bool, GenieError> {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
@@ -219,7 +220,7 @@ impl World {
     pub(crate) fn point_move_sprite(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
     ) -> Result<Option<crate::objects::sprite::Graphic>, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
@@ -234,7 +235,7 @@ impl World {
     pub(crate) fn move_aside(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         m: crate::unit_ai::AiMove,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -281,7 +282,7 @@ impl World {
     pub(crate) fn order_work(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: &Work,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -335,7 +336,7 @@ impl World {
     fn work_on_held(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: &Work,
     ) -> Result<(), GenieError> {
         let master = self
@@ -404,7 +405,7 @@ impl World {
     pub(super) fn work_pasture(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: &Work,
     ) -> Result<PastureAfter, GenieError> {
         use crate::technology::Attributes;
@@ -459,7 +460,7 @@ impl World {
     pub(crate) fn move_point_order(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         point: Position,
     ) -> Result<(), GenieError> {
         self.move_point_order_with(player, idx, point, true)
@@ -473,7 +474,7 @@ impl World {
     pub(crate) fn move_point_order_with(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         point: Position,
         a14: bool,
     ) -> Result<(), GenieError> {

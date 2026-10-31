@@ -11,6 +11,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -37,7 +38,7 @@ impl crate::world::World {
     pub(crate) fn transport_order(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         to: Position,
     ) -> Result<(), GenieError> {
         let existing = self.players.player(p)?.objects[i].top_action_kind() == Some(TRANSPORT);
@@ -90,7 +91,7 @@ impl crate::world::World {
     pub(crate) fn transport_move(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         point: Position,
     ) -> Result<(), GenieError> {
         let rng = self.streams.get(crate::math::rng::Stream::Sprite);
@@ -107,7 +108,7 @@ impl crate::world::World {
     pub(super) fn transport_changed(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         c: Changed,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players.player_mut(p)?.objects[i];
@@ -139,7 +140,7 @@ impl crate::world::World {
     /// ashore do not model.
     ///
     /// [`Updated::Unload`]: crate::garrison::transport::Updated::Unload
-    pub(crate) fn transport_unload(&mut self, p: PlayerId, i: usize) -> Result<(), GenieError> {
+    pub(crate) fn transport_unload(&mut self, p: PlayerId, i: ListIndex) -> Result<(), GenieError> {
         let unit = &self.players.player(p)?.objects[i];
         let t = unit
             .actions
@@ -226,7 +227,7 @@ impl crate::world::World {
     pub(super) fn unload_all(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         zone: u32,
     ) -> Result<u8, GenieError> {
         const SPOTS: usize = 0x1d;
@@ -286,7 +287,7 @@ impl crate::world::World {
     /// restriction's mask).
     pub(crate) fn drop_location(
         &mut self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         id: ObjectId,
         made: &crate::objects::masters::Master,
         around: Around,
@@ -387,7 +388,7 @@ impl crate::world::World {
     /// spot. A siege tower's (class 13) unload is not modelled.
     pub(super) fn come_ashore(
         &mut self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         id: ObjectId,
         made: &crate::objects::masters::Master,
         spot: Point,

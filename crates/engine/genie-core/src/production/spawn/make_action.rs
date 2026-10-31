@@ -1,6 +1,7 @@
 //! A building's production list and its make action (`TRIBE_Action_Make_Obj`).
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::masters::action_type;
 use crate::objects::masters::player_master;
 use crate::orders::NO_QUEUE;
@@ -40,7 +41,7 @@ impl World {
     pub(crate) fn building_production(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         dt_seconds: f32,
     ) -> Result<(), GenieError> {
         if crate::objects::ObjectState::Alive < self.players.live(p, i)?.life.state {
@@ -73,7 +74,7 @@ impl World {
     pub(crate) fn produce(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         dt_seconds: f32,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(p, i)?;
@@ -136,7 +137,7 @@ impl World {
     /// The first queue entry's action starts when the list has none ([`World::produce`]): a unit
     /// waits housed (a computer player's entry is cancelled), else it starts. False when the
     /// production stops for this update.
-    fn begin_production(&mut self, p: PlayerId, i: usize) -> Result<bool, GenieError> {
+    fn begin_production(&mut self, p: PlayerId, i: ListIndex) -> Result<bool, GenieError> {
         let production = self
             .players
             .live(p, i)?
@@ -171,7 +172,7 @@ impl World {
 
     /// A finished shared-kind research of the building at `i` of player `p` is noted on its
     /// production list (`FUN_141616a40`'s shared technology), when the tree holds it.
-    fn note_shared_research(&mut self, p: PlayerId, i: usize) -> Result<(), GenieError> {
+    fn note_shared_research(&mut self, p: PlayerId, i: ListIndex) -> Result<(), GenieError> {
         if let Some(tech) = self
             .players
             .live(p, i)?
@@ -204,7 +205,7 @@ impl World {
     pub(super) fn start_production_action(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         making: Making,
     ) -> Result<(), GenieError> {
         if crate::objects::ObjectState::Dying <= self.players.live(p, i)?.life.state {
@@ -233,7 +234,7 @@ impl World {
     fn start_research(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         r: &mut MakeTech,
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;
@@ -265,7 +266,7 @@ impl World {
     pub(super) fn update_production_action(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
         let action = self
@@ -293,7 +294,7 @@ impl World {
     pub(super) fn make_step(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
         let building = &self.players.live(p, i)?;
@@ -349,7 +350,7 @@ impl World {
     pub(crate) fn end_production_action(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
     ) -> Result<(), GenieError> {
         let Some(making) = self
             .players
@@ -372,7 +373,7 @@ impl World {
     pub(super) fn destroy_action(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         making: Making,
     ) -> Result<(), GenieError> {
         let make = match making {

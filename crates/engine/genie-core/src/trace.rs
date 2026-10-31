@@ -235,6 +235,7 @@ impl Watch {
 mod tests {
     use super::*;
     use crate::commands::{Command, UnmodelledCommand};
+    use crate::objects::ListIndex;
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
@@ -452,9 +453,9 @@ mod tests {
             },
             ..Unit::default()
         }]);
-        let before = t.players[0].objects[0].life.state;
+        let before = t.players[0].objects[ListIndex::new(0)].life.state;
         let lines = heard(|| t.tick(10));
-        let after = t.players[0].objects[0].life.state;
+        let after = t.players[0].objects[ListIndex::new(0)].life.state;
         assert_ne!(before, after, "{lines:#?}");
         assert!(lines.contains(&format!(
             "DEBUG genie_core::state object_state tick=1 player=0 object=5 from={before} to={after}"

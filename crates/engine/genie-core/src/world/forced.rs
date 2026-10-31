@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::volley::same_members;
 use crate::movement::Mover;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
@@ -201,15 +202,15 @@ impl World {
         (game, stopped): (&GameState, bool),
         notes: &mut Vec<(PlayerId, Option<ObjectId>, GenieError)>,
     ) -> Result<(), GenieError> {
-        let mut i = 0;
-        while i < self.players.player(p)?.objects.len() {
+        let mut i = ListIndex::FIRST;
+        while self.players.player(p)?.objects.holds(i) {
             let unit = &self.players.live(p, i)?;
             let resync = game.resync.contains(&unit.id);
             let (id, frozen) = (unit.id, stopped || unit.stopped || resync);
             // a dead object never freezes, but one that differs takes the game's state too
             // (a felled tree's wood that a frozen gatherer did not take)
             if !frozen || (!unit.life.is_alive() && !resync) {
-                i += 1;
+                i = i.next();
                 continue;
             }
             let Some(g) = theirs.iter().find(|g| g.id == id) else {
@@ -220,7 +221,7 @@ impl World {
                         Some(id),
                         GenieError::unsupported("a forced object changed hands"),
                     ));
-                    i += 1;
+                    i = i.next();
                     continue;
                 }
                 let gone = self.players.player_mut(p)?.objects.swap_remove(i)?;
@@ -235,11 +236,11 @@ impl World {
                     Some(id),
                     GenieError::unsupported("a forced object changed masters"),
                 ));
-                i += 1;
+                i = i.next();
                 continue;
             }
             self.take_game_object(p, i, g)?;
-            i += 1;
+            i = i.next();
         }
         Ok(())
     }
@@ -252,7 +253,7 @@ impl World {
     /// # Errors
     ///
     /// A player or a slot the world does not hold.
-    fn take_game_object(&mut self, p: PlayerId, i: usize, g: &Unit) -> Result<(), GenieError> {
+    fn take_game_object(&mut self, p: PlayerId, i: ListIndex, g: &Unit) -> Result<(), GenieError> {
         let unit = &self.players.live(p, i)?;
         let id = unit.id;
         let mut forced = g.clone();
@@ -346,7 +347,7 @@ mod tests {
         };
         let mut t = forage_world();
         let before = t.players[1].resources;
-        t.players[1].unsupported = Some((1, 0, GenieError::unsupported("a part")));
+        t.players[1].unsupported = Some((1, ListIndex::new(0), GenieError::unsupported("a part")));
         assert!(!t.force_player_values(PlayerId::new(1), &game).unwrap());
         let player = &t.players[1];
         assert_eq!(player.resources, before);
@@ -371,20 +372,20 @@ mod tests {
     fn a_forced_replay_takes_the_game_s_frozen_objects_and_notes_what_it_cannot() {
         let mut t = forage_world();
         let hunted = Some(crate::unit_ai::Hunted::default());
-        let forager = &mut t.players[1].objects[0];
+        let forager = &mut t.players[1].objects[ListIndex::new(0)];
         forager.stopped = true;
         forager.ai.as_mut().unwrap().hunted = hunted;
         let mut theirs = t.players[1].objects.clone();
-        theirs[0].place_for_test(Position::new(29.5, 88.5, 0.0));
-        theirs[0].stopped = false;
-        theirs[0].ai.as_mut().unwrap().hunted = None;
+        theirs[ListIndex::new(0)].place_for_test(Position::new(29.5, 88.5, 0.0));
+        theirs[ListIndex::new(0)].stopped = false;
+        theirs[ListIndex::new(0)].ai.as_mut().unwrap().hunted = None;
         let mut game = GameState {
-            players: vec![vec![], theirs.to_vec()],
+            players: vec![vec![], theirs.as_slice().to_vec()],
             ..GameState::default()
         };
         let notes = t.force(&game);
         assert!(notes.is_empty(), "{notes:?}");
-        let forager = &t.players[1].objects[0];
+        let forager = &t.players[1].objects[ListIndex::new(0)];
         assert_eq!(
             (forager.position(), forager.stopped),
             (Position::new(29.5, 88.5, 0.0), false)
@@ -400,7 +401,7 @@ mod tests {
             ..Unit::default()
         });
         let reasons = |t: &mut World, game: &GameState| -> Vec<(Option<ObjectId>, &'static str)> {
-            t.players[1].objects[0].stopped = true;
+            t.players[1].objects[ListIndex::new(0)].stopped = true;
             t.force(game)
                 .into_iter()
                 .map(|(_, id, e)| (id, e.reason()))

@@ -5,6 +5,7 @@ use crate::groups::FormationKind;
 use crate::groups::{CommandArgs, GroupId};
 use crate::map::Point;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::class;
@@ -174,7 +175,7 @@ impl World {
     pub(super) fn order_at_once(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: Option<ObjectId>,
         point: Point,
     ) -> Result<(), GenieError> {
@@ -234,7 +235,7 @@ impl World {
     pub(crate) fn order_on_target(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: crate::unit_ai::QueuedOrder,
     ) -> Result<(), GenieError> {
         let (_, t) = self.object(order.target).ok_or(GenieError::unsupported(

@@ -639,6 +639,7 @@ fn held_id(id: Option<ObjectId>) -> Result<ObjectId, GenieError> {
 mod tests {
     use super::*;
     use crate::groups::{GroupCommand, Member, UnitGroups};
+    use crate::objects::ListIndex;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
@@ -834,7 +835,7 @@ mod tests {
         top.has_path = true;
         top.path_flags = 1;
         t.groups.get_mut(group_id(1)).unwrap().motion.paths = vec![walked, top];
-        let asleep = t.players[1].objects.remove(0).unwrap();
+        let asleep = t.players[1].objects.remove(ListIndex::new(0)).unwrap();
         t.players[1].sleeping.push(Unit {
             ai: Some(crate::unit_ai::UnitAi::default()),
             ..asleep
@@ -845,7 +846,10 @@ mod tests {
         );
         let g = t.groups.get(group_id(1)).unwrap();
         assert_eq!(g.flags & 0xc000, 0xc000);
-        let ai = t.players[1].sleeping[0].ai.as_ref().unwrap();
+        let ai = t.players[1].sleeping[ListIndex::new(0)]
+            .ai
+            .as_ref()
+            .unwrap();
         assert_eq!(ai.last_update_time, 50);
         let mut t = moving_world();
         assert!(

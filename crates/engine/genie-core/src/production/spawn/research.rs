@@ -2,6 +2,7 @@
 //! its destructor.
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::players::attribute::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
@@ -70,7 +71,7 @@ impl World {
     pub(super) fn research_step(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
         use crate::technology::Attributes;
@@ -151,7 +152,7 @@ impl World {
     pub(super) fn research_done(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         t: TechId,
         master: MasterId,
         repeat: bool,
@@ -216,7 +217,7 @@ impl World {
     fn research_failed(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         r: &MakeTech,
         t: usize,
     ) -> Result<(), GenieError> {
@@ -258,7 +259,7 @@ impl World {
     pub(super) fn research_destroyed(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         r: &MakeTech,
     ) -> Result<(), GenieError> {
         use crate::technology::Attributes;

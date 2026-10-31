@@ -159,7 +159,7 @@ impl World {
                 crate::trace::player_unsupported(self.ticks, self.player_turn, &e);
                 let ticks = self.ticks;
                 let turn = self.players.player_mut(self.player_turn)?;
-                let at = turn.objects.len();
+                let at = turn.objects.next_place();
                 let _ = turn.unsupported.get_or_insert((ticks, at, e));
                 turn.stopped = true;
                 None

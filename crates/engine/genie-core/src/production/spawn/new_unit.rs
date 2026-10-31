@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
@@ -14,6 +15,7 @@ use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::master_type::COMBAT;
+use crate::objects::object_list::NOTHING_PUSHED;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -49,7 +51,7 @@ impl World {
     pub(super) fn spawn(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         master: MasterId,
         pop: f32,
     ) -> Result<(), GenieError> {
@@ -142,7 +144,7 @@ impl World {
     pub(super) fn hand_queue(
         &mut self,
         p: PlayerId,
-        new: usize,
+        new: ListIndex,
         queue: &[crate::unit_ai::QueuedOrder],
         z: f32,
     ) -> Result<(), GenieError> {
@@ -265,7 +267,7 @@ impl World {
         master: MasterId,
         made: &crate::objects::masters::Master,
         position: Position,
-    ) -> Result<usize, GenieError> {
+    ) -> Result<ListIndex, GenieError> {
         if self.players.player(p)?.computer {
             return Err(GenieError::unsupported(
                 "a computer player's new unit (its AI's slot 0x398)",
@@ -415,7 +417,7 @@ impl World {
                 .is_some_and(|t| t.action_type == crate::ownership::artifact::ARTIFACT_TYPE),
             ..Unit::default()
         });
-        let idx = owner.objects.len() - 1;
+        let idx = owner.objects.last_place().ok_or(NOTHING_PUSHED)?;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
         self.track_add(p, id, master)?;
         Ok(idx)

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
 use crate::map::Tile;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
@@ -427,7 +428,12 @@ impl World {
     /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
-    pub(crate) fn killed(&mut self, q: PlayerId, j: usize, kill: Kill) -> Result<(), GenieError> {
+    pub(crate) fn killed(
+        &mut self,
+        q: PlayerId,
+        j: ListIndex,
+        kill: Kill,
+    ) -> Result<(), GenieError> {
         let u = &self.players.live(q, j)?;
         let master = u.master(&self.masters, q)?.clone();
         self.count_killed(q, &master, kill)?;

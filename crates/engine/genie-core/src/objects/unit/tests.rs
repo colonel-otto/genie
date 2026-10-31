@@ -3,6 +3,7 @@ use crate::combat::attack::AttackState;
 use crate::construction::wait_solidify::WaitSolidifyState;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
 use crate::objects::layers::{Animated, Body};
@@ -80,7 +81,7 @@ fn the_movement_state_takes_the_sprite_s_facets() {
 fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
     let animated = |speed: Option<f32>| {
         let mut t = forage_world();
-        let u = &mut t.players[1].objects[0];
+        let u = &mut t.players[1].objects[ListIndex::new(0)];
         u.sprite = Some(ActiveSprite::start(
             WALKING,
             &mut crate::math::rng::Well512::default(),
@@ -92,12 +93,12 @@ fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
             |speed| Body::new(at, Some(Animated::new(speed)), None),
         );
         let before = u.sprite;
-        in_update(&mut t, (PlayerId::new(1), 0), 50, |u, c| {
+        in_update(&mut t, (PlayerId::new(1), ListIndex::new(0)), 50, |u, c| {
             u.animate(c);
             Ok(())
         })
         .unwrap();
-        (before, t.players[1].objects[0].sprite)
+        (before, t.players[1].objects[ListIndex::new(0)].sprite)
     };
     let (before, after) = animated(Some(1.0));
     assert_ne!(before, after);
@@ -110,7 +111,7 @@ fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
 #[test]
 fn an_object_past_state_2_loses_its_actions() {
     let mut t = forage_world();
-    let u = &mut t.players[1].objects[0];
+    let u = &mut t.players[1].objects[ListIndex::new(0)];
     u.life.state = ObjectState::Dying;
     u.actions.set_move_to(Some(MoveToAction {
         sprite: None,
@@ -122,13 +123,25 @@ fn an_object_past_state_2_loses_its_actions() {
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: MoveWait::default(),
     }));
-    in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::actions_past_life).unwrap();
-    let u = &t.players[1].objects[0];
+    in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::actions_past_life,
+    )
+    .unwrap();
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
     let mut t = forage_world();
-    t.players[1].objects[0].unmodelled_action = Some(GenieError::unsupported("an action"));
-    let r = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::actions_past_life);
+    t.players[1].objects[ListIndex::new(0)].unmodelled_action =
+        Some(GenieError::unsupported("an action"));
+    let r = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::actions_past_life,
+    );
     assert_eq!(r.unwrap_err().reason(), "an action");
 }
 
@@ -140,17 +153,22 @@ fn an_object_past_state_2_loses_its_actions() {
 #[test]
 fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
     let mut t = forage_world();
-    let at = t.players[1].objects[0].position();
+    let at = t.players[1].objects[ListIndex::new(0)].position();
     let mut met = crate::gathering::hunt::tests::walker();
     met.paths = vec![crate::movement::PathData::without_path()];
-    t.players[0].objects[0].body.put_mover(Some(met));
-    let mover = t.players[1].objects[0].body.mover_mut().unwrap();
+    t.players[0].objects[ListIndex::new(0)]
+        .body
+        .put_mover(Some(met));
+    let mover = t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap();
     mover.pauses = vec![
         (object_id(600), 0.5),
         (object_id(601), 0.5),
         (object_id(4242), 0.5),
     ];
-    let paused = in_update(&mut t, (PlayerId::new(1), 0), 50, |u, c| {
+    let paused = in_update(&mut t, (PlayerId::new(1), ListIndex::new(0)), 50, |u, c| {
         u.after_actions(c)?;
         let (_, bush) = OthersRef::of(&c.w.players, c.player)
             .unwrap()
@@ -164,12 +182,21 @@ fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
     })
     .unwrap();
     assert_eq!(paused, (0.5, Some(0.5)));
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(u.position(), at);
     assert_eq!(t.spatial.get(object_id(9175)).map(|p| p.position), Some(at));
     assert_eq!(u.body.mover().unwrap().pauses, []);
-    t.players[1].objects[0].body.mover_mut().unwrap().in_the_way = vec![object_id(600)];
-    let r = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::after_actions);
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap()
+        .in_the_way = vec![object_id(600)];
+    let r = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::after_actions,
+    );
     assert_eq!(
         r.unwrap_err().reason(),
         "a walk's unit in the way (notify 0x215) the action does not pass on"
@@ -181,14 +208,26 @@ fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
 #[test]
 fn the_update_up_to_the_actions_ends_for_a_sleeper() {
     let mut t = forage_world();
-    let step = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_to_actions).unwrap();
+    let step = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::update_to_actions,
+    )
+    .unwrap();
     assert!(step.is_some());
-    let bush = &mut t.players[0].objects[0];
+    let bush = &mut t.players[0].objects[ListIndex::new(0)];
     bush.life.class = Class::Static;
     bush.life.goto_sleep = true;
-    let step = in_update(&mut t, (PlayerId::new(0), 0), 50, Unit::update_to_actions).unwrap();
+    let step = in_update(
+        &mut t,
+        (PlayerId::new(0), ListIndex::new(0)),
+        50,
+        Unit::update_to_actions,
+    )
+    .unwrap();
     assert_eq!(step, None);
-    assert!(!t.players[0].objects[0].life.goto_sleep);
+    assert!(!t.players[0].objects[ListIndex::new(0)].life.goto_sleep);
 }
 
 /// The actions' update: an idle forager runs none and captures nothing; a wait for a
@@ -196,20 +235,49 @@ fn the_update_up_to_the_actions_ends_for_a_sleeper() {
 #[test]
 fn the_actions_update_runs_the_action_held() {
     let mut t = forage_world();
-    let captured = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions).unwrap();
+    let captured = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::update_actions,
+    )
+    .unwrap();
     assert!(captured.is_none());
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_wait_solidify(Some(gone_foundation()));
-    let captured = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions).unwrap();
+    let captured = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::update_actions,
+    )
+    .unwrap();
     assert!(captured.is_none());
-    assert_eq!(t.players[1].objects[0].actions.wait_solidify(), None);
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)]
+            .actions
+            .wait_solidify(),
+        None
+    );
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
-    let before = t.players[1].objects[0].actions.gather().copied();
-    let captured = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions).unwrap();
+    let before = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .gather()
+        .copied();
+    let captured = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::update_actions,
+    )
+    .unwrap();
     assert!(captured.is_none());
-    let after = t.players[1].objects[0].actions.gather().copied();
+    let after = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .gather()
+        .copied();
     assert_eq!(after.map(|g| g.target), Some(Some(object_id(600))));
     assert_ne!(before, after);
 }
@@ -229,21 +297,32 @@ fn gone_foundation() -> crate::construction::wait_solidify::WaitSolidify {
 #[test]
 fn the_list_s_update_stops_at_an_action_below_its_head() {
     let mut t = forage_world();
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
-    let unit = &mut t.players[1].objects[0];
+    let unit = &mut t.players[1].objects[ListIndex::new(0)];
     unit.actions.set_wait_solidify(Some(gone_foundation()));
     assert_eq!(
         unit.top_action_kind(),
         Some(crate::construction::wait_solidify::WAIT_SOLIDIFY)
     );
-    let err = in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions).unwrap_err();
+    let err = in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::update_actions,
+    )
+    .unwrap_err();
     assert_eq!(err.kind(), crate::ErrorKind::Unreachable);
     assert_eq!(
         err.reason(),
         "an action below the head of the list (its idle update, FUN_140a78470)"
     );
-    assert!(t.players[1].objects[0].actions.wait_solidify().is_some());
+    assert!(
+        t.players[1].objects[ListIndex::new(0)]
+            .actions
+            .wait_solidify()
+            .is_some()
+    );
 }
 
 /// An object inside another runs its inside update (`FUN_140a98790`) in place of its actions':
@@ -252,26 +331,36 @@ fn the_list_s_update_stops_at_an_action_below_its_head() {
 #[test]
 fn an_object_inside_another_runs_its_inside_update() {
     let mut t = forage_world();
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
-    let at = t.players[1].objects[0].position();
-    t.players[1].objects[0].life.inside = Some(object_id(700));
+    let at = t.players[1].objects[ListIndex::new(0)].position();
+    t.players[1].objects[ListIndex::new(0)].life.inside = Some(object_id(700));
     assert_eq!(
-        in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions),
+        in_update(
+            &mut t,
+            (PlayerId::new(1), ListIndex::new(0)),
+            50,
+            Unit::update_actions
+        ),
         Ok(None)
     );
-    let unit = &t.players[1].objects[0];
+    let unit = &t.players[1].objects[ListIndex::new(0)];
     assert!(unit.actions.is_empty());
     assert_eq!(unit.position(), at);
-    let unit = &mut t.players[1].objects[0];
+    let unit = &mut t.players[1].objects[ListIndex::new(0)];
     unit.life.inside = None;
     unit.default_artifact = true;
     assert_eq!(
-        in_update(&mut t, (PlayerId::new(1), 0), 50, Unit::update_actions),
+        in_update(
+            &mut t,
+            (PlayerId::new(1), ListIndex::new(0)),
+            50,
+            Unit::update_actions
+        ),
         Ok(None)
     );
     assert_eq!(
-        t.players[1].objects[0].actions.artifact(),
+        t.players[1].objects[ListIndex::new(0)].actions.artifact(),
         Some(&crate::ownership::artifact::Artifact::new(false, None)),
         "the Artifact the default task made has not run yet"
     );

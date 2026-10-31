@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
@@ -86,7 +87,7 @@ impl World {
     /// list cleared, by its type and owner.
     fn direct_builder(
         &mut self,
-        (q, idx): (PlayerId, usize),
+        (q, idx): (PlayerId, ListIndex),
         (id, kind): (ObjectId, MasterKind),
         (site, position): ((PlayerId, ObjectId, MasterId), Position),
         (to_queue, commits): (bool, bool),
@@ -120,7 +121,7 @@ impl World {
     /// with 0 makes every queued order ready.
     fn queue_builder(
         &mut self,
-        (q, idx): (PlayerId, usize),
+        (q, idx): (PlayerId, ListIndex),
         site: (PlayerId, ObjectId, MasterId),
         position: Position,
         commits: bool,
@@ -139,7 +140,7 @@ impl World {
     pub(super) fn empty_queue_for_work(
         &mut self,
         q: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         kind: MasterKind,
     ) -> Result<(), GenieError> {
         if crate::objects::masters::master_type::COMBAT <= kind
@@ -251,7 +252,7 @@ impl World {
     pub(crate) fn queue_build(
         &mut self,
         q: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (fp, foundation, master): (PlayerId, ObjectId, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
@@ -287,7 +288,7 @@ impl World {
     pub(crate) fn build_directly(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (with, build): (MasterId, BuildAction),
         (fp, foundation, master): (PlayerId, ObjectId, MasterId),
         position: Position,
@@ -342,7 +343,7 @@ impl World {
     pub(crate) fn wait_for_foundation(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         wait: Wait,
     ) -> Result<(), GenieError> {
         if let Some(master) = wait.switch {
@@ -371,7 +372,7 @@ impl World {
     pub(crate) fn build_command(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         foundation: ObjectId,
     ) -> Result<bool, GenieError> {
         if self.object(foundation).is_none() {

@@ -7,6 +7,7 @@ use crate::gathering::hunt::HuntState;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
@@ -127,7 +128,7 @@ fn game() -> World {
             ..Master::default()
         },
     ]);
-    t.players[1].objects[0].life.master_id = ids::TOWN_CENTRE;
+    t.players[1].objects[ListIndex::new(0)].life.master_id = ids::TOWN_CENTRE;
     t.masters = vec![masters.clone(), masters.clone(), masters];
     t.victory_conquest = true;
     t
@@ -183,7 +184,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         let mut unit = unit;
         unit.life.master_id = ids::TOWN_CENTRE;
         t.players[1].objects.push(unit);
-        t.players[1].objects.len() - 1
+        t.players[1].objects.last_place().unwrap()
     };
     let task = crate::gathering::hunt::HuntTask {
         id: TaskId::test(0),
@@ -386,7 +387,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     hunter.life.master_id = ids::TOWN_CENTRE;
     hunter.my_pasture = None;
     t.players[1].objects.push(hunter);
-    let idx = t.players[1].objects.len() - 1;
+    let idx = t.players[1].objects.last_place().unwrap();
     let mut without_ai = t.clone();
     // the unit AI's stopAction (slot 0x3c0) then empties the list
     t.object_stop(PlayerId::new(1), idx).unwrap();
@@ -409,7 +410,10 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
 #[test]
 fn a_cancel_gives_back_one_queued_unit() {
     let mut t = game();
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[
         villager(Some(ids::VILLAGER_MALE), 1, 46.0),
         villager(Some(ids::VILLAGER_MALE), 1, 45.0),
@@ -418,7 +422,7 @@ fn a_cancel_gives_back_one_queued_unit() {
     t.cancel_order(&object_ids([9]), 1, false).unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (45.0, 1.0));
-    let production = p.objects[0].production.as_ref().unwrap();
+    let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     let q = &production.queue;
     assert_eq!((q.count, q.total, q.changes), (1, 1, 1));
     assert!(production.action.is_some());
@@ -431,7 +435,7 @@ fn a_cancel_gives_back_one_queued_unit() {
         (p.resources[0], p.attributes[80], p.attributes[81]),
         (91.0, 0.0, 0.0)
     );
-    let production = p.objects[0].production.as_ref().unwrap();
+    let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     assert!(production.queue.entries().is_empty() && production.action.is_none());
     assert!(t.cancel_order(&object_ids([9]), 0, true).is_ok());
 }
@@ -444,33 +448,58 @@ fn a_cancel_gives_back_one_queued_unit() {
 #[test]
 fn a_dying_building_cancels_its_queue_in_its_update() {
     let mut t = game();
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
-    t.players[1].objects[0].life.state = ObjectState::Dying;
-    t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
+    t.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
+    t.building_production(PlayerId::new(1), ListIndex::new(0), 0.05)
+        .unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (200.0, 0.0));
-    let q = &p.objects[0].production.as_ref().unwrap().queue;
+    let q = &p.objects[ListIndex::new(0)]
+        .production
+        .as_ref()
+        .unwrap()
+        .queue;
     assert_eq!((q.count, q.total, q.changes), (0, 0, 1));
-    t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
-    let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
+    t.building_production(PlayerId::new(1), ListIndex::new(0), 0.05)
+        .unwrap();
+    let q = &t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_ref()
+        .unwrap()
+        .queue;
     assert_eq!((q.count, q.changes), (0, 2));
     let mut t = game();
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
-    t.players[1].objects[0].life.state = ObjectState::Alive;
+    t.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Alive;
     // a disabled queue (+0xbf6): the production step does nothing
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .production
         .as_mut()
         .unwrap()
         .queue
         .enabled = false;
-    t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
+    t.building_production(PlayerId::new(1), ListIndex::new(0), 0.05)
+        .unwrap();
     let p = &t.players[1];
-    assert_eq!(p.objects[0].production.as_ref().unwrap().queue.count, 1);
+    assert_eq!(
+        p.objects[ListIndex::new(0)]
+            .production
+            .as_ref()
+            .unwrap()
+            .queue
+            .count,
+        1
+    );
     assert_eq!(p.resources[0], 0.0);
 }
 
@@ -479,12 +508,16 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
 #[test]
 fn a_cancel_of_the_first_unit_drops_the_make_action_of_an_entry_that_stays() {
     let mut t = game();
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 3, 46.0)]);
     t.players[1].attributes[80] = 3.0;
-    t.cancel_queued(PlayerId::new(1), 0, 0, false).unwrap();
+    t.cancel_queued(PlayerId::new(1), ListIndex::new(0), 0, false)
+        .unwrap();
     let p = &t.players[1];
-    let production = p.objects[0].production.as_ref().unwrap();
+    let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     assert_eq!(
         (production.queue.count, production.queue.slots[0].count),
         (1, 2)
@@ -501,7 +534,10 @@ fn a_cancel_of_the_first_unit_drops_the_make_action_of_an_entry_that_stays() {
 #[test]
 fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     let mut t = game();
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[
         villager(Some(ids::VILLAGER_MALE), 3, 46.0),
         villager(Some(ids::VILLAGER_FEMALE), 4, 46.0),
@@ -524,7 +560,7 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     t.cancel_order(&object_ids([9]), 0, true).unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (5.0 * 46.0, 2.0));
-    let production = p.objects[0].production.as_ref().unwrap();
+    let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     let q = &production.queue;
     assert_eq!(
         (q.count, q.total, q.slots[0].master, q.slots[0].count),
@@ -536,14 +572,20 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     // from the second unit the make action goes on for the other sex
     let mut t2 = game();
     t2.masters = t.masters.clone();
-    let tc = t2.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t2.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[
         villager(Some(ids::VILLAGER_MALE), 3, 46.0),
         villager(Some(ids::VILLAGER_FEMALE), 4, 46.0),
     ]);
     t2.players[1].attributes[80] = 7.0;
     t2.cancel_order(&object_ids([9]), 1, true).unwrap();
-    let production = t2.players[1].objects[0].production.as_ref().unwrap();
+    let production = t2.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_ref()
+        .unwrap();
     assert_eq!(
         (production.queue.count, production.queue.slots[0].count),
         (1, 2)
@@ -578,13 +620,25 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
         ..Master::default()
     }]));
     t.players[1].attributes[80] = 4.0;
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[archer(2), villager(Some(ids::VILLAGER_MALE), 2, 46.0)]);
-    t.cancel_queued(PlayerId::new(1), 0, 0, true).unwrap();
+    t.cancel_queued(PlayerId::new(1), ListIndex::new(0), 0, true)
+        .unwrap();
     let p = &t.players[1];
     assert_eq!(p.resources, [92.0, 50.0, 0.0, 90.0]);
     assert_eq!(p.attributes[80], 0.0);
-    assert_eq!(p.objects[0].production.as_ref().unwrap().queue.count, 0);
+    assert_eq!(
+        p.objects[ListIndex::new(0)]
+            .production
+            .as_ref()
+            .unwrap()
+            .queue
+            .count,
+        0
+    );
     // [2 villagers, a research]: the research moved into the slot ends it
     let mut t = game();
     let research = Entry {
@@ -593,11 +647,19 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
         costs: [(Some(attribute::GOLD), 50.0), (None, 0.0), (None, 0.0)],
         ..villager(None, 1, 0.0)
     };
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 2, 46.0), research]);
     t.players[1].attributes[80] = 2.0;
-    t.cancel_queued(PlayerId::new(1), 0, 0, true).unwrap();
-    let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
+    t.cancel_queued(PlayerId::new(1), ListIndex::new(0), 0, true)
+        .unwrap();
+    let q = &t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_ref()
+        .unwrap()
+        .queue;
     assert_eq!(
         (q.count, q.slots[0].tech, t.players[1].resources[0]),
         (1, Some(tech_id(22)), 92.0)
@@ -616,7 +678,10 @@ fn researching(progress: f32) -> World {
         costs: [(Some(attribute::GOLD), 50.0), (None, 0.0), (None, 0.0)],
         ..villager(None, 3, 0.0)
     };
-    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    let tc = t.players[1].objects[ListIndex::new(0)]
+        .production
+        .as_mut()
+        .unwrap();
     tc.queue = queue(&[entry]);
     tc.action = Some(Making::Research(MakeTech {
         state: MakeTechState::Researching,
@@ -679,7 +744,7 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
         (s.state, s.pending, s.research_done),
         (ResearchState::Available, 0, 0.0)
     );
-    let tc = &p.objects[0];
+    let tc = &p.objects[ListIndex::new(0)];
     assert_eq!(tc.store, [(attribute::WOOD, 20.0)]);
     let production = tc.production.as_ref().unwrap();
     assert_eq!(production.disabled_techs, [tech_id(5)]);
@@ -695,7 +760,7 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
         (p.resources[3], p.techs[22].state, p.techs[22].pending),
         (50.0, ResearchState::Available, 2)
     );
-    let production = p.objects[0].production.as_ref().unwrap();
+    let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     assert_eq!(production.queue.slots[0].count, 2);
     assert!(production.action.is_some());
 }
@@ -708,7 +773,7 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
     let mut t = researching(30.0);
     let s = &mut t.players[1].techs[22];
     (s.stack, s.research_cap) = (true, 5);
-    t.cancel_queue(PlayerId::new(1), 0).unwrap();
+    t.cancel_queue(PlayerId::new(1), ListIndex::new(0)).unwrap();
     let p = &t.players[1];
     assert_eq!(p.resources[3], 150.0);
     let s = &p.techs[22];
@@ -716,13 +781,13 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
         (s.state, s.times_researched, s.pending, s.research_done),
         (ResearchState::Available, 1, -1, 30.0)
     );
-    let production = p.objects[0].production.as_ref().unwrap();
+    let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     assert_eq!((production.queue.count, production.queue.changes), (0, 1));
     // not done: state 1, nothing counted
     let mut t = researching(10.0);
     let s = &mut t.players[1].techs[22];
     (s.stack, s.research_cap) = (true, 5);
-    t.cancel_queue(PlayerId::new(1), 0).unwrap();
+    t.cancel_queue(PlayerId::new(1), ListIndex::new(0)).unwrap();
     let s = &t.players[1].techs[22];
     assert_eq!(
         (s.state, s.times_researched, s.pending),
@@ -744,7 +809,7 @@ fn a_research_gives_the_effect_attribute_269_names() {
         t.effects = vec![Vec::new(); 301];
         t.effects[300] = vec![EffectCommand::of_data(1, 3, 1, -1, 20.0).unwrap()];
         let gold = t.players[1].resources[3];
-        t.produce(PlayerId::new(1), 0, 1.0).unwrap();
+        t.produce(PlayerId::new(1), ListIndex::new(0), 1.0).unwrap();
         t.players[1].resources[3] - gold
     };
     assert_eq!(run(300.0), 20.0);
@@ -771,7 +836,10 @@ fn a_cancel_in_game_mode_16_clears_the_military_flag() {
             kind: master_type::COMBAT,
             ..Master::default()
         }]));
-        let tc = t.players[1].objects[0].production.as_mut().unwrap();
+        let tc = t.players[1].objects[ListIndex::new(0)]
+            .production
+            .as_mut()
+            .unwrap();
         tc.queue = queue(&[
             villager(Some(ids::VILLAGER_MALE), 1, 46.0),
             villager(Some(master_id(4)), 1, 0.0),
@@ -797,7 +865,7 @@ fn a_resignation_cancels_the_queues_and_the_last_side_wins() {
     assert_eq!((p.game_status, p.resigned, p.dropped), (LOST, true, false));
     assert_eq!(p.resources[0], 46.0);
     assert_eq!((p.attributes[80], p.attributes[81]), (0.0, 0.0));
-    let tc = &p.objects[0];
+    let tc = &p.objects[ListIndex::new(0)];
     let production = tc.production.as_ref().unwrap();
     assert!(production.queue.entries().is_empty() && production.action.is_none());
     assert_eq!((production.queue.total, production.queue.changes), (0, 1));
@@ -819,7 +887,7 @@ fn a_resignation_cancels_the_queues_and_the_last_side_wins() {
 #[test]
 fn a_make_action_the_queue_did_not_pay_for_refunds_its_master_s_costs() {
     let mut t = game();
-    if let Some(Some(Making::Unit(make))) = t.players[1].objects[0]
+    if let Some(Some(Making::Unit(make))) = t.players[1].objects[ListIndex::new(0)]
         .production
         .as_mut()
         .map(|q| q.action.as_mut())

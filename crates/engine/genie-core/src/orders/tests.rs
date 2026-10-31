@@ -69,19 +69,25 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
         ],
     );
     assert_eq!(
-        t.live_slot((PlayerId::new(1), 0, object_id(3))),
-        Some((PlayerId::new(1), 0))
+        t.live_slot((PlayerId::new(1), ListIndex::new(0), object_id(3))),
+        Some((PlayerId::new(1), ListIndex::new(0)))
     );
     assert_eq!(
-        t.live_slot((PlayerId::new(0), 0, object_id(2))),
-        Some((PlayerId::new(0), 1))
+        t.live_slot((PlayerId::new(0), ListIndex::new(0), object_id(2))),
+        Some((PlayerId::new(0), ListIndex::new(1)))
     );
     assert_eq!(
-        t.live_slot((PlayerId::new(5), 9, object_id(3))),
-        Some((PlayerId::new(1), 0))
+        t.live_slot((PlayerId::new(5), ListIndex::new(9), object_id(3))),
+        Some((PlayerId::new(1), ListIndex::new(0)))
     );
-    assert_eq!(t.live_slot((PlayerId::new(1), 0, object_id(4))), None);
-    assert_eq!(t.live_slot((PlayerId::new(0), 0, object_id(7))), None);
+    assert_eq!(
+        t.live_slot((PlayerId::new(1), ListIndex::new(0), object_id(4))),
+        None
+    );
+    assert_eq!(
+        t.live_slot((PlayerId::new(0), ListIndex::new(0), object_id(7))),
+        None
+    );
 }
 
 /// records/425906646's gate 27745 (masters 88 and 91, 1650 hit points each, three damage
@@ -131,7 +137,10 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         ..crate::unit_ai::task_finder::DropSite::default()
     };
     t.drop_sites = vec![tc.clone()];
-    assert!(t.drop_off_unasked(PlayerId::new(0), 0, true).is_ok());
+    assert!(
+        t.drop_off_unasked(PlayerId::new(0), ListIndex::new(0), true)
+            .is_ok()
+    );
     t.drop_sites = vec![
         tc,
         crate::unit_ai::task_finder::DropSite {
@@ -160,8 +169,8 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
             ..Master::default()
         },
     ]);
-    t.players[0].objects[0].life.attribute_type = Some(attribute::FOOD);
-    t.players[0].objects[0].place_for_test(Position::new(10.0, 10.0, 0.0));
+    t.players[0].objects[ListIndex::new(0)].life.attribute_type = Some(attribute::FOOD);
+    t.players[0].objects[ListIndex::new(0)].place_for_test(Position::new(10.0, 10.0, 0.0));
     for (id, x, state) in [
         (500, 30.0, ObjectState::Alive),
         (501, 12.0, ObjectState::Foundation),
@@ -197,9 +206,12 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         .unwrap(),
         None
     );
-    let before = t.players[0].objects[0].clone();
-    assert!(t.drop_off_unasked(PlayerId::new(0), 0, true).is_ok());
-    assert_eq!(t.players[0].objects[0], before);
+    let before = t.players[0].objects[ListIndex::new(0)].clone();
+    assert!(
+        t.drop_off_unasked(PlayerId::new(0), ListIndex::new(0), true)
+            .is_ok()
+    );
+    assert_eq!(t.players[0].objects[ListIndex::new(0)], before);
 }
 
 /// `UNIT_ORDER`'s drop-off on a builder carrying wood (`FUN_14161e370` on a Build: slot 0x78,
@@ -364,7 +376,11 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         ..crate::unit_ai::task_finder::DropSite::default()
     }];
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
-    let build = t.players[0].objects[0].actions.build().copied().unwrap();
+    let build = t.players[0].objects[ListIndex::new(0)]
+        .actions
+        .build()
+        .copied()
+        .unwrap();
     let walk = build.move_to.unwrap();
     assert_eq!(
         (
@@ -384,14 +400,20 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         )
     );
     assert_eq!(
-        t.players[0].objects[1].construction.map(|k| k.builders),
+        t.players[0].objects[ListIndex::new(1)]
+            .construction
+            .map(|k| k.builders),
         Some(0)
     );
-    assert_eq!(t.players[0].objects[2].workers, 1);
+    assert_eq!(t.players[0].objects[ListIndex::new(2)].workers, 1);
     // no table entry for wood: back to the foundation
     let mut t = world();
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
-    let build = t.players[0].objects[0].actions.build().copied().unwrap();
+    let build = t.players[0].objects[ListIndex::new(0)]
+        .actions
+        .build()
+        .copied()
+        .unwrap();
     assert_eq!(
         (
             build.state,
@@ -402,10 +424,13 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     );
     // carrying nothing: not ordered
     let mut t = world();
-    t.players[0].objects[0].life.amount = 0.0;
+    t.players[0].objects[ListIndex::new(0)].life.amount = 0.0;
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
     assert_eq!(
-        t.players[0].objects[0].actions.build().map(|b| b.state),
+        t.players[0].objects[ListIndex::new(0)]
+            .actions
+            .build()
+            .map(|b| b.state),
         Some(BuildState::Work)
     );
     // 7 asks the Build as 8 does; 6 does not ask it: the search alone (no drop site in the
@@ -419,7 +444,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     }];
     t.unit_order(player_id(0), &object_ids([10]), 7).unwrap();
     assert_eq!(
-        t.players[0].objects[0]
+        t.players[0].objects[ListIndex::new(0)]
             .actions
             .build()
             .map(|b| (b.state, b.site)),
@@ -428,7 +453,10 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let mut t = world();
     t.unit_order(player_id(0), &object_ids([10]), 6).unwrap();
     assert_eq!(
-        t.players[0].objects[0].actions.build().map(|b| b.state),
+        t.players[0].objects[ListIndex::new(0)]
+            .actions
+            .build()
+            .map(|b| b.state),
         Some(BuildState::Work)
     );
     assert!(t.unit_order(player_id(0), &object_ids([10]), 3).is_err());
@@ -444,14 +472,14 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
     t.start_attack(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         object_id(50),
         &task,
         Position::new(10.4, 10.0, 0.0),
         true,
     )
     .unwrap();
-    let unit = &t.players[1].objects[0];
+    let unit = &t.players[1].objects[ListIndex::new(0)];
     let attack = unit.actions.attack().expect("the soldier's Attack");
     assert_eq!(
         (
@@ -478,13 +506,20 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
 fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
     let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
     let at = Position::new(10.4, 10.0, 0.0);
-    t.start_attack(PlayerId::new(1), 0, object_id(50), &task, at, true)
-        .unwrap();
+    t.start_attack(
+        PlayerId::new(1),
+        ListIndex::new(0),
+        object_id(50),
+        &task,
+        at,
+        true,
+    )
+    .unwrap();
     t.world_time = 3500;
     assert_eq!(
         t.keep_attack(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(50)),
             Some(crate::garrison::ENTER),
             at,
@@ -493,11 +528,18 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
         Ok(false)
     );
     assert_eq!(
-        t.keep_attack(PlayerId::new(1), 0, Some(object_id(51)), None, at, true),
+        t.keep_attack(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            Some(object_id(51)),
+            None,
+            at,
+            true
+        ),
         Ok(false)
     );
     let ai = |t: &World| {
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .ai
             .as_ref()
             .map(|a| a.last_retarget_time)
@@ -506,7 +548,7 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
     assert_eq!(
         t.keep_attack(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(50)),
             Some(crate::combat::attack::ATTACK),
             at,
@@ -555,7 +597,7 @@ fn an_attack_task_aims_at_its_target_or_an_annex_s_main_building() {
         r.err().map(|e| e.reason()),
         Some("an attack task's target the slice does not hold")
     );
-    t.players[0].objects[2].annex_of = Some(object_id(99));
+    t.players[0].objects[ListIndex::new(2)].annex_of = Some(object_id(99));
     let r = t.attack_aim(object_id(61));
     assert_eq!(
         r.err().map(|e| e.reason()),
@@ -576,13 +618,13 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     let aim = t.attack_aim(object_id(61)).unwrap();
     t.attack_notifies(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         (object_id(61), &aim),
         Position::new(21.0, 21.0, 0.0),
         true,
     )
     .unwrap();
-    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
         (
@@ -609,17 +651,17 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
             Some(object_id(61))
         )
     );
-    assert_eq!(t.players[0].objects[2].workers, 1);
-    t.players[1].objects[0].ai = None;
+    assert_eq!(t.players[0].objects[ListIndex::new(2)].workers, 1);
+    t.players[1].objects[ListIndex::new(0)].ai = None;
     t.attack_notifies(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         (object_id(61), &aim),
         Position::new(21.0, 21.0, 0.0),
         true,
     )
     .unwrap();
-    assert_eq!(t.players[0].objects[2].workers, 2);
+    assert_eq!(t.players[0].objects[ListIndex::new(2)].workers, 2);
 }
 
 /// The attack task's Attack of a soldier without a unit AI (it cannot move) touching the wolf
@@ -634,19 +676,19 @@ fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
         (0.0, AttackState::Swing, true, 301),
     ] {
         let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
-        let unit = &mut t.players[1].objects[0];
+        let unit = &mut t.players[1].objects[ListIndex::new(0)];
         unit.ai = None;
         unit.attack_timer = timer;
         t.start_attack(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             object_id(50),
             &task,
             Position::new(10.4, 10.0, 0.0),
             true,
         )
         .unwrap();
-        let unit = &t.players[1].objects[0];
+        let unit = &t.players[1].objects[ListIndex::new(0)];
         let attack = unit
             .actions
             .attack()
@@ -795,7 +837,7 @@ fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
         placed(10.4, class::PREDATOR, PlayerId::new(0), master_id(126)),
     );
     let mut rng = Well512::default();
-    let unit = &mut t.players[1].objects[0];
+    let unit = &mut t.players[1].objects[ListIndex::new(0)];
     unit.body.put_mover(Some(walker));
     unit.sprite = Some(crate::objects::sprite::ActiveSprite::start(
         Graphic {
@@ -1096,8 +1138,8 @@ fn the_lookup_keeps_a_gone_unit_s_entry() {
         t.lookup(&object_ids([99, 40, 11, -1])),
         [
             None,
-            Some(Place::Sleeping(PlayerId::new(1), 0)),
-            Some(Place::Live(PlayerId::new(1), 0)),
+            Some(Place::Sleeping(PlayerId::new(1), ListIndex::new(0))),
+            Some(Place::Live(PlayerId::new(1), ListIndex::new(0))),
             None
         ]
     );
@@ -1126,13 +1168,13 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
         ready: true,
         target_type: None,
     };
-    t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+    t.players[1].objects[ListIndex::new(0)].ai = Some(crate::unit_ai::UnitAi {
         orders: vec![order],
         idle_timer: 5,
         adjusted_idle_timeout: 300,
         ..crate::unit_ai::UnitAi::default()
     });
-    let ai = t.players[1].objects[0].ai.clone();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.clone();
     t.players[0].objects.push(Unit {
         id: object_id(30),
         ai,
@@ -1144,12 +1186,20 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
     });
     t.stop_command(player_id(1), &object_ids([11, 12, 99, 30, 40]))
         .unwrap();
-    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
     assert_eq!((ai.orders.len(), ai.idle_timer), (0, 300));
-    assert_eq!(t.players[1].objects[0].group.id, None);
-    assert_eq!(t.players[1].objects[1].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(0)].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(1)].group.id, None);
     assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
-    assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
+    assert_eq!(
+        t.players[0].objects[ListIndex::new(0)]
+            .ai
+            .as_ref()
+            .unwrap()
+            .orders
+            .len(),
+        1
+    );
 }
 
 /// With the game setting `+0x1074` (`mCheatsEnabled`) the command's check passes another
@@ -1166,7 +1216,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     if let Some(m) = t.masters[1].get_mut(ids::VILLAGER_MALE) {
         m.moving = Some(walker.stats);
     }
-    let unit = &mut t.players[1].objects[0];
+    let unit = &mut t.players[1].objects[ListIndex::new(0)];
     unit.body.put_mover(Some(walker));
     unit.ai = Some(crate::unit_ai::UnitAi::default());
     assert_eq!(
@@ -1194,7 +1244,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     };
     t.interact(PlayerId::new(2), &object_ids([11]), &interact)
         .unwrap();
-    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
     let queued: Vec<(Option<Issuer>, OrderKind)> =
         ai.orders.iter().map(|o| (o.issuer, o.order)).collect();
     let player_2 = Some(Issuer::Player(player_id(2)));
@@ -1224,7 +1274,7 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
     let mut t = soldiers(&units, &[11]);
     t.move_order(PlayerId::new(1), &object_ids([11]), &order)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(0)].group.id, None);
     assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
     // two groups' members ordered alone: both loose
     let two = || {
@@ -1237,22 +1287,25 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
             }],
             ..crate::groups::UnitGroup::default()
         });
-        t.players[1].objects[1].group.id = Some(group_id(6));
+        t.players[1].objects[ListIndex::new(1)].group.id = Some(group_id(6));
         t
     };
     let mut t = two();
     t.move_order(PlayerId::new(1), &object_ids([11, 12]), &order)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, None);
-    assert_eq!(t.players[1].objects[1].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(0)].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(1)].group.id, None);
     assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
     assert_eq!(t.groups.get(group_id(6)).unwrap().members.len(), 0);
     // a group link the world does not hold
     let mut t = soldiers(&units, &[]);
-    t.players[1].objects[0].group.id = Some(group_id(9));
+    t.players[1].objects[ListIndex::new(0)].group.id = Some(group_id(9));
     t.move_order(PlayerId::new(1), &object_ids([11]), &order)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, Some(group_id(9)));
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)].group.id,
+        Some(group_id(9))
+    );
     let interact = Interact {
         target: None,
         point: Point::new(30.0, 30.0),
@@ -1269,8 +1322,8 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
     }
     t.interact(PlayerId::new(1), &object_ids([11, 12]), &interact)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, None);
-    assert_eq!(t.players[1].objects[1].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(0)].group.id, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(1)].group.id, None);
 }
 
 /// A queued MOVE's new group (`FUN_140e67800` at `0x140e67b5d`): the first of its units the
@@ -1290,8 +1343,8 @@ fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
         ..crate::unit_ai::UnitAi::default()
     };
     let mut t = soldiers(&units, &[]);
-    t.players[1].objects[0].ai = Some(ai(Some(object_id(13))));
-    t.players[1].objects[1].ai = Some(ai(Some(object_id(11))));
+    t.players[1].objects[ListIndex::new(0)].ai = Some(ai(Some(object_id(13))));
+    t.players[1].objects[ListIndex::new(1)].ai = Some(ai(Some(object_id(11))));
     assert_eq!(
         t.first_unit_target(&object_id_list([99, 11, 13])),
         Some((object_id(13), Point::new(21.0, 20.0), true))
@@ -1300,9 +1353,9 @@ fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
         t.first_unit_target(&object_id_list([13, 11])),
         Some((object_id(11), Point::new(20.0, 20.0), true))
     );
-    t.players[1].objects[0].ai = Some(ai(Some(object_id(98))));
+    t.players[1].objects[ListIndex::new(0)].ai = Some(ai(Some(object_id(98))));
     assert_eq!(t.first_unit_target(&object_id_list([11, 13])), None);
-    t.players[1].objects[0].ai = None;
+    t.players[1].objects[ListIndex::new(0)].ai = None;
     assert_eq!(t.first_unit_target(&object_id_list([11, 13])), None);
     assert_eq!(t.first_unit_target(&object_id_list([99])), None);
 }
@@ -1341,7 +1394,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
         ..Unit::default()
     });
     let building = |t: &World| {
-        let b = &t.players[1].objects[1];
+        let b = &t.players[1].objects[ListIndex::new(1)];
         (b.gate.unwrap().locked, b.body.mover().unwrap().last_move)
     };
     t.gate(player_id(1), object_id(50)).unwrap();
@@ -1354,7 +1407,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     assert_eq!(building(&t), (false, 401));
     t.gate(player_id(1), object_id(11)).unwrap();
     t.gate(player_id(1), object_id(99)).unwrap();
-    assert_eq!(t.players[1].objects[0].gate, None);
+    assert_eq!(t.players[1].objects[ListIndex::new(0)].gate, None);
 }
 
 /// `TRANSFORM_OBJECT` and `FUN_1411e6d90`: player 1's trophy 60 (master 1649) takes trophy
@@ -1401,7 +1454,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
     t.players[1].objects = vec![trophy(ObjectState::Alive)].into();
     t.transform_object(player_id(1), object_id(60), master_id(1650))
         .unwrap();
-    let unit = &t.players[1].objects[0];
+    let unit = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(unit.life.master_id, master_id(1650));
     assert_eq!(unit.life.hp, 50.0);
     assert_eq!(unit.construction.unwrap().progress, 30.0);
@@ -1410,8 +1463,14 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
     t.players[1].objects = vec![trophy(ObjectState::Unfinished)].into();
     t.transform_object(player_id(1), object_id(60), master_id(1650))
         .unwrap();
-    assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
-    assert_eq!(t.players[1].objects[0].firepower, 7.0);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)]
+            .construction
+            .unwrap()
+            .progress,
+        10.0
+    );
+    assert_eq!(t.players[1].objects[ListIndex::new(0)].firepower, 7.0);
 }
 
 /// INTERACT to an object that does not move (`FUN_140e68b90`): it takes the order at once
@@ -1433,12 +1492,12 @@ fn a_queued_interact_to_an_object_that_does_not_move_also_queues_it() {
         if let Some(m) = t.masters[1].get_mut(ids::VILLAGER_MALE) {
             m.kind = BUILDING;
         }
-        let unit = &mut t.players[1].objects[0];
+        let unit = &mut t.players[1].objects[ListIndex::new(0)];
         (unit.pasture, unit.my_pasture) = (None, None);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
         t.interact(PlayerId::new(1), &object_ids([11]), &interact(queued))
             .unwrap();
-        let ai = t.players[1].objects[0].ai.clone().unwrap();
+        let ai = t.players[1].objects[ListIndex::new(0)].ai.clone().unwrap();
         ai.orders.iter().map(|o| o.order).collect::<Vec<_>>()
     };
     assert_eq!(run(false), Vec::<OrderKind>::new());
@@ -1456,7 +1515,7 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
     if let Some(m) = t.masters[1].get_mut(ids::VILLAGER_MALE) {
         m.moving = Some(walker.stats);
     }
-    let unit = &mut t.players[1].objects[0];
+    let unit = &mut t.players[1].objects[ListIndex::new(0)];
     unit.body.put_mover(Some(walker));
     (unit.pasture, unit.my_pasture) = (None, None);
     unit.ai = Some(crate::unit_ai::UnitAi {
@@ -1481,7 +1540,7 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
     };
     t.interact(PlayerId::new(1), &object_ids([11]), &interact)
         .unwrap();
-    let ai = t.players[1].objects[0].ai.clone().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.clone().unwrap();
     let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
     assert_eq!(
         queue,
@@ -1512,7 +1571,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         if let Some(m) = t.masters[1].get_mut(ids::VILLAGER_MALE) {
             m.moving = Some(walker.stats);
         }
-        let unit = &mut t.players[1].objects[0];
+        let unit = &mut t.players[1].objects[ListIndex::new(0)];
         unit.body.put_mover(Some(walker));
         (unit.pasture, unit.my_pasture) = (None, None);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
@@ -1531,7 +1590,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         &interact,
     )
     .unwrap();
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     let m = u.body.mover().unwrap();
     assert_eq!((m.waiting, &m.ignore_units[..]), (1, &[object_id(12)][..]));
     let queued: Vec<_> =
@@ -1551,7 +1610,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         )]
     );
     let mut t = mover();
-    let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.as_mut().unwrap();
     ai.orders.push(crate::unit_ai::QueuedOrder::default());
     let itself = Interact {
         target: Some(object_id(11)),
@@ -1561,11 +1620,11 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
     };
     t.interact_unit(PlayerId::new(1), object_id(11), &[], None, &itself)
         .unwrap();
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(u.ai.as_ref().unwrap().orders, []);
     assert_eq!(u.actions.move_to().copied(), None);
     let mut t = mover();
-    t.players[1].objects[0].body.put_mover(None);
+    t.players[1].objects[ListIndex::new(0)].body.put_mover(None);
     let reason = |t: &mut World| {
         t.interact_unit(PlayerId::new(1), object_id(11), &[], None, &interact)
             .unwrap_err()
@@ -1573,7 +1632,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
     };
     assert_eq!(reason(&mut t), "an ordered unit without movement state");
     let mut t = mover();
-    let u = t.players[1].objects.remove(0).unwrap();
+    let u = t.players[1].objects.remove(ListIndex::new(0)).unwrap();
     t.players[1].sleeping.push(u);
     assert_eq!(
         reason(&mut t),
@@ -1640,11 +1699,12 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
                 m.class = class;
             }
         }
-        let unit = &mut t.players[1].objects[0];
+        let unit = &mut t.players[1].objects[ListIndex::new(0)];
         (unit.life.attribute_type, unit.life.amount) = (held.kind, held.amount);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
-        t.carried_resource_test(PlayerId::new(1), 0, &task).unwrap();
-        let unit = &t.players[1].objects[0];
+        t.carried_resource_test(PlayerId::new(1), ListIndex::new(0), &task)
+            .unwrap();
+        let unit = &t.players[1].objects[ListIndex::new(0)];
         (
             unit.life.attribute_type,
             unit.life.amount,
@@ -1712,21 +1772,38 @@ fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
         ready: true,
         target_type: None,
     };
-    t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+    t.players[1].objects[ListIndex::new(0)].ai = Some(crate::unit_ai::UnitAi {
         orders: vec![order],
         ..crate::unit_ai::UnitAi::default()
     });
-    t.move_point_order_with(PlayerId::new(1), 0, Position::new(30.0, 30.0, 0.0), false)
-        .unwrap();
-    let unit = &t.players[1].objects[0];
+    t.move_point_order_with(
+        PlayerId::new(1),
+        ListIndex::new(0),
+        Position::new(30.0, 30.0, 0.0),
+        false,
+    )
+    .unwrap();
+    let unit = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(unit.ai.as_ref().unwrap().orders.len(), 1);
     assert_eq!(
         unit.actions.move_to().copied().unwrap().goal(),
         Some(Position::new(30.0, 30.0, 0.0))
     );
-    t.move_point_order(PlayerId::new(1), 0, Position::new(31.0, 30.0, 0.0))
-        .unwrap();
-    assert_eq!(t.players[1].objects[0].ai.as_ref().unwrap().orders.len(), 0);
+    t.move_point_order(
+        PlayerId::new(1),
+        ListIndex::new(0),
+        Position::new(31.0, 30.0, 0.0),
+    )
+    .unwrap();
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)]
+            .ai
+            .as_ref()
+            .unwrap()
+            .orders
+            .len(),
+        0
+    );
 }
 
 /// `FUN_140e666f0`: another player's scout takes the order as its owner's, a unit without
@@ -1772,19 +1849,20 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
         },
         ..Unit::default()
     };
-    t.players[1].objects[0].ai = Some(ai.clone());
+    t.players[1].objects[ListIndex::new(0)].ai = Some(ai.clone());
     t.players[1].objects.push(unit(object_id(12)));
     t.players[2].objects.push(unit(object_id(30)));
     let mut ids = vec![99; 59];
     ids.extend([30, 11, 12]);
     t.auto_scout(player_id(1), &object_ids(ids)).unwrap();
-    let order =
-        |t: &World, p: usize, i: usize| t.players[p].objects[i].ai.as_ref().unwrap().current_order;
-    assert_eq!(order(&t, 2, 0), Some(OrderKind::AutoScout));
-    assert_eq!(order(&t, 1, 0), None);
-    assert_eq!(order(&t, 1, 1), None);
+    let order = |t: &World, p: usize, i: ListIndex| {
+        t.players[p].objects[i].ai.as_ref().unwrap().current_order
+    };
+    assert_eq!(order(&t, 2, ListIndex::new(0)), Some(OrderKind::AutoScout));
+    assert_eq!(order(&t, 1, ListIndex::new(0)), None);
+    assert_eq!(order(&t, 1, ListIndex::new(1)), None);
     t.auto_scout(player_id(1), &object_ids([12])).unwrap();
-    assert_eq!(order(&t, 1, 1), Some(OrderKind::AutoScout));
+    assert_eq!(order(&t, 1, ListIndex::new(1)), Some(OrderKind::AutoScout));
 }
 
 /// `FUN_140c64d50`: the stance and its place are set; `NoAttack` on an attacking unit AI
@@ -1850,7 +1928,7 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
             class: class::CLASS_54,
             ..Master::default()
         }]));
-    t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi::default());
+    t.players[1].objects[ListIndex::new(0)].ai = Some(crate::unit_ai::UnitAi::default());
     t.players[2].objects.push(Unit {
         id: object_id(30),
         ai: Some(crate::unit_ai::UnitAi::default()),
@@ -1861,7 +1939,13 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
         },
         ..Unit::default()
     });
-    let stance = |t: &World, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
+    let stance = |t: &World, p: usize| {
+        t.players[p].objects[ListIndex::new(0)]
+            .ai
+            .as_ref()
+            .unwrap()
+            .stance
+    };
     t.unit_ai_state(
         player_id(1),
         &object_ids([11, 30]),
@@ -2219,10 +2303,10 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
     let mut t = soldiers(&units, &[]);
     let point = Position::new(25.0, 21.0, 0.0);
     assert_eq!(
-        t.head_takes_move(PlayerId::new(1), 0, None, point),
+        t.head_takes_move(PlayerId::new(1), ListIndex::new(0), None, point),
         Ok(false)
     );
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
             sprite: None,
@@ -2235,22 +2319,39 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
             wait: crate::movement::move_to::MoveWait::default(),
         }));
     assert_eq!(
-        t.head_takes_move(PlayerId::new(1), 0, Some(object_id(11)), point),
+        t.head_takes_move(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            Some(object_id(11)),
+            point
+        ),
         Ok(false)
     );
-    t.players[1].objects[0].actions.set_move_to(None);
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .set_move_to(None);
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_artifact(Some(crate::ownership::artifact::Artifact::new(false, None)));
     assert_eq!(
-        t.head_takes_move(PlayerId::new(1), 0, None, point),
+        t.head_takes_move(PlayerId::new(1), ListIndex::new(0), None, point),
         Ok(true)
     );
-    let artifact = t.players[1].objects[0].actions.artifact().copied().unwrap();
+    let artifact = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .artifact()
+        .copied()
+        .unwrap();
     assert_eq!(artifact.goal, Some(point));
-    t.players[1].objects[0].actions.set_artifact(None);
-    t.players[1].objects[0].unmodelled_action = Some(GenieError::unsupported("a test's action"));
-    assert!(t.head_takes_move(PlayerId::new(1), 0, None, point).is_err());
+    t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .set_artifact(None);
+    t.players[1].objects[ListIndex::new(0)].unmodelled_action =
+        Some(GenieError::unsupported("a test's action"));
+    assert!(
+        t.head_takes_move(PlayerId::new(1), ListIndex::new(0), None, point)
+            .is_err()
+    );
 }
 
 /// `FUN_14161c920`'s box: each unit's x is set against its own y, the units before the last
@@ -2366,13 +2467,13 @@ fn followers() -> World {
 fn a_guard_gives_its_units_the_defend_order_at_once() {
     for x in [20.3, 40.0] {
         let mut t = followers();
-        t.players[2].objects[0].place_for_test(Position::new(x, 20.0, 0.0));
+        t.players[2].objects[ListIndex::new(0)].place_for_test(Position::new(x, 20.0, 0.0));
         t.spatial
             .set_position(object_id(30), Position::new(x, 20.0, 0.0))
             .unwrap();
         t.guard(PlayerId::new(1), &object_ids([11]), object_id(30))
             .unwrap();
-        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
         assert_eq!(
             (ai.current_order, ai.current_action, ai.order_priority),
             (Some(OrderKind::Defend), Some(ActionKind::Defend), 100)
@@ -2393,7 +2494,7 @@ fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
     let mut t = followers();
     t.follow(PlayerId::new(1), &object_ids([11]), object_id(30))
         .unwrap();
-    let unit = &t.players[1].objects[0];
+    let unit = &t.players[1].objects[ListIndex::new(0)];
     let ai = unit.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action),
@@ -2408,7 +2509,13 @@ fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
         ObjectId::field(unit.actions.move_to().copied().unwrap().target),
         30
     );
-    assert_eq!(t.players[1].objects[1].actions.move_to().copied(), None);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(1)]
+            .actions
+            .move_to()
+            .copied(),
+        None
+    );
 }
 
 /// `FUN_14161c920` for two units side by side: each moves to the target at its offset from
@@ -2419,7 +2526,7 @@ fn followers_side_by_side_take_their_offsets_from_the_target() {
     t.follow(PlayerId::new(1), &object_ids([11, 12]), object_id(30))
         .unwrap();
     for (i, (other, x)) in [(12, 39.5), (11, 40.5)].into_iter().enumerate() {
-        let unit = &t.players[1].objects[i];
+        let unit = &t.players[1].objects[ListIndex::new(i)];
         let ai = unit.ai.as_ref().unwrap();
         assert_eq!(
             (ai.current_order, ai.current_action),
@@ -2445,7 +2552,11 @@ fn a_follow_of_another_player_s_unit_does_nothing() {
     t.follow(PlayerId::new(2), &object_ids([11]), object_id(30))
         .unwrap();
     assert_eq!(
-        t.players[1].objects[0].ai.as_ref().unwrap().current_order,
+        t.players[1].objects[ListIndex::new(0)]
+            .ai
+            .as_ref()
+            .unwrap()
+            .current_order,
         None
     );
 }
@@ -2490,11 +2601,17 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
     ]
     .into();
     t.leave_builders(object_id(70)).unwrap();
-    let builders = |t: &World, i: usize| t.players[1].objects[i].construction.unwrap().builders;
-    assert_eq!((builders(&t, 0), builders(&t, 1)), (1, 2));
+    let builders = |t: &World, i: ListIndex| t.players[1].objects[i].construction.unwrap().builders;
+    assert_eq!(
+        (
+            builders(&t, ListIndex::new(0)),
+            builders(&t, ListIndex::new(1))
+        ),
+        (1, 2)
+    );
     t.leave_builders(object_id(60)).unwrap();
     t.leave_builders(object_id(99)).unwrap();
-    assert_eq!(builders(&t, 0), 0);
+    assert_eq!(builders(&t, ListIndex::new(0)), 0);
 }
 
 /// `FUN_140c4da50`: the first queued order with a target that the unit itself issued; an
@@ -2561,7 +2678,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     assert_eq!(
         t.retarget_action(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(40)),
             object_id(40),
             false
@@ -2572,7 +2689,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     assert_eq!(
         t.retarget_action(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(40)),
             object_id(41),
             true
@@ -2583,7 +2700,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     assert_eq!(
         t.retarget_action(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(40)),
             object_id(41),
             false
@@ -2594,7 +2711,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     assert_eq!(
         t.retarget_action(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(41)),
             object_id(42),
             false
@@ -2605,7 +2722,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     assert_eq!(
         t.retarget_action(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             Some(object_id(99)),
             // a new target the world does not hold (the game's −1 finds none either)
             object_id(98),
@@ -2657,7 +2774,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     };
     t.players[1].objects.push(foundation(object_id(60), 1));
     t.players[1].objects.push(foundation(object_id(61), 0));
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_build(Some(crate::construction::build::BuildAction {
             target: Some(object_id(60)),
@@ -2679,14 +2796,14 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     assert_eq!(
         t.build_set_target(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             (Some(object_id(60)), true),
             object_id(60)
         ),
         Ok(Some(object_id(60)))
     );
     assert!(
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .actions
             .build()
             .copied()
@@ -2696,19 +2813,26 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     assert_eq!(
         t.build_set_target(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             (Some(object_id(60)), true),
             object_id(61)
         ),
         Ok(Some(object_id(61)))
     );
-    let build = t.players[1].objects[0].actions.build().copied().unwrap();
+    let build = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .build()
+        .copied()
+        .unwrap();
     assert_eq!((build.target, build.added), (Some(object_id(61)), false));
-    let site = |t: &World, i: usize| {
+    let site = |t: &World, i: ListIndex| {
         let u = &t.players[1].objects[i];
         (u.construction.unwrap().builders, u.workers)
     };
-    assert_eq!((site(&t, 1), site(&t, 2)), ((0, 0), (0, 2)));
+    assert_eq!(
+        (site(&t, ListIndex::new(1)), site(&t, ListIndex::new(2))),
+        ((0, 0), (0, 2))
+    );
 }
 
 /// `FUN_141211340` and `FUN_14118f580` in a gate that shut: a soldier dies (no hit points),
@@ -2801,7 +2925,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
             ..Master::default()
         },
     ]);
-    t.players[1].objects[0].life.hp = 25.0;
+    t.players[1].objects[ListIndex::new(0)].life.hp = 25.0;
     t.players[1].objects.push(Unit {
         id: object_id(60),
         life: crate::objects::lifecycle::Lifecycle {
@@ -2813,22 +2937,49 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
         ..Unit::default()
     });
     let found = t
-        .find_work_task(PlayerId::new(1), 0, object_id(60), Some(GARRISON), false)
+        .find_work_task(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(60),
+            Some(GARRISON),
+            false,
+        )
         .unwrap();
     assert_eq!(found.map(|t| t.action_type), Some(action_type::BUILD));
-    assert_eq!(t.players[1].objects[0].life.master_id, ids::VILLAGER_MALE);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)].life.master_id,
+        ids::VILLAGER_MALE
+    );
     let found = t
-        .find_work_task(PlayerId::new(1), 0, object_id(60), None, true)
+        .find_work_task(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(60),
+            None,
+            true,
+        )
         .unwrap();
     assert_eq!(found.map(|t| t.action_type), Some(action_type::BUILD));
-    assert_eq!(t.players[1].objects[0].life.master_id, ids::BUILDER);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)].life.master_id,
+        ids::BUILDER
+    );
     // 118's own task: no change
     assert!(
-        t.find_work_task(PlayerId::new(1), 0, object_id(60), None, true)
-            .unwrap()
-            .is_some()
+        t.find_work_task(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(60),
+            None,
+            true
+        )
+        .unwrap()
+        .is_some()
     );
-    assert_eq!(t.players[1].objects[0].life.master_id, ids::BUILDER);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)].life.master_id,
+        ids::BUILDER
+    );
 }
 
 /// `0x140ac60e0` case 6 and `FUN_140ac4c60`: the hunt's own sheep goes to the drop site, and
@@ -3052,8 +3203,9 @@ fn an_order_on_an_enemy_below_the_least_range_notifies_the_unit_ai() {
         filter: None,
         notified: true,
     };
-    t.order_work(PlayerId::new(1), 0, &work).unwrap();
-    let unit = &t.players[1].objects[0];
+    t.order_work(PlayerId::new(1), ListIndex::new(0), &work)
+        .unwrap();
+    let unit = &t.players[1].objects[ListIndex::new(0)];
     let ai = unit.ai.as_ref().unwrap();
     assert_eq!(
         ai.notifies,
@@ -3365,7 +3517,7 @@ fn a_formation_stops_the_units_that_march_and_ignores_gone_ones() {
         .into_iter()
         .enumerate()
     {
-        let u = &mut t.players[1].objects[i];
+        let u = &mut t.players[1].objects[ListIndex::new(i)];
         u.ai.as_mut().unwrap().current_order = order;
         u.body.mover_mut().unwrap().ignore_units = vec![object_id(99)];
     }
@@ -3375,13 +3527,13 @@ fn a_formation_stops_the_units_that_march_and_ignores_gone_ones() {
         FormationKind::USER_DEFINED,
     )
     .unwrap();
-    let marched = &t.players[1].objects[0];
+    let marched = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(marched.body.mover().unwrap().ignore_units, []);
     assert_ne!(
         marched.ai.as_ref().unwrap().current_order,
         Some(OrderKind::Defend)
     );
-    let other = &t.players[1].objects[1];
+    let other = &t.players[1].objects[ListIndex::new(1)];
     assert_eq!(other.body.mover().unwrap().ignore_units, [object_id(99)]);
     // all gone: refused
     let before = t.groups.commands;
@@ -3402,8 +3554,8 @@ fn a_formation_stops_the_units_that_march_and_ignores_gone_ones() {
 #[test]
 fn a_lone_unit_patrols_to_its_waypoint() {
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))], &[]);
-    let at = t.players[1].objects[0].position();
-    t.players[1].objects[0].place_for_test(at.with_z(1.5));
+    let at = t.players[1].objects[ListIndex::new(0)].position();
+    t.players[1].objects[ListIndex::new(0)].place_for_test(at.with_z(1.5));
     t.patrol(
         player_id(1),
         &object_ids([11]),
@@ -3411,7 +3563,7 @@ fn a_lone_unit_patrols_to_its_waypoint() {
         true,
     )
     .unwrap();
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
         (
@@ -3457,7 +3609,7 @@ fn a_lone_unit_s_waypoints_but_the_last_become_its_own() {
     ];
     t.patrol(player_id(1), &object_ids([11]), &w, false)
         .unwrap();
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         u.actions.move_to().copied().unwrap().goal(),
         Some(Position::new(30.0, 20.0, 0.0))
@@ -3477,7 +3629,7 @@ fn a_lone_unit_s_waypoints_but_the_last_become_its_own() {
 #[test]
 fn a_move_runs_the_stop_of_a_pending_completion_first() {
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))], &[]);
-    let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.as_mut().unwrap();
     ai.current_action = Some(ActionKind::Move);
     ai.notifies = vec![crate::unit_ai::Notify::own(
         object_id(11),
@@ -3485,10 +3637,14 @@ fn a_move_runs_the_stop_of_a_pending_completion_first() {
         [ActionKind::Move.value(), 0, 0],
     )];
     assert_eq!(
-        t.move_to_point(PlayerId::new(1), 0, Position::new(30.0, 20.0, 0.0)),
+        t.move_to_point(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            Position::new(30.0, 20.0, 0.0)
+        ),
         Ok(false)
     );
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.last_action, ai.notifies.len()),
@@ -3515,7 +3671,11 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
     };
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))], &[]);
     // the reset redraws the adjusted idle timeout from it
-    t.players[1].objects[0].ai.as_mut().unwrap().idle_timeout = 3000;
+    t.players[1].objects[ListIndex::new(0)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .idle_timeout = 3000;
     t.attack_move(
         player_id(1),
         &object_ids([11]),
@@ -3523,7 +3683,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
         sweep,
     )
     .unwrap();
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         u.actions.move_to().copied().unwrap().goal(),
         Some(Position::new(30.0, 20.0, 0.0))
@@ -3543,7 +3703,11 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
     );
     assert!(ai.patrol_path.is_none());
     // unforced: the MoveTo to the same point stands
-    t.players[1].objects[0].actions.move_to_mut().unwrap().range = 0.25;
+    t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .move_to_mut()
+        .unwrap()
+        .range = 0.25;
     t.attack_move(
         player_id(1),
         &object_ids([11]),
@@ -3552,7 +3716,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
     )
     .unwrap();
     assert_eq!(
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .actions
             .move_to()
             .copied()
@@ -3569,7 +3733,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
     )
     .unwrap();
     assert_eq!(
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .actions
             .move_to()
             .copied()
@@ -3592,7 +3756,11 @@ fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
     };
     let patrollers = |units: &[(i32, i16, Point)]| {
         let mut t = patrollers(units, &[]);
-        t.players[1].objects[0].ai.as_mut().unwrap().idle_timeout = 3000;
+        t.players[1].objects[ListIndex::new(0)]
+            .ai
+            .as_mut()
+            .unwrap()
+            .idle_timeout = 3000;
         t
     };
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))]);
@@ -3618,7 +3786,11 @@ fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
         target_type: None,
     };
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))]);
-    t.players[1].objects[0].ai.as_mut().unwrap().orders = vec![unready];
+    t.players[1].objects[ListIndex::new(0)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .orders = vec![unready];
     assert_eq!(
         t.attack_move(
             player_id(1),
@@ -3629,7 +3801,11 @@ fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
         Err(ATTACK_MOVE_QUEUED)
     );
     let mut t = patrollers(&[(11, 4, Point::new(20.0, 20.0))]);
-    t.players[1].objects[0].ai.as_mut().unwrap().orders = vec![unready];
+    t.players[1].objects[ListIndex::new(0)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .orders = vec![unready];
     assert_eq!(
         t.attack_move(
             player_id(1),
@@ -3659,7 +3835,7 @@ fn loose_patrollers_ignore_each_other_and_one_at_its_waypoint_stays() {
         true,
     )
     .unwrap();
-    let [a, b] = &t.players[1].objects[..] else {
+    let [a, b] = t.players[1].objects.as_slice() else {
         panic!("two units")
     };
     assert_eq!(a.body.mover().unwrap().ignore_units, [object_id(12)]);
@@ -3872,7 +4048,7 @@ fn a_patrolling_group_walks_a_loop_through_its_waypoints() {
         [BVector::new(25.0, 0.0, 25.0), BVector::new(30.0, 0.0, 20.0)]
     );
     assert_eq!(t.groups.commands, 1);
-    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
     assert_eq!(
         (ai.adjusted_idle_timeout, ai.patrol_path.is_none()),
         (750, true)
@@ -3979,7 +4155,7 @@ fn a_move_of_a_whole_group_keeps_it() {
 #[test]
 fn a_gather_takes_a_farm_but_no_other_building() {
     let mut t = crate::world::tests::forage_world();
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
     t.masters[1] =
         crate::objects::masters::Masters::new(t.masters[1].iter().cloned().chain([Master {
@@ -4015,10 +4191,14 @@ fn a_gather_takes_a_farm_but_no_other_building() {
     ));
     let world = t.clone();
     assert_eq!(
-        t.retarget_gather(PlayerId::new(1), 0, object_id(800)),
+        t.retarget_gather(PlayerId::new(1), ListIndex::new(0), object_id(800)),
         Ok(true)
     );
-    let g = t.players[1].objects[0].actions.gather().copied().unwrap();
+    let g = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .gather()
+        .copied()
+        .unwrap();
     assert_eq!(
         (g.target, g.state, g.point),
         (
@@ -4029,32 +4209,33 @@ fn a_gather_takes_a_farm_but_no_other_building() {
     );
     assert_eq!(
         (
-            t.players[0].objects[0].workers,
-            t.players[1].objects[3].workers
+            t.players[0].objects[ListIndex::new(0)].workers,
+            t.players[1].objects[ListIndex::new(3)].workers
         ),
         (0, 1)
     );
     let mut t = world.clone();
     assert!(
-        t.retarget_gather(PlayerId::new(1), 0, object_id(801))
+        t.retarget_gather(PlayerId::new(1), ListIndex::new(0), object_id(801))
             .is_err()
     );
     assert!(
-        t.retarget_gather(PlayerId::new(1), 0, object_id(802))
+        t.retarget_gather(PlayerId::new(1), ListIndex::new(0), object_id(802))
             .is_err()
     );
-    t.players[1].objects[3].unmodelled_action = Some(GenieError::unsupported("a pack"));
+    t.players[1].objects[ListIndex::new(3)].unmodelled_action =
+        Some(GenieError::unsupported("a pack"));
     assert!(
-        t.retarget_gather(PlayerId::new(1), 0, object_id(800))
+        t.retarget_gather(PlayerId::new(1), ListIndex::new(0), object_id(800))
             .is_err()
     );
     let mut t = world;
     assert_eq!(
-        t.retarget_gather(PlayerId::new(1), 0, object_id(700)),
+        t.retarget_gather(PlayerId::new(1), ListIndex::new(0), object_id(700)),
         Ok(false)
     );
     assert!(
-        t.retarget_gather(PlayerId::new(1), 0, object_id(4444))
+        t.retarget_gather(PlayerId::new(1), ListIndex::new(0), object_id(4444))
             .is_err()
     );
 }
@@ -4070,9 +4251,10 @@ fn foraging() -> World {
         filter: None,
         notified: true,
     };
-    t.order_work(PlayerId::new(1), 0, &work).unwrap();
+    t.order_work(PlayerId::new(1), ListIndex::new(0), &work)
+        .unwrap();
     t.players[1].attributes = vec![0.0; 10];
-    let v = &mut t.players[1].objects[0];
+    let v = &mut t.players[1].objects[ListIndex::new(0)];
     (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
     t
 }
@@ -4087,36 +4269,45 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
     let mut t = foraging();
     let ask = |by, asked, unaimed| Some(DropOffAsk { by, asked, unaimed });
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, true)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, true))
+            .unwrap(),
         ask(DropOffBy::Gather, true, false)
     );
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (false, true)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (false, true))
+            .unwrap(),
         None
     );
-    t.players[1].objects[0].life.attribute_type = Some(attribute::WOOD);
+    t.players[1].objects[ListIndex::new(0)].life.attribute_type = Some(attribute::WOOD);
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, false)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, false))
+            .unwrap(),
         ask(DropOffBy::Gather, false, false)
     );
-    let g = t.players[1].objects[0].actions.gather_mut().unwrap();
+    let g = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .gather_mut()
+        .unwrap();
     (g.target, g.point) = (None, Position::new(NO_POINT, NO_POINT, 0.0));
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, true)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, true))
+            .unwrap(),
         ask(DropOffBy::Gather, false, true)
     );
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, false)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, false))
+            .unwrap(),
         ask(DropOffBy::Gather, false, false)
     );
     // a Hunt and a Build of a wood task, aimed
     let mut hunt = crate::gathering::hunt::tests::hunting(600);
     hunt.task.resource = Some(attribute::WOOD);
-    let v = &mut t.players[1].objects[0];
+    let v = &mut t.players[1].objects[ListIndex::new(0)];
     v.actions.set_gather(None);
     v.actions.set_hunt(Some(hunt));
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, true)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, true))
+            .unwrap(),
         ask(DropOffBy::Hunt, true, false)
     );
     let task = crate::construction::build::BuildTask {
@@ -4127,7 +4318,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         id: TaskId::of_task(-1),
         moving: None,
     };
-    let v = &mut t.players[1].objects[0];
+    let v = &mut t.players[1].objects[ListIndex::new(0)];
     v.actions
         .set_build(Some(crate::construction::build::tests::started(
             object_id(10028),
@@ -4136,14 +4327,16 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
             task,
         )));
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, true)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, true))
+            .unwrap(),
         ask(DropOffBy::Build, true, false)
     );
-    let v = &mut t.players[1].objects[0];
+    let v = &mut t.players[1].objects[ListIndex::new(0)];
     v.actions.set_build(None);
     v.actions.set_hunt(None);
     assert_eq!(
-        t.drop_off_ask(PlayerId::new(1), 0, (true, true)).unwrap(),
+        t.drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, true))
+            .unwrap(),
         None
     );
 }
@@ -4156,7 +4349,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
 fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
     let mut t = foraging();
     t.unit_order(player_id(1), &object_ids([9175]), 7).unwrap();
-    let g = t.players[1].objects[0]
+    let g = t.players[1].objects[ListIndex::new(0)]
         .actions
         .gather()
         .copied()
@@ -4165,12 +4358,15 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
         (g.carry_to, g.state),
         (Some(object_id(700)), GatherState::Drop)
     );
-    assert_eq!(t.players[1].objects[2].workers, 1);
+    assert_eq!(t.players[1].objects[ListIndex::new(2)].workers, 1);
     let mut t = foraging();
-    t.players[1].objects[0].life.attribute_type = Some(attribute::WOOD);
-    let before = t.players[1].objects[0].actions.gather().copied();
+    t.players[1].objects[ListIndex::new(0)].life.attribute_type = Some(attribute::WOOD);
+    let before = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .gather()
+        .copied();
     t.unit_order(player_id(1), &object_ids([9175]), 7).unwrap();
-    let v = &t.players[1].objects[0];
+    let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.actions.gather().copied(), before);
     let ai = v.ai.as_ref().expect("the forager's unit AI");
     assert!(
@@ -4179,10 +4375,13 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
         ai.notifies
     );
     let mut t = foraging();
-    let g = t.players[1].objects[0].actions.gather_mut().unwrap();
+    let g = t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .gather_mut()
+        .unwrap();
     (g.target, g.point) = (None, Position::new(NO_POINT, NO_POINT, 0.0));
     t.unit_order(player_id(1), &object_ids([9175]), 8).unwrap();
-    let v = &t.players[1].objects[0];
+    let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         v.actions.gather().map(|g| (g.carry_to, g.state)),
         Some((Some(object_id(700)), GatherState::Drop))
@@ -4195,7 +4394,7 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
 #[test]
 fn a_drop_off_order_takes_a_hunt_to_its_site() {
     let mut t = foraging();
-    let v = &mut t.players[1].objects[0];
+    let v = &mut t.players[1].objects[ListIndex::new(0)];
     v.actions.set_gather(None);
     let mut hunt = crate::gathering::hunt::tests::hunting(600);
     hunt.task.resource = Some(AttributeId::numbered(17));
@@ -4203,7 +4402,7 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
     hunt.task.sprites = [-1; 4];
     v.actions.set_hunt(Some(hunt));
     t.unit_order(player_id(1), &object_ids([9175]), 7).unwrap();
-    let h = t.players[1].objects[0]
+    let h = t.players[1].objects[ListIndex::new(0)]
         .actions
         .hunt()
         .copied()
@@ -4212,7 +4411,7 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
         (h.carry_to, h.state),
         (Some(object_id(700)), HuntState::Drop)
     );
-    assert_eq!(t.players[1].objects[2].workers, 1);
+    assert_eq!(t.players[1].objects[ListIndex::new(2)].workers, 1);
 }
 
 /// The drop-off orders fail on a sleeping object and on a unit whose action the slice does not
@@ -4220,7 +4419,8 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
 #[test]
 fn a_drop_off_order_fails_on_what_it_does_not_hold() {
     let mut t = foraging();
-    t.players[1].objects[0].unmodelled_action = Some(GenieError::unsupported("a test's action"));
+    t.players[1].objects[ListIndex::new(0)].unmodelled_action =
+        Some(GenieError::unsupported("a test's action"));
     assert_eq!(
         t.unit_order(player_id(1), &object_ids([9175]), 7)
             .err()
@@ -4228,11 +4428,11 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
         Some("a UNIT_ORDER drop-off of an action not held")
     );
     let mut t = foraging();
-    t.players[1].objects[0].life.amount = 0.0;
-    let before = t.players[1].objects[0].clone();
+    t.players[1].objects[ListIndex::new(0)].life.amount = 0.0;
+    let before = t.players[1].objects[ListIndex::new(0)].clone();
     t.unit_order(player_id(1), &object_ids([9175, 12345]), 7)
         .unwrap();
-    assert_eq!(t.players[1].objects[0], before);
+    assert_eq!(t.players[1].objects[ListIndex::new(0)], before);
 }
 
 /// The attack task's start ends where the game's start does ([`crate::combat::attack::Attack::command`]
@@ -4245,7 +4445,7 @@ fn an_attack_task_s_start_ends_where_the_start_does() {
     use crate::combat::attack::AttackState;
     let started = |ai: bool, at: f32| {
         let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
-        let unit = &mut t.players[1].objects[0];
+        let unit = &mut t.players[1].objects[ListIndex::new(0)];
         if !ai {
             unit.ai = None;
         }
@@ -4253,18 +4453,18 @@ fn an_attack_task_s_start_ends_where_the_start_does() {
         let mut wolf = *t.spatial.get(object_id(50)).unwrap();
         wolf.position = Position::new(at, 10.0, 0.0);
         t.spatial.insert(object_id(50), wolf);
-        t.players[0].objects[0].body =
+        t.players[0].objects[ListIndex::new(0)].body =
             crate::objects::layers::Body::at(Position::new(at, 10.0, 0.0));
         t.start_attack(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             object_id(50),
             &task,
             Position::new(at, 10.0, 0.0),
             true,
         )
         .unwrap();
-        let unit = &t.players[1].objects[0];
+        let unit = &t.players[1].objects[ListIndex::new(0)];
         let state = unit.actions.attack().map(|a| a.state);
         let notifies = unit.ai.as_ref().map(|ai| ai.notifies.len());
         let sprite = unit.sprite.map(|s| s.graphic.id);
@@ -4291,14 +4491,19 @@ fn an_attack_task_s_start_ends_where_the_start_does() {
 fn a_work_command_finds_its_master_and_task_on_a_target() {
     let t = crate::world::tests::forage_world();
     assert_eq!(
-        t.work_task(PlayerId::new(1), 0, (None, Position::from([1.0; 3])), None)
-            .unwrap(),
+        t.work_task(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            (None, Position::from([1.0; 3])),
+            None
+        )
+        .unwrap(),
         None
     );
     let (with, task) = t
         .work_task(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             (Some(object_id(600)), Position::from([1.0; 3])),
             None,
         )
@@ -4315,7 +4520,7 @@ fn a_work_command_finds_its_master_and_task_on_a_target() {
     assert_eq!(
         t.work_task(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             (Some(object_id(700)), Position::from([1.0; 3])),
             None
         )
@@ -4329,16 +4534,16 @@ fn a_work_command_finds_its_master_and_task_on_a_target() {
 #[test]
 fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
     let mut t = crate::world::tests::forage_world();
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
     let took = t
         .retarget_gather_work(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             (object_id(601), Position::new(36.5, 89.5, 0.0), true),
         )
         .unwrap();
-    let v = &t.players[1].objects[0];
+    let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         (took, v.actions.gather().map(|g| g.target)),
         (true, Some(Some(object_id(601))))
@@ -4353,14 +4558,15 @@ fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
         )
     );
     let mut t = crate::world::tests::hunt_world();
-    t.hunt_command(PlayerId::new(1), 0, object_id(500)).unwrap();
+    t.hunt_command(PlayerId::new(1), ListIndex::new(0), object_id(500))
+        .unwrap();
     t.retarget_hunt_work(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         (object_id(501), Position::new(36.5, 89.5, 0.0), true),
     )
     .unwrap();
-    let v = &t.players[1].objects[0];
+    let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(
         v.actions.hunt().map(|h| h.target),
         Some(Some(object_id(501)))
@@ -4403,11 +4609,11 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
         t
     };
     let mut t = with_84(crate::world::tests::forage_world());
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
     let r = t.retarget_gather_work(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         (object_id(800), Position::new(33.5, 89.5, 0.0), true),
     );
     assert_eq!(
@@ -4415,10 +4621,11 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
         Some("a gather sent to its player's master 84")
     );
     let mut t = with_84(crate::world::tests::hunt_world());
-    t.hunt_command(PlayerId::new(1), 0, object_id(500)).unwrap();
+    t.hunt_command(PlayerId::new(1), ListIndex::new(0), object_id(500))
+        .unwrap();
     let r = t.retarget_hunt_work(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         (object_id(800), Position::new(33.5, 89.5, 0.0), true),
     );
     assert_eq!(
@@ -4443,13 +4650,13 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         .unwrap();
     let at = (Some(object_id(601)), Position::new(36.5, 89.5, 0.0), true);
     assert_eq!(
-        t.retake_task(PlayerId::new(1), 0, at, &task, true),
+        t.retake_task(PlayerId::new(1), ListIndex::new(0), at, &task, true),
         Ok(false)
     );
-    t.gather_command(PlayerId::new(1), 0, object_id(600))
+    t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
         .unwrap();
     assert_eq!(
-        t.retake_task(PlayerId::new(1), 0, at, &task, true),
+        t.retake_task(PlayerId::new(1), ListIndex::new(0), at, &task, true),
         Ok(true)
     );
     let other = Task {
@@ -4457,13 +4664,13 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         ..task
     };
     assert_eq!(
-        t.retake_task(PlayerId::new(1), 0, at, &other, true)
+        t.retake_task(PlayerId::new(1), ListIndex::new(0), at, &other, true)
             .err()
             .map(|e| e.reason()),
         Some("a work command on the unit's current task")
     );
     let mut t = crate::world::tests::forage_world();
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_move_to(Some(crate::movement::move_to::MoveToAction {
             sprite: None,
@@ -4480,7 +4687,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         ..task
     };
     assert_eq!(
-        t.retake_task(PlayerId::new(1), 0, at, &moving, true),
+        t.retake_task(PlayerId::new(1), ListIndex::new(0), at, &moving, true),
         Ok(false)
     );
     let mut t = crate::world::tests::forage_world();
@@ -4492,7 +4699,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         id: TaskId::test(3),
         moving: None,
     };
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_build(Some(crate::construction::build::tests::started(
             object_id(10028),
@@ -4505,7 +4712,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         ..task
     };
     assert_eq!(
-        t.retake_task(PlayerId::new(1), 0, at, &building, false)
+        t.retake_task(PlayerId::new(1), ListIndex::new(0), at, &building, false)
             .err()
             .map(|e| e.reason()),
         Some("a work command on the Build task of the unit's former master")
@@ -4526,14 +4733,14 @@ fn a_work_command_s_factory_starts_the_task_s_action() {
         .unwrap();
     t.start_task(
         PlayerId::new(1),
-        0,
+        ListIndex::new(0),
         (Some(object_id(600)), Position::new(32.5, 89.5, 0.0)),
         &task,
         (true, true),
     )
     .unwrap();
     assert_eq!(
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .actions
             .gather()
             .map(|g| (g.target, g.state)),
@@ -4546,7 +4753,7 @@ fn a_work_command_s_factory_starts_the_task_s_action() {
     assert_eq!(
         t.start_task(
             PlayerId::new(1),
-            0,
+            ListIndex::new(0),
             (Some(object_id(600)), Position::new(32.5, 89.5, 0.0)),
             &unknown,
             (true, true)

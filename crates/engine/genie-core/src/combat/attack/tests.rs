@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::layers::Animated;
@@ -564,7 +565,7 @@ impl Rig {
             ..Master::default()
         };
         t.masters = vec![Masters::new([master]); t.players.len()];
-        let unit = &mut t.players[1].objects[0];
+        let unit = &mut t.players[1].objects[ListIndex::new(0)];
         unit.life.state = ObjectState::Alive;
         unit.life.master_id = master_id(4);
         unit.ai = Some(UnitAi {
@@ -607,9 +608,12 @@ impl Rig {
         f: impl FnOnce(&mut Step<'_>, &mut Unit, &mut Fight, &AttackReads) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let (fight, r) = (&mut self.f, &self.r);
-        crate::world::tests::in_update(&mut self.t, (PlayerId::new(1), 0), dt, |u, c| {
-            f(c, u, fight, r)
-        })
+        crate::world::tests::in_update(
+            &mut self.t,
+            (PlayerId::new(1), ListIndex::new(0)),
+            dt,
+            |u, c| f(c, u, fight, r),
+        )
     }
 
     /// `f` on the attacker with the world's parts readyToAttack reads (as
@@ -632,17 +636,22 @@ impl Rig {
             buffer: None,
             graphics: &NO_GRAPHICS,
         };
-        f(&mut players[1].objects[0], &mut g, &self.f, &self.r)
+        f(
+            &mut players[1].objects[ListIndex::new(0)],
+            &mut g,
+            &self.f,
+            &self.r,
+        )
     }
 
     /// The attacker.
     pub(crate) fn unit(&self) -> &Unit {
-        &self.t.players[1].objects[0]
+        &self.t.players[1].objects[ListIndex::new(0)]
     }
 
     /// The attacker to change.
     pub(crate) fn unit_mut(&mut self) -> &mut Unit {
-        &mut self.t.players[1].objects[0]
+        &mut self.t.players[1].objects[ListIndex::new(0)]
     }
 
     /// Its movement state.
@@ -2094,7 +2103,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     for masters in &mut t.masters {
         masters.get_mut(ids::TOWN_CENTRE).unwrap().missile = None;
     }
-    let centre = &mut t.players[1].objects[2];
+    let centre = &mut t.players[1].objects[ListIndex::new(2)];
     let mut attack = own_attack(-1, AttackState::Done, 0.0);
     attack.arms.idle_sprite = Some(stand);
     centre.actions.set_attack(Some(attack));
@@ -2103,12 +2112,12 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         current_action: Some(ActionKind::Attack),
         ..UnitAi::default()
     });
-    in_update(&mut t, (PlayerId::new(1), 2), 50, |u, c| {
+    in_update(&mut t, (PlayerId::new(1), ListIndex::new(2)), 50, |u, c| {
         let code = u.attack_part(c, me(object_id(700)), None)?;
         u.end_head_update(c, code)
     })
     .unwrap();
-    let centre = &t.players[1].objects[2];
+    let centre = &t.players[1].objects[ListIndex::new(2)];
     assert_eq!(centre.actions.attack().copied(), None);
     assert_eq!(
         (
@@ -2124,10 +2133,10 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
             .any(|n| n.kind == NotifyKind::ACTION_INVALIDATED && n.p == [600, -1, 0])
     );
     let mut t = forage_world();
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_attack(Some(own_attack(77, AttackState::Done, 0.0)));
-    let r = in_update(&mut t, (PlayerId::new(1), 0), 50, |u, c| {
+    let r = in_update(&mut t, (PlayerId::new(1), ListIndex::new(0)), 50, |u, c| {
         let code = u.attack_part(c, me(object_id(9175)), None)?;
         u.end_head_update(c, code)
     });
@@ -2171,7 +2180,10 @@ fn swinging_attack(state: AttackState, ranged: bool, fire: i16) -> Attack {
 fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
     use crate::world::tests::{archer_world, missiles};
     let mut t = archer_world(100, 0, 0.0);
-    let mut a = *t.players[1].objects[0].actions.attack().unwrap();
+    let mut a = *t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .attack()
+        .unwrap();
     a.pending = true;
     a.state = AttackState::Swing;
     a.swing = 1.0;
@@ -2199,7 +2211,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
             looped: false,
             ..ActiveSprite::start(t.graphics[&301], &mut Well512::default())
         };
-        crate::world::tests::in_update(t, (PlayerId::new(1), 0), 100, |u, c| {
+        crate::world::tests::in_update(t, (PlayerId::new(1), ListIndex::new(0)), 100, |u, c| {
             a.swing_to_hit(c, u, &mut f, &r, sprite)
         })
     };
@@ -2207,7 +2219,10 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
     assert_eq!((a.pending, a.swing, missiles(&t).len()), (true, 1.0, 0));
     swing_at(&mut t, &mut a, 5).unwrap();
     assert_eq!((a.pending, missiles(&t).len()), (false, 1));
-    assert_eq!(t.players[1].objects[0].attack_timer, 2.0 - 5.0 * 0.1);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)].attack_timer,
+        2.0 - 5.0 * 0.1
+    );
     let rest = 2.0 - 10.0 * 0.1;
     assert_eq!((a.rest, a.swing), (rest, rest));
     let mut rig = Rig::on_the_path(Victim {
@@ -2257,7 +2272,10 @@ fn a_swing_s_unmodelled_parts_fail_and_a_killing_hit_ends_it() {
         "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)"
     );
     let mut t = crate::world::tests::archer_world(100, 0, 0.0);
-    let mut a = *t.players[1].objects[0].actions.attack().unwrap();
+    let mut a = *t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .attack()
+        .unwrap();
     (a.pending, a.state) = (true, AttackState::Swing);
     let mut f = Fight {
         victim: Victim {
@@ -2276,9 +2294,12 @@ fn a_swing_s_unmodelled_parts_fail_and_a_killing_hit_ends_it() {
         changed: true,
         ..ActiveSprite::start(t.graphics[&301], &mut Well512::default())
     };
-    crate::world::tests::in_update(&mut t, (PlayerId::new(1), 0), 100, |u, c| {
-        a.land_hit(c, u, &mut f, &r, sprite)
-    })
+    crate::world::tests::in_update(
+        &mut t,
+        (PlayerId::new(1), ListIndex::new(0)),
+        100,
+        |u, c| a.land_hit(c, u, &mut f, &r, sprite),
+    )
     .unwrap();
     assert_eq!((a.pending, a.state), (false, AttackState::Killed));
     assert_eq!(crate::world::tests::missiles(&t).len(), 1);

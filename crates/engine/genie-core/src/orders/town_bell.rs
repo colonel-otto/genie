@@ -9,6 +9,7 @@ use crate::gathering::hunt::HUNT;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -247,10 +248,11 @@ impl World {
         let (at, radius) = self.ground(tc)?;
         let mut units = Vec::new();
         let mut shelters = crate::garrison::Shelters::default();
-        let mut k = 0;
-        while k < self.players.player(owner)?.objects.len() {
-            let o = &self.players.live(owner, k)?;
-            k += 1;
+        let mut k = ListIndex::FIRST;
+        while self.players.player(owner)?.objects.holds(k) {
+            let here = k;
+            let o = &self.players.live(owner, here)?;
+            k = k.next();
             if o.life.state != ObjectState::Alive || o.life.inside.is_some() {
                 continue;
             }
@@ -271,7 +273,7 @@ impl World {
             } else if kind == BUILDING && takes_villagers && near(self)? {
                 shelters.buildings.push(id);
                 shelters.counts.push(self.garrisoned(id)?);
-                self.players.live_mut(owner, k - 1)?.town_bell.flag = true;
+                self.players.live_mut(owner, here)?.town_bell.flag = true;
             }
         }
         self.shelter(owner, &units, &shelters, true, false)
@@ -298,10 +300,10 @@ impl World {
             return Ok(());
         }
         let (at, radius) = self.ground(tc)?;
-        let mut k = 0;
-        while k < self.players.player(owner)?.objects.len() {
+        let mut k = ListIndex::FIRST;
+        while self.players.player(owner)?.objects.holds(k) {
             let idx = k;
-            k += 1;
+            k = k.next();
             let b = &self.players.live(owner, idx)?;
             let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
@@ -347,10 +349,10 @@ impl World {
             return Ok(());
         }
         let (at, radius) = self.ground(id)?;
-        let mut k = 0;
-        while k < self.players.player(owner)?.objects.len() {
+        let mut k = ListIndex::FIRST;
+        while self.players.player(owner)?.objects.holds(k) {
             let idx = k;
-            k += 1;
+            k = k.next();
             let b = &self.players.live(owner, idx)?;
             let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
@@ -375,7 +377,7 @@ impl World {
     /// The building at `idx` of player `owner` lets each unit inside of type 70 or more that is a
     /// villager (class 4) or of master 1808 back to work, from the last in
     /// ([`crate::world::World::back_to_work`]; its sound, slot 0x4c0, is not simulation).
-    fn workers_out(&mut self, owner: PlayerId, idx: usize) -> Result<(), GenieError> {
+    fn workers_out(&mut self, owner: PlayerId, idx: ListIndex) -> Result<(), GenieError> {
         let mut i = self.players.live(owner, idx)?.garrison.len();
         while 0 < i {
             i -= 1;
@@ -475,7 +477,7 @@ impl World {
     pub(crate) fn town_bell_order(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         filter: Option<ActionType>,
     ) -> Result<(), GenieError> {
@@ -518,7 +520,7 @@ impl World {
     pub(crate) fn record_town_bell(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
     ) -> Result<(), GenieError> {
         use crate::orders::town_bell::BackToWork;
         let unit = &self.players.live(player, idx)?;

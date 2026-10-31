@@ -11,6 +11,7 @@ use crate::garrison::{
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::MoveToReads;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
@@ -30,7 +31,7 @@ impl World {
     pub(crate) fn start_enter(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &Task,
         point: Position,
@@ -69,7 +70,7 @@ impl World {
     pub(crate) fn enter_command(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         forced: bool,
     ) -> Result<bool, GenieError> {
@@ -95,7 +96,7 @@ impl World {
     fn post_own_failure(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         failed: Option<crate::unit_ai::Notify>,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players.player_mut(player)?.objects[idx];
@@ -117,7 +118,7 @@ impl World {
     pub(crate) fn enter_order(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: crate::unit_ai::world_view::EnterOrder,
     ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
         if let Some(master) = order.switch {
@@ -138,7 +139,7 @@ impl World {
     pub(crate) fn enter_with(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &Task,
         under_artifact: bool,
@@ -156,7 +157,7 @@ impl World {
     pub(super) fn new_enter(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &Task,
     ) -> Result<(EnterAction, ObjectId, ClassId), GenieError> {
@@ -186,7 +187,7 @@ impl World {
     pub(super) fn install_enter(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         action: EnterAction,
         task: &Task,
@@ -205,7 +206,7 @@ impl World {
     pub(super) fn install_enter_as(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         mut action: EnterAction,
         task: &Task,
@@ -293,7 +294,7 @@ impl World {
     pub(super) fn entering(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         range: f32,
     ) -> Result<(EnterTarget, WalkStart), GenieError> {
@@ -322,7 +323,7 @@ impl World {
     pub(super) fn enter_walk_again(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         action: &mut EnterAction,
         t: &EnterTarget,
         start: WalkStart,
@@ -354,7 +355,7 @@ impl World {
     pub(super) fn enter_meeting(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(Point, u8), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
@@ -426,7 +427,7 @@ impl World {
     pub(super) fn enter_now(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let inside = self
@@ -455,7 +456,7 @@ impl World {
     pub(crate) fn enter_forced(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {

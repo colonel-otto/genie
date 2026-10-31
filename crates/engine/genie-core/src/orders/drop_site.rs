@@ -6,6 +6,7 @@ use crate::gathering::hunt::HUNT;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -35,7 +36,7 @@ impl World {
     pub(super) fn drop_off_unasked(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         way_back: bool,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(p, idx)?;
@@ -82,7 +83,7 @@ impl World {
     pub(super) fn ordered_drop_site(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
     ) -> Result<Option<ObjectId>, GenieError> {
         let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
@@ -156,7 +157,11 @@ impl World {
     /// [`crate::construction::build::BuildAction::set_drop`]: a counted builder leaves its
     /// foundation's builders, the second targets go and come at once, notify 0x203 goes to the
     /// unit AI.
-    pub(crate) fn build_drop_off_now(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn build_drop_off_now(
+        &mut self,
+        p: PlayerId,
+        idx: ListIndex,
+    ) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(p, idx)?;
         let unit = &self.players.live(p, idx)?;
@@ -209,7 +214,7 @@ impl World {
     /// # Errors
     ///
     /// A unit the world does not hold at (`p`, `idx`), or a notify the AI's queue does not take.
-    pub(super) fn other_load(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(super) fn other_load(&mut self, p: PlayerId, idx: ListIndex) -> Result<(), GenieError> {
         let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
@@ -234,7 +239,7 @@ impl World {
     pub(crate) fn drop_elsewhere(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         site: ObjectId,
         back: Option<ObjectId>,
     ) -> Result<(), GenieError> {
@@ -285,7 +290,7 @@ impl World {
     /// the target's, its place the point) or on the record's target (its target type, owner −1,
     /// its point); height 0, range 0, priority 100, shown at the point, ready. A unit without a
     /// unit AI only looks the records up.
-    pub(crate) fn queue_way_back(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn queue_way_back(&mut self, p: PlayerId, idx: ListIndex) -> Result<(), GenieError> {
         use crate::orders::town_bell::RecordTarget;
         let mut bell = self.players.live(p, idx)?.town_bell;
         let lookup = |t: ObjectId| -> Result<Option<RecordTarget>, GenieError> {

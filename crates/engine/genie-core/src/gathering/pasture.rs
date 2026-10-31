@@ -9,6 +9,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
@@ -177,7 +178,7 @@ impl World {
         &self,
         pasture: ObjectId,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
     ) -> Result<Option<ObjectId>, GenieError> {
         let Some((q, b)) = self.object(pasture) else {
             return Ok(None);
@@ -231,7 +232,7 @@ impl World {
     pub(crate) fn tend_pasture(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         pasture: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(p, idx)?;

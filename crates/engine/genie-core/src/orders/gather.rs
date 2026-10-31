@@ -6,6 +6,7 @@ use crate::gathering::gather::{GatherRetarget, GatherStart};
 use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
@@ -30,7 +31,7 @@ pub(super) struct HuntOrder {
     /// The hunter's player.
     pub(super) player: PlayerId,
     /// The hunter's index in the player's objects.
-    pub(super) index: usize,
+    pub(super) index: ListIndex,
     /// The target.
     pub(super) target: ObjectId,
     /// The task.
@@ -53,7 +54,7 @@ impl World {
     pub(super) fn retarget_gather(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<bool, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
@@ -154,7 +155,7 @@ impl World {
     pub(crate) fn gather_take_move(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
     ) -> Result<bool, GenieError> {
@@ -192,7 +193,7 @@ impl World {
     pub(super) fn drops_at_main(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<bool, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
@@ -224,7 +225,7 @@ impl World {
     pub(crate) fn hunt_take_move(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
     ) -> Result<bool, GenieError> {
@@ -307,7 +308,7 @@ impl World {
     pub(super) fn start_gather(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &crate::objects::masters::Task,
         notify: Option<(Position, bool)>,
@@ -419,7 +420,7 @@ impl World {
     pub(super) fn arms(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         task: &HuntTask,
     ) -> Result<Arms, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -437,7 +438,7 @@ impl World {
     pub(super) fn engagement(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<Engagement, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -548,7 +549,7 @@ impl World {
     fn begin_hunt(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (task, quarry): (HuntTask, &Quarry),
     ) -> Result<(), GenieError> {
         let target = quarry.id;

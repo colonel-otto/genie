@@ -9,6 +9,7 @@
 use crate::GenieError;
 use crate::construction::build::held;
 use crate::map::Tile;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -19,6 +20,7 @@ use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::objects::object_list::NOTHING_PUSHED;
 use crate::orders::Place;
 use crate::orders::object_gone;
 use crate::players::PlayerId;
@@ -561,7 +563,7 @@ impl World {
     /// # Errors
     ///
     /// An object the world does not hold.
-    pub(crate) fn wake(&mut self, id: ObjectId) -> Result<usize, GenieError> {
+    pub(crate) fn wake(&mut self, id: ObjectId) -> Result<ListIndex, GenieError> {
         Ok(match self.place(id).ok_or_else(|| object_gone(id))? {
             Place::Live(p, i) => {
                 self.players.live_mut(p, i)?.life.goto_sleep = false;
@@ -574,7 +576,11 @@ impl World {
                 self.players.player_mut(p)?.objects.push(woken);
                 // the remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
                 self.track_relist(p, id, master)?;
-                self.players.player(p)?.objects.len() - 1
+                self.players
+                    .player(p)?
+                    .objects
+                    .last_place()
+                    .ok_or(NOTHING_PUSHED)?
             }
         })
     }
@@ -655,15 +661,15 @@ mod tests {
             (2, &[(0, 83)]),
         ] {
             for &(i, master) in objects {
-                let u = &mut t.players[p].objects[i];
+                let u = &mut t.players[p].objects[ListIndex::new(i)];
                 u.life.master_id = master_id(master);
                 u.life.hp = 25.0;
                 u.pasture = None;
                 u.my_pasture = None;
             }
         }
-        t.players[1].objects[1].life.state = ObjectState::Foundation;
-        t.players[1].objects[2].life.amount = 100.0;
+        t.players[1].objects[ListIndex::new(1)].life.state = ObjectState::Foundation;
+        t.players[1].objects[ListIndex::new(2)].life.amount = 100.0;
         let masters = Masters::new([
             Master {
                 id: ids::VILLAGER_MALE,
@@ -695,20 +701,24 @@ mod tests {
         t.delete(player_id(1), object_id(10)).unwrap();
         t.delete(player_id(1), object_id(20)).unwrap();
         t.delete(player_id(1), object_id(12)).unwrap();
-        let hp = |t: &World, p: usize, i: usize| t.players[p].objects[i].life.hp;
+        let hp = |t: &World, p: usize, i: ListIndex| t.players[p].objects[i].life.hp;
         assert_eq!(
-            (hp(&t, 1, 0), hp(&t, 2, 0), hp(&t, 1, 2)),
+            (
+                hp(&t, 1, ListIndex::new(0)),
+                hp(&t, 2, ListIndex::new(0)),
+                hp(&t, 1, ListIndex::new(2))
+            ),
             (0.0, 25.0, 25.0)
         );
         // the setting +0x1074 lets a player delete another's
         t.settings.cheats_enabled = true;
         t.delete(player_id(1), object_id(20)).unwrap();
-        assert_eq!(hp(&t, 2, 0), 0.0);
+        assert_eq!(hp(&t, 2, ListIndex::new(0)), 0.0);
         // a unit whose deletion is disabled stays
         let mut t = game(0.0, true);
-        t.players[1].objects[0].undeletable = true;
+        t.players[1].objects[ListIndex::new(0)].undeletable = true;
         t.delete(player_id(1), object_id(10)).unwrap();
-        assert_eq!(hp(&t, 1, 0), 25.0);
+        assert_eq!(hp(&t, 1, ListIndex::new(0)), 25.0);
     }
 
     #[test]
@@ -716,7 +726,7 @@ mod tests {
         // no builder started it: all of its paid cost, and it is destroyed at once (state 7)
         let mut t = game(0.0, true);
         t.delete(player_id(1), object_id(11)).unwrap();
-        let house = &t.players[1].objects[1].life;
+        let house = &t.players[1].objects[ListIndex::new(1)].life;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
             (25.0, 0.0, ObjectState::Removed)
@@ -725,7 +735,7 @@ mod tests {
         // its own update
         let mut t = game(10.0, false);
         t.delete(player_id(1), object_id(11)).unwrap();
-        let house = &t.players[1].objects[1].life;
+        let house = &t.players[1].objects[ListIndex::new(1)].life;
         let share = (25.0_f32 - 10.0) / 25.0;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
@@ -745,12 +755,12 @@ mod tests {
                 tc.id = TOWN_CENTRE_621;
                 *m = Masters::new(m.iter().cloned().chain([tc]));
             }
-            t.players[1].objects[1].life.master_id = TOWN_CENTRE_621;
+            t.players[1].objects[ListIndex::new(1)].life.master_id = TOWN_CENTRE_621;
         };
         let mut t = game(0.0, true);
         town_centre(&mut t);
         t.delete(player_id(1), object_id(11)).unwrap();
-        let tc = &t.players[1].objects[1].life;
+        let tc = &t.players[1].objects[ListIndex::new(1)].life;
         assert_eq!(
             (t.players[1].resources[1], tc.hp, tc.state),
             (25.0, 0.0, ObjectState::Removed)
@@ -956,10 +966,13 @@ mod clearing_tests {
         let ids: Vec<ObjectId> = t.players[0].objects.iter().map(|u| u.id).collect();
         assert_eq!(ids, [object_id(1), object_id(6084), object_id(6083)]);
         assert_eq!(t.players[0].sleeping.len(), 0);
-        for u in &t.players[0].objects[1..] {
+        for u in &t.players[0].objects.as_slice()[1..] {
             assert_eq!((u.life.state, u.life.hp), (ObjectState::Removed, 0.0));
         }
-        assert_eq!(t.players[0].objects[0].life.state, ObjectState::Alive);
+        assert_eq!(
+            t.players[0].objects[ListIndex::new(0)].life.state,
+            ObjectState::Alive
+        );
     }
 
     /// records/428477858's update 1838: a foundation clears a dead villager (type 30) in state 5
@@ -974,7 +987,7 @@ mod clearing_tests {
         t.players[1].attributes[7] = 3.0;
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
-        let u = &t.players[1].objects[0];
+        let u = &t.players[1].objects[ListIndex::new(0)];
         assert_eq!((u.life.state, u.life.hp), (ObjectState::Removed, 0.0));
         assert_eq!(t.players[1].attributes[7], 2.0);
     }
@@ -989,7 +1002,7 @@ mod clearing_tests {
         assert!(t.spatial.get(object_id(40)).unwrap().obstruction.is_some());
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), true)
             .unwrap();
-        let u = &t.players[0].objects[0];
+        let u = &t.players[0].objects[ListIndex::new(0)];
         assert_eq!(
             (u.life.state, u.life.hp, u.roo_called),
             (ObjectState::Removed, 0.0, true)
@@ -1008,7 +1021,7 @@ mod clearing_tests {
         let mut t = world(vec![], vec![], vec![object(50, ids::ID_357, 10.5, 10.5)]);
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
-        let u = &t.players[1].objects[0];
+        let u = &t.players[1].objects[ListIndex::new(0)];
         assert_eq!(
             (u.life.state, u.life.hp, u.roo_called),
             (ObjectState::Removed, 0.0, true)
@@ -1039,26 +1052,32 @@ mod clearing_tests {
         }
         let at = |t: &World| [4, 5, 7].map(|i| t.players[0].attributes[i]);
         t.players[0].attributes[4..8].copy_from_slice(&[10.0, 10.0, 10.0, 10.0]);
-        t.players[0].objects[0].life.state = ObjectState::Alive;
+        t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Alive;
         // the same state, then a lower one: nothing
         t.set_state(PlayerId::new(0), object_id(1), ObjectState::Alive)
             .unwrap();
-        t.players[0].objects[0].life.state = ObjectState::Dead;
+        t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Dead;
         t.set_state(PlayerId::new(0), object_id(1), ObjectState::Dying)
             .unwrap();
-        assert_eq!(t.players[0].objects[0].life.state, ObjectState::Dead);
+        assert_eq!(
+            t.players[0].objects[ListIndex::new(0)].life.state,
+            ObjectState::Dead
+        );
         assert_eq!(at(&t), [10.0; 3]);
         // from 2 to 5: flags 2 and 16 leave, flag 32 stays; then to 7, flag 32 leaves
-        t.players[0].objects[0].life.state = ObjectState::Alive;
+        t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Alive;
         t.set_state(PlayerId::new(0), object_id(1), ObjectState::Dead)
             .unwrap();
         assert_eq!(at(&t), [8.0, 7.0, 10.0]);
         t.set_state(PlayerId::new(0), object_id(1), ObjectState::Removed)
             .unwrap();
         assert_eq!(at(&t), [8.0, 7.0, 9.0]);
-        assert_eq!(t.players[0].objects[0].life.state, ObjectState::Removed);
+        assert_eq!(
+            t.players[0].objects[ListIndex::new(0)].life.state,
+            ObjectState::Removed
+        );
         // a sleeper set to 6 sleeps on, one set to 7 wakes
-        t.players[0].sleeping[0].life.state = ObjectState::Dead;
+        t.players[0].sleeping[ListIndex::new(0)].life.state = ObjectState::Dead;
         t.set_state(PlayerId::new(0), object_id(2), ObjectState::Undead)
             .unwrap();
         assert_eq!(t.players[0].sleeping.len(), 2);

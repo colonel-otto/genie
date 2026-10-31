@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::garrison::transport::{Changed, MapShore, Ship, TRANSPORT, TransportAction};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -30,7 +31,7 @@ impl crate::world::World {
     /// A map without its terrain, and what the actions' teardowns do not model.
     pub(crate) fn start_transport(
         &mut self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         (target, point): (Option<ObjectId>, Position),
         task: &Task,
         clears: bool,
@@ -58,7 +59,7 @@ impl crate::world::World {
     /// [`World`]: crate::world::World
     pub(crate) fn retake_transport(
         &mut self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         (target, point): (Option<ObjectId>, Position),
         task: &Task,
         clears: bool,
@@ -92,7 +93,7 @@ impl crate::world::World {
     /// `FUN_141195490`) and the target its own player's market.
     fn trade_at_own_market(
         &self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         target: Option<ObjectId>,
     ) -> Result<bool, GenieError> {
         let Some((tp, t)) = self.object(target) else {
@@ -111,7 +112,7 @@ impl crate::world::World {
     /// world does not hold) and the work's point.
     fn notify_transport(
         &mut self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         (target, point): (Option<ObjectId>, Position),
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -145,7 +146,7 @@ impl crate::world::World {
     fn with_shore(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         task: Option<TaskId>,
         f: impl FnOnce(&Ship<'_>, &mut MapShore<'_>) -> Result<Changed, GenieError>,
     ) -> Result<Changed, GenieError> {

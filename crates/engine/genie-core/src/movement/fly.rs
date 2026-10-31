@@ -361,6 +361,7 @@ mod tests {
     use super::*;
     use crate::map::Radii;
     use crate::movement::move_to::MoveTo;
+    use crate::objects::ListIndex;
     use crate::objects::ObjectState;
     use crate::objects::layers::Body;
     use crate::objects::lifecycle::Lifecycle;
@@ -467,18 +468,28 @@ mod tests {
             group: None,
             action_state: 0,
         };
-        crate::world::tests::in_update(t, (PlayerId::new(0), 0), 21, |u, c| u.fly_part(c, me))?;
-        Ok(*t.players[0].objects[0].actions.fly().unwrap())
+        crate::world::tests::in_update(t, (PlayerId::new(0), ListIndex::new(0)), 21, |u, c| {
+            u.fly_part(c, me)
+        })?;
+        Ok(*t.players[0].objects[ListIndex::new(0)]
+            .actions
+            .fly()
+            .unwrap())
     }
 
     /// The hawk stopped (slot 0x5d0 clears its wait to move).
     fn stopped(t: &World) -> bool {
-        t.players[0].objects[0].body.mover().unwrap().waiting == 0
+        t.players[0].objects[ListIndex::new(0)]
+            .body
+            .mover()
+            .unwrap()
+            .waiting
+            == 0
     }
 
     /// The notifies 0x1f9 the hawk's unit AI holds.
     fn failures(t: &World) -> usize {
-        let ai = t.players[0].objects[0].ai.as_ref().unwrap();
+        let ai = t.players[0].objects[ListIndex::new(0)].ai.as_ref().unwrap();
         let failed = ai.notifies.iter();
         failed
             .filter(|n| n.kind == crate::unit_ai::NotifyKind::ACTION_FAILED)
@@ -690,7 +701,11 @@ mod tests {
             (fly.state, t.streams.get(Stream::Action).draws),
             (FlyState::Resting, 0)
         );
-        t.players[0].objects[0].actions.fly_mut().unwrap().timer = 0.01;
+        t.players[0].objects[ListIndex::new(0)]
+            .actions
+            .fly_mut()
+            .unwrap()
+            .timer = 0.01;
         let fly = flown(&mut t).unwrap();
         assert_eq!(
             (fly.state, t.streams.get(Stream::Action).draws),
@@ -702,7 +717,7 @@ mod tests {
     #[test]
     fn a_bird_without_movement_state_does_not_fly() {
         let mut t = sky_world(hawk(FlyState::Resting, 0.5), 1.32, 1);
-        t.players[0].objects[0].body = Body::at(AT);
+        t.players[0].objects[ListIndex::new(0)].body = Body::at(AT);
         assert_eq!(flown(&mut t), Err(NO_MOVER));
     }
 

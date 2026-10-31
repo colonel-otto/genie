@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::map::Tile;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::action_type;
@@ -27,7 +28,7 @@ impl World {
     pub(crate) fn artifact_take_object(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx)?;
@@ -268,7 +269,7 @@ impl World {
     pub(super) fn drop_off_ask(
         &self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (asks, way_back): (bool, bool),
     ) -> Result<Option<DropOffAsk>, GenieError> {
         let unit = self.players.live(p, idx)?;
@@ -311,7 +312,7 @@ impl World {
     pub(super) fn asked_drop_off(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         ask: DropOffAsk,
     ) -> Result<(), GenieError> {
         if !ask.asked {
@@ -338,7 +339,7 @@ impl World {
     pub(super) fn drop_off_at_site(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         by: DropOffBy,
     ) -> Result<(), GenieError> {
         let mut unit = self.players.player_mut(p)?.objects.take_out(idx)?;

@@ -4,6 +4,7 @@
 use crate::map::GridSize;
 use crate::map::Tile;
 use crate::movement::move_to::MoveWaitState;
+use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
@@ -223,7 +224,7 @@ type Top = (Option<ActionType>, Option<ObjectId>);
 /// [`Unit::build_part`]), its code and the builder's top action right after it (the work it
 /// gives within the update, slot 0x7e8, replaces the Build).
 fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Top), GenieError> {
-    in_update(t, (PlayerId::new(1), 0), dt, |u, c| {
+    in_update(t, (PlayerId::new(1), ListIndex::new(0)), dt, |u, c| {
         let me = Me {
             id: u.id,
             group: u.group.id,
@@ -245,7 +246,7 @@ fn on_build<R>(
     t: &mut World,
     f: impl FnOnce(&mut BuildAction, &mut Step<'_>, &mut Unit, &BuildReads) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
-    in_update(t, (PlayerId::new(1), 0), 20, |u, c| {
+    in_update(t, (PlayerId::new(1), ListIndex::new(0)), 20, |u, c| {
         let mut b = *u.actions.build().unwrap();
         let reads = u.build_reads(c, b)?;
         let answer = f(&mut b, c, u, &reads);

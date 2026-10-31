@@ -606,8 +606,7 @@ fn run(t: &mut World, p: PlayerId, id: i32) {
 fn rewards(t: &mut World, p: PlayerId, id: i32, leaves: bool) -> Vec<Reward> {
     let i = t.players[p.index()]
         .objects
-        .iter()
-        .position(|u| u.id == object_id(id))
+        .position_of(object_id(id))
         .unwrap();
     t.abilities((object_id(id), p, i), p, leaves).unwrap()
 }
@@ -731,7 +730,9 @@ fn keshik(t: &mut World) {
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         same_owner: false,
     };
-    t.players[1].objects[0].actions.set_attack(Some(attack));
+    t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .set_attack(Some(attack));
     t.players[1].attributes[213] = 0.5;
     t.players[1].generated[3] = 0.999;
 }
@@ -756,7 +757,11 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     assert_eq!(t.players[1].attributes[169], given);
     assert_eq!(t.players[1].generated[3], 0.0);
     // in another state, nothing
-    t.players[1].objects[0].actions.attack_mut().unwrap().state = AttackState::Ready;
+    t.players[1].objects[ListIndex::new(0)]
+        .actions
+        .attack_mut()
+        .unwrap()
+        .state = AttackState::Ready;
     run(&mut t, PlayerId::new(1), 60);
     assert_eq!(t.players[1].generated[3], 0.0);
 }
@@ -784,7 +789,9 @@ fn trampler(t: &mut World) {
         velocity: BVector::new(1.0, 0.0, 0.0),
         acceleration: BVector::ZERO,
     });
-    t.players[1].objects[0].body.put_mover(Some(mover));
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .put_mover(Some(mover));
 }
 
 #[test]
@@ -831,14 +838,30 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     assert_eq!(hp(&t, object_id(21)), 30.0);
     assert_eq!(hp(&t, object_id(30)), 30.0);
     assert_eq!(hp(&t, object_id(40)), 30.0);
-    assert_eq!(t.players[1].objects[0].abilities.movement_damage_timer, 3.0);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)]
+            .abilities
+            .movement_damage_timer,
+        3.0
+    );
     // the timer runs down first: no hit for 3 s
     run(&mut t, PlayerId::new(1), 10);
     assert_eq!(hp(&t, object_id(20)), 25.0);
-    assert_eq!(t.players[1].objects[0].abilities.movement_damage_timer, 2.5);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(0)]
+            .abilities
+            .movement_damage_timer,
+        2.5
+    );
     // standing, no hit even when due
-    t.players[1].objects[0].abilities.movement_damage_timer = 0.0;
-    t.players[1].objects[0].body.mover_mut().unwrap().velocity = None;
+    t.players[1].objects[ListIndex::new(0)]
+        .abilities
+        .movement_damage_timer = 0.0;
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap()
+        .velocity = None;
     run(&mut t, PlayerId::new(1), 10);
     assert_eq!(hp(&t, object_id(20)), 25.0);
 }
@@ -856,7 +879,7 @@ fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
         3.0,
         Point::new(6.5, 5.5),
     );
-    t.players[2].objects[0].life.amount = 10.0;
+    t.players[2].objects[ListIndex::new(0)].life.amount = 10.0;
     run(&mut t, PlayerId::new(1), 10);
     let (_, u) = t.object(object_id(20)).unwrap();
     assert_eq!((u.life.hp, u.life.amount), (0.0, 0.0));
@@ -918,9 +941,11 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
     );
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = Position::new(5.5, 6.5, 0.0);
-    t.players[1].objects[0].body.put_mover(Some(mover));
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .put_mover(Some(mover));
     run(&mut t, PlayerId::new(1), 70);
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(u.body.mover().unwrap().factor, 0.35);
     assert_eq!(u.abilities.attack_rate, 1.0);
     assert_eq!(
@@ -935,9 +960,13 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
         })
     );
     // where it last moved to decides, not its place
-    t.players[1].objects[0].body.mover_mut().unwrap().moved_at = Position::new(5.5, 7.5, 0.0);
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap()
+        .moved_at = Position::new(5.5, 7.5, 0.0);
     run(&mut t, PlayerId::new(1), 70);
-    let u = &t.players[1].objects[0];
+    let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(u.body.mover().unwrap().factor, 1.0);
     assert_eq!((u.abilities.attack_rate, u.abilities.look), (1.0, None));
 }
@@ -973,7 +1002,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
     };
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, true), vec![r, r]);
     // alive, it issues none
-    t.players[1].objects[0].life.hp = 1.0;
+    t.players[1].objects[ListIndex::new(0)].life.hp = 1.0;
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, true), Vec::new());
 }
 

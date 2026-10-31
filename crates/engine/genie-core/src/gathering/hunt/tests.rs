@@ -10,6 +10,7 @@ use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::class;
@@ -1050,7 +1051,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
         } = &mut rig.t;
         h.set_walk(
             spatial,
-            &mut players[1].objects[0].body,
+            &mut players[1].objects[ListIndex::new(0)].body,
             victim,
             PlayerId::new(1),
             &walks(Held::default()),

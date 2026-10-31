@@ -4,6 +4,7 @@
 //! foundation's work, its starts and its completion.
 
 use crate::construction::build::BuildState;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
@@ -210,7 +211,7 @@ impl BuildAction {
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        f: impl FnOnce(&mut World, PlayerId, usize) -> Result<R, GenieError>,
+        f: impl FnOnce(&mut World, PlayerId, ListIndex) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         if let Some(b) = builder.actions.build_mut() {
             *b = *self;

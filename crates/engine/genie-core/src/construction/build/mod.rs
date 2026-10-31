@@ -398,6 +398,7 @@ mod stack_tests {
     use crate::map::GroundOffset;
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
+    use crate::objects::ListIndex;
     use crate::objects::ObjectState;
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::ObstructionClass;
@@ -632,7 +633,7 @@ mod stack_tests {
             );
             *ms = Masters::new(ms.iter().cloned().chain([castle]));
         }
-        t.players[1].objects[0].life.master_id = ids::CASTLE;
+        t.players[1].objects[ListIndex::new(0)].life.master_id = ids::CASTLE;
         assert_eq!(t.work_building(object_id(8759), 1.0), Ok(false));
         assert_eq!(
             t.players[1].history.events,
@@ -801,7 +802,7 @@ mod stack_tests {
                     }
                 }
             }
-            t.players[1].objects[0].gate = Some(crate::world::Gate {
+            t.players[1].objects[ListIndex::new(0)].gate = Some(crate::world::Gate {
                 locked,
                 ..crate::world::Gate::default()
             });
@@ -832,11 +833,11 @@ mod stack_tests {
     #[test]
     fn a_stack_unit_s_completion_reads_the_foundation_s_attacking_units() {
         let mut gone = world();
-        gone.players[1].objects[0].attacking_units = vec![object_id(99_999)];
+        gone.players[1].objects[ListIndex::new(0)].attacking_units = vec![object_id(99_999)];
         assert_eq!(gone.work_building(object_id(8759), 1.0), Ok(false));
         let mut held = world();
-        let first = held.players[1].objects[0].id;
-        held.players[1].objects[0].attacking_units = vec![first];
+        let first = held.players[1].objects[ListIndex::new(0)].id;
+        held.players[1].objects[ListIndex::new(0)].attacking_units = vec![first];
         assert_eq!(
             held.work_building(object_id(8759), 1.0),
             Err(GenieError::unsupported(

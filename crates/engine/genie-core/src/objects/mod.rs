@@ -8,6 +8,7 @@ pub(crate) mod hit_points;
 pub mod layers;
 pub mod lifecycle;
 pub mod lines;
+mod list_index;
 pub mod masters;
 mod object_id;
 pub mod object_list;
@@ -18,4 +19,5 @@ pub mod unit;
 
 pub use self::hit_points::HpPowerup;
 pub use self::lifecycle::ObjectState;
+pub use self::list_index::{ListIndex, Places};
 pub use self::object_id::{ObjectId, ObjectKey};

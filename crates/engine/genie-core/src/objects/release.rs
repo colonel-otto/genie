@@ -2,6 +2,7 @@
 //! update's regeneration and hit point check, and a walk's pause.
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
@@ -112,7 +113,7 @@ impl World {
     /// A slot the player's list does not hold.
     pub(crate) fn regenerate_object(
         &mut self,
-        slot: (PlayerId, usize, ObjectId),
+        slot: (PlayerId, ListIndex, ObjectId),
         dt_seconds: f32,
     ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
@@ -136,7 +137,7 @@ impl World {
     /// A slot the player's list does not hold.
     pub(crate) fn clamp_object_powerup(
         &mut self,
-        slot: (PlayerId, usize, ObjectId),
+        slot: (PlayerId, ListIndex, ObjectId),
     ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
             return Ok(());

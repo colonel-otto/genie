@@ -7,6 +7,7 @@
 //! the borrow of the one field (`self.players`) and still reads the others.
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::world::player::Player;
@@ -43,7 +44,7 @@ pub(crate) trait PlayerSlots {
     /// # Errors
     ///
     /// A player or a position the lists do not hold.
-    fn live(&self, p: PlayerId, i: usize) -> Result<&Unit, GenieError> {
+    fn live(&self, p: PlayerId, i: ListIndex) -> Result<&Unit, GenieError> {
         self.player(p)?.live(i).map_err(|e| e.with("player", p))
     }
 
@@ -52,7 +53,7 @@ pub(crate) trait PlayerSlots {
     /// # Errors
     ///
     /// A player or a position the lists do not hold.
-    fn live_mut(&mut self, p: PlayerId, i: usize) -> Result<&mut Unit, GenieError> {
+    fn live_mut(&mut self, p: PlayerId, i: ListIndex) -> Result<&mut Unit, GenieError> {
         self.player_mut(p)?
             .live_mut(i)
             .map_err(|e| e.with("player", p))
@@ -63,7 +64,7 @@ pub(crate) trait PlayerSlots {
     /// # Errors
     ///
     /// A player or a position the lists do not hold.
-    fn asleep(&self, p: PlayerId, i: usize) -> Result<&Unit, GenieError> {
+    fn asleep(&self, p: PlayerId, i: ListIndex) -> Result<&Unit, GenieError> {
         self.player(p)?.asleep(i).map_err(|e| e.with("player", p))
     }
 
@@ -72,7 +73,7 @@ pub(crate) trait PlayerSlots {
     /// # Errors
     ///
     /// A player or a position the lists do not hold.
-    fn asleep_mut(&mut self, p: PlayerId, i: usize) -> Result<&mut Unit, GenieError> {
+    fn asleep_mut(&mut self, p: PlayerId, i: ListIndex) -> Result<&mut Unit, GenieError> {
         self.player_mut(p)?
             .asleep_mut(i)
             .map_err(|e| e.with("player", p))
@@ -147,7 +148,7 @@ impl Player {
     /// # Errors
     ///
     /// A position the list does not hold.
-    pub(crate) fn live(&self, i: usize) -> Result<&Unit, GenieError> {
+    pub(crate) fn live(&self, i: ListIndex) -> Result<&Unit, GenieError> {
         self.objects.get(i).ok_or_else(|| NO_SLOT.with("index", i))
     }
 
@@ -156,7 +157,7 @@ impl Player {
     /// # Errors
     ///
     /// A position the list does not hold.
-    pub(crate) fn live_mut(&mut self, i: usize) -> Result<&mut Unit, GenieError> {
+    pub(crate) fn live_mut(&mut self, i: ListIndex) -> Result<&mut Unit, GenieError> {
         self.objects
             .get_mut(i)
             .ok_or_else(|| NO_SLOT.with("index", i))
@@ -167,7 +168,7 @@ impl Player {
     /// # Errors
     ///
     /// A position the list does not hold.
-    pub(crate) fn asleep(&self, i: usize) -> Result<&Unit, GenieError> {
+    pub(crate) fn asleep(&self, i: ListIndex) -> Result<&Unit, GenieError> {
         self.sleeping.get(i).ok_or_else(|| NO_SLOT.with("index", i))
     }
 
@@ -176,7 +177,7 @@ impl Player {
     /// # Errors
     ///
     /// A position the list does not hold.
-    pub(crate) fn asleep_mut(&mut self, i: usize) -> Result<&mut Unit, GenieError> {
+    pub(crate) fn asleep_mut(&mut self, i: ListIndex) -> Result<&mut Unit, GenieError> {
         self.sleeping
             .get_mut(i)
             .ok_or_else(|| NO_SLOT.with("index", i))
@@ -209,22 +210,38 @@ mod tests {
         let e = players.player(PlayerId::new(2)).unwrap_err();
         assert_eq!(e.context().collect::<Vec<_>>(), [("player", "2")]);
         assert!(players.player_mut(PlayerId::new(5)).is_err());
-        let e = players.live(PlayerId::new(1), 0).unwrap_err();
+        let e = players
+            .live(PlayerId::new(1), ListIndex::new(0))
+            .unwrap_err();
         let keys: Vec<_> = e.context().map(|(k, v)| (k, v.to_owned())).collect();
         assert_eq!(
             keys,
             [("index", "0".to_owned()), ("player", "1".to_owned())]
         );
-        assert!(players.live_mut(PlayerId::new(0), 3).is_err());
-        assert!(players.asleep(PlayerId::new(0), 0).is_err());
-        assert!(players.asleep_mut(PlayerId::new(9), 0).is_err());
+        assert!(
+            players
+                .live_mut(PlayerId::new(0), ListIndex::new(3))
+                .is_err()
+        );
+        assert!(players.asleep(PlayerId::new(0), ListIndex::new(0)).is_err());
+        assert!(
+            players
+                .asleep_mut(PlayerId::new(9), ListIndex::new(0))
+                .is_err()
+        );
         assert!(
             players
                 .player_mut(PlayerId::new(0))
                 .unwrap()
-                .asleep_mut(0)
+                .asleep_mut(ListIndex::new(0))
                 .is_err()
         );
-        assert!(players.player(PlayerId::new(0)).unwrap().live(0).is_err());
+        assert!(
+            players
+                .player(PlayerId::new(0))
+                .unwrap()
+                .live(ListIndex::new(0))
+                .is_err()
+        );
     }
 }

@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::movement::PathState;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -144,10 +145,10 @@ fn light(t: &mut World, p: usize, x: usize, y: usize, seen: bool) {
 #[test]
 fn lost_members_leave_the_group_and_stop() {
     let mut t = world();
-    t.players[1].objects[1].life.hp = 0.5;
+    t.players[1].objects[ListIndex::new(1)].life.hp = 0.5;
     let mut stray = soldier(12, 1.0, 2.0);
     stray.group.id = Some(group_id(1));
-    let _ = t.players[1].objects.remove(2).unwrap();
+    let _ = t.players[1].objects.remove(ListIndex::new(2)).unwrap();
     t.players[2].objects.push(stray);
     let mut mute = soldier(13, 2.0, 2.0);
     mute.ai = None;
@@ -183,7 +184,7 @@ fn lost_members_leave_the_group_and_stop() {
     assert_eq!(stopped.velocity.unwrap().velocity.y(), 0.0);
     // a NaN's hit points stay (COMISS then JA)
     let mut t = world();
-    t.players[1].objects[0].life.hp = f32::NAN;
+    t.players[1].objects[ListIndex::new(0)].life.hp = f32::NAN;
     t.drop_lost_members(group_id(1)).unwrap();
     assert_eq!(t.groups.get(group_id(1)).unwrap().members.len(), 3);
     assert_eq!(t.groups.get(group_id(1)).unwrap().flags & 0x1_0000, 0);
@@ -220,20 +221,20 @@ fn a_hibernating_group_waits_runs_its_queue_or_goes() {
     }
     // a build on the group's own 11 in state 1 waits, in state 2 or of another player not
     set(&mut t, 0x65, 11, false);
-    t.players[1].objects[1].life.state = ObjectState::Unfinished;
+    t.players[1].objects[ListIndex::new(1)].life.state = ObjectState::Unfinished;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(false));
-    t.players[1].objects[1].life.state = ObjectState::Alive;
+    t.players[1].objects[ListIndex::new(1)].life.state = ObjectState::Alive;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
     set(&mut t, 0x65, 20, false);
-    t.players[2].objects[0].life.state = ObjectState::Foundation;
+    t.players[2].objects[ListIndex::new(0)].life.state = ObjectState::Foundation;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
     // a repair of the ally's 30 below its 60 hit points waits; at them, or of the enemy's
     // 20, or of nothing, the queue runs
     set(&mut t, 0x6a, 30, false);
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(false));
-    t.players[3].objects[0].life.hp = f32::NAN;
+    t.players[3].objects[ListIndex::new(0)].life.hp = f32::NAN;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(false));
-    t.players[3].objects[0].life.hp = 60.0;
+    t.players[3].objects[ListIndex::new(0)].life.hp = 60.0;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
     set(&mut t, 0x6a, 20, false);
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
@@ -267,12 +268,12 @@ fn a_target_is_pending_while_seen_and_no_ally_s() {
         *m = Masters::new([master]);
     }
     assert!(t.target_pending(group_id(1)).unwrap());
-    t.players[2].objects[0].life.state = ObjectState::Dying;
+    t.players[2].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
     assert!(!t.target_pending(group_id(1)).unwrap());
-    t.players[2].objects[0].life.state = ObjectState::Alive;
-    t.players[2].objects[0].life.inside = Some(object_id(5));
+    t.players[2].objects[ListIndex::new(0)].life.state = ObjectState::Alive;
+    t.players[2].objects[ListIndex::new(0)].life.inside = Some(object_id(5));
     assert!(!t.target_pending(group_id(1)).unwrap());
-    t.players[2].objects[0].life.inside = None;
+    t.players[2].objects[ListIndex::new(0)].life.inside = None;
     assert!(t.target_pending(group_id(1)).unwrap());
     // an ally's: not pending, but for a build in state 0
     light(&mut t, 1, 4, 4, true);
@@ -280,7 +281,7 @@ fn a_target_is_pending_while_seen_and_no_ally_s() {
     assert!(!t.target_pending(group_id(1)).unwrap());
     target(&mut t, 0x65, 30);
     assert!(!t.target_pending(group_id(1)).unwrap());
-    t.players[3].objects[0].life.state = ObjectState::Foundation;
+    t.players[3].objects[ListIndex::new(0)].life.state = ObjectState::Foundation;
     assert!(t.target_pending(group_id(1)).unwrap());
     // without members, none
     t.groups.get_mut(group_id(1)).unwrap().members.clear();
@@ -327,7 +328,7 @@ fn relic_carriers_keep_their_command_pending() {
     m.life.master_id = ids::MONASTERY;
     t.players[0].objects.extend([r, m]);
     let ai = |t: &mut World, order: Option<OrderKind>, action: Option<ActionKind>, target: i32| {
-        let a = t.players[1].objects[0].ai.as_mut().unwrap();
+        let a = t.players[1].objects[ListIndex::new(0)].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
         a.current_target = ObjectId::of_field(target);
@@ -378,7 +379,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     assert!(t.member_idle(object_id(10)).unwrap());
     assert!(!t.member_idle(object_id(99)).unwrap());
     let ai = |t: &mut World, order: Option<OrderKind>, action: Option<ActionKind>| {
-        let a = t.players[1].objects[0].ai.as_mut().unwrap();
+        let a = t.players[1].objects[ListIndex::new(0)].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
     };
@@ -391,7 +392,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     ai(&mut t, Some(OrderKind::Move), Some(ActionKind::Heal));
     assert!(!t.member_idle(object_id(10)).unwrap());
     ai(&mut t, None, None);
-    t.players[1].objects[0].ai = None;
+    t.players[1].objects[ListIndex::new(0)].ai = None;
     assert!(t.member_idle(object_id(10)).unwrap());
     // an Attack in state 2 is not free, in state 13 it is; a state 4 is not
     let attack = |state| crate::combat::attack::Attack {
@@ -426,13 +427,13 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         (AttackState::Failed, true),
         (AttackState::Move, false),
     ] {
-        t.players[1].objects[0]
+        t.players[1].objects[ListIndex::new(0)]
             .actions
             .set_attack(Some(attack(state)));
         assert_eq!(t.member_idle(object_id(10)).unwrap(), free, "{state}");
     }
     // a trade cart's state 2 is free, whatever its action
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_attack(Some(attack(AttackState::Killed)));
     for m in &mut t.masters {
@@ -450,11 +451,11 @@ fn a_group_rests_without_command_motion_or_moving_member() {
     let mut t = world();
     t.groups.get_mut(group_id(1)).unwrap().current_command = -1;
     assert!(t.at_rest(group_id(1)));
-    t.players[1].objects[1]
+    t.players[1].objects[ListIndex::new(1)]
         .body
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     assert!(!t.at_rest(group_id(1)));
-    t.players[1].objects[1].body.put_mover(None);
+    t.players[1].objects[ListIndex::new(1)].body.put_mover(None);
     t.groups.get_mut(group_id(1)).unwrap().motion.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(!t.at_rest(group_id(1)));
     t.groups.get_mut(group_id(1)).unwrap().motion.velocity = BVector::ZERO;
@@ -493,8 +494,13 @@ fn kept_apart_units_leave_unless_busy() {
         Some(0.0)
     );
     // a member's group moving keeps the unit too
-    t.players[1].objects[3].ai.as_mut().unwrap().orders.clear();
-    t.players[1].objects[3].group.id = Some(group_id(1));
+    t.players[1].objects[ListIndex::new(3)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .orders
+        .clear();
+    t.players[1].objects[ListIndex::new(3)].group.id = Some(group_id(1));
     t.groups.get_mut(group_id(1)).unwrap().current_command = 1;
     t.keep_apart(group_id(1)).unwrap();
     assert_eq!(t.groups.get(group_id(1)).unwrap().objects, [object_id(15)]);
@@ -512,8 +518,12 @@ fn a_deleted_group_lets_its_members_go() {
         u.body
             .put_mover(Some(crate::gathering::hunt::tests::walking()));
     }
-    t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
-    t.players[1].objects[2].group.id = Some(group_id(7));
+    t.players[1].objects[ListIndex::new(1)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .current_action = Some(ActionKind::Move);
+    t.players[1].objects[ListIndex::new(2)].group.id = Some(group_id(7));
     t.delete_group(group_id(1)).unwrap();
     assert!(t.groups.get(group_id(1)).is_none());
     let unit = |t: &World, id: ObjectId| t.object(id).unwrap().1.clone();
@@ -549,7 +559,9 @@ fn a_deleted_group_lets_its_members_go() {
 fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let mut t = world();
     let walker = crate::gathering::hunt::tests::walker();
-    t.players[1].objects[0].body.put_mover(Some(walker));
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .put_mover(Some(walker));
     let speed = |t: &World| {
         t.object(object_id(10))
             .unwrap()
@@ -611,7 +623,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
         replay_delay: 0.0,
         flags: 0,
     };
-    t.players[1].objects[0].sprite = Some(crate::objects::sprite::ActiveSprite {
+    t.players[1].objects[ListIndex::new(0)].sprite = Some(crate::objects::sprite::ActiveSprite {
         graphic,
         frame: 0,
         interval: 0.0,
@@ -627,7 +639,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let trade = crate::groups::update::TRADE_CART_SPRITES;
     assert_eq!(t.show_walking(object_id(10)), Err(trade.clone()));
     assert_eq!(t.show_standing(object_id(10)), Err(trade));
-    t.players[1].objects[0].sprite = None;
+    t.players[1].objects[ListIndex::new(0)].sprite = None;
     assert_eq!(t.show_running(object_id(10)), Ok(true));
     assert_eq!(t.show_walking(object_id(99)), Ok(false));
 }
@@ -675,7 +687,7 @@ fn the_formation_turns_past_a_quarter_turn() {
 #[test]
 fn the_centroid_front_is_the_members_mean_place() {
     let mut t = world();
-    t.players[1].objects[2].place_for_test(Position::new(1.0, 4.0, 3.0));
+    t.players[1].objects[ListIndex::new(2)].place_for_test(Position::new(1.0, 4.0, 3.0));
     t.groups.get_mut(group_id(1)).unwrap().motion.position[1] = BVector::new(1.0, 0.0, 0.0);
     t.front_by_centroid(group_id(1)).unwrap();
     let g = t.groups.get(group_id(1)).unwrap();
@@ -713,8 +725,8 @@ fn each_line_takes_its_units_least_range() {
         ]);
         4
     ];
-    t.players[1].objects[1].life.master_id = master_id(5);
-    t.players[1].objects[2].life.master_id = ids::ID_6;
+    t.players[1].objects[ListIndex::new(1)].life.master_id = master_id(5);
+    t.players[1].objects[ListIndex::new(2)].life.master_id = ids::ID_6;
     let slot = |unit| crate::groups::Slot {
         unit_id: unit,
         ..crate::groups::Slot::default()
@@ -990,7 +1002,11 @@ fn units_out_of_their_places_get_paths() {
         state,
         ..crate::groups::Slot::default()
     };
-    t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
+    t.players[1].objects[ListIndex::new(1)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .current_action = Some(ActionKind::Move);
     t.groups.get_mut(group_id(1)).unwrap().current_formation = Some(crate::groups::Formation {
         slots: vec![
             slot(None, SlotState::Steering),
@@ -1038,7 +1054,11 @@ fn a_member_moved_aside_waits_out_its_timer() {
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.members[0].specific_move = aside;
     g.members[1].specific_move = aside;
-    t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
+    t.players[1].objects[ListIndex::new(1)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .current_action = Some(ActionKind::Move);
     t.specific_moves_step(group_id(1)).unwrap();
     let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(g.members[0].specific_move.timer, 0.25);
@@ -1104,7 +1124,9 @@ fn a_member_s_own_move_walks_its_path() {
         0,
         false,
     );
-    t.players[1].objects[0].body.put_mover(Some(walker));
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .put_mover(Some(walker));
     t.spatial.insert(
         object_id(10),
         crate::map::spatial::Placed {
@@ -1278,7 +1300,11 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
         });
         u.body.put_mover(Some(m));
     }
-    t.players[1].objects[0].body.mover_mut().unwrap().paths = vec![crate::movement::PathData {
+    t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap()
+        .paths = vec![crate::movement::PathData {
         state: PathState::Walking,
         pause_time: 0.5,
         ..crate::movement::PathData::without_path()
@@ -1788,7 +1814,8 @@ fn an_attack_whose_target_is_gone_from_sight_ends_or_goes_back() {
     assert!(!relayout);
     // a far target: back to the first place
     attacking(&mut t);
-    t.players[2].objects[0].body = crate::objects::layers::Body::at(Position::new(7.5, 7.5, 0.0));
+    t.players[2].objects[ListIndex::new(0)].body =
+        crate::objects::layers::Body::at(Position::new(7.5, 7.5, 0.0));
     assert!(!t.attack_update(group_id(1), &mut relayout).unwrap());
     assert!(relayout);
     assert_eq!(
@@ -1858,7 +1885,8 @@ fn an_attack_releases_a_category_in_reach_or_arrived() {
 fn a_unit_in_contact_releases_its_category() {
     let mut t = world();
     attacking(&mut t);
-    t.players[1].objects[0].body = crate::objects::layers::Body::at(Position::new(3.0, 3.0, 0.0));
+    t.players[1].objects[ListIndex::new(0)].body =
+        crate::objects::layers::Body::at(Position::new(3.0, 3.0, 0.0));
     register(&mut t);
     light(&mut t, 1, 3, 3, true);
     for m in &mut t.groups.get_mut(group_id(1)).unwrap().members {
@@ -1910,7 +1938,7 @@ fn gate_world() -> World {
         ..Master::default()
     };
     t.masters[2] = Masters::new([m4, gate]);
-    t.players[2].objects[0].life.master_id = master_id(5);
+    t.players[2].objects[ListIndex::new(0)].life.master_id = master_id(5);
     let mut annex = soldier(21, 2.5, 2.5);
     annex.life.master_id = master_id(5);
     annex.annex_of = Some(object_id(20));
@@ -1952,7 +1980,7 @@ fn a_gate_out_of_reach_is_struck_at_its_nearest_part() {
         object_id(21)
     );
     // a target that is no gate
-    t.players[2].objects[0].life.master_id = master_id(4);
+    t.players[2].objects[ListIndex::new(0)].life.master_id = master_id(4);
     assert_eq!(
         t.gate_part(object_id(11), object_id(20)).unwrap(),
         object_id(20)
@@ -1964,7 +1992,7 @@ fn a_gate_out_of_reach_is_struck_at_its_nearest_part() {
 #[test]
 fn a_unit_s_speed_is_its_movers_unless_a_charge_runs() {
     let mut t = world();
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .body
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let speed = |t: &World, id| {
@@ -1996,7 +2024,7 @@ fn a_released_special_unit_draws_its_retarget_timer() {
     attacking(&mut t);
     register(&mut t);
     light(&mut t, 1, 3, 3, true);
-    t.players[1].objects[1]
+    t.players[1].objects[ListIndex::new(1)]
         .body
         .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let g = t.groups.get_mut(group_id(1)).unwrap();
@@ -2023,9 +2051,25 @@ fn a_released_special_unit_draws_its_retarget_timer() {
             .take(2)
             .all(|u| u.ai.as_ref().unwrap().orders.is_empty())
     );
-    assert_eq!(t.players[1].objects[2].ai.as_ref().unwrap().orders.len(), 1);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(2)]
+            .ai
+            .as_ref()
+            .unwrap()
+            .orders
+            .len(),
+        1
+    );
     // the target the world does not hold: nothing
     t.release_units(group_id(1), &[object_id(12)], object_id(77))
         .unwrap();
-    assert_eq!(t.players[1].objects[2].ai.as_ref().unwrap().orders.len(), 1);
+    assert_eq!(
+        t.players[1].objects[ListIndex::new(2)]
+            .ai
+            .as_ref()
+            .unwrap()
+            .orders
+            .len(),
+        1
+    );
 }

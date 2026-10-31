@@ -175,6 +175,7 @@ impl Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::ListIndex;
     use crate::objects::ObjectState;
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
@@ -258,9 +259,14 @@ mod tests {
     /// The farm's update of 104 ms through its step: its code, its Make, what it holds and its
     /// hit points.
     fn made(t: &mut World) -> (HeadCode, MakeAction, f32, f32) {
-        let code =
-            crate::world::tests::in_update(t, (PlayerId::new(1), 0), 104, Unit::make_part).unwrap();
-        let farm = &t.players[1].objects[0];
+        let code = crate::world::tests::in_update(
+            t,
+            (PlayerId::new(1), ListIndex::new(0)),
+            104,
+            Unit::make_part,
+        )
+        .unwrap();
+        let farm = &t.players[1].objects[ListIndex::new(0)];
         (
             code,
             *farm.actions.make().unwrap(),
@@ -327,7 +333,7 @@ mod tests {
         let (_, make, _, _) = made(&mut t);
         assert_eq!(make.remaining, 100.0 - gained);
         // a farmer took 5: the rate's share comes back
-        t.players[1].objects[0].life.amount = 10.0;
+        t.players[1].objects[ListIndex::new(0)].life.amount = 10.0;
         let (_, make, amount, _) = made(&mut t);
         let rate = 0.4f32 * 1.0 * 0.104;
         assert_eq!(amount, 10.0 + rate);
@@ -338,7 +344,7 @@ mod tests {
     #[test]
     fn the_farm_s_powerup_adds_to_the_rate() {
         let mut t = farm_world(making(100.0, 175.0, farm_task()), ids::FARM, 0.0);
-        t.players[1].objects[0].work_rate_powerup = 0.1;
+        t.players[1].objects[ListIndex::new(0)].work_rate_powerup = 0.1;
         let (_, _, amount, _) = made(&mut t);
         assert_eq!(amount, (0.4f32 + 0.1) * 1.0 * 0.104);
     }
@@ -382,7 +388,12 @@ mod tests {
     #[test]
     fn a_farm_without_its_master_fails() {
         let mut t = farm_world(making(0.0, 0.0, farm_task()), master_id(99), 0.0);
-        let r = crate::world::tests::in_update(&mut t, (PlayerId::new(1), 0), 104, Unit::make_part);
+        let r = crate::world::tests::in_update(
+            &mut t,
+            (PlayerId::new(1), ListIndex::new(0)),
+            104,
+            Unit::make_part,
+        );
         assert!(r.is_err());
     }
 }

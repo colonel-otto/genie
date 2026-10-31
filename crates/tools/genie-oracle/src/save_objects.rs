@@ -5,6 +5,7 @@ use crate::masters::MasterTable;
 use crate::{Error, listed, run_from_save};
 use genie_core::GenieError;
 use genie_core::map::Tile;
+use genie_core::objects::ListIndex;
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
 use genie_core::vision::visibility::Visibility;
@@ -18,11 +19,11 @@ pub struct SliceRun {
     /// Every listed object the player holds after the run.
     pub objects: Vec<Unit>,
     /// The first update the slice could not model: the tick, the object's index and why.
-    pub unsupported: Option<(u32, usize, GenieError)>,
+    pub unsupported: Option<(u32, ListIndex, GenieError)>,
     /// The id of the object whose update was not modelled.
     pub unsupported_id: Option<ObjectId>,
     /// Every player's first unsupported update, by player.
-    pub stopped: Vec<Option<(u32, usize, GenieError)>>,
+    pub stopped: Vec<Option<(u32, ListIndex, GenieError)>>,
     /// What the players see after the run.
     pub visibility: Option<Visibility>,
     /// The map's terrain after the run.

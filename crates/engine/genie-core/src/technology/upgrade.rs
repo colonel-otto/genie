@@ -679,6 +679,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
+    use crate::objects::ListIndex;
     use crate::objects::ObjectId;
     use crate::objects::lifecycle::Held;
     use crate::objects::masters::ObstructionType;
@@ -950,7 +951,7 @@ mod tests {
             .collect();
         t.upgrade_objects(PlayerId::new(0), master_id(70), master_id(464), -1, None)
             .unwrap();
-        let [house, dead, rubble] = &t.players[0].objects[..] else {
+        let [house, dead, rubble] = t.players[0].objects.as_slice() else {
             panic!("three objects");
         };
         assert_eq!(
@@ -1009,7 +1010,7 @@ mod tests {
         t.players[0].attributes[37] = 1.0;
         t.upgrade_objects(PlayerId::new(0), master_id(83), master_id(6), 0, None)
             .unwrap();
-        let v = &t.players[0].objects[0];
+        let v = &t.players[0].objects[ListIndex::new(0)];
         assert_eq!(
             (v.life.master_id, v.life.hp, v.firepower),
             (master_id(6), 50.0, 3.0)
@@ -1043,7 +1044,7 @@ mod tests {
             ..Task::default()
         };
         let mut t = crate::world::tests::forage_world();
-        t.gather_command(PlayerId::new(1), 0, object_id(600))
+        t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
             .unwrap();
         let mut old = t.masters[1].get(master_id(120)).unwrap().clone();
         old.tasks.push(task(
@@ -1072,7 +1073,7 @@ mod tests {
             ],
             ..old.clone()
         };
-        let u = &mut t.players[1].objects[0];
+        let u = &mut t.players[1].objects[ListIndex::new(0)];
         let build = BuildTask {
             range: 0.25,
             work_value: 0.5,
@@ -1100,9 +1101,9 @@ mod tests {
                 task: waiting,
                 target: object_id(10028),
             }));
-        t.actions_take_master(Place::Live(PlayerId::new(1), 0), &old, &new)
+        t.actions_take_master(Place::Live(PlayerId::new(1), ListIndex::new(0)), &old, &new)
             .unwrap();
-        let u = &t.players[1].objects[0];
+        let u = &t.players[1].objects[ListIndex::new(0)];
         assert_eq!(
             u.actions.gather().copied().unwrap().task,
             HuntTask::of(&new.tasks[1])
@@ -1124,10 +1125,14 @@ mod tests {
         let gather = u.actions.gather().copied().unwrap().task;
         let mut bare = old.clone();
         bare.tasks.clear();
-        t.actions_take_master(Place::Live(PlayerId::new(1), 0), &bare, &new)
-            .unwrap();
+        t.actions_take_master(
+            Place::Live(PlayerId::new(1), ListIndex::new(0)),
+            &bare,
+            &new,
+        )
+        .unwrap();
         assert_eq!(
-            t.players[1].objects[0]
+            t.players[1].objects[ListIndex::new(0)]
                 .actions
                 .gather()
                 .copied()
@@ -1190,7 +1195,10 @@ mod tests {
             Some(object_id(10)),
         )
         .unwrap();
-        let own = t.players[0].objects[0].own_master.as_deref().unwrap();
+        let own = t.players[0].objects[ListIndex::new(0)]
+            .own_master
+            .as_deref()
+            .unwrap();
         assert_eq!((own.id, own.hit_points), (master_id(4), 60));
         assert_eq!(hp(&t), [30.0, 20.0, 20.0]);
         assert_eq!(
@@ -1201,7 +1209,10 @@ mod tests {
         t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 3, None)
             .unwrap();
         assert_eq!(hp(&t), [30.0, 30.0, 30.0]);
-        let own = t.players[0].objects[1].own_master.as_deref().unwrap();
+        let own = t.players[0].objects[ListIndex::new(1)]
+            .own_master
+            .as_deref()
+            .unwrap();
         assert_eq!((own.id, own.hit_points), (master_id(4), 60));
         assert_eq!(
             t.masters[0].get(master_id(4)).map(|m| m.hit_points),
@@ -1257,7 +1268,7 @@ mod tests {
     #[test]
     fn an_upgrade_stops_a_top_action_the_new_master_has_no_task_for() {
         let mut t = crate::world::tests::forage_world();
-        t.gather_command(PlayerId::new(1), 0, object_id(600))
+        t.gather_command(PlayerId::new(1), ListIndex::new(0), object_id(600))
             .unwrap();
         let old = t.masters[1].get(master_id(120)).unwrap().clone();
         let bare = Master {
@@ -1265,15 +1276,30 @@ mod tests {
             tasks: Vec::new(),
             ..old.clone()
         };
-        let place = Place::Live(PlayerId::new(1), 0);
+        let place = Place::Live(PlayerId::new(1), ListIndex::new(0));
         let mut kept = t.clone();
         kept.upgrade_actions(place, (&old, &bare), true).unwrap();
-        assert!(kept.players[1].objects[0].actions.gather().is_some());
+        assert!(
+            kept.players[1].objects[ListIndex::new(0)]
+                .actions
+                .gather()
+                .is_some()
+        );
         let mut same = t.clone();
         same.upgrade_actions(place, (&old, &old), false).unwrap();
-        assert!(same.players[1].objects[0].actions.gather().is_some());
+        assert!(
+            same.players[1].objects[ListIndex::new(0)]
+                .actions
+                .gather()
+                .is_some()
+        );
         t.upgrade_actions(place, (&old, &bare), false).unwrap();
-        assert!(t.players[1].objects[0].actions.gather().is_none());
+        assert!(
+            t.players[1].objects[ListIndex::new(0)]
+                .actions
+                .gather()
+                .is_none()
+        );
     }
 
     /// `FUN_14114cb80`: an object showing the old master's walking sprite shows the new one's,
@@ -1300,9 +1326,14 @@ mod tests {
                 &mut Well512::default(),
             ));
             let mut t = one_player(vec![u], vec![old.clone()], &[100, 101, 102, 200, 201]);
-            t.upgrade_moving_sprite(Place::Live(PlayerId::new(0), 0), (&old, new))
-                .unwrap();
-            t.players[0].objects[0].sprite.map(|s| s.graphic.id)
+            t.upgrade_moving_sprite(
+                Place::Live(PlayerId::new(0), ListIndex::new(0)),
+                (&old, new),
+            )
+            .unwrap();
+            t.players[0].objects[ListIndex::new(0)]
+                .sprite
+                .map(|s| s.graphic.id)
         };
         assert_eq!(shown(100, &new), Some(200));
         assert_eq!(shown(101, &new), Some(201));
@@ -1336,9 +1367,13 @@ mod tests {
             (v.life.attribute_type, v.life.amount) = (kind, amount);
             let mut t = one_player(vec![v], vec![master.clone()], &[]);
             t.players[0].attributes[37] = 1.0;
-            t.hand_in_load(PlayerId::new(0), Place::Live(PlayerId::new(0), 0), master)
-                .unwrap();
-            let v = &t.players[0].objects[0];
+            t.hand_in_load(
+                PlayerId::new(0),
+                Place::Live(PlayerId::new(0), ListIndex::new(0)),
+                master,
+            )
+            .unwrap();
+            let v = &t.players[0].objects[ListIndex::new(0)];
             (
                 v.life.held(),
                 [t.players[0].resources[0], t.players[0].resources[1]],
@@ -1431,8 +1466,12 @@ mod tests {
                 },
             );
             t.spatial.sight = Some(v);
-            t.upgrade_sight(Place::Live(PlayerId::new(0), 0), (&old, &new), keep)
-                .unwrap();
+            t.upgrade_sight(
+                Place::Live(PlayerId::new(0), ListIndex::new(0)),
+                (&old, &new),
+                keep,
+            )
+            .unwrap();
             let seer = t
                 .spatial
                 .sight
@@ -1495,9 +1534,9 @@ mod tests {
             ));
             let graphics = [300, 301, 302, 303, 304, 400, 402, 403];
             let mut t = one_player(vec![u], vec![old.clone()], &graphics);
-            t.upgrade_hit_points(Place::Live(PlayerId::new(0), 0), (old, new))
+            t.upgrade_hit_points(Place::Live(PlayerId::new(0), ListIndex::new(0)), (old, new))
                 .unwrap();
-            let u = &t.players[0].objects[0];
+            let u = &t.players[0].objects[ListIndex::new(0)];
             (u.life.hp, u.sprite.map(|s| s.graphic.id), u.charge)
         };
         assert_eq!(upgraded(&old, &new, 300), (30.0, Some(400), 3.0));

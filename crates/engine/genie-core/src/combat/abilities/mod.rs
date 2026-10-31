@@ -35,6 +35,7 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::math::fmath;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -191,7 +192,7 @@ impl World {
     /// [`World::movement_damage`]).
     pub(crate) fn abilities(
         &mut self,
-        (id, p, i): (ObjectId, PlayerId, usize),
+        (id, p, i): (ObjectId, PlayerId, ListIndex),
         owner: PlayerId,
         leaves: bool,
     ) -> Result<Vec<Reward>, GenieError> {

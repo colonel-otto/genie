@@ -9,6 +9,7 @@ use crate::map::RestrictionId;
 use crate::map::Tile;
 use crate::movement::PathState;
 use crate::movement::WaypointLevel;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
@@ -395,7 +396,7 @@ fn the_feature_s_costs_of_a_gone_member_are_its_last() {
     t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();
     assert_eq!(costs[..4], [0.0, 9.0, 9.0, 0.0]);
     // 11 leaves the world: its row (9, 0) stays and still gives it the second slot
-    let _ = t.players[1].objects.remove(1).unwrap();
+    let _ = t.players[1].objects.remove(ListIndex::new(1)).unwrap();
     let mut f = Formation::new();
     f.slots = two();
     t.assign_slots_by_variance(&mut f, &g, &mut costs).unwrap();

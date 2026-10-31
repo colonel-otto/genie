@@ -4,6 +4,7 @@ use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, Mover};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::TaskId;
@@ -120,24 +121,29 @@ impl Rig {
         dt: u32,
         f: impl FnOnce(&mut Step<'_>, &mut Unit, Me) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
-        crate::world::tests::in_update(&mut self.t, (PlayerId::new(1), 0), dt, |u, c| {
-            let me = Me {
-                id: u.id,
-                group: None,
-                action_state: state.get(),
-            };
-            f(c, u, me)
-        })
+        crate::world::tests::in_update(
+            &mut self.t,
+            (PlayerId::new(1), ListIndex::new(0)),
+            dt,
+            |u, c| {
+                let me = Me {
+                    id: u.id,
+                    group: None,
+                    action_state: state.get(),
+                };
+                f(c, u, me)
+            },
+        )
     }
 
     /// The villager.
     fn unit(&self) -> &Unit {
-        &self.t.players[1].objects[0]
+        &self.t.players[1].objects[ListIndex::new(0)]
     }
 
     /// The villager to change.
     fn unit_mut(&mut self) -> &mut Unit {
-        &mut self.t.players[1].objects[0]
+        &mut self.t.players[1].objects[ListIndex::new(0)]
     }
 
     /// Its movement state.

@@ -9,6 +9,7 @@
 //! ([`crate::production::refund_master`]).
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FARM;
@@ -233,7 +234,7 @@ impl World {
     /// modelled) would build it too; then the gatherer's ignore list empties (`FUN_141197da0`)
     /// and its slot 0x128 sends it to build the foundation at the spot ([`World::build_task`],
     /// [`World::build_directly`]). True when the foundation was made.
-    pub(crate) fn reseed(&mut self, p: PlayerId, idx: usize) -> Result<bool, GenieError> {
+    pub(crate) fn reseed(&mut self, p: PlayerId, idx: ListIndex) -> Result<bool, GenieError> {
         let unit = &self.players.live(p, idx)?;
         let Some(gather) = unit.actions.gather().copied() else {
             return Ok(false);
@@ -357,7 +358,7 @@ impl World {
     pub(crate) fn reseed_after_walk(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         arrived: bool,
     ) -> Result<(), GenieError> {
         if self.reseed(p, idx)? {

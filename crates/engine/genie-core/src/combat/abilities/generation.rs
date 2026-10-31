@@ -1,6 +1,7 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
 use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -112,7 +113,7 @@ impl World {
     /// who shares with allies ([`crate::gathering::gather::unit::give_load`]).
     pub(super) fn generate(
         &mut self,
-        (p, i): (usize, usize),
+        (p, i): (usize, ListIndex),
         owner: PlayerId,
         master: Own,
         task: &Task,

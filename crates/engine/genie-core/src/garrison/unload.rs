@@ -5,6 +5,7 @@ use crate::commands::unload::{UnloadCommand, UnloadPick};
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::map::Footprint;
 use crate::map::Point;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -155,7 +156,7 @@ impl World {
     pub(super) fn unload_building(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         point: Point,
         pick: UnloadPick,
         sound: bool,
@@ -213,7 +214,7 @@ impl World {
     pub(super) fn drop_out(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         transport: Option<ObjectId>,
         named: Option<ObjectId>,
         last: &mut Option<Point>,
@@ -281,7 +282,7 @@ impl World {
     pub(super) fn unload_order(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         point: Point,
     ) -> Result<(), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
@@ -374,7 +375,7 @@ impl World {
     /// [`TownBell::back_to_work`]: crate::orders::town_bell::TownBell::back_to_work
     pub(crate) fn back_to_work(
         &mut self,
-        from: Option<(PlayerId, usize)>,
+        from: Option<(PlayerId, ListIndex)>,
         id: ObjectId,
     ) -> Result<bool, GenieError> {
         use crate::orders::town_bell::RecordTarget;

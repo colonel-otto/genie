@@ -2,6 +2,7 @@
 //! `UNIT_ORDER`'s cancel of one, five or some.
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::VILLAGER_FEMALE;
 use crate::objects::masters::ids::VILLAGER_MALE;
@@ -30,7 +31,7 @@ impl World {
     /// ([`World::refund_researches`]). Then the interface's `+0xc02` (the local player's event
     /// 0x7d) is left; the entries go, the production list's action goes
     /// ([`World::end_production_action`]), the change counter grows and the total is 0.
-    pub(crate) fn cancel_queue(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn cancel_queue(&mut self, p: PlayerId, idx: ListIndex) -> Result<(), GenieError> {
         let Some(production) = self.players.live(p, idx)?.production.as_ref() else {
             return Ok(());
         };
@@ -92,7 +93,7 @@ impl World {
     pub(super) fn refund_researches(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         e: &crate::production::Entry,
         count: i16,
     ) -> Result<(), GenieError> {
@@ -141,7 +142,7 @@ impl World {
     pub(crate) fn cancel_queued(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         index: u32,
         all: bool,
     ) -> Result<(), GenieError> {
@@ -235,14 +236,14 @@ impl World {
     pub(super) fn cancel_five(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         index: u32,
         e: usize,
     ) -> Result<(), GenieError> {
         fn queue(
             t: &World,
             p: PlayerId,
-            idx: usize,
+            idx: ListIndex,
         ) -> Result<&crate::production::Queue, GenieError> {
             Ok(&t
                 .players
@@ -319,7 +320,7 @@ impl World {
     pub(crate) fn cancel_some(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (master, count): (Option<MasterId>, i16),
         from: i32,
         tech: Option<TechId>,
@@ -393,7 +394,7 @@ impl World {
     pub(crate) fn cancel_tail(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         index: u32,
     ) -> Result<(), GenieError> {
         if self.settings.game_mode != ONE_UNIT_MODE {

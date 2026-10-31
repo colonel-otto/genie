@@ -12,6 +12,7 @@ use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::movement::PathState;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionClass;
@@ -308,7 +309,10 @@ fn a_member_in_place_or_failing_too_often() {
     );
     // a NaN gap is not in place
     let mut t = world();
-    let m = t.players[1].objects[0].body.mover_mut().unwrap();
+    let m = t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap();
     m.moved_at = m.moved_at.with_x(f32::NAN);
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.current_formation.as_mut().unwrap().slots[0].state = SlotState::InPlace;
@@ -334,7 +338,11 @@ fn a_busy_member_stops_and_its_slot_counts_it_there() {
         (SlotState::InPlace, SlotState::InPlace),
     ] {
         let mut t = world();
-        t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::Attack);
+        t.players[1].objects[ListIndex::new(0)]
+            .ai
+            .as_mut()
+            .unwrap()
+            .current_action = Some(ActionKind::Attack);
         let g = t.groups.get_mut(group_id(1)).unwrap();
         g.current_formation.as_mut().unwrap().slots[0].state = before;
         g.members[0].specific_move.consecutive_move_failures = 3;
@@ -447,7 +455,10 @@ fn a_due_slot_takes_its_member() {
     assert_eq!(mover(&t, 10).animated.speed, 0.0);
     assert_eq!(unit(&t, 10).position(), Position::new(5.0, 5.0, 0.0));
     let mut t = world();
-    let m = t.players[1].objects[0].body.mover_mut().unwrap();
+    let m = t.players[1].objects[ListIndex::new(0)]
+        .body
+        .mover_mut()
+        .unwrap();
     m.stats.radius = m.stats.radius.with_z(0.0);
     t.spatial.insert(
         object_id(10),

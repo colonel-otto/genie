@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -372,7 +373,11 @@ impl World {
     /// Slot 0x68 with the master's standing sprite (`+0x470`): the unit's top speed is the
     /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
     /// slice holds it.
-    pub(crate) fn standing_sprite(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn standing_sprite(
+        &mut self,
+        p: PlayerId,
+        idx: ListIndex,
+    ) -> Result<(), GenieError> {
         let master = self.players.live(p, idx)?.life.master_id;
         let standing = self.master(p, master)?.standing_sprite;
         let shown = self.graphics.get(&standing).copied();

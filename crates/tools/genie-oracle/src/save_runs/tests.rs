@@ -9,6 +9,7 @@ use crate::setup::slice;
 use crate::test_ids::object_id;
 use crate::{Decoder, Dumps, Error, TickReport, listed};
 use genie_core::GenieError;
+use genie_core::objects::ListIndex;
 use genie_core::world::{GameState, World};
 use genie_save::Header;
 
@@ -117,11 +118,15 @@ fn stops_and_freezes_are_reported_by_their_update() {
     let mut turns = slice(&save(), None);
     let player = &mut turns.players[1];
     player.stopped = true;
-    player.unsupported = Some((5, 0, GenieError::unsupported("a test's stop")));
+    player.unsupported = Some((
+        5,
+        ListIndex::new(0),
+        GenieError::unsupported("a test's stop"),
+    ));
     player
         .freezes
         .push((6, object_id(40), GenieError::unsupported("a test's freeze")));
-    player.objects[0].stopped = true;
+    player.objects[ListIndex::new(0)].stopped = true;
     let mut report = TickReport::default();
     assert_eq!(
         stops(player, 1, Some(5), &mut report),

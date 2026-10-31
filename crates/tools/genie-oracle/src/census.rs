@@ -3,6 +3,7 @@
 //! and the first recorded checkpoint whose 11-word block differs; together over many recordings
 //! they rank what blocks the replays. Dev only.
 
+use genie_core::objects::ListIndex;
 use genie_rec::de::{self, Op};
 
 use genie_core::world::World;
@@ -27,7 +28,7 @@ pub struct CensusStop {
     /// The update (1-based, as the slice counts its ticks).
     pub update: u32,
     /// The index of the object in the player's list.
-    pub object: usize,
+    pub object: ListIndex,
     /// What the slice does not model: the error's reason.
     pub reason: &'static str,
     /// Where the engine raised it (`file:line:column`).
@@ -39,7 +40,7 @@ pub struct CensusStop {
 impl CensusStop {
     /// The stop of `why` at `update` on the object at `object`.
     #[must_use]
-    pub fn of(update: u32, object: usize, why: &genie_core::GenieError) -> Self {
+    pub fn of(update: u32, object: ListIndex, why: &genie_core::GenieError) -> Self {
         Self {
             update,
             object,

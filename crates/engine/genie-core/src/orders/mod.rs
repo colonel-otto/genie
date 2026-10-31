@@ -12,6 +12,7 @@ use crate::GenieError;
 use crate::groups::GroupId;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::ObjectState;
@@ -138,8 +139,8 @@ const ATTACK_TASK: ActionType = ActionType::named(7);
 /// Where an object is: its player and its index in the live or the sleeping list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Place {
-    Live(PlayerId, usize),
-    Sleeping(PlayerId, usize),
+    Live(PlayerId, ListIndex),
+    Sleeping(PlayerId, ListIndex),
 }
 
 impl Place {
@@ -331,8 +332,8 @@ impl World {
     /// the live slot [`World::place`] finds.
     pub(crate) fn live_slot(
         &self,
-        (p, i, id): (PlayerId, usize, ObjectId),
-    ) -> Option<(PlayerId, usize)> {
+        (p, i, id): (PlayerId, ListIndex, ObjectId),
+    ) -> Option<(PlayerId, ListIndex)> {
         let held = self
             .players
             .get(p.index())

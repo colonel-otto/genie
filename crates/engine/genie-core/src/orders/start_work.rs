@@ -22,6 +22,7 @@ use crate::map::Rect;
 use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -80,8 +81,8 @@ impl World {
     /// The pass without the game's farm setting (the player's nearest unworked farm), a fishing
     /// ship's own search (its unit AI's slot 0x80), and what the work command does not model.
     pub(crate) fn start_work(&mut self, p: PlayerId) -> Result<(), GenieError> {
-        let mut i = 0;
-        while i < self.players.player(p)?.objects.len() {
+        let mut i = ListIndex::FIRST;
+        while self.players.player(p)?.objects.holds(i) {
             let unit = &self.players.live(p, i)?;
             let master = unit.master(&self.masters, p)?;
             let class = master.class;
@@ -93,17 +94,17 @@ impl World {
                     crate::construction::build::CART_TASK,
                 )?;
             let Some(start) = start_of(class, building, cart_task) else {
-                i += 1;
+                i = i.next();
                 continue;
             };
             let idle = unit.ai.as_ref().is_some_and(|ai| ai.orders.is_empty());
             if !idle || !unit.interruptible()? {
-                i += 1;
+                i = i.next();
                 continue;
             }
             if start == Start::CartSearch {
                 self.cart_work_search(p, i)?;
-                i += 1;
+                i = i.next();
                 continue;
             }
             if !self.settings.walkable_farms {
@@ -138,7 +139,7 @@ impl World {
                 };
                 self.order_work(p, i, &work)?;
             }
-            i += 1;
+            i = i.next();
         }
         Ok(())
     }
@@ -147,7 +148,7 @@ impl World {
     fn farm_under(
         &self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         class: ClassId,
     ) -> Result<Option<ObjectId>, GenieError> {
         let at = self.players.live(p, i)?.position();
@@ -168,7 +169,11 @@ impl World {
 
     /// The unit AI's `ClosestResourceObject` for each gather group (no drop site, any workers,
     /// `param_6` 2, no point): the answer at the least distance, the first group at a tie.
-    fn closest_of_groups(&mut self, p: PlayerId, i: usize) -> Result<Option<ObjectId>, GenieError> {
+    fn closest_of_groups(
+        &mut self,
+        p: PlayerId,
+        i: ListIndex,
+    ) -> Result<Option<ObjectId>, GenieError> {
         let mut best = (NO_DISTANCE, None);
         for kind in GROUPS {
             let (id, distance) = self.resource_search_from(p, i, kind)?;
@@ -217,7 +222,7 @@ impl World {
     fn resource_search_from(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         kind: GatherGroup,
     ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
         let owner = self.players.player(p)?;

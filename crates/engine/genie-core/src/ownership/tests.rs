@@ -1,6 +1,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+use crate::objects::ListIndex;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -18,7 +19,7 @@ use crate::world::tests::{forage_world, in_update};
 /// order there.
 fn walking_forager() -> World {
     let mut t = forage_world();
-    let u = &mut t.players[1].objects[0];
+    let u = &mut t.players[1].objects[ListIndex::new(0)];
     u.actions.set_move_to(Some(MoveToAction {
         sprite: None,
         state: MoveTo::Moving,
@@ -44,7 +45,7 @@ fn stopped(mut t: World, class: ClassId) -> Result<(Unit, Vec<i32>), GenieError>
     for b in &mut t.players[0].objects {
         b.workers = 1;
     }
-    let released = in_update(&mut t, (PlayerId::new(1), 0), 50, |u, c| {
+    let released = in_update(&mut t, (PlayerId::new(1), ListIndex::new(0)), 50, |u, c| {
         u.capture_stop(c, class)?;
         let gone = OthersRef::of(&c.w.players, c.player)
             .unwrap()
@@ -52,7 +53,10 @@ fn stopped(mut t: World, class: ClassId) -> Result<(Unit, Vec<i32>), GenieError>
             .filter(|(_, b)| b.workers == 0);
         Ok(gone.map(|(_, b)| b.id.get()).collect())
     })?;
-    Ok((t.players[1].objects.swap_remove(0).unwrap(), released))
+    Ok((
+        t.players[1].objects.swap_remove(ListIndex::new(0)).unwrap(),
+        released,
+    ))
 }
 
 /// `FUN_14108c050` without an Artifact: the action list goes (the `MoveTo`'s teardown stops the
@@ -83,7 +87,11 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
         (Some(OrderKind::Move), Some(object_id(600)))
     );
     let mut t = walking_forager();
-    t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::HeroPower);
+    t.players[1].objects[ListIndex::new(0)]
+        .ai
+        .as_mut()
+        .unwrap()
+        .current_action = Some(ActionKind::HeroPower);
     let (u, _) = stopped(t, class::VILLAGER).unwrap();
     assert_eq!(
         kept(u.ai.as_ref().unwrap()),
@@ -103,7 +111,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
         ..Artifact::new(false, None)
     };
     let mut t = forage_world();
-    t.players[1].objects[0]
+    t.players[1].objects[ListIndex::new(0)]
         .actions
         .set_artifact(Some(artifact()));
     let (u, released) = stopped(t, class::LIVESTOCK).unwrap();
@@ -120,7 +128,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     assert_eq!(released, [600]);
     assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
     let mut t = forage_world();
-    let u = &mut t.players[1].objects[0];
+    let u = &mut t.players[1].objects[ListIndex::new(0)];
     u.actions.set_artifact(Some(artifact()));
     u.body.put_mover(None);
     assert_eq!(

@@ -7,6 +7,7 @@ use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::master_type::BUILDING;
@@ -21,21 +22,21 @@ use crate::world::slots::PlayerSlots;
 use crate::world::{BLOCKS_RESEARCH, World};
 
 impl World {
-    /// Whether the player's object `i` takes a gather point: its master garrisons (`+0xb53`) or
-    /// the player trains a unit there (`FUN_141625a20`'s count with no object,
-    /// [`World::trainable_count`]). The test SET GATHER POINT and SET GATHER STATE make.
     /// The index of object `id` in player `player`'s live list; none for a cleared id or an
     /// object the player does not hold.
     fn position_of_id(
         &self,
         player: PlayerId,
         id: Option<ObjectId>,
-    ) -> Result<Option<usize>, GenieError> {
+    ) -> Result<Option<ListIndex>, GenieError> {
         let held = self.players.player(player)?;
         Ok(id.and_then(|id| held.objects.position_of(id)))
     }
 
-    fn takes_gather_point(&self, player: PlayerId, i: usize) -> Result<bool, GenieError> {
+    /// Whether the player's object `i` takes a gather point: its master garrisons (`+0xb53`) or
+    /// the player trains a unit there (`FUN_141625a20`'s count with no object,
+    /// [`World::trainable_count`]). The test SET GATHER POINT and SET GATHER STATE make.
+    fn takes_gather_point(&self, player: PlayerId, i: ListIndex) -> Result<bool, GenieError> {
         let master = self
             .players
             .live(player, i)?
@@ -399,7 +400,7 @@ impl World {
     pub(crate) fn queue_research(
         &mut self,
         player: PlayerId,
-        i: usize,
+        i: ListIndex,
         tech: TechId,
         shift: bool,
     ) -> Result<bool, GenieError> {

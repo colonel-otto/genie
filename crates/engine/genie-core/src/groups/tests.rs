@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -663,7 +664,8 @@ fn a_group_already_on_its_target_only_notes_the_place() {
         t.command_attack(group_id(1), building_60(), attack_on(None))
             .unwrap()
     );
-    t.players[2].objects[0].body = crate::objects::layers::Body::at(Position::new(41.0, 45.0, 0.0));
+    t.players[2].objects[ListIndex::new(0)].body =
+        crate::objects::layers::Body::at(Position::new(41.0, 45.0, 0.0));
     assert!(
         !t.command_attack(group_id(1), building_60(), attack_on(None))
             .unwrap()
@@ -1197,7 +1199,7 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
     ];
     let world = |target_class: ClassId, target_master: MasterId| {
         let mut t = attack_world(&units);
-        t.players[2].objects[0].life.master_id = target_master;
+        t.players[2].objects[ListIndex::new(0)].life.master_id = target_master;
         for masters in &mut t.masters {
             let mut b = building_master();
             b.id = target_master;

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -11,6 +12,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
+use crate::objects::object_list::NOTHING_PUSHED;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
@@ -21,9 +23,6 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
-
-/// A live list that holds nothing right after a push.
-const NOTHING_PUSHED: GenieError = GenieError::unreachable("a live list empty right after a push");
 
 impl World {
     /// Slot 0x178 on the object an action of `by` takes as its target, outside an update
@@ -59,7 +58,11 @@ impl World {
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.
-    pub(crate) fn releaser(&self, player: PlayerId, idx: usize) -> Result<Releaser, GenieError> {
+    pub(crate) fn releaser(
+        &self,
+        player: PlayerId,
+        idx: ListIndex,
+    ) -> Result<Releaser, GenieError> {
         let u = self.players.live(player, idx)?;
         Ok(Releaser {
             id: u.id,
@@ -79,7 +82,7 @@ impl World {
     pub(crate) fn remember_order(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (order, action): (Option<OrderKind>, Option<ActionKind>),
     ) -> Result<(), GenieError> {
         let u = &self.players.live(player, idx)?;
@@ -118,7 +121,11 @@ impl World {
     /// counted builder leaves its building (`FUN_140aadbf0` before its base teardown,
     /// [`World::leave_builders`]), then the targets go (slot 0x180, [`World::release`]). A
     /// building's production is a list of its own, which stays.
-    pub(crate) fn clear_actions(&mut self, player: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn clear_actions(
+        &mut self,
+        player: PlayerId,
+        idx: ListIndex,
+    ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx)?;
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
         self.players.live_mut(player, idx)?.clear_own_actions(
@@ -165,7 +172,7 @@ impl World {
     pub(super) fn transform_building(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         new: MasterId,
     ) -> Result<(), GenieError> {
         self.change_master(player, idx, new)?;
@@ -185,7 +192,11 @@ impl World {
     /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
     /// those its count finds, [`World::shut_in_gate`]) and takes the world time plus 1 as its
     /// last move time (`+0x870`).
-    pub(crate) fn toggle_gate(&mut self, player: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn toggle_gate(
+        &mut self,
+        player: PlayerId,
+        idx: ListIndex,
+    ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
         if unit.gate.is_some_and(|g| g.other_masters) {
             return Err(GenieError::unsupported(
@@ -282,7 +293,7 @@ impl World {
     pub(crate) fn change_master(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         new: MasterId,
     ) -> Result<(), GenieError> {
         self.clear_actions(player, idx)?;

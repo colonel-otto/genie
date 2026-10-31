@@ -430,6 +430,7 @@ mod tests {
     use crate::map::GridSize;
     use crate::map::Position;
     use crate::movement::PathState;
+    use crate::objects::ListIndex;
     use crate::objects::ObjectId;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
@@ -563,7 +564,10 @@ mod tests {
         asleep.life.master_id = master_id(4);
         t.players[1].sleeping.push(asleep);
         assert!(t.add_to_group(group_id(1), object_id(13)).unwrap());
-        assert_eq!(t.players[1].sleeping[0].group.id, Some(group_id(1)));
+        assert_eq!(
+            t.players[1].sleeping[ListIndex::new(0)].group.id,
+            Some(group_id(1))
+        );
         let g = t.groups.get(group_id(1)).unwrap();
         assert_eq!(g.members.last().map(|m| m.id), Some(object_id(13)));
         assert_eq!(
@@ -651,7 +655,7 @@ mod tests {
             (g.motion.lead, g.flags & 0x1_0002),
             (Some(object_id(10)), 0x1_0002)
         );
-        let u = &t.players[1].objects[1];
+        let u = &t.players[1].objects[ListIndex::new(1)];
         assert_eq!(u.group.id, None);
         let m = u.body.mover().unwrap();
         assert_eq!(m.paths[0].state, PathState::Idle);
@@ -708,16 +712,24 @@ mod tests {
         for u in &mut t.players[1].objects {
             u.ai = Some(crate::unit_ai::UnitAi::default());
         }
-        let asleep = t.players[1].objects.remove(2).unwrap();
+        let asleep = t.players[1].objects.remove(ListIndex::new(2)).unwrap();
         t.players[1].sleeping.push(asleep);
         t.stances_state(group_id(1), FormationKind::USER_DEFINED)
             .unwrap();
         assert_eq!(
-            t.players[1].sleeping[0].ai.as_ref().unwrap().formation_type,
+            t.players[1].sleeping[ListIndex::new(0)]
+                .ai
+                .as_ref()
+                .unwrap()
+                .formation_type,
             FormationKind::USER_DEFINED
         );
         assert_eq!(
-            t.players[1].objects[0].ai.as_ref().unwrap().formation_type,
+            t.players[1].objects[ListIndex::new(0)]
+                .ai
+                .as_ref()
+                .unwrap()
+                .formation_type,
             FormationKind::USER_DEFINED
         );
     }
@@ -787,11 +799,16 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(
-            t.players[1].objects[1].body.mover().unwrap().paths[0].state,
+            t.players[1].objects[ListIndex::new(1)]
+                .body
+                .mover()
+                .unwrap()
+                .paths[0]
+                .state,
             PathState::Walking
         );
         let mut t = three();
-        let _ = t.players[1].objects.remove(2).unwrap();
+        let _ = t.players[1].objects.remove(ListIndex::new(2)).unwrap();
         assert!(
             t.remove_unit(group_id(1), object_id(12), None, false)
                 .unwrap()

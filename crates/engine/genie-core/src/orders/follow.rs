@@ -5,6 +5,7 @@ use crate::gathering::hunt::HUNT;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -183,7 +184,7 @@ impl World {
         &mut self,
         loose: &[ObjectId],
         i: usize,
-    ) -> Result<(PlayerId, usize), GenieError> {
+    ) -> Result<(PlayerId, ListIndex), GenieError> {
         let Some(Place::Live(p, idx)) = self.place(*loose.checked(i)?) else {
             return Err(GenieError::unsupported(
                 "a FOLLOW of a sleeping object of a type of 30 or more",
@@ -291,7 +292,7 @@ impl World {
     pub(crate) fn move_to_object(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
     ) -> Result<(), GenieError> {
@@ -316,7 +317,7 @@ impl World {
     pub(crate) fn move_to_object_with(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
         a14: bool,
@@ -384,7 +385,7 @@ impl World {
     fn start_object_move(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, t_state): (ObjectId, crate::objects::ObjectState),
         livestock: bool,
     ) -> Result<bool, GenieError> {
@@ -431,7 +432,7 @@ impl World {
     pub(super) fn head_takes_move(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: Option<ObjectId>,
         point: Position,
     ) -> Result<bool, GenieError> {
@@ -482,7 +483,7 @@ impl World {
     pub(super) fn point_taken(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         point: Position,
     ) -> Result<bool, GenieError> {
         let by = self.releaser(player, idx)?;

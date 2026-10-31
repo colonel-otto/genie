@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::commands::Command;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
@@ -127,14 +128,14 @@ impl World {
         (dt, turn): (u32, Option<u32>),
     ) -> Result<(), GenieError> {
         // the loop's count, which goes on past each object but one that leaves
-        let mut i = 0;
-        while i < self.players.player(p)?.objects.len() {
+        let mut i = ListIndex::FIRST;
+        while self.players.player(p)?.objects.holds(i) {
             let player = self.players.player(p)?;
             let unit = player.live(i)?;
             let stopped = player.stopped || unit.stopped;
             if stopped && unit.life.is_alive() {
                 self.spatial.freeze(unit.id);
-                i += 1;
+                i = i.next();
                 continue;
             }
             let (id, master) = (unit.id, unit.life.master_id);
@@ -142,10 +143,14 @@ impl World {
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id = id.get(), master = %master)
                     .entered();
             match self.step_object((p, i), (dt, turn, true), Unit::update) {
-                Ok(s) => i += usize::from(self.file_step(p, s.slot, s.outcome)?),
+                Ok(s) => {
+                    if self.file_step(p, s.slot, s.outcome)? {
+                        i = i.next();
+                    }
+                }
                 Err(e) => {
                     self.freeze_object(p, (i, id), e)?;
-                    i += 1;
+                    i = i.next();
                 }
             }
         }
@@ -165,7 +170,7 @@ impl World {
     pub(super) fn file_step(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         outcome: Outcome,
     ) -> Result<bool, GenieError> {
         let player = self.players.player_mut(p)?;
@@ -235,7 +240,7 @@ impl World {
     fn hand_over_units(
         &mut self,
         p: PlayerId,
-        i: usize,
+        i: ListIndex,
         taken: Captured,
     ) -> Result<(), GenieError> {
         let Captured {
@@ -288,7 +293,7 @@ impl World {
     fn freeze_object(
         &mut self,
         p: PlayerId,
-        (i, id): (usize, ObjectId),
+        (i, id): (ListIndex, ObjectId),
         e: GenieError,
     ) -> Result<(), GenieError> {
         let player = self.players.player_mut(p)?;

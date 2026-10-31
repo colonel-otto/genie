@@ -3,6 +3,7 @@ use crate::gathering::make::MakeState;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassAmount;
@@ -287,7 +288,7 @@ fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
     let mut stream = t.streams.get(Stream::Player).clone();
     t.spawn_at(PlayerId::new(1), (Some(VILLAGER), Some(TC)), 2)
         .unwrap();
-    let made: Vec<(MasterId, Option<ObjectId>)> = t.players[1].objects[before..]
+    let made: Vec<(MasterId, Option<ObjectId>)> = t.players[1].objects.as_slice()[before..]
         .iter()
         .map(|u| (u.life.master_id, u.life.inside))
         .collect();
@@ -439,7 +440,7 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
         .unwrap();
     let hps: Vec<i16> = t.masters[0].iter().map(|m| m.hit_points).collect();
     assert_eq!(hps, [100, 70, 70]);
-    assert_eq!(t.players[0].objects[1].life.hp, 35.0);
+    assert_eq!(t.players[0].objects[ListIndex::new(1)].life.hp, 35.0);
 }
 
 /// `FUN_141614f40`'s hooks: a building's volleys lose the shares of the combat units inside
@@ -478,7 +479,10 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
         t.masters[0].get(master_id(4)).unwrap().weapons,
         [ClassAmount::new(3, 6)]
     );
-    assert_eq!(t.players[0].objects[0].firepower, 2.0 - 0.8 + 1.2);
+    assert_eq!(
+        t.players[0].objects[ListIndex::new(0)].firepower,
+        2.0 - 0.8 + 1.2
+    );
 }
 
 /// The class path (`FUN_14165a000`): a building of the class takes the change, then its
@@ -722,7 +726,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     assert_eq!(sight(&t), six);
     // off the map: the circle stays
     let mut t = world();
-    t.players[0].objects[0].life.state = ObjectState::Foundation;
+    t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Foundation;
     t.do_effect(PlayerId::new(0), &[attribute(0, -1, 11, 1, 6.0)], None)
         .unwrap();
     assert_eq!(sight(&t), two);
@@ -775,8 +779,14 @@ fn a_master_s_new_speed_reaches_its_units_top_speed_by_their_sprites() {
     t.master_followers(PlayerId::new(0), master_id(4), a::MOVEMENT_SPEED)
         .unwrap();
     let speeds = |u: &Unit| u.body.mover().map(|m| (m.stats.base, m.stats.speed));
-    assert_eq!(speeds(&t.players[0].objects[0]), Some((1.5, 3.0)));
-    assert_eq!(speeds(&t.players[0].objects[1]), Some((1.5, 1.5)));
+    assert_eq!(
+        speeds(&t.players[0].objects[ListIndex::new(0)]),
+        Some((1.5, 3.0))
+    );
+    assert_eq!(
+        speeds(&t.players[0].objects[ListIndex::new(1)]),
+        Some((1.5, 1.5))
+    );
 }
 
 /// What the slice keeps beside a master follows its change: its objects' (live and asleep)
@@ -857,10 +867,16 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     }
     let follows = |u: &Unit| (u.life.dying_sprite, u.life.death_spawn, u.life.remains);
     let p = &t.players[0];
-    assert_eq!(follows(&p.objects[0]), (Some(7), true, Some(master_id(9))));
-    assert_eq!(follows(&p.sleeping[0]), (Some(7), true, Some(master_id(9))));
-    assert_eq!(follows(&p.objects[1]), (None, false, None));
-    let c = p.objects[0].construction.unwrap();
+    assert_eq!(
+        follows(&p.objects[ListIndex::new(0)]),
+        (Some(7), true, Some(master_id(9)))
+    );
+    assert_eq!(
+        follows(&p.sleeping[ListIndex::new(0)]),
+        (Some(7), true, Some(master_id(9)))
+    );
+    assert_eq!(follows(&p.objects[ListIndex::new(1)]), (None, false, None));
+    let c = p.objects[ListIndex::new(0)].construction.unwrap();
     assert_eq!(c.build_time, 33);
     assert_eq!(
         c.record,
@@ -877,7 +893,10 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     t.masters[0].get_mut(master_id(4)).unwrap().death_sprite = -1;
     t.master_followers(PlayerId::new(0), master_id(4), a::DYING_GRAPHIC)
         .unwrap();
-    assert_eq!(t.players[0].objects[0].life.dying_sprite, None);
+    assert_eq!(
+        t.players[0].objects[ListIndex::new(0)].life.dying_sprite,
+        None
+    );
 }
 
 /// A speed's change reaches what a unit of the master moves with (the game reads its master).
@@ -898,7 +917,11 @@ fn a_speed_change_reaches_the_units_movement() {
     t.masters = vec![Masters::new([villager])];
     t.do_effect(PlayerId::new(0), &[attribute(5, -1, 4, 5, 1.1)], None)
         .unwrap();
-    let s = t.players[0].objects[0].body.mover().unwrap().stats;
+    let s = t.players[0].objects[ListIndex::new(0)]
+        .body
+        .mover()
+        .unwrap()
+        .stats;
     // no graphics: the sprites' factors are 0, the speeds the master's
     let speed = 0.8_f32 * 1.1;
     assert_eq!(s.speed, speed);
@@ -908,7 +931,11 @@ fn a_speed_change_reaches_the_units_movement() {
         t.do_effect(PlayerId::new(0), &[attribute(5, -1, 4, 5, 1.1)], None)
             .is_err()
     );
-    let stats = t.players[0].objects[0].body.mover().unwrap().stats;
+    let stats = t.players[0].objects[ListIndex::new(0)]
+        .body
+        .mover()
+        .unwrap()
+        .stats;
     assert_eq!(stats.speed, speed);
 }
 
@@ -973,7 +1000,7 @@ fn a_farm_food_change_grows_the_farms_food() {
     assert_eq!(t.players[0].attributes[36], 250.0);
     // (175 / 175)^1 × 75 + 175 − 75
     assert_eq!(
-        t.players[0].objects[0]
+        t.players[0].objects[ListIndex::new(0)]
             .actions
             .make()
             .copied()
@@ -1212,7 +1239,7 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
     t.players[0].objects.push(unit_of(1, master_id(74), 45.0));
     t.do_effect(PlayerId::new(0), &[attribute(3, 74, 75, -1, 0.0)], None)
         .unwrap();
-    let u = &t.players[0].objects[0];
+    let u = &t.players[0].objects[ListIndex::new(0)];
     assert_eq!((u.life.master_id, u.life.hp), (master_id(74), 50.0));
     assert_eq!(t.masters[0].get(master_id(74)).unwrap().hit_points, 50);
 }
@@ -1237,7 +1264,7 @@ fn spawns_and_cost_entries() {
     t.masters = vec![Masters::new([tc, serjeant])];
     t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
         .unwrap();
-    t.players[0].objects[0].life.state = ObjectState::Alive;
+    t.players[0].objects[ListIndex::new(0)].life.state = ObjectState::Alive;
     assert!(
         t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
             .is_err()
@@ -1702,7 +1729,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
     t.load_trackers().unwrap();
     t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 71, 301.0)], None)
         .unwrap();
-    let sprite = |i: usize| {
+    let sprite = |i: ListIndex| {
         t.players[0].objects[i]
             .sprite
             .as_ref()
@@ -1714,7 +1741,11 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
     );
     // the unit with an action leaves its sprite to the action (an Explore holds none)
     assert_eq!(
-        (sprite(0), sprite(1), sprite(2)),
+        (
+            sprite(ListIndex::new(0)),
+            sprite(ListIndex::new(1)),
+            sprite(ListIndex::new(2))
+        ),
         (Some(301), Some(300), Some(300))
     );
 }
@@ -1794,7 +1825,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 40, 1.0)], None)
             .is_err()
     );
-    t.players[0].objects[1].group.id = None;
+    t.players[0].objects[ListIndex::new(1)].group.id = None;
     t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 40, 1.0)], None)
         .unwrap();
 }

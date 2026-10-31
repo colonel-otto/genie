@@ -3,6 +3,7 @@
 
 use genie_core::map::GridSize;
 use genie_core::map::Tile;
+use genie_core::objects::ListIndex;
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
@@ -406,7 +407,9 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
 /// Every player stops on `e`, which the slice does not model of the save.
 fn stop_all(turns: &mut World, e: &genie_core::GenieError) {
     for p in &mut turns.players {
-        let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
+        let _ = p
+            .unsupported
+            .get_or_insert_with(|| (0, ListIndex::new(0), e.clone()));
         p.stopped = true;
     }
 }

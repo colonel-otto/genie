@@ -5,6 +5,7 @@ use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -56,7 +57,7 @@ impl World {
     pub(super) fn keep_attack(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: Option<ObjectId>,
         filter: Option<ActionType>,
         point: Position,
@@ -85,7 +86,7 @@ impl World {
     fn tell_of_attack(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point): (Option<ObjectId>, Position),
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -120,7 +121,7 @@ impl World {
     /// # Errors
     ///
     /// A unit or a master the world does not hold.
-    fn garrison_actor(&self, player: PlayerId, idx: usize) -> Result<Actor<'_>, GenieError> {
+    fn garrison_actor(&self, player: PlayerId, idx: ListIndex) -> Result<Actor<'_>, GenieError> {
         let owner = self.players.player(player)?;
         let unit = owner.live(idx)?;
         Ok(Actor {
@@ -140,7 +141,7 @@ impl World {
     pub(crate) fn garrison_task_found(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
     ) -> Result<bool, GenieError> {
@@ -173,7 +174,7 @@ impl World {
     pub(super) fn carried_resource_test(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         task: &crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
         let class = self
@@ -207,7 +208,7 @@ impl World {
     pub(super) fn work_command(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: &Work,
     ) -> Result<(), GenieError> {
         let Work {
@@ -273,7 +274,7 @@ impl World {
     pub(super) fn work_task(
         &self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point): (Option<ObjectId>, Position),
         filter: Option<ActionType>,
     ) -> Result<Option<(MasterId, crate::objects::masters::Task)>, GenieError> {
@@ -327,7 +328,7 @@ impl World {
     pub(super) fn retake_task(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point, clears): (Option<ObjectId>, Position, bool),
         task: &crate::objects::masters::Task,
         same_master: bool,
@@ -400,7 +401,7 @@ impl World {
     pub(super) fn retarget_hunt_work(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point, clears): (ObjectId, Position, bool),
     ) -> Result<(), GenieError> {
         let t = self.task_target(target, 0)?;
@@ -432,7 +433,7 @@ impl World {
     pub(super) fn retarget_gather_work(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point, clears): (ObjectId, Position, bool),
     ) -> Result<bool, GenieError> {
         let t = self.task_target(target, 0)?;
@@ -470,7 +471,7 @@ impl World {
     pub(super) fn start_task(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point): (Option<ObjectId>, Position),
         task: &crate::objects::masters::Task,
         (clears, notified): (bool, bool),
@@ -501,7 +502,7 @@ impl World {
     fn start_object_task(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point): (ObjectId, Position),
         task: &crate::objects::masters::Task,
         clears: bool,
@@ -543,7 +544,7 @@ impl World {
     pub(super) fn work_move(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: Option<ObjectId>,
         point: Position,
         (clears, notified): (bool, bool),
@@ -607,7 +608,7 @@ impl World {
     pub(crate) fn find_work_task(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         filter: Option<ActionType>,
         change: bool,

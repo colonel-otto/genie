@@ -6,6 +6,7 @@ use crate::commands::ONE_UNIT_AGE;
 use crate::commands::queue::QueueCommand;
 use crate::commands::research::ResearchCommand;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -305,7 +306,7 @@ impl World {
     pub(crate) fn queue_at(
         &mut self,
         player: PlayerId,
-        i: usize,
+        i: ListIndex,
         unit: Option<MasterId>,
         count: u16,
         tech: Option<TechId>,
@@ -361,7 +362,7 @@ impl World {
     pub(crate) fn queue_units(
         &mut self,
         player: PlayerId,
-        i: usize,
+        i: ListIndex,
         master: MasterId,
         count: i16,
         button: i32,
@@ -429,7 +430,7 @@ impl World {
     pub(super) fn queue_techs(
         &mut self,
         player: PlayerId,
-        i: usize,
+        i: ListIndex,
         (master, tech): (Option<MasterId>, TechId),
         count: i16,
         button: i32,
@@ -502,7 +503,7 @@ impl World {
     pub(super) fn new_entry(
         &mut self,
         player: PlayerId,
-        i: usize,
+        i: ListIndex,
         (master, tech): (Option<MasterId>, Option<TechId>),
         n: i16,
         button: i32,

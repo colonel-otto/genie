@@ -6,6 +6,7 @@ use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::GatherGroup;
@@ -75,7 +76,11 @@ impl World {
     /// the cart at `idx` of player `p`: [`World::cart_find`], then [`World::cart_work`]. The
     /// completion runs it ([`World::cart_search`]), and so does the Empire Wars start
     /// ([`crate::orders::start_work`]).
-    pub(crate) fn cart_work_search(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
+    pub(crate) fn cart_work_search(
+        &mut self,
+        p: PlayerId,
+        idx: ListIndex,
+    ) -> Result<(), GenieError> {
         let found = self.cart_find(p, idx)?;
         self.cart_work(p, idx, found)
     }
@@ -89,7 +94,7 @@ impl World {
     pub(crate) fn cart_find(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
     ) -> Result<(Option<ObjectId>, Position), GenieError> {
         const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
         let id = self.players.live(p, idx)?.id;
@@ -185,7 +190,7 @@ impl World {
     pub(crate) fn cart_work(
         &mut self,
         p: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (target, point): (Option<ObjectId>, Position),
     ) -> Result<(), GenieError> {
         let work = crate::orders::Work {

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Rect;
 use crate::map::spatial::{RecordId, Spatial, WalkQuery};
+use crate::objects::ListIndex;
 use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
@@ -81,11 +82,11 @@ impl World {
     /// Player `q`'s gate list (`+0x1360`, `FUN_141616200` adds to its front): its live objects
     /// of class 39 whose master transforms ([`crate::objects::masters::BuildingMaster::transform_unit`]),
     /// newest first.
-    pub(crate) fn gate_list(&self, q: PlayerId) -> Result<Vec<usize>, GenieError> {
+    pub(crate) fn gate_list(&self, q: PlayerId) -> Result<Vec<ListIndex>, GenieError> {
         let masters = self.masters.get(q.index());
         let owner = self.players.player(q)?;
         let mut gates = Vec::new();
-        for i in (0..owner.objects.len()).rev() {
+        for i in owner.objects.places().rev() {
             let m = owner.objects[i].master_in(masters)?;
             if m.class == class::GATE
                 && m.building
@@ -105,7 +106,7 @@ impl World {
     pub(crate) fn gate_passes(
         &self,
         q: PlayerId,
-        i: usize,
+        i: ListIndex,
         p: PlayerId,
     ) -> Result<bool, GenieError> {
         let gate = self.players.live(q, i)?;

@@ -8,6 +8,7 @@
 //! ([`OthersRef::foreign`]) or anyone's ([`OthersRef::find`]), never for a list position.
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::lines::UnitLines;
@@ -360,7 +361,11 @@ impl World {
     ///
     /// Its stand-in left the list: the unit goes to the list's end; a stand-in itself (its
     /// object lost in a lend, [`crate::world::step::Step::lend`]) goes nowhere.
-    pub(crate) fn put_back_own(&mut self, p: PlayerId, unit: Unit) -> Result<usize, GenieError> {
+    pub(crate) fn put_back_own(
+        &mut self,
+        p: PlayerId,
+        unit: Unit,
+    ) -> Result<ListIndex, GenieError> {
         if unit.id == TAKEN_OUT {
             return Err(GenieError::unreachable(
                 "a stand-in put back for its object",
@@ -401,9 +406,9 @@ mod tests {
     /// holds 20 and, again, 12.
     fn world() -> (ObjectList, [Player; 1], [Player; 1]) {
         let mut own = ObjectList::from(vec![unit(10), Unit::taken_out(), unit(12)]);
-        own[2].life.hp = 5.0;
+        own[ListIndex::new(2)].life.hp = 5.0;
         let mut theirs = player(&[20, 12], &[]);
-        theirs.objects[1].life.hp = 7.0;
+        theirs.objects[ListIndex::new(1)].life.hp = 7.0;
         (own, [player(&[1], &[2])], [theirs])
     }
 
@@ -519,7 +524,11 @@ mod tests {
             Some(PlayerId::new(2))
         );
         assert_eq!(others.view().foreign(object_id(10)).map(|(q, _)| q), None);
-        assert_eq!(own[1].id, TAKEN_OUT, "the stand-in stays as it was");
+        assert_eq!(
+            own[ListIndex::new(1)].id,
+            TAKEN_OUT,
+            "the stand-in stays as it was"
+        );
     }
 
     #[test]
@@ -555,7 +564,7 @@ mod tests {
         use crate::players::tracker::{Tracker, key};
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
-        asleep[0].life.goto_sleep = true;
+        asleep[ListIndex::new(0)].life.goto_sleep = true;
         let lines = UnitLines::default();
         let k = key(None, &lines, ids::ID_0);
         let mut tracker = Tracker::default();

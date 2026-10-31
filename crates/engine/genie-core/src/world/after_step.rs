@@ -2,6 +2,7 @@
 //! applied to the world in the order the game's update makes them.
 
 use crate::GenieError;
+use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
@@ -16,7 +17,7 @@ pub(super) struct Stepped {
     pub(super) outcome: Outcome,
     /// The object's slot in its owner's live list after the step: a removal that put the list's
     /// last object in another's slot (`FUN_1411664a0`) may have moved it.
-    pub(super) slot: usize,
+    pub(super) slot: ListIndex,
 }
 
 impl World {
@@ -33,7 +34,7 @@ impl World {
     /// The step's, or the first of what follows it; the object's outputs after it do not apply.
     pub(super) fn step_object(
         &mut self,
-        (p, i): (PlayerId, usize),
+        (p, i): (PlayerId, ListIndex),
         (dt, turn, full): (u32, Option<u32>, bool),
         f: impl FnOnce(&mut Unit, &mut Step<'_>) -> Result<Outcome, GenieError>,
     ) -> Result<Stepped, GenieError> {
@@ -53,7 +54,7 @@ impl World {
     /// # Errors
     ///
     /// The object left the list in its own step.
-    fn slot_of(&self, p: PlayerId, id: ObjectId) -> Result<usize, GenieError> {
+    fn slot_of(&self, p: PlayerId, id: ObjectId) -> Result<ListIndex, GenieError> {
         self.players
             .player(p)?
             .objects
@@ -69,7 +70,7 @@ impl World {
     /// check, and a building's production.
     fn finish_own_update(
         &mut self,
-        (p, i, id): (PlayerId, usize, ObjectId),
+        (p, i, id): (PlayerId, ListIndex, ObjectId),
         (dt, own_update): (u32, bool),
         outcome: &Outcome,
     ) -> Result<(), GenieError> {

@@ -5,6 +5,7 @@ use crate::construction::repair::RepairState;
 use crate::gathering::hunt::HuntTask;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ListIndex;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::{ObjectId, ObjectKey};
@@ -38,7 +39,7 @@ impl World {
     pub(crate) fn hunt_command(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let (_, t) = self.object(target).ok_or(HUNT_TARGET_GONE)?;
@@ -78,7 +79,7 @@ impl World {
     pub(crate) fn gather_command(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         if self.object(target).is_none() {
@@ -110,7 +111,7 @@ impl World {
     pub(super) fn start_build(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &crate::objects::masters::Task,
         point: Position,
@@ -171,7 +172,7 @@ impl World {
     pub(super) fn new_repair(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &crate::objects::masters::Task,
     ) -> Result<(crate::construction::repair::RepairAction, ClassId), GenieError> {
@@ -205,7 +206,7 @@ impl World {
     pub(super) fn start_repair(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         task: &crate::objects::masters::Task,
         point: Position,
@@ -248,7 +249,7 @@ impl World {
     pub(crate) fn repair_order(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         order: crate::unit_ai::world_view::RepairOrder,
     ) -> Result<(), GenieError> {
         match order {
@@ -282,7 +283,7 @@ impl World {
     pub(super) fn retake_repair(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
         clears: bool,
@@ -318,7 +319,7 @@ impl World {
     pub(super) fn repair_retarget(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<ClassId, GenieError> {
         let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
@@ -383,7 +384,7 @@ impl World {
     pub(super) fn retake_build(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
         point: Position,
         clears: bool,
@@ -413,7 +414,7 @@ impl World {
     pub(crate) fn build_take(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         target: ObjectId,
     ) -> Result<ClassId, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
@@ -493,7 +494,7 @@ impl World {
     pub(crate) fn build_set_target(
         &mut self,
         player: PlayerId,
-        idx: usize,
+        idx: ListIndex,
         (old, added): (Option<ObjectId>, bool),
         new: ObjectId,
     ) -> Result<Option<ObjectId>, GenieError> {
