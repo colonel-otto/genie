@@ -111,7 +111,10 @@ impl Unit {
             master: self.life.master_id,
             kind: master.map_or(MasterKind::of_data(0), |m| m.kind),
             class: master.map(|m| m.class),
-            attack_priority: master.map_or(0, |m| m.attack_priority),
+            attack_priority: master
+                .map_or(crate::objects::masters::AttackPriority::PRIORITY_0, |m| {
+                    m.attack_priority
+                }),
             missile: master.and_then(|m| m.missile),
             range: master.map_or(0.0, |m| m.weapon_range),
             min_range: master.map_or(0.0, |m| m.min_range),

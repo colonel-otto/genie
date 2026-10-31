@@ -32,7 +32,7 @@ pub struct Searcher {
     /// Its master's type (`'F'`, 70: the combat type).
     pub kind: MasterKind,
     /// Its master's `attack_priority` (`+0x92c`, `FUN_141202220`).
-    pub attack_priority: u8,
+    pub attack_priority: crate::objects::masters::AttackPriority,
     /// Its owner is a computer player (`FUN_141659cf0`).
     pub computer: bool,
     /// Its owner may attack walls (`player+0x611`, the AI's slot 0x18's player).

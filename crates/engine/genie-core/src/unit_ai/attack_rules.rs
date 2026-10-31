@@ -6,6 +6,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
 use crate::objects::masters::MasterId;
@@ -176,14 +177,18 @@ pub fn attacks_neutral(me: &Attacker, class: ClassId) -> bool {
 /// the others' the base's (`FUN_140c48410`): always. The predator's and the lion's also take
 /// attack priority 3 to [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn type_attacks_neutral(ai_type: UnitAiType, attack_priority: u8, class: ClassId) -> bool {
+pub fn type_attacks_neutral(
+    ai_type: UnitAiType,
+    attack_priority: AttackPriority,
+    class: ClassId,
+) -> bool {
     match ai_type {
         CIVILIAN | BUILDING_AI => false,
         PREDATOR_AI | LION_AI => {
             !matches!(
                 class,
                 class::SIEGE | class::WARSHIP | class::TOWER | class::CLASS_54 | class::CLASS_55
-            ) && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
+            ) && (!attack_priority.limited() || PRIORITY_3_CLASSES.contains(&class))
         }
         PRIEST_AI => priest_attacks_neutral(attack_priority, class),
         SOLDIER_AI | TOWER_AI => soldier_attacks_neutral(attack_priority, class),
@@ -200,11 +205,11 @@ pub(super) const PRIEST_NEUTRAL_SPARED: ClassMask = ClassMask::new(0x2_0080_0838
 /// [`PRIEST_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
 /// [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn priest_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
+pub fn priest_attacks_neutral(attack_priority: AttackPriority, class: ClassId) -> bool {
     if PRIEST_NEUTRAL_SPARED.contains(class) {
         return false;
     }
-    attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
+    !attack_priority.limited() || PRIORITY_3_CLASSES.contains(&class)
 }
 
 /// The classes slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`) passes among neutral objects:
@@ -216,11 +221,11 @@ pub(super) const NEUTRAL_SPARED: ClassMask = ClassMask::new(0x2002_0080_0838_001
 /// [`NEUTRAL_SPARED`]'s classes, and with the unit's master's `attack_priority` 3
 /// (`FUN_141202220`) only [`PRIORITY_3_CLASSES`] (`FUN_140fddf10`).
 #[must_use]
-pub fn soldier_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
+pub fn soldier_attacks_neutral(attack_priority: AttackPriority, class: ClassId) -> bool {
     if NEUTRAL_SPARED.contains(class) {
         return false;
     }
-    attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
+    !attack_priority.limited() || PRIORITY_3_CLASSES.contains(&class)
 }
 
 /// A computer player's soldier's or siege unit's idle check past its target: its target test
@@ -255,11 +260,11 @@ pub(super) const SIEGE_NEUTRAL_SPARED: ClassMask = ClassMask::new(0x2002_0080_08
 /// [`SIEGE_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
 /// [`PRIORITY_3_CLASSES`].
 #[must_use]
-pub fn siege_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
+pub fn siege_attacks_neutral(attack_priority: AttackPriority, class: ClassId) -> bool {
     if SIEGE_NEUTRAL_SPARED.contains(class) {
         return false;
     }
-    attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
+    !attack_priority.limited() || PRIORITY_3_CLASSES.contains(&class)
 }
 
 /// The rams (masters 35, 422, 548 and 1258, raw `0x60bf`, `0x6242`, `0x62c0`, `0x6586`), which
@@ -450,7 +455,7 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
 /// [`PRIORITY_3_CLASSES`].
 pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
     let priority = me.attack_priority;
-    if priority == 0 {
+    if priority == AttackPriority::PRIORITY_0 {
         if RAM_MASTERS.contains(&me.master) {
             return RAM_TARGETS.contains(&t.class);
         }
@@ -462,9 +467,9 @@ pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
         && s.target.is_some()
         && s.target_kind == Some(BUILDING)
     {
-        return priority == 1 || priority & 0xfc != 0;
+        return priority == AttackPriority::PRIORITY_1 || priority.past_3();
     }
-    priority != 3 || PRIORITY_3_CLASSES.contains(&t.class)
+    !priority.limited() || PRIORITY_3_CLASSES.contains(&t.class)
 }
 
 /// The classes a lion attacks by its own choice (its slot 0xa0's list, `FUN_140c18d50`; the
@@ -494,10 +499,10 @@ pub(super) const LION_ATTACKS: [ClassId; 19] = [
 /// The lion's slot 0xa0 (`FUN_140c18d50`) without its `any` flag: by the master's attack
 /// priority 1 and 2 anything, 3 the classes of [`PRIORITY_3_CLASSES`], any other the classes
 /// of [`LION_ATTACKS`].
-pub(super) fn lion_may_attack(attack_priority: u8, class: ClassId) -> bool {
+pub(super) fn lion_may_attack(attack_priority: AttackPriority, class: ClassId) -> bool {
     match attack_priority {
-        1 | 2 => true,
-        3 => PRIORITY_3_CLASSES.contains(&class),
+        AttackPriority::PRIORITY_1 | AttackPriority::PRIORITY_2 => true,
+        AttackPriority::PRIORITY_3 => PRIORITY_3_CLASSES.contains(&class),
         _ => LION_ATTACKS.contains(&class),
     }
 }
@@ -505,9 +510,9 @@ pub(super) fn lion_may_attack(attack_priority: u8, class: ClassId) -> bool {
 /// The civilian's slot 0xa0 (`FUN_140c18b70`) without its `any` flag: never classes 1 and 42;
 /// with the unit's master's `attack_priority` 3 (`FUN_141202220`) only [`PRIORITY_3_CLASSES`]
 /// (`FUN_140fddf10`).
-pub(super) fn civilian_may_attack(attack_priority: u8, class: ClassId) -> bool {
+pub(super) fn civilian_may_attack(attack_priority: AttackPriority, class: ClassId) -> bool {
     !matches!(class, class::ARTIFACT | class::RELIC)
-        && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
+        && (!attack_priority.limited() || PRIORITY_3_CLASSES.contains(&class))
 }
 
 /// What [`UnitSide::attack`] answers: the unit attacks the target, and the notifies the command

@@ -120,7 +120,10 @@ impl Unit {
                 None => None,
             },
             combat_level: master.map_or(0, |m| m.combat_level),
-            attack_priority: master.map_or(0, |m| m.attack_priority),
+            attack_priority: master
+                .map_or(crate::objects::masters::AttackPriority::PRIORITY_0, |m| {
+                    m.attack_priority
+                }),
             size: master.map_or(Footprint::ZERO, |m| m.radius),
             los: master.map_or(0.0, |m| m.line_of_sight),
             search_radius: master.map_or(0.0, |m| m.search_radius),

@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::ObjectId;
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
@@ -211,7 +212,7 @@ fn soldier() -> Searcher {
         master: master_id(74),
         class: Some(class::CLASS_6),
         kind: master_type::COMBAT,
-        attack_priority: 1,
+        attack_priority: AttackPriority::PRIORITY_1,
         can_move: true,
         sight: 12.0,
         range: 0.5,

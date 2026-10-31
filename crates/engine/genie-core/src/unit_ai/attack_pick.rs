@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -169,7 +170,7 @@ pub struct Attacker {
     /// Its master's class.
     pub class: Option<ClassId>,
     /// Its master's `attack_priority`.
-    pub attack_priority: u8,
+    pub attack_priority: AttackPriority,
     /// Its master's missile, −1 for none.
     pub missile: Option<MasterId>,
     /// Its master's weapon range (slot 0x230, `+0x828`).
@@ -343,10 +344,10 @@ pub(super) const PREDATOR_ATTACKS: [ClassId; 18] = [
 /// The predator's slot 0xa0 (`FUN_140c18ed0`) without its `any` flag: by the master's attack
 /// priority 1 and 2 anything, 3 the classes of [`PRIORITY_3_CLASSES`], any other the classes of
 /// [`PREDATOR_ATTACKS`].
-pub(super) fn predator_may_attack(attack_priority: u8, class: ClassId) -> bool {
+pub(super) fn predator_may_attack(attack_priority: AttackPriority, class: ClassId) -> bool {
     match attack_priority {
-        1 | 2 => true,
-        3 => PRIORITY_3_CLASSES.contains(&class),
+        AttackPriority::PRIORITY_1 | AttackPriority::PRIORITY_2 => true,
+        AttackPriority::PRIORITY_3 => PRIORITY_3_CLASSES.contains(&class),
         _ => PREDATOR_ATTACKS.contains(&class),
     }
 }
@@ -372,7 +373,7 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     if (t.kind == BUILDING && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
         return Ok(false);
     }
-    if t.class == class::PREDATOR && me.attack_priority < 3 {
+    if t.class == class::PREDATOR && me.attack_priority < AttackPriority::PRIORITY_3 {
         return Ok(t.combat_level == 4);
     }
     if !matches!(me.class, Some(class::CLASS_51 | class::CLASS_54))
@@ -381,7 +382,7 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     {
         return Ok(false);
     }
-    Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
+    Ok(!me.attack_priority.limited() || PRIORITY_3_CLASSES.contains(&t.class))
 }
 
 /// An attacker without a missile is armed with a firepower above this (`FUN_14120ea30`,
@@ -475,7 +476,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if !stance_reaches(me, s, t)? {
         return Ok(false);
     }
-    Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
+    Ok(!me.attack_priority.limited() || PRIORITY_3_CLASSES.contains(&t.class))
 }
 
 /// [`soldier_can_attack`]'s soldiers that never attack: class 51, master 444, and a packed class
@@ -530,7 +531,7 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
 /// `area_effect_level` has neither bit 2 nor 3 (`FUN_1410bf160`, `FUN_1410bfcb0`) scans the tiles
 /// of the blast around the target for its own or allied objects (not modelled).
 pub(crate) fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
-    if me.attack_priority == 3 && !PRIORITY_3_CLASSES.contains(&t.class) {
+    if me.attack_priority == AttackPriority::PRIORITY_3 && !PRIORITY_3_CLASSES.contains(&t.class) {
         return Ok(false);
     }
     let ranged = 1.0 < me.range;

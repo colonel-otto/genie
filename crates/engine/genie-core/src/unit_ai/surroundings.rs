@@ -140,7 +140,7 @@ pub struct Surroundings {
     /// The master's `combat_level` (`+0x62c`).
     pub combat_level: u8,
     /// The master's `attack_priority` (`+0x92c`, `FUN_141202220`).
-    pub attack_priority: u8,
+    pub attack_priority: crate::objects::masters::AttackPriority,
     /// The master's radii (`+0x5d8`, `+0x5dc`), line of sight (`+0x5d0`) and search radius
     /// (`+0x794`, the unit's slot 0x2c8).
     pub size: Footprint,

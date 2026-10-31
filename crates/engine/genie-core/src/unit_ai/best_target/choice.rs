@@ -1,6 +1,7 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
 use crate::objects::ObjectId;
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -455,8 +456,9 @@ fn rank_entries(
     world: &mut dyn Battlefield,
 ) -> Result<bool, crate::GenieError> {
     st.score(&me.weights, me.targeting, &mut |id| world.armored(id))?;
-    let ranked = me.attack_priority == 1
-        || (me.attack_priority == 0 && !PRIORITY_0_MASTERS.contains(&me.master));
+    let ranked = me.attack_priority == AttackPriority::PRIORITY_1
+        || (me.attack_priority == AttackPriority::PRIORITY_0
+            && !PRIORITY_0_MASTERS.contains(&me.master));
     st.rank(&mut |e| {
         if !e.fixed || e.category == Some(AttackCategory::SIEGE) {
             return Ok(i32::from(ranked) << 2);

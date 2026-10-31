@@ -340,7 +340,7 @@ pub struct Master {
     pub invulnerability: f32,
     /// `attack_priority` (`+0x92c`, `FUN_141202220`): 3 attacks only the classes of
     /// `FUN_140fddf10`.
-    pub attack_priority: u8,
+    pub attack_priority: AttackPriority,
     /// `special_attack_flag` (`+0x8d8`).
     pub special_attack: u8,
     /// `friendly_fire_damage` (`+0x868`).
@@ -583,6 +583,7 @@ pub struct Masters {
 }
 
 pub mod action_type;
+mod attack_priority;
 pub mod attribute;
 pub mod class;
 mod class_id;
@@ -597,6 +598,7 @@ mod obstruction_class;
 mod obstruction_type;
 
 pub use self::action_type::ActionType;
+pub use self::attack_priority::AttackPriority;
 pub use self::attribute::MasterAttribute;
 pub use self::class_id::ClassId;
 pub use self::class_mask::ClassMask;

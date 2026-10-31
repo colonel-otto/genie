@@ -34,6 +34,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
@@ -12867,7 +12868,7 @@ fn on_side<R>(
                 master: ids::ID_448,
                 kind: master_type::COMBAT,
                 class: Some(class::CLASS_47),
-                attack_priority: 0,
+                attack_priority: AttackPriority::PRIORITY_0,
                 missile: None,
                 range: 1.0,
                 min_range: 0.0,

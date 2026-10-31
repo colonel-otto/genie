@@ -4,6 +4,7 @@ use crate::map::GridSize;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ActionType;
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
@@ -3028,7 +3029,11 @@ fn each_unit_ai_type_searches_its_constructor_s_classes() {
 #[test]
 fn each_unit_ai_type_tests_a_neutral_object_by_its_module() {
     for t in [CIVILIAN, BUILDING_AI] {
-        assert!(!type_attacks_neutral(t, 0, class::CLASS_6));
+        assert!(!type_attacks_neutral(
+            t,
+            AttackPriority::PRIORITY_0,
+            class::CLASS_6
+        ));
     }
     for t in [
         UnitAiType::HUNTED,
@@ -3040,29 +3045,76 @@ fn each_unit_ai_type_tests_a_neutral_object_by_its_module() {
         FISHING_AI,
         ARTIFACT_AI,
     ] {
-        assert!(type_attacks_neutral(t, 0, class::VILLAGER), "type {t}");
-        assert!(type_attacks_neutral(t, 3, class::CLASS_6), "type {t}");
+        assert!(
+            type_attacks_neutral(t, AttackPriority::PRIORITY_0, class::VILLAGER),
+            "type {t}"
+        );
+        assert!(
+            type_attacks_neutral(t, AttackPriority::PRIORITY_3, class::CLASS_6),
+            "type {t}"
+        );
     }
-    assert!(type_attacks_neutral(SIEGE_TOWER_AI, 0, class::BUILDING));
-    assert!(type_attacks_neutral(LIVESTOCK_AI, 0, class::BUILDING));
+    assert!(type_attacks_neutral(
+        SIEGE_TOWER_AI,
+        AttackPriority::PRIORITY_0,
+        class::BUILDING
+    ));
+    assert!(type_attacks_neutral(
+        LIVESTOCK_AI,
+        AttackPriority::PRIORITY_0,
+        class::BUILDING
+    ));
     for t in [PREDATOR_AI, LION_AI] {
         for class in [13, 22, 52, 54, 55].map(ClassId::of_master) {
-            assert!(!type_attacks_neutral(t, 0, class), "type {t} class {class}");
+            assert!(
+                !type_attacks_neutral(t, AttackPriority::PRIORITY_0, class),
+                "type {t} class {class}"
+            );
         }
-        assert!(type_attacks_neutral(t, 0, class::VILLAGER));
-        assert!(!type_attacks_neutral(t, 3, class::CLASS_6));
+        assert!(type_attacks_neutral(
+            t,
+            AttackPriority::PRIORITY_0,
+            class::VILLAGER
+        ));
+        assert!(!type_attacks_neutral(
+            t,
+            AttackPriority::PRIORITY_3,
+            class::CLASS_6
+        ));
     }
     for class in [2, 3, 4, 19, 20, 21, 27, 39, 49].map(ClassId::of_master) {
-        assert!(!type_attacks_neutral(PRIEST_AI, 0, class), "class {class}");
-        assert!(!type_attacks_neutral(TOWER_AI, 0, class), "class {class}");
+        assert!(
+            !type_attacks_neutral(PRIEST_AI, AttackPriority::PRIORITY_0, class),
+            "class {class}"
+        );
+        assert!(
+            !type_attacks_neutral(TOWER_AI, AttackPriority::PRIORITY_0, class),
+            "class {class}"
+        );
     }
-    assert!(type_attacks_neutral(PRIEST_AI, 0, class::CLASS_61));
-    assert!(!type_attacks_neutral(TOWER_AI, 0, class::CLASS_61));
-    assert!(type_attacks_neutral(PRIEST_AI, 0, class::CLASS_6));
-    assert!(!type_attacks_neutral(PRIEST_AI, 3, class::CLASS_6));
+    assert!(type_attacks_neutral(
+        PRIEST_AI,
+        AttackPriority::PRIORITY_0,
+        class::CLASS_61
+    ));
+    assert!(!type_attacks_neutral(
+        TOWER_AI,
+        AttackPriority::PRIORITY_0,
+        class::CLASS_61
+    ));
+    assert!(type_attacks_neutral(
+        PRIEST_AI,
+        AttackPriority::PRIORITY_0,
+        class::CLASS_6
+    ));
+    assert!(!type_attacks_neutral(
+        PRIEST_AI,
+        AttackPriority::PRIORITY_3,
+        class::CLASS_6
+    ));
     assert_eq!(
-        type_attacks_neutral(SIEGE_AI, 0, class::TRADE_CART),
-        siege_attacks_neutral(0, class::TRADE_CART)
+        type_attacks_neutral(SIEGE_AI, AttackPriority::PRIORITY_0, class::TRADE_CART),
+        siege_attacks_neutral(AttackPriority::PRIORITY_0, class::TRADE_CART)
     );
 }
 
@@ -3526,11 +3578,14 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
 
 #[test]
 fn a_lion_attacks_by_its_priority_or_its_classes() {
-    assert!(lion_may_attack(1, class::BUILDING));
-    assert!(!lion_may_attack(3, class::VILLAGER));
-    assert!(lion_may_attack(3, class::BUILDING));
-    assert!(lion_may_attack(0, class::VILLAGER));
-    assert!(!lion_may_attack(0, class::SIEGE));
+    assert!(lion_may_attack(AttackPriority::PRIORITY_1, class::BUILDING));
+    assert!(!lion_may_attack(
+        AttackPriority::PRIORITY_3,
+        class::VILLAGER
+    ));
+    assert!(lion_may_attack(AttackPriority::PRIORITY_3, class::BUILDING));
+    assert!(lion_may_attack(AttackPriority::PRIORITY_0, class::VILLAGER));
+    assert!(!lion_may_attack(AttackPriority::PRIORITY_0, class::SIEGE));
 }
 
 /// MarvinBlue/426048731's villager 10041 in update 4839, hunting the boar 9731 (its Hunt in
@@ -6353,7 +6408,7 @@ const TC: Attacker = Attacker {
     master: ids::TOWN_CENTRE,
     kind: BUILDING,
     class: Some(class::BUILDING),
-    attack_priority: 0,
+    attack_priority: AttackPriority::PRIORITY_0,
     missile: Some(MasterId::named(54)),
     range: 6.0,
     min_range: 0.0,
@@ -6410,7 +6465,7 @@ fn each_unit_ai_type_has_its_own_attack_check() {
             let me = Attacker {
                 ai_type,
                 top_action,
-                attack_priority: priority,
+                attack_priority: AttackPriority::of_byte(priority),
                 ..TC
             };
             can_attack(&me, &IDLE, &Target { class, ..BOAR })
@@ -6753,15 +6808,30 @@ fn an_attacker_joins_the_sorted_set_once() {
 #[test]
 fn the_soldier_passes_over_neutrals_of_its_masked_classes() {
     for class in [2, 3, 4, 19, 20, 21, 27, 39, 49, 61].map(ClassId::of_master) {
-        assert!(!soldier_attacks_neutral(0, class), "class {class}");
+        assert!(
+            !soldier_attacks_neutral(AttackPriority::PRIORITY_0, class),
+            "class {class}"
+        );
     }
     for class in [0, 6, 9, 15, 35, 52, 53, 60, 62, 63, -1].map(ClassId::of_master) {
-        assert!(soldier_attacks_neutral(0, class), "class {class}");
+        assert!(
+            soldier_attacks_neutral(AttackPriority::PRIORITY_0, class),
+            "class {class}"
+        );
     }
-    assert!(soldier_attacks_neutral(3, class::TOWER));
-    assert!(!soldier_attacks_neutral(3, class::CLASS_6));
+    assert!(soldier_attacks_neutral(
+        AttackPriority::PRIORITY_3,
+        class::TOWER
+    ));
+    assert!(!soldier_attacks_neutral(
+        AttackPriority::PRIORITY_3,
+        class::CLASS_6
+    ));
     // a masked class stays passed over whatever the priority
-    assert!(!soldier_attacks_neutral(3, class::WALL));
+    assert!(!soldier_attacks_neutral(
+        AttackPriority::PRIORITY_3,
+        class::WALL
+    ));
 }
 
 /// `FUN_140c42640`: an order goes after the last unless it goes in front of a queue that
@@ -7468,7 +7538,7 @@ fn a_villager_hunts_an_animal_and_attacks_another_object() {
     let at = |priority: u8| Surroundings {
         id: object_id(10041),
         state: 2,
-        attack_priority: priority,
+        attack_priority: AttackPriority::of_byte(priority),
         units: vec![
             attacker(9731, class::PREDATOR, 0.5),
             attacker(9800, class::CLASS_6, 1.0),
@@ -9904,7 +9974,7 @@ fn an_attacker_spares_by_its_priority_and_its_blast() {
         ..BOAR
     };
     let priority_3 = Attacker {
-        attack_priority: 3,
+        attack_priority: AttackPriority::PRIORITY_3,
         ..MANGONEL
     };
     assert_eq!(spares_friends(&priority_3, &villager), Ok(false));
@@ -10096,7 +10166,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     // masters 1744 and 1746 on a building: priority 1 or 4 and up only
     let elephant = |attack_priority| Attacker {
         master: ids::ID_1744,
-        attack_priority,
+        attack_priority: AttackPriority::of_byte(attack_priority),
         ..MANGONEL
     };
     let on_building = Seeker {
@@ -10112,7 +10182,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         );
     }
     let priority_3 = Attacker {
-        attack_priority: 3,
+        attack_priority: AttackPriority::PRIORITY_3,
         ..MANGONEL
     };
     assert_eq!(
@@ -10128,9 +10198,18 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         Ok(true)
     );
     // its neutral test spares the trade cart's class no more
-    assert!(siege_attacks_neutral(0, class::TRADE_CART));
-    assert!(!soldier_attacks_neutral(0, class::TRADE_CART));
-    assert!(!siege_attacks_neutral(0, class::VILLAGER));
+    assert!(siege_attacks_neutral(
+        AttackPriority::PRIORITY_0,
+        class::TRADE_CART
+    ));
+    assert!(!soldier_attacks_neutral(
+        AttackPriority::PRIORITY_0,
+        class::TRADE_CART
+    ));
+    assert!(!siege_attacks_neutral(
+        AttackPriority::PRIORITY_0,
+        class::VILLAGER
+    ));
 }
 
 /// A siege unit's world: its search finds `found`, the attack check lets `allowed` be

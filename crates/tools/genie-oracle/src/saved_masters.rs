@@ -218,7 +218,8 @@ pub(super) fn work_masters(
             work.volley_missile = id(c.volley_missile_id);
             work.charge_projectile = id(c.charge_projectile_unit);
             work.invulnerability = c.invulnerability_level;
-            work.attack_priority = c.attack_priority;
+            work.attack_priority =
+                genie_core::objects::masters::AttackPriority::of_byte(c.attack_priority);
             work.special_attack = c.special_attack_flag;
             work.max_charge = c.max_charge;
             work.charge_target = c.charge_target;

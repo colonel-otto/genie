@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassAmount;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -82,7 +83,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         master: ids::VILLAGER_MALE,
         kind: master_type::COMBAT,
         class: Some(class::VILLAGER),
-        attack_priority: 0,
+        attack_priority: AttackPriority::PRIORITY_0,
         missile: None,
         range: 0.0,
         min_range: 0.0,
@@ -193,7 +194,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         master: master_id(4),
         kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
-        attack_priority: 0,
+        attack_priority: AttackPriority::PRIORITY_0,
         missile: None,
         range: 0.0,
         min_range: 0.0,
@@ -347,7 +348,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         master: master_id(4),
         kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
-        attack_priority: 0,
+        attack_priority: AttackPriority::PRIORITY_0,
         missile: None,
         range: 0.5,
         min_range: 0.0,

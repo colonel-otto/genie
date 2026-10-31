@@ -562,7 +562,7 @@ fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
         ),
         (
             a::ATTACK_PRIORITY,
-            |m| f32::from(m.attack_priority),
+            |m| f32::from(m.attack_priority.get()),
             [3.0; 3],
         ),
         (

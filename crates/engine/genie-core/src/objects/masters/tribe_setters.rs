@@ -1,6 +1,7 @@
 //! The TRIBE combat and building masters' setters: the costs, the charge, the sprites and the
 //! train locations.
 
+use crate::objects::masters::AttackPriority;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{
@@ -99,7 +100,7 @@ impl Master {
             }
             a::FORMATION_CATEGORY => self.formation_category = low8(v),
             a::REGENERATION_HP_PERCENT => self.regeneration = f32::from(self.hit_points) * v,
-            a::ATTACK_PRIORITY => self.attack_priority = low8(v),
+            a::ATTACK_PRIORITY => self.attack_priority = AttackPriority::of_byte(low8(v)),
             a::INVULNERABILITY_LEVEL => self.invulnerability = v,
             a::SPAWNING_AREA_WIDTH | a::SPAWNING_AREA_LENGTH | a::SPAWNING_AREA_RANDOMNESS => {
                 *a::lane_mut(
