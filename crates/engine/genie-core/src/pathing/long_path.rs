@@ -84,14 +84,53 @@ const STEPS: [TileOffset; 8] = TileOffset::table([
     [-1, 0],
 ]);
 
-/// The directions a tile entered by a step in direction `came` does not try (the table at
-/// `DAT_142f43a28`: the three that turn back, bits `came + 3` to `came + 5`; none for the start,
-/// `came` 8).
-fn behind(came: u8) -> u8 {
-    if 8 <= came {
-        return 0;
+/// A step's direction (`FUN_140f9eb70`'s switch): 0 to 7, the place of its tile in [`STEPS`],
+/// the order the search tries the eight tiles around one; the even ones are diagonal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StepDir(u8);
+
+impl StepDir {
+    /// The eight in the order the search tries them.
+    const ALL: [Self; 8] = [
+        Self(0),
+        Self(1),
+        Self(2),
+        Self(3),
+        Self(4),
+        Self(5),
+        Self(6),
+        Self(7),
+    ];
+
+    /// The step's tile offset ([`STEPS`]).
+    fn offset(self) -> Option<TileOffset> {
+        STEPS.get(usize::from(self.0)).copied()
     }
-    (0x38u8).rotate_left(u32::from(came))
+
+    /// The directions a tile entered by a step in direction `came` does not try (the table at
+    /// `DAT_142f43a28`: the three that turn back, bits `came + 3` to `came + 5`; none for the
+    /// start, the game's `came` 8), as a bit each.
+    fn behind(came: Option<Self>) -> u8 {
+        came.map_or(0, |c| (0x38u8).rotate_left(u32::from(c.0)))
+    }
+
+    /// Whether `back` ([`StepDir::behind`]) holds this direction.
+    const fn in_set(self, back: u8) -> bool {
+        back & (1 << self.0) != 0
+    }
+
+    /// The tiles beside a diagonal step (directions 0, 2, 4, 6) onto `n`, which the step needs
+    /// as clear as the tile.
+    const fn beside_diagonal(self, n: Tile) -> Option<[Tile; 2]> {
+        let (nx, ny) = (n.x(), n.y());
+        match self.0 {
+            0 => Some([Tile::new(nx + 1, ny), Tile::new(nx, ny + 1)]),
+            2 => Some([Tile::new(nx, ny + 1), Tile::new(nx - 1, ny)]),
+            4 => Some([Tile::new(nx - 1, ny), Tile::new(nx, ny - 1)]),
+            6 => Some([Tile::new(nx, ny - 1), Tile::new(nx + 1, ny)]),
+            _ => None,
+        }
+    }
 }
 
 /// The target object of a search (`FUN_140f9eb70`'s argument 8).
@@ -237,7 +276,7 @@ enum Searched {
     Ran {
         reached: bool,
         end: Tile,
-        entered: Vec<Option<u8>>,
+        entered: Vec<Option<StepDir>>,
     },
 }
 
@@ -281,13 +320,13 @@ pub fn path(
 /// (the end's always) puts its centre (x + 0.5, `z`, y + 0.5, the paths' layout) in front
 /// (`FUN_140f95a50`), the start tile's last. None when a point equals the one beside it
 /// (`FUN_140f95060` refuses it).
-fn trace(from: Tile, end: Tile, entered: &[Option<u8>], width: i32, z: f32) -> Option<Path> {
+fn trace(from: Tile, end: Tile, entered: &[Option<StepDir>], width: i32, z: f32) -> Option<Path> {
+    // a tile never entered reads the game's 0xff: none
     let direction = |t: Tile| {
         entered
             .get((t.y() * width + t.x()) as usize)
             .copied()
             .flatten()
-            .unwrap_or(0xff)
     };
     let centre = |t: Tile| -> BVector {
         BVector::new(t.x() as f32 + TILE_CENTRE, z, t.y() as f32 + TILE_CENTRE)
@@ -295,14 +334,14 @@ fn trace(from: Tile, end: Tile, entered: &[Option<u8>], width: i32, z: f32) -> O
     let mut path = Path::default();
     let mut at = end;
     let mut came = direction(at);
-    let mut before = 0xff;
+    let mut before = None;
     while at != from {
         if came != before && !path.insert(0, centre(at)) {
             return None;
         }
-        // back along the step it was entered by
-        let step = STEPS.get(usize::from(came))?;
-        at = at.stepped_back(*step);
+        // back along the step it was entered by (the game's 0xff indexes past the table)
+        let step = came?.offset()?;
+        at = at.stepped_back(step);
         before = came;
         came = direction(at);
     }
@@ -358,19 +397,6 @@ const fn step_cost(here: i32, from: Tile, to: Tile, goal: Tile) -> i32 {
         .wrapping_sub(quad(goal.x() - from.x()))
         .wrapping_add(quad(goal.y() - to.y()))
         .wrapping_add(quad(goal.x() - to.x()))
-}
-
-/// The tiles beside a diagonal step (directions 0, 2, 4, 6) onto `n`, which the step needs as
-/// clear as the tile.
-const fn beside_diagonal(dir: u8, n: Tile) -> Option<[Tile; 2]> {
-    let (nx, ny) = (n.x(), n.y());
-    match dir {
-        0 => Some([Tile::new(nx + 1, ny), Tile::new(nx, ny + 1)]),
-        2 => Some([Tile::new(nx, ny + 1), Tile::new(nx - 1, ny)]),
-        4 => Some([Tile::new(nx - 1, ny), Tile::new(nx, ny - 1)]),
-        6 => Some([Tile::new(nx, ny - 1), Tile::new(nx + 1, ny)]),
-        _ => None,
-    }
 }
 
 /// What [`search`] reads of the tiles: the obstruction words, the tall objects less those the
@@ -483,7 +509,7 @@ impl<'a> Grid<'a> {
 /// the heap of the tiles to expand.
 struct Front {
     cost: Vec<i32>,
-    entered: Vec<Option<u8>>,
+    entered: Vec<Option<StepDir>>,
     heap: Heap,
 }
 
@@ -491,7 +517,7 @@ struct Front {
 struct Origin {
     at: Tile,
     cost: i32,
-    came: Option<u8>,
+    came: Option<StepDir>,
 }
 
 /// What the search's steps share: the tiles, the request, the map's size and the goal.
@@ -511,7 +537,7 @@ impl Relax<'_> {
         &self,
         front: &mut Front,
         from: &Origin,
-        (to, dir): (Tile, u8),
+        (to, dir): (Tile, StepDir),
     ) -> Result<Option<Tile>, GenieError> {
         let i = (to.y() * self.map.width() + to.x()) as usize;
         let new_cost = step_cost(from.cost, from.at, to, self.req.to);
@@ -523,12 +549,12 @@ impl Relax<'_> {
         let at_goal = to == self.goal || self.rect.holds(to);
         if !self
             .grid
-            .step_open(to, beside_diagonal(dir, to), at_goal, self.req)?
+            .step_open(to, dir.beside_diagonal(to), at_goal, self.req)?
         {
             return Ok(None);
         }
-        let cur_dir = from.came.unwrap_or(0xff);
-        let mut c = if dir == cur_dir {
+        // the start's none (0xff) is no direction
+        let mut c = if from.came == Some(dir) {
             new_cost
         } else {
             new_cost.wrapping_add(1)
@@ -614,13 +640,12 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
         }
         front.heap.pop()?;
         let came = *front.entered.checked(index(cx, cy))?;
-        let back = behind(came.unwrap_or(8));
+        let back = StepDir::behind(came);
         let here = *front.cost.checked(index(cx, cy))?;
-        for (dir, step) in STEPS.iter().enumerate() {
-            let dir = dir as u8;
-            let n = c.stepped(*step);
+        for (dir, step) in StepDir::ALL.into_iter().zip(STEPS) {
+            let n = c.stepped(step);
             let (nx, ny) = (n.x(), n.y());
-            if back & (1 << dir) != 0 || nx < 0 || ny < 0 || w <= nx || h <= ny || n == req.from {
+            if dir.in_set(back) || nx < 0 || ny < 0 || w <= nx || h <= ny || n == req.from {
                 continue;
             }
             let from = Origin {
@@ -742,9 +767,9 @@ mod tests {
         // entered: (1, 0) from (0, 0) by step 3 ([1, 0]), (2, 0) by 3, (3, 1) by 4 ([1, 1])
         let w = 4;
         let mut entered = vec![None; 8];
-        entered[1] = Some(3);
-        entered[2] = Some(3);
-        entered[w + 3] = Some(4);
+        entered[1] = Some(StepDir(3));
+        entered[2] = Some(StepDir(3));
+        entered[w + 3] = Some(StepDir(4));
         let p = trace(Tile::new(0, 0), Tile::new(3, 1), &entered, w as i32, 0.0).unwrap();
         assert_eq!(
             p.points,
@@ -759,13 +784,33 @@ mod tests {
         assert_eq!(p.points, [BVector::new(0.5, 0.0, 0.5)]);
     }
 
+    /// The three directions that turn back from each (`DAT_142f43a28`), none from the start.
     #[test]
     fn the_table_of_turning_back() {
-        let table: Vec<u8> = (0..9).map(behind).collect();
+        let table: Vec<u8> = StepDir::ALL
+            .into_iter()
+            .map(Some)
+            .chain([None])
+            .map(StepDir::behind)
+            .collect();
         assert_eq!(
             table,
             [0x38, 0x70, 0xe0, 0xc1, 0x83, 0x07, 0x0e, 0x1c, 0x00]
         );
+        assert!(StepDir(3).in_set(0x38) && !StepDir(2).in_set(0x38));
+    }
+
+    /// The even directions are diagonal and need the two tiles beside them; each direction's
+    /// tile is its place in the table.
+    #[test]
+    fn a_diagonal_step_needs_the_tiles_beside_it() {
+        let n = Tile::new(5, 5);
+        assert_eq!(
+            StepDir(0).beside_diagonal(n),
+            Some([Tile::new(6, 5), Tile::new(5, 6)])
+        );
+        assert_eq!(StepDir(1).beside_diagonal(n), None);
+        assert_eq!(StepDir::ALL.map(StepDir::offset), STEPS.map(Some));
     }
 
     #[test]
