@@ -178,7 +178,7 @@ impl BuildAction {
         }
         let Some((id, range, sprite)) = found else {
             builder.post_own(
-                crate::unit_ai::NO_DROP_SITE,
+                crate::unit_ai::NotifyKind::NO_DROP_SITE,
                 [ActionKind::Build.value(), 0, 0],
             )?;
             return self.restart(c, builder);

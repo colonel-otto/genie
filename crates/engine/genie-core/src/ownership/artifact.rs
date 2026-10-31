@@ -329,8 +329,8 @@ impl Artifact {
             return Ok(());
         };
         let notify = match move_to.state {
-            MoveTo::Arrived => Some(crate::unit_ai::ACTION_COMPLETED),
-            MoveTo::Failed => Some(crate::unit_ai::ACTION_FAILED),
+            MoveTo::Arrived => Some(crate::unit_ai::NotifyKind::ACTION_COMPLETED),
+            MoveTo::Failed => Some(crate::unit_ai::NotifyKind::ACTION_FAILED),
             state => {
                 // a motion step that gives up in the start's update fails the MoveTo, as in
                 // its moving state
@@ -1008,7 +1008,7 @@ mod tests {
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         let failed = (
-            crate::unit_ai::ACTION_FAILED,
+            crate::unit_ai::NotifyKind::ACTION_FAILED,
             [ActionKind::Move.value(), 0, 0],
         );
         assert_eq!((a.move_to, rig.posted()), (None, vec![failed]));
@@ -1191,7 +1191,7 @@ mod tests {
         rig.mover_mut().in_the_way = vec![object_id(77)];
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
-        let in_the_way = (crate::unit_ai::IN_THE_WAY, [77, -1, -1]);
+        let in_the_way = (crate::unit_ai::NotifyKind::IN_THE_WAY, [77, -1, -1]);
         assert_eq!(
             (a.move_to.map(|m| m.state), rig.sprite()),
             (Some(MoveTo::Failed), Some(3))
@@ -1302,7 +1302,7 @@ mod tests {
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         let failed = (
-            crate::unit_ai::ACTION_FAILED,
+            crate::unit_ai::NotifyKind::ACTION_FAILED,
             [ActionKind::Move.value(), 0, 0],
         );
         assert_eq!(

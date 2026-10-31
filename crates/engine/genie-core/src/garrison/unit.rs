@@ -135,7 +135,7 @@ impl Unit {
     /// The notify's and the `set_state(1)`'s.
     pub(crate) fn entered_again(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         self.post_own(
-            crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
+            crate::unit_ai::NotifyKind::ACTION_COMPLETED,
             [ActionKind::Enter.value(), 0, 0],
         )?;
         for _ in 0..2 {
@@ -271,7 +271,7 @@ impl Unit {
         enter.state = DONE;
         self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         self.post_own(
-            crate::unit_ai::ai_kinds::NOTIFY_ACTION_FAILED,
+            crate::unit_ai::NotifyKind::ACTION_FAILED,
             [ActionKind::Enter.value(), 0, 0],
         )
     }
@@ -370,7 +370,7 @@ impl Unit {
         }
         self.go_inside(c, target, &me, &bm)?;
         self.post_own(
-            crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
+            crate::unit_ai::NotifyKind::ACTION_COMPLETED,
             [ActionKind::Enter.value(), 0, 0],
         )?;
         self.entered(c)?;

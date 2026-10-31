@@ -311,7 +311,7 @@ impl UnitAi {
     /// the other unit's group (`+0x6d0`), which would let it attack with one, the slice does not
     /// hold. Processing goes on.
     ///
-    /// [`IN_THE_WAY`]: crate::unit_ai::IN_THE_WAY
+    /// [`IN_THE_WAY`]: crate::unit_ai::NotifyKind::IN_THE_WAY
     pub(super) fn in_the_way(
         &mut self,
         n: Notify,
@@ -343,7 +343,7 @@ impl UnitAi {
     /// the objects' slot 0x520 vectors' first two parts (x and the height) and 0, as the game
     /// passes them. Processing goes on.
     ///
-    /// [`SENT_OFF`]: crate::unit_ai::SENT_OFF
+    /// [`SENT_OFF`]: crate::unit_ai::NotifyKind::SENT_OFF
     pub(super) fn sent_off(
         &mut self,
         n: Notify,

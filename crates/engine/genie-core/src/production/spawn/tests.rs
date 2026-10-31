@@ -15,9 +15,10 @@ use crate::test_ids::object_id;
 use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Issuer;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
-use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 
 /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
 /// villager takes the closest tree of Gaia's (by centre) within its sight of the point,
@@ -466,13 +467,10 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     let made = p.objects.last().unwrap();
     assert_eq!(made.life.master_id, ids::VILLAGER_MALE);
     assert_eq!(p.attributes[attribute::IN_PRODUCTION.index()], 2.0);
-    let completed = p.objects[2]
-        .ai
-        .as_ref()
-        .unwrap()
-        .notifies
-        .iter()
-        .any(|n| n.kind == ACTION_COMPLETED && n.p == [ActionKind::Make.value(), 0, 0]);
+    let completed =
+        p.objects[2].ai.as_ref().unwrap().notifies.iter().any(|n| {
+            n.kind == NotifyKind::ACTION_COMPLETED && n.p == [ActionKind::Make.value(), 0, 0]
+        });
     assert!(completed);
     // the centre's command queue goes to the new unit
     let mut t = world();

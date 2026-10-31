@@ -621,7 +621,7 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
     };
     let mut side = OffSide(off, Vec::new());
     let mut fx = Vec::new();
-    let n = Notify::own(object_id(9175), SENT_OFF, [100, 150, 10028]);
+    let n = Notify::own(object_id(9175), NotifyKind::SENT_OFF, [100, 150, 10028]);
     assert_eq!(
         ai.sent_off(n, &mut With::new(&mut side, &mut fx), &mut rng()),
         Ok(GO_ON)
@@ -675,7 +675,7 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
 fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     let mut u = idle(UnitAiType::HUNTED);
     u.post(
-        Notify::own(object_id(14054), SENT_OFF, [200, 200, 14100]),
+        Notify::own(object_id(14054), NotifyKind::SENT_OFF, [200, 200, 14100]),
         2,
     )
     .unwrap();
@@ -1097,7 +1097,7 @@ fn a_hunter_asked_for_another_target_hunts_what_its_search_finds() {
     let n = |class| {
         Notify::own(
             object_id(31237),
-            REQUIRES_SEARCH,
+            NotifyKind::REQUIRES_SEARCH,
             [ActionKind::Hunt.value(), class, 31247],
         )
     };
@@ -1190,7 +1190,7 @@ fn a_gatherer_without_a_class_stops_and_one_on_a_farm_searches_for_another() {
     let n = |class| {
         Notify::own(
             object_id(31237),
-            REQUIRES_SEARCH,
+            NotifyKind::REQUIRES_SEARCH,
             [ActionKind::Gather.value(), class, 31247],
         )
     };
@@ -1282,7 +1282,7 @@ fn a_villager_searches_by_its_action() {
         }],
         ..Surroundings::default()
     };
-    let n = Notify::own(object_id(31237), REQUIRES_SEARCH, [0, -1, -1]);
+    let n = Notify::own(object_id(31237), NotifyKind::REQUIRES_SEARCH, [0, -1, -1]);
     let run = |u: &mut UnitAi, side: &mut ResourceSide, computer| {
         let mut fx = Vec::new();
         let r = u.villager_search(n, &at, computer, &mut With::new(side, &mut fx), &mut rng());
@@ -1414,7 +1414,7 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     let at = Surroundings::default();
     let n = Notify::own(
         object_id(31237),
-        REQUIRES_SEARCH,
+        NotifyKind::REQUIRES_SEARCH,
         [ActionKind::Gather.value(), 7, 31247],
     );
     assert_eq!(
@@ -1462,7 +1462,7 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     let mut fx = Vec::new();
     let n = Notify::own(
         object_id(31237),
-        REQUIRES_SEARCH,
+        NotifyKind::REQUIRES_SEARCH,
         [ActionKind::Gather.value(), 32, 0],
     );
     assert_eq!(
@@ -1507,7 +1507,11 @@ fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
     };
     let mut fx = Vec::new();
     let at = Surroundings::default();
-    let n = Notify::own(object_id(31237), REQUIRES_SEARCH, [0x265, 15, 31247]);
+    let n = Notify::own(
+        object_id(31237),
+        NotifyKind::REQUIRES_SEARCH,
+        [0x265, 15, 31247],
+    );
     assert_eq!(
         ai.hunter_search(
             n,
@@ -1547,7 +1551,11 @@ fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
         ..ResourceSide::default()
     };
     let mut fx = Vec::new();
-    let n = Notify::own(object_id(31237), REQUIRES_SEARCH, [0x265, 32, -1]);
+    let n = Notify::own(
+        object_id(31237),
+        NotifyKind::REQUIRES_SEARCH,
+        [0x265, 32, -1],
+    );
     assert_eq!(
         ai.hunter_search(
             n,
@@ -1599,7 +1607,7 @@ fn a_boar_attacks_its_first_attacker_and_keeps_it() {
     let hit = |caller| Notify {
         caller,
         recipient: object_id(9729),
-        kind: DAMAGED,
+        kind: NotifyKind::DAMAGED,
         p: [ObjectId::field(caller), 72, 75],
     };
     let mut side = Recorder::default();
@@ -1656,13 +1664,17 @@ fn a_stop_before_an_attack_command_runs_first() {
         ..Surroundings::default()
     };
     let mut side = Recorder::default();
-    let done = Notify::own(object_id(29825), ACTION_COMPLETED, [600, 31126, 0]);
+    let done = Notify::own(
+        object_id(29825),
+        NotifyKind::ACTION_COMPLETED,
+        [600, 31126, 0],
+    );
     let r = u.handle(done, 0, &at, false, &mut rng(), &mut side);
     assert_eq!((r, side.fx.clone()), (Ok(GO_ON), vec![Effect::Stop]));
     let hit = Notify {
         caller: Some(object_id(27240)),
         recipient: object_id(29825),
-        kind: DAMAGED,
+        kind: NotifyKind::DAMAGED,
         p: [27240, 3, 33],
     };
     let _ = u.handle(hit, 0, &at, false, &mut rng(), &mut side);
@@ -1713,7 +1725,7 @@ fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
         units: vec![attacker(29001, class::VILLAGER, 1.0)],
         ..Surroundings::default()
     };
-    let n = Notify::own(object_id(29823), IN_THE_WAY, [29001, -1, -1]);
+    let n = Notify::own(object_id(29823), NotifyKind::IN_THE_WAY, [29001, -1, -1]);
     let mut side = Recorder::default();
     let mut fx = Vec::new();
     let mut boar = UnitAi {
@@ -2066,7 +2078,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
     let hit = Notify {
         caller: Some(object_id(30)),
         recipient: object_id(20),
-        kind: DAMAGED,
+        kind: NotifyKind::DAMAGED,
         p: [30, 21, 25],
     };
     (ai, at, hit)
@@ -2138,7 +2150,7 @@ fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
     };
     let n = Notify::own(
         object_id(20),
-        ACTION_INVALIDATED,
+        NotifyKind::ACTION_INVALIDATED,
         [ActionKind::Attack.value(), 0, 514],
     );
     let mut side = DamageSide::default();
@@ -2156,8 +2168,8 @@ fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
     );
     assert_eq!((fx, u.current_target), (vec![Effect::Stop], None));
     for (kind, action) in [
-        (REQUIRES_SEARCH, ActionKind::Move),
-        (TARGET_MOVED, ActionKind::Repair),
+        (NotifyKind::REQUIRES_SEARCH, ActionKind::Move),
+        (NotifyKind::TARGET_MOVED, ActionKind::Repair),
     ] {
         let mut u = UnitAi {
             current_action: Some(action),
@@ -2179,7 +2191,7 @@ fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
     }
     let gather = Notify::own(
         object_id(20),
-        ACTION_INVALIDATED,
+        NotifyKind::ACTION_INVALIDATED,
         [ActionKind::Gather.value(), 5, -1],
     );
     assert!(
@@ -2196,7 +2208,7 @@ fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
     let mut fx = Vec::new();
     let tree = Notify::own(
         object_id(20),
-        ACTION_INVALIDATED,
+        NotifyKind::ACTION_INVALIDATED,
         [ActionKind::Gather.value(), 10, -1],
     );
     assert_eq!(
@@ -2233,7 +2245,7 @@ fn an_invalidated_action_of_the_order_or_an_attack_stops_the_unit() {
         current_target: Some(object_id(30)),
         ..idle(SOLDIER_AI)
     };
-    let invalid = |p0, p2| Notify::own(object_id(20), ACTION_INVALIDATED, [p0, 0, p2]);
+    let invalid = |p0, p2| Notify::own(object_id(20), NotifyKind::ACTION_INVALIDATED, [p0, 0, p2]);
     let run = |u: &mut UnitAi, n, computer| {
         let mut side = DamageSide {
             found: -1,
@@ -2334,7 +2346,7 @@ fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
         current_target: Some(object_id(30)),
         ..idle(SOLDIER_AI)
     };
-    let done = |p0| Notify::own(object_id(20), ACTION_COMPLETED, [p0, 0, 0]);
+    let done = |p0| Notify::own(object_id(20), NotifyKind::ACTION_COMPLETED, [p0, 0, 0]);
     let run = |u: &mut UnitAi, p0| {
         let mut side = DamageSide {
             found: -1,
@@ -2454,18 +2466,18 @@ fn the_base_handler_takes_each_kind_it_models() {
         (r, fx)
     };
     let mut u = unit();
-    let (r, fx) = run(&mut u, OWNER_CHANGED, object_id(20), &at);
+    let (r, fx) = run(&mut u, NotifyKind::OWNER_CHANGED, object_id(20), &at);
     assert_eq!((r, fx.first()), (Ok(GO_ON), Some(&Effect::Stop)));
     assert_eq!((u.current_target, u.orders.len()), (None, 0));
     for kind in [
-        TARGET_MOVED,
-        0x1f6,
-        0x1ff,
-        ACTION_EXECUTED,
-        0x203,
-        0x25a,
-        0x266,
-        0x2be,
+        NotifyKind::TARGET_MOVED,
+        NotifyKind::from(0x1f6),
+        NotifyKind::from(0x1ff),
+        NotifyKind::ACTION_EXECUTED,
+        NotifyKind::NO_DROP_SITE,
+        NotifyKind::from(0x25a),
+        NotifyKind::from(0x266),
+        NotifyKind::from(0x2be),
     ] {
         let mut u = unit();
         assert_eq!(
@@ -2476,29 +2488,42 @@ fn the_base_handler_takes_each_kind_it_models() {
         assert_eq!(u, unit(), "{kind:#x}");
     }
     let mut u = unit();
-    assert_eq!(run(&mut u, 0x1fd, object_id(20), &at).0, Ok(GO_ON));
+    assert_eq!(
+        run(&mut u, NotifyKind::OUT_OF_REACH, object_id(20), &at).0,
+        Ok(GO_ON)
+    );
     assert_eq!(u.current_order, Some(OrderKind::Attack));
     let fixed = Surroundings {
         kind: master_type::ANIMATED,
         ..at.clone()
     };
-    assert_eq!(run(&mut u, 0x1fd, object_id(20), &fixed).0, Ok(GO_ON));
+    assert_eq!(
+        run(&mut u, NotifyKind::OUT_OF_REACH, object_id(20), &fixed).0,
+        Ok(GO_ON)
+    );
     assert_eq!(u.current_order, None);
     let mut u = unit();
-    assert_eq!(run(&mut u, SENT_OFF_GROUP, object_id(20), &at).0, Ok(GO_ON));
+    assert_eq!(
+        run(&mut u, NotifyKind::SENT_OFF_GROUP, object_id(20), &at).0,
+        Ok(GO_ON)
+    );
     assert_eq!(u.current_action, Some(ActionKind::GroupAside));
     let mut u = unit();
     assert_eq!(
-        run(&mut u, NO_LONGER_ON_ME, object_id(30), &at).0,
+        run(&mut u, NotifyKind::NO_LONGER_ON_ME, object_id(30), &at).0,
         Ok(GO_ON)
     );
     assert_eq!(u.attackers, Attackers::of_saved(&[31]));
     assert_eq!(
-        run(&mut u, NO_LONGER_ON_ME, object_id(77), &at).0,
+        run(&mut u, NotifyKind::NO_LONGER_ON_ME, object_id(77), &at).0,
         Ok(GO_ON)
     );
     assert_eq!(u.attackers, Attackers::of_saved(&[31]));
-    assert!(run(&mut unit(), 0x999, object_id(20), &at).0.is_err());
+    assert!(
+        run(&mut unit(), NotifyKind::from(0x999), object_id(20), &at)
+            .0
+            .is_err()
+    );
 }
 
 /// A villager dodges a missile's warning by its owner's chance (one AI draw); one it does
@@ -2508,7 +2533,7 @@ fn a_villager_dodges_a_missile_s_warning_or_takes_it_as_damage() {
     let r = rng().rand15() as i32 * 100 / 0x7fff;
     let (mut u, mut at, hit) = hit_villager();
     let warning = Notify {
-        kind: MISSILE_WARNING,
+        kind: NotifyKind::MISSILE_WARNING,
         ..hit
     };
     at.dodge_chance = u8::try_from(r + 1).unwrap();
@@ -2858,7 +2883,7 @@ fn damage(caller: i32, hp: i32) -> Notify {
     Notify {
         caller: ObjectId::of_field(caller),
         recipient: object_id(1),
-        kind: DAMAGED,
+        kind: NotifyKind::DAMAGED,
         p: [0, hp, 0],
     }
 }
@@ -3535,7 +3560,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     let hit = Notify {
         caller: Some(object_id(9731)),
         recipient: object_id(10041),
-        kind: DAMAGED,
+        kind: NotifyKind::DAMAGED,
         p: [9731, 34, 40],
     };
     let mut side = Recorder::default();
@@ -3638,7 +3663,7 @@ fn a_released_attacker_leaves_the_set_through_notify_699() {
     let released = |caller| Notify {
         caller,
         recipient: object_id(9729),
-        kind: NO_LONGER_ON_ME,
+        kind: NotifyKind::NO_LONGER_ON_ME,
         p: [4, 0, 0],
     };
     u.post(released(Some(object_id(10050))), 2).unwrap();
@@ -4248,7 +4273,7 @@ fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
     };
     let seek = |u: &mut UnitAi, side: &mut ScoutSide, computer| {
         let mut fx = Vec::new();
-        let n = Notify::own(object_id(30), 0x202, [605, 0, 0]);
+        let n = Notify::own(object_id(30), NotifyKind::REQUIRES_SEARCH, [605, 0, 0]);
         let r = u.seek_unexplored(n, &at, computer, &mut rng(), &mut With::new(side, &mut fx));
         (r, fx)
     };
@@ -4399,7 +4424,7 @@ fn the_artifact_s_update_hands_it_over_then_stops() {
 /// stop; a moved target it still sees goes on, one it does not see ends.
 #[test]
 fn the_artifact_s_notifies_stop_it_or_go_on() {
-    let run = |ai: &mut UnitAi, kind: i32, p: [i32; 3], at: &Surroundings| {
+    let run = |ai: &mut UnitAi, kind: NotifyKind, p: [i32; 3], at: &Surroundings| {
         let n = Notify {
             caller: Some(object_id(500)),
             recipient: object_id(7108),
@@ -4420,28 +4445,31 @@ fn the_artifact_s_notifies_stop_it_or_go_on() {
     };
     let (mut ai, at) = rock_church();
     for kind in [
-        500,
-        0x1f7,
-        0x1ff,
-        0x202,
-        OWNER_CHANGED,
-        0x25d,
-        0x268,
-        699,
-        0x2be,
+        NotifyKind::DAMAGED,
+        NotifyKind::from(0x1f7),
+        NotifyKind::from(0x1ff),
+        NotifyKind::REQUIRES_SEARCH,
+        NotifyKind::OWNER_CHANGED,
+        NotifyKind::from(0x25d),
+        NotifyKind::from(0x268),
+        NotifyKind::NO_LONGER_ON_ME,
+        NotifyKind::from(0x2be),
     ] {
         assert_eq!(run(&mut ai, kind, [0; 3], &at), (Ok(GO_ON), vec![], false));
     }
-    assert_eq!(run(&mut ai, 600, [0; 3], &at), (Ok(GO_ON), vec![], true));
+    assert_eq!(
+        run(&mut ai, NotifyKind::ATTACKED, [0; 3], &at),
+        (Ok(GO_ON), vec![], true)
+    );
     assert_eq!(ai.attackers, Attackers::of_saved(&[500]));
     ai.current_action = Some(ActionKind::Move);
     ai.current_target = Some(object_id(9));
     assert_eq!(
-        run(&mut ai, ACTION_COMPLETED, [0x261, 0, 0], &at),
+        run(&mut ai, NotifyKind::ACTION_COMPLETED, [0x261, 0, 0], &at),
         (Ok(GO_ON), vec![], false)
     );
     assert_eq!(
-        run(&mut ai, ACTION_FAILED, [0x262, 0, 0], &at),
+        run(&mut ai, NotifyKind::ACTION_FAILED, [0x262, 0, 0], &at),
         (Ok(GO_ON), vec![Effect::Stop], false)
     );
     assert_eq!((ai.current_action, ai.current_target), (None, None));
@@ -4449,10 +4477,10 @@ fn the_artifact_s_notifies_stop_it_or_go_on() {
     ai.current_order = Some(OrderKind::Move);
     ai.current_action = Some(ActionKind::Move);
     assert_eq!(
-        run(&mut ai, ACTION_COMPLETED, [0x1, 0, 0], &at),
+        run(&mut ai, NotifyKind::ACTION_COMPLETED, [0x1, 0, 0], &at),
         (Ok(GO_ON), vec![Effect::Stop], false)
     );
-    let unknown = run(&mut ai, 0x210, [0; 3], &at);
+    let unknown = run(&mut ai, NotifyKind::from(0x210), [0; 3], &at);
     assert_eq!(unknown, (Ok(GO_ON), vec![Effect::Stop], false));
     // a moved target it sees goes on; one it does not see stops it
     ai.current_target = Some(object_id(9));
@@ -4464,7 +4492,7 @@ fn the_artifact_s_notifies_stop_it_or_go_on() {
         ..at.clone()
     };
     assert_eq!(
-        run(&mut ai, TARGET_MOVED, [0; 3], &seen),
+        run(&mut ai, NotifyKind::TARGET_MOVED, [0; 3], &seen),
         (Ok(GO_ON), vec![], false)
     );
     let explored = Surroundings {
@@ -4475,7 +4503,7 @@ fn the_artifact_s_notifies_stop_it_or_go_on() {
         ..at
     };
     assert_eq!(
-        run(&mut ai, TARGET_MOVED, [0; 3], &explored),
+        run(&mut ai, NotifyKind::TARGET_MOVED, [0; 3], &explored),
         (Ok(GO_ON), vec![Effect::Stop], false)
     );
 }
@@ -5383,7 +5411,7 @@ fn between_turns_a_walking_unit_or_one_with_notifies_keeps_its_queue() {
     let mut told = UnitAi {
         notifies: vec![Notify::own(
             object_id(9183),
-            ACTION_COMPLETED,
+            NotifyKind::ACTION_COMPLETED,
             [ActionKind::Move.value(), 0, 0],
         )],
         ..scout()
@@ -5411,7 +5439,7 @@ fn a_completed_move_on_its_order_ends_the_order_and_stops_the_unit() {
         orders: vec![],
         notifies: vec![Notify::own(
             object_id(9183),
-            ACTION_COMPLETED,
+            NotifyKind::ACTION_COMPLETED,
             [ActionKind::Move.value(), 0, 0],
         )],
         ..scout()
@@ -5453,7 +5481,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
     let mut fx = Vec::new();
     let n = Notify::own(
         object_id(9183),
-        ACTION_FAILED,
+        NotifyKind::ACTION_FAILED,
         [ActionKind::Move.value(), 0, 0],
     );
     assert_eq!(
@@ -5514,7 +5542,7 @@ fn a_failed_action_stops_like_a_completed_one_and_an_order_s_own_failure_ends_it
         current_order: Some(OrderKind::Attack),
         ..UnitAi::default()
     };
-    let attack = Notify::own(object_id(9183), ACTION_FAILED, [600, 0, 0]);
+    let attack = Notify::own(object_id(9183), NotifyKind::ACTION_FAILED, [600, 0, 0]);
     assert!(
         u.action_failed(
             attack,
@@ -5545,7 +5573,7 @@ fn a_boar_s_failed_attack_runs_its_idle_check() {
         home: Some(h),
         ..UnitAi::default()
     };
-    let attack = Notify::own(object_id(29827), ACTION_FAILED, [600, 0, 0]);
+    let attack = Notify::own(object_id(29827), NotifyKind::ACTION_FAILED, [600, 0, 0]);
     let mut u = boar(home(true, false));
     let mut fx = Vec::new();
     let r = u.action_failed(
@@ -5591,7 +5619,7 @@ fn an_animal_s_completed_wander_becomes_its_last_action() {
         idle_timer: 0,
         notifies: vec![Notify::own(
             object_id(9851),
-            ACTION_COMPLETED,
+            NotifyKind::ACTION_COMPLETED,
             [ActionKind::Move.value(), 0, 0],
         )],
         ..deer()
@@ -5618,7 +5646,7 @@ fn an_animal_s_completed_wander_becomes_its_last_action() {
 fn a_movement_completion_reaches_only_a_moving_unit_ai() {
     let completed = Notify::own(
         object_id(9181),
-        ACTION_COMPLETED,
+        NotifyKind::ACTION_COMPLETED,
         [ActionKind::Move.value(), 0, 0],
     );
     let mut builder = UnitAi {
@@ -5649,10 +5677,10 @@ fn a_livestock_s_ownership_notify_drops_its_action_value_and_breaks_off() {
     let mut u = UnitAi {
         current_action: Some(ActionKind::Move),
         notifies: vec![
-            Notify::own(object_id(9519), OWNER_CHANGED, [2, 0, 0]),
+            Notify::own(object_id(9519), NotifyKind::OWNER_CHANGED, [2, 0, 0]),
             Notify::own(
                 object_id(9519),
-                ACTION_COMPLETED,
+                NotifyKind::ACTION_COMPLETED,
                 [ActionKind::Move.value(), 0, 0],
             ),
         ],
@@ -5765,7 +5793,7 @@ fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
         Notify::from_bytes(&notify).unwrap(),
         Notify::own(
             object_id(9851),
-            ACTION_COMPLETED,
+            NotifyKind::ACTION_COMPLETED,
             [ActionKind::Move.value(), 0, 0]
         )
     );
@@ -6186,7 +6214,7 @@ fn the_follow_order_ends_on_a_target_out_of_sight() {
 #[test]
 fn a_moved_target_notify_runs_process_idle_with_a_saved_patrol() {
     let (mut u, at) = follower(Position::new(115.0, 40.2, 0.0), true);
-    let n = Notify::own(object_id(9183), TARGET_MOVED, [0, 0, 0]);
+    let n = Notify::own(object_id(9183), NotifyKind::TARGET_MOVED, [0, 0, 0]);
     let (mut r, mut side) = (rng(), Recorder::default());
     let mut fx = Vec::new();
     assert_eq!(
@@ -6841,7 +6869,7 @@ fn an_immediate_attack_roundup_keeps_the_target_until_it_attacks_the_next() {
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(50)),
-        notifies: vec![Notify::own(object_id(9), DAMAGED, [1, 5, 0])],
+        notifies: vec![Notify::own(object_id(9), NotifyKind::DAMAGED, [1, 5, 0])],
         ..idle(UnitAiType::SOLDIER)
     };
     let roundup = QueuedOrder {
@@ -7585,7 +7613,7 @@ fn a_boar_whose_move_aside_completed_heads_home_next() {
     };
     let n = Notify::own(
         object_id(9729),
-        ACTION_COMPLETED,
+        NotifyKind::ACTION_COMPLETED,
         [ActionKind::MoveAside.value(), 0, 0],
     );
     let (r, fx, _) = handled(&mut u, n, &Surroundings::default(), false);
@@ -7613,7 +7641,7 @@ fn a_lion_s_completed_attack_resets_its_idle_timeout_and_stops() {
     };
     let n = Notify::own(
         object_id(800),
-        ACTION_COMPLETED,
+        NotifyKind::ACTION_COMPLETED,
         [ActionKind::Attack.value(), 0, 0],
     );
     let mut r = rng();
@@ -7649,7 +7677,7 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
         current_target: Some(object_id(700)),
         ..idle(UnitAiType::LION)
     };
-    let n = Notify::own(object_id(800), TARGET_MOVED, [0, 0, 0]);
+    let n = Notify::own(object_id(800), NotifyKind::TARGET_MOVED, [0, 0, 0]);
     let mut u = lion();
     let (r, fx, _) = handled(&mut u, n, &Surroundings::default(), false);
     assert_eq!((r, fx), (Ok(GO_ON), vec![Effect::Stop]));
@@ -7711,13 +7739,23 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
 fn a_building_counts_its_attackers() {
     let mut u = idle(UnitAiType::BUILDING);
     let at = Surroundings::default();
-    let (r, _, side) = handled(&mut u, Notify::own(object_id(70), 600, [0; 3]), &at, false);
+    let (r, _, side) = handled(
+        &mut u,
+        Notify::own(object_id(70), NotifyKind::ATTACKED, [0; 3]),
+        &at,
+        false,
+    );
     assert_eq!((r, side.under_attack), (Ok(GO_ON), Some(true)));
-    let _ = handled(&mut u, Notify::own(object_id(60), 600, [0; 3]), &at, false);
+    let _ = handled(
+        &mut u,
+        Notify::own(object_id(60), NotifyKind::ATTACKED, [0; 3]),
+        &at,
+        false,
+    );
     assert_eq!(u.attackers, Attackers::of_saved(&[60, 70]));
     let (r, _, _) = handled(
         &mut u,
-        Notify::own(object_id(70), NO_LONGER_ON_ME, [0; 3]),
+        Notify::own(object_id(70), NotifyKind::NO_LONGER_ON_ME, [0; 3]),
         &at,
         false,
     );
@@ -7727,7 +7765,7 @@ fn a_building_counts_its_attackers() {
     );
     let (r, _, _) = handled(
         &mut u,
-        Notify::own(object_id(99), NO_LONGER_ON_ME, [0; 3]),
+        Notify::own(object_id(99), NotifyKind::NO_LONGER_ON_ME, [0; 3]),
         &at,
         false,
     );
@@ -7735,7 +7773,8 @@ fn a_building_counts_its_attackers() {
         (r, u.attackers.clone()),
         (Ok(GO_ON), Attackers::of_saved(&[60]))
     );
-    let hit = |caller: ObjectId, hp| Notify::own(caller, DAMAGED, [caller.get(), hp, 0]);
+    let hit =
+        |caller: ObjectId, hp| Notify::own(caller, NotifyKind::DAMAGED, [caller.get(), hp, 0]);
     let (r, _, side) = handled(&mut u, hit(object_id(60), 5), &at, false);
     assert_eq!((r, side.under_attack), (Ok(GO_ON), Some(true)));
     u.current_target = Some(object_id(61));
@@ -7760,10 +7799,10 @@ fn a_building_counts_its_attackers() {
 #[test]
 fn a_destroyed_tower_gives_up() {
     let mut u = UnitAi {
-        notifies: vec![Notify::own(object_id(60), DAMAGED, [60, 0, 0])],
+        notifies: vec![Notify::own(object_id(60), NotifyKind::DAMAGED, [60, 0, 0])],
         ..idle(UnitAiType::TOWER)
     };
-    let n = Notify::own(object_id(60), DAMAGED, [60, 0, 0]);
+    let n = Notify::own(object_id(60), NotifyKind::DAMAGED, [60, 0, 0]);
     let (r, _, _) = handled(&mut u, n, &Surroundings::default(), false);
     assert_eq!((r, u.notifies.len()), (Ok(DEAD), 0));
     let mut u = idle(UnitAiType::TOWER);
@@ -8239,7 +8278,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
         }],
         ..Surroundings::default()
     };
-    let n = Notify::own(object_id(77), DAMAGED, [77, 40, 0]);
+    let n = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 40, 0]);
     let mut side = StandSide {
         refusals: 0,
         tested: Vec::new(),
@@ -8454,26 +8493,30 @@ fn the_unit_ai_s_notify_answers_whether_it_took_it() {
         ..idle(UnitAiType::CIVILIAN)
     };
     let n = |caller, kind, p0| Notify::own(caller, kind, [p0, 0, 0]);
-    assert!(!u.accept(n(object_id(70), DAMAGED, 0), 0));
-    assert!(!u.accept(n(object_id(71), NO_LONGER_ON_ME, 0), 2));
+    assert!(!u.accept(n(object_id(70), NotifyKind::DAMAGED, 0), 0));
+    assert!(!u.accept(n(object_id(71), NotifyKind::NO_LONGER_ON_ME, 0), 2));
     assert!(!u.accept(
         n(
             object_id(70),
-            ACTION_INVALIDATED,
+            NotifyKind::ACTION_INVALIDATED,
             ActionKind::Attack.value()
         ),
         2
     ));
     assert!(u.accept(
-        n(object_id(70), ACTION_COMPLETED, ActionKind::Move.value()),
+        n(
+            object_id(70),
+            NotifyKind::ACTION_COMPLETED,
+            ActionKind::Move.value()
+        ),
         2
     ));
     assert_eq!(u.notifies, Vec::new());
-    assert!(u.accept(n(object_id(70), NO_LONGER_ON_ME, 0), 2));
+    assert!(u.accept(n(object_id(70), NotifyKind::NO_LONGER_ON_ME, 0), 2));
     assert!(u.accept(
         n(
             object_id(70),
-            ACTION_INVALIDATED,
+            NotifyKind::ACTION_INVALIDATED,
             ActionKind::Gather.value()
         ),
         2
@@ -9148,7 +9191,7 @@ fn the_transport_ship_passes_other_notifies_to_the_base_handler() {
     let mut base = u.clone();
     let n = Notify::own(
         object_id(500),
-        ACTION_COMPLETED,
+        NotifyKind::ACTION_COMPLETED,
         [ActionKind::Move.value(), 0, 0],
     );
     let (mut fx, mut base_fx) = (Vec::new(), Vec::new());
@@ -9179,7 +9222,7 @@ fn the_transport_ship_passes_other_notifies_to_the_base_handler() {
 #[test]
 fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     let (mut u, at) = attacked_transport();
-    let n = Notify::own(object_id(77), DAMAGED, [77, 40, 0]);
+    let n = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 40, 0]);
     let mut side = StandSide {
         refusals: 0,
         tested: Vec::new(),
@@ -9239,7 +9282,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
     );
     assert_eq!(fx, Vec::<Effect>::new());
     let (mut u, at) = attacked_transport();
-    let dead = Notify::own(object_id(77), DAMAGED, [77, 0, 0]);
+    let dead = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 0, 0]);
     assert_eq!(
         u.handle(
             dead,
@@ -9287,7 +9330,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
 #[test]
 fn a_transport_ship_dodges_a_missile_s_warning_by_its_owner_s_chance() {
     let r = rng().rand15() as i32 * 100 / 0x7fff;
-    let warning = Notify::own(object_id(77), MISSILE_WARNING, [77, 40, 0]);
+    let warning = Notify::own(object_id(77), NotifyKind::MISSILE_WARNING, [77, 40, 0]);
     let mut side = StandSide {
         refusals: 0,
         tested: Vec::new(),
@@ -9346,7 +9389,7 @@ fn a_siege_tower_in_a_busy_group_ignores_its_damage() {
         (fx, r.draws),
         (vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)], 0)
     );
-    let n = Notify::own(object_id(77), DAMAGED, [77, 40, 0]);
+    let n = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 40, 0]);
     let mut side = StandSide {
         refusals: 0,
         tested: Vec::new(),
@@ -9589,7 +9632,7 @@ fn a_trade_ship_whose_action_needs_a_search_stops() {
     u.current_target = Some(object_id(12));
     let n = Notify::own(
         object_id(500),
-        REQUIRES_SEARCH,
+        NotifyKind::REQUIRES_SEARCH,
         [ActionKind::Move.value(), 0, 0],
     );
     let mut fx = Vec::new();
@@ -9629,7 +9672,7 @@ fn a_trade_ship_whose_action_needs_a_search_stops() {
 /// runs from its attackers (3); on the move action it runs on (no stop).
 #[test]
 fn a_trade_ship_stops_and_runs_from_its_attackers() {
-    let n = Notify::own(object_id(77), DAMAGED, [77, 40, 0]);
+    let n = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 40, 0]);
     let (mut u, at) = attacked_transport();
     u.ai_type = TRADE_AI;
     u.current_action = Some(ActionKind::Gather);
@@ -9672,7 +9715,7 @@ fn a_trade_ship_stops_and_runs_from_its_attackers() {
 /// nor runs (3, nothing); off it, it stops and runs.
 #[test]
 fn a_fishing_ship_on_the_move_takes_its_damage_without_running() {
-    let n = Notify::own(object_id(77), DAMAGED, [77, 40, 0]);
+    let n = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 40, 0]);
     let (mut u, at) = attacked_transport();
     u.ai_type = FISHING_AI;
     u.current_action = Some(ActionKind::Move);
@@ -9746,7 +9789,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
     };
     let n = Notify::own(
         object_id(500),
-        REQUIRES_SEARCH,
+        NotifyKind::REQUIRES_SEARCH,
         [ActionKind::Build.value(), 0, 0],
     );
     let mut fx = Vec::new();
@@ -9813,7 +9856,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
         u.notifies,
         vec![Notify::own(
             object_id(500),
-            ACTION_COMPLETED,
+            NotifyKind::ACTION_COMPLETED,
             [ActionKind::Build.value(), 0, 0]
         )]
     );
@@ -10220,7 +10263,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     };
     let mut u = idle(SIEGE_AI);
     let mut side = SiegeSide::default();
-    let under = Notify::own(object_id(500), 0x1fe, [77, 0, 0]);
+    let under = Notify::own(object_id(500), NotifyKind::TOO_CLOSE, [77, 0, 0]);
     assert!(
         u.handle(
             under,
@@ -10232,7 +10275,7 @@ fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
         )
         .is_err()
     );
-    let executed = Notify::own(object_id(500), ACTION_EXECUTED, [600, 77, 0]);
+    let executed = Notify::own(object_id(500), NotifyKind::ACTION_EXECUTED, [600, 77, 0]);
     assert_eq!(
         u.handle(
             executed,
@@ -12192,7 +12235,7 @@ fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() 
         state: 2,
         ..Surroundings::default()
     };
-    let moved = Notify::own(object_id(6116), TARGET_MOVED, [0, 0, 0]);
+    let moved = Notify::own(object_id(6116), NotifyKind::TARGET_MOVED, [0, 0, 0]);
     let mut u = attacking(true);
     let (r, fx, _) = handled(&mut u, moved, &at, false);
     assert_eq!((r, fx), (Ok(GO_ON), Vec::new()));
@@ -12200,7 +12243,7 @@ fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() 
         u.notifies,
         [Notify::own(
             object_id(6116),
-            ACTION_FAILED,
+            NotifyKind::ACTION_FAILED,
             [ActionKind::Attack.value(), 0, 0]
         )]
     );
@@ -12213,7 +12256,7 @@ fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() 
     let mut u = attacking(false);
     let invalid = Notify::own(
         object_id(6116),
-        ACTION_INVALIDATED,
+        NotifyKind::ACTION_INVALIDATED,
         [ActionKind::Attack.value(), 0, 0],
     );
     let (r, _, _) = handled(&mut u, invalid, &at, false);
@@ -12232,7 +12275,7 @@ fn a_villager_drops_another_resource_at_the_table_s_building() {
         state: 2,
         ..Surroundings::default()
     };
-    let other = Notify::own(object_id(20), OTHER_LOAD, [0; 3]);
+    let other = Notify::own(object_id(20), NotifyKind::OTHER_LOAD, [0; 3]);
     let mut side = Recorder {
         drop_site: Some(object_id(45)),
         top: Some(object_id(77)),
@@ -12286,7 +12329,11 @@ fn a_villager_works_the_pasture_it_built() {
         ..Surroundings::default()
     };
     for action in [ActionKind::Build.value(), ActionKind::Hunt.value()] {
-        let built = Notify::own(object_id(15295), PASTURE_BUILT, [action, 15342, 0]);
+        let built = Notify::own(
+            object_id(15295),
+            NotifyKind::PASTURE_BUILT,
+            [action, 15342, 0],
+        );
         let (r, fx, _) = handled(&mut idle(CIVILIAN), built, &at, false);
         assert_eq!(r, Ok(GO_ON));
         assert_eq!(
@@ -12299,7 +12346,7 @@ fn a_villager_works_the_pasture_it_built() {
     }
     let other = Notify::own(
         object_id(15295),
-        PASTURE_BUILT,
+        NotifyKind::PASTURE_BUILT,
         [ActionKind::Gather.value(), 15342, 0],
     );
     assert_eq!(
@@ -12316,7 +12363,7 @@ fn a_villager_works_the_pasture_it_built() {
 fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
     let done = Notify::own(
         object_id(9),
-        ACTION_COMPLETED,
+        NotifyKind::ACTION_COMPLETED,
         [ActionKind::Attack.value(), 0, 0],
     );
     // a transport ship's processIdle only caps its last human order time (5)
@@ -12430,7 +12477,7 @@ fn packed_siege() -> (UnitAi, Surroundings) {
 /// dead, its owner's AI would hear the alert (not modelled either).
 #[test]
 fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
-    let n = Notify::own(object_id(77), DAMAGED, [77, 40, 0]);
+    let n = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 40, 0]);
     let (mut u, at) = packed_siege();
     let mut fx = Vec::new();
     let r = u.handle(
@@ -12453,7 +12500,7 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
     );
     let (mut u, at) = packed_siege();
     let before = u.clone();
-    let stranger = Notify::own(object_id(78), DAMAGED, [78, 40, 0]);
+    let stranger = Notify::own(object_id(78), NotifyKind::DAMAGED, [78, 40, 0]);
     let mut fx = Vec::new();
     let r = u.handle(
         stranger,
@@ -12465,7 +12512,7 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
     );
     assert_eq!((r, fx, u), (Ok(GO_ON), Vec::new(), before));
     let (mut u, at) = packed_siege();
-    let dead = Notify::own(object_id(77), DAMAGED, [77, 0, 0]);
+    let dead = Notify::own(object_id(77), NotifyKind::DAMAGED, [77, 0, 0]);
     let r = u.handle(
         dead,
         0,

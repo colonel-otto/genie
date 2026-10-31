@@ -15,6 +15,7 @@ use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
+use crate::unit_ai::NotifyKind;
 
 impl Attack {
     /// `set_state(6)` (case 6): with a target or a point (`+0x38` not −1, `UCOMISS`: a NaN one
@@ -34,7 +35,7 @@ impl Attack {
         self.enter(READY, unit)?;
         if self.target.is_none() && self.point.x() == NONE {
             if !self.sub_action {
-                g.post(unit, crate::unit_ai::ACTION_COMPLETED, [600, 0, 0])?;
+                g.post(unit, NotifyKind::ACTION_COMPLETED, [600, 0, 0])?;
             }
             return self.finish(unit, g.sprite_rng);
         }
@@ -124,7 +125,7 @@ impl Attack {
         }
         if gap < self.min_range {
             if !self.sub_action {
-                g.post(unit, 0x1fe, [-1; 3])?;
+                g.post(unit, NotifyKind::TOO_CLOSE, [-1; 3])?;
             }
             if speed != 0.0 && r.can_move {
                 return Ok(Readiness::Waiting);
@@ -135,7 +136,7 @@ impl Attack {
         let gap = crate::movement::gate_gap(g.map, (at, ground), (target, &t), gap, |g| g);
         if self.reach() < gap {
             if !self.sub_action {
-                g.post(unit, 0x1fd, [0; 3])?;
+                g.post(unit, NotifyKind::OUT_OF_REACH, [0; 3])?;
             }
             if (r.stance == 1 && self.off_leash(t.position, r.state_position))
                 || speed == 0.0

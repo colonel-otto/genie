@@ -472,12 +472,12 @@ impl Unit {
         let damaged = ai
             .notifies
             .iter()
-            .filter(|n| n.kind == crate::unit_ai::DAMAGED)
+            .filter(|n| n.kind == crate::unit_ai::NotifyKind::DAMAGED)
             .map(|n| n.caller);
         let in_the_way = ai
             .notifies
             .iter()
-            .filter(|n| n.kind == crate::unit_ai::IN_THE_WAY)
+            .filter(|n| n.kind == crate::unit_ai::NotifyKind::IN_THE_WAY)
             .map(|n| ObjectId::of_field(n.p[0]));
         // none (−1) names no object the world holds
         let mut ids: Vec<ObjectId> = ai
@@ -527,7 +527,11 @@ impl Unit {
     }
 
     /// A notify the unit posts to its own unit AI (slot 0x328).
-    pub(crate) fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), GenieError> {
+    pub(crate) fn post_own(
+        &mut self,
+        kind: crate::unit_ai::NotifyKind,
+        p: [i32; 3],
+    ) -> Result<(), GenieError> {
         self.inbox().post(kind, p)
     }
 
@@ -537,7 +541,7 @@ impl Unit {
         crate::unit_ai::Inbox::of(&mut self.ai, self.id, self.life.state)
     }
 
-    /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`],
+    /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::NotifyKind::IN_THE_WAY`],
     /// [`crate::movement::Mover::in_the_way`]), posted at once in their order (slot 0x328: the
     /// walker is in state 2).
     ///
@@ -551,7 +555,7 @@ impl Unit {
             .map(|m| std::mem::take(&mut m.in_the_way))
             .unwrap_or_default();
         for id in in_the_way {
-            self.post_own(crate::unit_ai::IN_THE_WAY, [id.get(), -1, -1])?;
+            self.post_own(crate::unit_ai::NotifyKind::IN_THE_WAY, [id.get(), -1, -1])?;
         }
         Ok(())
     }

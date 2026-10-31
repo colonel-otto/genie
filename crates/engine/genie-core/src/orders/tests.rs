@@ -28,6 +28,7 @@ use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Issuer;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
 
@@ -3013,7 +3014,7 @@ fn an_order_on_an_enemy_below_the_least_range_notifies_the_unit_ai() {
         ai.notifies,
         [crate::unit_ai::Notify::own(
             object_id(10),
-            0x1fe,
+            NotifyKind::TOO_CLOSE,
             [20, -1, -1]
         )]
     );
@@ -3410,7 +3411,7 @@ fn a_move_runs_the_stop_of_a_pending_completion_first() {
     ai.current_action = Some(ActionKind::Move);
     ai.notifies = vec![crate::unit_ai::Notify::own(
         object_id(11),
-        crate::unit_ai::ACTION_COMPLETED,
+        NotifyKind::ACTION_COMPLETED,
         [ActionKind::Move.value(), 0, 0],
     )];
     assert_eq!(
@@ -4085,9 +4086,7 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
     assert_eq!(v.actions.gather().copied(), before);
     let ai = v.ai.as_ref().expect("the forager's unit AI");
     assert!(
-        ai.notifies
-            .iter()
-            .any(|n| n.kind == crate::unit_ai::OTHER_LOAD),
+        ai.notifies.iter().any(|n| n.kind == NotifyKind::OTHER_LOAD),
         "{:?}",
         ai.notifies
     );

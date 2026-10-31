@@ -180,7 +180,7 @@ pub struct Attack {
 }
 
 /// A notify an Attack's start posts to its unit's AI: its kind and three parameters.
-pub(crate) type Posted = (i32, [i32; 3]);
+pub(crate) type Posted = (crate::unit_ai::NotifyKind, [i32; 3]);
 
 /// A unit's own Attack command ([`Attack::command`]): its target, what it engages and with
 /// which arms, the target's sight and owner, and what the start's `set_state(6)` reads.
@@ -391,7 +391,7 @@ pub(crate) struct Ground<'a> {
     /// The Object stream, which a swing's second sprite draws from.
     pub(crate) object_rng: Option<&'a mut Well512>,
     /// The notifies' list while the unit AI is out of the unit.
-    pub(crate) buffer: Option<&'a mut Vec<(i32, [i32; 3])>>,
+    pub(crate) buffer: Option<&'a mut Vec<(crate::unit_ai::NotifyKind, [i32; 3])>>,
     /// The sprites' table, which a `MoveTo` the Attack makes takes its sprite from.
     pub(crate) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
 }
@@ -406,7 +406,7 @@ impl Ground<'_> {
     pub(crate) fn post(
         &mut self,
         unit: &mut Unit,
-        kind: i32,
+        kind: crate::unit_ai::NotifyKind,
         p: [i32; 3],
     ) -> Result<(), GenieError> {
         self.buffer.as_mut().map_or_else(

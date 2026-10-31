@@ -386,7 +386,7 @@ impl Unit {
             -1
         };
         self.post_own(
-            crate::unit_ai::REQUIRES_SEARCH,
+            crate::unit_ai::NotifyKind::REQUIRES_SEARCH,
             [
                 ActionKind::Gather.value(),
                 i32::from(ClassId::field(class)),

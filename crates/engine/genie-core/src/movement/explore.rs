@@ -46,10 +46,6 @@ const WALK_WITHOUT_READS: GenieError =
 /// A point of −1 is no point (`DAT_14330ec20`).
 const NO_POINT: f32 = crate::math::image::explore::NO_POINT;
 
-/// The action's notify to its unit AI when it waits for a point (state 3): 0x202 with the
-/// explore action value 605.
-pub const WANTS_POINT: i32 = 0x202;
-
 /// What an Explore's `set_state` asks of its owner besides its own fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Owner {
@@ -598,7 +594,10 @@ impl Unit {
                     "an Explore's set_state 2 (slots 0x68)",
                 ));
             }
-            Owner::WantsPoint => self.post_own(WANTS_POINT, [ActionKind::Explore.value(), 0, 0])?,
+            Owner::WantsPoint => self.post_own(
+                crate::unit_ai::NotifyKind::REQUIRES_SEARCH,
+                [ActionKind::Explore.value(), 0, 0],
+            )?,
             Owner::Standing => {}
         }
         let standing =

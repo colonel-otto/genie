@@ -5,13 +5,12 @@ use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ARTIFACT_AI,
-    ARTIFACT_CARED, DAMAGED, Effect, FISHING_AI, GO_ON, IN_THE_WAY, MISSILE_WARNING, Memory,
-    NO_LONGER_ON_ME, Notify, OWNER_CHANGED, Pick, SENT_OFF, SENT_OFF_GROUP, SIEGE_AI,
-    SIEGE_TOWER_AI, Search, Surroundings, TARGET_MOVED, TRADE_AI, UnitAi, UnitSide, search_radius,
+    ARTIFACT_AI, ARTIFACT_CARED, Effect, FISHING_AI, GO_ON, Memory, Notify, Pick, SIEGE_AI,
+    SIEGE_TOWER_AI, Search, Surroundings, TRADE_AI, UnitAi, UnitSide, search_radius,
 };
 
 impl UnitAi {
@@ -68,32 +67,29 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
         let stops = match n.kind {
-            500
-            | 0x1f6..=0x1f8
-            | 0x1fd..=0x200
-            | 0x202
-            | 0x203
-            | OWNER_CHANGED
-            | 0x20f
-            | 0x259..=0x262
-            | 0x265..=0x269
-            | 0x278
-            | 699
-            | 0x2be => false,
-            ACTION_FAILED | ACTION_COMPLETED | ACTION_INVALIDATED => {
-                self.current_order.map_or_else(
-                    || ActionKind::field(self.current_action) == n.p[0],
-                    |o| o.owns(self.current_action),
-                )
-            }
+            NotifyKind::DAMAGED
+            | NotifyKind(
+                0x1f6..=0x1f8 | 0x1fd..=0x200 | 0x259..=0x262 | 0x265..=0x269 | 0x278 | 0x2be,
+            )
+            | NotifyKind::REQUIRES_SEARCH
+            | NotifyKind::NO_DROP_SITE
+            | NotifyKind::OWNER_CHANGED
+            | NotifyKind::MISSILE_WARNING
+            | NotifyKind::NO_LONGER_ON_ME => false,
+            NotifyKind::ACTION_FAILED
+            | NotifyKind::ACTION_COMPLETED
+            | NotifyKind::ACTION_INVALIDATED => self.current_order.map_or_else(
+                || ActionKind::field(self.current_action) == n.p[0],
+                |o| o.owns(self.current_action),
+            ),
             // "Target is still visible.": the world holds the target, which its owner sees
-            TARGET_MOVED => !at
+            NotifyKind::TARGET_MOVED => !at
                 .target
                 .is_some_and(|t| self.current_target.is_some() && t.sight == 0xf),
-            SENT_OFF | SENT_OFF_GROUP => {
+            NotifyKind::SENT_OFF | NotifyKind::SENT_OFF_GROUP => {
                 return self.base_notify(n, time, at, computer, ai_rng, side);
             }
-            600 => {
+            NotifyKind::ATTACKED => {
                 let _ = self.attackers.add(n.caller);
                 side.set_under_attack(true);
                 false
@@ -182,13 +178,15 @@ impl UnitAi {
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side),
-            ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side),
-            ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side),
-            crate::movement::explore::WANTS_POINT if self.explorer() => {
+            NotifyKind::ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side),
+            NotifyKind::ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side),
+            NotifyKind::ACTION_INVALIDATED => {
+                self.action_invalidated(n, at, computer, ai_rng, side)
+            }
+            NotifyKind::REQUIRES_SEARCH if self.explorer() => {
                 self.seek_unexplored(n, at, computer, ai_rng, side)
             }
-            OWNER_CHANGED => {
+            NotifyKind::OWNER_CHANGED => {
                 side.effect_now(Effect::Stop, self, ai_rng)?;
                 self.remove_target();
                 self.stop_current(true, at, side, ai_rng)?;
@@ -198,24 +196,18 @@ impl UnitAi {
             }
             // a MoveTo's moved target: with a saved patrol processIdle runs (slot 0x240 with 1),
             // its result unread
-            TARGET_MOVED if self.patrol_path.is_some() => {
+            NotifyKind::TARGET_MOVED if self.patrol_path.is_some() => {
                 let _ = self.process_idle(at, computer, ai_rng, side)?;
                 Ok(GO_ON)
             }
             // a moved target, then the kinds "I'm ignoring that." and the action values
-            TARGET_MOVED
-            | 0x1f6
-            | 0x1f7
-            | 0x1f8
-            | 0x1ff
-            | ACTION_EXECUTED
-            | 0x203
-            | 0x259..=0x262
-            | 0x265..=0x269
-            | 0x2be => Ok(GO_ON),
+            NotifyKind::TARGET_MOVED
+            | NotifyKind(0x1f6..=0x1f8 | 0x1ff | 0x259..=0x262 | 0x265..=0x269 | 0x2be)
+            | NotifyKind::ACTION_EXECUTED
+            | NotifyKind::NO_DROP_SITE => Ok(GO_ON),
             // readyToAttack's target out of reach (0x1fd): a unit on the attack order that cannot
             // move (FUN_140fdd080: a master of type 30 and up with speed) gives the order up
-            0x1fd => {
+            NotifyKind::OUT_OF_REACH => {
                 if self.current_order == Some(OrderKind::Attack)
                     && !(MOVING <= at.kind && 0.0 < at.speed)
                 {
@@ -223,16 +215,18 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
-            DAMAGED | MISSILE_WARNING => self.damaged(n, time, at, computer, ai_rng, side),
-            IN_THE_WAY => self.in_the_way(n, at, side, ai_rng),
-            SENT_OFF => self.sent_off(n, side, ai_rng),
+            NotifyKind::DAMAGED | NotifyKind::MISSILE_WARNING => {
+                self.damaged(n, time, at, computer, ai_rng, side)
+            }
+            NotifyKind::IN_THE_WAY => self.in_the_way(n, at, side, ai_rng),
+            NotifyKind::SENT_OFF => self.sent_off(n, side, ai_rng),
             // a unit of a group sent off a footprint: the action value 0x2c0
-            SENT_OFF_GROUP => {
+            NotifyKind::SENT_OFF_GROUP => {
                 self.set_action(Some(ActionKind::GroupAside));
                 Ok(GO_ON)
             }
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
-            NO_LONGER_ON_ME => {
+            NotifyKind::NO_LONGER_ON_ME => {
                 self.attackers.remove(n.caller);
                 Ok(GO_ON)
             }

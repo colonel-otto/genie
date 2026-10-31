@@ -6,10 +6,8 @@ use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, GO_ON, NO_LONGER_ON_ME, Notify, PRODUCED,
-    Surroundings, UnitAi, UnitSide,
-};
+use crate::unit_ai::NotifyKind;
+use crate::unit_ai::{BREAK, DEAD, GO_ON, Notify, PRODUCED, Surroundings, UnitAi, UnitSide};
 use crate::world::slots::CheckedIndex;
 
 /// A unit's notifies to itself (its slot 0x328, [`UnitAi::post`]), borrowed beside its body: its
@@ -40,7 +38,7 @@ impl<'a> Inbox<'a> {
     /// # Errors
     ///
     /// The post's.
-    pub fn post(&mut self, kind: i32, p: [i32; 3]) -> Result<(), GenieError> {
+    pub fn post(&mut self, kind: NotifyKind, p: [i32; 3]) -> Result<(), GenieError> {
         match self.ai.as_deref_mut() {
             Some(ai) => ai.post(Notify::own(self.id, kind, p), self.state),
             None => Ok(()),
@@ -113,7 +111,7 @@ impl UnitAi {
     /// ([`UnitAi::end_notifies`] then stops the action).
     fn completes(&self) -> bool {
         self.notifies.iter().any(|n| {
-            n.kind == ACTION_COMPLETED
+            n.kind == NotifyKind::ACTION_COMPLETED
                 && self.current_order.is_none()
                 && ActionKind::field(self.current_action) == n.p[0]
         })
@@ -182,9 +180,9 @@ impl UnitAi {
         let action = self.current_action;
         let taken = match n.kind {
             // "That unit is not attacking me, so I'm ignoring it."
-            NO_LONGER_ON_ME => self.attackers.contains(n.caller),
-            ACTION_INVALIDATED => n.p[0] == ActionKind::field(action),
-            ACTION_COMPLETED => {
+            NotifyKind::NO_LONGER_ON_ME => self.attackers.contains(n.caller),
+            NotifyKind::ACTION_INVALIDATED => n.p[0] == ActionKind::field(action),
+            NotifyKind::ACTION_COMPLETED => {
                 // ignored (and handled) for a non-movement action
                 // the game's list also holds 0x268, which no unit AI holds ([`ActionKind`])
                 if n.p[0] == ActionKind::Move.value()

@@ -482,7 +482,7 @@ mod tests {
         let ai = t.players[0].objects[0].ai.as_ref().unwrap();
         let failed = ai.notifies.iter();
         failed
-            .filter(|n| n.kind == crate::unit_ai::ACTION_FAILED)
+            .filter(|n| n.kind == crate::unit_ai::NotifyKind::ACTION_FAILED)
             .count()
     }
 

@@ -7,6 +7,7 @@ use crate::objects::masters::ActionType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
+use crate::unit_ai::NotifyKind;
 
 use super::tests::{MOVING_TASK, TASK, started};
 use super::*;
@@ -35,7 +36,7 @@ use crate::test_ids::object_id;
 use crate::unit_ai::{ActionKind, OrderKind, QueuedOrder, UnitAi};
 use crate::world::step::Step;
 use crate::world::tests::in_update;
-use crate::world::{Player, SEARCH_NEEDED, World};
+use crate::world::{Player, World};
 
 /// The builder of [`site_world`].
 const BUILDER: ObjectId = object_id(5);
@@ -264,13 +265,16 @@ fn stands(t: &World) -> bool {
 }
 
 /// The notifies the builder's unit AI heard.
-fn heard(t: &World) -> Vec<(i32, [i32; 3])> {
+fn heard(t: &World) -> Vec<(NotifyKind, [i32; 3])> {
     let ai = builder(t).ai.as_ref().unwrap();
     ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
 }
 
 /// The notify 0x202 a Build without a target posts to its unit AI.
-const SEARCH: (i32, [i32; 3]) = (SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0]);
+const SEARCH: (NotifyKind, [i32; 3]) = (
+    NotifyKind::REQUIRES_SEARCH,
+    [ActionKind::Build.value(), 0, 0],
+);
 
 /// The house's builders, workers and state.
 fn house(t: &World) -> (u8, i32, u8) {
@@ -939,7 +943,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
         let sent = sent
             .notifies
             .iter()
-            .filter(|n| n.kind == crate::unit_ai::SENT_OFF);
+            .filter(|n| n.kind == NotifyKind::SENT_OFF);
         assert_eq!(sent.count(), 1);
         if state == HALTED {
             assert_eq!(
@@ -982,7 +986,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     let b = build(&t);
     assert_eq!((b.state, b.target, b.added), (DONE, None, false));
     let built = (
-        crate::unit_ai::PASTURE_BUILT,
+        NotifyKind::PASTURE_BUILT,
         [ActionKind::Build.value(), 10031, 0],
     );
     assert_eq!(heard(&t), [built]);
@@ -1001,10 +1005,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
 /// the update does nothing (the default case).
 #[test]
 fn a_halted_build_fails_and_its_failure_removes_it() {
-    let failed = (
-        crate::unit_ai::ACTION_FAILED,
-        [ActionKind::Build.value(), 0, 0],
-    );
+    let failed = (NotifyKind::ACTION_FAILED, [ActionKind::Build.value(), 0, 0]);
     let halted = BuildAction {
         state: HALTED,
         move_to: None,
@@ -1227,10 +1228,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
         (b.state, b.site, walk.target, walk.state, walk.point),
         (MOVE, None, Some(HOUSE), MoveTo::Start, AT_HOUSE)
     );
-    let no_site = (
-        crate::unit_ai::NO_DROP_SITE,
-        [ActionKind::Build.value(), 0, 0],
-    );
+    let no_site = (NotifyKind::NO_DROP_SITE, [ActionKind::Build.value(), 0, 0]);
     assert_eq!((mill(&t), heard(&t)), (0, vec![no_site]));
     let b = drop(&mut t, DropSearch::Empty);
     assert_eq!(
@@ -1454,10 +1452,7 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
         (b.move_to.and_then(|m| m.target), b.state, b.site),
         (Some(HOUSE), MOVE, None)
     );
-    let no_site = (
-        crate::unit_ai::NO_DROP_SITE,
-        [ActionKind::Build.value(), 0, 0],
-    );
+    let no_site = (NotifyKind::NO_DROP_SITE, [ActionKind::Build.value(), 0, 0]);
     assert_eq!(heard(&t), [no_site]);
 }
 
@@ -1521,7 +1516,7 @@ fn sent_off(t: &World) -> usize {
         .unwrap();
     ai.notifies
         .iter()
-        .filter(|n| n.kind == crate::unit_ai::SENT_OFF)
+        .filter(|n| n.kind == NotifyKind::SENT_OFF)
         .count()
 }
 

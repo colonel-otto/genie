@@ -18,8 +18,9 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::{ActionKind, OrderKind};
-use crate::world::SEARCH_NEEDED;
+
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -261,7 +262,10 @@ impl BuildAction {
         }
         self.no_more_work()?;
         crate::world::lets::release(c, builder, target, reads.by)?;
-        builder.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
+        builder.post_own(
+            NotifyKind::REQUIRES_SEARCH,
+            [ActionKind::Build.value(), 0, 0],
+        )?;
         Self::stand(c, builder)
     }
 
@@ -334,7 +338,10 @@ impl BuildAction {
             }
         }
         if left == 0 {
-            builder.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
+            builder.post_own(
+                NotifyKind::REQUIRES_SEARCH,
+                [ActionKind::Build.value(), 0, 0],
+            )?;
             Self::stand(c, builder)?;
         }
         Ok(())

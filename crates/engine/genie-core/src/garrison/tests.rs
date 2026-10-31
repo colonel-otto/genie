@@ -446,7 +446,7 @@ fn completed(t: &World) -> usize {
         .unwrap()
         .notifies
         .iter()
-        .filter(|n| n.kind == crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED)
+        .filter(|n| n.kind == crate::unit_ai::NotifyKind::ACTION_COMPLETED)
         .count()
 }
 
@@ -1807,7 +1807,7 @@ fn back_to_work_without_its_object_asks_the_unit_ai_to_search() {
             assert_eq!(
                 heard,
                 [(
-                    crate::unit_ai::REQUIRES_SEARCH,
+                    crate::unit_ai::NotifyKind::REQUIRES_SEARCH,
                     [ActionKind::Gather.value(), 5, 7]
                 )]
             );
@@ -3459,7 +3459,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
     assert_eq!(
         heard,
         [(
-            crate::unit_ai::ACTION_FAILED,
+            crate::unit_ai::NotifyKind::ACTION_FAILED,
             [ActionKind::Transport.value(), 0, 0]
         )]
     );

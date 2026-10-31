@@ -24,7 +24,8 @@ use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::players::PlayerId;
-use crate::unit_ai::{ACTION_EXECUTED, Notify};
+use crate::unit_ai::Notify;
+use crate::unit_ai::NotifyKind;
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
 use crate::world::slots::PlayerSlots;
@@ -50,7 +51,7 @@ impl Unit {
                 let n = Notify {
                     caller: attacker,
                     recipient: self.id,
-                    kind: crate::unit_ai::DAMAGED,
+                    kind: NotifyKind::DAMAGED,
                     p,
                 };
                 ai.post(n, self.life.state)?;
@@ -131,7 +132,7 @@ impl Unit {
             if all {
                 self.next_volley = 0;
                 if notifies {
-                    self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
+                    self.post_own(NotifyKind::ACTION_EXECUTED, [600, -1, 0])?;
                 }
             }
             (old == 0, if old == 0 { n - 1 } else { n })
@@ -209,7 +210,10 @@ impl Unit {
         let (weapon_range, blast_level) = (master.weapon_range, master.blast_level);
         self.launch(c, aimed, &shot)?;
         if !matches!(self.life.master_id, ids::ID_73 | ids::ID_559) {
-            self.post_own(ACTION_EXECUTED, [600, ObjectId::field(aimed.target), 0])?;
+            self.post_own(
+                NotifyKind::ACTION_EXECUTED,
+                [600, ObjectId::field(aimed.target), 0],
+            )?;
         }
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
         // spare friends
@@ -303,7 +307,7 @@ impl Unit {
         };
         self.launch(c, aimed, &shot)?;
         if !matches!(self.life.master_id, ids::ID_73 | ids::ID_559) {
-            self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
+            self.post_own(NotifyKind::ACTION_EXECUTED, [600, -1, 0])?;
         }
         Ok(())
     }

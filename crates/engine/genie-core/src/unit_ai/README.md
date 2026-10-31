@@ -53,6 +53,7 @@ show in checkpoint word 9.
 | [`life.rs`](life.rs) | A unit AI's construction, its order and target, its patrol and its moves. |
 | [`mod.rs`](mod.rs) | The unit AI (`UnitAIModule`): what a unit decides by itself. |
 | [`notifies.rs`](notifies.rs) | The notifies' processing: their queue, their acceptance and their buffer. |
+| [`notify_kind.rs`](notify_kind.rs) | A unit AI notify's kind as one type: what an object tells a unit AI (an action completed, a hit, a search asked for), the value the save's `temp_notify` holds at `+0x8`. |
 | [`order_kind.rs`](order_kind.rs) | The unit AI's order values as one type: the cases of its order handler (`FUN_140c5c170`, slot 0x230) and the three orders set without a case, each by its name, and the fallible conversion from a raw value. |
 | [`order_kinds.rs`](order_kinds.rs) | The orders by kind: defend, build, work, gather, hunt, follow, enter, transport, unload, seek and explore; an order on a target and one taken at once. |
 | [`process_order.rs`](process_order.rs) | An order's processing: the combat and work orders, the top target and the attack slots. |

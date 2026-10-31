@@ -21,6 +21,7 @@ use crate::test_ids::object_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
+use crate::unit_ai::NotifyKind;
 use crate::world::Player;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
@@ -639,7 +640,7 @@ impl Rig {
     }
 
     /// The notifies the attacker posted to its unit AI: kind and parameters, in order.
-    pub(crate) fn posted(&self) -> Vec<(i32, [i32; 3])> {
+    pub(crate) fn posted(&self) -> Vec<(NotifyKind, [i32; 3])> {
         self.unit().ai.as_ref().map_or_else(Vec::new, |ai| {
             ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
         })
@@ -929,7 +930,10 @@ fn ready_to_attack_under_the_least_range_posts_0x1fe_and_waits_or_fails() {
         let mut a = soldier_attack(7, 4.0, 2.0, Position::from([NONE; 3]));
         let r = rig.ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false));
         assert!(matches!(r, Ok(Readiness::Waiting)));
-        assert_eq!((a.state, rig.posted()), (state, vec![(0x1fe, [-1; 3])]));
+        assert_eq!(
+            (a.state, rig.posted()),
+            (state, vec![(NotifyKind::TOO_CLOSE, [-1; 3])])
+        );
         if state == FAILED {
             assert_eq!(rig.mover().animated.speed, 1.0);
             assert_eq!(rig.sprite(), Some(STANDING.id));
@@ -970,7 +974,7 @@ fn ready_to_attack_out_of_reach_follows_or_fails() {
         let r = rig
             .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
             .unwrap();
-        assert_eq!(rig.posted(), vec![(0x1fd, [0; 3])]);
+        assert_eq!(rig.posted(), vec![(NotifyKind::OUT_OF_REACH, [0; 3])]);
         assert_eq!(matches!(r, Readiness::Away(_)), follows);
         assert_eq!(a.state, if follows { READY } else { FAILED });
     }
@@ -995,7 +999,7 @@ fn an_attack_on_a_target_out_of_sight_fails() {
         let let_go = rig.workers(77, PlayerId::new(1)) == Some(0);
         (code, let_go, forgot, home, rig.posted())
     };
-    let failed = vec![(crate::unit_ai::ACTION_FAILED, [600, 0, 0])];
+    let failed = vec![(NotifyKind::ACTION_FAILED, [600, 0, 0])];
     let own_attack = |target, state, range| {
         let mut a = own_attack(target, state, range);
         a.arms.idle_sprite = Some(STANDING);
@@ -1181,7 +1185,13 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
         let (code, a, posted, let_go) = run(state, false, range, computer);
         assert_eq!(
             (code, a.state, a.target, let_go, posted),
-            (3, FAILED, None, true, vec![(0x1f9, [600, 0, 0])]),
+            (
+                3,
+                FAILED,
+                None,
+                true,
+                vec![(NotifyKind::ACTION_FAILED, [600, 0, 0])]
+            ),
             "{state} {range} {computer}"
         );
     }
@@ -1301,7 +1311,7 @@ fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
     // a unit's own Attack posts 0x1fb with 600 and its target
     assert_eq!(
         run(class::LIVESTOCK, true, false, PlayerId::new(1), false),
-        (1, DONE, vec![(0x1fb, [600, 7, 0])])
+        (1, DONE, vec![(NotifyKind::ACTION_INVALIDATED, [600, 7, 0])])
     );
     // its own livestock or farm when it began: spared
     assert_eq!(
@@ -1344,7 +1354,10 @@ fn a_sub_action_s_attack_after_its_kill_posts_0x1fb_and_returns_5() {
     let code = rig.run(20, |c, u, f, r| a.update(c, u, me(1, READY), f, r));
     assert_eq!(code, Ok(5));
     assert_eq!((a.state, a.target), (DONE, None));
-    assert_eq!(rig.posted(), vec![(0x1fb, [600, 0, 0x202])]);
+    assert_eq!(
+        rig.posted(),
+        vec![(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])]
+    );
     assert_eq!(rig.mover().animated.speed, 1.0);
     assert_eq!(rig.workers(7, PlayerId::new(0)), Some(1));
 }
@@ -1414,7 +1427,7 @@ fn a_swing_that_fails_its_interrupt_check_stays_failed() {
     let code = rig.run(20, |c, u, f, r| a.update(c, u, me(1, READY), f, r));
     assert_eq!(code, Ok(0));
     assert_eq!(a.state, FAILED);
-    assert_eq!(rig.posted(), vec![(0x1fd, [0; 3])]);
+    assert_eq!(rig.posted(), vec![(NotifyKind::OUT_OF_REACH, [0; 3])]);
     assert_eq!(rig.sprite(), Some(STANDING.id));
 }
 
@@ -1479,7 +1492,7 @@ fn a_disarmed_building_s_targetless_attack_ends_with_its_notify() {
     assert_eq!(a.state, DONE);
     let (mut sprite, mut rng) = (None, Well512::default());
     let posted = a.disarmed(&mut sprite, &mut body, &mut rng).unwrap();
-    assert_eq!(posted, Some((0x1fb, [600, -1, 0])));
+    assert_eq!(posted, Some((NotifyKind::ACTION_INVALIDATED, [600, -1, 0])));
     assert_eq!(
         (body.anim_speed(), sprite.map(|s| s.graphic.id)),
         (Some(1.0), Some(418))
@@ -1566,7 +1579,7 @@ fn standing_arms() -> Arms {
 struct Started {
     attack: Attack,
     arrived: bool,
-    posted: Vec<(i32, [i32; 3])>,
+    posted: Vec<(NotifyKind, [i32; 3])>,
     ready: bool,
     failed: bool,
     failed_first: bool,
@@ -1638,7 +1651,7 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
     let away = start(engaged(3.0, 1.2, false, 2));
     assert_eq!(
         (away.ready, away.failed, away.posted),
-        (false, true, vec![(0x1fd, [0; 3])])
+        (false, true, vec![(NotifyKind::OUT_OF_REACH, [0; 3])])
     );
     assert_eq!(away.attack.point, Position::new(NONE, NONE, NONE));
     let close = start(Engagement {
@@ -1647,7 +1660,7 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
     });
     assert_eq!(
         (close.ready, close.failed, close.posted),
-        (false, true, vec![(0x1fe, [-1; 3])])
+        (false, true, vec![(NotifyKind::TOO_CLOSE, [-1; 3])])
     );
 }
 
@@ -1684,10 +1697,13 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
         min_range: 1.0,
         ..engaged(0.5, 1.2, true, 0)
     };
-    assert_eq!(start(close, true), (false, vec![(0x1fe, [-1; 3])], false));
+    assert_eq!(
+        start(close, true),
+        (false, vec![(NotifyKind::TOO_CLOSE, [-1; 3])], false)
+    );
     assert_eq!(
         start(engaged(3.0, 1.2, true, 0), true),
-        (false, vec![(0x1fd, [0; 3])], true)
+        (false, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], true)
     );
     assert_eq!(
         start(engaged(3.0, 1.2, true, 0), false),
@@ -1700,13 +1716,16 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
     // stance 1: the target 3 from the centre stays within 1 + 5, 7 from it does not
     assert_eq!(
         start(engaged(3.0, 1.2, true, 1), true),
-        (false, vec![(0x1fd, [0; 3])], true)
+        (false, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], true)
     );
     let far = Engagement {
         state_position: Point::new(3.0, 10.0),
         ..engaged(3.0, 1.2, true, 1)
     };
-    assert_eq!(start(far, true), (true, vec![(0x1fd, [0; 3])], false));
+    assert_eq!(
+        start(far, true),
+        (true, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], false)
+    );
     // a target out of sight of a unit that cannot follow it fails
     let mut mover = soldier_mover(1.2);
     let e = engaged(3.0, 1.2, false, 2);
@@ -1863,7 +1882,10 @@ fn the_ready_start_swings_at_once_when_its_timer_ran_out() {
     let mut a = soldier_attack(-1, 1.0, 0.0, Position::from([NONE; 3]));
     rig.ground(|u, g, f, r| a.enter_ready(u, g, f, r)).unwrap();
     assert_eq!(a.state, DONE);
-    assert_eq!(rig.posted(), vec![(0x1fa, [600, 0, 0])]);
+    assert_eq!(
+        rig.posted(),
+        vec![(NotifyKind::ACTION_COMPLETED, [600, 0, 0])]
+    );
 }
 
 /// `set_state(7)`'s sprite: a second attack sprite makes the swing draw the Object stream
@@ -1951,7 +1973,7 @@ fn ready_to_attack_s_leash_fails_a_target_too_far_from_the_unit_ai_s_point() {
         let r = rig
             .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
             .unwrap();
-        assert_eq!(rig.posted(), vec![(0x1fd, [0; 3])]);
+        assert_eq!(rig.posted(), vec![(NotifyKind::OUT_OF_REACH, [0; 3])]);
         assert_eq!(matches!(r, Readiness::Away(_)), follows, "{centre:?}");
         assert_eq!(a.state, if follows { READY } else { FAILED });
     }
@@ -2012,7 +2034,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     assert!(
         posted
             .iter()
-            .any(|n| n.kind == 0x1fb && n.p == [600, -1, 0])
+            .any(|n| n.kind == NotifyKind::ACTION_INVALIDATED && n.p == [600, -1, 0])
     );
     let mut t = forage_world();
     t.players[1].objects[0]
@@ -2408,7 +2430,7 @@ fn an_attack_s_walk_walks_waits_arrives_or_fails() {
         (
             Ok(3),
             FAILED,
-            vec![(crate::unit_ai::ACTION_FAILED, [600, 0, 0])]
+            vec![(NotifyKind::ACTION_FAILED, [600, 0, 0])]
         )
     );
 }
@@ -2438,7 +2460,12 @@ fn an_attack_without_a_target_walks_to_where_it_saw_it_and_ends_there() {
     );
     assert_eq!(
         gone(MoveTo::Arrived, false),
-        (1, DONE, None, vec![(0x1fb, [600, 0, 0x202])])
+        (
+            1,
+            DONE,
+            None,
+            vec![(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])]
+        )
     );
     assert_eq!(gone(MoveTo::Arrived, true), (1, DONE, None, vec![]));
     assert_eq!(
@@ -2447,7 +2474,7 @@ fn an_attack_without_a_target_walks_to_where_it_saw_it_and_ends_there() {
             3,
             FAILED,
             None,
-            vec![(crate::unit_ai::ACTION_FAILED, [600, 0, 0])]
+            vec![(NotifyKind::ACTION_FAILED, [600, 0, 0])]
         )
     );
     assert_eq!(gone(MoveTo::Failed, true), (3, FAILED, None, vec![]));
@@ -2582,19 +2609,31 @@ fn an_attack_ends_early_on_an_ally_a_hidden_target_or_disarmed() {
     let ((code, posted), a) = run(|rig| rig.f.victim.allied[0] = true);
     assert_eq!(
         (code, a.state, posted),
-        (Some(1), DONE, vec![(0x1fb, [600, 7, 0])])
+        (
+            Some(1),
+            DONE,
+            vec![(NotifyKind::ACTION_INVALIDATED, [600, 7, 0])]
+        )
     );
     let ((code, posted), a) = run(|rig| rig.f.victim.inside = true);
     assert_eq!(
         (code, a.state, posted),
-        (Some(4), DONE, vec![(0x1fb, [600, 7, 0])])
+        (
+            Some(4),
+            DONE,
+            vec![(NotifyKind::ACTION_INVALIDATED, [600, 7, 0])]
+        )
     );
     let ((code, _), _) = run(|rig| (rig.f.victim.inside, rig.r.queue_empty) = (true, false));
     assert_eq!(code, Some(4));
     let ((code, posted), a) = run(|rig| rig.r.armed = false);
     assert_eq!(
         (code, a.state, posted),
-        (Some(1), DONE, vec![(0x1fb, [600, 7, 0])])
+        (
+            Some(1),
+            DONE,
+            vec![(NotifyKind::ACTION_INVALIDATED, [600, 7, 0])]
+        )
     );
     let ((code, posted), a) = run(|_| {});
     assert_eq!((code, a.state, posted), (None, MOVE, vec![]));
@@ -2665,7 +2704,13 @@ fn a_killing_attack_ends_once_its_swing_looped() {
             ObjectId::field(a.target),
             a.state
         ),
-        (Ok(2), Some(0), vec![(0x1fb, [600, 0, 0x202])], -1, DONE)
+        (
+            Ok(2),
+            Some(0),
+            vec![(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])],
+            -1,
+            DONE
+        )
     );
     let (mut rig, mut a) = on_target(dead, true, (KILLED, false));
     rig.unit_mut().sprite = Some(ActiveSprite::start(STANDING, &mut Well512::default()));
@@ -2724,7 +2769,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
     // a mover of stance 0 that is not a villager waits where it saw the target (`set_state(5)`):
     // 0x1fb with 600 and 0x202 first, then its `MoveTo` to the target's place
     let seen = Some((MoveTo::Start, Position::new(11.0, 10.0, 0.0)));
-    let waits = vec![(0x1fb, [600, 0, 0x202])];
+    let waits = vec![(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])];
     for order in [AiOrder::Absent, order] {
         let waiting = lost(order, |_| {});
         assert_eq!(
@@ -2732,7 +2777,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
             (Ok(5), waits.clone(), Some(0), GOTO_SEEN, seen)
         );
     }
-    let posted_1fa = vec![(0x1fa, [600, 0, 0])];
+    let posted_1fa = vec![(NotifyKind::ACTION_COMPLETED, [600, 0, 0])];
     let stance_1 = lost(order, |rig| rig.r.stance = 1);
     assert_eq!(
         (stance_1.0, stance_1.1, stance_1.2, stance_1.3, stance_1.4),
@@ -2740,7 +2785,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
     );
     let villager = lost(AiOrder::Absent, |rig| rig.f.own.class = class::VILLAGER);
     assert_eq!((villager.0, villager.2), (Ok(5), false));
-    let posted_1fb = vec![(0x1fb, [600, 0, 0x202])];
+    let posted_1fb = vec![(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])];
     assert_eq!(lost(AiOrder::Idle, |_| {}).1, posted_1fb);
     assert_eq!(lost(order, |rig| rig.r.computer = true).1, posted_1fb);
     let queued = lost(order, |rig| rig.r.queue_empty = false);

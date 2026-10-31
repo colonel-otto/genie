@@ -17,10 +17,11 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::IN_PRODUCTION;
+use crate::unit_ai::NotifyKind;
 use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi};
+use crate::unit_ai::{NewObject, Notify, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::World;
 
@@ -99,7 +100,7 @@ impl World {
             ai.post(
                 Notify::own(
                     building_id,
-                    ACTION_COMPLETED,
+                    NotifyKind::ACTION_COMPLETED,
                     [ActionKind::Make.value(), 0, 0],
                 ),
                 state,

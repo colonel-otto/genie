@@ -280,7 +280,7 @@ impl TransportAction {
                 let changed = self.set_state(IDLE, ship, shore)?;
                 stand(unit, changed, look)?;
                 unit.post_own(
-                    crate::unit_ai::ACTION_FAILED,
+                    crate::unit_ai::NotifyKind::ACTION_FAILED,
                     [ActionKind::Transport.value(), 0, 0],
                 )?;
                 return Ok(Updated::Code(3));

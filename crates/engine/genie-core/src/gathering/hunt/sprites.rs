@@ -33,7 +33,7 @@ pub(crate) fn stand_sprite(
 /// (`+0x310` above 0, the caller's test): a load of the task's resource (compared by
 /// [`resource_kind`]) asks the caller for `set_state(8)` (true); a load of another resource has
 /// the caller's unit AI take notify 0x21c from and to the unit (its slot 0x38,
-/// [`crate::unit_ai::OTHER_LOAD`]) and returns false.
+/// [`crate::unit_ai::NotifyKind::OTHER_LOAD`]) and returns false.
 pub(crate) fn asked_drop_off(
     resource: Option<AttributeId>,
     held_kind: Option<AttributeId>,

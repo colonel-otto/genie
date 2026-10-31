@@ -266,7 +266,7 @@ pub struct Mover {
     pub pauses: Vec<(ObjectId, f32)>,
     /// The kept hits its walk met of the walked level's target's master, of a player neither
     /// counts an ally: the motion step tells the unit AI of each (its slot 0x38 with
-    /// [`crate::unit_ai::IN_THE_WAY`] and the hit's id), which the caller passes on.
+    /// [`crate::unit_ai::NotifyKind::IN_THE_WAY`] and the hit's id), which the caller passes on.
     pub in_the_way: Vec<ObjectId>,
     /// The facets of the unit's current sprite (`+0x140` -> `+0xa`, and its sequence flag bit
     /// 1), which the yaw and the facing read: the sprite the slice holds as the unit's update

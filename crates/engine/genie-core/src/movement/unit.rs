@@ -14,7 +14,8 @@ use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Inbox;
-use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
+use crate::unit_ai::NotifyKind;
+use crate::unit_ai::UnitAi;
 use crate::world::SPEED_EPSILON;
 use crate::world::step::Step;
 
@@ -126,7 +127,7 @@ impl Unit {
             )?;
         }
         if step.target_moved {
-            self.post_own(TARGET_MOVED, [0, 0, 0])?;
+            self.post_own(NotifyKind::TARGET_MOVED, [0, 0, 0])?;
         }
         let ended = step.done || step.failed;
         if ended {
@@ -208,9 +209,9 @@ impl Unit {
     /// failure (0x1f9) and returns 3.
     fn own_move_end(&mut self, failed: bool) -> Result<(), GenieError> {
         let notify = if failed {
-            crate::unit_ai::ACTION_FAILED
+            NotifyKind::ACTION_FAILED
         } else {
-            ACTION_COMPLETED
+            NotifyKind::ACTION_COMPLETED
         };
         self.post_own(notify, [ActionKind::Move.value(), 0, 0])
     }

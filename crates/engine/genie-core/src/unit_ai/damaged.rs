@@ -11,13 +11,14 @@ use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::Issuer;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::{
-    ACTION_COMPLETED, BREAK, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED,
-    FOUNDATION_REACH, GO_ON, Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder, SIEGE_TOWER_AI,
-    Search, Surroundings, UnitAi, UnitSeen, UnitSide, alert_owner, civilian_search_radius,
-    closest_undiscovered_tile, held_action_state,
+    BREAK, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED, FOUNDATION_REACH, GO_ON,
+    Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder, SIEGE_TOWER_AI, Search, Surroundings, UnitAi,
+    UnitSeen, UnitSide, alert_owner, civilian_search_radius, closest_undiscovered_tile,
+    held_action_state,
 };
 
 impl UnitAi {
@@ -373,7 +374,11 @@ impl UnitAi {
         }
         if computer {
             self.post(
-                Notify::own(at.id, ACTION_COMPLETED, [ActionKind::Build.value(), 0, 0]),
+                Notify::own(
+                    at.id,
+                    NotifyKind::ACTION_COMPLETED,
+                    [ActionKind::Build.value(), 0, 0],
+                ),
                 at.state,
             )?;
         }

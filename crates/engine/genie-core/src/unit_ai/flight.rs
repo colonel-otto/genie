@@ -9,11 +9,12 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::{
     AiMove, BREAK, DEAD, EVADE_EDGE, EVASIVE_NEAR, Effect, FOUNDATION_REACH, GO_ON, Memory, Notify,
-    Pick, REQUIRES_SEARCH, RUN_DRAW_SCALE, RUN_EPSILON, RUN_LEASH, RUN_ONE, RUN_REACH, SIEGE_AI,
-    Search, Surroundings, UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner,
-    closest_undiscovered_tile, search_area,
+    Pick, RUN_DRAW_SCALE, RUN_EPSILON, RUN_LEASH, RUN_ONE, RUN_REACH, SIEGE_AI, Search,
+    Surroundings, UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, closest_undiscovered_tile,
+    search_area,
 };
 
 impl UnitAi {
@@ -351,7 +352,7 @@ impl UnitAi {
         {
             return Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)));
         }
-        if n.kind != REQUIRES_SEARCH
+        if n.kind != NotifyKind::REQUIRES_SEARCH
             && !matches!(
                 self.current_action,
                 Some(ActionKind::Shepherd | ActionKind::Repair)

@@ -18,9 +18,9 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::unit_ai::NotifyKind;
 use crate::world::slots::PlayerSlots;
 
-use crate::unit_ai::OWNER_CHANGED;
 use crate::world::World;
 use crate::world::player::Player;
 
@@ -493,7 +493,7 @@ pub(crate) fn change_hands(
     if let Some(ai) = u.ai.as_mut() {
         ai.clear_notifies(world_time)?;
     }
-    u.post_own(OWNER_CHANGED, [new.index() as i32, 0, 0])?;
+    u.post_own(NotifyKind::OWNER_CHANGED, [new.index() as i32, 0, 0])?;
     Ok(true)
 }
 

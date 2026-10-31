@@ -32,7 +32,7 @@ impl World {
     /// speed `+0x7b8` at most 0, and its path level `+0x858` absent or in state 0 or 6) and
     /// whose unit AI's action is not 0x2bf or 0x2c0 (moving off already) is sent off: its unit AI
     /// gets notify 0x216 (slot 0x38) with the foundation master's radii times 100 (truncated) and
-    /// the foundation ([`crate::unit_ai::SENT_OFF`]). The foundation owner's own units of type 70
+    /// the foundation ([`crate::unit_ai::NotifyKind::SENT_OFF`]). The foundation owner's own units of type 70
     /// and more of a formation category (`+0x8bc`) would go together to its farthest free spot
     /// (`FUN_1411566b0` with 1, `FUN_1416123a0`'s group move, then 0x21b each), which is not
     /// modelled.
@@ -90,7 +90,10 @@ impl World {
                 ));
             };
             if let Some(ai) = self.players.live_mut(q, i)?.ai.as_mut() {
-                ai.post(Notify::own(id, crate::unit_ai::SENT_OFF, p), state)?;
+                ai.post(
+                    Notify::own(id, crate::unit_ai::NotifyKind::SENT_OFF, p),
+                    state,
+                )?;
             }
         }
         if !together.is_empty() {
@@ -106,7 +109,7 @@ impl World {
     /// forms, its group move `FUN_14100efd0`, is not modelled) and each unit it leaves loose takes
     /// the action of moving off a footprint (`0x2bf`) and moves to the spot at its own height
     /// (slot 0x138 without a target); last each of them whose unit AI's action is not `0x2bf` gets
-    /// notify `0x21b` ([`crate::unit_ai::SENT_OFF_GROUP`]).
+    /// notify `0x21b` ([`crate::unit_ai::NotifyKind::SENT_OFF_GROUP`]).
     pub(crate) fn evacuate_together(
         &mut self,
         foundation: ObjectId,
@@ -160,7 +163,7 @@ impl World {
                 && ai.current_action != Some(ActionKind::MoveAside)
             {
                 ai.post(
-                    Notify::own(id, crate::unit_ai::SENT_OFF_GROUP, [0, 0, 0]),
+                    Notify::own(id, crate::unit_ai::NotifyKind::SENT_OFF_GROUP, [0, 0, 0]),
                     state,
                 )?;
             }

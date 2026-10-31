@@ -10,7 +10,8 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Tile;
 use crate::math::rng::Stream;
-use crate::movement::explore::WANTS_POINT;
+use crate::unit_ai::NotifyKind;
+
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::ai_module::search::RING_SLACK;
@@ -45,7 +46,7 @@ impl UnitView<'_, '_> {
     /// The tasking or detasking, and what the search does not model.
     pub(crate) fn hears(&mut self, n: Notify) -> Result<(), GenieError> {
         let player = self.player;
-        if !self.computer || n.kind != WANTS_POINT {
+        if !self.computer || n.kind != NotifyKind::REQUIRES_SEARCH {
             return Ok(());
         }
         let Some(mut module) = self.c.w.ai.take(player) else {

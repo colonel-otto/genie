@@ -242,7 +242,7 @@ impl Unit {
             return Err(GenieError::unsupported("a failed hunt with a sub-action"));
         }
         self.post_own(
-            crate::unit_ai::ACTION_FAILED,
+            crate::unit_ai::NotifyKind::ACTION_FAILED,
             [ActionKind::Hunt.value(), 0, 0],
         )?;
         Ok(HeadCode::of(3))

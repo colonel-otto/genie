@@ -16,13 +16,14 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
+use crate::world::SEARCH_AGAIN;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
-use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
 impl Unit {
     /// The Hunt's `set_state(3)` (`0x140ac60e0` case 3) after its target went empty when it faced
@@ -145,7 +146,10 @@ impl Unit {
                 Some(site) => site.get(),
             }
         };
-        self.post_own(SEARCH_NEEDED, [ActionKind::Hunt.value(), class, site])
+        self.post_own(
+            NotifyKind::REQUIRES_SEARCH,
+            [ActionKind::Hunt.value(), class, site],
+        )
     }
 
     /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a

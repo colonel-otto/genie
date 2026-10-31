@@ -70,7 +70,7 @@ pub(crate) fn released_fields(
     (u.combat && !by.id.is_recyclable()).then(|| Notify {
         caller: Some(by.id),
         recipient: u.id,
-        kind: crate::unit_ai::NO_LONGER_ON_ME,
+        kind: crate::unit_ai::NotifyKind::NO_LONGER_ON_ME,
         p: [i32::from(ClassId::field(by.class)), 0, 0],
     })
 }

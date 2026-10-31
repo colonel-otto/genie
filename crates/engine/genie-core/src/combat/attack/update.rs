@@ -22,6 +22,7 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
+use crate::unit_ai::NotifyKind;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
 
@@ -79,7 +80,7 @@ impl Attack {
             1 | 2 => {
                 self.delete_move_to(unit)?;
                 if !self.sub_action {
-                    unit.post_own(0x1fb, [600, 0, 0x202])?;
+                    unit.post_own(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])?;
                 }
                 self.finish(unit, c.w.streams.get(Stream::Sprite))?;
                 Ok(1)
@@ -98,7 +99,7 @@ impl Attack {
         sprite: &mut Option<ActiveSprite>,
         body: &mut Body,
         rng: &mut Well512,
-    ) -> Result<Option<(i32, [i32; 3])>, GenieError> {
+    ) -> Result<Option<(NotifyKind, [i32; 3])>, GenieError> {
         if self.move_to.is_some() {
             return Err(GenieError::unsupported("a building's Attack with a MoveTo"));
         }
@@ -107,7 +108,10 @@ impl Attack {
             "an Attack's unit without a standing sprite",
         ))?;
         new_sprite(sprite, body.move_stats_mut(), idle, rng);
-        Ok((!self.sub_action).then_some((0x1fb, [600, ObjectId::field(self.target), 0])))
+        Ok((!self.sub_action).then_some((
+            NotifyKind::ACTION_INVALIDATED,
+            [600, ObjectId::field(self.target), 0],
+        )))
     }
 
     /// One update (slot 6, `0x140a82ae0`) of `unit`'s Attack on the step: the timer runs, the
@@ -162,7 +166,7 @@ impl Attack {
             // case 0xc: a failed attack posts 0x1f9 with 600 every update (quiet or not), the
             // unit's animation stops and the update returns 3
             FAILED => {
-                unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
+                unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
                 set_walker_anim(&mut unit.body, 0.0);
                 Ok(3)
             }
@@ -272,7 +276,10 @@ impl Attack {
         if alive && f.own.player != PlayerId::new(0) && !spared && f.victim.allied[0] {
             self.finish(unit, rng)?;
             if !self.sub_action {
-                unit.post_own(0x1fb, [600, ObjectId::field(self.target), 0])?;
+                unit.post_own(
+                    NotifyKind::ACTION_INVALIDATED,
+                    [600, ObjectId::field(self.target), 0],
+                )?;
             }
             return Ok(Some(1));
         }
@@ -282,7 +289,10 @@ impl Attack {
         if f.victim.inside {
             self.finish(unit, rng)?;
             if !self.sub_action && r.queue_empty {
-                unit.post_own(0x1fb, [600, ObjectId::field(self.target), 0])?;
+                unit.post_own(
+                    NotifyKind::ACTION_INVALIDATED,
+                    [600, ObjectId::field(self.target), 0],
+                )?;
             }
             return Ok(Some(4));
         }
@@ -291,7 +301,10 @@ impl Attack {
         if !r.armed {
             self.finish(unit, rng)?;
             if !self.sub_action {
-                unit.post_own(0x1fb, [600, ObjectId::field(self.target), 0])?;
+                unit.post_own(
+                    NotifyKind::ACTION_INVALIDATED,
+                    [600, ObjectId::field(self.target), 0],
+                )?;
             }
             return Ok(Some(1));
         }
@@ -344,7 +357,7 @@ impl Attack {
         if self.sub_action {
             self.target = None;
             self.finish(unit, c.w.streams.get(Stream::Sprite))?;
-            unit.post_own(0x1fb, [600, 0, 0x202])?;
+            unit.post_own(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])?;
             return Ok(5);
         }
         // a unit's own Attack (not quiet, `+0x60` 0): the target goes (slot 0x68 with
@@ -352,7 +365,7 @@ impl Attack {
         // which keeps it in the list
         let target = self.target.take();
         let_go(c, unit, target)?;
-        unit.post_own(0x1fb, [600, 0, 0x202])?;
+        unit.post_own(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])?;
         self.finish(unit, c.w.streams.get(Stream::Sprite))?;
         Ok(2)
     }
@@ -423,7 +436,7 @@ impl Attack {
         }
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
         if !self.sub_action {
-            unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
+            unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
         }
         Ok(3)
     }

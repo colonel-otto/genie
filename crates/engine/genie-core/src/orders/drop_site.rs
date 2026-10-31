@@ -203,7 +203,7 @@ impl World {
     }
 
     /// Slot 0x78's answer to a load of another resource than its task's (`FUN_140a78060`): the
-    /// unit AI's slot 0x38 takes notify 0x21c ([`crate::unit_ai::OTHER_LOAD`]) from and to the
+    /// unit AI's slot 0x38 takes notify 0x21c ([`crate::unit_ai::NotifyKind::OTHER_LOAD`]) from and to the
     /// unit at (`p`, `idx`); a unit without a unit AI, none.
     ///
     /// # Errors
@@ -213,7 +213,7 @@ impl World {
         let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
-            let n = crate::unit_ai::Notify::own(id, crate::unit_ai::OTHER_LOAD, [0; 3]);
+            let n = crate::unit_ai::Notify::own(id, crate::unit_ai::NotifyKind::OTHER_LOAD, [0; 3]);
             let _ = ai.accept(n, state);
         }
         Ok(())

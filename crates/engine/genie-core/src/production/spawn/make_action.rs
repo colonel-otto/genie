@@ -10,7 +10,8 @@ use crate::players::attribute::IN_PRODUCTION;
 use crate::players::attribute::QUEUED;
 use crate::production::{MakeObj, MakeTech, Making, housed, population};
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::{ACTION_COMPLETED, Notify};
+use crate::unit_ai::Notify;
+use crate::unit_ai::NotifyKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -389,7 +390,11 @@ impl World {
         let (id, state) = (building.id, building.life.state);
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [ActionKind::Make.value(), 0, 0]),
+                Notify::own(
+                    id,
+                    NotifyKind::ACTION_COMPLETED,
+                    [ActionKind::Make.value(), 0, 0],
+                ),
                 state,
             )?;
         }

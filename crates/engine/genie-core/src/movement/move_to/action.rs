@@ -17,7 +17,8 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::TOWN_CENTRE;
 use crate::objects::masters::master_type;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
-use crate::unit_ai::{ACTION_INVALIDATED, ActionKind, Inbox};
+use crate::unit_ai::NotifyKind;
+use crate::unit_ai::{ActionKind, Inbox};
 use genie_diff::Diff;
 
 /// A `MoveTo` (`RGE_Action_Move_To`): a unit's own top action (a wandering animal's, a moved or
@@ -429,7 +430,10 @@ impl MoveToAction {
                 if self.quiet {
                     return Ok(Some(5));
                 }
-                inbox.post(ACTION_INVALIDATED, [ActionKind::Move.value(), -1, 0])?;
+                inbox.post(
+                    NotifyKind::ACTION_INVALIDATED,
+                    [ActionKind::Move.value(), -1, 0],
+                )?;
                 Ok(Some(4))
             }
             Some(_) => Ok(None),

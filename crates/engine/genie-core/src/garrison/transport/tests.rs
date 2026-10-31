@@ -4,6 +4,7 @@ use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, 
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::test_ids::object_id;
+use crate::unit_ai::NotifyKind;
 
 /// A map of zones by column (the tile's x over 10) and terrain flags by a closure; the shore
 /// point the planner gives, recorded.
@@ -81,7 +82,7 @@ struct Left {
     /// Standing: the standing sprite shown.
     stands: bool,
     /// The notifies it posted: kind and parameters.
-    posted: Vec<(i32, [i32; 3])>,
+    posted: Vec<(NotifyKind, [i32; 3])>,
 }
 
 /// What a state change left `unit`.
@@ -431,7 +432,7 @@ fn a_sail_ends_with_its_move_to_and_a_failed_one_returns_3() {
     };
     let (r, Left { stands, posted, .. }) = run(&mut t, &s, &mut c);
     let failed = (
-        crate::unit_ai::ACTION_FAILED,
+        NotifyKind::ACTION_FAILED,
         [crate::unit_ai::ActionKind::Transport.value(), 0, 0],
     );
     assert_eq!(
@@ -494,7 +495,7 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
         rig.mover_mut().in_the_way = vec![object_id(77)];
         rig
     };
-    let in_the_way = vec![(crate::unit_ai::IN_THE_WAY, [77, -1, -1])];
+    let in_the_way = vec![(NotifyKind::IN_THE_WAY, [77, -1, -1])];
     let mut walker = rig();
     walker.mover_mut().paths.clear();
     let mut t = sailing(Some(MoveTo::Start));

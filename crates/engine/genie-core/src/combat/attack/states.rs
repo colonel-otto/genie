@@ -20,6 +20,7 @@ use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
+use crate::unit_ai::NotifyKind;
 use crate::world::step::Step;
 
 impl Attack {
@@ -144,14 +145,14 @@ impl Attack {
                 // a mover of stance 0 that is not a villager waits where it saw the target:
                 // 0x1fb with 600 and 0x202 for a unit's own Attack, then `set_state(5)`
                 if !self.sub_action {
-                    unit.post_own(0x1fb, [600, 0, 0x202])?;
+                    unit.post_own(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])?;
                 }
                 self.wait_at_seen(unit, f, r, &c.w.graphics)?;
                 return Ok(5);
             }
-            unit.post_own(0x1fa, [600, 0, 0])?;
+            unit.post_own(NotifyKind::ACTION_COMPLETED, [600, 0, 0])?;
         } else if r.ai_order.has_ai() && r.queue_empty {
-            unit.post_own(0x1fb, [600, 0, 0x202])?;
+            unit.post_own(NotifyKind::ACTION_INVALIDATED, [600, 0, 0x202])?;
         }
         self.finish(unit, c.w.streams.get(Stream::Sprite))?;
         Ok(5)
@@ -195,7 +196,7 @@ impl Attack {
             home.go_home = true;
         }
         if r.queue_empty {
-            unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
+            unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
         }
         Ok(3)
     }

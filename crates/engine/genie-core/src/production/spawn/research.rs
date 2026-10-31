@@ -8,7 +8,8 @@ use crate::players::attribute::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
 use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
-use crate::unit_ai::{ACTION_COMPLETED, Notify};
+use crate::unit_ai::Notify;
+use crate::unit_ai::NotifyKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -183,7 +184,11 @@ impl World {
         }
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [ActionKind::Research.value(), 0, 0]),
+                Notify::own(
+                    id,
+                    NotifyKind::ACTION_COMPLETED,
+                    [ActionKind::Research.value(), 0, 0],
+                ),
                 state,
             )?;
         }
@@ -228,7 +233,7 @@ impl World {
             ai.post(
                 Notify::own(
                     id,
-                    crate::unit_ai::ACTION_FAILED,
+                    NotifyKind::ACTION_FAILED,
                     [ActionKind::Research.value(), 0, 0],
                 ),
                 state,

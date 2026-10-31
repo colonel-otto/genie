@@ -248,7 +248,7 @@ impl World {
             )?;
             return Ok(Some(crate::unit_ai::Notify::own(
                 id,
-                crate::unit_ai::ACTION_FAILED,
+                crate::unit_ai::NotifyKind::ACTION_FAILED,
                 [ActionKind::Enter.value(), 0, 0],
             )));
         }

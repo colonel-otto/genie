@@ -17,7 +17,8 @@ use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
-use crate::unit_ai::ACTION_EXECUTED;
+use crate::unit_ai::NotifyKind;
+
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::player::Player;
@@ -365,7 +366,7 @@ impl Unit {
         let object = streams.get(Stream::Object);
         let struck = crate::combat::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if let Some(target) = struck.executed {
-            shooter.post_own(ACTION_EXECUTED, [600, target.get(), 0])?;
+            shooter.post_own(NotifyKind::ACTION_EXECUTED, [600, target.get(), 0])?;
         }
         if shooter.hit_back(own)?.is_some() {
             return Err(GenieError::unsupported(

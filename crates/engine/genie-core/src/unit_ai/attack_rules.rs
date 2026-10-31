@@ -519,5 +519,5 @@ pub struct Attacked {
     /// The unit attacks the target.
     pub attacks: bool,
     /// The notifies posted, in order.
-    pub posted: Vec<(i32, [i32; 3])>,
+    pub posted: Vec<(crate::unit_ai::NotifyKind, [i32; 3])>,
 }

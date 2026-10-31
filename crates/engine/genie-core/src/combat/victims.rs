@@ -287,7 +287,7 @@ pub(crate) fn write_back(c: &mut Step<'_>, v: &mut Victim) -> Result<Option<Kill
             let n = Notify {
                 caller: attacker,
                 recipient: v.id,
-                kind: crate::unit_ai::DAMAGED,
+                kind: crate::unit_ai::NotifyKind::DAMAGED,
                 p,
             };
             ai.post(n, u.life.state)?;

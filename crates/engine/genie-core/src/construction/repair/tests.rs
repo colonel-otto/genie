@@ -291,7 +291,7 @@ fn repair_of(t: &crate::world::World) -> RepairAction {
 }
 
 /// The notifies the repairer's unit AI heard, each with the repair's action value.
-fn heard(t: &crate::world::World) -> Vec<i32> {
+fn heard(t: &crate::world::World) -> Vec<crate::unit_ai::NotifyKind> {
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     let repair = crate::unit_ai::ActionKind::Repair.value();
     ai.notifies
@@ -478,7 +478,7 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         let r = repair_of(&t);
         assert_eq!((r.state, r.target), (DONE, None));
-        assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
+        assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_COMPLETED]);
         assert_eq!(sprite_of(&t), Some(5));
         if held {
             assert_eq!(the_house(&t).2, 0, "the house let go");
@@ -507,7 +507,7 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
     assert_eq!((r.state, r.target, r.move_to), (DONE, None, None));
-    assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
+    assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_COMPLETED]);
     assert_eq!(the_house(&t).2, 0, "the house let go");
 }
 
@@ -545,7 +545,7 @@ fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
     assert_eq!(repair_of(&t).state, FAILED);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Deletes));
     assert_eq!(repair_of(&t).state, HALTED);
-    assert_eq!(heard(&t), [crate::unit_ai::ACTION_FAILED]);
+    assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_FAILED]);
     assert_eq!(the_house(&t).0, 300.0);
 }
 
@@ -578,7 +578,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
     assert_eq!(repair_of(&t).state, DONE);
     assert_eq!(the_house(&t), (550.0, 0, 0));
     assert_eq!(t.players[1].objects[1].armor_removed, [0, 0]);
-    assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
+    assert_eq!(heard(&t), [crate::unit_ai::NotifyKind::ACTION_COMPLETED]);
     // the player without the wood the building repair cost asks
     let mut t = repair_at(NEAR, working);
     t.players[1].attributes.resize(300, 0.0);
@@ -588,8 +588,8 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
     assert_eq!(
         heard(&t),
         [
-            crate::unit_ai::ACTION_INVALIDATED,
-            crate::unit_ai::ACTION_COMPLETED
+            crate::unit_ai::NotifyKind::ACTION_INVALIDATED,
+            crate::unit_ai::NotifyKind::ACTION_COMPLETED
         ]
     );
     assert_eq!(the_house(&t).0, 300.0);
@@ -676,7 +676,7 @@ fn a_move_sends_the_repairer_to_its_point() {
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
         (repair_of(&t).state, heard(&t)),
-        (DONE, vec![crate::unit_ai::ACTION_COMPLETED])
+        (DONE, vec![crate::unit_ai::NotifyKind::ACTION_COMPLETED])
     );
 }
 

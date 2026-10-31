@@ -12,10 +12,11 @@ use crate::objects::masters::ids::PASTURE;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
-use crate::orders::{MoveOrder, Place, TOO_CLOSE, Work, ignore_unit, packs, readiness, work_reach};
+use crate::orders::{MoveOrder, Place, Work, ignore_unit, packs, readiness, work_reach};
 use crate::players::PlayerId;
 use crate::players::attribute::PASTURE_WORKERS;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -266,7 +267,7 @@ impl World {
     /// the unit is not allied with (`FUN_141663d90` with allies) [`work_reach`]
     /// (`FUN_1410862c0`) decides: class 54 out of reach packs (`FUN_140ad4ff0`), class 51 in
     /// reach unpacks (`FUN_140ae58a0`), each through slot 0x808; else a target below the least
-    /// range is the unit's notify [`TOO_CLOSE`] to its own unit AI (slot 0x328) and nothing more.
+    /// range is the unit's notify [`NotifyKind::TOO_CLOSE`] to its own unit AI (slot 0x328) and nothing more.
     /// Without a target the world holds (none, or one gone) the work command goes to the point,
     /// and a computer's class 54 packs instead. Neither action is held. A villager drops its
     /// town-bell flag (`FUN_1412067f0`); then the work command. A villager on a pasture (1893,
@@ -306,7 +307,10 @@ impl World {
         }
         if reach.is_some_and(|(_, too_close)| too_close) {
             let unit = self.players.live_mut(player, idx)?;
-            unit.post_own(TOO_CLOSE, [ObjectId::field(order.target), -1, -1])?;
+            unit.post_own(
+                NotifyKind::TOO_CLOSE,
+                [ObjectId::field(order.target), -1, -1],
+            )?;
             return Ok(());
         }
         if target.is_none() {
@@ -441,7 +445,7 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             let search = crate::unit_ai::Notify::own(
                 id,
-                crate::unit_ai::REQUIRES_SEARCH,
+                NotifyKind::REQUIRES_SEARCH,
                 [ActionKind::Hunt.value(), i32::from(class::FARM.get()), -1],
             );
             let _ = ai.accept(search, state);

@@ -227,7 +227,7 @@ impl Attack {
         (e, reach_gap): (&Engagement, f32),
         (visible, target_owner): (bool, usize),
         mover: &mut Mover,
-        posted: &mut Vec<(i32, [i32; 3])>,
+        posted: &mut Vec<(crate::unit_ai::NotifyKind, [i32; 3])>,
         reads: &MoveToReads<'_>,
     ) -> Result<Begun, GenieError> {
         let movable = e.speed != 0.0 && e.can_move;
@@ -243,12 +243,12 @@ impl Attack {
             }
         } else if self.min_range > e.gap {
             if !self.sub_action {
-                posted.push((0x1fe, [-1; 3]));
+                posted.push((crate::unit_ai::NotifyKind::TOO_CLOSE, [-1; 3]));
             }
             failed_first = !movable;
         } else if !crate::math::fmath::at_most_or_unordered(reach_gap, self.reach()) {
             if !self.sub_action {
-                posted.push((0x1fd, [0; 3]));
+                posted.push((crate::unit_ai::NotifyKind::OUT_OF_REACH, [0; 3]));
             }
             if (e.stance == 1 && self.off_leash(e.target_position, e.state_position)) || !movable {
                 failed_first = true;

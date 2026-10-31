@@ -36,6 +36,7 @@ mod ids;
 mod issuer;
 mod life;
 mod notifies;
+mod notify_kind;
 mod order_kind;
 mod order_kinds;
 mod process_order;
@@ -103,6 +104,7 @@ pub use self::ids::{HUMAN_ORDER_CAP, NewObject, factory_type};
 pub(crate) use self::ids::{alert_owner, helper_answers, searches_on_class};
 pub use self::issuer::Issuer;
 pub use self::notifies::Inbox;
+pub use self::notify_kind::NotifyKind;
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
 pub use self::side::{
@@ -134,8 +136,8 @@ pub struct Notify {
     pub caller: Option<ObjectId>,
     /// The object whose unit AI takes it.
     pub recipient: ObjectId,
-    /// The kind (named in [`crate::unit_ai::ai_kinds`]).
-    pub kind: i32,
+    /// The kind ([`NotifyKind`]).
+    pub kind: NotifyKind,
     /// Its three parameters.
     pub p: [i32; 3],
 }
@@ -143,7 +145,7 @@ pub struct Notify {
 impl Notify {
     /// The notify an object posts to itself.
     #[must_use]
-    pub const fn own(id: ObjectId, kind: i32, p: [i32; 3]) -> Self {
+    pub const fn own(id: ObjectId, kind: NotifyKind, p: [i32; 3]) -> Self {
         Self {
             caller: Some(id),
             recipient: id,
@@ -162,58 +164,17 @@ impl Notify {
         Ok(Self {
             caller: ObjectId::of_field(w(0)?),
             recipient: ObjectId::try_from(w(4)?)?,
-            kind: w(8)?,
+            kind: NotifyKind::from(w(8)?),
             p: [w(12)?, w(16)?, w(20)?],
         })
     }
 }
 
-/// The notify kinds the slice posts or processes, the game's names where its log lines give one
-/// ([`crate::unit_ai::ai_kinds`], generated). `0x1fa`: an action completed (p1 the action value).
-pub const ACTION_COMPLETED: i32 = ai_kinds::NOTIFY_ACTION_COMPLETED;
-/// `0x1fb`: an action's invalidation (p1 the action value).
-pub const ACTION_INVALIDATED: i32 = ai_kinds::NOTIFY_ACTION_INVALIDATED;
-/// `0x1f9`: an action failed (p1 its action value).
-pub const ACTION_FAILED: i32 = ai_kinds::NOTIFY_ACTION_FAILED;
-/// `0x1fc`: a `MoveTo`'s target left its point and its path's end did not follow (p1..p3 0).
-pub const TARGET_MOVED: i32 = 0x1fc;
-/// `0x215` (no log line): the motion step met a unit of its walked target's master that neither
-/// player counts an ally (p1 its id).
-pub const IN_THE_WAY: i32 = 0x215;
-/// `0x200`: "`ActionExecuted`" (the soldier's log line), an attack's swing (p1 600, p2 the target).
-pub const ACTION_EXECUTED: i32 = 0x200;
-/// `0x202` ("Action %d has been invalidated or requires a search.", the villager's log line): an
-/// action asks for another target (p1 its action value, p2 the target class, p3 a drop site).
-pub const REQUIRES_SEARCH: i32 = 0x202;
-/// `0x203`: an action's drop-off found no drop site (the Build's `set_state(8)`, a gather's).
-pub const NO_DROP_SITE: i32 = 0x203;
-/// `0x21d`: a human player's builder left a pasture already built (p2 the pasture its stack unit
-/// made).
-pub const PASTURE_BUILT: i32 = 0x21d;
-/// `0x21c`: an action asked to drop its load off carries another resource than its task's (the
-/// base action's slot 0x78, `FUN_140a78060`).
-pub const OTHER_LOAD: i32 = 0x21c;
-/// `0x20b`: the unit changed hands (p1 the new owner).
-pub const OWNER_CHANGED: i32 = 0x20b;
-/// `500`: the unit took damage.
-pub const DAMAGED: i32 = ai_kinds::NOTIFY_DAMAGED;
-/// `699`: a unit is no longer doing an action on this one.
-/// Notify 699: an object no longer acts on the unit (its action let the unit go, `FUN_141086e60`).
-pub const NO_LONGER_ON_ME: i32 = ai_kinds::NOTIFY_NO_LONGER_ON_ME;
-
-/// A unit sent off a foundation's footprint (`FUN_14123bb20`): the foundation master's radii
-/// times 100 and the foundation ([`UnitAi::sent_off`]).
-pub const SENT_OFF: i32 = 0x216;
-/// A unit sent off a footprint with a group (`FUN_14123bb20`'s group move).
-pub const SENT_OFF_GROUP: i32 = 0x21b;
-/// `0x20f`: a missile's warning, which a shot whose blast does not spare friends sends its
-/// target when a computer player owns it (`FUN_141081020`).
-const MISSILE_WARNING: i32 = 0x20f;
 /// The damage case's unit too slow to run away (`DAT_142eb0c60`, [`UnitAi::damaged`]).
 const STILL: f32 = crate::math::image::unit_ai::STILL;
 /// The damage case's kill time of an object the unit cannot harm (`DAT_142efe41c`, 25000).
 const NEVER_KILLED: f32 = crate::math::image::unit_ai::NEVER_KILLED;
-/// [`SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
+/// [`NotifyKind::SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
 const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
 
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
@@ -423,7 +384,7 @@ pub enum AiCommand {
         /// Its place.
         point: Position,
     },
-    /// The villager's case 0x21c ([`OTHER_LOAD`]) with the drop-site table's building for its load
+    /// The villager's case 0x21c ([`NotifyKind::OTHER_LOAD`]) with the drop-site table's building for its load
     /// ([`UnitSide::table_drop_site`]): the unit's slot 0x128 on it at its place, then its unit
     /// AI's order back to the target its top action had before (slot 0x190), if any
     /// ([`crate::world::World::drop_elsewhere`]).

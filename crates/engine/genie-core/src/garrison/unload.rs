@@ -409,7 +409,7 @@ impl World {
                 ai.set_action(record.action);
             }
             unit.post_own(
-                crate::unit_ai::REQUIRES_SEARCH,
+                crate::unit_ai::NotifyKind::REQUIRES_SEARCH,
                 [
                     ActionKind::field(record.action),
                     i32::from(ClassId::field(record.target_class)),

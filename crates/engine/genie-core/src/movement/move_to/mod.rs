@@ -631,7 +631,7 @@ mod tests {
                 None,
                 &mut inbox,
             );
-            let posted: Vec<i32> =
+            let posted: Vec<crate::unit_ai::NotifyKind> =
                 ai.map_or(vec![], |ai| ai.notifies.iter().map(|n| n.kind).collect());
             (code, m.state, posted, rig.mover_mut().angle != 0.0, m.point)
         };
@@ -659,7 +659,7 @@ mod tests {
             (
                 Ok(0),
                 MoveTo::Start,
-                vec![crate::unit_ai::TARGET_MOVED],
+                vec![crate::unit_ai::NotifyKind::TARGET_MOVED],
                 true,
                 off
             )
@@ -686,7 +686,7 @@ mod tests {
             });
             let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
             let code = m.check_held(state, &mut inbox).unwrap();
-            let posted: Vec<(i32, [i32; 3])> = ai.map_or(vec![], |ai| {
+            let posted: Vec<(crate::unit_ai::NotifyKind, [i32; 3])> = ai.map_or(vec![], |ai| {
                 ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
             });
             (code, ObjectId::field(m.target), posted)
@@ -695,7 +695,10 @@ mod tests {
         assert_eq!(checked(false, 10028, None), (None, -1, vec![]));
         assert_eq!(checked(false, 10028, Some(6)), (None, 10028, vec![]));
         assert_eq!(checked(true, 10028, Some(7)), (Some(5), -1, vec![]));
-        let invalidated = (crate::unit_ai::ACTION_INVALIDATED, [0x262, -1, 0]);
+        let invalidated = (
+            crate::unit_ai::NotifyKind::ACTION_INVALIDATED,
+            [0x262, -1, 0],
+        );
         assert_eq!(
             checked(false, 10028, Some(7)),
             (Some(4), -1, vec![invalidated])
@@ -762,7 +765,7 @@ mod tests {
                     &mut inbox,
                 )
                 .unwrap();
-            let posted: Vec<(i32, [i32; 3])> = ai.map_or(vec![], |ai| {
+            let posted: Vec<(crate::unit_ai::NotifyKind, [i32; 3])> = ai.map_or(vec![], |ai| {
                 ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
             });
             (code, posted)
@@ -771,11 +774,17 @@ mod tests {
         assert_eq!(update(true, MoveTo::Failed), (3, vec![]));
         assert_eq!(
             update(false, MoveTo::Arrived),
-            (1, vec![(crate::unit_ai::ACTION_COMPLETED, [0x262, 0, 0])])
+            (
+                1,
+                vec![(crate::unit_ai::NotifyKind::ACTION_COMPLETED, [0x262, 0, 0])]
+            )
         );
         assert_eq!(
             update(false, MoveTo::Failed),
-            (3, vec![(crate::unit_ai::ACTION_FAILED, [0x262, 0, 0])])
+            (
+                3,
+                vec![(crate::unit_ai::NotifyKind::ACTION_FAILED, [0x262, 0, 0])]
+            )
         );
     }
 

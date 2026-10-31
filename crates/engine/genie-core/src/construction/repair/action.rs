@@ -20,6 +20,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::NotifyKind;
 use crate::world::step::Step;
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's
@@ -38,7 +39,7 @@ pub fn work_amount(rate: f32, work_value: f32, dt: f32, repairers: Option<u8>) -
 }
 
 /// The repairer's slot 0x328: notify `kind` with the repair's action value to its unit AI.
-fn notify(repairer: &mut Unit, kind: i32) -> Result<(), GenieError> {
+fn notify(repairer: &mut Unit, kind: NotifyKind) -> Result<(), GenieError> {
     repairer.post_own(kind, [ActionKind::Repair.value(), 0, 0])
 }
 
@@ -166,7 +167,7 @@ impl RepairAction {
             WAIT => self.waiting(c, repairer, reads)?,
             WALK_POINT => self.walking_to_point(c, repairer, me, reads)?,
             FAILED => {
-                notify(repairer, crate::unit_ai::ACTION_FAILED)?;
+                notify(repairer, NotifyKind::ACTION_FAILED)?;
                 self.set_state(c, repairer, HALTED, reads)?;
                 return Ok(HeadCode::Deletes);
             }
@@ -382,7 +383,7 @@ impl RepairAction {
                 self.set_state(c, repairer, DONE, reads)
             }
             2 => {
-                notify(repairer, crate::unit_ai::ACTION_INVALIDATED)?;
+                notify(repairer, NotifyKind::ACTION_INVALIDATED)?;
                 self.set_state(c, repairer, DONE, reads)
             }
             _ => Ok(()),
@@ -468,13 +469,13 @@ impl RepairAction {
             DONE => {
                 self.drop_target(c, repairer, reads)?;
                 if !self.quiet {
-                    notify(repairer, crate::unit_ai::ACTION_COMPLETED)?;
+                    notify(repairer, NotifyKind::ACTION_COMPLETED)?;
                 }
                 standing(c, repairer)?;
             }
             HALTED => standing(c, repairer)?,
             IDLE => {
-                notify(repairer, crate::unit_ai::REQUIRES_SEARCH)?;
+                notify(repairer, NotifyKind::REQUIRES_SEARCH)?;
                 standing(c, repairer)?;
             }
             MOVE => self.enter_walk(c, repairer, reads)?,

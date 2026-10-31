@@ -584,10 +584,6 @@ fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
     (within, too_close)
 }
 
-/// Notify `0x1fe`: slot 0x7e8's target is below the unit's least range (the unit's own id twice,
-/// the target, −1, −1).
-const TOO_CLOSE: i32 = 0x1fe;
-
 /// A whole share (`DAT_14330ebcc`), which `FUN_1411859a0` takes hit points against.
 const DAMAGE_WHOLE: f32 = crate::math::image::order::DAMAGE_WHOLE;
 

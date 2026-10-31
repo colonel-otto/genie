@@ -988,8 +988,8 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
         stance: 0,
     };
     let in_the_way = vec![
-        (crate::unit_ai::IN_THE_WAY, [77, -1, -1]),
-        (crate::unit_ai::IN_THE_WAY, [78, -1, -1]),
+        (crate::unit_ai::NotifyKind::IN_THE_WAY, [77, -1, -1]),
+        (crate::unit_ai::NotifyKind::IN_THE_WAY, [78, -1, -1]),
     ];
     for state in [DROP, WALK_POINT] {
         for move_to in [MoveTo::Start, MoveTo::Moving] {

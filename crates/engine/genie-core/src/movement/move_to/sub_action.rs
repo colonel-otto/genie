@@ -10,7 +10,8 @@ use crate::movement::move_to::{
 };
 use crate::objects::ObjectId;
 use crate::objects::sprite::Graphic;
-use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, ActionKind, Inbox, TARGET_MOVED};
+use crate::unit_ai::NotifyKind;
+use crate::unit_ai::{ActionKind, Inbox};
 
 /// A sub-action `MoveTo` that is not quiet letting its target go: its release (slot 0x180) would
 /// be its owner's, and no owner makes one.
@@ -127,7 +128,7 @@ impl MoveToAction {
             MoveTo::Moving => {
                 match self.check_target(walk)? {
                     Follow::Again => return Ok(0),
-                    Follow::Blocked => inbox.post(TARGET_MOVED, [0, 0, 0])?,
+                    Follow::Blocked => inbox.post(NotifyKind::TARGET_MOVED, [0, 0, 0])?,
                     Follow::Stays | Follow::PathEnd(_) => {}
                 }
                 match walk_or_give_up(walk.reborrow())? {
@@ -146,11 +147,11 @@ impl MoveToAction {
                 0
             }
             MoveTo::Failed => {
-                self.post_end(inbox, ACTION_FAILED)?;
+                self.post_end(inbox, NotifyKind::ACTION_FAILED)?;
                 3
             }
             MoveTo::Arrived => {
-                self.post_end(inbox, ACTION_COMPLETED)?;
+                self.post_end(inbox, NotifyKind::ACTION_COMPLETED)?;
                 1
             }
         })
@@ -158,7 +159,7 @@ impl MoveToAction {
 
     /// A `MoveTo` that is not quiet tells its unit's AI how it ended (`0x140aa2a70` in state 1
     /// and 13: notify `kind`, 0x1fa or 0x1f9, with the move action value and 0, 0).
-    fn post_end(&self, inbox: &mut Inbox<'_>, kind: i32) -> Result<(), GenieError> {
+    fn post_end(&self, inbox: &mut Inbox<'_>, kind: NotifyKind) -> Result<(), GenieError> {
         if self.quiet {
             return Ok(());
         }

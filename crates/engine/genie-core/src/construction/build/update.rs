@@ -160,7 +160,7 @@ impl BuildAction {
         };
         ai.end_order_and_action()?;
         builder.post_own(
-            crate::unit_ai::PASTURE_BUILT,
+            crate::unit_ai::NotifyKind::PASTURE_BUILT,
             [
                 crate::unit_ai::ActionKind::Build.value(),
                 // the notify's record holds the stack unit's id, 0 for none
@@ -308,7 +308,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
         builder.post_own(
-            crate::unit_ai::ACTION_FAILED,
+            crate::unit_ai::NotifyKind::ACTION_FAILED,
             [crate::unit_ai::ActionKind::Build.value(), 0, 0],
         )?;
         self.halt_in(c, builder, reads)?;

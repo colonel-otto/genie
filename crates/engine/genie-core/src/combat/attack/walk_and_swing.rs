@@ -21,7 +21,8 @@ use crate::objects::masters::ids;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
-use crate::unit_ai::ACTION_EXECUTED;
+use crate::unit_ai::NotifyKind;
+
 use crate::world::step::Step;
 use crate::{GenieError, combat::damage};
 
@@ -102,7 +103,7 @@ impl Attack {
         self.move_to = None;
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
         if !self.sub_action {
-            unit.post_own(crate::unit_ai::ACTION_FAILED, [600, 0, 0])?;
+            unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
         }
         Ok(3)
     }
@@ -219,7 +220,7 @@ impl Attack {
                 Self::hit(f, &mut c.blasted, r.hit_chance, object)?
             };
             if let Some(target) = executed {
-                unit.post_own(ACTION_EXECUTED, [600, target.get(), 0])?;
+                unit.post_own(NotifyKind::ACTION_EXECUTED, [600, target.get(), 0])?;
             }
             write_strike_back(c, unit, &mut f.victim)?;
         }

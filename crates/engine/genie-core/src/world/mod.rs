@@ -202,9 +202,6 @@ pub(crate) const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH
 /// `FUN_140ac4670`'s second argument when a hunt's Attack failed (`DAT_14330ebb8`): the tree
 /// found counts within this of the unit.
 pub(crate) const TREE_NEAR: f32 = crate::math::image::hunt::TREE_NEAR;
-/// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
-/// value: a Build waiting without work posts it ([`ActionKind::Build`]), a searching Hunt too.
-pub(crate) const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 pub(crate) const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
