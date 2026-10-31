@@ -307,7 +307,7 @@ pub struct MakeObj {
 
 impl MakeObj {
     /// The make action's state while it works.
-    pub const MAKING: u8 = crate::gathering::make::MAKING;
+    pub const MAKING: u8 = crate::gathering::make::MakeState::Making.get();
     /// Its state once its unit came.
     pub const DONE: u8 = crate::orders::action_state::DONE;
 

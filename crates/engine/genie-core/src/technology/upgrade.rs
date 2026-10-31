@@ -674,6 +674,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gathering::make::MakeState;
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
@@ -1087,7 +1088,7 @@ mod tests {
                 build,
             )));
         u.actions.set_make(Some(crate::gathering::make::MakeAction {
-            state: 0,
+            state: MakeState::New,
             remaining: 0.0,
             total: 0.0,
             task: make,

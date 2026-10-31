@@ -29,7 +29,7 @@ pub(super) fn import_make(
     }
     unit.actions
         .set_make(Some(genie_core::gathering::make::MakeAction {
-            state: base.state,
+            state: genie_core::gathering::make::MakeState::of_byte(base.state)?,
             remaining: base.timer,
             total: make.work_timer,
             task: saved.task(task_at)?,

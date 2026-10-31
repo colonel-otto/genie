@@ -19,6 +19,7 @@ use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::GatherState;
 use crate::gathering::gather::unit::give_load;
 use crate::gathering::hunt::HuntState;
+use crate::gathering::make::MakeState;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Offset;
@@ -6910,7 +6911,10 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     t.tick(104);
     let f = &t.players[0].objects[0];
     let make = f.actions.make().copied().unwrap();
-    assert_eq!((make.state, make.remaining, make.total), (6, 175.0, 175.0));
+    assert_eq!(
+        (make.state, make.remaining, make.total),
+        (MakeState::Making, 175.0, 175.0)
+    );
     assert_eq!(f.life.held(), carrying(Some(attribute::FARM_FOOD), 0.0));
     assert_eq!(
         f.top_action(),
@@ -15498,7 +15502,7 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
     );
     let making = |t: &mut World| {
         t.players[1].objects[2].actions.set_make(Some(MakeAction {
-            state: 2,
+            state: MakeState::Making,
             remaining: 0.0,
             total: 0.0,
             task: crate::objects::masters::Task::default(),

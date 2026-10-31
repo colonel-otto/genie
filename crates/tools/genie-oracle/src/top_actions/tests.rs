@@ -519,7 +519,7 @@ fn a_missile_flies_with_its_actions_course() {
 
 #[test]
 fn a_farms_make_takes_its_timers_and_task() {
-    use genie_core::gathering::make::MAKE;
+    use genie_core::gathering::make::{MAKE, MakeState};
     let make = |b: RgeAction| {
         by_type(|t| {
             t.rge_action_make = Some(Box::new(RgeActionMake {
@@ -536,7 +536,7 @@ fn a_farms_make_takes_its_timers_and_task() {
         .make()
         .copied()
         .unwrap();
-    assert_eq!((m.state, m.task.id), (1, TaskId::of_task(3)));
+    assert_eq!((m.state, m.task.id), (MakeState::Done, TaskId::of_task(3)));
     assert_eq!(
         (m.remaining.to_bits(), m.total.to_bits()),
         (1.5_f32.to_bits(), 9.0_f32.to_bits())

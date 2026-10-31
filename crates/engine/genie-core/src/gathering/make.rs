@@ -20,7 +20,6 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
-use crate::orders::action_state::DONE;
 use crate::players::attribute;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -29,8 +28,7 @@ use genie_diff::Diff;
 /// The action type (`+0x8`, 0x15).
 pub const MAKE: ActionType = ActionType::named(21);
 
-/// `+0x18`: the state its update runs in (`set_state(6)`, `first_in_stack`'s).
-pub const MAKING: u8 = 6;
+pub use crate::gathering::make_state::MakeState;
 
 /// The masters whose exhaustion the update does not check (`FUN_140a99e30`: the master id, not
 /// 0x765 and not 0x769): the pastures.
@@ -45,7 +43,7 @@ const NEVER_EXHAUSTED_CLASS: ClassId = class::RELIC;
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MakeAction {
     /// `+0x18`.
-    pub state: u8,
+    pub state: MakeState,
     /// `+0x44`: the food still to make.
     pub remaining: f32,
     /// `+0x68`: the food made in all; the constructor's 120.0 never shows, as
@@ -66,12 +64,12 @@ impl MakeAction {
         // the factory's constructor (FUN_140a99430) sets +0x68 to 120.0, which set_state(6)
         // replaces at once
         let mut make = Self {
-            state: 0,
+            state: MakeState::New,
             remaining: 0.0,
             total: 120.0,
             task,
         };
-        make.set_state(MAKING, attributes);
+        make.set_state(MakeState::Making, attributes);
         if task.attribute_type.is_some() && life.attribute_type != task.attribute_type {
             life.attribute_type = task.attribute_type;
             life.amount = 0.0;
@@ -82,9 +80,9 @@ impl MakeAction {
     /// `set_state` (`FUN_140a99d60`): state 6 takes the player's food to make (attribute 36 for
     /// a task of the farm food kind, `task+0x20 == 0x10`, else 88) as both what is left and what
     /// is made in all.
-    pub fn set_state(&mut self, state: u8, attributes: &[f32]) {
+    pub fn set_state(&mut self, state: MakeState, attributes: &[f32]) {
         self.state = state;
-        if state == MAKING {
+        if state == MakeState::Making {
             let kind = if self.task.attribute_type == Some(attribute::FARM_FOOD) {
                 attribute::FARM_FOOD_AMOUNT
             } else {
@@ -124,8 +122,8 @@ impl MakeAction {
         )?;
         match self.state {
             // `+0x18`: the state whose update reports the action done (`FUN_140a99e30` returns 1).
-            DONE => return Ok(HeadCode::Deletes),
-            MAKING if 0.0 < self.remaining || self.total <= 0.0 => {
+            MakeState::Done => return Ok(HeadCode::Deletes),
+            MakeState::Making if 0.0 < self.remaining || self.total <= 0.0 => {
                 let rate = (master.work_rate + farm.work_rate_powerup)
                     * self.task.work_val1
                     * seconds(c.dt);
@@ -145,7 +143,7 @@ impl MakeAction {
                 }
                 self.remaining -= farm.life.amount - before;
             }
-            MAKING
+            MakeState::Making
                 if !UNEXHAUSTED.contains(&master.id)
                     && farm.life.amount <= 0.0
                     // The first master type whose slot 0xd8 is `FUN_141211340` (70, `TRIBE_Combat_Object`, and 80);
@@ -273,7 +271,7 @@ mod tests {
 
     fn making(remaining: f32, total: f32, task: Task) -> MakeAction {
         MakeAction {
-            state: MAKING,
+            state: MakeState::Making,
             remaining,
             total,
             task,
@@ -290,7 +288,7 @@ mod tests {
         let make = MakeAction::start(farm_task(), &attributes(), &mut life);
         assert_eq!(
             (make.state, make.remaining, make.total),
-            (MAKING, 175.0, 175.0)
+            (MakeState::Making, 175.0, 175.0)
         );
         assert_eq!(
             (life.attribute_type, life.amount),
@@ -373,7 +371,7 @@ mod tests {
     #[test]
     fn state_1_is_done() {
         let done = MakeAction {
-            state: DONE,
+            state: MakeState::Done,
             ..making(0.0, 0.0, farm_task())
         };
         let mut t = farm_world(done, ids::FARM, 0.0);

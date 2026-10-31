@@ -12,6 +12,7 @@ pub mod gather;
 pub mod gather_search;
 pub mod hunt;
 pub mod make;
+mod make_state;
 pub(crate) mod mule_cart;
 pub mod pasture;
 

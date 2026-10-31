@@ -1,4 +1,5 @@
 use super::*;
+use crate::gathering::make::MakeState;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -950,7 +951,7 @@ fn a_farm_food_change_grows_the_farms_food() {
     farm.construction = Some(built());
     farm.actions
         .set_make(Some(crate::gathering::make::MakeAction {
-            state: 1,
+            state: MakeState::Done,
             remaining: 100.0,
             total: 175.0,
             task: crate::objects::masters::Task::default(),
