@@ -8,17 +8,18 @@ use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
+use crate::objects::masters::{ClassAmount, DamageClass};
 
 /// `FUN_141085450`, a combat object's melee armor as its master holds it: its best armor of
 /// class 4 above −32768, else its best of any, else its base armor.
 pub(super) fn master_melee_armor(a: &Armored) -> i16 {
-    let best = |of: Option<i16>| {
+    let best = |of: Option<DamageClass>| {
         a.armors
             .iter()
-            .filter(|&&(k, _)| of.is_none_or(|c| c == k))
-            .fold(i16::MIN, |m, &(_, n)| if m < n { n } else { m })
+            .filter(|e| of.is_none_or(|c| c == e.class))
+            .fold(i16::MIN, |m, e| if m < e.amount { e.amount } else { m })
     };
-    let mut armor = best(Some(4));
+    let mut armor = best(Some(DamageClass::MELEE));
     if armor == i16::MIN {
         armor = best(None);
         if armor == i16::MIN {
@@ -43,22 +44,22 @@ pub(super) fn melee_armor(a: &Armored, own_class: ClassId, state: u8) -> i16 {
 /// [`melee_armor`]) or pierce (class 3; slot 0x870, `FUN_1410857f0`: its best armor of the
 /// class, else its base armor and best of any, plus its powerup; the stinger `+0xb50` is 0, as
 /// [`Victim::most_hp`] says), less the armor removed.
-pub(super) fn class_armor(a: &Armored, class: i16, own_class: ClassId, state: u8) -> i16 {
-    let best = |c: i16, from: i16| {
+pub(super) fn class_armor(a: &Armored, class: OwnSlot, own_class: ClassId, state: u8) -> i16 {
+    let best = |c: DamageClass, from: i16| {
         a.armors
             .iter()
-            .filter(|&&(k, _)| k == c)
-            .fold(from, |m, &(_, n)| if m < n { n } else { m })
+            .filter(|e| e.class == c)
+            .fold(from, |m, e| if m < e.amount { e.amount } else { m })
     };
     let any = |from: i16| {
         a.armors
             .iter()
-            .fold(from, |m, &(_, n)| if m < n { n } else { m })
+            .fold(from, |m, e| if m < e.amount { e.amount } else { m })
     };
     match class {
-        4 => melee_armor(a, own_class, state).wrapping_sub(a.armor_removed[0]),
-        3 => {
-            let mut armor = best(3, -1);
+        OwnSlot::Melee => melee_armor(a, own_class, state).wrapping_sub(a.armor_removed[0]),
+        OwnSlot::Pierce => {
+            let mut armor = best(DamageClass::PIERCE, -1);
             if armor == -1 {
                 armor = any(a.base_armor);
             }
@@ -66,7 +67,26 @@ pub(super) fn class_armor(a: &Armored, class: i16, own_class: ClassId, state: u8
                 .wrapping_add(a.armor_powerups[1])
                 .wrapping_sub(a.armor_removed[1])
         }
-        _ => unreachable!("only melee and pierce armor have their own slots"),
+    }
+}
+
+/// The two armor classes with their own slots (0x868 and 0x870, [`class_armor`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum OwnSlot {
+    /// Melee (class 4), slot 0x868.
+    Melee,
+    /// Pierce (class 3), slot 0x870.
+    Pierce,
+}
+
+impl OwnSlot {
+    /// The slot of armor class `class`, none for a class without its own.
+    const fn of(class: DamageClass) -> Option<Self> {
+        match class {
+            DamageClass::MELEE => Some(Self::Melee),
+            DamageClass::PIERCE => Some(Self::Pierce),
+            _ => None,
+        }
     }
 }
 
@@ -76,28 +96,29 @@ pub(super) fn class_armor(a: &Armored, class: i16, own_class: ClassId, state: u8
 /// melee or pierce armor reads its class's ([`class_armor`]).
 pub(super) fn weapon_armor(
     a: &Armored,
-    class: i16,
+    class: DamageClass,
     attacker: &Attacker,
     kind: MasterKind,
     own_class: ClassId,
     state: u8,
 ) -> i16 {
     let mut armor = a.base_armor;
-    for &(k, n) in &a.armors {
-        if k != class {
+    for e in &a.armors {
+        if e.class != class {
             continue;
         }
+        let own_slot = OwnSlot::of(e.class);
         if MISSILE <= attacker.kind
-            && matches!(k, 3 | 4)
+            && own_slot.is_some()
             && attacker.ability & 1 != 0
             && a.ability & 2 == 0
         {
             armor = 0;
             continue;
         }
-        armor = n;
-        if COMBAT <= kind && matches!(k, 3 | 4) {
-            armor = class_armor(a, k, own_class, state);
+        armor = e.amount;
+        if let Some(slot) = own_slot.filter(|_| COMBAT <= kind) {
+            armor = class_armor(a, slot, own_class, state);
         }
     }
     armor
@@ -135,7 +156,7 @@ pub(super) fn charges(attacker: &Attacker, own_class: ClassId, kind: MasterKind)
 /// [`bonus_damage`]: crate::combat::damage::shown_values::bonus_damage
 pub fn armor_damage(
     v: &Victim,
-    weapons: &[(i16, i16)],
+    weapons: &[ClassAmount],
     factor: f32,
     attacker: &Attacker,
     bonus: f32,
@@ -154,10 +175,13 @@ pub fn armor_damage(
     let mut sum = 0.0f32;
     let mut charged = false;
     let mut bonused = false;
-    for &(class, amount) in weapons {
+    for &ClassAmount { class, amount } in weapons {
         let armor_f = f32::from(weapon_armor(a, class, attacker, kind, own_class, state));
         let mut attack = f32::from(amount);
-        let pierce_or_melee = matches!(class, 3 | 4 | 31);
+        let pierce_or_melee = matches!(
+            class,
+            DamageClass::PIERCE | DamageClass::MELEE | DamageClass::CLASS_31
+        );
         let mut resist = 1.0f32;
         if COMBAT <= attacker.kind {
             let charge =

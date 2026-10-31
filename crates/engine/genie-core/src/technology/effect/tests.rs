@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
@@ -331,7 +332,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         kind: master_type::COMBAT,
         class: class::VILLAGER,
         hit_points: 25,
-        armors: vec![(4, 0), (3, 0)],
+        armors: vec![ClassAmount::new(4, 0), ClassAmount::new(3, 0)],
         ..Master::default()
     }])];
     let loom = [
@@ -364,7 +365,10 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
     // (25 + 15) × 10 / 25 = 16
     assert_eq!(hp, [40.0, 16.0]);
     let m = t.masters[0].get(ids::VILLAGER_MALE).unwrap();
-    assert_eq!((m.hit_points, m.armors.clone()), (40, vec![(4, 1), (3, 2)]));
+    assert_eq!(
+        (m.hit_points, m.armors.clone()),
+        (40, vec![ClassAmount::new(4, 1), ClassAmount::new(3, 2)])
+    );
 }
 
 /// A unit of `master` with `hp` hit points.
@@ -471,10 +475,10 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
     tower_master.kind = master_type::BUILDING;
     tower_master.reload = 2.0;
     tower_master.weapon_range = 8.0;
-    tower_master.weapons = vec![(3, 5)];
+    tower_master.weapons = vec![ClassAmount::new(3, 5)];
     let mut archer_master = combat(master_id(4), class::CLASS_0, 30);
     archer_master.reload = 2.0;
-    archer_master.weapons = vec![(3, 4)];
+    archer_master.weapons = vec![ClassAmount::new(3, 4)];
     archer_master.garrison_firepower = 1.0;
     t.masters = vec![Masters::new([archer_master, tower_master])];
     // the tower's rate: 5 / 2 = 2.5; the archer's share 4 / 2 / 2.5 = 0.8, then 6 / 2 / 2.5
@@ -484,7 +488,10 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
         None,
     )
     .unwrap();
-    assert_eq!(t.masters[0].get(master_id(4)).unwrap().weapons, [(3, 6)]);
+    assert_eq!(
+        t.masters[0].get(master_id(4)).unwrap().weapons,
+        [ClassAmount::new(3, 6)]
+    );
     assert_eq!(t.players[0].objects[0].firepower, 2.0 - 0.8 + 1.2);
 }
 
@@ -1201,7 +1208,7 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
     let mut militia = combat(master_id(74), class::CLASS_6, 40);
     militia.available = true;
     let mut man_at_arms = combat(master_id(75), class::CLASS_6, 45);
-    man_at_arms.weapons = vec![(4, 6)];
+    man_at_arms.weapons = vec![ClassAmount::new(4, 6)];
     man_at_arms.available = false;
     t.masters = vec![Masters::new([militia, man_at_arms])];
     t.do_effect(PlayerId::new(0), &[attribute(3, 74, 75, -1, 0.0)], None)
@@ -1209,7 +1216,7 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
     let m = t.masters[0].get(master_id(74)).unwrap();
     assert_eq!(
         (m.id, m.hit_points, m.weapons.clone()),
-        (master_id(74), 45, vec![(4, 6)])
+        (master_id(74), 45, vec![ClassAmount::new(4, 6)])
     );
     assert!(m.available);
     // mode 1 leaves the master

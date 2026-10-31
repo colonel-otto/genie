@@ -19,8 +19,8 @@ use crate::world::others::OthersRef;
 pub(super) fn attacks(m: &crate::objects::masters::Master) -> f32 {
     m.weapons
         .iter()
-        .filter(|w| 0 < w.1)
-        .fold(0.0, |sum, w| sum + f32::from(w.1))
+        .filter(|w| 0 < w.amount)
+        .fold(0.0, |sum, w| sum + f32::from(w.amount))
 }
 
 /// The hit points (`DAT_14330ebc8`) and the range (`DAT_142e7f384`) below which a villager
@@ -439,11 +439,16 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     /// (`+0xa4c`, slot 0x710; slot 0x778's stinger `+0xb50` is 0), at least 100.
     fn armored(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         let (_, t, _, m) = self.held(id)?.ok_or(NOT_HELD)?;
-        let class3 = m.armors.iter().filter(|a| a.0 == 3).map(|a| a.1).max();
+        let class3 = m
+            .armors
+            .iter()
+            .filter(|a| a.class == crate::objects::masters::DamageClass::PIERCE)
+            .map(|a| a.amount)
+            .max();
         let armor = class3.unwrap_or_else(|| {
             m.armors.iter().fold(
                 m.base_armor,
-                |best, &(_, n)| if best < n { n } else { best },
+                |best, a| if best < a.amount { a.amount } else { best },
             )
         });
         Ok(100 <= armor.wrapping_add(t.armor_powerups[1]))

@@ -106,22 +106,28 @@ pub(super) fn multiply_short(value: i16, v: f32, capped: bool) -> i16 {
 
 /// An armor or attack amount's class (its high byte) and amount (its low byte, negated for a
 /// negative amount; `COMISS` with 0 then `JC`, so a NaN takes the negative branch).
-pub(super) fn class_amount(v: f32) -> (i16, i16) {
+pub(super) fn class_amount(v: f32) -> crate::objects::masters::ClassAmount {
     if crate::math::fmath::below_or_unordered(v, 0.0) {
         let u = crate::math::conversions::cvttss2si(-v) as u16;
-        ((u as i16) >> 8, ((u & 0xff) as i16).wrapping_neg())
+        crate::objects::masters::ClassAmount::new(
+            (u as i16) >> 8,
+            ((u & 0xff) as i16).wrapping_neg(),
+        )
     } else {
         let u = crate::math::conversions::cvttss2si(v) as u16;
-        ((u as i16) >> 8, (u & 0xff) as i16)
+        crate::objects::masters::ClassAmount::new((u as i16) >> 8, (u & 0xff) as i16)
     }
 }
 
 /// The handicap raises an attack class (`FUN_1410c12b0`): a factor above 1 (`COMISS`, `JBE`: a
 /// NaN does not) for a class above 0x21 (an unsigned compare) or not one of [`UNHANDICAPPED`].
-pub(super) fn handicapped(handicap: Option<f32>, class: i16) -> Option<f32> {
+pub(super) fn handicapped(
+    handicap: Option<f32>,
+    class: crate::objects::masters::DamageClass,
+) -> Option<f32> {
     let f = handicap?;
     let raised = !crate::math::fmath::at_most_or_unordered(f, HANDICAP_FLOOR)
-        && (0x21 < class as u16 || UNHANDICAPPED >> (class as u16 & 0x3f) & 1 == 0);
+        && (0x21 < class.get() as u16 || UNHANDICAPPED >> (class.get() as u16 & 0x3f) & 1 == 0);
     raised.then_some(f)
 }
 

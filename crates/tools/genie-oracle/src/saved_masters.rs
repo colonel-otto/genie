@@ -7,6 +7,7 @@ use genie_core::GenieError;
 use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
+use genie_core::objects::masters::ClassAmount;
 use genie_core::objects::masters::{
     ActionType, ClassId, MasterId, ObstructionClass, ObstructionType,
 };
@@ -244,13 +245,13 @@ pub(super) fn work_masters(
             work.weapons = rc
                 .weapon
                 .iter()
-                .map(|&w| ((w & 0xffff) as i16, (w >> 16) as i16))
+                .map(|&w| ClassAmount::new((w & 0xffff) as i16, (w >> 16) as i16))
                 .collect();
             work.base_armor = rc.base_armor;
             work.armors = rc
                 .armor
                 .iter()
-                .map(|&a| ((a & 0xffff) as i16, (a >> 16) as i16))
+                .map(|&a| ClassAmount::new((a & 0xffff) as i16, (a >> 16) as i16))
                 .collect();
             work.resistance = rc.bonus_damage_resistance;
             work.combat_ability = rc.combat_ability;

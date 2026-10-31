@@ -340,23 +340,29 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
 #[test]
 fn a_combat_multiply_takes_a_percentage_of_the_class_s_amount() {
     let mut m = of_type(master_type::RGE_COMBAT);
-    m.armors = vec![(4, 3), (3, 5)];
-    m.weapons = vec![(4, 7), (21, 0)];
+    m.armors = vec![ClassAmount::new(4, 3), ClassAmount::new(3, 5)];
+    m.weapons = vec![ClassAmount::new(4, 7), ClassAmount::new(21, 0)];
     // class 3 at 150%: 5 x 1.5 + 0.5 = 8; class 4 at 50%: 7 x 0.5 + 0.5 = 4
     m.multiply_attribute(attribute::ARMOR, f32::from(0x396_i16), &world(false));
     m.multiply_attribute(attribute::ATTACK, f32::from(0x432_i16), &world(false));
     assert_eq!(
         (m.armors.clone(), m.weapons[0]),
-        (vec![(4, 3), (3, 8)], (4, 4))
+        (
+            vec![ClassAmount::new(4, 3), ClassAmount::new(3, 8)],
+            ClassAmount::new(4, 4)
+        )
     );
     m.multiply_attribute(attribute::ARMOR, f32::from(0x996_i16), &world(false));
-    assert_eq!(m.armors, vec![(4, 3), (3, 8)]);
+    assert_eq!(
+        m.armors,
+        vec![ClassAmount::new(4, 3), ClassAmount::new(3, 8)]
+    );
     let raised = AttributeWorld {
         handicap: Some(1.5),
         ..world(false)
     };
     m.multiply_attribute(attribute::ATTACK, f32::from(0x15c8_i16), &raised);
-    assert_eq!(m.weapons[1], (21, 0));
+    assert_eq!(m.weapons[1], ClassAmount::new(21, 0));
 }
 
 /// `FUN_1410c12b0`, `FUN_1410c16e0` and `FUN_1410c1bf0`: each RGE combat attribute's field
@@ -700,34 +706,51 @@ fn a_capped_speed_stops_at_its_type_s_cap() {
 #[test]
 fn armor_and_attack_change_the_class_in_the_amount_s_high_byte() {
     let mut m = of_type(master_type::COMBAT);
-    m.armors = vec![(4, 1), (3, 2), (3, 9)];
-    m.weapons = vec![(4, 6), (3, 0)];
+    m.armors = vec![
+        ClassAmount::new(4, 1),
+        ClassAmount::new(3, 2),
+        ClassAmount::new(3, 9),
+    ];
+    m.weapons = vec![ClassAmount::new(4, 6), ClassAmount::new(3, 0)];
     // class 3, 1 more (0x301)
     m.add_attribute(attribute::ARMOR, 769.0, &world(false));
-    assert_eq!(m.armors, vec![(4, 1), (3, 3), (3, 9)]);
+    assert_eq!(
+        m.armors,
+        vec![
+            ClassAmount::new(4, 1),
+            ClassAmount::new(3, 3),
+            ClassAmount::new(3, 9)
+        ]
+    );
     // −0x402: class 4, 2 less
     m.add_attribute(attribute::ARMOR, -1026.0, &world(false));
-    assert_eq!(m.armors[0], (4, -1));
+    assert_eq!(m.armors[0], ClassAmount::new(4, -1));
     m.set_attribute(attribute::ARMOR, 1029.0, &world(false));
-    assert_eq!(m.armors[0], (4, 5));
+    assert_eq!(m.armors[0], ClassAmount::new(4, 5));
     // 150 %: 6 × 1.5 + 0.5 = 9.5
     m.multiply_attribute(attribute::ATTACK, f32::from(0x496_i16), &world(false));
-    assert_eq!(m.weapons[0], (4, 9));
+    assert_eq!(m.weapons[0], ClassAmount::new(4, 9));
     // a NaN takes the negative branch: class 0, amount 0, which no entry has
     m.add_attribute(attribute::ATTACK, f32::NAN, &world(false));
-    assert_eq!(m.weapons, vec![(4, 9), (3, 0)]);
+    assert_eq!(
+        m.weapons,
+        vec![ClassAmount::new(4, 9), ClassAmount::new(3, 0)]
+    );
     // a handicap of 1.5 raises a class at 0 (not 3, 4, 31 or 33)
     let raised = AttributeWorld {
         handicap: Some(1.5),
         ..world(false)
     };
-    m.weapons = vec![(4, 0), (21, 0)];
+    m.weapons = vec![ClassAmount::new(4, 0), ClassAmount::new(21, 0)];
     m.set_attribute(attribute::ATTACK, f32::from(0x406_i16), &raised);
     m.set_attribute(attribute::ATTACK, f32::from(0x1506_i16), &raised);
-    assert_eq!(m.weapons, vec![(4, 6), (21, 9)]);
+    assert_eq!(
+        m.weapons,
+        vec![ClassAmount::new(4, 6), ClassAmount::new(21, 9)]
+    );
     // once above 0 the add adds
     m.add_attribute(attribute::ATTACK, f32::from(0x1502_i16), &raised);
-    assert_eq!(m.weapons[1], (21, 11));
+    assert_eq!(m.weapons[1], ClassAmount::new(21, 11));
 }
 
 /// The RGE combat master's multiply rounds most shorts by 0.5 but multiplies the frame delay

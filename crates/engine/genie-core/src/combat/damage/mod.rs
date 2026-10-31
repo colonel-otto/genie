@@ -193,7 +193,7 @@ pub struct Victim {
     /// (class, amount).
     pub source: Attacker,
     /// Its master's weapons (class, amount).
-    pub weapons: Vec<(i16, i16)>,
+    pub weapons: Vec<crate::objects::masters::ClassAmount>,
     /// A combat object's armor and what its damage reads (types 50 and up); None for others.
     pub armored: Option<Armored>,
     /// The damage notifies (500, `FUN_141082e80`) its hits post to its unit AI, in order (a
@@ -282,7 +282,7 @@ pub struct Armored {
     /// Its master's armor classes (class, amount), base armor, `defense_terrain_bonus`,
     /// `bonus_damage_resistance`, `combat_ability`, `damage_reflection`,
     /// `invulnerability_level`, `special_attack_flag`, hit points and `friendly_fire_damage`.
-    pub armors: Vec<(i16, i16)>,
+    pub armors: Vec<crate::objects::masters::ClassAmount>,
     /// Its master's base armor for a class it does not list.
     pub base_armor: i16,
     /// Its master's `defense_terrain_bonus`.

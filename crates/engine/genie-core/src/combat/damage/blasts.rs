@@ -29,7 +29,7 @@ use crate::{GenieError, math::fmath};
 pub(super) fn damage(
     t: &mut Victim,
     src: &mut Victim,
-    weapons: &[(i16, i16)],
+    weapons: &[crate::objects::masters::ClassAmount],
     factor: f32,
     blast_taken: f32,
 ) -> Result<(), GenieError> {
@@ -203,7 +203,7 @@ pub(super) fn blast_one(
     attacker: &mut Victim,
     targets: &mut [&mut Victim],
     i: usize,
-    (b, weapons): (&Blast, &[(i16, i16)]),
+    (b, weapons): (&Blast, &[crate::objects::masters::ClassAmount]),
 ) -> Result<(), GenieError> {
     let a = &b.a;
     let t = &*targets[i];
@@ -422,7 +422,7 @@ pub(super) fn blast_hit(
     attacker: &mut Victim,
     targets: &mut [&mut Victim],
     i: usize,
-    (weapons, factor): (&[(i16, i16)], f32),
+    (weapons, factor): (&[crate::objects::masters::ClassAmount], f32),
     (ledger, blast_taken): (Option<usize>, f32),
 ) -> Result<(), GenieError> {
     let before = targets[i].hp;

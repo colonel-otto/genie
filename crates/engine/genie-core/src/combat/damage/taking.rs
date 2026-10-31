@@ -36,7 +36,7 @@ pub fn take(
     t: &mut Victim,
     src: &mut Victim,
     others: &mut [&mut Victim],
-    weapons: &[(i16, i16)],
+    weapons: &[crate::objects::masters::ClassAmount],
     factor: f32,
     blast_taken: f32,
 ) -> Result<(), GenieError> {
@@ -123,7 +123,7 @@ pub(super) fn take_building(
     t: &mut Victim,
     src: &mut Victim,
     others: &mut [&mut Victim],
-    weapons: &[(i16, i16)],
+    weapons: &[crate::objects::masters::ClassAmount],
     factor: f32,
     forward: bool,
     blast_taken: f32,
@@ -254,7 +254,12 @@ impl Victim {
 /// slot 0x2f0 before it. Its last call (slot 0x4c0, `FUN_141196a00` or `FUN_141158bb0`) plays
 /// the master's damage sound (`+0x700`), whose draws are the Unsynced stream's: no simulation
 /// state.
-pub(super) fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f32) {
+pub(super) fn take_static(
+    t: &mut Victim,
+    src: &Attacker,
+    weapons: &[crate::objects::masters::ClassAmount],
+    factor: f32,
+) {
     // slot 0x2f0 of a TRIBE attacker (types 70, 80; [`charge_hit`]) starts the sum at its raw
     // charge (slot 0x310, `+0x9e0`) plus 0
     let mut damage = if COMBAT <= src.kind && charge_hit(src, t) {
@@ -262,8 +267,8 @@ pub(super) fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)]
     } else {
         0.0f32
     };
-    for &(_, amount) in weapons {
-        damage += f32::from(amount) * factor;
+    for w in weapons {
+        damage += f32::from(w.amount) * factor;
     }
     t.hp -= damage;
     if t.hp < 1.0 {
@@ -291,7 +296,7 @@ pub(super) fn take_unit(
     t: &mut Victim,
     src: &mut Victim,
     others: &mut [&mut Victim],
-    weapons: &[(i16, i16)],
+    weapons: &[crate::objects::masters::ClassAmount],
     factor: f32,
     blast_taken: f32,
 ) -> Result<(), GenieError> {

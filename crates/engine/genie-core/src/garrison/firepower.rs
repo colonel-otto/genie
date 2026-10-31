@@ -8,6 +8,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
+use crate::objects::masters::{ClassAmount, DamageClass};
 use crate::objects::masters::{Master, Masters};
 
 /// A combat master's attack rate needs a weapon range above this (`FUN_14120dc10`).
@@ -16,22 +17,16 @@ pub(super) const RATE_RANGE: f32 = crate::math::image::garrison::RATE_RANGE;
 pub(super) const ONE_MISSILE: f32 = crate::math::image::garrison::ONE_MISSILE;
 /// A reload at most this long gives no firepower (`FUN_14120e1a0`).
 pub(super) const EPSILON: f32 = crate::math::image::garrison::EPSILON;
-/// The armor classes the attack rates sum: pierce (3) and 38 for missiles; melee (4) and 31 too
-/// for a master's own weapons.
-pub(super) const PIERCE: i16 = 3;
-pub(super) const MELEE: i16 = 4;
-pub(super) const CLASS_31: i16 = 31;
-pub(super) const CLASS_38: i16 = 38;
 /// The class whose garrison share is 1 whatever its firepower (`FUN_141213520`, `-0xe82` raw);
 /// UNLOAD's flag 0 leaves it inside (`FUN_14118a610`).
 pub(super) const WHOLE_SHARE_CLASS: ClassId = class::RELIC;
 
 /// The amounts of `weapons` (class, amount) whose class `counts`.
-pub(super) fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
+pub(super) fn weapons_sum(weapons: &[ClassAmount], counts: impl Fn(DamageClass) -> bool) -> f32 {
     weapons
         .iter()
-        .filter(|&&(class, _)| counts(class))
-        .fold(0.0, |sum, &(_, amount)| sum + f32::from(amount))
+        .filter(|w| counts(w.class))
+        .fold(0.0, |sum, w| sum + f32::from(w.amount))
 }
 
 /// `FUN_14120dc10`: the attack rate of an object of `master` (its reload powerup `+0xa28`
@@ -55,10 +50,20 @@ pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f
     let sum = volley.map_or_else(
         || {
             weapons_sum(&master.weapons, |c| {
-                matches!(c, MELEE | PIERCE | CLASS_31 | CLASS_38)
+                matches!(
+                    c,
+                    DamageClass::MELEE
+                        | DamageClass::PIERCE
+                        | DamageClass::CLASS_31
+                        | DamageClass::CLASS_38
+                )
             })
         },
-        |v| weapons_sum(&v.weapons, |c| matches!(c, PIERCE | CLASS_38)),
+        |v| {
+            weapons_sum(&v.weapons, |c| {
+                matches!(c, DamageClass::PIERCE | DamageClass::CLASS_38)
+            })
+        },
     );
     sum / (master.reload - reload_powerup)
 }
@@ -95,8 +100,8 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
             .and_then(|id| masters.get(id));
         if let Some(m) = missile {
             let extra = cvttss2si(master.volley_fire - ONE_MISSILE);
-            for &(class, amount) in &m.weapons {
-                if matches!(class, PIERCE | CLASS_38) {
+            for &ClassAmount { class, amount } in &m.weapons {
+                if matches!(class, DamageClass::PIERCE | DamageClass::CLASS_38) {
                     // IMUL EAX, R8D then CVTDQ2PS
                     sum += i32::from(amount).wrapping_mul(extra) as f32;
                 }
@@ -104,8 +109,14 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
         }
     }
     // one sum, the missile's amounts first
-    for &(class, amount) in &master.weapons {
-        if matches!(class, MELEE | PIERCE | CLASS_31 | CLASS_38) {
+    for &ClassAmount { class, amount } in &master.weapons {
+        if matches!(
+            class,
+            DamageClass::MELEE
+                | DamageClass::PIERCE
+                | DamageClass::CLASS_31
+                | DamageClass::CLASS_38
+        ) {
             sum += f32::from(amount);
         }
     }

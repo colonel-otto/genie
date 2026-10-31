@@ -6,11 +6,14 @@ use crate::objects::masters::{
     AttributeWorld, Master, PERCENT, ROUND, add_sprite, attribute, class_amount, handicapped, low8,
     low16, set_sprite,
 };
+use crate::objects::masters::{ClassAmount, DamageClass};
 
 impl Master {
     /// The armor (`+0x808`) or attack (`+0x818`) entry of `class`, the first in the list.
-    pub(super) fn class_entry(list: &mut [(i16, i16)], class: i16) -> Option<&mut i16> {
-        list.iter_mut().find(|e| e.0 == class).map(|e| &mut e.1)
+    pub(super) fn class_entry(list: &mut [ClassAmount], class: DamageClass) -> Option<&mut i16> {
+        list.iter_mut()
+            .find(|e| e.class == class)
+            .map(|e| &mut e.amount)
     }
 
     /// `FUN_1410c12b0`, the RGE combat master's slot 0x18: an armor or attack amount
@@ -66,13 +69,13 @@ impl Master {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
-                let (class, amount) = class_amount(v);
+                let ClassAmount { class, amount } = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.armors, class) {
                     *e = amount;
                 }
             }
             a::ATTACK => {
-                let (class, amount) = class_amount(v);
+                let ClassAmount { class, amount } = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.weapons, class) {
                     *e = match handicapped(world.handicap, class) {
                         Some(f) if *e == 0 => low16(f32::from(amount) * f),
@@ -151,13 +154,13 @@ impl Master {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
-                let (class, amount) = class_amount(v);
+                let ClassAmount { class, amount } = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.armors, class) {
                     *e = e.wrapping_add(amount);
                 }
             }
             a::ATTACK => {
-                let (class, amount) = class_amount(v);
+                let ClassAmount { class, amount } = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.weapons, class) {
                     *e = match handicapped(world.handicap, class) {
                         Some(f) if *e == 0 => low16(f32::from(amount) * f),
@@ -234,13 +237,13 @@ impl Master {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
-                let (class, amount) = class_amount(v);
+                let ClassAmount { class, amount } = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.armors, class) {
                     *e = low16(f32::from(amount) / PERCENT * f32::from(*e) + ROUND);
                 }
             }
             a::ATTACK => {
-                let (class, amount) = class_amount(v);
+                let ClassAmount { class, amount } = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.weapons, class) {
                     let share = match handicapped(world.handicap, class) {
                         Some(f) if *e == 0 => f32::from(amount) * f,

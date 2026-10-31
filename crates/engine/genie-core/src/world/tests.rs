@@ -32,6 +32,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
+use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::ObstructionClass;
@@ -11103,7 +11104,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         kind: BUILDING,
         class: class::BUILDING,
         cost: costs(&[(attribute::STONE, 650, true), (attribute::FOOD, 10, false)]),
-        weapons: vec![(3, 11)],
+        weapons: vec![ClassAmount::new(3, 11)],
         ..Master::default()
     };
     let annex = Master {
@@ -11245,26 +11246,38 @@ fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
 fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
     use crate::combat::victims::is_trebuchet;
     use crate::combat::victims::paid_cost;
-    let m = |kind, class, weapons: Vec<(i16, i16)>| Master {
+    let m = |kind, class, weapons: Vec<ClassAmount>| Master {
         kind,
         class,
         weapons,
         ..Master::default()
     };
-    assert!(is_trebuchet(&m(BUILDING, class::CLASS_54, vec![(4, 200)])));
-    assert!(is_trebuchet(&m(BUILDING, class::CLASS_51, vec![(4, 1)])));
+    assert!(is_trebuchet(&m(
+        BUILDING,
+        class::CLASS_54,
+        vec![ClassAmount::new(4, 200)]
+    )));
+    assert!(is_trebuchet(&m(
+        BUILDING,
+        class::CLASS_51,
+        vec![ClassAmount::new(4, 1)]
+    )));
     assert!(is_trebuchet(&m(
         master_type::COMBAT,
         class::CLASS_54,
-        vec![(4, 1)]
+        vec![ClassAmount::new(4, 1)]
     )));
     assert!(!is_trebuchet(&m(BUILDING, class::CLASS_51, vec![])));
     assert!(!is_trebuchet(&m(
         master_type::MISSILE,
         class::CLASS_54,
-        vec![(4, 1)]
+        vec![ClassAmount::new(4, 1)]
     )));
-    assert!(!is_trebuchet(&m(BUILDING, class::BUILDING, vec![(3, 11)])));
+    assert!(!is_trebuchet(&m(
+        BUILDING,
+        class::BUILDING,
+        vec![ClassAmount::new(3, 11)]
+    )));
     let paid = Master {
         cost: costs(&[
             (attribute::WOOD, 200, true),
@@ -11696,7 +11709,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         kind: master_type::COMBAT,
         class: class::CLASS_35,
         hit_points: 45,
-        weapons: vec![(4, 100)],
+        weapons: vec![ClassAmount::new(4, 100)],
         area_effect: 2.0,
         area_damage: 1.0,
         missile: None,
@@ -11708,7 +11721,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         kind: BUILDING,
         class: class::WALL,
         hit_points: 1800,
-        armors: vec![(4, 0)],
+        armors: vec![ClassAmount::new(4, 0)],
         terrain_bonus: -1,
         ..Master::default()
     };
@@ -13182,7 +13195,7 @@ fn help_view<R>(
         kind: master_type::COMBAT,
         class: class::CLASS_47,
         weapon_range: 1.0,
-        weapons: vec![(4, 3)],
+        weapons: vec![ClassAmount::new(4, 3)],
         ..Master::default()
     };
     let wolf = Master {

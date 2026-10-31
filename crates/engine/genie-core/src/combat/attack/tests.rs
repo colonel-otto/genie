@@ -7,6 +7,7 @@ use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
 use crate::objects::ObjectId;
 use crate::objects::layers::Animated;
+use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
@@ -676,7 +677,7 @@ fn struck_building(id: i32, at: Position, building: damage::Building) -> Victim 
         blast_defense: 2,
         master_hp: 100,
         armored: Some(damage::Armored {
-            armors: vec![(4, 0)],
+            armors: vec![ClassAmount::new(4, 0)],
             terrain_bonus: -1,
             friendly_fire: 1.0,
             ..damage::Armored::default()
@@ -720,7 +721,7 @@ fn a_strike_on_an_annex_hits_its_main_building() {
             player: PlayerId::new(1),
             ..damage::Attacker::default()
         },
-        weapons: vec![(4, 4)],
+        weapons: vec![ClassAmount::new(4, 4)],
         ..Victim::default()
     };
     let hit = Hit {
@@ -767,7 +768,7 @@ fn a_building_s_relic_raises_its_missile_s_hit() {
                 player: PlayerId::new(1),
                 ..damage::Attacker::default()
             },
-            weapons: vec![(4, 40)],
+            weapons: vec![ClassAmount::new(4, 40)],
             building: Some(damage::Building {
                 relics,
                 ..damage::Building::default()
@@ -819,7 +820,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
         ),
         own: Victim {
             position: Position::new(10.0, 10.0, 0.0),
-            weapons: vec![(4, 10)],
+            weapons: vec![ClassAmount::new(4, 10)],
             source: damage::Attacker {
                 id: object_id(1),
                 kind: master_type::COMBAT,

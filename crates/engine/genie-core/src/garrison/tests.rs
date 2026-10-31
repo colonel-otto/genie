@@ -12,6 +12,7 @@ use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::BuildingMaster;
+use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
@@ -944,7 +945,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
     let arrow = Master {
         id: master_id(54),
         kind: master_type::MISSILE,
-        weapons: vec![(3, 5)],
+        weapons: vec![ClassAmount::new(3, 5)],
         ..Master::default()
     };
     let tc = Master {
@@ -953,7 +954,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
         class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
-        weapons: vec![(3, 5)],
+        weapons: vec![ClassAmount::new(3, 5)],
         volley_missile: Some(master_id(54)),
         volley_fire: 1.0,
         max_volley: 11,
@@ -964,7 +965,13 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
         kind: master_type::COMBAT,
         class: class::VILLAGER,
         reload: 2.0,
-        weapons: vec![(11, 3), (4, 3), (13, 6), (24, 0), (17, 0)],
+        weapons: vec![
+            ClassAmount::new(11, 3),
+            ClassAmount::new(4, 3),
+            ClassAmount::new(13, 6),
+            ClassAmount::new(24, 0),
+            ClassAmount::new(17, 0),
+        ],
         garrison_firepower: -2.5,
         ..Master::default()
     };
@@ -992,7 +999,7 @@ fn town_center() -> Master {
         class: class::BUILDING,
         reload: 2.0,
         weapon_range: 6.0,
-        weapons: vec![(3, 5)],
+        weapons: vec![ClassAmount::new(3, 5)],
         volley_missile: Some(master_id(54)),
         volley_fire: 1.0,
         ..Master::default()
@@ -1006,7 +1013,11 @@ fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
     let arrow = Master {
         id: master_id(54),
         kind: master_type::MISSILE,
-        weapons: vec![(3, 5), (4, 7), (38, 2)],
+        weapons: vec![
+            ClassAmount::new(3, 5),
+            ClassAmount::new(4, 7),
+            ClassAmount::new(38, 2),
+        ],
         ..Master::default()
     };
     let masters = Masters::new([arrow, town_center()]);
@@ -1022,7 +1033,13 @@ fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
     // classes 4 and 6 sum their own melee, pierce, 31 and 38 amounts, not the missile's
     let infantry = Master {
         class: class::CLASS_6,
-        weapons: vec![(4, 4), (3, 1), (31, 2), (38, 1), (11, 9)],
+        weapons: vec![
+            ClassAmount::new(4, 4),
+            ClassAmount::new(3, 1),
+            ClassAmount::new(31, 2),
+            ClassAmount::new(38, 1),
+            ClassAmount::new(11, 9),
+        ],
         ..town_center()
     };
     assert_eq!(attack_rate(&infantry, &masters, 0.5), 8.0 / 1.5);
@@ -1035,13 +1052,17 @@ fn a_volley_missile_slot_the_table_holds_is_taken_even_when_it_is_empty() {
     let missile = Master {
         id: ids::FARM,
         kind: master_type::MISSILE,
-        weapons: vec![(3, 6)],
+        weapons: vec![ClassAmount::new(3, 6)],
         ..Master::default()
     };
     let volley = Master {
         id: master_id(54),
         kind: master_type::MISSILE,
-        weapons: vec![(3, 2), (38, 1), (4, 9)],
+        weapons: vec![
+            ClassAmount::new(3, 2),
+            ClassAmount::new(38, 1),
+            ClassAmount::new(4, 9),
+        ],
         ..Master::default()
     };
     let unarmed = Master {
@@ -1053,7 +1074,7 @@ fn a_volley_missile_slot_the_table_holds_is_taken_even_when_it_is_empty() {
         id: master_id(4),
         kind: master_type::COMBAT,
         reload: 2.0,
-        weapons: vec![(3, 4)],
+        weapons: vec![ClassAmount::new(3, 4)],
         missile: Some(ids::FARM),
         garrison_firepower: 1.0,
         volley_fire: 3.0,
@@ -1080,7 +1101,7 @@ fn the_extra_missiles_truncate_and_multiply_as_the_game_does() {
     let volley = |amount| Master {
         id: master_id(54),
         kind: master_type::MISSILE,
-        weapons: vec![(3, amount)],
+        weapons: vec![ClassAmount::new(3, amount)],
         ..Master::default()
     };
     let tower = Master {
@@ -1114,7 +1135,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
         kind: master_type::COMBAT,
         class: class::CLASS_0,
         reload: 2.0,
-        weapons: vec![(3, 2)],
+        weapons: vec![ClassAmount::new(3, 2)],
         garrison_firepower: 1.0,
         object_flags: 8 | (1122 << 16),
         ..Master::default()
@@ -1124,7 +1145,7 @@ fn a_share_is_at_least_zero_and_a_transforming_master_takes_its_other_form_as_it
         kind: master_type::COMBAT,
         class: class::CLASS_36,
         reload: 2.0,
-        weapons: vec![(3, 6)],
+        weapons: vec![ClassAmount::new(3, 6)],
         garrison_firepower: 1.0,
         ..Master::default()
     };

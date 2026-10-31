@@ -329,7 +329,7 @@ pub struct Master {
     /// `charge_target` (`+0x924`).
     pub base_armor: i16,
     /// Its armor classes (class, amount; `+0x808`, count `+0x802`).
-    pub armors: Vec<(i16, i16)>,
+    pub armors: Vec<ClassAmount>,
     /// `bonus_damage_resistance` (`+0x824`).
     pub resistance: f32,
     /// `combat_ability` (`+0x840`).
@@ -432,7 +432,7 @@ pub struct Master {
     /// `speed_of_attack`: the reload time.
     pub reload: f32,
     /// Its weapons (class, amount).
-    pub weapons: Vec<(i16, i16)>,
+    pub weapons: Vec<ClassAmount>,
     /// Where its missile starts from its place, turned by its facing (`+0x844`..`+0x84c`,
     /// `weapon_offset`), and how far a missed missile strays per tile of the way
     /// (`missed_missile_spread`, `+0x860`).
@@ -586,6 +586,7 @@ pub mod action_type;
 pub mod attribute;
 pub mod class;
 mod class_id;
+mod damage_class;
 mod gather_group;
 pub mod ids;
 mod master_id;
@@ -597,6 +598,7 @@ mod obstruction_type;
 pub use self::action_type::ActionType;
 pub use self::attribute::MasterAttribute;
 pub use self::class_id::ClassId;
+pub use self::damage_class::{ClassAmount, DamageClass};
 pub use self::gather_group::GatherGroup;
 pub use self::master_id::MasterId;
 pub use self::master_kind::MasterKind;

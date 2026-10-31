@@ -111,7 +111,7 @@ pub struct Shown<'a> {
     pub target: Option<&'a Victim>,
     /// The weapons (class, amount) of its master's charge projectile (`+0x928`) when its player
     /// holds that master (`FUN_141659d20`).
-    pub projectile: Option<&'a [(i16, i16)]>,
+    pub projectile: Option<&'a [crate::objects::masters::ClassAmount]>,
     /// Its master's `charge_event` (`+0x920`), which a ready charge of type 6 or 7 adds to its
     /// range.
     pub charge_event: i16,
@@ -133,11 +133,19 @@ pub(super) fn charge_shown(v: &Victim, target: Option<&Victim>) -> bool {
 
 /// The best amount of `weapons` above 0 (the first of a tie), of a melee, pierce or class-31
 /// weapon with `fighting`.
-pub(super) fn best_attack(weapons: &[(i16, i16)], fighting: bool) -> i16 {
+pub(super) fn best_attack(weapons: &[crate::objects::masters::ClassAmount], fighting: bool) -> i16 {
     weapons
         .iter()
-        .filter(|w| !fighting || matches!(w.0, 3 | 4 | 31))
-        .fold(0, |m, w| if m < w.1 { w.1 } else { m })
+        .filter(|w| {
+            !fighting
+                || matches!(
+                    w.class,
+                    crate::objects::masters::DamageClass::PIERCE
+                        | crate::objects::masters::DamageClass::MELEE
+                        | crate::objects::masters::DamageClass::CLASS_31
+                )
+        })
+        .fold(0, |m, w| if m < w.amount { w.amount } else { m })
 }
 
 /// A float as `(short)(int)` takes it: `CVTTSS2SI`, then its low 16 bits.

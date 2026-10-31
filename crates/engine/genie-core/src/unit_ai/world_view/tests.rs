@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::objects::masters::ClassAmount;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -19,17 +20,22 @@ use crate::world::others::OthersRef;
 /// (or none above 0) is +0.
 #[test]
 fn the_attacks_sum_is_the_positive_ones() {
-    let m = |weapons: Vec<(i16, i16)>| crate::objects::masters::Master {
+    let m = |weapons: Vec<ClassAmount>| crate::objects::masters::Master {
         weapons,
         ..crate::objects::masters::Master::default()
     };
     assert_eq!(
-        attacks(&m(vec![(4, 6), (3, -2), (11, 1)])).to_bits(),
+        attacks(&m(vec![
+            ClassAmount::new(4, 6),
+            ClassAmount::new(3, -2),
+            ClassAmount::new(11, 1)
+        ]))
+        .to_bits(),
         7.0f32.to_bits()
     );
     assert_eq!(attacks(&m(vec![])).to_bits(), 0.0f32.to_bits());
     assert_eq!(
-        attacks(&m(vec![(4, 0), (3, -5)])).to_bits(),
+        attacks(&m(vec![ClassAmount::new(4, 0), ClassAmount::new(3, -5)])).to_bits(),
         0.0f32.to_bits()
     );
 }
@@ -252,8 +258,8 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
         class: class::VILLAGER,
         object_flags: 0x10,
         hit_points: 25,
-        weapons: vec![(4, 3), (21, 6)],
-        armors: vec![(4, 0), (3, 0)],
+        weapons: vec![ClassAmount::new(4, 3), ClassAmount::new(21, 6)],
+        armors: vec![ClassAmount::new(4, 0), ClassAmount::new(3, 0)],
         weapon_range: 0.0,
         ..crate::objects::masters::Master::default()
     };
@@ -265,12 +271,16 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
     };
     assert!(!with(&|m| m.object_flags = 0));
     assert!(!with(&|m| m.copy_id = Some(ids::VILLAGER_FEMALE)));
-    assert!(!with(&|m| m.weapons = vec![(4, 5)]));
+    assert!(!with(&|m| m.weapons = vec![ClassAmount::new(4, 5)]));
     // an attack of 4 below 60 hit points
-    assert!(with(&|m| m.weapons = vec![(4, 4)]));
-    assert!(!with(&|m| (m.weapons, m.hit_points) = (vec![(4, 4)], 60)));
-    assert!(with(&|m| (m.weapons, m.hit_points) = (vec![(4, 3)], 60)));
-    assert!(!with(&|m| m.armors = vec![(4, 1)]));
+    assert!(with(&|m| m.weapons = vec![ClassAmount::new(4, 4)]));
+    assert!(!with(
+        &|m| (m.weapons, m.hit_points) = (vec![ClassAmount::new(4, 4)], 60)
+    ));
+    assert!(with(
+        &|m| (m.weapons, m.hit_points) = (vec![ClassAmount::new(4, 3)], 60)
+    ));
+    assert!(!with(&|m| m.armors = vec![ClassAmount::new(4, 1)]));
     assert!(with(&|m| m.weapon_range = 0.5));
     assert!(!with(&|m| m.weapon_range = 0.6));
     assert!(!with(&|m| m.weapon_range = f32::NAN));
@@ -315,8 +325,16 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     let before = [gaia];
     let every = [
         Masters::default(),
-        Masters::new([master(master_id(4), class::CLASS_6, vec![(4, 6)])]),
-        Masters::new([master(master_id(5), class::CLASS_6, vec![(4, 3)])]),
+        Masters::new([master(
+            master_id(4),
+            class::CLASS_6,
+            vec![ClassAmount::new(4, 6)],
+        )]),
+        Masters::new([master(
+            master_id(5),
+            class::CLASS_6,
+            vec![ClassAmount::new(4, 3)],
+        )]),
     ];
     let spatial = Spatial::new(GridSize::new(120, 120));
     let attacker = crate::unit_ai::Attacker {
