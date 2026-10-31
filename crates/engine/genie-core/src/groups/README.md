@@ -34,6 +34,7 @@ The world runs the update of each group that a player owns, before the player's 
 | [`attack.rs`](attack.rs) | A group's command on an attack task (FD-036): `FUN_14100f7f0`, which `BUnitGroup::command` runs for the tasks 1, 7, 9, `0x68` and `0x7d` on a target, with the member passes it makes (`FUN_14100c6c0`, `FUN_141007ba0`, `FUN_14102bbd0`). |
 | [`command.rs`](command.rs) | A group's orders (FD-036): `BUnitGroup::command` (`FUN_14100efd0`), `commandMoveTo` (`FUN_141010a80`) and `stopAllUnits` (`FUN_14103a0d0`), the HD PDB's names. |
 | [`create.rs`](create.rs) | A group's members (FD-036): `AddUnit` (`FUN_1410083c0`) with its sub-formation statistics (`FUN_141008d90`, `FUN_1410116c0`) and a unit's radius in a formation (`FUN_141025920`). |
+| [`group_id.rs`](group_id.rs) | A unit group's id as one type: the id the world gives each group it creates, which a unit's group link, a group's differentiator groups and the lookups by id name. |
 | [`group_list.rs`](group_list.rs) | The world's unit groups (`UnitGroups`), an object's link to its group and the group every listed unit is in. |
 | [`layout.rs`](layout.rs) | The formations' layouts besides createColumnLine (FD-036): a horde (`FUN_141013eb0`), a user defined formation (`FUN_141014f60`), a phalanx (`FUN_1410147b0`) and a box (`FUN_141011a00` with `FUN_14102ab30` and `CreateLines` `FUN_1410143a0`), as `UpdateDesiredPositions` (`FUN_14103fd00`) makes them. |
 | [`mod.rs`](mod.rs) | Unit groups and formations (FD-036): the game's `BUnitGroup` (`group.cpp`) with its motion (`BMotion`) and formations (`BFormation`). |
@@ -54,5 +55,5 @@ The world runs the update of each group that a player owns, before the player's 
 
 <!-- uses -->
 - Uses: [`combat`](../combat/), [`construction`](../construction/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`pathing`](../pathing/), [`players`](../players/), [`unit_ai`](../unit_ai/), [`vision`](../vision/), [`world`](../world/).
-- Used by: [`commands`](../commands/), [`gathering`](../gathering/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`unit_ai`](../unit_ai/), [`world`](../world/).
+- Used by: [`commands`](../commands/), [`gathering`](../gathering/), [`map`](../map/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`unit_ai`](../unit_ai/), [`world`](../world/).
 <!-- /uses -->

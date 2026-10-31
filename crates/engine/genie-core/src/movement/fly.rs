@@ -464,7 +464,7 @@ mod tests {
     fn flown(t: &mut World) -> Result<Fly, GenieError> {
         let me = Me {
             id: object_id(9925),
-            group: -1,
+            group: None,
             action_state: 0,
         };
         crate::world::tests::in_update(t, (PlayerId::new(0), 0), 21, |u, c| u.fly_part(c, me))?;

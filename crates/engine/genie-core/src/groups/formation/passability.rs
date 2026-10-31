@@ -2,6 +2,7 @@
 //! slots' reach and the search for an unreachable slot's unit.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
 use crate::map::spatial::RecordId;
@@ -68,7 +69,7 @@ impl World {
     pub fn formation_transform(
         &mut self,
         formation: &mut Formation,
-        group: i32,
+        group: GroupId,
         column_to_line: bool,
     ) -> Result<bool, GenieError> {
         if formation.slots.is_empty() {
@@ -252,7 +253,7 @@ impl World {
     pub(super) fn passable_slots(
         &mut self,
         formation: &mut Formation,
-        group: i32,
+        group: GroupId,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let tester = self.lead_object(&g.motion).or_else(|| {

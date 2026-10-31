@@ -1,7 +1,8 @@
-//! The tests' newtypes: an object id, a player or a master of a value the test knows is one,
+//! The tests' newtypes: an object id, a unit group, a player or a master of a value the test knows is one,
 //! and a list of ids, through the types' checked constructors.
 
 use crate::commands::UnitList;
+use crate::groups::GroupId;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
@@ -23,6 +24,14 @@ pub(crate) fn object_ids(values: impl IntoIterator<Item = i32>) -> Vec<Option<Ob
 /// The object ids `values` (none of them −1), in order.
 pub(crate) fn object_id_list(values: impl IntoIterator<Item = i32>) -> Vec<ObjectId> {
     values.into_iter().map(object_id).collect()
+}
+
+/// The unit group `value` (not −1); const, so a test's constants name groups too.
+pub(crate) const fn group_id(value: i32) -> GroupId {
+    match GroupId::of_field(value) {
+        Some(id) => id,
+        None => panic!("a test's group id is not −1"),
+    }
 }
 
 /// The player `number`.

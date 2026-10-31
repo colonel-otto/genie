@@ -2,6 +2,7 @@
 //! population in order and a line after a column.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::formation::{BOX, COLUMN};
 use crate::groups::{Formation, UnitGroup, sub_formation};
 use crate::objects::ObjectId;
@@ -408,7 +409,7 @@ impl World {
     pub fn lay_units(
         &mut self,
         formation: &mut Formation,
-        group: i32,
+        group: GroupId,
         after_column: bool,
     ) -> Result<(), GenieError> {
         if self.formation_transform(formation, group, after_column)? {

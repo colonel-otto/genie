@@ -1,5 +1,6 @@
-//! The tests' object ids, through the type's checked constructor.
+//! The tests' object and group ids, through the types' checked constructors.
 
+use genie_core::groups::GroupId;
 use genie_core::objects::ObjectId;
 
 /// The object id `value` (not −1).
@@ -7,5 +8,13 @@ pub(crate) const fn object_id(value: i32) -> ObjectId {
     match ObjectId::of_field(value) {
         Some(id) => id,
         None => panic!("a test's object id is not −1"),
+    }
+}
+
+/// The unit group `value` (not −1).
+pub(crate) const fn group_id(value: i32) -> GroupId {
+    match GroupId::of_field(value) {
+        Some(id) => id,
+        None => panic!("a test's group id is not −1"),
     }
 }

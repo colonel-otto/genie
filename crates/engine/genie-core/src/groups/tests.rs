@@ -8,6 +8,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{ClassId, class};
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::unit::Unit;
+use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -43,24 +44,31 @@ fn a_new_motion_holds_the_constructor_s_values() {
 /// entry.
 #[test]
 fn the_common_group_needs_every_held_unit_in_one_group_and_the_first_held() {
+    let link = |id: Option<GroupId>| GroupLink {
+        id,
+        ..GroupLink::default()
+    };
     let group_of = |id: ObjectId| match id.get() {
-        1 | 2 => Some(7),
-        3 => Some(8),
-        4 => Some(-1),
+        1 | 2 => Some(link(Some(group_id(7)))),
+        3 => Some(link(Some(group_id(8)))),
+        4 => Some(link(None)),
         _ => None,
     };
     let common = |ids: &[i32]| common_group(&object_ids(ids.iter().copied()), group_of);
-    assert_eq!(common(&[1, 2]), 7);
-    assert_eq!(common(&[1, 9, 2]), 7);
-    assert_eq!(common(&[1, -1, 2]), 7);
-    assert_eq!(common(&[1, 3]), -1);
-    assert_eq!(common(&[1, 4]), -1);
+    assert_eq!(common(&[1, 2]), Some(group_id(7)));
+    assert_eq!(common(&[1, 9, 2]), Some(group_id(7)));
+    assert_eq!(common(&[1, -1, 2]), Some(group_id(7)));
+    assert_eq!(common(&[1, 3]), None);
+    assert_eq!(common(&[1, 4]), None);
     // the first unit gone or a null: the others are compared with no group
-    assert_eq!(common(&[9, 1, 2]), -1);
-    assert_eq!(common(&[-1, 1, 2]), -1);
-    assert_eq!(common(&[]), -1);
+    assert_eq!(common(&[9, 1, 2]), None);
+    assert_eq!(common(&[-1, 1, 2]), None);
+    assert_eq!(common(&[]), None);
     // the splitter's groups list ids without nulls
-    assert_eq!(common_group(&[object_id(1), object_id(2)], group_of), 7);
+    assert_eq!(
+        common_group(&[object_id(1), object_id(2)], group_of),
+        Some(group_id(7))
+    );
 }
 
 fn member(id: i32) -> Member {
@@ -74,7 +82,7 @@ fn member(id: i32) -> Member {
 /// its `+8`), whatever its place in the list; −1 for a unit that is no member.
 #[test]
 fn a_member_s_reason_is_its_own_move_s() {
-    let mut group = UnitGroup::new(1);
+    let mut group = UnitGroup::new(group_id(1));
     let with_reason = |id, reason| Member {
         id,
         specific_move: SpecificMove {
@@ -99,7 +107,7 @@ fn a_unit_is_in_place_when_its_first_slot_in_the_current_formation_is() {
         state,
         ..Slot::default()
     };
-    let mut group = UnitGroup::new(1);
+    let mut group = UnitGroup::new(group_id(1));
     group.previous_formation = Some(Formation {
         slots: vec![slot(Some(object_id(10)), 3)],
         ..Formation::default()
@@ -122,10 +130,10 @@ fn a_unit_is_in_place_when_its_first_slot_in_the_current_formation_is() {
 /// gone one nothing; the cap stops the list.
 #[test]
 fn the_differentiator_units_are_the_members_of_the_listed_groups() {
-    let mut one = UnitGroup::new(1);
+    let mut one = UnitGroup::new(group_id(1));
     one.members = vec![member(10), member(11)];
-    one.differentiator_groups = vec![1, 2, 9];
-    let mut two = UnitGroup::new(2);
+    one.differentiator_groups = vec![group_id(1), group_id(2), group_id(9)];
+    let mut two = UnitGroup::new(group_id(2));
     two.members = vec![member(12)];
     let groups = UnitGroups {
         groups: vec![one.clone(), two],
@@ -139,7 +147,7 @@ fn the_differentiator_units_are_the_members_of_the_listed_groups() {
         groups.differentiator_units(&one, 2),
         [object_id(10), object_id(11)]
     );
-    let alone = UnitGroup::new(3);
+    let alone = UnitGroup::new(group_id(3));
     assert_eq!(groups.differentiator_units(&alone, 255), Vec::new());
 }
 
@@ -206,8 +214,8 @@ fn a_unit_s_sub_formation_follows_its_category_and_its_hero_flag() {
 /// `FUN_140fe1550`: every value the constructor writes that the group holds.
 #[test]
 fn a_new_group_holds_the_constructor_s_values() {
-    let g = UnitGroup::new(7);
-    assert_eq!((g.id, g.owner, g.state), (7, u32::MAX, -1));
+    let g = UnitGroup::new(group_id(7));
+    assert_eq!((g.id, g.owner, g.state), (group_id(7), u32::MAX, -1));
     assert_eq!(
         (g.flags, g.current_command, g.differentiator_id),
         (0x100, -1, -1)
@@ -231,19 +239,19 @@ fn a_new_group_holds_the_constructor_s_values() {
 #[test]
 fn a_new_group_takes_the_next_id_at_the_list_s_end() {
     let mut groups = UnitGroups {
-        counter: 4,
+        counter: group_id(4),
         ..UnitGroups::default()
     };
-    assert_eq!(groups.create(2).id, 4);
-    assert_eq!(groups.create(1).id, 5);
-    assert_eq!(groups.counter, 6);
+    assert_eq!(groups.create(2).id, group_id(4));
+    assert_eq!(groups.create(1).id, group_id(5));
+    assert_eq!(groups.counter, group_id(6));
     assert_eq!(
         groups
             .groups
             .iter()
             .map(|g| (g.id, g.owner))
             .collect::<Vec<_>>(),
-        [(4, 2), (5, 1)]
+        [(group_id(4), 2), (group_id(5), 1)]
     );
 }
 
@@ -449,7 +457,10 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         .map(|&(id, master, x, y)| Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(Position::new(x, y, 0.0)),
-            group: GroupLink { id: 1, flag: -2 },
+            group: GroupLink {
+                id: Some(group_id(1)),
+                flag: -2,
+            },
             life: Lifecycle {
                 master_id: master_id(master),
                 state: 2,
@@ -508,7 +519,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         building,
     ]);
     t.masters = vec![Masters::new([]), masters.clone(), masters];
-    let mut g = UnitGroup::new(1);
+    let mut g = UnitGroup::new(group_id(1));
     g.owner = 1;
     g.members = members
         .iter()
@@ -577,10 +588,10 @@ fn building_60() -> ObjectId {
 fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0), (8, 4, 11.0, 10.0)]);
     assert!(
-        t.command_attack(1, building_60(), attack_on(0x1234))
+        t.command_attack(group_id(1), building_60(), attack_on(0x1234))
             .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     let radius = crate::math::fmath::sqrt(8.0);
     assert_eq!(
         g.current_target,
@@ -607,15 +618,28 @@ fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
 #[test]
 fn a_group_already_on_its_target_only_notes_the_place() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
-    assert!(t.command_attack(1, building_60(), attack_on(-1)).unwrap());
+    assert!(
+        t.command_attack(group_id(1), building_60(), attack_on(-1))
+            .unwrap()
+    );
     t.players[2].objects[0].body = crate::objects::layers::Body::at(Position::new(41.0, 45.0, 0.0));
-    assert!(!t.command_attack(1, building_60(), attack_on(-1)).unwrap());
+    assert!(
+        !t.command_attack(group_id(1), building_60(), attack_on(-1))
+            .unwrap()
+    );
     assert_eq!(
-        t.groups.get(1).unwrap().current_target.original_position,
+        t.groups
+            .get(group_id(1))
+            .unwrap()
+            .current_target
+            .original_position,
         BVector::new(41.0, 0.0, 45.0)
     );
-    t.groups.get_mut(1).unwrap().flags |= 0x2_0000;
-    assert!(t.command_attack(1, building_60(), attack_on(-1)).unwrap());
+    t.groups.get_mut(group_id(1)).unwrap().flags |= 0x2_0000;
+    assert!(
+        t.command_attack(group_id(1), building_60(), attack_on(-1))
+            .unwrap()
+    );
 }
 
 /// With two commands queued the members' pass does not run: the range is the group's smallest unit
@@ -623,10 +647,13 @@ fn a_group_already_on_its_target_only_notes_the_place() {
 #[test]
 fn a_group_with_two_queued_commands_takes_its_smallest_unit_range() {
     let mut t = attack_world(&[(7, 4, 38.0, 45.0)]);
-    t.groups.get_mut(1).unwrap().command_queue =
+    t.groups.get_mut(group_id(1)).unwrap().command_queue =
         vec![GroupCommand::default(), GroupCommand::default()];
-    assert!(t.command_attack(1, building_60(), attack_on(-1)).unwrap());
-    assert_eq!(t.groups.get(1).unwrap().current_target.range, 2.5);
+    assert!(
+        t.command_attack(group_id(1), building_60(), attack_on(-1))
+            .unwrap()
+    );
+    assert_eq!(t.groups.get(group_id(1)).unwrap().current_target.range, 2.5);
 }
 
 /// `FUN_14102bbd0`: the pass raises the range to the largest a member works at; a member
@@ -646,7 +673,7 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
     let mut reference = t.streams.clone();
     let draw = reference.get(crate::math::rng::Stream::Ai).rand15();
     let mut range = -1.0;
-    t.reach_pass(1, object_id(60), attack_on(-1), &mut range)
+    t.reach_pass(group_id(1), object_id(60), attack_on(-1), &mut range)
         .unwrap();
     assert_eq!(range, 4.0);
     // member 8 touches the target (a gap 0, so the timer's span is the least, 1000); 7 is far
@@ -658,7 +685,7 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
     assert_eq!(timers, [7, 750 + draw % 500]);
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     let mut range = -1.0;
-    t.reach_pass(1, object_id(60), attack_on(-1), &mut range)
+    t.reach_pass(group_id(1), object_id(60), attack_on(-1), &mut range)
         .unwrap();
     assert_eq!(range, 4.0);
 }
@@ -696,7 +723,7 @@ fn a_filter_takes_the_range_of_the_members_task_of_that_type() {
     );
     // the range is the task's with the filter: the pass raises the group's range to it
     let mut range = -1.0;
-    t.reach_pass(1, object_id(60), attack_on(5), &mut range)
+    t.reach_pass(group_id(1), object_id(60), attack_on(5), &mut range)
         .unwrap();
     assert_eq!(range, 6.0);
 }
@@ -719,7 +746,7 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     let moved = t
         .general_command(
-            1,
+            group_id(1),
             (5, building_60()),
             Point::new(40.0, 45.0),
             3.0,
@@ -727,7 +754,7 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
         )
         .unwrap();
     assert!(moved);
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(g.current_command, 5);
     assert_eq!(
         g.current_target,
@@ -751,10 +778,14 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
 #[test]
 fn a_general_command_of_a_group_that_cannot_move_does_nothing() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
-    t.groups.get_mut(1).unwrap().motion.maximum_velocity_forward = 0.0;
+    t.groups
+        .get_mut(group_id(1))
+        .unwrap()
+        .motion
+        .maximum_velocity_forward = 0.0;
     assert!(
         !t.general_command(
-            1,
+            group_id(1),
             (5, building_60()),
             Point::new(40.0, 45.0),
             3.0,
@@ -762,7 +793,7 @@ fn a_general_command_of_a_group_that_cannot_move_does_nothing() {
         )
         .unwrap()
     );
-    assert_eq!(t.groups.get(1).unwrap().current_command, -1);
+    assert_eq!(t.groups.get(group_id(1)).unwrap().current_command, -1);
 }
 
 /// Queued, the command joins the queue approved by `direct` and a group without a command told
@@ -773,7 +804,7 @@ fn a_general_command_queues_or_runs_the_queue() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     assert!(
         !t.general_command(
-            1,
+            group_id(1),
             (5, building_60()),
             Point::new(40.0, 45.0),
             3.0,
@@ -781,7 +812,7 @@ fn a_general_command_queues_or_runs_the_queue() {
         )
         .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!((g.command_queue.len(), g.hibernating), (1, 1));
     let node = g.command_queue[0];
     assert_eq!(
@@ -804,7 +835,7 @@ fn a_general_command_queues_or_runs_the_queue() {
     );
     assert!(
         t.general_command(
-            1,
+            group_id(1),
             (5, building_60()),
             Point::new(40.0, 45.0),
             3.0,
@@ -812,7 +843,7 @@ fn a_general_command_queues_or_runs_the_queue() {
         )
         .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(g.command_queue, []);
     assert_eq!(g.current_command, 5);
 }
@@ -836,8 +867,8 @@ fn the_special_units_follow_the_target_s_class() {
             b.class = target_class;
         }
         let _ = target_master;
-        t.refill_special_units(1, object_id(60)).unwrap();
-        t.groups.get(1).unwrap().special_units.clone()
+        t.refill_special_units(group_id(1), object_id(60)).unwrap();
+        t.groups.get(group_id(1)).unwrap().special_units.clone()
     };
     assert_eq!(
         special(class::CLASS_24, ids::HOUSE, 5),
@@ -852,7 +883,7 @@ fn the_special_units_follow_the_target_s_class() {
 #[test]
 fn the_categories_attack_ranges_rise_to_their_members_ranges() {
     let mut t = attack_world(&[(7, 4, 0.0, 0.0), (8, 4, 0.0, 0.0)]);
-    t.groups.get_mut(1).unwrap().unit_types = vec![
+    t.groups.get_mut(group_id(1)).unwrap().unit_types = vec![
         UnitTypeStatistic {
             formation_category: 1,
             units: vec![object_id(7), object_id(8)],
@@ -871,10 +902,10 @@ fn the_categories_attack_ranges_rise_to_their_members_ranges() {
             ..UnitTypeStatistic::default()
         },
     ];
-    t.raise_attack_ranges(1, object_id(60)).unwrap();
+    t.raise_attack_ranges(group_id(1), object_id(60)).unwrap();
     let ranges: Vec<f32> = t
         .groups
-        .get(1)
+        .get(group_id(1))
         .unwrap()
         .unit_types
         .iter()
@@ -919,14 +950,14 @@ fn a_group_ordered_on_an_enemy_building_runs_the_attack_path() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0), (8, 4, 11.0, 10.0)]);
     let moved = t
         .group_command(
-            1,
+            group_id(1),
             Some(object_id(60)),
             Point::new(40.0, 45.0),
             command_args(false, true),
         )
         .unwrap();
     assert!(moved);
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(
         (g.current_command, g.current_target.target),
         (9, GroupTarget::Object(object_id(60)))
@@ -948,14 +979,14 @@ fn a_group_ordered_with_a_general_task_runs_the_general_command() {
     }
     assert!(
         t.group_command(
-            1,
+            group_id(1),
             Some(object_id(60)),
             Point::new(40.0, 45.0),
             command_args(false, true)
         )
         .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(
         (g.current_command, g.current_target.target),
         (5, GroupTarget::Object(object_id(60)))
@@ -969,14 +1000,14 @@ fn a_group_ordered_on_an_object_the_world_lacks_moves_to_the_point() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0)]);
     assert!(
         t.group_command(
-            1,
+            group_id(1),
             Some(object_id(99)),
             Point::new(40.0, 45.0),
             command_args(false, true)
         )
         .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(
         (g.current_command, g.current_target.target),
         (1, GroupTarget::None)
@@ -996,10 +1027,15 @@ fn a_queued_attack_joins_the_command_queue() {
         filter: -1,
     };
     assert!(
-        !t.group_command(1, Some(object_id(60)), Point::new(40.0, 45.0), args)
-            .unwrap()
+        !t.group_command(
+            group_id(1),
+            Some(object_id(60)),
+            Point::new(40.0, 45.0),
+            args
+        )
+        .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(
         g.command_queue,
         [GroupCommand {
@@ -1024,7 +1060,7 @@ fn a_queued_attack_joins_the_command_queue() {
 #[test]
 fn an_indirect_attack_behind_queued_commands_runs_the_queue() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0)]);
-    t.groups.get_mut(1).unwrap().command_queue = vec![GroupCommand {
+    t.groups.get_mut(group_id(1)).unwrap().command_queue = vec![GroupCommand {
         command: 7,
         target_id: Some(object_id(60)),
         range: 1.5,
@@ -1035,14 +1071,14 @@ fn an_indirect_attack_behind_queued_commands_runs_the_queue() {
     }];
     assert!(
         t.group_command(
-            1,
+            group_id(1),
             Some(object_id(60)),
             Point::new(40.0, 45.0),
             command_args(false, false)
         )
         .unwrap()
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(g.command_queue.len(), 1);
     assert_eq!(
         (g.current_command, g.current_target.target),
@@ -1056,7 +1092,7 @@ fn an_indirect_attack_behind_queued_commands_runs_the_queue() {
 #[test]
 fn a_queued_attack_on_a_held_target_ends_the_run_with_the_attack() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
-    t.groups.get_mut(1).unwrap().command_queue = vec![GroupCommand {
+    t.groups.get_mut(group_id(1)).unwrap().command_queue = vec![GroupCommand {
         command: 7,
         target_id: Some(object_id(60)),
         range: 1.5,
@@ -1065,8 +1101,8 @@ fn a_queued_attack_on_a_held_target_ends_the_run_with_the_attack() {
         disable_retargeting: 1,
         approved_2: 0x0102,
     }];
-    t.check_queued_orders(1).unwrap();
-    let g = t.groups.get(1).unwrap();
+    t.check_queued_orders(group_id(1)).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(g.command_queue, []);
     assert_eq!(g.current_command, 9);
     assert_eq!(
@@ -1108,13 +1144,13 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
         t
     };
     let mut t = world(class::BUILDING, ids::ID_7);
-    t.refill_special_units(1, object_id(60)).unwrap();
+    t.refill_special_units(group_id(1), object_id(60)).unwrap();
     assert_eq!(
-        t.groups.get(1).unwrap().special_units,
+        t.groups.get(group_id(1)).unwrap().special_units,
         [object_id(8), object_id(10)]
     );
     let mut t = world(class::VILLAGER, ids::HOUSE);
-    t.groups.get_mut(1).unwrap().unit_types = vec![
+    t.groups.get_mut(group_id(1)).unwrap().unit_types = vec![
         UnitTypeStatistic {
             formation_category: 2,
             units: vec![object_id(9), object_id(10)],
@@ -1126,16 +1162,16 @@ fn the_special_units_of_masters_6_and_7_and_of_the_category_classes() {
             ..UnitTypeStatistic::default()
         },
     ];
-    t.refill_special_units(1, object_id(60)).unwrap();
+    t.refill_special_units(group_id(1), object_id(60)).unwrap();
     // category 1 first, then 2, up to four
     assert_eq!(
-        t.groups.get(1).unwrap().special_units,
+        t.groups.get(group_id(1)).unwrap().special_units,
         [object_id(7), object_id(8), object_id(11), object_id(9)]
     );
     let mut t = world(class::CLASS_57, ids::HOUSE);
-    t.refill_special_units(1, object_id(60)).unwrap();
+    t.refill_special_units(group_id(1), object_id(60)).unwrap();
     assert_eq!(
-        t.groups.get(1).unwrap().special_units,
+        t.groups.get(group_id(1)).unwrap().special_units,
         [object_id(9), object_id(8), object_id(10)]
     );
 }

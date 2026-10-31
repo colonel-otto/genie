@@ -3,6 +3,7 @@
 //! (`FUN_14100c6c0`, `FUN_141007ba0`, `FUN_14102bbd0`).
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::command::MoveTo;
 use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
@@ -106,7 +107,7 @@ impl World {
     /// does not model.
     pub(crate) fn command_attack(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
         order: AttackOrder,
     ) -> Result<bool, GenieError> {
@@ -211,7 +212,7 @@ impl World {
     /// A member or a master the world does not hold, and what the sending does not model.
     pub(super) fn reach_pass(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
         order: AttackOrder,
         range: &mut f32,
@@ -315,7 +316,7 @@ impl World {
     /// units by formation category (0 to 5) in the group's statistics' order.
     pub(super) fn refill_special_units(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let t = self
@@ -366,7 +367,7 @@ impl World {
     /// 0x238, [`World::range_against`]).
     pub(super) fn raise_attack_ranges(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
     ) -> Result<(), GenieError> {
         let t = self

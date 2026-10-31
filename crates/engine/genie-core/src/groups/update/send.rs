@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::SPECIAL_CHARGE_GAP;
+use crate::groups::GroupId;
 use crate::groups::WorldObject;
 use crate::groups::attack::AttackOrder;
 use crate::groups::group_list::member_gone;
@@ -55,7 +56,7 @@ impl World {
     /// command and the speed do not model.
     pub(in crate::groups) fn send_in_reach(
         &mut self,
-        group: i32,
+        group: GroupId,
         id: ObjectId,
         target: ObjectId,
         (order, computer): (AttackOrder, bool),

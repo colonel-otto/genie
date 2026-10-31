@@ -85,7 +85,7 @@ impl UnitView<'_, '_> {
         let Some(ai) = u.ai.as_ref() else {
             return Ok(false);
         };
-        let patrolling = match self.c.w.groups.get(u.group.id) {
+        let patrolling = match u.group.id.and_then(|id| self.c.w.groups.get(id)) {
             None => {
                 let busy = u.top_action_kind().is_some() || u.unmodelled_action.is_some();
                 if ai.current_action.is_some()

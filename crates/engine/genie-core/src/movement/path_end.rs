@@ -486,7 +486,7 @@ impl Mover {
         // the walker's group (FUN_14152ff40 on +0x6d0) and its own move's reason there
         // (FUN_141017590): a member on one of reason 0 keeps buildings, walls and gates alone
         let own_move = groups
-            .and_then(|gs| gs.get(me.group))
+            .and_then(|gs| gs.get(me.group?))
             .is_some_and(|g| g.member_reason(me.id) == 0);
         let mut target_hit = false;
         let mut kept = Vec::new();

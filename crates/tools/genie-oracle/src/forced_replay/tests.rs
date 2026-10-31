@@ -74,7 +74,7 @@ fn groups(ids: &[i32]) -> UnitGroups {
         groups: ids
             .iter()
             .map(|&id| UnitGroup {
-                id,
+                id: crate::test_ids::group_id(id),
                 owner: 1,
                 ..UnitGroup::default()
             })

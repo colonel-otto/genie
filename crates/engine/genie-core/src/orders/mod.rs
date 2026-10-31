@@ -9,6 +9,7 @@
 //! the target ([`crate::unit_ai::task_finder`]), and the task's action replaces its action list.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
@@ -153,7 +154,7 @@ impl Place {
 #[derive(Clone, Copy, Debug)]
 struct Splittable {
     id: ObjectId,
-    group: i32,
+    group: Option<GroupId>,
     kind: MasterKind,
     grouped: bool,
     flag_1: bool,
@@ -559,7 +560,7 @@ pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), G
 /// `setDifferentiatorGroups` (`FUN_1410395a0`): group `g`'s differentiator groups (`+0x108`,
 /// count `+0x110`) are `list` instead. The routine's false for an allocation that failed cannot
 /// come: `operator new` (`FUN_142a8bd2c`) throws rather than return none.
-fn set_differentiator_groups(g: &mut crate::groups::UnitGroup, list: &[u32]) {
+fn set_differentiator_groups(g: &mut crate::groups::UnitGroup, list: &[GroupId]) {
     g.differentiator_groups.clear();
     g.differentiator_groups.extend_from_slice(list);
 }

@@ -485,7 +485,7 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     };
     let me = crate::movement::Me {
         id: object_id(9177),
-        group: -1,
+        group: None,
         action_state: SAIL,
     };
     let rig = || {

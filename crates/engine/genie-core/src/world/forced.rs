@@ -299,6 +299,7 @@ mod tests {
     use super::*;
     use crate::map::Position;
     use crate::objects::masters::ids;
+    use crate::test_ids::group_id;
     use crate::test_ids::object_id;
     use crate::world::tests::forage_world;
 
@@ -309,7 +310,7 @@ mod tests {
         let mut t = forage_world();
         t.recycling.missiles = vec![(object_id(5), false)];
         let groups = crate::groups::UnitGroups {
-            counter: 4,
+            counter: group_id(4),
             ..crate::groups::UnitGroups::default()
         };
         let game = GameState {

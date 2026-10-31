@@ -111,7 +111,7 @@ fn to_point(state: MoveTo, point: Position, range: f32) -> MoveToAction {
 const fn me(state: u8) -> Me {
     Me {
         id: object_id(9177),
-        group: -1,
+        group: None,
         action_state: state,
     }
 }

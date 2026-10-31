@@ -219,10 +219,9 @@ impl World {
         }
         if 1 < list.len() {
             let group =
-                crate::groups::common_group(&list, |id| self.object(id).map(|(_, u)| u.group.id));
-            if self
-                .groups
-                .get(group)
+                crate::groups::common_group(&list, |id| self.object(id).map(|(_, u)| u.group));
+            if group
+                .and_then(|id| self.groups.get(id))
                 .is_some_and(|g| g.members.len() == list.len())
             {
                 return Err(GenieError::unsupported(
@@ -231,8 +230,7 @@ impl World {
             }
         }
         for &id in &units {
-            let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
-            if link != -1 {
+            if let Some(link) = self.object(id).and_then(|(_, u)| u.group.id) {
                 let _ = self.remove_unit(link, id, None, false)?;
             }
             let Some((_, u)) = self.object_mut(id) else {

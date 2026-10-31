@@ -1,6 +1,7 @@
 //! The way round a record on the line to the slot: the short pather, the long pather and the
 //! tile planner.
 
+use crate::groups::GroupId;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::steer::{
     BLOCKED, EPSILON, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
@@ -60,7 +61,7 @@ impl World {
     /// What the pathers, the planner and the position test do not model.
     pub(super) fn way_round(
         &mut self,
-        group: i32,
+        group: GroupId,
         index: usize,
         slot: usize,
         gap: f32,
@@ -105,7 +106,7 @@ impl World {
     /// The member `index` of group `group`'s record of its specific move.
     fn move_record(
         &mut self,
-        group: i32,
+        group: GroupId,
         index: usize,
     ) -> Result<&mut crate::groups::SpecificMove, GenieError> {
         Ok(&mut self

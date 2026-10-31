@@ -2,6 +2,7 @@
 //! the group's current command is an attack (9).
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::attack::AttackOrder;
 use crate::groups::command::MoveTo;
 use crate::groups::group_list::member_gone;
@@ -43,7 +44,7 @@ impl World {
     /// world does not hold.
     pub(super) fn attack_update(
         &mut self,
-        group: i32,
+        group: GroupId,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
@@ -80,7 +81,7 @@ impl World {
     /// The object of group `group`'s target (`plVar8`): the object the target names, or the
     /// first member of the group it names (none when that has no members); None for an object
     /// or a group the world does not hold.
-    fn attacked_object(&self, group: i32) -> Option<ObjectId> {
+    fn attacked_object(&self, group: GroupId) -> Option<ObjectId> {
         let g = self.groups.get(group)?;
         let target = g.current_target.target;
         if let GroupTarget::Object(id) = target {
@@ -105,7 +106,7 @@ impl World {
     /// A master the world lacks, and what the move does not model.
     fn attack_target_lost(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: Option<ObjectId>,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
@@ -152,7 +153,7 @@ impl World {
     /// (`FUN_14118f680`) below [`FARTHEST`], with that gap ([`FARTHEST`] for none).
     fn nearest_member(
         &self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
     ) -> Result<(Option<ObjectId>, f32), GenieError> {
         let t = self
@@ -188,7 +189,7 @@ impl World {
     /// # Errors
     ///
     /// A master the world lacks, and what the release does not model.
-    fn release_categories(&mut self, group: i32, target: ObjectId) -> Result<bool, GenieError> {
+    fn release_categories(&mut self, group: GroupId, target: ObjectId) -> Result<bool, GenieError> {
         let mut finished = true;
         for category in CATEGORIES {
             let Some((units, range)) = self
@@ -276,7 +277,7 @@ impl World {
     /// do not model.
     fn attack_chase(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
         owner: PlayerId,
     ) -> Result<Option<bool>, GenieError> {
@@ -353,7 +354,7 @@ impl World {
     /// A master the world lacks, and what the release does not model.
     fn attack_settle(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
         finished: bool,
         relayout: &mut bool,

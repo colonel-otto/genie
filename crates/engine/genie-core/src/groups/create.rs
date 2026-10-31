@@ -2,6 +2,7 @@
 //! (`FUN_141008d90`, `FUN_1410116c0`) and a unit's radius in a formation (`FUN_141025920`).
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::group_list::member_gone;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
 use crate::objects::ObjectId;
@@ -185,7 +186,7 @@ impl World {
     /// caller that holds it.
     pub fn remove_unit(
         &mut self,
-        group: i32,
+        group: GroupId,
         id: ObjectId,
         target: Option<ObjectId>,
         keep_moving: bool,
@@ -203,11 +204,11 @@ impl World {
                 crate::orders::Place::Live(p, i) => self.players.live_mut(p, i)?,
                 crate::orders::Place::Sleeping(p, i) => self.players.asleep_mut(p, i)?,
             };
-            if u.group.id == group_id {
+            if u.group.id == Some(group_id) {
                 if !keep_moving && let Some(m) = u.body.mover_mut() {
                     m.stand()?;
                 }
-                u.group.id = -1;
+                u.group.id = None;
                 // the walks that meet it read its group
                 let gait = u.gait();
                 self.spatial.set_gait(id, gait);
@@ -249,7 +250,11 @@ impl World {
     /// A held object of a master the slice does not have.
     ///
     /// When the world does not hold `group`: its caller (`removeUnit`) holds it.
-    pub(crate) fn leave_statistic(&mut self, group: i32, id: ObjectId) -> Result<bool, GenieError> {
+    pub(crate) fn leave_statistic(
+        &mut self,
+        group: GroupId,
+        id: ObjectId,
+    ) -> Result<bool, GenieError> {
         let category = match self.world_object(id) {
             Some(object) => Some(self.unit_category(Some(object))?),
             None => None,
@@ -335,7 +340,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn add_to_group(&mut self, group: i32, id: ObjectId) -> Result<bool, GenieError> {
+    pub fn add_to_group(&mut self, group: GroupId, id: ObjectId) -> Result<bool, GenieError> {
         let Some(object) = self.world_object(id) else {
             return Ok(false);
         };
@@ -356,7 +361,9 @@ impl World {
         if MAX_MEMBERS <= g.members.len() {
             return Ok(false);
         }
-        if old != -1 && self.groups.get(old).is_some() {
+        if let Some(old) = old
+            && self.groups.get(old).is_some()
+        {
             // the unit leaves its old group first (removeUnit with -1, moving stopped)
             let _ = self.remove_unit(old, id, None, false)?;
         }
@@ -367,7 +374,7 @@ impl World {
             crate::orders::Place::Live(q, i) => self.players.live_mut(q, i)?,
             crate::orders::Place::Sleeping(q, i) => self.players.asleep_mut(q, i)?,
         };
-        u.group.id = group;
+        u.group.id = Some(group);
         if let Some(ai) = u.ai.as_mut() {
             if ai
                 .current_action
@@ -426,6 +433,7 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::test_ids::group_id;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::{Player, World};
@@ -440,7 +448,7 @@ mod tests {
                 ..Unit::default()
             };
             u.life.master_id = master;
-            u.group.id = 1;
+            u.group.id = Some(group_id(1));
             u
         };
         let mut walking = unit(11, master_id(4), 2.0);
@@ -478,7 +486,7 @@ mod tests {
         };
         let masters = Masters::new([master(master_id(4), 1), master(ids::ID_6, 3)]);
         t.masters = vec![masters.clone(), masters];
-        let mut g = UnitGroup::new(1);
+        let mut g = UnitGroup::new(group_id(1));
         g.members = [(10, 1.0), (11, 2.0), (12, 3.0)]
             .iter()
             .map(|&(id, s)| Member {
@@ -513,7 +521,7 @@ mod tests {
     /// `AddUnit` grows a group without places to 10, then 20.
     #[test]
     fn the_members_arrays_grow_with_fresh_places_past_the_members() {
-        let mut g = UnitGroup::new(1);
+        let mut g = UnitGroup::new(group_id(1));
         g.members = vec![Member {
             id: object_id(5),
             seconds_since_attacking: 2.0,
@@ -532,7 +540,7 @@ mod tests {
         assert_eq!(g.spare_seconds, [f32::MAX; 3]);
         assert_eq!(g.member_capacity(), 4);
         // the place taken for the next member leaves 19 spare of 20
-        let mut empty = UnitGroup::new(2);
+        let mut empty = UnitGroup::new(group_id(2));
         assert_eq!(empty.next_seconds(), f32::MAX);
         assert_eq!(empty.spare_seconds.len(), 19);
     }
@@ -548,16 +556,16 @@ mod tests {
         };
         asleep.life.master_id = master_id(4);
         t.players[1].sleeping.push(asleep);
-        assert!(t.add_to_group(1, object_id(13)).unwrap());
-        assert_eq!(t.players[1].sleeping[0].group.id, 1);
-        let g = t.groups.get(1).unwrap();
+        assert!(t.add_to_group(group_id(1), object_id(13)).unwrap());
+        assert_eq!(t.players[1].sleeping[0].group.id, Some(group_id(1)));
+        let g = t.groups.get(group_id(1)).unwrap();
         assert_eq!(g.members.last().map(|m| m.id), Some(object_id(13)));
         assert_eq!(
             g.unit_types[0].units,
             [object_id(10), object_id(11), object_id(13)]
         );
         // an object the world's table does not hold, or of no sub-formation, joins nothing
-        assert!(!t.add_to_group(1, object_id(99)).unwrap());
+        assert!(!t.add_to_group(group_id(1), object_id(99)).unwrap());
     }
 
     /// `FUN_14102c480`: a held unit of no sub-formation (type below 70) or of one no statistic
@@ -593,14 +601,17 @@ mod tests {
             *masters = Masters::new(masters.iter().cloned().chain(extra));
         }
         t.groups.groups[0].unit_types[0].units.push(object_id(14));
-        assert!(!t.leave_statistic(1, object_id(14)).unwrap());
-        assert!(!t.leave_statistic(1, object_id(15)).unwrap());
+        assert!(!t.leave_statistic(group_id(1), object_id(14)).unwrap());
+        assert!(!t.leave_statistic(group_id(1), object_id(15)).unwrap());
         assert_eq!(
-            t.groups.get(1).unwrap().unit_types[0].units,
+            t.groups.get(group_id(1)).unwrap().unit_types[0].units,
             [object_id(10), object_id(11), object_id(14)]
         );
-        assert!(t.leave_statistic(1, object_id(12)).unwrap());
-        assert_eq!(t.groups.get(1).unwrap().unit_types[1].units, Vec::new());
+        assert!(t.leave_statistic(group_id(1), object_id(12)).unwrap());
+        assert_eq!(
+            t.groups.get(group_id(1)).unwrap().unit_types[1].units,
+            Vec::new()
+        );
     }
 
     /// `FUN_14102c160`: 11 leaves: the ids close up, the seconds keep their places (11's 2 now
@@ -609,8 +620,11 @@ mod tests {
     #[test]
     fn a_removed_member_leaves_its_slot_statistic_and_lead() {
         let mut t = three();
-        assert!(t.remove_unit(1, object_id(11), None, false).unwrap());
-        let g = t.groups.get(1).unwrap();
+        assert!(
+            t.remove_unit(group_id(1), object_id(11), None, false)
+                .unwrap()
+        );
+        let g = t.groups.get(group_id(1)).unwrap();
         let members: Vec<(ObjectId, f32)> = g
             .members
             .iter()
@@ -632,12 +646,18 @@ mod tests {
             (Some(object_id(10)), 0x1_0002)
         );
         let u = &t.players[1].objects[1];
-        assert_eq!(u.group.id, -1);
+        assert_eq!(u.group.id, None);
         let m = u.body.mover().unwrap();
         assert_eq!(m.paths[0].state, 0);
         // not a member, or a group the world does not hold
-        assert!(!t.remove_unit(1, object_id(11), None, false).unwrap());
-        assert!(!t.remove_unit(2, object_id(10), None, false).unwrap());
+        assert!(
+            !t.remove_unit(group_id(1), object_id(11), None, false)
+                .unwrap()
+        );
+        assert!(
+            !t.remove_unit(group_id(2), object_id(10), None, false)
+                .unwrap()
+        );
     }
 
     /// `FUN_14100bcb0`'s closing `CalcFormationType` is gated on the motion flags' bit 1
@@ -658,14 +678,14 @@ mod tests {
         t.spatial.sight = Some(v);
         t.spatial.relations = vec![vec![0, 0], vec![0, 0]];
         t.spatial.unit_diplomacy = vec![vec![1, 2], vec![0, 1]];
-        let g = t.groups.get_mut(1).unwrap();
+        let g = t.groups.get_mut(group_id(1)).unwrap();
         g.flags |= 2;
         g.motion.flags &= !2;
-        assert!(!t.statistics_only(1, false).unwrap());
-        let g = t.groups.get_mut(1).unwrap();
+        assert!(!t.statistics_only(group_id(1), false).unwrap());
+        let g = t.groups.get_mut(group_id(1)).unwrap();
         g.flags &= !2;
         g.motion.flags |= 2;
-        assert!(t.statistics_only(1, false).unwrap());
+        assert!(t.statistics_only(group_id(1), false).unwrap());
     }
 
     /// `FUN_14100d140` writes the formation type of every member `FUN_1415417a0` finds with a
@@ -678,7 +698,7 @@ mod tests {
         }
         let asleep = t.players[1].objects.remove(2).unwrap();
         t.players[1].sleeping.push(asleep);
-        t.stances_state(1, 5).unwrap();
+        t.stances_state(group_id(1), 5).unwrap();
         assert_eq!(
             t.players[1].sleeping[0].ai.as_ref().unwrap().formation_type,
             5
@@ -703,9 +723,9 @@ mod tests {
                 m.spacing_modifier = 1.0;
             }
         }
-        t.groups.get_mut(1).unwrap().desired_spacing = 0.0;
-        let _ = t.lock_formation(1, crate::groups::formation::LINE);
-        let spacing = t.groups.get(1).unwrap().desired_spacing;
+        t.groups.get_mut(group_id(1)).unwrap().desired_spacing = 0.0;
+        let _ = t.lock_formation(group_id(1), crate::groups::formation::LINE);
+        let spacing = t.groups.get(group_id(1)).unwrap().desired_spacing;
         assert_eq!(spacing, 0.2 * crate::math::image::group::SPACING_FACTOR);
     }
 
@@ -714,15 +734,21 @@ mod tests {
     #[test]
     fn a_unit_kept_moving_walks_on_and_a_gone_one_leaves_its_statistic() {
         let mut t = three();
-        assert!(t.remove_unit(1, object_id(11), None, true).unwrap());
+        assert!(
+            t.remove_unit(group_id(1), object_id(11), None, true)
+                .unwrap()
+        );
         assert_eq!(
             t.players[1].objects[1].body.mover().unwrap().paths[0].state,
             3
         );
         let mut t = three();
         let _ = t.players[1].objects.remove(2).unwrap();
-        assert!(t.remove_unit(1, object_id(12), None, false).unwrap());
-        let g = t.groups.get(1).unwrap();
+        assert!(
+            t.remove_unit(group_id(1), object_id(12), None, false)
+                .unwrap()
+        );
+        let g = t.groups.get(group_id(1)).unwrap();
         assert_eq!(
             (g.unit_types[0].units.len(), g.unit_types[1].units.len()),
             (2, 0)

@@ -120,7 +120,7 @@ impl Rig {
         crate::world::tests::in_update(&mut self.t, (PlayerId::new(1), 0), dt, |u, c| {
             let me = Me {
                 id: u.id,
-                group: -1,
+                group: None,
                 action_state: state,
             };
             f(c, u, me)

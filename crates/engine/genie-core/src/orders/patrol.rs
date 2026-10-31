@@ -1,6 +1,7 @@
 //! PATROL, the attack move and their sweep, and the group the splitter keeps.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
@@ -159,13 +160,13 @@ impl World {
         }
         self.start_patrol_timers(ids, reset);
         let mut split = self.split(ids, &|_| true, false)?;
-        let mut listed: Vec<i32> = Vec::new();
+        let mut listed: Vec<GroupId> = Vec::new();
         for units in split.groups.clone() {
             let common =
-                crate::groups::common_group(&units, |id| self.object(id).map(|(_, u)| u.group.id));
+                crate::groups::common_group(&units, |id| self.object(id).map(|(_, u)| u.group));
             let kept = match common {
-                -1 => None,
-                id => match self.groups.get(id) {
+                None => None,
+                Some(id) => match self.groups.get(id) {
                     None => continue,
                     Some(g) => (g.members.len() == units.len()).then_some(id),
                 },
@@ -207,10 +208,9 @@ impl World {
             };
             let _ = self.command_move_to(id, None, last, leg)?;
         }
-        let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
             if let Some(g) = self.groups.get_mut(id) {
-                set_differentiator_groups(g, &list);
+                set_differentiator_groups(g, &listed);
             }
         }
         self.groups.count_command();
@@ -254,7 +254,7 @@ impl World {
     pub(crate) fn keep_group(
         &mut self,
         split: &mut Split,
-        group: i32,
+        group: GroupId,
         target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let mut i = 0;

@@ -81,7 +81,7 @@ impl Unit {
         groups: &crate::groups::UnitGroups,
         masters: Option<&crate::objects::masters::Masters>,
     ) -> Result<Option<GroupSpeed>, GenieError> {
-        let Some(g) = groups.get(self.group.id) else {
+        let Some(g) = self.group.id.and_then(|id| groups.get(id)) else {
             return Ok(None);
         };
         if !g.motion.moving() && g.slot_in_place(self.id) {

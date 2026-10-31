@@ -2,6 +2,7 @@
 //! still to act on, the relics, a member's idleness, the sprites shown and the lead.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::group_list::member_gone;
 use crate::groups::update::{
     BUILD, DELIVER_RELIC, FARTHEST, NO_COMMAND, PICK_UP_RELIC, RELIC_DELIVERY_ACTION,
@@ -42,7 +43,7 @@ impl World {
     /// the slice does not hold.
     ///
     /// When the world does not hold `group`.
-    pub(crate) fn keep_apart(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(crate) fn keep_apart(&mut self, group: GroupId) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
             let g = self.groups.held(group)?;
@@ -126,7 +127,10 @@ impl World {
         if u.master(&self.masters, p)?.kind < ACTION {
             return Ok(false);
         }
-        if u.group.id != -1 && self.groups.get(u.group.id).is_some() && !self.at_rest(u.group.id) {
+        if let Some(group) = u.group.id
+            && self.groups.get(group).is_some()
+            && !self.at_rest(group)
+        {
             return Ok(false);
         }
         if u.ai.as_ref().is_some_and(|ai| !ai.orders.is_empty()) {
@@ -140,7 +144,7 @@ impl World {
     /// [`crate::movement::Mover::is_moving`]; a static object's `FUN_141071d90` 0). False for a
     /// group the world does not hold.
     #[must_use]
-    pub fn at_rest(&self, group: i32) -> bool {
+    pub fn at_rest(&self, group: GroupId) -> bool {
         let Some(g) = self.groups.get(group) else {
             return false;
         };
@@ -233,7 +237,7 @@ impl World {
     /// # Errors
     ///
     /// An object of a master the slice does not have, or what the sight test does not hold.
-    pub fn target_pending(&self, group: i32) -> Result<bool, GenieError> {
+    pub fn target_pending(&self, group: GroupId) -> Result<bool, GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(false);
         };
@@ -505,7 +509,7 @@ impl World {
     /// slot 0x520's place) the target's place (`mCurrentTarget`'s original position), the first
     /// of equals; none without one.
     #[must_use]
-    pub fn nearest_to_target(&self, group: i32) -> Option<ObjectId> {
+    pub fn nearest_to_target(&self, group: GroupId) -> Option<ObjectId> {
         let g = self.groups.get(group)?;
         let to = g.current_target.original_position;
         let mut best = f32::MAX;

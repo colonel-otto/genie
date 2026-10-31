@@ -20,9 +20,11 @@ use crate::objects::ObjectKey;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
 
+mod group_id;
 mod group_list;
 mod objects;
 
+pub use self::group_id::GroupId;
 pub use self::group_list::{GroupLink, UnitGroups, common_group};
 pub(crate) use self::objects::WorldObject;
 pub use self::objects::sub_formation;
@@ -336,7 +338,7 @@ pub struct UnitGroup {
     /// Its motion.
     pub motion: Motion,
     /// `mID` (`+0xd8`).
-    pub id: i32,
+    pub id: GroupId,
     /// `mOwner` (its 32 bits).
     pub owner: u32,
     /// `mState`.
@@ -403,7 +405,7 @@ pub struct UnitGroup {
     /// `mSecondsNotUnderAttack`.
     pub seconds_not_under_attack: f32,
     /// `mDifferentiatorGroups`.
-    pub differentiator_groups: Vec<u32>,
+    pub differentiator_groups: Vec<GroupId>,
     /// `mTotalSpacing`.
     pub total_spacing: f32,
     /// `mNonRetargetUnits`.
@@ -475,7 +477,7 @@ impl UnitGroup {
     /// of the array at `+0x458` (data, capacity `+0x460`, size `+0x468`), which sets its
     /// capacity only.
     #[must_use]
-    pub fn new(id: i32) -> Self {
+    pub fn new(id: GroupId) -> Self {
         Self {
             motion: Motion::new(),
             id,

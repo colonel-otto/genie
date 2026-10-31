@@ -1,6 +1,7 @@
 //! createColumnLine (`FUN_141012280`): the sizes and the slots of its sub-formations.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::formation::{
     CATEGORIES, COLUMN, EPSILON, FLANK_SPACING, FLANKED, LINE, STAGGER_SHARE, STAGGERED, TWO,
 };
@@ -441,7 +442,7 @@ impl World {
     pub(crate) fn create_column_line(
         &mut self,
         formation: &mut Formation,
-        group: i32,
+        group: GroupId,
         column: bool,
         staggered_flanked: (bool, bool),
     ) -> Result<bool, GenieError> {

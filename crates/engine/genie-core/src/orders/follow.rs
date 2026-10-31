@@ -157,8 +157,7 @@ impl World {
         id: ObjectId,
         target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
-        let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
-        if link != -1 {
+        if let Some(link) = self.object(id).and_then(|(_, u)| u.group.id) {
             let _ = self.remove_unit(link, id, target, false)?;
         }
         Ok(())

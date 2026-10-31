@@ -3,6 +3,7 @@
 //! units of a category in reach.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::member_gone;
 use crate::groups::update::send::Travel;
@@ -31,7 +32,7 @@ impl World {
     /// and the speed do not model.
     pub(super) fn release_units(
         &mut self,
-        group: i32,
+        group: GroupId,
         units: &[ObjectId],
         target: ObjectId,
     ) -> Result<(), GenieError> {
@@ -47,7 +48,7 @@ impl World {
     /// [`World::release_units`]' step for the unit `id`.
     fn release_unit(
         &mut self,
-        group: i32,
+        group: GroupId,
         id: ObjectId,
         target: ObjectId,
     ) -> Result<(), GenieError> {
@@ -101,7 +102,7 @@ impl World {
     /// # Errors
     ///
     /// A unit that is no member: the game writes the record before the array.
-    fn clear_own_move(&mut self, group: i32, id: ObjectId) -> Result<(), GenieError> {
+    fn clear_own_move(&mut self, group: GroupId, id: ObjectId) -> Result<(), GenieError> {
         let record = self
             .groups
             .held_mut(group)?

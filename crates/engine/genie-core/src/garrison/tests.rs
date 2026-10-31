@@ -20,6 +20,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::{DONE, FAILED};
 use crate::players::PlayerId;
+use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
@@ -1514,7 +1515,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
     v.body.put_mover(Some(walker));
-    v.group.id = 7;
+    v.group.id = Some(group_id(7));
     v.town_bell.flag = true;
     t.players[1].objects.push(v);
     t.spatial.insert(
@@ -1538,7 +1539,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
         ..crate::groups::Member::default()
     };
     t.groups.groups.push(crate::groups::UnitGroup {
-        id: 7,
+        id: group_id(7),
         owner: 1,
         members: vec![member(object_id(401)), member(object_id(400))],
         ..crate::groups::UnitGroup::default()
@@ -1558,7 +1559,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     )
     .unwrap();
     let v = &t.players[1].objects[idx];
-    assert_eq!((v.life.inside, v.group.id), (Some(object_id(100)), -1));
+    assert_eq!((v.life.inside, v.group.id), (Some(object_id(100)), None));
     assert_eq!(v.body.mover().unwrap().animated.speed, 0.0);
     let members: Vec<ObjectId> = t.groups.groups[0].members.iter().map(|m| m.id).collect();
     assert_eq!(members, [object_id(401)]);

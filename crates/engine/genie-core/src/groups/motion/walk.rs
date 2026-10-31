@@ -1,6 +1,7 @@
 //! The walk toward the walked level's waypoint, and `BMotion`'s update with what it reads of
 //! the world.
 
+use crate::groups::GroupId;
 use crate::groups::Motion;
 use crate::groups::motion::{
     EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, StepWorld, ground,
@@ -268,7 +269,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn motion_update(&mut self, group: i32, budget: bool) -> Result<(), GenieError> {
+    pub fn motion_update(&mut self, group: GroupId, budget: bool) -> Result<(), GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());
         };

@@ -437,7 +437,8 @@ pub(super) fn group_owner(
     let id = difference
         .strip_prefix("group ")
         .and_then(|d| d.split(':').next())
-        .and_then(|d| d.parse::<i32>().ok());
+        .and_then(|d| d.parse::<i32>().ok())
+        .and_then(genie_core::groups::GroupId::of_field);
     let owner = id.and_then(|id| {
         game.groups
             .as_ref()

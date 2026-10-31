@@ -276,7 +276,7 @@ fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     let me = crate::movement::Me {
         id: object_id(9171),
         action_state: 0,
-        group: -1,
+        group: None,
     };
     let length = mover
         .short_reach(&me, &mut w, object_id(9149), 0.1)

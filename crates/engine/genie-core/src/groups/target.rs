@@ -1,5 +1,6 @@
 //! A group's target: an object, none, or a target of another kind.
 
+use crate::groups::GroupId;
 use crate::objects::{ObjectId, ObjectKey};
 
 /// The kind (`mType`) of an object target, which the group's commands on an object write.
@@ -46,11 +47,12 @@ impl GroupTarget {
         }
     }
 
-    /// The group's id another kind's target names, as the attack's target object reads it.
+    /// The group's id another kind's target names, as the attack's target object reads it (a
+    /// −1 names none: the lookup by id finds none for it).
     #[must_use]
-    pub const fn group(self) -> Option<i32> {
+    pub const fn group(self) -> Option<GroupId> {
         match self {
-            Self::Other { target, .. } => Some(target),
+            Self::Other { target, .. } => GroupId::of_field(target),
             Self::None | Self::Object(_) => None,
         }
     }
@@ -104,7 +106,11 @@ mod tests {
     /// Only another kind's target names a group; a lookup reads the integer of every kind.
     #[test]
     fn a_lookup_reads_the_integer_of_every_kind() {
-        assert_eq!(GroupTarget::of_saved(3, 2).group(), Some(3));
+        assert_eq!(
+            GroupTarget::of_saved(3, 2).group().map(|g| g.get()),
+            Some(3)
+        );
+        assert_eq!(GroupTarget::of_saved(-1, 2).group(), None);
         assert_eq!(GroupTarget::of_saved(7, 1).group(), None);
         assert_eq!(GroupTarget::of_saved(3, 2).key(), Some(object_id(3)));
         assert_eq!(GroupTarget::of_saved(7, 1).key(), Some(object_id(7)));

@@ -832,7 +832,7 @@ mod tests {
                 body: &mut mover,
                 me: Me {
                     id: object_id(9177),
-                    group: -1,
+                    group: None,
                     action_state: 4,
                 },
                 dt: 0.1,

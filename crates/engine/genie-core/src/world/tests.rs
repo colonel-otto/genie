@@ -47,6 +47,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::change::change_hands;
+use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -5690,7 +5691,7 @@ fn an_enter_s_unit_leaves_its_group_inside_the_update() {
         ..crate::groups::Member::default()
     };
     t.groups.groups.push(crate::groups::UnitGroup {
-        id: 7,
+        id: group_id(7),
         owner: 1,
         members: vec![member(object_id(9175)), member(object_id(401))],
         ..crate::groups::UnitGroup::default()
@@ -5704,7 +5705,7 @@ fn an_enter_s_unit_leaves_its_group_inside_the_update() {
     let v = &mut t.players[1].objects[0];
     v.place_for_test(Position::new(29.5, 89.5, 0.0));
     v.actions.set_enter(Some(e));
-    v.group.id = 7;
+    v.group.id = Some(group_id(7));
     let left = in_update(&mut t, (PlayerId::new(1), 0), 50, |unit, c| {
         let me = crate::movement::Me {
             id: unit.id,
@@ -5715,11 +5716,14 @@ fn an_enter_s_unit_leaves_its_group_inside_the_update() {
         unit.end_head_update(c, code)?;
         let members: Vec<ObjectId> =
             c.w.groups
-                .get(7)
+                .get(group_id(7))
                 .map_or_else(Vec::new, |g| g.members.iter().map(|m| m.id).collect());
         Ok((unit.life.inside, unit.group.id, members))
     });
-    assert_eq!(left, Ok((Some(object_id(10028)), -1, vec![object_id(401)])));
+    assert_eq!(
+        left,
+        Ok((Some(object_id(10028)), None, vec![object_id(401)]))
+    );
 }
 
 /// An Enter that got the unit in, the unit let out again before its next update: that update's
@@ -13097,9 +13101,9 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
         groups: vec![
             crate::groups::UnitGroup {
                 flags: 0x800,
-                ..crate::groups::UnitGroup::new(7)
+                ..crate::groups::UnitGroup::new(group_id(7))
             },
-            crate::groups::UnitGroup::new(8),
+            crate::groups::UnitGroup::new(group_id(8)),
         ],
         ..crate::groups::UnitGroups::default()
     };
@@ -13108,15 +13112,19 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
         u.group.id = group;
         u
     };
-    assert!(helper_free_of(PlayerId::new(1), in_group(7, None), &groups));
-    assert!(!helper_free_of(
+    assert!(helper_free_of(
         PlayerId::new(1),
-        in_group(8, None),
+        in_group(Some(group_id(7)), None),
         &groups
     ));
     assert!(!helper_free_of(
         PlayerId::new(1),
-        in_group(7, Some(&own_attack(50, -1, 4))),
+        in_group(Some(group_id(8)), None),
+        &groups
+    ));
+    assert!(!helper_free_of(
+        PlayerId::new(1),
+        in_group(Some(group_id(7)), Some(&own_attack(50, -1, 4))),
         &groups
     ));
     let mut thoughtless = helper_scout(idle.clone(), None);

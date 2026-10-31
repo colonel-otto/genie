@@ -2,6 +2,7 @@
 //! check and a hibernating group.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
@@ -24,7 +25,7 @@ impl World {
         if self.players.get(p.index()).is_some_and(|q| q.stopped) {
             return Ok(());
         }
-        let ids: Vec<i32> = self
+        let ids: Vec<GroupId> = self
             .groups
             .groups
             .iter()
@@ -56,7 +57,7 @@ impl World {
     /// When the world does not hold the group: the update loop passes only the groups it holds.
     ///
     /// [`UnitGroup::update_end`]: crate::groups::UnitGroup::update_end
-    pub(super) fn group_update_end(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(super) fn group_update_end(&mut self, group: GroupId) -> Result<(), GenieError> {
         self.groups.held_mut(group)?.update_end()?;
         Ok(())
     }
@@ -75,7 +76,7 @@ impl World {
     /// # Errors
     ///
     /// A member the slice cannot stand or show standing.
-    pub(crate) fn delete_group(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(crate) fn delete_group(&mut self, group: GroupId) -> Result<(), GenieError> {
         let Some(index) = self.groups.groups.iter().position(|g| g.id == group) else {
             return Ok(());
         };
@@ -84,10 +85,10 @@ impl World {
             let Some((_, u)) = self.object_mut(m.id) else {
                 continue;
             };
-            if u.group.id != g.id {
+            if u.group.id != Some(g.id) {
                 continue;
             }
-            u.group.id = -1;
+            u.group.id = None;
             // the walks that meet it read its group
             let gait = u.gait();
             self.spatial.set_gait(m.id, gait);
@@ -120,7 +121,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn group_update(&mut self, group: i32) -> Result<bool, GenieError> {
+    pub fn group_update(&mut self, group: GroupId) -> Result<bool, GenieError> {
         self.groups.held_mut(group)?.flags &= !0x2000;
         self.keep_apart(group)?;
         self.drop_lost_members(group)?;
@@ -138,7 +139,7 @@ impl World {
     /// The members' check of `BUnitGroup::update` (`0x14103d9c0`..`0x14103daf7`): see
     /// [`World::group_update`]. A member that left takes its index with it, so the next member
     /// is checked at the same index.
-    pub(super) fn drop_lost_members(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(super) fn drop_lost_members(&mut self, group: GroupId) -> Result<(), GenieError> {
         let mut removed = false;
         let mut i = 0;
         loop {
@@ -173,7 +174,7 @@ impl World {
     /// A hibernating group's check (`0x14103db22`..`0x14103dd5b`): false deletes the group;
     /// else the queued commands run (`checkQueuedOrders`, [`World::check_queued_orders`]) when
     /// [`World::hibernation`] asks for them.
-    pub(super) fn hibernating_update(&mut self, group: i32) -> Result<bool, GenieError> {
+    pub(super) fn hibernating_update(&mut self, group: GroupId) -> Result<bool, GenieError> {
         let Some(runs_queue) = self.hibernation(group)? else {
             return Ok(false);
         };
@@ -199,7 +200,7 @@ impl World {
     /// What the target tests read that the slice does not hold.
     ///
     /// When the world does not hold `group`.
-    pub(super) fn hibernation(&self, group: i32) -> Result<Option<bool>, GenieError> {
+    pub(super) fn hibernation(&self, group: GroupId) -> Result<Option<bool>, GenieError> {
         let g = self.groups.held(group)?;
         // the readers look the target's integer up as an object, whatever its kind
         let (target, owner) = (g.current_target.target.key(), g.owner_player()?);

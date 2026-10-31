@@ -2,7 +2,7 @@
 //! every listed unit is in.
 
 use crate::GenieError;
-use crate::groups::UnitGroup;
+use crate::groups::{GroupId, UnitGroup};
 use crate::objects::{ObjectId, ObjectKey};
 use genie_diff::Diff;
 
@@ -10,15 +10,15 @@ use genie_diff::Diff;
 /// from the object's setup (`FUN_141196df0`) and in every object of a save in no group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct GroupLink {
-    /// `mGroupID`: the group's id, -1 for none.
-    pub id: i32,
+    /// `mGroupID`: the group's id, none for -1.
+    pub id: Option<GroupId>,
     /// `mGroupFlag`.
     pub flag: i32,
 }
 
 impl Default for GroupLink {
     fn default() -> Self {
-        Self { id: -1, flag: -2 }
+        Self { id: None, flag: -2 }
     }
 }
 
@@ -28,7 +28,7 @@ pub struct UnitGroups {
     /// The groups in the world list's order.
     pub groups: Vec<UnitGroup>,
     /// The id the next group takes (`mUnitGroupCounter`, `world+0x5c`).
-    pub counter: i32,
+    pub counter: GroupId,
     /// The commands that ran the order splitter so far (`DAT_143f10134`, a process global no
     /// save holds): each group a command forms or orders takes it as `mDifferentiatorID`, then it
     /// counts up. A group's load raises it past the group's (`FUN_14101d350`).
@@ -45,10 +45,10 @@ impl UnitGroups {
     /// by id `FUN_14152ff40`, then `FUN_14100bbe0` with 255): None for no group (-1) or one the
     /// world does not hold.
     #[must_use]
-    pub fn group_units(&self, group: i32) -> Option<Vec<ObjectId>> {
+    pub fn group_units(&self, group: Option<GroupId>) -> Option<Vec<ObjectId>> {
         /// The long pather's list holds this many (`0xff`).
         const LOWERED: usize = 255;
-        self.get(group)
+        self.get(group?)
             .map(|g| self.differentiator_units(g, LOWERED))
     }
 
@@ -58,7 +58,7 @@ impl UnitGroups {
     pub fn differentiator_units(&self, group: &UnitGroup, cap: usize) -> Vec<ObjectId> {
         let mut out = Vec::new();
         for &id in &group.differentiator_groups {
-            let Some(g) = self.get(id as i32) else {
+            let Some(g) = self.get(id) else {
                 continue;
             };
             for m in &g.members {
@@ -84,12 +84,10 @@ impl UnitGroups {
         self.commands = self.commands.wrapping_add(1);
     }
 
-    /// The group of id `id` (`FUN_14152ff40`): none for -1.
+    /// The group of id `id` (`FUN_14152ff40`; a link's −1, which it finds none for, is none
+    /// before the call).
     #[must_use]
-    pub fn get(&self, id: i32) -> Option<&UnitGroup> {
-        if id == -1 {
-            return None;
-        }
+    pub fn get(&self, id: GroupId) -> Option<&UnitGroup> {
         self.groups.iter().find(|g| g.id == id)
     }
 
@@ -99,7 +97,7 @@ impl UnitGroups {
     /// # Errors
     ///
     /// A group the table does not hold.
-    pub fn held(&self, id: i32) -> Result<&UnitGroup, GenieError> {
+    pub fn held(&self, id: GroupId) -> Result<&UnitGroup, GenieError> {
         self.get(id).ok_or_else(|| group_gone(id))
     }
 
@@ -108,15 +106,12 @@ impl UnitGroups {
     /// # Errors
     ///
     /// A group the table does not hold.
-    pub fn held_mut(&mut self, id: i32) -> Result<&mut UnitGroup, GenieError> {
+    pub fn held_mut(&mut self, id: GroupId) -> Result<&mut UnitGroup, GenieError> {
         self.get_mut(id).ok_or_else(|| group_gone(id))
     }
 
     /// The group of id `id`, to change (`FUN_14152ff40`).
-    pub fn get_mut(&mut self, id: i32) -> Option<&mut UnitGroup> {
-        if id == -1 {
-            return None;
-        }
+    pub fn get_mut(&mut self, id: GroupId) -> Option<&mut UnitGroup> {
         self.groups.iter_mut().find(|g| g.id == id)
     }
 
@@ -126,7 +121,7 @@ impl UnitGroups {
     /// (`+0xdc`).
     pub fn create(&mut self, owner: u32) -> &mut UnitGroup {
         let id = self.counter;
-        self.counter += 1;
+        self.counter = id.successor();
         let at = self.groups.len();
         let mut g = UnitGroup::new(id);
         g.owner = owner;
@@ -158,33 +153,32 @@ pub(crate) fn member_gone(id: impl ObjectKey) -> GenieError {
 }
 
 /// A group the caller holds that the world does not.
-fn group_gone(id: i32) -> GenieError {
+fn group_gone(id: GroupId) -> GenieError {
     GenieError::unreachable("a group the caller holds that the world does not hold")
         .with("group", id)
 }
 
 /// The group that every listed unit is in (`FUN_14152ece0`), from each unit's group link
-/// (`group_of`, None for a unit the world does not hold, which is passed over, as a null
-/// entry is): -1 for an empty list, for a unit in no group, for two groups, and when the first
-/// unit is gone (the others are then compared with no group).
-pub fn common_group<K: ObjectKey>(ids: &[K], group_of: impl Fn(ObjectId) -> Option<i32>) -> i32 {
-    let Some(first) = ids.first().map(|&id| id.key()) else {
-        return -1;
-    };
-    let first_held = first.and_then(&group_of).is_some();
-    let mut common = -1;
+/// (`link_of`, None for a unit the world does not hold, which is passed over, as a null entry
+/// is): none for an empty list, for a unit in no group, for two groups, and when the first unit
+/// is gone (the others are then compared with no group).
+pub fn common_group<K: ObjectKey>(
+    ids: &[K],
+    link_of: impl Fn(ObjectId) -> Option<GroupLink>,
+) -> Option<GroupId> {
+    let first = ids.first().map(|&id| id.key())?;
+    let first_held = first.and_then(&link_of).is_some();
+    let mut common = None;
     for &id in ids {
         let id = id.key();
-        let Some(group) = id.and_then(&group_of) else {
+        let Some(link) = id.and_then(&link_of) else {
             continue;
         };
-        if group == -1 {
-            return -1;
-        }
+        let group = link.id?;
         if id == first && first_held {
-            common = group;
-        } else if common != group {
-            return -1;
+            common = Some(group);
+        } else if common != Some(group) {
+            return None;
         }
     }
     common

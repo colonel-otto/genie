@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::GroupCommand;
+use crate::groups::GroupId;
 use crate::groups::attack::AttackOrder;
 use crate::groups::command::{ATTACK_COMMANDS, MOVE_COMMAND, MoveTo};
 use crate::groups::task::TargetTask;
@@ -50,7 +51,7 @@ impl World {
     /// A horde, and what the paths and the general command do not model.
     pub fn group_command(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: Option<ObjectId>,
         point: Point,
         order: CommandArgs,
@@ -123,7 +124,7 @@ impl World {
     /// What the queue, the move and the target's ranges do not model.
     pub(super) fn general_command(
         &mut self,
-        group: i32,
+        group: GroupId,
         (command, target): (i32, ObjectId),
         point: Point,
         range: f32,
@@ -198,7 +199,7 @@ impl World {
     /// directly hibernating, and answers what the move before it did.
     fn attack_command(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
         point: Point,
         (task, order): (TargetTask, CommandArgs),

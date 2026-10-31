@@ -4,6 +4,7 @@
 //! (`FUN_14103fd00`) makes them.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, BVector};
@@ -595,7 +596,7 @@ impl World {
     pub(crate) fn create_phalanx(
         &mut self,
         formation: &mut Formation,
-        group: i32,
+        group: GroupId,
     ) -> Result<bool, GenieError> {
         if !phalanx_slots(formation, self.groups.held(group)?, self.world_time)? {
             return Ok(false);
@@ -614,7 +615,7 @@ impl World {
     pub(crate) fn create_box(
         &mut self,
         formation: &mut Formation,
-        group: i32,
+        group: GroupId,
     ) -> Result<bool, GenieError> {
         if !box_slots(formation, self.groups.held(group)?, self.world_time)? {
             return Ok(false);
@@ -628,11 +629,12 @@ impl World {
 mod tests {
     use super::*;
     use crate::groups::{Member, UnitTypeStatistic};
+    use crate::test_ids::group_id;
     use crate::test_ids::object_id;
     use crate::test_ids::object_id_list;
 
     fn group(members: usize, spacing: f32, stats: &[(i32, usize)]) -> UnitGroup {
-        let mut g = UnitGroup::new(1);
+        let mut g = UnitGroup::new(group_id(1));
         g.members = (0..members)
             .map(|i| Member {
                 id: object_id(i as i32),
@@ -837,7 +839,7 @@ mod tests {
     #[test]
     fn a_phalanx_and_a_box_take_their_units_after_their_slots() {
         let mut t = three_at_six();
-        let g = t.groups.get(1).unwrap().clone();
+        let g = t.groups.get(group_id(1)).unwrap().clone();
         let stale = Slot {
             unit_id: Some(object_id(99)),
             position_filled: 1,
@@ -846,10 +848,10 @@ mod tests {
         let mut start = Formation::new();
         start.spare_slots = vec![stale; 9];
         let mut whole = start.clone();
-        assert!(t.create_phalanx(&mut whole, 1).unwrap());
+        assert!(t.create_phalanx(&mut whole, group_id(1)).unwrap());
         let mut parts = start.clone();
         assert!(phalanx_slots(&mut parts, &g, t.world_time).unwrap());
-        t.lay_units(&mut parts, 1, false).unwrap();
+        t.lay_units(&mut parts, group_id(1), false).unwrap();
         assert_eq!(whole, parts);
         let mut ids: Vec<Option<ObjectId>> = whole.slots.iter().map(|s| s.unit_id).collect();
         ids.sort_unstable();
@@ -868,17 +870,17 @@ mod tests {
                 .all(|s| (s.unit_id, s.position_filled) == (None, 0))
         );
         let mut whole = start.clone();
-        assert!(t.create_box(&mut whole, 1).unwrap());
+        assert!(t.create_box(&mut whole, group_id(1)).unwrap());
         let mut parts = start;
         assert!(box_slots(&mut parts, &g, t.world_time).unwrap());
-        t.lay_units(&mut parts, 1, false).unwrap();
+        t.lay_units(&mut parts, group_id(1), false).unwrap();
         assert_eq!(whole, parts);
         assert!(whole.slots.iter().all(|s| s.unit_id.is_some()));
         // without members, nothing
         let mut none = Formation::new();
         t.groups.groups[0] = group(0, 1.0, &[]);
-        assert!(!t.create_box(&mut none, 1).unwrap());
-        assert!(!t.create_phalanx(&mut none, 1).unwrap());
+        assert!(!t.create_box(&mut none, group_id(1)).unwrap());
+        assert!(!t.create_phalanx(&mut none, group_id(1)).unwrap());
     }
 
     /// `FUN_141013eb0` and `FUN_141014f60` look their members up themselves: a held member's
@@ -894,7 +896,7 @@ mod tests {
                 ..Member::default()
             },
         );
-        let g = t.groups.get(1).unwrap().clone();
+        let g = t.groups.get(group_id(1)).unwrap().clone();
         let mut f = Formation::new();
         assert!(t.create_horde(&mut f, &g).unwrap());
         let slots: Vec<(Option<ObjectId>, BVector, i32, u32)> = f

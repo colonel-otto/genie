@@ -180,7 +180,7 @@ impl World {
             if *taken.checked(i)? {
                 continue;
             }
-            let Some(group) = self.groups.get(first.group) else {
+            let Some(group) = first.group.and_then(|id| self.groups.get(id)) else {
                 continue;
             };
             *taken.checked_mut(i)? = true;

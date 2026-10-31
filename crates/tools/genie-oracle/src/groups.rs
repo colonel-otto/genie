@@ -7,8 +7,8 @@
 
 use genie_core::GenieError;
 use genie_core::groups::{
-    Formation, FormationLine, GroupCommand, GroupOrder, GroupTarget, LinePoint, Member, Motion,
-    PointLine, Slot, SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
+    Formation, FormationLine, GroupCommand, GroupId, GroupOrder, GroupTarget, LinePoint, Member,
+    Motion, PointLine, Slot, SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
 };
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
@@ -111,7 +111,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
     let t = &g.current_target;
     Ok(UnitGroup {
         motion: motion(&g.motion, paths)?,
-        id: g.id,
+        id: GroupId::try_from(g.id)?,
         owner: g.owner.to_bits(),
         state: g.state,
         members: g
@@ -222,7 +222,11 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         sighted: Vec::new(),
         differentiator_id: g.differentiator_id,
         seconds_not_under_attack: g.seconds_not_under_attack,
-        differentiator_groups: g.differentiator_groups.clone(),
+        differentiator_groups: g
+            .differentiator_groups
+            .iter()
+            .map(|&w| GroupId::try_from(w))
+            .collect::<Result<_, _>>()?,
         total_spacing: g.total_spacing,
         non_retarget_units: g.non_retarget_units.clone(),
         // a load's arrays hold the members alone
@@ -257,7 +261,7 @@ pub fn unit_groups(world: &saved::BaseWorld) -> Result<UnitGroups, GenieError> {
     }
     Ok(UnitGroups {
         groups,
-        counter: g.unit_group_counter,
+        counter: GroupId::try_from(g.unit_group_counter)?,
         commands,
         unit_types_scratch: Vec::new(),
     })
@@ -318,7 +322,7 @@ pub fn group_differences(slice: &UnitGroups, game: &UnitGroups, globals: bool) -
             slice.counter, game.counter
         ));
     }
-    let ids = |g: &UnitGroups| g.groups.iter().map(|u| u.id).collect::<Vec<_>>();
+    let ids = |g: &UnitGroups| g.groups.iter().map(|u| u.id.get()).collect::<Vec<_>>();
     if ids(slice) != ids(game) {
         out.push(format!(
             "unit groups slice {:?} game {:?}",
@@ -390,6 +394,7 @@ flat_value!(
     u8,
     genie_core::movement::PathData,
     ObjectId,
+    GroupId,
     GroupTarget
 );
 
@@ -484,19 +489,19 @@ flat_struct! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_ids::object_id;
+    use crate::test_ids::{group_id, object_id};
 
     fn world(groups: Vec<UnitGroup>) -> UnitGroups {
         UnitGroups {
             groups,
-            counter: 7,
+            counter: group_id(7),
             ..UnitGroups::default()
         }
     }
 
     fn group(id: i32) -> UnitGroup {
         UnitGroup {
-            id,
+            id: group_id(id),
             owner: 1,
             members: vec![Member {
                 id: object_id(31000),
@@ -561,7 +566,7 @@ mod tests {
     #[test]
     fn groups_only_one_side_holds_and_the_counter_show_in_the_world_lines() {
         let mut theirs = world(vec![group(3), group(4)]);
-        theirs.counter = 8;
+        theirs.counter = group_id(8);
         let d = group_differences(&world(vec![group(3)]), &theirs, false);
         assert_eq!(
             d,

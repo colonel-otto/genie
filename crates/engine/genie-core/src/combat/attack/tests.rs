@@ -655,7 +655,7 @@ impl Rig {
 const fn me(id: i32, state: u8) -> Me {
     Me {
         id: object_id(id),
-        group: -1,
+        group: None,
         action_state: state,
     }
 }
@@ -1977,7 +1977,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     };
     let me = |id| Me {
         id,
-        group: -1,
+        group: None,
         action_state: 0,
     };
     let mut t = forage_world();

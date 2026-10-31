@@ -1,6 +1,7 @@
 //! The members' moves to their slots, a free member's stop, the line test and a member's
 //! steering toward its slot (`FUN_141025fb0`).
 
+use crate::groups::GroupId;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::motion::hold;
@@ -48,7 +49,7 @@ impl World {
     /// When the world does not hold `group`: the group update passes its own.
     pub fn members_to_slots(
         &mut self,
-        group: i32,
+        group: GroupId,
         differentiators: &[ObjectId],
     ) -> Result<(), GenieError> {
         let mut i = 0;
@@ -260,7 +261,7 @@ impl World {
     /// [`passes_waypoint`]: crate::groups::motion::passes_waypoint
     pub fn steer_to_slot(
         &mut self,
-        group: i32,
+        group: GroupId,
         index: usize,
         slot: usize,
         differentiators: &[ObjectId],
@@ -342,7 +343,7 @@ impl World {
     /// it moving, its failures reset and a slot in state 1 or 2 takes state 3.
     fn steer_busy_member(
         &mut self,
-        group: i32,
+        group: GroupId,
         (index, slot): (usize, usize),
         id: ObjectId,
     ) -> Result<(), GenieError> {

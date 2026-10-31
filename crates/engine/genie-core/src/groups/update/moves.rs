@@ -2,6 +2,7 @@
 //! due orders and the idle timer.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::group_list::member_gone;
 use crate::groups::update::{
@@ -28,7 +29,7 @@ impl World {
     /// not modelled.
     pub(super) fn command_update(
         &mut self,
-        group: i32,
+        group: GroupId,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
@@ -126,7 +127,7 @@ impl World {
     /// What the leaves, the lock and the members' moves do not model.
     ///
     /// When the world does not hold `group`: the group update passes its own.
-    pub fn move_update(&mut self, group: i32, relayout: &mut bool) -> Result<bool, GenieError> {
+    pub fn move_update(&mut self, group: GroupId, relayout: &mut bool) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
         if g.motion.flags & 2 != 0 {
             *relayout = true;
@@ -207,7 +208,7 @@ impl World {
     /// asks for a layout anew. The update does not end.
     fn moving_step(
         &mut self,
-        group: i32,
+        group: GroupId,
         follows: bool,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
@@ -239,7 +240,7 @@ impl World {
     /// move finished when no path is walked and it was no patrol.
     pub(super) fn move_members_on(
         &mut self,
-        group: i32,
+        group: GroupId,
         walks: bool,
         patrolling: bool,
     ) -> Result<bool, GenieError> {
@@ -267,7 +268,7 @@ impl World {
     /// When the world does not hold `group`: its callers pass their own.
     pub fn move_to_desired_positions(
         &mut self,
-        group: i32,
+        group: GroupId,
         command: i32,
         target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
@@ -316,7 +317,7 @@ impl World {
     ///
     /// What the motion step, the stop, the stand and the walking and standing sprites do not
     /// model.
-    pub(super) fn specific_moves_step(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(super) fn specific_moves_step(&mut self, group: GroupId) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
             let g = self.groups.held(group)?;
@@ -406,9 +407,8 @@ impl World {
             return Err(GenieError::unsupported("a sleeping member's own move"));
         };
         // the walk meets the group's members as its update left them so far
-        let members: Vec<ObjectId> = self
-            .groups
-            .get(self.players.live(p, idx)?.group.id)
+        let members: Vec<ObjectId> = (self.players.live(p, idx)?.group.id)
+            .and_then(|id| self.groups.get(id))
             .map(|g| g.members.iter().map(|m| m.id).collect())
             .unwrap_or_default();
         self.refresh_gaits(members);
@@ -443,7 +443,7 @@ impl World {
 
     /// `FUN_14100d940` (its log lines aside): the order queue's orders whose time (`+0x18`) is not
     /// past the world's time go, in order; the others stay.
-    pub fn drop_due_orders(&mut self, group: i32) {
+    pub fn drop_due_orders(&mut self, group: GroupId) {
         let now = self.world_time;
         if let Some(g) = self.groups.get_mut(group) {
             g.order_queue.retain(|o| now < o.execute_time);
@@ -454,7 +454,7 @@ impl World {
     /// the update's milliseconds (`world+0x7c`) to its timer (`+0x3e4`, wrapping), and past
     /// [`IDLE_LIMIT`] (unsigned) draws it anew ([`World::reset_idle_timer`]); a group that is not
     /// idle draws it anew.
-    pub(super) fn idle_timer_step(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(super) fn idle_timer_step(&mut self, group: GroupId) -> Result<(), GenieError> {
         if self.is_idle(group) {
             let dt = self.dt_ms();
             let g = self.groups.held_mut(group)?;
@@ -479,7 +479,7 @@ impl World {
     /// `FUN_141017630`: a member of group `group` the world holds (false for a group it does not
     /// hold).
     #[must_use]
-    pub fn any_member_held(&self, group: i32) -> bool {
+    pub fn any_member_held(&self, group: GroupId) -> bool {
         self.groups
             .get(group)
             .is_some_and(|g| g.members.iter().any(|m| self.object(m.id).is_some()))
@@ -488,7 +488,7 @@ impl World {
     /// `resetIdleTimer` (`FUN_14102d370`): group `group`'s idle timer (`+0x3e4`) is a draw of the
     /// World stream (`rand15`, `DAT_143f07040`) modulo [`IDLE_SPAN`]; nothing for a group the
     /// world does not hold (the game draws for its own).
-    pub fn reset_idle_timer(&mut self, group: i32) {
+    pub fn reset_idle_timer(&mut self, group: GroupId) {
         if self.groups.get(group).is_none() {
             return;
         }
@@ -503,7 +503,7 @@ impl World {
     /// flags bit 11; else not while its motion moves or waits to move; else idle. False for a
     /// group the world does not hold.
     #[must_use]
-    pub fn is_idle(&self, group: i32) -> bool {
+    pub fn is_idle(&self, group: GroupId) -> bool {
         self.groups.get(group).is_some_and(UnitGroup::is_idle)
     }
 }

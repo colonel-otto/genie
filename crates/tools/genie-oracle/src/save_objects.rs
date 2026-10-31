@@ -35,7 +35,7 @@ pub struct SliceRun {
 /// An object's unit group link as saved (`mGroupID`, `mGroupFlag`).
 pub(super) const fn group_link(s: &RgeStaticObject) -> genie_core::groups::GroupLink {
     genie_core::groups::GroupLink {
-        id: s.group_id,
+        id: genie_core::groups::GroupId::of_field(s.group_id),
         flag: s.group_flag,
     }
 }

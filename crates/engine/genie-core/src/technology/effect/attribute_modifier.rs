@@ -352,7 +352,7 @@ impl World {
                 }
                 a::OBSTRUCTION_TYPE => self.give_record(id, &master),
                 _ => {
-                    if self.object(id).is_some_and(|(_, u)| u.group.id != -1) {
+                    if self.object(id).is_some_and(|(_, u)| u.group.id.is_some()) {
                         return Err(GenieError::unsupported(
                             "a hero status change of a unit in a group (removeUnit, FUN_14102c160)",
                         ));

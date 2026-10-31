@@ -12,6 +12,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
+use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
@@ -117,7 +118,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
             },
         );
     }
-    let mut g = UnitGroup::new(1);
+    let mut g = UnitGroup::new(group_id(1));
     g.owner = 1;
     g.members = units
         .iter()
@@ -264,7 +265,7 @@ fn the_closest_unit_matches_its_slots_category_and_type() {
         &[(10, 4, 5.0, 0.0), (11, 5, 2.0, 0.0), (12, 6, 1.0, 0.0)],
         &[],
     );
-    let g = t.groups.get(1).unwrap();
+    let g = t.groups.get(group_id(1)).unwrap();
     let o = BVector::ZERO;
     assert_eq!(
         t.closest_unit(g, o, -1, -1, &[]).unwrap(),
@@ -293,7 +294,7 @@ fn the_closest_unit_matches_its_slots_category_and_type() {
 fn the_slots_take_their_units_in_the_shorter_of_two_orders() {
     let run = |second: f32| {
         let t = slot_world(&[(10, 4, 1.0, 0.0), (11, 4, second, 0.0)], &[]);
-        let g = t.groups.get(1).unwrap().clone();
+        let g = t.groups.get(group_id(1)).unwrap().clone();
         let mut f = Formation::new();
         f.slots = vec![
             slot_at(BVector::ZERO, 1),
@@ -331,7 +332,7 @@ fn the_feature_s_assignment_keeps_the_start_of_least_variance() {
                 ..crate::groups::Member::default()
             });
         }
-        let g = t.groups.get(1).unwrap().clone();
+        let g = t.groups.get(group_id(1)).unwrap().clone();
         let mut f = Formation::new();
         f.slots = vec![
             slot_at(BVector::ZERO, 1),
@@ -368,7 +369,7 @@ fn the_feature_s_assignment_keeps_the_start_of_least_variance() {
 #[test]
 fn the_feature_s_costs_of_a_gone_member_are_its_last() {
     let mut t = slot_world(&[(10, 4, 0.0, 0.0), (11, 4, 3.0, 0.0)], &[]);
-    let g = t.groups.get(1).unwrap().clone();
+    let g = t.groups.get(group_id(1)).unwrap().clone();
     let mut costs = Vec::new();
     let two = || {
         vec![
@@ -404,7 +405,7 @@ fn the_feature_s_costs_of_a_gone_member_are_its_last() {
 #[test]
 fn a_slot_takes_the_unit_nearest_its_transform_position() {
     let t = slot_world(&[(10, 4, 1.0, 0.0), (11, 4, 9.0, 0.0)], &[]);
-    let g = t.groups.get(1).unwrap().clone();
+    let g = t.groups.get(group_id(1)).unwrap().clone();
     let mut f = Formation::new();
     let mut s = slot_at(BVector::new(10.0, 0.0, 0.0), 1);
     s.desired_transform_position = BVector::ZERO;
@@ -426,7 +427,7 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
         let mut column = Formation::new();
         column.kind = previous;
         t.groups.groups[0].previous_formation = Some(column);
-        let g = t.groups.get(1).unwrap().clone();
+        let g = t.groups.get(group_id(1)).unwrap().clone();
         let mut f = Formation::new();
         f.kind = LINE;
         f.maximum_width = width as i32;
@@ -486,7 +487,7 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
             ..slot_at(BVector::ZERO, 1)
         }];
         f.spare_slots = vec![Slot::default()];
-        let took = t.formation_transform(&mut f, 1, false).unwrap();
+        let took = t.formation_transform(&mut f, group_id(1), false).unwrap();
         (
             took,
             f.slots[0].transform_position,
@@ -507,7 +508,7 @@ fn the_group_target_and_horde_transforms_place_every_slot() {
     f.transform_type = 3;
     f.transform_orientation = BVector::new(0.0, 0.0, -1.0);
     f.slots = vec![slot_at(BVector::ZERO, 1)];
-    assert!(t.formation_transform(&mut f, 1, false).unwrap());
+    assert!(t.formation_transform(&mut f, group_id(1), false).unwrap());
     assert_eq!(
         (f.slots[0].unit_id, f.slots[0].position_filled),
         (Some(object_id(10)), 1)
@@ -536,7 +537,7 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
                 ..slot_at(BVector::new(8.5, 0.0, 5.5), 1)
             },
         ];
-        t.passable_slots(&mut f, 1).unwrap();
+        t.passable_slots(&mut f, group_id(1)).unwrap();
         f.slots
             .iter()
             .map(|s| s.transform_position)
@@ -560,7 +561,7 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
     t.groups.groups[0].motion.lead = Some(object_id(10));
     let mut f = Formation::new();
     f.slots = vec![slot_at(BVector::new(12.5, 0.0, 5.5), 1)];
-    t.passable_slots(&mut f, 1).unwrap();
+    t.passable_slots(&mut f, group_id(1)).unwrap();
     assert_eq!(f.slots[0].transform_position, BVector::new(12.5, 0.0, 5.5));
 }
 
@@ -629,7 +630,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
                 ..slot_at(BVector::new(8.5, 0.0, 5.5), 1)
             },
         ];
-        t.passable_slots(&mut f, 1).unwrap();
+        t.passable_slots(&mut f, group_id(1)).unwrap();
         f.slots
             .iter()
             .map(|s| s.transform_position)
@@ -662,7 +663,7 @@ fn a_found_cell_steps_toward_the_nearest_slot_when_the_way_is_clear() {
         },
         slot_at(BVector::new(6.5, 0.0, 7.5), 1),
     ];
-    t.passable_slots(&mut f, 1).unwrap();
+    t.passable_slots(&mut f, group_id(1)).unwrap();
     assert_eq!(f.slots[1].transform_position, BVector::new(6.5, 0.0, 6.5));
     assert_eq!(f.slots[2].transform_position, BVector::new(6.5, 0.0, 7.5));
 }
@@ -742,7 +743,7 @@ fn a_nan_distance_back_takes_the_index_times_the_spacing() {
             ..FormationLine::default()
         },
     ];
-    let _ = t.formation_transform(&mut f, 1, false).unwrap();
+    let _ = t.formation_transform(&mut f, group_id(1), false).unwrap();
     assert_eq!(f.slots[1].transform_position, BVector::new(7.0, 0.0, 5.0));
 }
 
@@ -809,15 +810,16 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
         let mut before = Formation::new();
         before.kind = previous;
         t.groups.groups[0].previous_formation = Some(before);
-        let g = t.groups.get(1).unwrap().clone();
+        let g = t.groups.get(group_id(1)).unwrap().clone();
         let mut whole = Formation::new();
         assert!(
-            t.create_column_line(&mut whole, 1, false, (false, false))
+            t.create_column_line(&mut whole, group_id(1), false, (false, false))
                 .unwrap()
         );
         let mut parts = Formation::new();
         assert!(column_line_slots(&mut parts, &g, false, (false, false), t.world_time).unwrap());
-        t.lay_units(&mut parts, 1, previous == COLUMN).unwrap();
+        t.lay_units(&mut parts, group_id(1), previous == COLUMN)
+            .unwrap();
         assert_eq!(whole, parts);
         whole.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
     };
@@ -893,7 +895,7 @@ fn type_world(paths: Vec<PathData>) -> World {
         ..crate::objects::masters::Master::default()
     }]);
     t.masters = vec![masters.clone(), masters];
-    let mut g = UnitGroup::new(1);
+    let mut g = UnitGroup::new(group_id(1));
     g.owner = 1;
     g.members = vec![crate::groups::Member {
         id: object_id(7),
@@ -908,7 +910,8 @@ fn type_world(paths: Vec<PathData>) -> World {
 }
 
 fn own(t: &World) -> i32 {
-    t.own_formation_type(t.groups.get(1).unwrap()).unwrap()
+    t.own_formation_type(t.groups.get(group_id(1)).unwrap())
+        .unwrap()
 }
 
 /// `FUN_141048180`: the top ancestor (the last level) on its last waypoint; a lone level has
@@ -990,7 +993,7 @@ fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
         ..crate::objects::masters::Master::default()
     }]);
     assert_eq!(own(&t), HORDE);
-    let g = t.groups.get(1).unwrap().clone();
+    let g = t.groups.get(group_id(1)).unwrap().clone();
     assert_eq!(t.formation_type(&g, BOX).unwrap(), BOX);
     let mut locked = g;
     locked.formation_locked_type = STAGGERED;

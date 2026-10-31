@@ -2,6 +2,7 @@
 //! lock to the formation the command names.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::objects::ObjectId;
 use crate::orders::{LISTED, Place, set_differentiator_groups};
 use crate::players::PlayerId;
@@ -45,17 +46,15 @@ impl World {
             self.stop_marcher(id)?;
         }
         let mut split = self.split(&units, &|_| true, false)?;
-        let mut listed: Vec<i32> = Vec::new();
+        let mut listed: Vec<GroupId> = Vec::new();
         for (number, group_units) in split.groups.clone().iter().enumerate() {
             if group_units.is_empty() {
                 continue;
             }
             let common = crate::groups::common_group(group_units, |id| {
-                self.object(id).map(|(_, u)| u.group.id)
+                self.object(id).map(|(_, u)| u.group)
             });
-            let id = if common == -1 {
-                self.form_group(&split, group_units, number)?
-            } else {
+            let id = if let Some(common) = common {
                 match self.groups.get(common) {
                     None => continue,
                     Some(g) if g.members.len() != group_units.len() => {
@@ -66,6 +65,8 @@ impl World {
                         common
                     }
                 }
+            } else {
+                self.form_group(&split, group_units, number)?
             };
             if listed.len() < LISTED {
                 listed.push(id);
@@ -76,10 +77,9 @@ impl World {
             }
             self.lock_formation(id, formation)?;
         }
-        let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
             if let Some(g) = self.groups.get_mut(id) {
-                set_differentiator_groups(g, &list);
+                set_differentiator_groups(g, &listed);
             }
         }
         self.groups.count_command();
@@ -100,7 +100,7 @@ impl World {
         split: &crate::orders::Split,
         units: &[ObjectId],
         number: usize,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<GroupId, GenieError> {
         let owner = split.owner.map_or(u32::MAX, |p| p.index() as u32);
         let id = self.groups.create(owner).id;
         for &unit in units {

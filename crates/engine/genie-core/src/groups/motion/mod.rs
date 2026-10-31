@@ -245,12 +245,16 @@ impl World {
         let id = id?;
         let (p, u) = self.object(id)?;
         let mover = u.body.mover()?;
-        let group = self.groups.get(u.group.id).map(|g| LeadGroup {
-            flags: g.flags,
-            members: g.members.iter().map(|m| m.id).collect(),
-            differentiator_units: self.groups.differentiator_units(g, SHORT_IGNORED),
-            lowered: self.groups.group_units(u.group.id).unwrap_or_default(),
-        });
+        let group = u
+            .group
+            .id
+            .and_then(|id| self.groups.get(id))
+            .map(|g| LeadGroup {
+                flags: g.flags,
+                members: g.members.iter().map(|m| m.id).collect(),
+                differentiator_units: self.groups.differentiator_units(g, SHORT_IGNORED),
+                lowered: self.groups.group_units(u.group.id).unwrap_or_default(),
+            });
         Some(Lead {
             walker: mover.walker(id),
             position: u.position(),

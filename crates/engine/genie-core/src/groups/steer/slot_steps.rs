@@ -2,6 +2,7 @@
 //! speed, facing, place and own move.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone, slot_gone};
 use crate::groups::motion::passes_waypoint;
@@ -17,7 +18,7 @@ impl World {
     /// it ends the routine (slot state 2 or 3). See [`World::steer_to_slot`].
     pub(super) fn slot_due(
         &mut self,
-        group: i32,
+        group: GroupId,
         index: usize,
         slot: usize,
     ) -> Result<bool, GenieError> {
@@ -74,7 +75,7 @@ impl World {
     /// What the pathers and the position setter do not model.
     pub(super) fn try_slot(
         &mut self,
-        group: i32,
+        group: GroupId,
         id: ObjectId,
         to: BVector,
     ) -> Result<bool, GenieError> {
@@ -138,7 +139,7 @@ impl World {
     /// see [`World::steer_to_slot`]. `gap` is the ground distance to the slot.
     pub(super) fn steer_member(
         &mut self,
-        group: i32,
+        group: GroupId,
         slot: usize,
         id: ObjectId,
         gap: f32,
@@ -187,7 +188,7 @@ impl World {
 
     /// A member that passed its slot's waypoint (state 2) stops, and stands when it is paused
     /// or the group's walk has no path to go on.
-    fn stop_at_slot(&mut self, group: i32, id: ObjectId) -> Result<(), GenieError> {
+    fn stop_at_slot(&mut self, group: GroupId, id: ObjectId) -> Result<(), GenieError> {
         self.stop_member(id)?;
         let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let paused = u.body.mover().is_some_and(crate::movement::Mover::paused);
@@ -209,7 +210,7 @@ impl World {
     /// within [`SLOT_REACH`], else runs, faster the farther it is (up to [`CATCH_UP`]).
     fn catch_up_to_slot(
         &mut self,
-        group: i32,
+        group: GroupId,
         id: ObjectId,
         (gap, speed): (f32, f32),
     ) -> Result<(), GenieError> {
@@ -245,7 +246,7 @@ impl World {
     /// Slot `slot` of group `group`'s formation takes state `state`.
     pub(super) fn set_slot_state(
         &mut self,
-        group: i32,
+        group: GroupId,
         slot: usize,
         state: i32,
     ) -> Result<(), GenieError> {
@@ -280,7 +281,7 @@ impl World {
 
     /// Slot 0x568 of member `id` with group `group`'s forward and up vectors (`+0x14`,
     /// `+0x20`, [`crate::movement::Mover::set_orientation`]).
-    pub(super) fn face_group(&mut self, group: i32, id: ObjectId) -> Result<(), GenieError> {
+    pub(super) fn face_group(&mut self, group: GroupId, id: ObjectId) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let [_, forward, up, _] = g.motion.position;
         if let Some((_, u)) = self.object_mut(id)
@@ -346,7 +347,7 @@ impl World {
     /// member or that the world does not hold.
     pub(crate) fn set_specific_move(
         &mut self,
-        group: i32,
+        group: GroupId,
         id: ObjectId,
         (path, reason): (i32, i32),
         (goal, timer, distance): (BVector, f32, f32),

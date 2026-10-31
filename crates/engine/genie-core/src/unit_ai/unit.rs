@@ -152,17 +152,15 @@ impl Unit {
                 view,
                 master,
             )?,
-            group: c
-                .w
-                .groups
-                .get(self.group.id)
-                .map(|g| crate::unit_ai::GroupState {
+            group: (self.group.id).and_then(|id| c.w.groups.get(id)).map(|g| {
+                crate::unit_ai::GroupState {
                     commanded: g.current_command != -1,
                     idle: g.is_idle(),
                     patrol: g.patrols(),
                     moving: g.motion.moving(),
                     member_moving: self.body.mover().is_some_and(Mover::is_moving),
-                }),
+                }
+            }),
             top_target: self.top_target_seen(c, OthersRef::of(&c.w.players, c.player)?)?,
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.body.mover().is_some_and(|m| m.attack_moving),

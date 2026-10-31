@@ -2,6 +2,7 @@
 //! the lines' ranges and the relayout.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::UnitGroup;
 use crate::groups::group_list::{NO_FORMATION, member_gone};
 use crate::groups::update::{
@@ -35,7 +36,7 @@ impl World {
     /// # Errors
     ///
     /// What the update does not model.
-    pub(super) fn awake_update(&mut self, group: i32) -> Result<bool, GenieError> {
+    pub(super) fn awake_update(&mut self, group: GroupId) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
         let far = if g.command_queue.is_empty() {
             self.kept_apart_leave(group)?
@@ -86,7 +87,7 @@ impl World {
     /// # Errors
     ///
     /// What the target's test and the leaving do not model.
-    pub(super) fn kept_apart_leave(&mut self, group: i32) -> Result<bool, GenieError> {
+    pub(super) fn kept_apart_leave(&mut self, group: GroupId) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
         let patrol = crate::groups::formation::top_path(&g.motion.paths)
             .is_some_and(|p| p.path_flags & 1 != 0);
@@ -114,7 +115,7 @@ impl World {
     /// # Errors
     ///
     /// What the motion update and the statistics do not model.
-    pub(super) fn lead_to_target(&mut self, group: i32, far: bool) -> Result<(), GenieError> {
+    pub(super) fn lead_to_target(&mut self, group: GroupId, far: bool) -> Result<(), GenieError> {
         let lead = self.nearest_to_target(group);
         self.groups.held_mut(group)?.motion.lead = lead;
         if lead.is_none() {
@@ -155,7 +156,7 @@ impl World {
     /// move's step, an attack's update, among others.
     pub(super) fn after_motion(
         &mut self,
-        group: i32,
+        group: GroupId,
         far: bool,
         forward: BVector,
     ) -> Result<bool, GenieError> {
@@ -194,7 +195,11 @@ impl World {
     /// [`World::after_motion`]'s members' moves to their slots: an awake group (not
     /// hibernating) clears flags bit 9 and, with a formation holding slots, moves its members to
     /// them ([`World::members_to_slots`]).
-    fn slots_step(&mut self, group: i32, differentiators: &[ObjectId]) -> Result<(), GenieError> {
+    fn slots_step(
+        &mut self,
+        group: GroupId,
+        differentiators: &[ObjectId],
+    ) -> Result<(), GenieError> {
         let g = self.groups.held_mut(group)?;
         if g.hibernating == 0 {
             g.flags &= !0x200;
@@ -210,7 +215,7 @@ impl World {
 
     /// [`World::after_motion`]'s last steps: the members' own moves, the order queue's due
     /// orders and the idle timer. True while the group has members.
-    fn update_end_steps(&mut self, group: i32) -> Result<bool, GenieError> {
+    fn update_end_steps(&mut self, group: GroupId) -> Result<bool, GenieError> {
         self.specific_moves_step(group)?;
         if !self.groups.held(group)?.order_queue.is_empty() {
             self.drop_due_orders(group);
@@ -232,7 +237,7 @@ impl World {
     /// (`DAT_143f15a9c`) holds no state.
     pub(super) fn turn_formation(
         &mut self,
-        group: i32,
+        group: GroupId,
         forward: BVector,
     ) -> Result<(), GenieError> {
         if self.turns_formation(group, forward)? {
@@ -268,7 +273,11 @@ impl World {
     /// Whether the formation's turn lays it out anew: the motion turned more than π/4 from
     /// `forward` (the size of `FUN_14087e650`'s angle; `COMISS` then `JA` at `0x14103e154`, a NaN
     /// does not), or motion flags bit 1 or flags bit 14 is set.
-    pub(super) fn turns_formation(&self, group: i32, forward: BVector) -> Result<bool, GenieError> {
+    pub(super) fn turns_formation(
+        &self,
+        group: GroupId,
+        forward: BVector,
+    ) -> Result<bool, GenieError> {
         let g = self.groups.held(group)?;
         let turn = crate::math::fmath::angle_between(g.motion.position[1], forward).abs();
         Ok(TURN_LIMIT < turn || g.motion.flags & 2 != 0 || g.flags & 0x4000 != 0)
@@ -283,7 +292,7 @@ impl World {
     ///
     /// When the world does not hold a member: the game reads its null object; the members'
     /// check at the update's start leaves only held ones.
-    pub(super) fn front_by_centroid(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(super) fn front_by_centroid(&mut self, group: GroupId) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let mut sum = BVector::ZERO;
         for m in &g.members {
@@ -317,7 +326,7 @@ impl World {
     ///
     /// A line place without a slot (index -1 or past the slots, where the game reads outside the
     /// slots' array), and a unit of a master the slice does not have.
-    pub(crate) fn line_ranges(&mut self, group: i32) -> Result<(), GenieError> {
+    pub(crate) fn line_ranges(&mut self, group: GroupId) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let Some(f) = g.current_formation.as_ref() else {
             return Ok(());
@@ -369,7 +378,7 @@ impl World {
     /// idle group ([`World::is_idle`]) relays out and clears bit 1.
     pub(super) fn relayout_choice(
         &mut self,
-        group: i32,
+        group: GroupId,
         count: usize,
     ) -> Result<(bool, bool), GenieError> {
         let idle = self.is_idle(group);

@@ -3,6 +3,7 @@
 //! change of members (`FUN_14100b940`).
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
@@ -75,7 +76,7 @@ impl World {
     /// Not modelled: `+0x478` (a member's `+0x30c`; the group holds no such field), a charge's
     /// range against a target, and the attack plan's re-attack (`FUN_14100f7f0`) against a
     /// target the world holds.
-    pub fn group_statistics(&mut self, group: i32, far: bool) -> Result<(), GenieError> {
+    pub fn group_statistics(&mut self, group: GroupId, far: bool) -> Result<(), GenieError> {
         if self.statistics_only(group, far)? {
             self.calc_formation_type(group)?;
         }
@@ -89,7 +90,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, GenieError> {
+    pub fn statistics_only(&mut self, group: GroupId, far: bool) -> Result<bool, GenieError> {
         let dt = self.dt_seconds;
         let (views, objects) = self.member_views(group, far)?;
         let g = self.groups.held_mut(group)?;
@@ -151,7 +152,7 @@ impl World {
     /// index it has then, and the objects of their searches.
     fn member_views(
         &mut self,
-        group: i32,
+        group: GroupId,
         far: bool,
     ) -> Result<(MemberViews, Vec<ObjectId>), GenieError> {
         // each member's view in the members' order, its search first (FUN_140c65c60 before
@@ -212,7 +213,7 @@ impl World {
     /// against `target` and its spacing.
     fn sub_formation_stats(
         &mut self,
-        group: i32,
+        group: GroupId,
         target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
@@ -261,7 +262,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn calc_formation_type(&mut self, group: i32) -> Result<(), GenieError> {
+    pub fn calc_formation_type(&mut self, group: GroupId) -> Result<(), GenieError> {
         let ids: Vec<ObjectId> = self
             .groups
             .held(group)?
@@ -315,7 +316,7 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn lock_formation(&mut self, group: i32, kind: i32) -> Result<(), GenieError> {
+    pub fn lock_formation(&mut self, group: GroupId, kind: i32) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         // the spacing is read again for every member held (0x14102500a): the first whose
         // radius gives one above it sets it, and every later member finds it set
@@ -345,7 +346,7 @@ impl World {
     /// (`+0x1a9`: 0 aggressive, 1 defensive, 2 stand ground, 3 no attack; on equal counts the
     /// lower), 0 without members whose unit AI the world holds; each such member's formation
     /// type (`+0x1d4`) becomes `formation_type`.
-    pub fn stances_state(&mut self, group: i32, formation_type: u8) -> Result<(), GenieError> {
+    pub fn stances_state(&mut self, group: GroupId, formation_type: u8) -> Result<(), GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());
         };
@@ -533,7 +534,7 @@ impl World {
     /// An action the slice does not model, and a member of a master the slice does not have.
     fn far_from_slot(
         &self,
-        group: i32,
+        group: GroupId,
         view: &MemberView,
         largest: f32,
     ) -> Result<bool, GenieError> {
@@ -691,6 +692,7 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+    use crate::test_ids::group_id;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::object_id_list;
@@ -832,7 +834,7 @@ mod tests {
         v.registry = Some(r);
         s.sight = Some(v);
         t.spatial = s;
-        let mut g = UnitGroup::new(1);
+        let mut g = UnitGroup::new(group_id(1));
         g.owner = 1;
         g.members = vec![Member {
             id: object_id(10),
@@ -951,14 +953,14 @@ mod tests {
             };
             *masters = Masters::new(masters.iter().cloned().chain([archer]));
         }
-        let g = t.groups.get_mut(1).unwrap();
+        let g = t.groups.get_mut(group_id(1)).unwrap();
         g.unit_types[0].units.push(object_id(50));
         g.current_target.target = GroupTarget::of_saved(99, -1);
         g.attack_plan_type = 1;
         g.current_command = 9;
         g.objects = vec![object_id(77)];
-        let _ = t.statistics_only(1, false).unwrap();
-        let g = t.groups.get(1).unwrap();
+        let _ = t.statistics_only(group_id(1), false).unwrap();
+        let g = t.groups.get(group_id(1)).unwrap();
         assert_eq!(g.unit_types[0].attack_range, 6.0);
         // the searches fill their own list (+0x49c), not the units kept apart (+0x458)
         assert_eq!(
@@ -967,10 +969,10 @@ mod tests {
         );
         assert_eq!(g.attack_plan_type, 0);
         // a target the world holds: the re-attack is not modelled
-        let g = t.groups.get_mut(1).unwrap();
+        let g = t.groups.get_mut(group_id(1)).unwrap();
         g.current_target.target = GroupTarget::of_saved(20, -1);
         g.attack_plan_type = 1;
-        assert!(t.statistics_only(1, false).is_err());
+        assert!(t.statistics_only(group_id(1), false).is_err());
     }
 
     /// `FUN_14100bcb0` with `far`: member 11, 24 from its slot on the ground and first, leaves
@@ -996,10 +998,10 @@ mod tests {
                 .body
                 .put_mover(Some(crate::gathering::hunt::tests::walker()));
             stray.body.mover_mut().unwrap().moved_at = Position::new(6.0, 6.0, 0.0);
-            stray.group.id = 1;
-            t.players[1].objects[0].group.id = 1;
+            stray.group.id = Some(group_id(1));
+            t.players[1].objects[0].group.id = Some(group_id(1));
             t.players[1].objects.push(stray);
-            let g = t.groups.get_mut(1).unwrap();
+            let g = t.groups.get_mut(group_id(1)).unwrap();
             g.flags = 0;
             g.members = order
                 .map(|id| Member {
@@ -1027,7 +1029,7 @@ mod tests {
         };
         let ids = |t: &World| -> Vec<ObjectId> {
             t.groups
-                .get(1)
+                .get(group_id(1))
                 .unwrap()
                 .members
                 .iter()
@@ -1035,44 +1037,44 @@ mod tests {
                 .collect()
         };
         let mut t = world(1.0, [11, 10]);
-        let _ = t.statistics_only(1, true).unwrap();
+        let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(10)]);
         let u = t.object(object_id(11)).unwrap().1;
-        assert_eq!(u.group.id, -1);
+        assert_eq!(u.group.id, None);
         assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
-        let g = t.groups.get(1).unwrap();
+        let g = t.groups.get(group_id(1)).unwrap();
         assert_eq!(g.centroid, BVector::new(5.0, 0.0, 5.0));
         assert_eq!(g.largest_unit_radius, 0.2);
         // a formation of type 7, a wide member before it: 40
         let mut t = world(1.0, [11, 10]);
         t.groups
-            .get_mut(1)
+            .get_mut(group_id(1))
             .unwrap()
             .current_formation
             .as_mut()
             .unwrap()
             .kind = 7;
-        let _ = t.statistics_only(1, true).unwrap();
+        let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(2.5, [10, 11]);
-        let _ = t.statistics_only(1, true).unwrap();
+        let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(10), object_id(11)]);
         let mut t = world(2.5, [11, 10]);
-        let _ = t.statistics_only(1, true).unwrap();
+        let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(10)]);
         // no far test without far, on a patrol, with flags bit 11
         let mut t = world(1.0, [11, 10]);
-        let _ = t.statistics_only(1, false).unwrap();
+        let _ = t.statistics_only(group_id(1), false).unwrap();
         assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(1.0, [11, 10]);
-        t.groups.get_mut(1).unwrap().flags = 0x800;
-        let _ = t.statistics_only(1, true).unwrap();
+        t.groups.get_mut(group_id(1)).unwrap().flags = 0x800;
+        let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(1.0, [11, 10]);
-        let paths = &mut t.groups.get_mut(1).unwrap().motion.paths;
+        let paths = &mut t.groups.get_mut(group_id(1)).unwrap().motion.paths;
         paths[0].has_path = true;
         paths[0].path_flags = 1;
-        let _ = t.statistics_only(1, true).unwrap();
+        let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(11), object_id(10)]);
     }
 }

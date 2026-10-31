@@ -2,6 +2,7 @@
 //! along, a slot's place and the point back from the front.
 
 use crate::GenieError;
+use crate::groups::GroupId;
 use crate::groups::formation::{
     BOX, COLUMN, EPSILON, FLANKED, HORDE, LINE, PHALANX, STAGGERED, USER_DEFINED,
 };
@@ -151,7 +152,11 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn update_desired_positions(&mut self, group: i32, given: i32) -> Result<(), GenieError> {
+    pub fn update_desired_positions(
+        &mut self,
+        group: GroupId,
+        given: i32,
+    ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         if g.members.is_empty() {
             return Ok(());

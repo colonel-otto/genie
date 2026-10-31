@@ -420,8 +420,7 @@ impl Unit {
         c.w.pathing.removed(id);
         // a member of a unit group (+0x6d0) leaves the group the world holds, then stands
         // (slot 0x560)
-        let group = self.group.id;
-        if group != -1 {
+        if let Some(group) = self.group.id {
             if c.w.groups.get(group).is_some() {
                 c.lend(self, |w| {
                     w.remove_unit(group, id, Some(target), false).map(drop)

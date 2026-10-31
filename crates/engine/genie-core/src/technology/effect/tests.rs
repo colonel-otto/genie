@@ -11,6 +11,7 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::tech_id;
@@ -1711,7 +1712,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     house.place_for_test(Position::new(5.5, 5.5, 0.0));
     house.construction = Some(built());
     let mut soldier = unit_of(2, master_id(4), 30.0);
-    soldier.group.id = 7;
+    soldier.group.id = Some(group_id(7));
     let player = Player {
         objects: vec![house, soldier].into(),
         ..Player::default()
@@ -1768,7 +1769,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 40, 1.0)], None)
             .is_err()
     );
-    t.players[0].objects[1].group.id = -1;
+    t.players[0].objects[1].group.id = None;
     t.do_effect(PlayerId::new(0), &[attribute(0, 4, -1, 40, 1.0)], None)
         .unwrap();
 }

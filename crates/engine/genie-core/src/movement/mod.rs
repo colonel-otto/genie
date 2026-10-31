@@ -288,7 +288,7 @@ pub struct Me {
     pub action_state: u8,
     /// Its group (`mGroupID`, `+0x6d0`; -1 for none), whose differentiator units the long pather
     /// lowers (`FUN_140f9eb70`).
-    pub group: i32,
+    pub group: Option<crate::groups::GroupId>,
 }
 
 /// What the motion step returns to the `MoveTo` action.
@@ -561,8 +561,10 @@ fn pause_rank(
     let theirs = world.gait(id).map_or(0, |g| g.human_order);
     Some(if !computer && (other.player != player || theirs != mine) {
         theirs < mine
-    } else if me.group != -1 && world.gait(id).and_then(|g| g.group) == Some(me.group) {
-        let g = groups.and_then(|gs| gs.get(me.group))?;
+    } else if let Some(group) = me.group
+        && world.gait(id).and_then(|g| g.group) == Some(group)
+    {
+        let g = groups.and_then(|gs| gs.get(group))?;
         g.index_of(me.id) < g.index_of(id)
     } else {
         me.id < id

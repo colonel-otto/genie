@@ -15,6 +15,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
+use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
@@ -799,7 +800,11 @@ fn soldiers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
             id: object_id(id),
             body: crate::objects::layers::Body::at(at.with_height(0.0)),
             group: crate::groups::GroupLink {
-                id: if members.contains(&id) { 5 } else { -1 },
+                id: if members.contains(&id) {
+                    Some(group_id(5))
+                } else {
+                    None
+                },
                 flag: -2,
             },
             life: crate::objects::lifecycle::Lifecycle {
@@ -847,7 +852,7 @@ fn soldiers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
     ];
     if !members.is_empty() {
         t.groups.groups.push(crate::groups::UnitGroup {
-            id: 5,
+            id: group_id(5),
             members: members
                 .iter()
                 .map(|&id| crate::groups::Member {
@@ -1109,9 +1114,9 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
         .unwrap();
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     assert_eq!((ai.orders.len(), ai.idle_timer), (0, 300));
-    assert_eq!(t.players[1].objects[0].group.id, -1);
-    assert_eq!(t.players[1].objects[1].group.id, -1);
-    assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+    assert_eq!(t.players[1].objects[0].group.id, None);
+    assert_eq!(t.players[1].objects[1].group.id, None);
+    assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
     assert_eq!(t.players[0].objects[0].ai.as_ref().unwrap().orders.len(), 1);
 }
 
@@ -1187,35 +1192,35 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
     let mut t = soldiers(&units, &[11]);
     t.move_order(PlayerId::new(1), &object_ids([11]), &order)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, -1);
-    assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
+    assert_eq!(t.players[1].objects[0].group.id, None);
+    assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
     // two groups' members ordered alone: both loose
     let two = || {
         let mut t = soldiers(&units, &[11]);
         t.groups.groups.push(crate::groups::UnitGroup {
-            id: 6,
+            id: group_id(6),
             members: vec![crate::groups::Member {
                 id: object_id(12),
                 ..crate::groups::Member::default()
             }],
             ..crate::groups::UnitGroup::default()
         });
-        t.players[1].objects[1].group.id = 6;
+        t.players[1].objects[1].group.id = Some(group_id(6));
         t
     };
     let mut t = two();
     t.move_order(PlayerId::new(1), &object_ids([11, 12]), &order)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, -1);
-    assert_eq!(t.players[1].objects[1].group.id, -1);
-    assert_eq!(t.groups.get(5).unwrap().members.len(), 0);
-    assert_eq!(t.groups.get(6).unwrap().members.len(), 0);
+    assert_eq!(t.players[1].objects[0].group.id, None);
+    assert_eq!(t.players[1].objects[1].group.id, None);
+    assert_eq!(t.groups.get(group_id(5)).unwrap().members.len(), 0);
+    assert_eq!(t.groups.get(group_id(6)).unwrap().members.len(), 0);
     // a group link the world does not hold
     let mut t = soldiers(&units, &[]);
-    t.players[1].objects[0].group.id = 9;
+    t.players[1].objects[0].group.id = Some(group_id(9));
     t.move_order(PlayerId::new(1), &object_ids([11]), &order)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, 9);
+    assert_eq!(t.players[1].objects[0].group.id, Some(group_id(9)));
     let interact = Interact {
         target: None,
         point: Point::new(30.0, 30.0),
@@ -1232,8 +1237,8 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
     }
     t.interact(PlayerId::new(1), &object_ids([11, 12]), &interact)
         .unwrap();
-    assert_eq!(t.players[1].objects[0].group.id, -1);
-    assert_eq!(t.players[1].objects[1].group.id, -1);
+    assert_eq!(t.players[1].objects[0].group.id, None);
+    assert_eq!(t.players[1].objects[1].group.id, None);
 }
 
 /// A queued MOVE's new group (`FUN_140e67800` at `0x140e67b5d`): the first of its units the
@@ -2846,13 +2851,13 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
 #[test]
 fn a_group_s_differentiator_groups_are_the_list_given() {
     let mut g = crate::groups::UnitGroup {
-        differentiator_groups: vec![1, 2, 3],
+        differentiator_groups: vec![group_id(1), group_id(2), group_id(3)],
         ..crate::groups::UnitGroup::default()
     };
-    set_differentiator_groups(&mut g, &[7, 8]);
-    assert_eq!(g.differentiator_groups, [7, 8]);
+    set_differentiator_groups(&mut g, &[group_id(7), group_id(8)]);
+    assert_eq!(g.differentiator_groups, [group_id(7), group_id(8)]);
     set_differentiator_groups(&mut g, &[]);
-    assert_eq!(g.differentiator_groups, Vec::<u32>::new());
+    assert_eq!(g.differentiator_groups, Vec::new());
 }
 
 /// `FUN_14118c790`: each id joins the end of the ignore list, a repeated one again.
@@ -3089,7 +3094,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
     };
     let unit = |id, grouped, position: Position| Splittable {
         id: object_id(id),
-        group: -1,
+        group: None,
         kind: master_type::COMBAT,
         grouped,
         flag_1: false,
@@ -3232,7 +3237,7 @@ fn a_formation_of_soldiers_makes_one_group_locked_to_its_type() {
     assert_eq!(ids, [object_id(11), object_id(12), object_id(13)]);
     assert_eq!(g[0].formation_locked_type, 5);
     assert_eq!(g[0].differentiator_id, 0);
-    assert_eq!(g[0].differentiator_groups, [g[0].id as u32]);
+    assert_eq!(g[0].differentiator_groups, [g[0].id]);
     assert_eq!(t.groups.commands, 1);
     // the same units again: their group takes the command without a new one
     t.form_formation(player_id(1), &object_ids([11, 12, 13]), 6)
@@ -3572,27 +3577,27 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
         m.moved_at = u.position();
         u.body.put_mover(Some(m));
     }
-    t.groups.get_mut(5).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
+    t.groups.get_mut(group_id(5)).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
     let mut split = Split {
         owner: Some(PlayerId::new(1)),
         loose: object_id_list([13, 14, 15]),
         groups: vec![object_id_list([11, 12])],
         far: [object_id(15)].into(),
     };
-    t.keep_group(&mut split, 5, None).unwrap();
+    t.keep_group(&mut split, group_id(5), None).unwrap();
     assert_eq!(split.loose, object_id_list([14, 15]));
-    let g = t.groups.get(5).unwrap();
+    let g = t.groups.get(group_id(5)).unwrap();
     assert!(g.has(object_id(13)));
     assert_eq!(g.flags & 0x2_0000, 0x2_0000);
     // the unit after one that joins is passed over: 13 joins, 15 slides into its place
     let mut t = soldiers(&units, &[11, 12]);
-    t.groups.get_mut(5).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
+    t.groups.get_mut(group_id(5)).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
     let mut split = Split {
         owner: Some(PlayerId::new(1)),
         loose: object_id_list([13, 15]),
         ..Split::default()
     };
-    t.keep_group(&mut split, 5, None).unwrap();
+    t.keep_group(&mut split, group_id(5), None).unwrap();
     assert_eq!(split.loose, object_id_list([15]));
 }
 
@@ -3625,7 +3630,7 @@ fn a_kept_group_takes_only_the_soldiers_that_do_not_see_the_target() {
             },
             ..Unit::default()
         });
-        t.groups.get_mut(5).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
+        t.groups.get_mut(group_id(5)).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
         for u in &mut t.players[1].objects {
             let mut m = crate::gathering::hunt::tests::walker();
             m.moved_at = u.position();
@@ -3641,9 +3646,10 @@ fn a_kept_group_takes_only_the_soldiers_that_do_not_see_the_target() {
             groups: vec![object_id_list([11, 12])],
             ..Split::default()
         };
-        t.keep_group(&mut split, 5, Some(object_id(60))).unwrap();
+        t.keep_group(&mut split, group_id(5), Some(object_id(60)))
+            .unwrap();
         assert_eq!(split.loose.is_empty(), joins, "target at x {target_x}");
-        assert_eq!(t.groups.get(5).unwrap().has(object_id(13)), joins);
+        assert_eq!(t.groups.get(group_id(5)).unwrap().has(object_id(13)), joins);
     }
 }
 
@@ -3797,7 +3803,10 @@ fn a_move_of_soldiers_in_no_group_forms_new_groups() {
     assert_eq!(g.len(), 3);
     for g in g {
         assert_eq!(g.members.len(), 1);
-        assert_eq!(g.differentiator_groups, [0, 1, 2]);
+        assert_eq!(
+            g.differentiator_groups,
+            [group_id(0), group_id(1), group_id(2)]
+        );
     }
 }
 
@@ -3821,14 +3830,14 @@ fn a_move_of_a_whole_group_keeps_it() {
     };
     let kept = || {
         let mut t = soldiers(&units, &[11, 12]);
-        t.groups.get_mut(5).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
+        t.groups.get_mut(group_id(5)).unwrap().motion.position[0] = BVector::new(21.0, 0.0, 20.0);
         t
     };
     let mut t = kept();
     t.move_order(PlayerId::new(1), &object_ids([11, 12, 13]), &order)
         .unwrap();
     assert_eq!(t.groups.groups.len(), 1);
-    let g = t.groups.get(5).unwrap();
+    let g = t.groups.get(group_id(5)).unwrap();
     assert!(g.has(object_id(13)));
     // the keep sets flags bit 17, which the group's command then clears
     assert_eq!((g.flags & 0x2_0000, g.differentiator_id), (0, 0));

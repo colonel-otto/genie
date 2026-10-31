@@ -1,7 +1,7 @@
 //! An interact order's unit, an order on a target, MOVE and its groups.
 
 use crate::GenieError;
-use crate::groups::CommandArgs;
+use crate::groups::{CommandArgs, GroupId};
 use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
@@ -396,20 +396,26 @@ impl World {
     /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
     /// `FUN_1410395a0`).
     fn order_groups(&mut self, split: &mut Split, order: &GroupsOrder) -> Result<(), GenieError> {
-        let mut listed: Vec<i32> = Vec::new();
+        let mut listed: Vec<GroupId> = Vec::new();
         for units in split.groups.clone() {
             let units = &units[..];
             let common =
-                crate::groups::common_group(units, |id| self.object(id).map(|(_, u)| u.group.id));
-            let new = if common == -1 {
-                true
-            } else {
-                match self.groups.get(common) {
+                crate::groups::common_group(units, |id| self.object(id).map(|(_, u)| u.group));
+            // the units' common group, kept when it holds them all
+            let kept = match common {
+                None => None,
+                Some(common) => match self.groups.get(common) {
                     None => continue,
-                    Some(g) => g.members.len() != units.len(),
-                }
+                    Some(g) => (g.members.len() == units.len()).then_some(common),
+                },
             };
-            let id = if new {
+            let new = kept.is_none();
+            let id = if let Some(common) = kept {
+                // FUN_140e6b820's target: the order's object while the world holds it
+                let held = order.target.filter(|&t| self.world_object(t).is_some());
+                self.keep_group(split, common, held)?;
+                common
+            } else {
                 let owner = split.owner.map_or(u32::MAX, |p| p.index() as u32);
                 let id = self.groups.create(owner).id;
                 for &unit in units {
@@ -418,11 +424,6 @@ impl World {
                 self.group_statistics(id, false)?;
                 self.set_initial_position(id)?;
                 id
-            } else {
-                // FUN_140e6b820's target: the order's object while the world holds it
-                let held = order.target.filter(|&t| self.world_object(t).is_some());
-                self.keep_group(split, common, held)?;
-                common
             };
             if listed.len() < LISTED {
                 listed.push(id);
@@ -450,10 +451,9 @@ impl World {
             }
             let _ = self.group_command(id, order.target, order.point, order.args)?;
         }
-        let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
             if let Some(g) = self.groups.get_mut(id) {
-                set_differentiator_groups(g, &list);
+                set_differentiator_groups(g, &listed);
             }
         }
         Ok(())

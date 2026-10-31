@@ -377,7 +377,7 @@ mod tests {
             me: Me {
                 id: unit.id,
                 action_state: 0,
-                group: -1,
+                group: None,
             },
             mover: &mover,
             plan: &mut plan,

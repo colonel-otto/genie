@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::CommandArgs;
+use crate::groups::GroupId;
 use crate::map::Point;
 use crate::math::image::group::MEMBER_MIN_HP;
 use crate::objects::ObjectId;
@@ -69,7 +70,7 @@ impl World {
     /// What [`World::member_task`] does not model.
     pub(crate) fn group_task(
         &self,
-        group: i32,
+        group: GroupId,
         target: ObjectId,
         point: Point,
         order: CommandArgs,

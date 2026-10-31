@@ -117,7 +117,7 @@ impl Unit {
                 .first()
                 .filter(|l| !l.points.is_empty())
                 .map(|l| l.created),
-            group: Some(self.group.id).filter(|&g| g != -1),
+            group: self.group.id,
         })
     }
 
