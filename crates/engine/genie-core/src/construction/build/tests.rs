@@ -508,7 +508,7 @@ fn house() -> crate::map::spatial::Placed {
 fn a_stop_halts_the_build_and_lets_its_foundation_go() {
     let mut mover = crate::gathering::hunt::tests::walker();
     let mut b = BuildAction {
-        state: MOVE,
+        state: BuildState::Move,
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         added: true,
         ..started(object_id(31148), Position::ORIGIN, 0.0, TASK)
@@ -519,13 +519,13 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
     );
     assert_eq!(
         (b.state, b.added, b.move_to, b.target),
-        (HALTED, false, None, None)
+        (BuildState::Halted, false, None, None)
     );
     assert_eq!(b.point, Position::new(-1.0, -1.0, -1.0));
     assert_eq!(mover.velocity.unwrap().velocity.y(), 0.0);
     // one not counted among the builders, standing: nothing to stop
     let mut idle = BuildAction {
-        state: WORK,
+        state: BuildState::Work,
         move_to: None,
         ..started(object_id(31150), Position::ORIGIN, 0.0, TASK)
     };
@@ -557,7 +557,7 @@ fn a_build_s_point_is_its_foundation_s_place() {
 #[test]
 fn a_builder_sent_to_another_foundation_starts_over() {
     let mut b = BuildAction {
-        state: WORK,
+        state: BuildState::Work,
         move_to: None,
         added: true,
         timer: 0.5,
@@ -576,7 +576,7 @@ fn a_builder_sent_to_another_foundation_starts_over() {
     );
     assert_eq!(
         (b.state, b.added, b.move_to.map(|m| m.state)),
-        (MOVE, false, Some(MoveTo::Arrived))
+        (BuildState::Move, false, Some(MoveTo::Arrived))
     );
 }
 
@@ -599,7 +599,7 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         sprite_override: false,
     };
     let mut b = BuildAction {
-        state: PLACE,
+        state: BuildState::Place,
         move_to: None,
         added: true,
         ..started(object_id(31011), Position::ORIGIN, 0.0, TASK)
@@ -611,7 +611,7 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
     assert_eq!(b, started(object_id(31011), Position::ORIGIN, 0.0, TASK));
     assert_eq!(b.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     let mut working = BuildAction {
-        state: WORK,
+        state: BuildState::Work,
         move_to: None,
         ..started(object_id(31011), Position::ORIGIN, 0.0, TASK)
     };

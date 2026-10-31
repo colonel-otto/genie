@@ -639,7 +639,7 @@ fn a_build_takes_its_task_move_to_and_site() {
     // a MoveTo without a sprite (−1) keeps none
     assert_eq!(walk.sprite, None);
     let mut dropping = b.clone();
-    dropping.state = genie_core::construction::build::DROP;
+    dropping.state = genie_core::construction::build::BuildState::Drop.get();
     // the drop-off's MoveTo with the carrying sprite 12 (its `+0x58`)
     let mut carrying = move_to(4, 0.75);
     carrying

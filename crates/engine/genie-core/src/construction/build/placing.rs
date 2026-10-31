@@ -2,9 +2,10 @@
 //! work, the walk off the footprint (state 223) and back.
 
 use crate::GenieError;
+use crate::construction::build::BuildState;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
-    HALTED, MAX_WAITS, PLACE, SITE_GONE, WAIT, WONDER_RATE, footprint_clearing,
+    BUILDER_UNMOVING, BuildAction, BuildReads, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
+    MAX_WAITS, SITE_GONE, WONDER_RATE, footprint_clearing,
 };
 use crate::map::Footprint;
 use crate::map::Position;
@@ -55,7 +56,7 @@ impl BuildAction {
         // every set_state first takes the builder out of FUN_140aaddb0's building's builders
         self.uncount(c)?;
         self.move_to = None;
-        self.state = PLACE;
+        self.state = BuildState::Place;
         if !desolid {
             return self.join(c, builder);
         }
@@ -231,7 +232,7 @@ impl BuildAction {
             return self.halt_placing(c, builder, reads);
         }
         builder.footprint_waits += 1;
-        self.state = WAIT;
+        self.state = BuildState::Wait;
         self.timer = 1.0;
         Ok(())
     }
@@ -253,7 +254,7 @@ impl BuildAction {
         let target = self.target.take();
         crate::world::lets::release(c, builder, target, reads.by)?;
         self.point = Position::from([-1.0; 3]);
-        self.state = HALTED;
+        self.state = BuildState::Halted;
         Ok(())
     }
 
@@ -368,7 +369,7 @@ impl BuildAction {
                 .ok_or(GenieError::unsupported(
                     "no free tile beside the footprint (set_state 2)",
                 ))?;
-        self.state = CLEAR;
+        self.state = BuildState::Clear;
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
         self.move_to = move_reads.to_point(spot.with_height(at.z()), 0.0, self.task.moving)?;
         Ok(())

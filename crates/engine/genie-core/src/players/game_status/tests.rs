@@ -1,5 +1,6 @@
 use super::*;
 use crate::combat::attack::AttackState;
+use crate::construction::build::BuildState;
 use crate::construction::repair::RepairState;
 use crate::gathering::gather::GatherState;
 use crate::gathering::hunt::HuntState;
@@ -316,7 +317,10 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         objects[gather].actions.gather().map(|g| g.state),
         Some(GatherState::Idle)
     );
-    assert_eq!(objects[build].actions.build().map(|b| b.state), Some(2));
+    assert_eq!(
+        objects[build].actions.build().map(|b| b.state),
+        Some(BuildState::Halted)
+    );
     assert_eq!(
         objects[repair].actions.repair().map(|r| r.state),
         Some(RepairState::Halted)

@@ -1,9 +1,8 @@
 //! State 8: a builder that carries something walks to a drop site first ([`DropSearch`]).
 
 use crate::GenieError;
-use crate::construction::build::{
-    BuildAction, BuildReads, DROP, DROP_REACH, DROP_WAIT, DROPPED_ORDERS,
-};
+use crate::construction::build::BuildState;
+use crate::construction::build::{BuildAction, BuildReads, DROP_REACH, DROP_WAIT, DROPPED_ORDERS};
 use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
 use crate::objects::ObjectId;
@@ -12,7 +11,6 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::world::others::OthersRef;
@@ -165,7 +163,7 @@ impl BuildAction {
         by: crate::objects::release::Releaser,
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
-        self.state = DROP;
+        self.state = BuildState::Drop;
         let found = match search {
             DropSearch::Empty => return self.restart(c, builder),
             DropSearch::Nothing => None,
@@ -281,7 +279,7 @@ impl BuildAction {
             if !ai.orders.is_empty() {
                 ai.end_order_and_action()?;
                 // 1: the action is done.
-                self.end(c, builder, DONE)?;
+                self.end(c, builder, BuildState::Done)?;
                 return Ok(HeadCode::Deletes);
             }
             self.idle(c, builder, reads)?;
@@ -290,7 +288,7 @@ impl BuildAction {
         // UCOMISS against −1 (DAT_14330ec20): a NaN is not
         if self.point.x() == -1.0 || self.point.y() == -1.0 {
             if c.w.players.player(c.player)?.computer {
-                self.end(c, builder, DONE)?;
+                self.end(c, builder, BuildState::Done)?;
             } else {
                 self.halt_in(c, builder, reads)?;
             }

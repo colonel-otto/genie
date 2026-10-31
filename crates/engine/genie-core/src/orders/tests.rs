@@ -1,5 +1,6 @@
 use super::*;
 use crate::commands::UnloadPick;
+use crate::construction::build::BuildState;
 use crate::gathering::gather::GatherState;
 use crate::gathering::hunt::HuntState;
 use crate::groups::FormationKind;
@@ -236,7 +237,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             Some(crate::gathering::hunt::tests::walker()),
         ),
         actions: ActionList::default().with_build(Some(crate::construction::build::BuildAction {
-            state: 6,
+            state: BuildState::Work,
             added: true,
             ..crate::construction::build::tests::started(
                 object_id(600),
@@ -371,12 +372,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             ObjectId::field(walk.target),
             walk.range
         ),
-        (
-            crate::construction::build::DROP,
-            Some(object_id(503)),
-            503,
-            0.1
-        )
+        (BuildState::Drop, Some(object_id(503)), 503, 0.1)
     );
     assert_eq!(
         (walk.state, walk.on_target_moved, build.added),
@@ -401,7 +397,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             build.site,
             build.move_to.map(|m| ObjectId::field(m.target))
         ),
-        (4, None, Some(600))
+        (BuildState::Move, None, Some(600))
     );
     // carrying nothing: not ordered
     let mut t = world();
@@ -409,7 +405,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
     assert_eq!(
         t.players[0].objects[0].actions.build().map(|b| b.state),
-        Some(6)
+        Some(BuildState::Work)
     );
     // 7 asks the Build as 8 does; 6 does not ask it: the search alone (no drop site in the
     // table here, nothing to work on)
@@ -426,13 +422,13 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             .actions
             .build()
             .map(|b| (b.state, b.site)),
-        Some((crate::construction::build::DROP, Some(object_id(503))))
+        Some((BuildState::Drop, Some(object_id(503))))
     );
     let mut t = world();
     t.unit_order(player_id(0), &object_ids([10]), 6).unwrap();
     assert_eq!(
         t.players[0].objects[0].actions.build().map(|b| b.state),
-        Some(6)
+        Some(BuildState::Work)
     );
     assert!(t.unit_order(player_id(0), &object_ids([10]), 3).is_err());
 }
@@ -2664,7 +2660,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
         .actions
         .set_build(Some(crate::construction::build::BuildAction {
             target: Some(object_id(60)),
-            state: 6,
+            state: BuildState::Work,
             move_to: None,
             point: Position::new(-1.0, -1.0, -1.0),
             task: crate::construction::build::BuildTask {

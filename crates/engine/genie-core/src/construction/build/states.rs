@@ -3,9 +3,8 @@
 //! the load the work's end drops.
 
 use crate::GenieError;
-use crate::construction::build::{
-    BuildAction, BuildReads, FINISHED, FISHING_SHIPS, HALTED, IDLE, MOVE, WORK, drop_done_orders,
-};
+use crate::construction::build::BuildState;
+use crate::construction::build::{BuildAction, BuildReads, FISHING_SHIPS, drop_done_orders};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveToAction;
@@ -15,7 +14,6 @@ use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::NotifyKind;
@@ -133,7 +131,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
-        self.state = FINISHED;
+        self.state = BuildState::Finished;
         let (amount, kind) = (builder.life.amount, builder.life.attribute_type);
         let Some(kind) = kind.filter(|_| reads.drop_site && 0.0 < amount) else {
             return Ok(());
@@ -207,7 +205,7 @@ impl BuildAction {
             return Ok(HeadCode::Keeps);
         }
         ai.end_order_and_action()?;
-        self.end(c, builder, DONE)?;
+        self.end(c, builder, BuildState::Done)?;
         Ok(HeadCode::Deletes)
     }
 
@@ -327,14 +325,14 @@ impl BuildAction {
     ) -> Result<(), GenieError> {
         let built = Self::site_unit(c, reads)?.map(|s| (s.id, s.life.state));
         self.leave(c, builder)?;
-        self.state = IDLE;
+        self.state = BuildState::Idle;
         let mut left = 0;
         if let Some(ai) = builder.ai.as_mut() {
             drop_done_orders(ai, built, &reads.build_targets);
             left = ai.orders.len();
             if left != 0 {
                 ai.end_order_and_action()?;
-                self.end(c, builder, DONE)?;
+                self.end(c, builder, BuildState::Done)?;
             }
         }
         if left == 0 {
@@ -367,7 +365,7 @@ impl BuildAction {
         builders: Option<&mut u8>,
         computer: bool,
     ) -> Result<(), GenieError> {
-        if self.state == WORK || (self.state == MOVE && computer) {
+        if self.state == BuildState::Work || (self.state == BuildState::Move && computer) {
             return Ok(());
         }
         if self.added {
@@ -435,7 +433,7 @@ impl BuildAction {
             m.stop()?;
         }
         self.point = Position::from([-1.0; 3]);
-        self.state = HALTED;
+        self.state = BuildState::Halted;
         let target = self.target.take();
         let site = self.site.take();
         Ok((counted, [target, site]))
@@ -476,7 +474,7 @@ impl BuildAction {
             return Err(GenieError::unsupported("a Build waiting with its MoveTo"));
         }
         self.target = None;
-        self.state = IDLE;
+        self.state = BuildState::Idle;
         Ok(())
     }
 
@@ -492,7 +490,7 @@ impl BuildAction {
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        state: u8,
+        state: BuildState,
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
         self.state = state;

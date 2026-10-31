@@ -3,13 +3,14 @@
 //! out of the action list, and the work, which runs on the world with the builder lent: the
 //! foundation's work, its starts and its completion.
 
+use crate::construction::build::BuildState;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
-use crate::construction::build::{BuildAction, BuildReads, ClearLook, DROP, DROPPED_ORDERS};
+use crate::construction::build::{BuildAction, BuildReads, ClearLook, DROPPED_ORDERS};
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, footprint_gap_squared};
@@ -54,7 +55,7 @@ impl Unit {
     ) -> Result<BTreeMap<ObjectId, ClearLook>, GenieError> {
         let mut looks = BTreeMap::new();
         if let Some(f) = Some(action)
-            .filter(|b| matches!(b.state, 6 | 222))
+            .filter(|b| matches!(b.state, BuildState::Work | BuildState::Wait))
             .and_then(|b| others.own(b.target))
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
         {
@@ -103,7 +104,7 @@ impl Unit {
                     })
                     .collect()
             });
-        let (deposit, gone_orders) = if action.state == DROP {
+        let (deposit, gone_orders) = if action.state == BuildState::Drop {
             (
                 self.build_deposit(c, others, action.site)?,
                 self.gone_drop_orders(&c.w.spatial),

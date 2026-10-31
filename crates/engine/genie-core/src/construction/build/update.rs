@@ -2,10 +2,8 @@
 //! action's state; the AI's build orders whose foundation is gone.
 
 use crate::GenieError;
-use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask, CLEAR, DROP, FINISHED, HALTED, IDLE,
-    MOVE, PLACE, WAIT, WALK_POINT, WORK,
-};
+use crate::construction::build::BuildState;
+use crate::construction::build::{BUILDER_UNMOVING, BuildAction, BuildReads, BuildTask};
 use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
@@ -18,8 +16,6 @@ use crate::objects::masters::ids::PASTURE_1889;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
@@ -42,7 +38,7 @@ impl BuildAction {
     ) -> Result<Self, GenieError> {
         Ok(Self {
             target: to.id,
-            state: MOVE,
+            state: BuildState::Move,
             move_to: task.walk(move_reads, Some(to))?,
             point: to.at,
             task,
@@ -63,7 +59,7 @@ impl BuildAction {
     ) -> Self {
         Self {
             target,
-            state: MOVE,
+            state: BuildState::Move,
             move_to,
             point: at,
             task: self.task,
@@ -94,7 +90,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
         // state 3 without a target: the update does nothing (0x140ab0370's default case)
-        if self.state == IDLE && self.target.is_none() {
+        if self.state == BuildState::Idle && self.target.is_none() {
             return Ok(HeadCode::Keeps);
         }
         if self.lost_foundation(c, reads) {
@@ -112,10 +108,10 @@ impl BuildAction {
             }
             self.foundation_done(c, builder, reads)?;
         }
-        if self.state == FINISHED {
+        if self.state == BuildState::Finished {
             return self.after_work(c, builder, reads);
         }
-        if self.state == DROP {
+        if self.state == BuildState::Drop {
             return self.update_drop(c, builder, me, reads);
         }
         self.update_state(c, builder, me, reads)
@@ -131,7 +127,7 @@ impl BuildAction {
         }
         self.added = false;
         self.target = None;
-        !matches!(self.state, 2 | 8)
+        !matches!(self.state, BuildState::Halted | BuildState::Drop)
     }
 
     /// A human player's builder of a pasture (master 1889) already built: its unit AI has no
@@ -186,7 +182,7 @@ impl BuildAction {
             };
             Self::drop_load(c, builder, kind, amount)?;
         }
-        self.end(c, builder, DONE)?;
+        self.end(c, builder, BuildState::Done)?;
         Ok(true)
     }
 
@@ -204,7 +200,12 @@ impl BuildAction {
             return Ok(());
         };
         let state = site.life.state;
-        if state == ObjectState::Foundation || matches!(self.state, FINISHED | MOVE | 8) {
+        if state == ObjectState::Foundation
+            || matches!(
+                self.state,
+                BuildState::Finished | BuildState::Move | BuildState::Drop
+            )
+        {
             return Ok(());
         }
         let master = site.master(&c.w.masters, c.player)?;
@@ -233,18 +234,19 @@ impl BuildAction {
     ) -> Result<HeadCode, GenieError> {
         match self.state {
             // case 0: the update returns 1, the action list removes it
-            DONE => return Ok(HeadCode::Deletes),
+            BuildState::Done => return Ok(HeadCode::Deletes),
             // case 1: set_state(13); the update returns 0
-            HALTED => self.end(c, builder, FAILED)?,
-            MOVE | CLEAR => self.walking(c, builder, me, reads)?,
-            WORK => self.face_and_place(c, builder, reads)?,
-            PLACE => self.work(c, builder, reads)?,
-            WALK_POINT => self.walking_to_point(c, builder, me, reads)?,
+            BuildState::Halted => self.end(c, builder, BuildState::Failed)?,
+            BuildState::Move | BuildState::Clear => self.walking(c, builder, me, reads)?,
+            BuildState::Work => self.face_and_place(c, builder, reads)?,
+            BuildState::Place => self.work(c, builder, reads)?,
+            BuildState::WalkPoint => self.walking_to_point(c, builder, me, reads)?,
             // 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it
-            FAILED => return self.failed(c, builder, reads),
-            WAIT => self.wait_out(c, builder, reads)?,
-            // the default case (states 0, 3, 5, 8 to 10, 12 and 14 to 221): the update returns 0
-            _ => {}
+            BuildState::Failed => return self.failed(c, builder, reads),
+            BuildState::Wait => self.wait_out(c, builder, reads)?,
+            // the default case (3 with a target, and the bytes without a state, which no step
+            // sets): the update returns 0; 8 and 224 returned before the switch
+            BuildState::Idle | BuildState::Drop | BuildState::Finished => {}
         }
         Ok(HeadCode::Keeps)
     }

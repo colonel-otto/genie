@@ -30,6 +30,7 @@ use crate::objects::masters::{Master, Task};
 use crate::unit_ai::OrderKind;
 use genie_diff::Diff;
 
+mod build_state;
 mod clearing;
 mod completion;
 mod construction;
@@ -44,6 +45,7 @@ mod walk_ends;
 mod walks;
 pub(crate) mod world_side;
 
+pub use self::build_state::BuildState;
 pub(crate) use self::clearing::{CLEARING_REACH, clearing_objects, footprint_clearing};
 pub use self::clearing::{ClearLook, Cleared, ClearingSite};
 
@@ -80,7 +82,7 @@ pub struct BuildAction {
     /// The foundation's id; none once it is gone.
     pub target: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
-    pub state: u8,
+    pub state: BuildState,
     /// Its sub-action list's `MoveTo` (`+0x50`), None for an empty list: to the foundation
     /// (`set_state(4)`), to the drop site (8), to its point (11) or off the footprint (223).
     pub move_to: Option<MoveToAction>,
@@ -377,26 +379,8 @@ const EXTRA_BUILDER: f32 = crate::math::image::build::EXTRA_BUILDER;
 const STARTED: u32 = 0x2edb_e6ff;
 const WONDER_RATE: f32 = crate::math::image::build::WONDER_RATE;
 
-/// The Build action's states the slice models.
-const MOVE: u8 = 4;
-const WORK: u8 = 6;
-pub(crate) const PLACE: u8 = 7;
-/// The walk to the action's point (`set_state(11)`).
-const WALK_POINT: u8 = 11;
-/// The wait for an occupied footprint (`set_state(222)`).
-const WAIT: u8 = 222;
 /// The waits a builder makes before it gives up (`0x15`).
 const MAX_WAITS: u8 = 21;
-/// 223 (`0xdf`): off the footprint, to a free tile beside it.
-const CLEAR: u8 = 223;
-/// 224 (`0xe0`): the work ended, the building completed.
-pub(crate) const FINISHED: u8 = 224;
-/// 3: the action waits without a target.
-pub(crate) const IDLE: u8 = 3;
-/// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
-const HALTED: u8 = 2;
-/// 8: the builder carries its load to a drop site (`set_state(8)`, [`BuildAction::set_drop`]).
-pub const DROP: u8 = 8;
 /// The drop-off's wait after a drop site out of reach (`0xc0400000`).
 const DROP_WAIT: f32 = -3.0;
 /// The drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).

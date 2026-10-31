@@ -11,6 +11,7 @@ use crate::commands::{
     TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
     UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
+use crate::construction::build::BuildState;
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::construction::gates::gate_units;
 use crate::construction::repair::RepairState;
@@ -1708,7 +1709,10 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     // the builder at the foundation works in its first update; the other's MoveTo fails at once
     // (FUN_140aa2100: these villagers lack their movement state, so their speed), and its
     // failed walk's path test needs that state
-    assert_eq!((builder(0), builder(1)), ((118, Some(6)), (212, Some(4))));
+    assert_eq!(
+        (builder(0), builder(1)),
+        ((118, Some(BuildState::Work)), (212, Some(BuildState::Move)))
+    );
     // each idle villager's town-bell record: no work, at its own place
     assert_eq!(
         p.objects[1].town_bell.work,
@@ -2335,7 +2339,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
         ),
         (
             Some(object_id(10028)),
-            4,
+            BuildState::Move,
             Some(10028),
             Position::new(30.0, 88.0, 0.0),
             Some(MoveTo::Start),
@@ -2461,7 +2465,7 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
 }
 
 /// The work command again on the Build's own foundation (`FUN_140ab1b30`): a Build at work
-/// (state 6) keeps on; one counted among the builders that waits (state 5) leaves them and
+/// (state 6) keeps on; one counted among the builders that waits (state 222) leaves them and
 /// walks again (state 4), its `MoveTo` arrived where the footprints touch.
 #[test]
 fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() {
@@ -2474,15 +2478,15 @@ fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() 
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
-    t.players[1].objects[0].actions.build_mut().unwrap().state = 6;
+    t.players[1].objects[0].actions.build_mut().unwrap().state = BuildState::Work;
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
     assert_eq!(
         t.players[1].objects[0].actions.build().map(|b| b.state),
-        Some(6)
+        Some(BuildState::Work)
     );
     {
         let b = t.players[1].objects[0].actions.build_mut().unwrap();
-        (b.state, b.added, b.move_to) = (5, true, None);
+        (b.state, b.added, b.move_to) = (BuildState::Wait, true, None);
     }
     t.players[1].objects[1]
         .construction
@@ -2494,7 +2498,12 @@ fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() 
     let b = t.players[1].objects[0].actions.build().copied().unwrap();
     assert_eq!(
         (b.state, b.added, b.move_to.map(|m| m.state), b.target),
-        (4, false, Some(MoveTo::Arrived), Some(object_id(10028)))
+        (
+            BuildState::Move,
+            false,
+            Some(MoveTo::Arrived),
+            Some(object_id(10028))
+        )
     );
     assert_eq!(
         t.players[1].objects[1].construction.map(|k| k.builders),
@@ -2537,7 +2546,7 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
         .unwrap();
     {
         let b = t.players[1].objects[0].actions.build_mut().unwrap();
-        (b.state, b.added) = (5, true);
+        (b.state, b.added) = (BuildState::Wait, true);
     }
     t.players[1].objects[1]
         .construction
@@ -2557,7 +2566,7 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
         ),
         (
             Some(object_id(10031)),
-            4,
+            BuildState::Move,
             false,
             Position::new(34.0, 88.0, 0.0),
             Some(10031)
@@ -2604,7 +2613,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     assert_eq!(v.life.master_id, ids::BUILDER);
     assert_eq!(
         v.actions.build().map(|b| (b.target, b.state)),
-        Some((Some(object_id(10028)), 4))
+        Some((Some(object_id(10028)), BuildState::Move))
     );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -9325,7 +9334,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     assert_eq!(t.players[1].objects[4].workers, 0);
     t.players[1].objects[2].actions.set_build(Some(BuildAction {
         target: Some(object_id(10028)),
-        state: 3,
+        state: BuildState::Idle,
         move_to: None,
         point: Position::new(-1.0, -1.0, -1.0),
         task: BuildTask {
@@ -9454,7 +9463,7 @@ fn deaths_world() -> World {
         .set_hunt(Some(crate::gathering::hunt::tests::hunting(60)));
     villagers[2].actions.set_build(Some(BuildAction {
         target: Some(object_id(10028)),
-        state: 7,
+        state: BuildState::Place,
         move_to: None,
         point: Position::new(-1.0, -1.0, -1.0),
         task: BuildTask {
@@ -15350,7 +15359,7 @@ fn house_builder() -> World {
 /// villager building foundation 10028 while it carries `held`, its town centre a done drop site
 /// of the table (resources 0 to 3 and berries): Ok with the Build's state, its site and range,
 /// the centre's workers and what the unit AI heard.
-fn drop_again_with(held: Held) -> (u8, Option<ObjectId>, f32, i32, Vec<NotifyKind>) {
+fn drop_again_with(held: Held) -> (BuildState, Option<ObjectId>, f32, i32, Vec<NotifyKind>) {
     let mut t = house_builder();
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = (held.kind, held.amount);
@@ -15386,22 +15395,27 @@ fn drop_again_with(held: Held) -> (u8, Option<ObjectId>, f32, i32, Vec<NotifyKin
 /// load no drop site takes leaves no site and tells the unit AI (0x203).
 #[test]
 fn a_loaded_builder_s_drop_off_finds_its_town_centre() {
-    use crate::construction::build::DROP;
     assert_eq!(
         drop_again_with(carrying(Some(AttributeId::numbered(17)), 6.0)),
-        (DROP, Some(object_id(700)), 0.25, 1, vec![])
+        (BuildState::Drop, Some(object_id(700)), 0.25, 1, vec![])
     );
     assert_eq!(
         drop_again_with(carrying(Some(attribute::STONE), 6.0)),
-        (DROP, Some(object_id(700)), 0.0, 1, vec![])
+        (BuildState::Drop, Some(object_id(700)), 0.0, 1, vec![])
     );
     assert_eq!(
         drop_again_with(carrying(None, 0.0)),
-        (4, None, 0.0, 0, vec![])
+        (BuildState::Move, None, 0.0, 0, vec![])
     );
     assert_eq!(
         drop_again_with(carrying(Some(AttributeId::numbered(5)), 6.0)),
-        (4, None, 0.0, 0, vec![NotifyKind::NO_DROP_SITE])
+        (
+            BuildState::Move,
+            None,
+            0.0,
+            0,
+            vec![NotifyKind::NO_DROP_SITE]
+        )
     );
 }
 
@@ -16020,11 +16034,7 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
     }
     t.drop_sites[0].auto_work = true;
     let b = t.players[1].objects[0].actions.build_mut().unwrap();
-    (b.target, b.move_to, b.state) = (
-        Some(object_id(700)),
-        None,
-        crate::construction::build::FINISHED,
-    );
+    (b.target, b.move_to, b.state) = (Some(object_id(700)), None, BuildState::Finished);
     let centre = &mut t.players[1].objects[2];
     centre.workers = 1;
     centre.construction = Some(Construction {
@@ -16090,10 +16100,7 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
             ))
         );
         let b = t.players[1].objects[0].actions.build().copied().unwrap();
-        assert_eq!(
-            (b.state, b.target),
-            (crate::construction::build::IDLE, None)
-        );
+        assert_eq!((b.state, b.target), (BuildState::Idle, None));
         assert_eq!(t.players[1].objects[2].workers, 0);
     }
 }
@@ -16103,12 +16110,8 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
 /// first: one update of `dt` milliseconds.
 fn worked(t: &mut World, site: i32, dt: u32) -> Result<(), GenieError> {
     let b = t.players[1].objects[0].actions.build_mut().unwrap();
-    (b.target, b.state, b.added, b.move_to) = (
-        ObjectId::of_field(site),
-        crate::construction::build::PLACE,
-        true,
-        None,
-    );
+    (b.target, b.state, b.added, b.move_to) =
+        (ObjectId::of_field(site), BuildState::Place, true, None);
     b.task = BuildTask {
         range: 0.1,
         work_value: 1.0,
@@ -16201,10 +16204,7 @@ fn a_builder_s_completion_reaches_the_world_within_its_update() {
     let attributes = &t.players[1].attributes;
     assert_eq!((attributes[98], attributes[165]), (25.0, 25.0));
     let b = t.players[1].objects[0].actions.build().copied().unwrap();
-    assert_eq!(
-        (b.state, b.added),
-        (crate::construction::build::FINISHED, false)
-    );
+    assert_eq!((b.state, b.added), (BuildState::Finished, false));
 }
 
 /// A builder's completion of its foundation takes the foundation's annexes to state 2 where it
@@ -16937,15 +16937,26 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
     assert_eq!(
         seen,
         [
-            (0, (4, Some(MoveTo::Moving), ObjectState::Foundation)),
-            (8, (4, Some(MoveTo::Arrived), ObjectState::Foundation)),
-            (9, (6, None, ObjectState::Foundation)),
-            (10, (7, None, ObjectState::Foundation)),
-            (511, (224, None, ObjectState::Alive)),
             (
-                512,
-                (crate::construction::build::IDLE, None, ObjectState::Alive)
+                0,
+                (
+                    BuildState::Move,
+                    Some(MoveTo::Moving),
+                    ObjectState::Foundation
+                )
             ),
+            (
+                8,
+                (
+                    BuildState::Move,
+                    Some(MoveTo::Arrived),
+                    ObjectState::Foundation
+                )
+            ),
+            (9, (BuildState::Work, None, ObjectState::Foundation)),
+            (10, (BuildState::Place, None, ObjectState::Foundation)),
+            (511, (BuildState::Finished, None, ObjectState::Alive)),
+            (512, (BuildState::Idle, None, ObjectState::Alive)),
         ]
     );
     let house = &t.players[1].objects[1];
@@ -17003,7 +17014,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
             seen.push((n, now));
         }
     }
-    let drop = crate::construction::build::DROP;
+    let drop = BuildState::Drop;
     assert_eq!(
         seen,
         [
@@ -17012,11 +17023,11 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
                 177,
                 (drop, Some(MoveTo::Arrived), Some(object_id(700)), 6.0)
             ),
-            (178, (4, Some(MoveTo::Start), None, 0.0)),
-            (179, (4, Some(MoveTo::Moving), None, 0.0)),
-            (342, (4, Some(MoveTo::Arrived), None, 0.0)),
-            (343, (6, None, None, 0.0)),
-            (344, (7, None, None, 0.0)),
+            (178, (BuildState::Move, Some(MoveTo::Start), None, 0.0)),
+            (179, (BuildState::Move, Some(MoveTo::Moving), None, 0.0)),
+            (342, (BuildState::Move, Some(MoveTo::Arrived), None, 0.0)),
+            (343, (BuildState::Work, None, None, 0.0)),
+            (344, (BuildState::Place, None, None, 0.0)),
         ]
     );
     assert_eq!(t.players[1].resources[0], 6.0);
@@ -17458,15 +17469,26 @@ fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
     assert_eq!(
         seen,
         [
-            (0, (4, Some(MoveTo::Moving), ObjectState::Foundation)),
-            (8, (4, Some(MoveTo::Arrived), ObjectState::Foundation)),
-            (9, (6, None, ObjectState::Foundation)),
-            (10, (7, None, ObjectState::Foundation)),
-            (511, (224, None, ObjectState::Alive)),
             (
-                512,
-                (crate::construction::build::IDLE, None, ObjectState::Alive)
+                0,
+                (
+                    BuildState::Move,
+                    Some(MoveTo::Moving),
+                    ObjectState::Foundation
+                )
             ),
+            (
+                8,
+                (
+                    BuildState::Move,
+                    Some(MoveTo::Arrived),
+                    ObjectState::Foundation
+                )
+            ),
+            (9, (BuildState::Work, None, ObjectState::Foundation)),
+            (10, (BuildState::Place, None, ObjectState::Foundation)),
+            (511, (BuildState::Finished, None, ObjectState::Alive)),
+            (512, (BuildState::Idle, None, ObjectState::Alive)),
         ]
     );
     assert_eq!(t.players.iter().map(|p| p.freezes.len()).sum::<usize>(), 0);

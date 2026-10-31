@@ -2,9 +2,9 @@
 //! point (state 11).
 
 use crate::GenieError;
+use crate::construction::build::BuildState;
 use crate::construction::build::{
-    BUILDER_UNMOVING, BuildAction, BuildReads, CLEAR, FOREIGN_SITE, REACH, SEEN, SITE_GONE,
-    UNSEEN_SITE, WALK_POINT, WORK,
+    BUILDER_UNMOVING, BuildAction, BuildReads, FOREIGN_SITE, REACH, SEEN, SITE_GONE, UNSEEN_SITE,
 };
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -29,7 +29,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        if self.state == CLEAR {
+        if self.state == BuildState::Clear {
             return self.restart(c, builder);
         }
         if self.target.is_none() {
@@ -50,7 +50,7 @@ impl BuildAction {
             }
         }
         self.leave(c, builder)?;
-        self.state = WORK;
+        self.state = BuildState::Work;
         Ok(())
     }
 
@@ -186,7 +186,7 @@ impl BuildAction {
         builder: &mut Unit,
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
-        self.state = WALK_POINT;
+        self.state = BuildState::WalkPoint;
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
         self.move_to = move_reads.to_point(self.point, 0.0, self.task.moving)?;
         Ok(())
