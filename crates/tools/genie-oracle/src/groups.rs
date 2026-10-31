@@ -13,6 +13,7 @@ use genie_core::groups::{
 };
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
+use genie_core::unit_ai::UnitStance;
 use genie_save::generated::world as saved;
 
 use crate::{object_ids, path_level, vec3};
@@ -117,7 +118,13 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         motion: motion(&g.motion, paths)?,
         id: GroupId::try_from(g.id)?,
         owner: g.owner.to_bits(),
-        state: g.state,
+        // −1 (the constructor's) is none
+        stance: match g.state {
+            -1 => None,
+            s => Some(UnitStance::of_byte(u8::try_from(s).map_err(|_| {
+                GenieError::invalid_input("a group's stance past a byte").with("stance", s)
+            })?)),
+        },
         members: g
             .units
             .iter()
@@ -402,7 +409,8 @@ flat_value!(
     GroupTarget,
     ActionType,
     FormationKind,
-    SlotState
+    SlotState,
+    UnitStance
 );
 
 impl<T: Flat, const N: usize> Flat for [T; N] {
@@ -483,7 +491,7 @@ flat_struct! {
         command, target_id, range, point, approved, disable_retargeting, approved_2,
     }
     UnitGroup {
-        motion, id, owner, state, members, previous_formation, current_formation, garbage,
+        motion, id, owner, stance, members, previous_formation, current_formation, garbage,
         formation_locked_type, flags, centroid, desired_height, largest_unit_radius,
         smallest_unit_radius, desired_spacing, smallest_unit_range, smallest_ranged_unit_range,
         largest_unit_range, largest_ranged_unit_range, stored_positions, unit_types, waypoints,

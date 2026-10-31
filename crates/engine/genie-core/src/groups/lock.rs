@@ -7,6 +7,7 @@ use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::create::FormationUnit;
 use crate::objects::ObjectId;
+use crate::unit_ai::UnitStance;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -135,17 +136,17 @@ impl World {
                 *n.checked_mut(at)? += 1;
             }
         }
-        let state = if ids.is_empty() || (n[1] <= n[0] && n[2] <= n[0] && n[3] <= n[0]) {
-            0
+        let stance = if ids.is_empty() || (n[1] <= n[0] && n[2] <= n[0] && n[3] <= n[0]) {
+            UnitStance::AGGRESSIVE
         } else if n[2] <= n[1] && n[3] <= n[1] {
-            1
+            UnitStance::DEFENSIVE
         } else if n[3] <= n[2] {
-            2
+            UnitStance::STAND_GROUND
         } else {
-            3
+            UnitStance::NO_ATTACK
         };
         if let Some(g) = self.groups.get_mut(group) {
-            g.state = state;
+            g.stance = Some(stance);
         }
         // FUN_1415417a0 finds sleeping members too
         for &id in &ids {

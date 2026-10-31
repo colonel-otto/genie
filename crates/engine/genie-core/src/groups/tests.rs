@@ -219,7 +219,7 @@ fn a_unit_s_sub_formation_follows_its_category_and_its_hero_flag() {
 #[test]
 fn a_new_group_holds_the_constructor_s_values() {
     let g = UnitGroup::new(group_id(7));
-    assert_eq!((g.id, g.owner, g.state), (group_id(7), u32::MAX, -1));
+    assert_eq!((g.id, g.owner, g.stance), (group_id(7), u32::MAX, None));
     assert_eq!(
         (g.flags, g.current_command, g.differentiator_id),
         (0x100, -1, -1)

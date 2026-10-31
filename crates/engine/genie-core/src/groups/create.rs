@@ -715,6 +715,41 @@ mod tests {
         );
     }
 
+    /// `FUN_14100d140`'s stance: the members' most common, the lower on equal counts; a group
+    /// none of whose members holds a unit AI stays aggressive.
+    #[test]
+    fn the_group_takes_its_members_most_common_stance() {
+        use crate::unit_ai::UnitStance;
+        let with = |stances: [UnitStance; 3]| {
+            let mut t = three();
+            for (u, stance) in t.players[1].objects.iter_mut().zip(stances) {
+                u.ai = Some(crate::unit_ai::UnitAi {
+                    stance,
+                    ..crate::unit_ai::UnitAi::default()
+                });
+            }
+            t.stances_state(group_id(1), FormationKind::USER_DEFINED)
+                .unwrap();
+            t.groups.get(group_id(1)).unwrap().stance
+        };
+        let (a, d, s) = (
+            UnitStance::AGGRESSIVE,
+            UnitStance::DEFENSIVE,
+            UnitStance::STAND_GROUND,
+        );
+        assert_eq!(with([d, s, d]), Some(d));
+        assert_eq!(with([s, s, a]), Some(s));
+        assert_eq!(with([a, d, s]), Some(a));
+        assert_eq!(
+            with([UnitStance::NO_ATTACK; 3]),
+            Some(UnitStance::NO_ATTACK)
+        );
+        let mut t = three();
+        t.stances_state(group_id(1), FormationKind::USER_DEFINED)
+            .unwrap();
+        assert_eq!(t.groups.get(group_id(1)).unwrap().stance, Some(a));
+    }
+
     /// `LockFormation` (`FUN_141024e70`) re-reads the spacing (`+0x15c`) for every member
     /// (`MOVSS`/`UCOMISS` at 0x14102500a): the first held member with a radius sets it, the later
     /// ones are skipped.

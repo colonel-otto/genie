@@ -19,6 +19,7 @@ use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::masters::ActionType;
 use crate::players::PlayerId;
+use crate::unit_ai::UnitStance;
 use crate::world::slots::CheckedIndex;
 
 mod formation_kind;
@@ -347,8 +348,10 @@ pub struct UnitGroup {
     pub id: GroupId,
     /// `mOwner` (its 32 bits).
     pub owner: u32,
-    /// `mState`.
-    pub state: i32,
+    /// `mState`: the members' most common stance
+    /// ([`crate::world::World::stances_state`]), none (−1) until
+    /// a formation first locks it.
+    pub stance: Option<UnitStance>,
     /// The members (`mNumberUnits` at `+0xe4`, `mUnits` at `+0xf0`).
     pub members: Vec<Member>,
     /// `mPreviousFormation`, when it has one.
@@ -471,7 +474,7 @@ impl UnitGroup {
 
     /// `BUnitGroup`'s constructor (`FUN_140fe1550` after [`Motion::new`]) with id `id`
     /// (`FUN_141039640`): the owner -1 (the 64-bit -1 over `+0xd8` and `+0xdc`, whose id the
-    /// id's setter then writes; [`UnitGroups::create`] sets the owner after), state -1, no
+    /// id's setter then writes; [`UnitGroups::create`] sets the owner after), no stance (−1), no
     /// formation, flags `0x100`, no command (-1), no target (-1, type -1), differentiator -1,
     /// `+0x13d` 1 (the 16-bit `0x100` at `+0x13c`, `mHibernating` 0); every other field 0 or
     /// empty, the attack plan (`+0x3b0`, `FUN_140fd75c0`) too.
@@ -488,7 +491,7 @@ impl UnitGroup {
             motion: Motion::new(),
             id,
             owner: u32::MAX,
-            state: -1,
+            stance: None,
             flags: 0x100,
             current_command: -1,
             current_target: TargetData::default(),
