@@ -159,7 +159,7 @@ impl Action {
             Self::Transport(a) => a.state.get(),
             Self::Missile(a) => a.state.get(),
             Self::Make(a) => a.state.get(),
-            Self::WaitSolidify(a) => a.state,
+            Self::WaitSolidify(a) => a.state.get(),
         }
     }
 }

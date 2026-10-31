@@ -674,6 +674,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::construction::wait_solidify::WaitSolidifyState;
     use crate::gathering::make::MakeState;
     use crate::map::Footprint;
     use crate::map::GridSize;
@@ -1095,7 +1096,7 @@ mod tests {
         }));
         u.actions
             .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify {
-                state: 0,
+                state: WaitSolidifyState::Waiting,
                 task: waiting,
                 target: object_id(10028),
             }));

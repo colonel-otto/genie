@@ -1091,7 +1091,7 @@ fn an_attack_needs_the_sprites_table() {
 
 #[test]
 fn a_wait_solidify_waits_for_its_foundation() {
-    use genie_core::construction::wait_solidify::WAIT_SOLIDIFY;
+    use genie_core::construction::wait_solidify::{WAIT_SOLIDIFY, WaitSolidifyState};
     let wait = |b: RgeAction| Action {
         tribe_action_wait_solidify: Some(Box::new(TribeActionWaitSolidify {
             rge_action: b,
@@ -1109,7 +1109,11 @@ fn a_wait_solidify_waits_for_its_foundation() {
         .unwrap();
     assert_eq!(
         (w.state, w.target, w.task.id),
-        (2, object_id(40), TaskId::of_task(1))
+        (
+            WaitSolidifyState::Stopped,
+            object_id(40),
+            TaskId::of_task(1)
+        )
     );
     assert_eq!(
         imported(

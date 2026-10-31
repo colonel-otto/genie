@@ -543,7 +543,9 @@ fn import_wait_solidify(
     let target = ObjectId::try_from(target)?;
     let mut wait =
         genie_core::construction::wait_solidify::WaitSolidify::new(saved.task(task_at)?, target);
-    wait.set_state(saved.base.state);
+    wait.set_state(
+        genie_core::construction::wait_solidify::WaitSolidifyState::of_byte(saved.base.state)?,
+    );
     unit.actions.set_wait_solidify(Some(wait));
     Ok(())
 }

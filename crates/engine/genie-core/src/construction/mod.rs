@@ -6,3 +6,4 @@ pub(crate) mod building_update;
 pub(crate) mod gates;
 pub mod repair;
 pub mod wait_solidify;
+mod wait_solidify_state;

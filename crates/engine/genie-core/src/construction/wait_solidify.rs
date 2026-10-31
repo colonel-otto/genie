@@ -26,8 +26,7 @@ use genie_diff::Diff;
 /// The action type (`+0x8`, 0x9a).
 pub const WAIT_SOLIDIFY: ActionType = ActionType::named(0x9a);
 
-/// `+0x18`: the state the constructor gives it; only its `set_state` (slot 0x80) changes it.
-pub const WAITING: u8 = 10;
+pub use crate::construction::wait_solidify_state::WaitSolidifyState;
 
 /// `DAT_142eb56a0` (a double): the foundation's build points (`+0xc50`, widened) at most which
 /// it is not solid yet.
@@ -38,7 +37,7 @@ const SOLID_FROM: f64 = crate::math::image::wait_solidify::SOLID_FROM;
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct WaitSolidify {
     /// `+0x18`.
-    pub state: u8,
+    pub state: WaitSolidifyState,
     /// `+0x48`: the task slot 0x820 found on the foundation, whatever its action type.
     pub task: Task,
     /// `+0x68`: the foundation's id.
@@ -48,11 +47,11 @@ pub struct WaitSolidify {
 impl WaitSolidify {
     /// The constructor (`FUN_140ae81c0`): the base action's (`FUN_140a73e90` with 1, which
     /// leaves the target unset), the task, the type 0x9a, the foundation's id and state
-    /// [`WAITING`].
+    /// [`WaitSolidifyState::Waiting`].
     #[must_use]
     pub const fn new(task: Task, target: ObjectId) -> Self {
         Self {
-            state: WAITING,
+            state: WaitSolidifyState::Waiting,
             task,
             target,
         }
@@ -68,7 +67,7 @@ impl WaitSolidify {
     }
 
     /// Its `set_state` (slot 0x80, `FUN_140ae8b60`): the state, nothing else.
-    pub const fn set_state(&mut self, state: u8) {
+    pub const fn set_state(&mut self, state: WaitSolidifyState) {
         self.state = state;
     }
 }
@@ -163,9 +162,9 @@ mod tests {
         let w = WaitSolidify::new(task(), object_id(8123));
         assert_eq!(
             (w.state, w.task, w.target),
-            (WAITING, task(), object_id(8123))
+            (WaitSolidifyState::Waiting, task(), object_id(8123))
         );
-        assert_eq!(WAITING, 10);
+        assert_eq!(WaitSolidifyState::Waiting.get(), 10);
         assert_eq!(WAIT_SOLIDIFY, WAIT_SOLIDIFY);
     }
 
@@ -185,11 +184,11 @@ mod tests {
     #[test]
     fn its_set_state_sets_the_state_alone() {
         let mut w = WaitSolidify::new(task(), object_id(8123));
-        w.set_state(2);
+        w.set_state(WaitSolidifyState::Stopped);
         assert_eq!(
             w,
             WaitSolidify {
-                state: 2,
+                state: WaitSolidifyState::Stopped,
                 ..WaitSolidify::new(task(), object_id(8123))
             }
         );

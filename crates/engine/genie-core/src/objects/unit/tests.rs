@@ -1,5 +1,6 @@
 use crate::GenieError;
 use crate::combat::attack::AttackState;
+use crate::construction::wait_solidify::WaitSolidifyState;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::ObjectState;
@@ -216,7 +217,7 @@ fn the_actions_update_runs_the_action_held() {
 /// A wait for a foundation (state 0) on one the world does not hold.
 fn gone_foundation() -> crate::construction::wait_solidify::WaitSolidify {
     crate::construction::wait_solidify::WaitSolidify {
-        state: 0,
+        state: WaitSolidifyState::Waiting,
         task: crate::objects::masters::Task::default(),
         target: object_id(99_999),
     }
@@ -426,7 +427,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     transport.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Transport(transport)), walking);
     let wait = crate::construction::wait_solidify::WaitSolidify {
-        state: 0,
+        state: WaitSolidifyState::Waiting,
         task: crate::objects::masters::Task::default(),
         target: object_id(7),
     };
