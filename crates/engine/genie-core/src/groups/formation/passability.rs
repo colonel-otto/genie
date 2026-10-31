@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::GroupId;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
+use crate::map::GridSize;
 use crate::map::spatial::RecordId;
 use crate::map::{GroundOffset, Point, Rect, Tile};
 use crate::world::slots::CheckedIndex;
@@ -173,7 +174,8 @@ impl World {
         grid: &mut PassGrid,
         (members, un): (&[RecordId], Unreachable<'_>),
     ) -> Result<(), GenieError> {
-        let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
+        let (w, h) = (grid.size.width(), grid.size.height());
+        let (ox, oz) = (grid.origin.x(), grid.origin.y());
         let (k, grow) = (un.nearest, un.grow);
         let mut visited = vec![0u8; (w * h).max(0) as usize];
         for &u in un.slots {
@@ -327,10 +329,8 @@ impl World {
         let oz = cvttss2si(min_z - PASS_HALF_MARGIN);
         let mut grid = PassGrid {
             cells: vec![0u8; GRID_BYTES],
-            w,
-            h,
-            ox,
-            oz,
+            size: GridSize::new(w, h),
+            origin: Tile::new(ox, oz),
         };
         mark_reachable(&mut grid, formation, (&reachable, k))?;
         let moved = Unreachable {
@@ -391,7 +391,8 @@ impl World {
         (gx, gy): (i32, i32),
         unit_mask: crate::map::TerrainMask,
     ) -> Option<(Tile, usize)> {
-        let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
+        let (w, h) = (grid.size.width(), grid.size.height());
+        let (ox, oz) = (grid.origin.x(), grid.origin.y());
         if !(0 <= gx && 0 <= gy && gx < w && gy < h) {
             return None;
         }
@@ -459,8 +460,8 @@ impl World {
         members: &[RecordId],
     ) -> Result<Option<Tile>, GenieError> {
         let (fx, fy) = (found.x(), found.y());
-        let (w, h) = (grid.w, grid.h);
-        let (rx, ry) = (fx - grid.ox, fy - grid.oz);
+        let (w, h) = (grid.size.width(), grid.size.height());
+        let (rx, ry) = (fx - grid.origin.x(), fy - grid.origin.y());
         let (ddx, ddy) = match *grid.cells.checked((w * ry + rx) as usize)? >> 6 {
             0 => (0, 1),
             1 => (1, 0),
@@ -488,15 +489,13 @@ impl World {
     }
 }
 
-/// [`World::passable_slots`]'s grid over the box, a byte per tile (`w` by `h` from the tile
-/// (`ox`, `oz`)): bit 0 a reachable slot's cell, bits 1 to 5 the slots it holds, bits 6 and 7
+/// [`World::passable_slots`]'s grid over the box, a byte per tile (`size` from the tile
+/// `origin`): bit 0 a reachable slot's cell, bits 1 to 5 the slots it holds, bits 6 and 7
 /// the way to the nearest slot.
 pub(super) struct PassGrid {
     pub(super) cells: Vec<u8>,
-    pub(super) w: i32,
-    pub(super) h: i32,
-    pub(super) ox: i32,
-    pub(super) oz: i32,
+    pub(super) size: GridSize,
+    pub(super) origin: Tile,
 }
 
 /// `FUN_14103a1f0`'s grid cell count up: bits 1 to 5 (the slots a cell holds) count on (mod 32),
@@ -589,7 +588,8 @@ fn mark_reachable(
     formation: &Formation,
     (reachable, k): (&[usize], usize),
 ) -> Result<(), GenieError> {
-    let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
+    let (w, h) = (grid.size.width(), grid.size.height());
+    let (ox, oz) = (grid.origin.x(), grid.origin.y());
     let near = formation.slots.checked(k)?.transform_position;
     for &r in reachable {
         let p = formation.slots.checked(r)?.transform_position;

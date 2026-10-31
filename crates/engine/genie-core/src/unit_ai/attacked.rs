@@ -465,7 +465,7 @@ impl UnitAi {
             side.seek_unexplored(self, ai_rng)?
         };
         if let Some(t) = found {
-            let _ = self.explore_at(t.x(), t.y(), true, side, ai_rng)?;
+            let _ = self.explore_at(t, true, side, ai_rng)?;
             self.last_action = self.current_action;
             self.current_action = action;
             return Ok(BREAK);
@@ -489,7 +489,7 @@ impl UnitAi {
                     return Ok(BREAK);
                 };
                 if self.current_action == Some(ActionKind::AutoScout) {
-                    let _ = self.explore_at(t.x(), t.y(), true, side, ai_rng)?;
+                    let _ = self.explore_at(t, true, side, ai_rng)?;
                 }
                 self.current_action = action;
                 Ok(BREAK)

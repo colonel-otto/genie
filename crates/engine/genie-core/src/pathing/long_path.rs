@@ -310,7 +310,7 @@ pub fn path(
             reached,
             end,
             entered,
-        } => trace(req.from, end, &entered, map.width(), z)
+        } => trace(req.from, end, &entered, map, z)
             .map_or_else(|| (false, Path::default()), |path| (reached, path)),
     })
 }
@@ -320,14 +320,15 @@ pub fn path(
 /// (the end's always) puts its centre (x + 0.5, `z`, y + 0.5, the paths' layout) in front
 /// (`FUN_140f95a50`), the start tile's last. None when a point equals the one beside it
 /// (`FUN_140f95060` refuses it).
-fn trace(from: Tile, end: Tile, entered: &[Option<StepDir>], width: i32, z: f32) -> Option<Path> {
+fn trace(
+    from: Tile,
+    end: Tile,
+    entered: &[Option<StepDir>],
+    map: GridSize,
+    z: f32,
+) -> Option<Path> {
     // a tile never entered reads the game's 0xff: none
-    let direction = |t: Tile| {
-        entered
-            .get((t.y() * width + t.x()) as usize)
-            .copied()
-            .flatten()
-    };
+    let direction = |t: Tile| entered.get(cell(map, t)).copied().flatten();
     let centre = |t: Tile| -> BVector {
         BVector::new(t.x() as f32 + TILE_CENTRE, z, t.y() as f32 + TILE_CENTRE)
     };
@@ -773,7 +774,14 @@ mod tests {
         entered[1] = Some(StepDir(3));
         entered[2] = Some(StepDir(3));
         entered[w + 3] = Some(StepDir(4));
-        let p = trace(Tile::new(0, 0), Tile::new(3, 1), &entered, w as i32, 0.0).unwrap();
+        let p = trace(
+            Tile::new(0, 0),
+            Tile::new(3, 1),
+            &entered,
+            GridSize::new(w as i32, 2),
+            0.0,
+        )
+        .unwrap();
         assert_eq!(
             p.points,
             [
@@ -783,7 +791,14 @@ mod tests {
             ]
         );
         // the end on the start: its centre only
-        let p = trace(Tile::new(0, 0), Tile::new(0, 0), &entered, w as i32, 0.0).unwrap();
+        let p = trace(
+            Tile::new(0, 0),
+            Tile::new(0, 0),
+            &entered,
+            GridSize::new(w as i32, 2),
+            0.0,
+        )
+        .unwrap();
         assert_eq!(p.points, [BVector::new(0.5, 0.0, 0.5)]);
     }
 

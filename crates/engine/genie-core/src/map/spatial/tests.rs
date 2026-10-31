@@ -1211,15 +1211,30 @@ fn site() -> (Spatial, Placed) {
 fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
     let (mut s, _) = site();
     assert_eq!(
-        s.passable(29, 89, TerrainMask::of_bits(6), object_id(1), 0.2),
+        s.passable(
+            Tile::new(29, 89),
+            TerrainMask::of_bits(6),
+            object_id(1),
+            0.2
+        ),
         Ok(true)
     );
     assert_eq!(
-        s.passable(29, 89, TerrainMask::of_bits(1), object_id(1), 0.2),
+        s.passable(
+            Tile::new(29, 89),
+            TerrainMask::of_bits(1),
+            object_id(1),
+            0.2
+        ),
         Ok(false)
     );
     assert_eq!(
-        s.passable(-1, 89, TerrainMask::of_bits(6), object_id(1), 0.2),
+        s.passable(
+            Tile::new(-1, 89),
+            TerrainMask::of_bits(6),
+            object_id(1),
+            0.2
+        ),
         Ok(false)
     );
     let mut tree = villager(29.5, 90.5);
@@ -1230,7 +1245,12 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
     });
     s.insert(object_id(48), tree);
     assert_eq!(
-        s.passable(29, 90, TerrainMask::of_bits(6), object_id(1), 0.2),
+        s.passable(
+            Tile::new(29, 90),
+            TerrainMask::of_bits(6),
+            object_id(1),
+            0.2
+        ),
         Ok(false)
     );
 }

@@ -2,7 +2,6 @@
 
 use crate::GenieError;
 use crate::map::Point;
-use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
@@ -87,7 +86,6 @@ impl UnitAi {
             .map(|(at, _)| (at.position.ground(), at.class))
             .or(place);
         let class = place.and_then(|(_, class)| class);
-        let tile = |v: f32| crate::math::conversions::cvttss2si(v);
         // `bVar2`: the attack move's attack, whose tail makes the order 700
         let mut attack_move = false;
         let taken = match o.order {
@@ -110,9 +108,7 @@ impl UnitAi {
             | OrderKind::Enter
             | OrderKind::Unload
             | OrderKind::UnloadOverWall => self.object_move_order(o, world, side, ai)?,
-            OrderKind::Explore => {
-                self.explore_at(tile(o.point.x()), tile(o.point.y()), true, side, ai)?
-            }
+            OrderKind::Explore => self.explore_at(o.point.tile(), true, side, ai)?,
             OrderKind::Stop => {
                 self.remove_target();
                 self.stop_with(true, place, side, ai)?;
@@ -125,12 +121,9 @@ impl UnitAi {
                 }
                 m.is_some()
             }
-            OrderKind::ExploreAndDestroy => self.explore_and_destroy(
-                Tile::new(tile(o.point.x()), tile(o.point.y())),
-                true,
-                side,
-                ai,
-            )?,
+            OrderKind::ExploreAndDestroy => {
+                self.explore_and_destroy(o.point.tile(), true, side, ai)?
+            }
             OrderKind::Wait => {
                 // case 0x2d8: the wait's action value, leaving a patrol order, then the order
                 // itself; the tail finds it the AI's already
@@ -140,8 +133,7 @@ impl UnitAi {
                 true
             }
             OrderKind::Scout => {
-                let explored =
-                    self.explore_at(tile(o.point.x()), tile(o.point.y()), true, side, ai)?;
+                let explored = self.explore_at(o.point.tile(), true, side, ai)?;
                 self.set_action(Some(ActionKind::Scout));
                 explored
             }
@@ -150,8 +142,7 @@ impl UnitAi {
                 return self.order_on_target(o, class, at, side, ai);
             }
             OrderKind::AutoScout => {
-                let explored =
-                    self.explore_at(tile(o.point.x()), tile(o.point.y()), true, side, ai)?;
+                let explored = self.explore_at(o.point.tile(), true, side, ai)?;
                 self.set_action(Some(ActionKind::AutoScout));
                 explored
             }
@@ -176,7 +167,6 @@ impl UnitAi {
         attack_move: &mut bool,
     ) -> Result<bool, GenieError> {
         let (at, computer) = world.ok_or(OUTSIDE_ORDER)?;
-        let tile = |v: f32| crate::math::conversions::cvttss2si(v);
         // an order on no target (−1): each case's lookup finds nothing, so it takes no order
         Ok(match (o.order, o.target) {
             (OrderKind::Attack, Some(t)) => self.attack_slot(t, true, at, side, ai)?,
@@ -191,7 +181,7 @@ impl UnitAi {
             }
             (OrderKind::RunAway, _) => self.run_away(true, at, computer, ai, side)?,
             (OrderKind::SeekAndDestroy, Some(t)) => {
-                let tiles = Tile::new(tile(o.point.x()), tile(o.point.y()));
+                let tiles = o.point.tile();
                 self.seek_and_destroy(t, tiles, true, at, side)?
             }
             (OrderKind::AttackRoundup, Some(t)) => self.attack_roundup(t, at, side)?,

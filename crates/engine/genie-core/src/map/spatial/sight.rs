@@ -495,23 +495,19 @@ impl Spatial {
     /// Never: the tall-object grid covers the map as the word grid does.
     pub fn passable(
         &mut self,
-        x: i32,
-        y: i32,
+        tile: Tile,
         mask: crate::map::TerrainMask,
         me: ObjectId,
         radius_x: f32,
     ) -> Result<bool, GenieError> {
-        let (Some(word), Some(tall)) = (
-            self.tiles.word(Tile::new(x, y)),
-            self.tiles.tall(Tile::new(x, y)),
-        ) else {
+        let (Some(word), Some(tall)) = (self.tiles.word(tile), self.tiles.tall(tile)) else {
             return Ok(false);
         };
         if word & (mask.blocked() | BLOCKED) != 0 {
             return Ok(false);
         }
         if 1 < tall {
-            return self.point_clear(me, Point::new(x as f32, y as f32), radius_x * 0.5, mask);
+            return self.point_clear(me, tile.corner(), radius_x * 0.5, mask);
         }
         Ok(true)
     }

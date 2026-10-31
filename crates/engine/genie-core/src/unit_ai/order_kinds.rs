@@ -453,13 +453,12 @@ impl UnitAi {
     }
 
     /// Slot 0x100 (`FUN_140c4d910`), with `again` (its argument 4) or without an action value:
-    /// the unit's explore to the point (slot 0x398, [`Effect::Explore`], which takes it); the AI
+    /// the unit's explore to `tile`'s corner (slot 0x398, [`Effect::Explore`], which takes it); the AI
     /// then holds the explore's action value and the point without a target (`FUN_140c64c10`
     /// with −1, which leaves the target class), at height [`EXPLORE_Z`].
     pub(super) fn explore_at(
         &mut self,
-        x: i32,
-        y: i32,
+        tile: Tile,
         again: bool,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -467,7 +466,7 @@ impl UnitAi {
         if !again && self.current_action.is_some() {
             return Ok(false);
         }
-        let point = Point::new(x as f32, y as f32);
+        let point = tile.corner();
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.last_action = self.current_action.replace(ActionKind::Explore);
         self.target_at(None, None, point.with_height(EXPLORE_Z));

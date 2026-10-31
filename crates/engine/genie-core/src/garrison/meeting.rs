@@ -165,37 +165,33 @@ pub fn walled_off(
     let mut count = 0usize;
     for x in x0..=x1 {
         for y in y0..=y1 {
+            let tile = Tile::new(x, y);
             if (x, y) == (mx, my)
                 || (x, y) == (tx, ty)
                 || spatial.point_clear(
                     id,
-                    Point::new(x as f32, y as f32),
+                    tile.corner(),
                     stats.radius.x(),
                     stats.restriction_mask,
                 )?
             {
                 continue;
             }
-            count += buildings_on(spatial, masters, x, y)?;
+            count += buildings_on(spatial, masters, tile)?;
         }
     }
     Ok(count == 2)
 }
 
-/// The buildings on tile (`x`, `y`) for [`walled_off`]: the objects of the tile's list whose
+/// The buildings on `tile` for [`walled_off`]: the objects of the tile's list whose
 /// master (`masters`, each player's) is of type 80.
 ///
 /// # Errors
 ///
 /// An object whose master the slice lacks.
-fn buildings_on(
-    spatial: &Spatial,
-    masters: &[Masters],
-    x: i32,
-    y: i32,
-) -> Result<usize, GenieError> {
+fn buildings_on(spatial: &Spatial, masters: &[Masters], tile: Tile) -> Result<usize, GenieError> {
     let mut n = 0;
-    for (_, o) in spatial.objects_on(Tile::new(x, y)) {
+    for (_, o) in spatial.objects_on(tile) {
         let m = player_master(masters, o.player, o.master).ok_or(GenieError::unsupported(
             "an object on a tile of a master the slice lacks",
         ))?;

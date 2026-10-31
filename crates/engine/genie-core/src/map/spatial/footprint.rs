@@ -63,9 +63,8 @@ impl Spatial {
             let t = *list.checked(i)?;
             if (cx - t.x()).abs() < reach && (cy - t.y()).abs() < reach {
                 for n in t.beside() {
-                    let (nx, ny) = (n.x(), n.y());
-                    let at = ((ox + nx) * size + ny + oy) as usize;
-                    if !*visited.checked(at)? && self.passable(nx, ny, mask, me, radius_x)? {
+                    let at = ((ox + n.x()) * size + n.y() + oy) as usize;
+                    if !*visited.checked(at)? && self.passable(n, mask, me, radius_x)? {
                         *visited.checked_mut(at)? = true;
                         list.push(n);
                     }
