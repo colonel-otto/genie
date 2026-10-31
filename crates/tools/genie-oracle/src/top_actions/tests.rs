@@ -435,7 +435,7 @@ fn missile() -> genie_save::Object {
 
 /// [`missile`] `distance` from its point, a charge projectile for `charge` 1.
 fn missile_of(distance: f32, charge: u8) -> genie_save::Object {
-    let mut b = base(2);
+    let mut b = base(genie_core::combat::missile::MissileState::Flying.get());
     b.target2_id = 900;
     let action = by_type(|t| {
         t.rge_action_missile = Some(Box::new(RgeActionMissile {
@@ -499,7 +499,11 @@ fn a_missile_flies_with_its_actions_course() {
         .unwrap();
     assert_eq!(
         (action.state, action.fired_from, action.hit_mode),
-        (2, Some(object_id(900)), 0)
+        (
+            genie_core::combat::missile::MissileState::Flying,
+            Some(object_id(900)),
+            0
+        )
     );
     assert_eq!(action.ballistic_velocity.to_bits(), 3.0_f32.to_bits());
     assert_eq!(

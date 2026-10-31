@@ -19,16 +19,15 @@ use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
-use crate::orders::action_state::DONE;
 use genie_diff::Diff;
 
+mod missile_state;
 pub(crate) mod unit;
+
+pub use self::missile_state::MissileState;
 
 /// The missile action's type, which word 9 adds when it is the top action.
 pub const MISSILE: ActionType = ActionType::named(8);
-
-/// A missile's states: 4 flies, 1 ends (`set_state` 1: the object's slot 0xd8, its hit points to 0).
-pub const FLYING: u8 = 4;
 
 /// A target's height counts a third of its master's height radius (`FUN_140a9c600`,
 /// `DAT_142eb1c98`).
@@ -122,7 +121,7 @@ impl Origin {
 #[derive(Clone, Debug, PartialEq, Diff)]
 pub struct MissileAction {
     /// `+0x18`.
-    pub state: u8,
+    pub state: MissileState,
     /// The target (`+0x20`, its id `+0x30`) and the object it was fired from (`+0x28`, `+0x34`),
     /// −1 for none.
     pub target: Option<ObjectId>,
@@ -396,7 +395,7 @@ impl MissileAction {
         };
         self.ballistic_acceleration = acceleration;
         self.ballistic_velocity = velocity;
-        self.state = FLYING;
+        self.state = MissileState::Flying;
         Ok(angle)
     }
 
@@ -420,7 +419,7 @@ impl MissileAction {
                 self.distance -= way;
                 if max_range <= self.timer && self.distance < BEYOND {
                     // State 1: the missile ends.
-                    self.state = DONE;
+                    self.state = MissileState::Done;
                 }
                 d
             }
@@ -480,6 +479,7 @@ pub fn grounded(z: f32, ground: f32, flying: bool, fly_mode: u8) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::combat::missile::MissileState;
     use crate::objects::masters::ids;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
@@ -497,7 +497,7 @@ mod tests {
             ..MissileStats::default()
         };
         let mut a = MissileAction {
-            state: 3,
+            state: MissileState::Launch,
             target: Some(object_id(9655)),
             fired_from: Some(object_id(9171)),
             point: Position::ORIGIN,
@@ -520,7 +520,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(angle, Some(0.0));
-        assert_eq!(a.state, FLYING);
+        assert_eq!(a.state, MissileState::Flying);
         assert!((a.ballistic_acceleration - -23.52).abs() < 1e-3);
         assert!((a.ballistic_velocity - 4.71503).abs() < 1e-4);
         // one update of 52 ms: 0.364 of the way

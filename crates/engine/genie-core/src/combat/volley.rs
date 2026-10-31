@@ -457,7 +457,7 @@ impl Unit {
         let held = static_storage(c.w.players.player_mut(c.player)?, &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start
         let mut action = crate::combat::missile::MissileAction {
-            state: 0,
+            state: crate::combat::missile::MissileState::New,
             target: aimed.target,
             fired_from: shot.shooter.then_some(self.id),
             point: shot.point,

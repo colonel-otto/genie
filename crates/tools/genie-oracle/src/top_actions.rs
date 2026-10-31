@@ -313,7 +313,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
     });
     unit.actions
         .set_missile(Some(genie_core::combat::missile::MissileAction {
-            state: base.state,
+            state: genie_core::combat::missile::MissileState::of_byte(base.state)?,
             target: ObjectId::of_field(base.target_id),
             fired_from: ObjectId::of_field(base.target2_id),
             point: saved.point(),

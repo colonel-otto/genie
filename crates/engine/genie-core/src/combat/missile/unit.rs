@@ -1,6 +1,7 @@
 //! A missile's flight: where it ends, what it hits and where it lands.
 
 use crate::GenieError;
+use crate::combat::missile::MissileState;
 use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
 use crate::map::Point;
@@ -16,7 +17,6 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::player_master;
 use crate::objects::unit::{Unit, missed_passes};
-use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
 use crate::unit_ai::NotifyKind;
 
@@ -112,8 +112,8 @@ impl Unit {
         };
         self.missile_ends(action, c)?;
         match action.state {
-            crate::combat::missile::FLYING => {}
-            DONE => {
+            MissileState::Flying => {}
+            MissileState::Done => {
                 return Err(GenieError::unsupported(
                     "a missile action's update in state 1",
                 ));
@@ -193,7 +193,7 @@ impl Unit {
         let blast_level = self.master(&c.w.masters, c.player)?.blast_level;
         let met = self.missile_meets(stats, old, c)?;
         for &(id, player, kind, level) in &met {
-            if action.state == DONE {
+            if action.state == MissileState::Done {
                 break;
             }
             if action.met.contains(&id) {
@@ -304,7 +304,7 @@ impl Unit {
     /// The missile action's `set_state(1)` (`FUN_140a9de70`): the missile's slot 0xd8
     /// (`FUN_14118f580`), its hit points to 0.
     pub(crate) const fn end_missile(&mut self, action: &mut crate::combat::missile::MissileAction) {
-        action.state = DONE;
+        action.state = MissileState::Done;
         self.life.hp = 0.0;
     }
 
@@ -458,7 +458,7 @@ impl Unit {
             return Ok(());
         };
         self.missile_lands_on_target(action, fired, stats, c)?;
-        if action.state == DONE {
+        if action.state == MissileState::Done {
             return Ok(());
         }
         if action.result != 2 {
@@ -499,7 +499,7 @@ impl Unit {
         let Some(target) = action.target else {
             return Ok(());
         };
-        if action.state == DONE || action.met.contains(&target) {
+        if action.state == MissileState::Done || action.met.contains(&target) {
             return Ok(());
         }
         let v = victim(c, action.target)?.ok_or(GenieError::unsupported(

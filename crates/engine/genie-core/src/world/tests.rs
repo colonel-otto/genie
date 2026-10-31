@@ -14664,7 +14664,10 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
         .actions
         .missile()
         .map(|a| (a.state, a.result));
-    assert_eq!(action, Some((DONE, 1)));
+    assert_eq!(
+        action,
+        Some((crate::combat::missile::MissileState::Done, 1))
+    );
     for _ in 0..3 {
         t.tick(100);
     }
