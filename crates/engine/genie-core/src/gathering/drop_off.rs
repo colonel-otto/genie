@@ -476,14 +476,13 @@ impl Unit {
             .body
             .mover()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
-        let (w, h) = (c.spatial.map.width(), c.spatial.map.height());
         let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
             "the map's zones without its terrain",
         ))?;
         let values = terrain
             .restriction(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let zones = c.zones.of(w, h, &terrain.kinds, values)?;
+        let zones = c.zones.of(c.spatial.map, &terrain.kinds, values)?;
         let me = Me {
             id: self.id,
             group: self.group.id,

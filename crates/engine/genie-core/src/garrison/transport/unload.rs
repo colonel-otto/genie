@@ -11,7 +11,6 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
-use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -159,7 +158,7 @@ impl crate::world::World {
                 restriction,
                 unit.position(),
             )?;
-            u32::from(shore.zone(cvttss2si(x), cvttss2si(y))?.get())
+            u32::from(shore.zone(t.point.tile())?.get())
         };
         let count = self.unload_all(p, i, zone)?;
         let computer = self.players.player(p)?.computer;
@@ -301,13 +300,15 @@ impl crate::world::World {
             .terrain
             .as_ref()
             .ok_or(crate::pathing::zones::NO_TERRAIN)?;
-        let (w, h) = (self.spatial.map.width(), self.spatial.map.height());
         let zone_map = match restriction {
             Some(r) if zone != u32::MAX => {
                 let values = terrain
                     .restriction(r)
                     .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-                Some(self.zones.find(w, h, &terrain.kinds, values, false))
+                Some(
+                    self.zones
+                        .find(self.spatial.map, &terrain.kinds, values, false),
+                )
             }
             _ => None,
         };

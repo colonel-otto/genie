@@ -166,7 +166,7 @@ impl TransportAction {
     ) -> Result<Changed, GenieError> {
         self.mode = 1;
         let (x, y) = (point.x(), point.y());
-        let zone = shore.zone(cvttss2si(x), cvttss2si(y))?;
+        let zone = shore.zone(point.tile())?;
         let (ux, uy) = (ship.position.x(), ship.position.y());
         // MAXSS 0, gap: the gap when it is not below 0, a NaN gap too
         let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius.x());
@@ -303,7 +303,7 @@ impl TransportAction {
                 if x == NONE {
                     self.retarget = false;
                 } else {
-                    let zone = shore.zone(cvttss2si(x), cvttss2si(y))?;
+                    let zone = shore.zone(self.point.tile())?;
                     self.retarget = false;
                     reaches = shore.near(zone.byte(), NEAR)?;
                 }
@@ -429,17 +429,17 @@ impl TransportAction {
         let y0 = cvttss2si((uy - ry) - SHORE_MARGIN).max(0);
         let x1 = cvttss2si((ux + rx) + SHORE_MARGIN).min(w - 1);
         let y1 = cvttss2si((uy + ry) + SHORE_MARGIN).min(h - 1);
-        let (x, y) = (self.point.x(), self.point.y());
+        let (x, _y) = (self.point.x(), self.point.y());
         let zone = if x == NONE {
             None
         } else {
-            Some(shore.zone(cvttss2si(x), cvttss2si(y))?)
+            Some(shore.zone(self.point.tile())?)
         };
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let found = match zone {
                     None => shore.flags(Tile::new(tx, ty).short()) & LAND_FLAGS != 0,
-                    Some(z) => shore.zone(tx, ty)? == z,
+                    Some(z) => shore.zone(Tile::new(tx, ty))? == z,
                 };
                 if found {
                     return Ok(true);

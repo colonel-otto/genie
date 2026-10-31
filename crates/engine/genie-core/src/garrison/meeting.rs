@@ -125,7 +125,7 @@ impl Iterator for LandingWalk {
         while 0 < self.left {
             self.left -= 1;
             self.at = self.at.moved(self.step);
-            let tile = Tile::new(cvttss2si(self.at.x()), cvttss2si(self.at.y()));
+            let tile = self.at.tile();
             if tile != self.last {
                 self.last = tile;
                 return Some((tile, self.at));
@@ -313,10 +313,9 @@ fn shore(
     let values = terrain
         .restriction(stats.restriction)
         .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-    let (w, h) = (spatial.map.width(), spatial.map.height());
-    let map = zones.of(w, h, &terrain.kinds, values)?;
-    let own = map.zone(cvttss2si(ux), cvttss2si(uy));
-    let from = Tile::new(cvttss2si(t.position.x()), cvttss2si(t.position.y()));
+    let map = zones.of(spatial.map, &terrain.kinds, values)?;
+    let own = map.zone(Tile::new(cvttss2si(ux), cvttss2si(uy)));
+    let from = t.position.tile();
     for (tile, place) in LandingWalk::new(from, Tile::new(cvttss2si(ux), cvttss2si(uy))) {
         let (x, y) = (tile.x(), tile.y());
         let terrain = spatial
@@ -329,7 +328,7 @@ fn shore(
         let zone = if x < 0 || y < 0 {
             crate::pathing::zones::ZoneId::OFF_MAP
         } else {
-            map.zone(x, y)
+            map.zone(Tile::new(x, y))
         };
         if zone == own
             && spatial.point_clear(id, place, stats.radius.x(), stats.restriction_mask)?

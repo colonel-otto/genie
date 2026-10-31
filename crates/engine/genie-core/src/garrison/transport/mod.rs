@@ -121,13 +121,13 @@ pub struct Ship<'a> {
 
 /// What the Transport reads of the map about its unit (the caller's).
 pub trait Shore {
-    /// `FUN_1411958c0`: the unit's zone (its restriction's zone map, `FUN_1411931c0`) at tile
-    /// (`x`, `y`): 0 for a tile below 0, or without a zone map.
+    /// `FUN_1411958c0`: the unit's zone (its restriction's zone map, `FUN_1411931c0`) at `tile`:
+    /// 0 for a tile below 0, or without a zone map.
     ///
     /// # Errors
     ///
     /// A map the caller cannot read.
-    fn zone(&mut self, x: i32, y: i32) -> Result<crate::pathing::zones::ZoneId, GenieError>;
+    fn zone(&mut self, tile: Tile) -> Result<crate::pathing::zones::ZoneId, GenieError>;
     /// `FUN_1411a7570`: a tile of zone `zone` lies within `reach` of the unit's tile (its place
     /// cut by `CVTTSS2SI`, [`crate::pathing::zones::ZoneMap::near`]); no without a zone map.
     ///

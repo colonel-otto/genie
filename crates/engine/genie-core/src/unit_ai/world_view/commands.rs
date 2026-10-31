@@ -231,11 +231,7 @@ impl UnitView<'_, '_> {
         let values = terrain
             .restriction(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let zones = self
-            .c
-            .w
-            .zones
-            .of(map.width(), map.height(), &terrain.kinds, values)?;
+        let zones = self.c.w.zones.of(map, &terrain.kinds, values)?;
         let me = Me {
             id: unit.id,
             group: unit.group.id,
@@ -331,12 +327,12 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
     }
 
     fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId {
-        self.zones.zone(x, y)
+        self.zones.zone(Tile::new(x, y))
     }
 
     fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
         let (x, y) = (self.mover.position().x(), self.mover.position().y());
-        self.zones.zone(x as i32, y as i32)
+        self.zones.zone(Tile::new(x as i32, y as i32))
     }
 
     fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {

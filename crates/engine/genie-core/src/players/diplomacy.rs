@@ -265,7 +265,7 @@ impl World {
             return Ok(());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
-            let tile = Tile::new(cvttss2si(position.x()), cvttss2si(position.y()));
+            let tile = position.tile();
             if let Some(list) = v.new_tiles.get_mut(q.index()) {
                 list.push(tile);
             }

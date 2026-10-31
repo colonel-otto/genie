@@ -83,15 +83,14 @@ pub(crate) fn closest_resource_of(
                     ))?
                     .stats
                     .restriction;
-                let (w, h) = (c.spatial.map.width(), c.spatial.map.height());
                 let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
                     "the map's zones without its terrain",
                 ))?;
                 let values = terrain
                     .restriction(restriction)
                     .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-                let zones = c.zones.of(w, h, &terrain.kinds, values)?;
-                let zone = |p: Position| zones.zone(p.x() as i32, p.y() as i32);
+                let zones = c.zones.of(c.spatial.map, &terrain.kinds, values)?;
+                let zone = |p: Position| zones.zone(Tile::new(p.x() as i32, p.y() as i32));
                 zone(s.position()) == zone(unit.position())
             };
             Some(gather_search::SearchSite {

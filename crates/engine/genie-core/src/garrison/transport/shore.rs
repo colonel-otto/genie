@@ -167,7 +167,7 @@ pub(crate) fn in_zone(
     }
     let (tx, ty) = (cvttss2si(x), cvttss2si(y));
     let tile_zone = match zone_map {
-        Some(m) if 0 <= tx && 0 <= ty => m.zone(tx, ty),
+        Some(m) if 0 <= tx && 0 <= ty => m.zone(Tile::new(tx, ty)),
         _ => crate::pathing::zones::ZoneId::OFF_MAP,
     };
     let low = tile_zone.byte();
@@ -220,7 +220,7 @@ impl<'a> MapShore<'a> {
             tiles: spatial.tiles(),
             map: spatial.map,
             restriction,
-            tile: Tile::new(cvttss2si(position.x()), cvttss2si(position.y())),
+            tile: position.tile(),
         })
     }
 
@@ -236,18 +236,22 @@ impl<'a> MapShore<'a> {
             .restriction(r)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let (w, h) = (self.map.width(), self.map.height());
-        Ok(Some(self.zones.of(w, h, &self.terrain.kinds, values)?))
+        Ok(Some(self.zones.of(
+            GridSize::new(w, h),
+            &self.terrain.kinds,
+            values,
+        )?))
     }
 }
 
 impl Shore for MapShore<'_> {
-    fn zone(&mut self, x: i32, y: i32) -> Result<crate::pathing::zones::ZoneId, GenieError> {
-        if x < 0 || y < 0 {
+    fn zone(&mut self, tile: Tile) -> Result<crate::pathing::zones::ZoneId, GenieError> {
+        if tile.x() < 0 || tile.y() < 0 {
             return Ok(crate::pathing::zones::ZoneId::OFF_MAP);
         }
         Ok(self
             .zone_map()?
-            .map_or(crate::pathing::zones::ZoneId::OFF_MAP, |m| m.zone(x, y)))
+            .map_or(crate::pathing::zones::ZoneId::OFF_MAP, |m| m.zone(tile)))
     }
 
     fn near(&mut self, zone: u8, reach: f32) -> Result<bool, GenieError> {

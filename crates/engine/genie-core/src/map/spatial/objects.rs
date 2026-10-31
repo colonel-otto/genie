@@ -22,10 +22,7 @@ impl Spatial {
     #[must_use]
     pub fn new(map: GridSize) -> Self {
         let n = (map.width().max(0) * map.height().max(0)) as usize;
-        Self::with_tiles(
-            map,
-            Tiles::new(GridSize::new(map.width(), map.height()), vec![0; n]),
-        )
+        Self::with_tiles(map, Tiles::new(map, vec![0; n]))
     }
 
     /// A map with the given tiles.

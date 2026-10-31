@@ -17,7 +17,6 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::Tile;
-use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -208,7 +207,7 @@ impl World {
 
     /// The tile (`(int)x`, `(int)y`) of a place, as the game's callers truncate it.
     fn tile_at(position: Position) -> Tile {
-        Tile::new(cvttss2si(position.x()), cvttss2si(position.y()))
+        position.tile()
     }
 
     /// `FUN_141091310`: the watched list of player `owner` lets object `id` go (the last entry

@@ -50,6 +50,12 @@ impl Position {
         crate::map::Point::new(self.0[0], self.0[1])
     }
 
+    /// The tile its x and y lie in, each cut by `CVTTSS2SI` ([`crate::map::Point::tile`]).
+    #[must_use]
+    pub fn tile(self) -> crate::map::Tile {
+        self.ground().tile()
+    }
+
     /// The place with x `x`.
     #[must_use]
     pub const fn with_x(self, x: f32) -> Self {
@@ -93,6 +99,15 @@ impl genie_diff::Diff for Position {
 mod tests {
     use crate::map::Position;
     use crate::math::fmath::BVector;
+
+    /// A place's tile is its ground point's: x and y cut toward zero, the height left out.
+    #[test]
+    fn a_place_s_tile_is_its_ground_point_s() {
+        assert_eq!(
+            Position::new(3.9, -0.5, 7.0).tile(),
+            crate::map::Tile::new(3, 0)
+        );
+    }
 
     /// A place's x, y and z keep their bits, and its vector swaps y and the height.
     #[test]

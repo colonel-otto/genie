@@ -13,13 +13,17 @@
 //! them as they were made, and a map is not made again when the terrain changes later.
 
 use crate::GenieError;
-use crate::map::Tile;
+use crate::map::{GridSize, Tile, TileOffset};
 use crate::world::slots::CheckedIndex;
 
 /// The number after the last a patch takes; the next patch takes 0 again.
 const PATCHES: u16 = 0x200;
 /// What a tile not yet reached holds: the patches' number ([`PATCHES`]).
 const UNREACHED: ZoneId = ZoneId::new(PATCHES);
+
+/// The flood's neighbours of a tile in the order it takes them (`FUN_141413340`): left, up
+/// (y less 1), right, down.
+const FLOOD_STEPS: [TileOffset; 4] = TileOffset::table([[-1, 0], [0, -1], [1, 0], [0, 1]]);
 
 /// The zones a map caches a tile count for (`+0x000`, 0x800 bytes of ints).
 const COUNTED: usize = 0x200;
@@ -68,8 +72,7 @@ impl ZoneId {
 /// The zones of one passability pattern.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneMap {
-    width: i32,
-    height: i32,
+    size: GridSize,
     /// The pattern (`+0x818`, the restriction's values the map was made for): for each terrain,
     /// the value is above 0.
     pub passable: Vec<bool>,
@@ -96,11 +99,10 @@ impl ZoneMap {
     /// labelling (`FUN_141413190`) and the zones' adjacency (`FUN_141412a80`). A terrain the
     /// restriction has no value for counts as impassable.
     #[must_use]
-    pub fn new(width: i32, height: i32, kinds: &[u8], values: &[f32]) -> Self {
-        let n = (width.max(0) * height.max(0)) as usize;
+    pub fn new(size: GridSize, kinds: &[u8], values: &[f32]) -> Self {
+        let n = (size.width().max(0) * size.height().max(0)) as usize;
         let mut map = Self {
-            width,
-            height,
+            size,
             passable: values.iter().map(|&v| 0.0 < v).collect(),
             zones: vec![ZoneId::OFF_MAP; n],
             tiles: vec![0; COUNTED],
@@ -117,8 +119,7 @@ impl ZoneMap {
     /// and zone count read, then the zones' adjacency built (`FUN_141412a80`).
     #[must_use]
     pub fn from_saved(
-        width: i32,
-        height: i32,
+        size: GridSize,
         tiles: &[u32],
         zones: &[u16],
         values: &[f32],
@@ -129,8 +130,7 @@ impl ZoneMap {
             *c = t as i32;
         }
         let mut map = Self {
-            width,
-            height,
+            size,
             passable: values.iter().map(|&v| 0.0 < v).collect(),
             zones: zones.iter().copied().map(ZoneId::new).collect(),
             tiles: counts,
@@ -162,7 +162,7 @@ impl ZoneMap {
     /// count cached (`FUN_141413bb0`); the counts are not cleared, so a count cached before
     /// stays.
     fn label(&mut self, kinds: &[u8]) {
-        let (w, h) = (self.width, self.height);
+        let (w, h) = (self.size.width(), self.size.height());
         for i in 0..w {
             for j in 0..h {
                 if let Some(z) = self.zones.get_mut((i * w + j) as usize) {
@@ -190,33 +190,32 @@ impl ZoneMap {
                 let zone = if next < i32::from(PATCHES) { next } else { 0 };
                 *cell = ZoneId::new(zone as u16);
                 let kind = self.open(kinds, start);
-                self.flood(kinds, x, y, kind, ZoneId::new(zone as u16));
+                self.flood(kinds, Tile::new(x, y), kind, ZoneId::new(zone as u16));
                 next = zone + 1;
             }
         }
         self.count = if wrapped { i32::from(PATCHES) } else { next };
     }
 
-    /// `FUN_141413340`: from the tile `(x, y)` the zone goes to every tile not yet reached that is,
+    /// `FUN_141413340`: from tile `from` the zone goes to every tile not yet reached that is,
     /// like it, passable or not (`kind`), over the left, upper, right and lower neighbours. The
     /// game keeps a FIFO queue of pool nodes (`+0x850`), the slice a stack: both reach the same
     /// 4-connected tiles. Then the zone's tile count (`FUN_141413bb0`).
-    fn flood(&mut self, kinds: &[u8], x: i32, y: i32, kind: bool, zone: ZoneId) {
-        let (w, h) = (self.width, self.height);
-        let mut stack = vec![(x, y)];
-        while let Some((x, y)) = stack.pop() {
-            for (nx, ny) in [(x - 1, y), (x, y - 1), (x + 1, y), (x, y + 1)] {
-                if nx < 0 || ny < 0 || w <= nx || h <= ny {
+    fn flood(&mut self, kinds: &[u8], from: Tile, kind: bool, zone: ZoneId) {
+        let mut stack = vec![from];
+        while let Some(t) = stack.pop() {
+            for step in FLOOD_STEPS {
+                let n = t.stepped(step);
+                let Some(j) = self.size.index(n) else {
                     continue;
-                }
-                let j = (ny * w + nx) as usize;
+                };
                 let open = self.open(kinds, j) == kind;
                 if let Some(cell) = self.zones.get_mut(j)
                     && *cell == UNREACHED
                     && open
                 {
                     *cell = zone;
-                    stack.push((nx, ny));
+                    stack.push(n);
                 }
             }
         }
@@ -243,7 +242,7 @@ impl ZoneMap {
     /// both. Writes past the tables (a zone at the count) are the game's out-of-bounds stores;
     /// the slice skips them.
     fn connect(&mut self) {
-        let (w, h) = (self.width, self.height);
+        let (w, h) = (self.size.width(), self.size.height());
         let n = self.count.max(0);
         let size = (n * n) as usize;
         self.touching = vec![false; size];
@@ -295,12 +294,10 @@ impl ZoneMap {
 
     /// A tile's zone (`FUN_141413890`): 0 off the map.
     #[must_use]
-    pub fn zone(&self, x: i32, y: i32) -> ZoneId {
-        if x < 0 || y < 0 || self.width <= x || self.height <= y {
-            return ZoneId::OFF_MAP;
-        }
-        self.zones
-            .get((y * self.width + x) as usize)
+    pub fn zone(&self, tile: Tile) -> ZoneId {
+        self.size
+            .index(tile)
+            .and_then(|i| self.zones.get(i))
             .copied()
             .unwrap_or(ZoneId::OFF_MAP)
     }
@@ -317,16 +314,17 @@ impl ZoneMap {
         let r = cvttss2si(reach);
         // CMOVNS and CMOVLE on the wrapped sums
         let (x0, y0) = (x.wrapping_sub(r).max(0), y.wrapping_sub(r).max(0));
-        let x1 = x.wrapping_add(r).min(self.width - 1);
-        let y1 = y.wrapping_add(r).min(self.height - 1);
+        let x1 = x.wrapping_add(r).min(self.size.width() - 1);
+        let y1 = y.wrapping_add(r).min(self.size.height() - 1);
         for tx in x0..=x1 {
             let dx = x.wrapping_sub(tx);
             for ty in y0..=y1 {
                 let dy = y.wrapping_sub(ty);
                 let steps = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
                 let d = crate::math::fmath::sqrt(steps as f32);
-                if crate::math::fmath::at_most_or_unordered(d, reach) && self.zone(tx, ty) == zone {
-                    return Some(Tile::new(tx, ty));
+                let tile = Tile::new(tx, ty);
+                if crate::math::fmath::at_most_or_unordered(d, reach) && self.zone(tile) == zone {
+                    return Some(tile);
                 }
             }
         }
@@ -393,14 +391,7 @@ impl Zones {
     /// query), labelled again from the terrain `kinds` when `relabel` is set (`FUN_141413190`,
     /// only the random map's terrain generator asks); else a new map of the terrain `kinds`,
     /// appended.
-    pub fn find(
-        &mut self,
-        width: i32,
-        height: i32,
-        kinds: &[u8],
-        values: &[f32],
-        relabel: bool,
-    ) -> usize {
+    pub fn find(&mut self, size: GridSize, kinds: &[u8], values: &[f32], relabel: bool) -> usize {
         let found = self.maps.iter().position(|m| {
             m.passable.len() <= values.len()
                 && m.passable.iter().zip(values).all(|(&p, &v)| p == (0.0 < v))
@@ -411,7 +402,7 @@ impl Zones {
             }
             return i;
         }
-        self.maps.push(ZoneMap::new(width, height, kinds, values));
+        self.maps.push(ZoneMap::new(size, kinds, values));
         self.maps.len() - 1
     }
 
@@ -432,12 +423,11 @@ impl Zones {
     /// A zone map the table lost between its search and its read.
     pub fn of(
         &mut self,
-        width: i32,
-        height: i32,
+        size: GridSize,
         kinds: &[u8],
         values: &[f32],
     ) -> Result<&ZoneMap, GenieError> {
-        let i = self.find(width, height, kinds, values, false);
+        let i = self.find(size, kinds, values, false);
         self.maps.checked(i)
     }
 }
@@ -464,17 +454,27 @@ mod tests {
 
     #[test]
     fn patches_are_numbered_by_their_first_tile_row_by_row() {
-        let z = ZoneMap::new(3, 3, &WALL, &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(3, 3), &WALL, &[1.0, 0.0]);
         assert_eq!(
-            [z.zone(0, 0), z.zone(1, 0), z.zone(2, 0)].map(ZoneId::get),
+            [
+                z.zone(Tile::new(0, 0)),
+                z.zone(Tile::new(1, 0)),
+                z.zone(Tile::new(2, 0))
+            ]
+            .map(ZoneId::get),
             [0, 1, 2]
         );
         assert_eq!(
-            [z.zone(0, 2), z.zone(1, 2), z.zone(2, 2)].map(ZoneId::get),
+            [
+                z.zone(Tile::new(0, 2)),
+                z.zone(Tile::new(1, 2)),
+                z.zone(Tile::new(2, 2))
+            ]
+            .map(ZoneId::get),
             [0, 1, 1]
         );
-        assert_eq!(z.zone(2, 1), ZoneId::new(2));
-        assert_eq!(z.zone(-1, 0), ZoneId::OFF_MAP);
+        assert_eq!(z.zone(Tile::new(2, 1)), ZoneId::new(2));
+        assert_eq!(z.zone(Tile::new(-1, 0)), ZoneId::OFF_MAP);
         assert_eq!(z.count(), 3);
     }
 
@@ -489,9 +489,14 @@ mod tests {
             0, 0, 0, 0, 1,
             0, 0, 0, 0, 1,
         ];
-        let z = ZoneMap::new(5, 5, &kinds, &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(5, 5), &kinds, &[1.0, 0.0]);
         assert_eq!(
-            [z.zone(3, 0), z.zone(4, 2), z.zone(2, 2)].map(ZoneId::get),
+            [
+                z.zone(Tile::new(3, 0)),
+                z.zone(Tile::new(4, 2)),
+                z.zone(Tile::new(2, 2))
+            ]
+            .map(ZoneId::get),
             [1, 1, 0]
         );
         // from (2, 2) within 2: column 3 comes before column 4, and (3, 0) is sqrt 5 away;
@@ -521,9 +526,15 @@ mod tests {
     fn the_flood_takes_four_neighbours_only() {
         // tiles touching at a corner only are patches of their own, passable or not
         let kinds = [0, 1, 1, 0];
-        let z = ZoneMap::new(2, 2, &kinds, &[1.0, 0.0]);
-        assert_eq!([z.zone(0, 0), z.zone(1, 0)].map(ZoneId::get), [0, 1]);
-        assert_eq!([z.zone(0, 1), z.zone(1, 1)].map(ZoneId::get), [2, 3]);
+        let z = ZoneMap::new(GridSize::new(2, 2), &kinds, &[1.0, 0.0]);
+        assert_eq!(
+            [z.zone(Tile::new(0, 0)), z.zone(Tile::new(1, 0))].map(ZoneId::get),
+            [0, 1]
+        );
+        assert_eq!(
+            [z.zone(Tile::new(0, 1)), z.zone(Tile::new(1, 1))].map(ZoneId::get),
+            [2, 3]
+        );
     }
 
     /// A square map of `side` x `side` tiles alternating passable and not: every tile is a patch.
@@ -536,9 +547,14 @@ mod tests {
     #[test]
     fn numbers_start_again_after_511_and_the_count_stays_512() {
         // 23 x 23 = 529 patches: the 513th (tile 512, at 6, 22) is 0 again, the next 1
-        let z = ZoneMap::new(23, 23, &checkerboard(23), &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(23, 23), &checkerboard(23), &[1.0, 0.0]);
         assert_eq!(
-            [z.zone(5, 22), z.zone(6, 22), z.zone(7, 22)].map(ZoneId::get),
+            [
+                z.zone(Tile::new(5, 22)),
+                z.zone(Tile::new(6, 22)),
+                z.zone(Tile::new(7, 22))
+            ]
+            .map(ZoneId::get),
             [511, 0, 1]
         );
         assert_eq!(z.count(), 512);
@@ -546,14 +562,14 @@ mod tests {
 
     #[test]
     fn each_flood_caches_its_zone_s_tile_count_once() {
-        let z = ZoneMap::new(3, 3, &WALL, &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(3, 3), &WALL, &[1.0, 0.0]);
         assert_eq!(z.tiles(ZoneId::OFF_MAP), 3);
         assert_eq!(z.tiles(ZoneId::new(1)), 4);
         assert_eq!(z.tiles(ZoneId::new(2)), 2);
         assert_eq!(z.tiles(ZoneId::new(3)), 0);
         // past 511 a zone's second patch finds its count cached by the first: zone 0's tiles
         // are two (tiles 0 and 512), its count stays the first patch's 1
-        let z = ZoneMap::new(23, 23, &checkerboard(23), &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(23, 23), &checkerboard(23), &[1.0, 0.0]);
         assert_eq!(z.tiles(ZoneId::OFF_MAP), 1);
     }
 
@@ -563,21 +579,30 @@ mod tests {
         // height, so tile (1, 2) keeps the 0 it was allocated with, and (0, 2), impassable beside
         // the passable patch above, is filled but never starts a patch: it keeps 0x200
         let kinds = [0, 0, 0, 0, 1, 0];
-        let z = ZoneMap::new(2, 3, &kinds, &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(2, 3), &kinds, &[1.0, 0.0]);
         assert_eq!(
-            [z.zone(0, 0), z.zone(1, 0), z.zone(0, 1), z.zone(1, 1)].map(ZoneId::get),
+            [
+                z.zone(Tile::new(0, 0)),
+                z.zone(Tile::new(1, 0)),
+                z.zone(Tile::new(0, 1)),
+                z.zone(Tile::new(1, 1))
+            ]
+            .map(ZoneId::get),
             [0; 4]
         );
-        assert_eq!([z.zone(0, 2), z.zone(1, 2)].map(ZoneId::get), [PATCHES, 0]);
+        assert_eq!(
+            [z.zone(Tile::new(0, 2)), z.zone(Tile::new(1, 2))].map(ZoneId::get),
+            [PATCHES, 0]
+        );
         assert_eq!(z.count(), 1);
         // the game's 3 wide, 2 high case writes past its row table; the slice labels the rest
-        let z = ZoneMap::new(3, 2, &[0; 6], &[1.0]);
-        assert_eq!(z.zone(0, 0), ZoneId::OFF_MAP);
+        let z = ZoneMap::new(GridSize::new(3, 2), &[0; 6], &[1.0]);
+        assert_eq!(z.zone(Tile::new(0, 0)), ZoneId::OFF_MAP);
     }
 
     #[test]
     fn zones_touching_at_a_tile_or_a_corner_are_adjacent() {
-        let z = ZoneMap::new(3, 3, &WALL, &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(3, 3), &WALL, &[1.0, 0.0]);
         assert_eq!(z.adjacent(ZoneId::new(0), ZoneId::new(1)), Some(true));
         assert_eq!(z.adjacent(ZoneId::new(1), ZoneId::new(2)), Some(true));
         assert_eq!(z.adjacent(ZoneId::new(0), ZoneId::new(0)), Some(true));
@@ -586,14 +611,14 @@ mod tests {
         // FUN_141414f70: past the count it answers no; at the count it reads past the table
         assert_eq!(z.adjacent(ZoneId::new(4), ZoneId::new(0)), Some(false));
         assert_eq!(z.adjacent(ZoneId::new(3), ZoneId::new(0)), None);
-        let z = ZoneMap::new(2, 2, &[0, 1, 1, 0], &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(2, 2), &[0, 1, 1, 0], &[1.0, 0.0]);
         assert_eq!(z.adjacent(ZoneId::new(0), ZoneId::new(3)), Some(true));
         assert_eq!(z.adjacent(ZoneId::new(1), ZoneId::new(2)), Some(true));
     }
 
     #[test]
     fn two_zones_apart_go_through_the_first_zone_touching_both() {
-        let z = ZoneMap::new(3, 3, &WALL, &[1.0, 0.0]);
+        let z = ZoneMap::new(GridSize::new(3, 3), &WALL, &[1.0, 0.0]);
         assert_eq!(z.via(ZoneId::new(0), ZoneId::new(2)), Some(ZoneId::new(1)));
         assert_eq!(z.via(ZoneId::new(2), ZoneId::new(0)), Some(ZoneId::new(1)));
         // the table's first n * n bytes start 0 (entries 0 to 3 and the low byte of 4), the
@@ -605,11 +630,13 @@ mod tests {
 
     #[test]
     fn a_saved_map_keeps_its_counts_and_builds_its_adjacency() {
-        let made = ZoneMap::new(3, 3, &WALL, &[1.0, 0.0]);
+        let made = ZoneMap::new(GridSize::new(3, 3), &WALL, &[1.0, 0.0]);
         let mut tiles = vec![0u32; 512];
         tiles[..3].copy_from_slice(&[3, 4, 2]);
-        let zones: Vec<u16> = (0..9).map(|i| made.zone(i % 3, i / 3).get()).collect();
-        let saved = ZoneMap::from_saved(3, 3, &tiles, &zones, &[1.0, 0.0], 3);
+        let zones: Vec<u16> = (0..9)
+            .map(|i| made.zone(Tile::new(i % 3, i / 3)).get())
+            .collect();
+        let saved = ZoneMap::from_saved(GridSize::new(3, 3), &tiles, &zones, &[1.0, 0.0], 3);
         assert_eq!(saved, made);
     }
 
@@ -617,9 +644,9 @@ mod tests {
     fn restrictions_of_one_pattern_share_their_map() {
         let mut zones = Zones::default();
         let kinds = [0, 1];
-        let _ = zones.of(2, 1, &kinds, &[1.0, 0.0]).unwrap();
-        let _ = zones.of(2, 1, &kinds, &[0.5, -1.0]).unwrap();
-        let _ = zones.of(2, 1, &kinds, &[0.0, 1.0]).unwrap();
+        let _ = zones.of(GridSize::new(2, 1), &kinds, &[1.0, 0.0]).unwrap();
+        let _ = zones.of(GridSize::new(2, 1), &kinds, &[0.5, -1.0]).unwrap();
+        let _ = zones.of(GridSize::new(2, 1), &kinds, &[0.0, 1.0]).unwrap();
         assert_eq!(zones.maps.len(), 2);
     }
 
@@ -627,33 +654,42 @@ mod tests {
     fn a_map_matches_a_query_whose_values_begin_with_its_pattern() {
         let mut zones = Zones::default();
         let kinds = [0, 1, 1, 0];
-        assert_eq!(zones.find(2, 2, &kinds, &[1.0, 0.0], false), 0);
+        assert_eq!(
+            zones.find(GridSize::new(2, 2), &kinds, &[1.0, 0.0], false),
+            0
+        );
         // the map's two values are a prefix of the query's three
-        assert_eq!(zones.find(2, 2, &kinds, &[1.0, 0.0, 1.0], false), 0);
+        assert_eq!(
+            zones.find(GridSize::new(2, 2), &kinds, &[1.0, 0.0, 1.0], false),
+            0
+        );
         // a query shorter than the map's values does not match it
-        assert_eq!(zones.find(2, 2, &kinds, &[1.0], false), 1);
+        assert_eq!(zones.find(GridSize::new(2, 2), &kinds, &[1.0], false), 1);
         // a map of no values matches every query
         let mut empty = Zones::default();
-        assert_eq!(empty.find(2, 2, &kinds, &[], false), 0);
-        assert_eq!(empty.find(2, 2, &kinds, &[0.0, 1.0], false), 0);
+        assert_eq!(empty.find(GridSize::new(2, 2), &kinds, &[], false), 0);
+        assert_eq!(
+            empty.find(GridSize::new(2, 2), &kinds, &[0.0, 1.0], false),
+            0
+        );
     }
 
     #[test]
     fn a_relabel_numbers_the_terrain_again_and_keeps_the_rest() {
         let mut zones = Zones::default();
-        let i = zones.find(3, 3, &WALL, &[1.0, 0.0], false);
+        let i = zones.find(GridSize::new(3, 3), &WALL, &[1.0, 0.0], false);
         let before = zones.map(i).unwrap().clone();
         // the wall is gone: one patch, the count 1; the tile counts and the adjacency stay
-        let i = zones.find(3, 3, &[0; 9], &[1.0, 0.0], true);
+        let i = zones.find(GridSize::new(3, 3), &[0; 9], &[1.0, 0.0], true);
         let after = zones.map(i).unwrap();
-        assert_eq!(after.zone(2, 2), ZoneId::OFF_MAP);
+        assert_eq!(after.zone(Tile::new(2, 2)), ZoneId::OFF_MAP);
         assert_eq!(after.count(), 1);
         assert_eq!(after.tiles(ZoneId::new(1)), before.tiles(ZoneId::new(1)));
         assert_eq!(after.adjacent(ZoneId::new(0), ZoneId::new(0)), Some(true));
         // the 3 x 3 table stays: at the new count 1, (0, 1) reads its entry 1, (0, 1) of before
         assert_eq!(after.adjacent(ZoneId::new(0), ZoneId::new(1)), Some(true));
         // without the relabel flag the map is not numbered again
-        let i = zones.find(3, 3, &WALL, &[1.0, 0.0], false);
-        assert_eq!(zones.map(i).unwrap().zone(1, 0), ZoneId::OFF_MAP);
+        let i = zones.find(GridSize::new(3, 3), &WALL, &[1.0, 0.0], false);
+        assert_eq!(zones.map(i).unwrap().zone(Tile::new(1, 0)), ZoneId::OFF_MAP);
     }
 }

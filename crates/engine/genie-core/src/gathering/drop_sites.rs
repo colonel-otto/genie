@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -158,7 +159,7 @@ pub(crate) fn drop_site_search<'u>(
     let own_zone = seeker
         .as_ref()
         .filter(|_| !fishing && !pointless)
-        .map(|s| s.zones.zone(x as i32, y as i32));
+        .map(|s| s.zones.zone(Tile::new(x as i32, y as i32)));
     let mut by_path = seeker.as_ref().is_some_and(|s| s.by_path) && !pointless;
     let mut best: Option<ObjectId> = None;
     let mut best_d = NO_DROP_DISTANCE;
@@ -173,7 +174,7 @@ pub(crate) fn drop_site_search<'u>(
         let master = o.master_in(Some(masters))?;
         if let (Some(s), Some(zone)) = (seeker.as_ref(), own_zone)
             && s.zones
-                .zone(o.position().x() as i32, o.position().y() as i32)
+                .zone(Tile::new(o.position().x() as i32, o.position().y() as i32))
                 != zone
         {
             continue;
@@ -364,7 +365,7 @@ mod tests {
         let mover = crate::gathering::hunt::tests::walker();
         // the search writes the obstruction manager's scratch: it runs on the fixture's copy
         let mut spatial = spatial.clone();
-        let zones = ZoneMap::new(40, 40, &[0; 1600], &[1.0]);
+        let zones = ZoneMap::new(crate::map::GridSize::new(40, 40), &[0; 1600], &[1.0]);
         let mut pathing = Pathing::default();
         let mut object = Well512::default();
         let groups = crate::groups::UnitGroups::default();

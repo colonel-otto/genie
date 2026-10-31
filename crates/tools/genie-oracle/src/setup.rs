@@ -314,8 +314,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
             .iter()
             .map(|z| {
                 genie_core::pathing::zones::ZoneMap::from_saved(
-                    map.map_width,
-                    map.map_height,
+                    GridSize::new(map.map_width, map.map_height),
                     &z.number_tiles_in_zone_value,
                     &z.zone_map,
                     &z.float_value,

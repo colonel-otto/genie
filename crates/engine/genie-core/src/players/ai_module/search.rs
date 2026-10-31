@@ -177,7 +177,7 @@ impl InfoModule {
         area: &mut dyn SearchArea,
         (map, rng): (GridSize, &mut Well512),
     ) -> Result<Flood, GenieError> {
-        let (first, _) = self.clamp(Tile::new(cvttss2si(start.x()), cvttss2si(start.y())));
+        let (first, _) = self.clamp(start.tile());
         let mut visited = vec![false; (map.width().max(0) * map.height().max(0)) as usize];
         let mut queue = vec![first];
         let mut i = 0;
