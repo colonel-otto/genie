@@ -7,6 +7,7 @@ use crate::map::Tile;
 use crate::map::spatial::RecordId;
 use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::WaypointLevel;
+use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::ObjectState;
@@ -2906,10 +2907,13 @@ fn a_unit_without_a_footprint_takes_the_straight_way() {
 fn a_new_move_to_s_wait_lasts_a_second() {
     use crate::movement::move_to::MoveWait;
     let new = MoveWait::default();
-    assert_eq!((new.state, new.timer, new.delay), (0, 0.0, 1.0));
+    assert_eq!(
+        (new.state, new.timer, new.delay),
+        (MoveWaitState::Never, 0.0, 1.0)
+    );
     let mut wait = new;
     let _ = wait.give_up(true, UnitStance::STAND_GROUND);
-    assert_eq!((wait.state, wait.delay), (1, 2.0));
+    assert_eq!((wait.state, wait.delay), (MoveWaitState::Waiting, 2.0));
 }
 
 /// The unit's top speed with the sprite it shows (slot 0x208, `FUN_14114d1d0`): the master's

@@ -9,6 +9,7 @@ use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
 use genie_core::map::Position;
+use genie_core::movement::move_to::MoveWaitState;
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
 use genie_core::objects::masters::ActionType;
 use genie_core::objects::masters::TaskId;
@@ -80,8 +81,8 @@ fn explore(b: RgeAction) -> Action {
     by_type(|t| t.rge_action_explore = Some(Box::new(b)))
 }
 
-/// A `MoveTo` in state `state` to its base's point, its range `range`, waiting (state 2, timer
-/// 0.25, delay 0.5).
+/// A `MoveTo` in state `state` to its base's point, its range `range`, asked again after its
+/// wait (wait state 2, timer 0.25, delay 0.5).
 fn move_to(state: u8, range: f32) -> Action {
     by_type(|t| {
         t.rge_action_move_to = Some(Box::new(RgeActionMoveTo {
@@ -237,7 +238,11 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
     );
     assert_eq!(
         (m.wait.state, m.wait.timer.to_bits(), m.wait.delay.to_bits()),
-        (2, 0.25_f32.to_bits(), 0.5_f32.to_bits())
+        (
+            MoveWaitState::AskedAgain,
+            0.25_f32.to_bits(),
+            0.5_f32.to_bits()
+        )
     );
     for (state, saved) in [
         (1, MoveTo::Arrived),
@@ -261,6 +266,20 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
         imported(MOVE_TO, explore(base(4))).unwrap_err(),
         GenieError::unsupported("a saved MoveTo without its range")
     );
+}
+
+/// A `MoveTo`'s wait state (`+0x6c`) is 0, 1 or 2; a saved 3 fails the read.
+#[test]
+fn a_move_to_s_wait_state_of_none_fails() {
+    let mut walk = move_to(4, 0.5);
+    if let Some(m) = walk
+        .rge_action_by_type
+        .as_deref_mut()
+        .and_then(|t| t.rge_action_move_to.as_deref_mut())
+    {
+        m.movement_wait_state = 3;
+    }
+    assert!(imported(MOVE_TO, walk).is_err());
 }
 
 /// A `MoveTo`'s sprite (`+0x58`, the save's second `short_val`) comes from the sprites'
@@ -645,7 +664,7 @@ fn a_build_takes_its_task_move_to_and_site() {
     assert_eq!(a.task.work_rate.to_bits(), 2.5_f32.to_bits());
     assert_eq!(walk.range.to_bits(), 0.75_f32.to_bits());
     assert_eq!(bits3(walk.point), bits3(Position::new(1.0, 2.0, 0.0)));
-    assert_eq!(walk.wait.state, 2);
+    assert_eq!(walk.wait.state, MoveWaitState::AskedAgain);
     // a MoveTo without a sprite (−1) keeps none
     assert_eq!(walk.sprite, None);
     let mut dropping = b.clone();
@@ -830,7 +849,12 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
             walk.range.to_bits(),
             walk.wait.state
         ),
-        (MoveTo::Moving, true, 0.75_f32.to_bits(), 2)
+        (
+            MoveTo::Moving,
+            true,
+            0.75_f32.to_bits(),
+            MoveWaitState::AskedAgain
+        )
     );
     let attack = by_type(|t| {
         t.rge_action_attack = Some(Box::new(RgeActionAttack {
@@ -926,7 +950,7 @@ fn a_gather_takes_its_stops_and_move_to() {
     );
     assert_eq!(
         (walk.range.to_bits(), walk.wait.state),
-        (0.75_f32.to_bits(), 2)
+        (0.75_f32.to_bits(), MoveWaitState::AskedAgain)
     );
     assert_eq!(
         imported(
@@ -977,7 +1001,10 @@ fn an_enter_takes_its_task_and_retry() {
         (EnterState::Done, MoveTo::Moving, true, Some(class_id(3)))
     );
     assert!(e.retry);
-    assert_eq!((e.range.to_bits(), m.wait.state), (2.0_f32.to_bits(), 2));
+    assert_eq!(
+        (e.range.to_bits(), m.wait.state),
+        (2.0_f32.to_bits(), MoveWaitState::AskedAgain)
+    );
     assert_eq!(
         imported(
             ENTER,
@@ -1061,7 +1088,10 @@ fn an_explore_takes_its_quiet_move_to_with_its_wait() {
     .unwrap();
     // a quiet MoveTo (its maker's `+0x60`, which the save does not hold) with the saved wait
     let m = e.move_to.unwrap();
-    assert_eq!((m.state, m.quiet, m.wait.state), (MoveTo::Moving, true, 2));
+    assert_eq!(
+        (m.state, m.quiet, m.wait.state),
+        (MoveTo::Moving, true, MoveWaitState::AskedAgain)
+    );
     assert_eq!(
         imported(
             EXPLORE,

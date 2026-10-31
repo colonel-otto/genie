@@ -2,6 +2,7 @@
 //! World fixtures: the state of the builder, its foundation and the world after each update.
 
 use crate::map::GridSize;
+use crate::movement::move_to::MoveWaitState;
 use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
@@ -640,7 +641,7 @@ fn a_build_s_waiting_move_to_asks_again_at_its_delay() {
     let b = BuildAction {
         move_to: Some(MoveToAction {
             wait: MoveWait {
-                state: 1,
+                state: MoveWaitState::Waiting,
                 timer: 0.5,
                 delay: 1.0,
             },
@@ -659,7 +660,10 @@ fn a_build_s_waiting_move_to_asks_again_at_its_delay() {
     put(&mut t, BUILDER, Position::new(11.6, 10.5, 0.0));
     let _ = code(&mut t, 250);
     let walk = build(&t).move_to.unwrap();
-    assert_eq!((walk.wait.state, walk.state), (2, MoveTo::Arrived));
+    assert_eq!(
+        (walk.wait.state, walk.state),
+        (MoveWaitState::AskedAgain, MoveTo::Arrived)
+    );
 }
 
 /// The update's case 3 at the `MoveTo`'s end: a villager works wherever it stands

@@ -23,6 +23,7 @@ use genie_diff::Diff;
 mod action;
 mod constructors;
 mod list;
+mod move_wait_state;
 mod sub_action;
 
 pub(crate) use crate::movement::move_to::action::TARGET_LACKING;
@@ -33,6 +34,7 @@ pub use crate::movement::move_to::action::{
 pub use crate::movement::move_to::constructors::{MoveToReads, WalkTo};
 pub use crate::movement::move_to::list::ListUpdate;
 pub(crate) use crate::movement::move_to::list::update_sub_actions;
+pub use crate::movement::move_to::move_wait_state::MoveWaitState;
 pub use crate::movement::move_to::sub_action::{GiveUp, NO_TARGET_GAP};
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
@@ -54,13 +56,13 @@ pub enum MoveTo {
     Failed,
 }
 
-/// A `MoveTo`'s wait after the motion step gave up (`+0x6c` `movement_wait_state`: 0 never, 1
-/// waiting, 2 asked again; the timer `+0x70` and its end `+0x74`), held by the action that owns
+/// A `MoveTo`'s wait after the motion step gave up (`+0x6c` `movement_wait_state`, the timer
+/// `+0x70` and its end `+0x74`), held by the action that owns
 /// the `MoveTo`; a new `MoveTo` starts without one ([`MoveWait::default`]).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MoveWait {
-    /// `+0x6c`, `movement_wait_state`: 0 never waited, 1 waiting, 2 asked again.
-    pub state: u8,
+    /// `+0x6c`, `movement_wait_state`.
+    pub state: MoveWaitState,
     /// `+0x70`: the time waited.
     pub timer: f32,
     /// `+0x74`: how long it waits.
@@ -80,7 +82,7 @@ impl Default for MoveWait {
 impl MoveWait {
     /// A new `MoveTo`'s: never waited, no time waited, [`DEFAULT_WAIT`].
     pub const NEW: Self = Self {
-        state: 0,
+        state: MoveWaitState::Never,
         timer: 0.0,
         delay: DEFAULT_WAIT,
     };
@@ -90,7 +92,7 @@ impl MoveWait {
     /// (`set_state` 2, `+0x6c` 1) a second with a stance (`+0x1a9`) below 2, else two, then asks
     /// again; any other `MoveTo` fails (`set_state` 13). Returns the `MoveTo`'s state.
     pub const fn give_up(&mut self, waits: bool, stance: UnitStance) -> MoveTo {
-        if self.state != 0 || !waits {
+        if !matches!(self.state, MoveWaitState::Never) || !waits {
             return MoveTo::Failed;
         }
         self.delay = if stance.below(UnitStance::STAND_GROUND) {
@@ -98,8 +100,16 @@ impl MoveWait {
         } else {
             2.0
         };
-        self.state = 1;
+        self.state = MoveWaitState::Waiting;
         MoveTo::Waiting
+    }
+
+    /// The `MoveTo`'s start (state 3) asks for its path: one that waited has asked again, and
+    /// never waits again.
+    pub const fn ask_again(&mut self) {
+        if matches!(self.state, MoveWaitState::Waiting) {
+            self.state = MoveWaitState::AskedAgain;
+        }
     }
 }
 
@@ -519,7 +529,7 @@ mod tests {
             target: Some(object_id(10028)),
             range: 0.1,
             wait: MoveWait {
-                state: 1,
+                state: MoveWaitState::Waiting,
                 timer: 0.0,
                 delay: 1.0,
             },
@@ -543,13 +553,16 @@ mod tests {
             )
         };
         assert_eq!(update(&mut m), Ok(0));
-        assert_eq!((m.state, m.wait.state), (MoveTo::Moving, 2));
+        assert_eq!(
+            (m.state, m.wait.state),
+            (MoveTo::Moving, MoveWaitState::AskedAgain)
+        );
         assert_eq!(update(&mut m), Ok(0));
         assert_eq!(m.state, MoveTo::Moving);
         // the walk is a tenth of a second: the wait of 0.15 asks again on its second update
         m.state = MoveTo::Waiting;
         m.wait = MoveWait {
-            state: 1,
+            state: MoveWaitState::Waiting,
             timer: 0.0,
             delay: 0.15,
         };
@@ -579,7 +592,7 @@ mod tests {
     fn a_human_villager_s_moveto_waits_once_before_it_fails() {
         let mut wait = MoveWait::default();
         assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Waiting);
-        assert_eq!((wait.state, wait.delay), (1, 1.0));
+        assert_eq!((wait.state, wait.delay), (MoveWaitState::Waiting, 1.0));
         assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Failed);
         assert_eq!(
             MoveWait::default().give_up(false, UnitStance::AGGRESSIVE),
@@ -591,6 +604,22 @@ mod tests {
             MoveTo::Waiting
         );
         assert_eq!(guarded.delay, 2.0);
+    }
+
+    /// The start's ask for the path (state 3) turns a wait into an ask again; a `MoveTo` that
+    /// never waited, or asked again already, keeps its wait state, and one that asked again
+    /// never waits again.
+    #[test]
+    fn a_moveto_that_waited_asks_again_once() {
+        let mut wait = MoveWait::default();
+        wait.ask_again();
+        assert_eq!(wait.state, MoveWaitState::Never);
+        assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Waiting);
+        wait.ask_again();
+        assert_eq!(wait.state, MoveWaitState::AskedAgain);
+        wait.ask_again();
+        assert_eq!(wait.state, MoveWaitState::AskedAgain);
+        assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Failed);
     }
 
     pub(super) fn sheep(x: f32, y: f32) -> Placed {

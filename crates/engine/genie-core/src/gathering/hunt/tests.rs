@@ -6,6 +6,7 @@ use crate::map::Radii;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::math::fmath::BVector;
+use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
@@ -870,7 +871,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
     let mut h = hunt(HuntState::WalkSearch, MoveTo::Waiting);
     h.move_to = h.move_to.map(|m| MoveToAction {
         wait: MoveWait {
-            state: 1,
+            state: MoveWaitState::Waiting,
             timer: 0.0,
             delay: 1.0,
         },
@@ -972,7 +973,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     rig.mover_mut().paths.clear();
     let mut h = walking(Some(MoveToAction {
         wait: MoveWait {
-            state: 1,
+            state: MoveWaitState::Waiting,
             ..MoveWait::NEW
         },
         ..to_point(MoveTo::Start, point, CHOP.range)
@@ -980,7 +981,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     assert_eq!(point_walk(&mut h, &mut rig, who), Ok(PointWalk::Walking));
     assert_eq!(
         h.move_to.map(|m| (m.state, m.wait.state)),
-        Some((MoveTo::Moving, 2))
+        Some((MoveTo::Moving, MoveWaitState::AskedAgain))
     );
     assert_eq!(rig.mover_mut().paths.len(), 2);
     let mut rig = Rig::on_the_path(Victim::default());
@@ -1645,7 +1646,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
             move_to: Some(MoveToAction {
                 sprite: Some(MOVING),
                 wait: MoveWait {
-                    state: 1,
+                    state: MoveWaitState::Waiting,
                     ..MoveWait::NEW
                 },
                 ..to_house(MoveTo::Start, range)
@@ -1660,7 +1661,12 @@ fn a_hunt_s_walk_starts_toward_its_target() {
     };
     assert_eq!(
         start(0.1),
-        (Ok(HuntNext::Stay), Some((MoveTo::Moving, 2)), 2, Some(1880))
+        (
+            Ok(HuntNext::Stay),
+            Some((MoveTo::Moving, MoveWaitState::AskedAgain)),
+            2,
+            Some(1880)
+        )
     );
     let (got, walk, ..) = start(5.0);
     assert_eq!(

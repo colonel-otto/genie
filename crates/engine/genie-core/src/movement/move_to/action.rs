@@ -477,9 +477,7 @@ impl MoveToAction {
         step: &mut MoveStep,
         shows: &mut Shows<'_>,
     ) -> Result<(), GenieError> {
-        if self.wait.state == 1 {
-            self.wait.state = 2;
-        }
+        self.wait.ask_again();
         let goal = self.walks_to();
         self.state = MoveTo::Moving;
         let shown = Shown {
@@ -506,6 +504,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::spatial::Placed;
+    use crate::movement::move_to::MoveWaitState;
     use crate::movement::move_to::tests::sheep;
     use crate::test_ids::object_id;
 
@@ -538,7 +537,7 @@ mod tests {
             quiet: false,
             on_target_moved: TargetMoved::Follows,
             wait: MoveWait {
-                state: 1,
+                state: MoveWaitState::Waiting,
                 timer: 0.0,
                 delay: 0.15,
             },
@@ -587,7 +586,10 @@ mod tests {
             .update(rig.walk(0), PathAsk::default(), looks.shows())
             .unwrap();
         assert_eq!(step, MoveStep::default());
-        assert_eq!((m.state, m.wait.state), (MoveTo::Moving, 2));
+        assert_eq!(
+            (m.state, m.wait.state),
+            (MoveTo::Moving, MoveWaitState::AskedAgain)
+        );
         assert_eq!(looks.shown(), Some(13154));
         assert_eq!(rig.mover_mut().stats.speed, 0.8 * 1.5);
         let step = m

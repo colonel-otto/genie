@@ -114,9 +114,7 @@ impl MoveToAction {
         let GiveUp { waits, stance } = gives_up;
         Ok(match self.state {
             MoveTo::Start => {
-                if self.wait.state == 1 {
-                    self.wait.state = 2;
-                }
+                self.wait.ask_again();
                 let goal = self.walks_to();
                 self.state = MoveTo::Moving;
                 let (started, asked) = ask_walk(walk, (goal, self.range), ask, shown)?;

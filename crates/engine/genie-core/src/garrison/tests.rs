@@ -12,6 +12,7 @@ use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::MoveToAction;
+use crate::movement::move_to::MoveWaitState;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
@@ -511,7 +512,7 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     let mut e = ship_enter(Position::new(5.5, 30.5, 0.0), MoveTo::Waiting);
     if let Some(m) = e.move_to.as_mut() {
         m.wait = crate::movement::move_to::MoveWait {
-            state: 1,
+            state: MoveWaitState::Waiting,
             timer: 0.0,
             delay: 1.0,
         };

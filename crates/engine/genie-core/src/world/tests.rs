@@ -35,6 +35,7 @@ use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
 use crate::movement::fly::FlyState;
+use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
@@ -9846,7 +9847,7 @@ fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
                 quiet: false,
                 on_target_moved: crate::movement::move_to::TargetMoved::Follows,
                 wait: crate::movement::move_to::MoveWait {
-                    state: 1,
+                    state: MoveWaitState::Waiting,
                     timer: 0.0,
                     delay: 60.0,
                 },

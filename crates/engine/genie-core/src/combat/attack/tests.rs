@@ -6,6 +6,7 @@ use crate::map::TerrainMask;
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -2346,7 +2347,7 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
         rig.mover_mut().animated.speed = 1.0;
         let mut a = own_attack(10028, AttackState::Move, range);
         let wait = MoveWait {
-            state: 1,
+            state: MoveWaitState::Waiting,
             ..MoveWait::NEW
         };
         a.move_to = Some(MoveToAction {
@@ -2371,12 +2372,23 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
     };
     assert_eq!(
         start(0.1),
-        (0, Some((MoveTo::Moving, 2)), Some(301), 1.0, 1.2)
+        (
+            0,
+            Some((MoveTo::Moving, MoveWaitState::AskedAgain)),
+            Some(301),
+            1.0,
+            1.2
+        )
     );
     let (code, move_to, shown, anim, _) = start(5.0);
     assert_eq!(
         (code, move_to, shown, anim),
-        (0, Some((MoveTo::Arrived, 2)), None, 1.0)
+        (
+            0,
+            Some((MoveTo::Arrived, MoveWaitState::AskedAgain)),
+            None,
+            1.0
+        )
     );
 }
 
@@ -2484,7 +2496,7 @@ fn an_attack_s_walk_walks_waits_arrives_or_fails() {
         let mut a = own_attack(10028, AttackState::Move, 0.1);
         a.arms.idle_sprite = Some(STANDING);
         let wait = MoveWait {
-            state: 1,
+            state: MoveWaitState::Waiting,
             timer,
             delay: 0.15,
         };

@@ -252,7 +252,7 @@ pub(crate) fn saved_move_to(
         // what it does when its target moves (`+0x61`)
         on_target_moved: TargetMoved::try_from(base.target_moved_state)?,
         // its wait (`+0x6c`, `+0x70`, `+0x74`)
-        wait: saved_move_wait(action),
+        wait: saved_move_wait(action)?,
     })
 }
 

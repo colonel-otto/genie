@@ -560,6 +560,7 @@ mod tests {
     use super::*;
     use crate::combat::attack::tests::Rig;
     use crate::map::Footprint;
+    use crate::movement::move_to::MoveWaitState;
     use crate::movement::move_to::{MoveDefaults, MoveToReads, MoveWait, SpriteReads, WalkTo};
     use crate::objects::ObjectId;
     use crate::objects::masters::class;
@@ -1229,7 +1230,7 @@ mod tests {
             move_to: Some(MoveToAction {
                 state: MoveTo::Waiting,
                 wait: MoveWait {
-                    state: 1,
+                    state: MoveWaitState::Waiting,
                     timer: 0.92,
                     delay: 1.0,
                 },

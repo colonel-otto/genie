@@ -43,19 +43,27 @@ pub(super) fn frames<'a>(chapter: &de::Chapter<'a>, limit: usize) -> Result<Vec<
 }
 
 /// A saved `MoveTo`'s wait (`+0x6c`, `+0x70`, `+0x74`); none for another sub-action.
+///
+/// # Errors
+///
+/// A saved wait state that names no state.
 pub(super) fn saved_move_wait(
     sub: &genie_save::generated::world::Action,
-) -> genie_core::movement::move_to::MoveWait {
+) -> Result<genie_core::movement::move_to::MoveWait, genie_core::GenieError> {
+    use genie_core::movement::move_to::{MoveWait, MoveWaitState};
     sub.rge_action_by_type
         .as_deref()
         .and_then(|t| t.rge_action_move_to.as_deref())
-        .map_or_else(genie_core::movement::move_to::MoveWait::default, |m| {
-            genie_core::movement::move_to::MoveWait {
-                state: m.movement_wait_state,
-                timer: m.timer,
-                delay: f32::from_bits(m.k_default_wait_time),
-            }
-        })
+        .map_or_else(
+            || Ok(MoveWait::default()),
+            |m| {
+                Ok(MoveWait {
+                    state: MoveWaitState::of_byte(m.movement_wait_state)?,
+                    timer: m.timer,
+                    delay: f32::from_bits(m.k_default_wait_time),
+                })
+            },
+        )
 }
 
 /// The world's market as the save holds it: the save names the int net trades `*_price_delta`
