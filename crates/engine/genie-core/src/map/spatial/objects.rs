@@ -471,7 +471,7 @@ impl Spatial {
         a: Point,
         b: Point,
         grow: f32,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         ignore: &[RecordId],
     ) -> bool {
         self.put_tile_records(a, b, grow, mask);
@@ -532,7 +532,13 @@ impl Spatial {
     /// its query, then `FUN_1410561f0`): its temporary tile records
     /// ([`Spatial::put_tile_records`]) tested as [`Spatial::segment_meets`] tests them, and
     /// removed again. A walk whose grown box leaves the map counts as blocked.
-    pub fn tiles_block(&mut self, a: Point, b: Point, grow: f32, mask: u8) -> bool {
+    pub fn tiles_block(
+        &mut self,
+        a: Point,
+        b: Point,
+        grow: f32,
+        mask: crate::map::TerrainMask,
+    ) -> bool {
         self.put_tile_records(a, b, grow, mask);
         let blocked =
             WalkTest::new(a, b, grow, self.map).is_none_or(|t| self.tile_records_meet(&t, &[]));
@@ -544,7 +550,13 @@ impl Spatial {
     /// `a` and `b` (x, y), grown by `grow` (the manager's buffer) and held on the map, whose word
     /// holds neither a terrain class of `mask` nor a temporary record (`mask & 0x7f | 0x80`), row
     /// by row. The records stay until [`Spatial::clear_tile_records`].
-    pub fn put_tile_records(&mut self, a: Point, b: Point, grow: f32, mask: u8) {
+    pub fn put_tile_records(
+        &mut self,
+        a: Point,
+        b: Point,
+        grow: f32,
+        mask: crate::map::TerrainMask,
+    ) {
         use crate::math::conversions::cvttss2si;
         let (lo_x, hi_x) = (
             if b.x() <= a.x() { b.x() } else { a.x() },
@@ -564,7 +576,7 @@ impl Spatial {
         let (x0, y0) = (lo_x.max(0), lo_y.max(0));
         let x1 = if hi_x < w { hi_x } else { w - 1 };
         let y1 = if hi_y < h { hi_y } else { h - 1 };
-        let impassable = u64::from(mask & 0x7f);
+        let impassable = mask.classes();
         for y in y0..=y1 {
             for x in x0..=x1 {
                 let Some(word) = self.tiles.word(x, y) else {

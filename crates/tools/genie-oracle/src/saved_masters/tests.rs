@@ -70,7 +70,10 @@ fn a_walker_moves_by_its_sprites_speed_factors() {
     let stats = moving_stats(&master, s, 1, &table([8; 3])).unwrap();
     assert_eq!(stats.speed.to_bits(), 3.0_f32.to_bits());
     assert_eq!((stats.fly_mode, stats.move_algorithm), (2, 1));
-    assert_eq!((stats.restriction, stats.restriction_mask), (1, 0b101));
+    assert_eq!(
+        (stats.restriction, stats.restriction_mask),
+        (1, genie_core::map::TerrainMask::of_bits(0b101))
+    );
     assert_eq!(stats.radius.x().to_bits(), 0.2_f32.to_bits());
     assert!(stats.facets.is_some());
     // without a run sprite, the move sprite's factor

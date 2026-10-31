@@ -48,7 +48,7 @@ impl Spatial {
         a: Point,
         b: Point,
         buffer: Option<f32>,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         ignore: &[RecordId],
         first: bool,
     ) -> Result<Vec<Hit>, GenieError> {
@@ -133,7 +133,7 @@ impl Spatial {
         a: Point,
         b: Point,
         buffer: Option<f32>,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         ignore: &[RecordId],
     ) -> Result<bool, GenieError> {
         Ok(!self
@@ -148,7 +148,7 @@ impl Spatial {
         a: Point,
         b: Point,
         buffer: Option<f32>,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         ignore: &[RecordId],
     ) -> Result<Vec<Hit>, GenieError> {
         self.pather_query(a, b, buffer, mask, ignore, false)
@@ -238,7 +238,7 @@ pub(super) fn ccw(p0: Point, p1: Point, p2: Point) -> i32 {
 pub struct SmoothingWalls<'a> {
     pub(super) world: &'a mut Spatial,
     pub(super) radius: f32,
-    pub(super) mask: u8,
+    pub(super) mask: crate::map::TerrainMask,
     pub(super) ignore: &'a [RecordId],
     /// Whether a walk was tested.
     pub ran: bool,
@@ -251,7 +251,7 @@ impl<'a> SmoothingWalls<'a> {
     pub const fn new(
         world: &'a mut Spatial,
         radius: f32,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         ignore: &'a [RecordId],
     ) -> Self {
         Self {

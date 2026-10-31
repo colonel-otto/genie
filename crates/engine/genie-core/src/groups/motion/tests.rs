@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::TerrainMask;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ObstructionClass;
@@ -376,7 +377,7 @@ fn lead() -> Lead {
             id: object_id(7),
             radius: 0.2,
             restriction: 0,
-            mask: 0xff,
+            mask: TerrainMask::ALL,
         },
         position: Position::new(5.0, 5.0, 0.0),
         radius: Footprint::new(0.2, 0.2),

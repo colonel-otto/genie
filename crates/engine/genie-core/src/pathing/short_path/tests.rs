@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::TerrainMask;
 use crate::test_ids::object_id;
 
 /// A search on an empty mesh toward a point target at `at` within `range` (fixed point), its
@@ -301,7 +302,7 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
         target,
         listed: Vec::new(),
         map: GridSize::new(16, 16),
-        mask: 6,
+        mask: TerrainMask::of_bits(6),
     };
     let t = Target {
         id: object_id(9),

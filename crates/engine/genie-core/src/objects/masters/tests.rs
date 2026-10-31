@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Radii;
+use crate::map::TerrainMask;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::players::attribute as player_attribute;
@@ -988,7 +989,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 2.0),
         restriction: 7,
-        restriction_mask: 1,
+        restriction_mask: TerrainMask::of_bits(1),
         turn_time: 0.0,
         move_algorithm: 0,
         min_collision: 0.0,

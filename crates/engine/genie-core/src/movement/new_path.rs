@@ -245,7 +245,7 @@ impl Mover {
             radius: self.stats.radius.x(),
             target_size: target.radius,
             range: self.stats.weapon_range,
-            blocked: u64::from(self.stats.restriction_mask ^ 0xff),
+            blocked: self.stats.restriction_mask.blocked(),
         };
         let tiles = world.tiles();
         let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);

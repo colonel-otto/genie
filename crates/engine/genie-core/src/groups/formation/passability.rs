@@ -389,7 +389,7 @@ impl World {
         grid: &mut PassGrid,
         visited: &mut [u8],
         (gx, gy): (i32, i32),
-        unit_mask: u8,
+        unit_mask: crate::map::TerrainMask,
     ) -> Option<(Tile, usize)> {
         let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
         if !(0 <= gx && 0 <= gy && gx < w && gy < h) {

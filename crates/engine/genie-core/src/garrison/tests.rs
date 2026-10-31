@@ -6,6 +6,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::MoveToAction;
@@ -819,7 +820,7 @@ fn walled_map(
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 0.5),
         restriction: 0,
-        restriction_mask: 1,
+        restriction_mask: TerrainMask::of_bits(1),
         turn_time: 0.0,
         move_algorithm: 0,
         min_collision: 1.0,
@@ -1406,7 +1407,7 @@ fn standing() -> crate::movement::MoveStats {
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 2.0),
         restriction: 0,
-        restriction_mask: 255,
+        restriction_mask: TerrainMask::ALL,
         turn_time: 0.0,
         move_algorithm: 0,
         min_collision: 0.0,

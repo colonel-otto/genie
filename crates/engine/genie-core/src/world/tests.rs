@@ -20,6 +20,7 @@ use crate::map::Offset;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::BVector;
@@ -410,7 +411,7 @@ pub(crate) fn builder_masters() -> Masters {
             turn_radius_speed: f32::MAX,
             radius: Radii::new(0.2, 0.2, 0.5),
             restriction: 7,
-            restriction_mask: 6,
+            restriction_mask: TerrainMask::of_bits(6),
             turn_time: 0.0,
             move_algorithm: 0,
             min_collision: 1.0,
@@ -13487,7 +13488,7 @@ const fn house_moves() -> crate::movement::MoveStats {
         turn_radius_speed: f32::MAX,
         radius: Radii::new(1.0, 1.0, 1.0),
         restriction: 7,
-        restriction_mask: 6,
+        restriction_mask: TerrainMask::of_bits(6),
         turn_time: 0.0,
         move_algorithm: 0,
         min_collision: 1.0,

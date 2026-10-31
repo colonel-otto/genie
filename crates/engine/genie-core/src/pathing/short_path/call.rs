@@ -113,7 +113,7 @@ pub struct Call {
     /// The map's size in tiles.
     pub map: GridSize,
     /// The terrain classes the unit can cross (its restriction's mask).
-    pub mask: u8,
+    pub mask: crate::map::TerrainMask,
 }
 
 /// What the entry makes of a call.
@@ -185,7 +185,7 @@ impl Call {
                 radius: self.radius,
                 target_size: size,
                 range: self.range,
-                blocked: u64::from(self.mask ^ 0xff),
+                blocked: self.mask.blocked(),
             },
             ignore,
         }

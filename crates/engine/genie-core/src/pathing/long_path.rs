@@ -180,7 +180,7 @@ pub struct LongRequest {
     /// The unit moves: its speed (slot 0x208, `FUN_141202c70`) is not 0, or its master is 42.
     pub moves: bool,
     /// The terrain classes the unit may stand on (its restriction's mask).
-    pub mask: u8,
+    pub mask: crate::map::TerrainMask,
     /// The owner is a computer player (`FUN_141659cf0`): a shorter budget.
     pub computer: bool,
     /// The tiles of the ignored units the search lowers the tall count of, once each
@@ -413,7 +413,7 @@ struct Grid<'a> {
 impl<'a> Grid<'a> {
     fn new(tiles: &'a Tiles, map: GridSize, req: &LongRequest) -> Self {
         let (w, h) = (map.width(), map.height());
-        let blocked_terrain = u64::from(req.mask ^ 0xff);
+        let blocked_terrain = req.mask.blocked();
         let mut lowered = vec![0u8; (w.max(0) * h.max(0)) as usize];
         for &t in &req.lowered {
             let (x, y) = (t.x(), t.y());
@@ -674,6 +674,7 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::TerrainMask;
 
     /// A map of `rows` ('#' a blocked tile, 'T' a tall object, 'G' player 4's gate record, '.'
     /// open), class 1 everywhere.
@@ -706,7 +707,7 @@ mod tests {
             range: 3.0,
             target: None,
             moves: true,
-            mask: 1,
+            mask: TerrainMask::of_bits(1),
             computer: false,
             lowered: Vec::new(),
             within_range: false,

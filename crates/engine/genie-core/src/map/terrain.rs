@@ -10,6 +10,7 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::TerrainMask;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -199,16 +200,20 @@ impl Terrain {
     /// (`FUN_141054630`'s table): the class bits ([`terrain_class`]) of the terrains whose value
     /// in it is above 0; none for a restriction the table lacks.
     #[must_use]
-    pub fn restriction_mask(&self, restriction: usize) -> u8 {
-        self.restrictions.get(restriction).map_or(0, |values| {
-            values
-                .iter()
-                .enumerate()
-                .filter(|&(_, &v)| 0.0 < v)
-                .fold(0, |m, (t, _)| {
-                    m | self.terrains.get(t).map_or(0, |k| terrain_class(k.flags))
-                })
-        })
+    pub fn restriction_mask(&self, restriction: usize) -> TerrainMask {
+        self.restrictions
+            .get(restriction)
+            .map_or(TerrainMask::NONE, |values| {
+                TerrainMask::of_bits(
+                    values
+                        .iter()
+                        .enumerate()
+                        .filter(|&(_, &v)| 0.0 < v)
+                        .fold(0, |m, (t, _)| {
+                            m | self.terrains.get(t).map_or(0, |k| terrain_class(k.flags))
+                        }),
+                )
+            })
     }
 
     /// The map's terrain from its tiles, the terrain table and the restrictions.

@@ -265,7 +265,7 @@ impl Default for KeptHulls {
 #[derive(Debug)]
 pub struct HullPather<'w> {
     world: &'w mut Spatial,
-    mask: u8,
+    mask: crate::map::TerrainMask,
     radius: f32,
     /// `FindShortPath`'s player (its argument 12, the unit's player's number `+0x718`), whom slot
     /// 0x678 asks about a gate.

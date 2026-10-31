@@ -145,7 +145,7 @@ pub struct TerrainTable {
     classes: Vec<u8>,
     /// Each terrain's record as the map's terrain reads see it.
     kinds: Vec<genie_core::map::terrain::TerrainKind>,
-    masks: Vec<u8>,
+    masks: Vec<genie_core::map::TerrainMask>,
     /// Each terrain restriction's value per terrain (`passable_buildable_dmg_multiplier`).
     passable: Vec<Vec<f32>>,
 }
@@ -165,9 +165,11 @@ impl TerrainTable {
             .iter()
             .map(|r| {
                 let passable = r.passable_buildable_dmg_multiplier.iter().enumerate();
-                passable
-                    .filter(|&(_, &v)| 0.0 < v)
-                    .fold(0, |m, (t, _)| m | classes.get(t).copied().unwrap_or(0))
+                genie_core::map::TerrainMask::of_bits(
+                    passable
+                        .filter(|&(_, &v)| 0.0 < v)
+                        .fold(0, |m, (t, _)| m | classes.get(t).copied().unwrap_or(0)),
+                )
             })
             .collect();
         let passable = dat
@@ -220,7 +222,7 @@ impl TerrainTable {
 
     /// Each terrain restriction's mask, by restriction id.
     #[must_use]
-    pub fn masks(&self) -> &[u8] {
+    pub fn masks(&self) -> &[genie_core::map::TerrainMask] {
         &self.masks
     }
 
@@ -579,7 +581,10 @@ impl MasterTable {
 
     /// The terrain restrictions' masks.
     pub(crate) fn with_masks(mut self, masks: Vec<u8>) -> Self {
-        self.terrain.masks = masks;
+        self.terrain.masks = masks
+            .into_iter()
+            .map(genie_core::map::TerrainMask::of_bits)
+            .collect();
         self
     }
 }

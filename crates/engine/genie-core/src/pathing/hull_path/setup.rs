@@ -28,7 +28,7 @@ pub fn quick_reach(
     world: &mut Spatial,
     me: ObjectId,
     target: Option<ObjectId>,
-    mask: u8,
+    mask: crate::map::TerrainMask,
     radius: f32,
     range: f32,
 ) -> Result<bool, GenieError> {
@@ -58,7 +58,7 @@ pub fn quick_reach_from(
     me: ObjectId,
     from: Point,
     target: Option<ObjectId>,
-    mask: u8,
+    mask: crate::map::TerrainMask,
     radius: f32,
     range: f32,
 ) -> Result<Option<f32>, GenieError> {
@@ -95,7 +95,7 @@ impl<'w> HullPather<'w> {
         world: &'w mut Spatial,
         unit: ObjectId,
         target: Option<ObjectId>,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         radius: f32,
     ) -> Self {
         let player = world.get(unit).map_or(-1, |p| i32::from(p.player.get()));
@@ -115,7 +115,7 @@ impl<'w> HullPather<'w> {
     pub fn for_list(
         world: &'w mut Spatial,
         ids: &[ObjectId],
-        mask: u8,
+        mask: crate::map::TerrainMask,
         radius: f32,
         player: i32,
     ) -> Self {
@@ -128,7 +128,7 @@ impl<'w> HullPather<'w> {
             if p.radius == Footprint::new(HALF, HALF) && x % ONE == HALF && y % ONE == HALF {
                 let (tx, ty) = (cvttss2si(x.floor()), cvttss2si(y.floor()));
                 let word = world.tiles().word(tx, ty).unwrap_or(0);
-                if word & u64::from(mask ^ 0xff) != 0 {
+                if word & mask.blocked() != 0 {
                     ignore.push(tile_record_id(tx, ty));
                 }
             }

@@ -355,7 +355,11 @@ impl World {
     ///
     /// No such master, a master without a restriction (the game indexes before the table) and a
     /// map without its terrain.
-    pub(crate) fn master_mask(&self, p: PlayerId, master: MasterId) -> Result<u8, GenieError> {
+    pub(crate) fn master_mask(
+        &self,
+        p: PlayerId,
+        master: MasterId,
+    ) -> Result<crate::map::TerrainMask, GenieError> {
         let restriction =
             usize::try_from(self.master(p, master)?.terrain_restriction).map_err(|_| {
                 GenieError::unsupported("a terrain mask of a master without a restriction")

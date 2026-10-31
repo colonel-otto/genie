@@ -479,10 +479,10 @@ impl Spatial {
     /// `FUN_141185690`: tile (`x`, `y`) lies on the obstruction manager's map, its terrain class
     /// is in `mask` and no static record blocks it.
     #[must_use]
-    pub fn standable(&self, x: i32, y: i32, mask: u8) -> bool {
+    pub fn standable(&self, x: i32, y: i32, mask: crate::map::TerrainMask) -> bool {
         self.tiles
             .word(x, y)
-            .is_some_and(|w| w & (u64::from(mask ^ 0xff) | BLOCKED) == 0)
+            .is_some_and(|w| w & (mask.blocked() | BLOCKED) == 0)
     }
 
     /// Whether unit `me` (its x radius `radius_x`) with terrain mask `mask` can stand on tile
@@ -499,14 +499,14 @@ impl Spatial {
         &mut self,
         x: i32,
         y: i32,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         me: ObjectId,
         radius_x: f32,
     ) -> Result<bool, GenieError> {
         let (Some(word), Some(tall)) = (self.tiles.word(x, y), self.tiles.tall(x, y)) else {
             return Ok(false);
         };
-        if word & (u64::from(mask ^ 0xff) | BLOCKED) != 0 {
+        if word & (mask.blocked() | BLOCKED) != 0 {
             return Ok(false);
         }
         if 1 < tall {
@@ -525,7 +525,7 @@ impl Spatial {
         &mut self,
         from: Position,
         me: (ObjectId, f32),
-        mask: u8,
+        mask: crate::map::TerrainMask,
         site: (Position, Footprint),
     ) -> Result<Option<Point>, GenieError> {
         self.spot_off(from, me, mask, site, false)

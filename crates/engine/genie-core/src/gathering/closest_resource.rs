@@ -161,7 +161,7 @@ pub(crate) fn closest_resource_of(
     };
     let master_id = unit.life.master_id;
     let plan = &mut c.plan;
-    let blocked = u64::from(mask ^ 0xff) | crate::map::spatial::BLOCKED;
+    let blocked = mask.blocked() | crate::map::spatial::BLOCKED;
     gather_search::closest_resource_at(
         &seeker,
         site.as_ref(),

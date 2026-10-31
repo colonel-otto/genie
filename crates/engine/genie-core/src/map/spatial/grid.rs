@@ -436,7 +436,7 @@ impl Spatial {
         from: Point,
         to: Point,
         grow: f32,
-        mask: Option<u8>,
+        mask: Option<crate::map::TerrainMask>,
         ignore: &[RecordId],
     ) -> Result<Vec<RecordId>, GenieError> {
         self.set_manager_ignore(ignore);

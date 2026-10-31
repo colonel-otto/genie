@@ -434,7 +434,7 @@ pub(super) struct Rounder<'d> {
     pub(super) computer: bool,
     pub(super) at: BVector,
     pub(super) here: Position,
-    pub(super) mask: u8,
+    pub(super) mask: crate::map::TerrainMask,
     pub(super) restriction: usize,
     pub(super) grow: f32,
     pub(super) radius: Footprint,

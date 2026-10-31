@@ -3,6 +3,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::Rect;
+use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
@@ -212,7 +213,13 @@ fn the_quick_path_goes_around_one_square_obstruction() {
         object_id(9149),
         placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut pather = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut pather = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (result, path) = pather
         .find(
             Point::new(2.0, 5.5),
@@ -238,7 +245,7 @@ fn the_quick_path_goes_around_one_square_obstruction() {
 #[test]
 fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
-    let mut pather = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut pather = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     // a thin strip across the box's corner at (0, 0), a vertex of neither inside the other
     let strip = Hull {
         points: vec![
@@ -295,7 +302,7 @@ fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     );
     let mut mover = crate::gathering::hunt::tests::walker().placed(Position::new(2.0, 5.5, 0.0));
     mover.stats.radius = Radii::new(0.2, 0.2, 0.2);
-    mover.stats.restriction_mask = 6;
+    mover.stats.restriction_mask = TerrainMask::of_bits(6);
     let me = crate::movement::Me {
         id: object_id(9171),
         action_state: 0,
@@ -305,7 +312,13 @@ fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
         .short_reach(&me, &mut w, object_id(9149), 0.1)
         .unwrap()
         .unwrap();
-    let mut pather = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut pather = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (_, path) = pather
         .find(
             Point::new(2.0, 5.5),
@@ -346,7 +359,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
         0,
         Vec::new(),
     ));
-    let mut quick = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut quick = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let (result, _) = quick
         .find_quick(Point::new(2.0, 5.5), Point::new(12.5, 5.5), None, 0.0)
         .unwrap();
@@ -357,7 +370,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
         w.tile_records()
     );
     // a search starts without them and leaves none
-    let mut full = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut full = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let (result, _) = full
         .find(Point::new(2.0, 5.5), Point::new(12.5, 5.5), None, 0.0)
         .unwrap();
@@ -370,7 +383,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
             ObjectId::NOBODY,
             Point::new(2.0, 5.5),
             None,
-            6,
+            TerrainMask::of_bits(6),
             0.2,
             0.0
         )
@@ -408,7 +421,7 @@ fn open_nodes(p: &HullPather<'_>, l: usize) -> Vec<usize> {
 #[test]
 fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let goal = Some(Point::new(10.0, 0.0));
     let root = p
         .add_node(NewNode {
@@ -569,7 +582,7 @@ fn a_node_joins_the_open_list_by_cost_and_distance_and_replaces_a_dearer_one() {
 #[test]
 fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let root = p
         .add_node(NewNode {
             list: 1,
@@ -732,7 +745,7 @@ fn a_node_by_place_matches_within_epsilon_and_skips_the_last_closed_node() {
 #[test]
 fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let goal = Some(Point::new(10.0, 0.0));
     let n: Vec<usize> = (0..4)
         .map(|k| {
@@ -799,7 +812,7 @@ fn nodes_close_one_by_one_or_all_and_the_lists_empty() {
 #[test]
 fn a_point_lies_in_the_first_hull_holding_it() {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let shifted = |dx: f32| Hull {
         points: square()
             .points
@@ -888,14 +901,26 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
         objects: Vec::new(),
     };
     // a gate for a player, without the world's slot 0x678
-    let mut p = HullPather::new(&mut w, object_id(10), Some(object_id(11)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(10),
+        Some(object_id(11)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     assert_eq!(p.player, 1);
     p.hulls = vec![far.clone()];
     assert!(p.add_tile_objects(5, 5, Some(0), 1).is_err());
     // player 1 passes the gate
     let passes = BTreeSet::from([object_id(3)]);
-    let mut p =
-        HullPather::new(&mut w, object_id(10), Some(object_id(11)), 6, 0.2).with_gates(&passes);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(10),
+        Some(object_id(11)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .with_gates(&passes);
     p.hulls = vec![far.clone()];
     p.add_tile_objects(5, 5, Some(0), 1).unwrap();
     assert_eq!(
@@ -917,8 +942,14 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
         ]
     );
     // player -1 passes no gate, and needs no slot 0x678; included objects go in
-    let mut p = HullPather::new(&mut w, object_id(10), Some(object_id(11)), 6, 0.2)
-        .including(&[object_id(5), object_id(10)]);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(10),
+        Some(object_id(11)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .including(&[object_id(5), object_id(10)]);
     p.hulls = vec![far];
     p.add_tile_objects(5, 5, Some(0), -1).unwrap();
     assert_eq!(
@@ -946,8 +977,14 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
         ]
     );
     // without a hull each box finds its own place: the wide box merges into the first's
-    let mut p =
-        HullPather::new(&mut w, object_id(10), Some(object_id(11)), 6, 0.2).with_gates(&passes);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(10),
+        Some(object_id(11)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .with_gates(&passes);
     p.add_tile_objects(5, 5, None, 1).unwrap();
     assert_eq!(
         hull_ids(&p),
@@ -992,7 +1029,7 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
             tall(x as f32 + 0.5, y as f32 + 0.5, 0.1, class),
         );
     }
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.area = [5, 5, 7, 7];
     p.process_cliffs().unwrap();
     // (3, 3) and (9, 6) by the side rows, (6, 4) above, (6, 9) below; (8, 8) is a corner of
@@ -1008,7 +1045,7 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
         ]
     );
     // at the map's edge the frame stops at the last tile
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.area = [17, 17, 18, 18];
     p.process_cliffs().unwrap();
     assert_eq!(hull_ids(&p), [vec![RecordId::from(object_id(8))]]);
@@ -1039,7 +1076,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     w.sight = Some(v);
     w.insert(object_id(20), tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
     w.insert(object_id(21), tall(9.5, 9.5, 0.1, class::PREDATOR));
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.process_tile(-1, 9, [5, 5, 9, 9], None).unwrap();
     p.process_tile(20, 9, [5, 5, 9, 9], None).unwrap();
     assert_eq!(p.hulls, []);
@@ -1058,14 +1095,14 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
         Rect::new(8.8, 8.8, 10.2, 10.2)
     );
     // the anchor inside the area: its tile's own turn takes the building
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.process_tile(9, 9, [5, 5, 10, 10], None).unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![tile_record_id(9, 9), RecordId::from(object_id(21))]]
     );
     // into a given hull, once; an ignored tile's box stays out
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.hulls = vec![Hull::default()];
     p.process_tile(3, 3, [0, 0, 5, 5], Some(0)).unwrap();
     p.process_tile(3, 3, [0, 0, 5, 5], Some(0)).unwrap();
@@ -1116,7 +1153,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
             ..Default::default()
         }),
     );
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.hulls = vec![Hull::default()];
     p.area = [-1, 5, 9, 5];
     p.build_hulls().unwrap();
@@ -1142,7 +1179,8 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
         (p.hulls[2].min, p.hulls[2].max),
         (Point::new(x0, 4.8), Point::new(10.2, 6.2))
     );
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2).including(&[object_id(33)]);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2)
+        .including(&[object_id(33)]);
     p.area = [0, 5, 2, 5];
     p.build_hulls().unwrap();
     assert_eq!(
@@ -1164,7 +1202,7 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
     // blocks the walk (8, 5) -> (2, 2) alone
     classes[3 * 20 + 4] = 1;
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     let n0 = p
         .add_unrefused(UnrefusedNode {
             list: 0,
@@ -1252,7 +1290,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
         object_id(9171),
         Point::new(2.0, 5.5),
         Some(object_id(9149)),
-        6,
+        TerrainMask::of_bits(6),
         0.2,
         0.1,
     )
@@ -1261,7 +1299,17 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     let expected = (3.5f32 * 3.5 + (5.5 - by) * (5.5 - by)).sqrt()
         + (5.1f32 * 5.1 + (5.5 - by) * (5.5 - by)).sqrt();
     assert!((length - expected).abs() < 1e-4, "{length} {expected}");
-    assert!(quick_reach(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2, 0.1).unwrap());
+    assert!(
+        quick_reach(
+            &mut w,
+            object_id(9171),
+            Some(object_id(9149)),
+            TerrainMask::of_bits(6),
+            0.2,
+            0.1
+        )
+        .unwrap()
+    );
     // within range already: no path, length 0
     assert_eq!(
         quick_reach_from(
@@ -1269,7 +1317,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
             object_id(9171),
             Point::new(9.75, 5.5),
             Some(object_id(9149)),
-            6,
+            TerrainMask::of_bits(6),
             0.2,
             0.1
         )
@@ -1277,7 +1325,17 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
         Some(0.0)
     );
     // a target the world does not hold
-    assert!(!quick_reach(&mut w, object_id(9171), Some(object_id(777)), 6, 0.2, 0.1).unwrap());
+    assert!(
+        !quick_reach(
+            &mut w,
+            object_id(9171),
+            Some(object_id(777)),
+            TerrainMask::of_bits(6),
+            0.2,
+            0.1
+        )
+        .unwrap()
+    );
     // a second obstruction in the way: the quick path is blocked (3)
     w.insert(
         object_id(49),
@@ -1289,7 +1347,7 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
             object_id(9171),
             Point::new(2.0, 5.5),
             Some(object_id(9149)),
-            6,
+            TerrainMask::of_bits(6),
             0.2,
             0.1
         )
@@ -1308,7 +1366,13 @@ fn a_new_pather_holds_the_constructor_s_state() {
         object_id(9171),
         placed(2.0, 5.5, 0.2, ObstructionType::CIRCLE),
     );
-    let p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     assert_eq!(ITERATION_CAP, 0x40);
     assert_eq!(
         (p.player, p.ignore.clone()),
@@ -1344,7 +1408,7 @@ fn a_new_pather_holds_the_constructor_s_state() {
 #[test]
 fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.area = [2, 2, 5, 5];
     assert!(p.in_area(Point::new(f32::NAN, 3.0)));
     assert!(p.in_area(Point::new(2.2, 5.8)));
@@ -1460,7 +1524,13 @@ fn walled(wall_x: usize, unit: Point) -> Spatial {
 #[test]
 fn the_hull_search_goes_around_a_wall_to_the_target() {
     let mut w = walled(6, Point::new(2.0, 5.5));
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (result, path) = p
         .find(
             Point::new(2.0, 5.5),
@@ -1509,7 +1579,13 @@ fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
         object_id(48),
         placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (result, path) = p
         .find(
             Point::new(4.9, 5.5),
@@ -1563,7 +1639,13 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
         });
         h
     };
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let h = box_hull(&mut p);
     let mut paths = vec![Waypoints::default(); PATHS];
     let mut count = 0;
@@ -1586,7 +1668,13 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
     assert_eq!(paths[3].points, [Point::new(4.9, 5.5), Point::new(n, 5.6)]);
     assert!(paths[0].cost < paths[1].cost && paths[1].cost <= paths[3].cost);
     // toward a goal it sees from its first step
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let h = box_hull(&mut p);
     let mut paths = vec![Waypoints::default(); 1];
     let mut count = 0;
@@ -1620,7 +1708,13 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
 fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
     let mut w = walled(8, Point::new(4.9, 5.5));
     let mut rays = |goal: Option<Point>, most| {
-        let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+        let mut p = HullPather::new(
+            &mut w,
+            object_id(9171),
+            Some(object_id(9149)),
+            TerrainMask::of_bits(6),
+            0.2,
+        );
         p.area = [0, 0, 19, 19];
         let h = p
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
@@ -1686,7 +1780,13 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
 fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range() {
     let mut w = walled(8, Point::new(4.9, 5.5));
     let mut walk = |goal: Option<Point>, range, most| {
-        let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+        let mut p = HullPather::new(
+            &mut w,
+            object_id(9171),
+            Some(object_id(9149)),
+            TerrainMask::of_bits(6),
+            0.2,
+        );
         p.area = [0, 0, 19, 19];
         let h = p
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
@@ -1726,7 +1826,13 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
 #[test]
 fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
     let mut w = walled(8, Point::new(4.9, 5.5));
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     p.area = [0, 0, 19, 19];
     let h = p
         .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
@@ -1775,7 +1881,13 @@ fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
         object_id(9150),
         placed(20.5, 7.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (result, path) = p
         .find(
             Point::new(15.0, 5.5),
@@ -1826,7 +1938,13 @@ fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
 #[test]
 fn a_kept_search_reuses_the_last_area_and_hulls() {
     let mut w = walled(6, Point::new(2.0, 5.5));
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let first = p
         .find_keeping(
             Point::new(2.0, 5.5),
@@ -1838,7 +1956,13 @@ fn a_kept_search_reuses_the_last_area_and_hulls() {
     assert_eq!(p.area, [0, 3, 14, 7]);
     // one pather borrows the world at a time: the kept state goes on to the next
     let kept = p.kept();
-    let mut fresh = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut fresh = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     assert_eq!(
         first,
         fresh
@@ -1850,8 +1974,14 @@ fn a_kept_search_reuses_the_last_area_and_hulls() {
             )
             .unwrap()
     );
-    let mut p =
-        HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2).with_kept(kept);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .with_kept(kept);
     // the hulls gone: a kept search builds none and finds no way around the wall
     p.hulls.clear();
     p.area = [0, 2, 14, 8];
@@ -1903,7 +2033,13 @@ fn a_node_beyond_the_area_grows_it_once() {
         object_id(9149),
         placed(8.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut p = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (result, path) = p
         .find(
             Point::new(5.0, 5.5),
@@ -1953,7 +2089,7 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
             object_id(777),
             object_id(4),
         ],
-        6,
+        TerrainMask::of_bits(6),
         0.6,
         2,
     );
@@ -1968,14 +2104,23 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
             tile_record_id(3, 3)
         ]
     );
-    assert_eq!((p.player, p.mask, p.radius), (2, 6, 0.6));
+    assert_eq!(
+        (p.player, p.mask, p.radius),
+        (2, TerrainMask::of_bits(6), 0.6)
+    );
     // an empty list ignores nothing
     assert_eq!(
-        HullPather::for_list(&mut w, &[], 6, 0.6, 2).ignore,
+        HullPather::for_list(&mut w, &[], TerrainMask::of_bits(6), 0.6, 2).ignore,
         Vec::<RecordId>::new()
     );
     // slot 0x3e8's pather: the unit and its target
-    let q = HullPather::new(&mut w, object_id(2), Some(object_id(1)), 6, 0.2);
+    let q = HullPather::new(
+        &mut w,
+        object_id(2),
+        Some(object_id(1)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     assert_eq!(
         q.ignore,
         [
@@ -1993,7 +2138,7 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
 #[test]
 fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
     let mut w = walled(6, Point::new(2.0, 5.5));
-    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.2, 1);
+    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], TerrainMask::of_bits(6), 0.2, 1);
     let (result, path) = p
         .find(Point::new(2.0, 5.5), Point::new(10.5, 5.5), None, 0.0)
         .unwrap();
@@ -2008,7 +2153,7 @@ fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
         ]
     );
     // a target elsewhere than on the goal is none (its id -1) as well
-    let mut q = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.2, 1);
+    let mut q = HullPather::for_list(&mut w, &[object_id(9171)], TerrainMask::of_bits(6), 0.2, 1);
     assert_eq!(
         q.find(
             Point::new(2.0, 5.5),
@@ -2032,7 +2177,7 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
         object_id(48),
         placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.2, 1);
+    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], TerrainMask::of_bits(6), 0.2, 1);
     let (result, path) = p
         .find(Point::new(2.0, 5.5), Point::new(10.6, 5.5), None, 0.0)
         .unwrap();
@@ -2045,7 +2190,13 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
     };
     assert!(p.target_gap(&t, end) <= NUDGE, "{path:?}");
     // ignored, the object is no target: the search ends on the goal itself
-    let mut q = HullPather::for_list(&mut w, &[object_id(9171), object_id(48)], 6, 0.2, 1);
+    let mut q = HullPather::for_list(
+        &mut w,
+        &[object_id(9171), object_id(48)],
+        TerrainMask::of_bits(6),
+        0.2,
+        1,
+    );
     let (result, path) = q
         .find(Point::new(2.0, 5.5), Point::new(10.6, 5.5), None, 0.0)
         .unwrap();
@@ -2058,7 +2209,7 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
         object_id(49),
         placed(11.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut r = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.2, 1);
+    let mut r = HullPather::for_list(&mut w, &[object_id(9171)], TerrainMask::of_bits(6), 0.2, 1);
     assert!(
         r.find(Point::new(2.0, 5.5), Point::new(11.0, 5.5), None, 0.0)
             .is_err()
@@ -2087,7 +2238,7 @@ fn an_included_moving_unit_blocks_the_line_tests() {
             ..Default::default()
         }),
     );
-    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.6, 1);
+    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], TerrainMask::of_bits(6), 0.6, 1);
     p.buffer = Some(0.3);
     assert!(
         !p.blocked(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
@@ -2100,8 +2251,8 @@ fn an_included_moving_unit_blocks_the_line_tests() {
         (result, path.points),
         (1, vec![Point::new(2.0, 5.5), Point::new(10.0, 5.5)])
     );
-    let mut p =
-        HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.6, 1).including(&[object_id(50)]);
+    let mut p = HullPather::for_list(&mut w, &[object_id(9171)], TerrainMask::of_bits(6), 0.6, 1)
+        .including(&[object_id(50)]);
     p.buffer = Some(0.3);
     assert!(
         p.blocked(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
@@ -2125,8 +2276,14 @@ fn an_included_moving_unit_blocks_the_line_tests() {
         (1, Point::new(2.0, 5.5), Point::new(10.0, 5.5))
     );
     assert!((by.x() - 6.0).abs() < 1e-5 && (by.y() - (5.5 - off)).abs() < 1e-5);
-    let mut q = HullPather::for_list(&mut w, &[object_id(9171), object_id(50)], 6, 0.6, 1)
-        .including(&[object_id(50)]);
+    let mut q = HullPather::for_list(
+        &mut w,
+        &[object_id(9171), object_id(50)],
+        TerrainMask::of_bits(6),
+        0.6,
+        1,
+    )
+    .including(&[object_id(50)]);
     q.buffer = Some(0.3);
     assert!(
         !q.blocked(Point::new(2.0, 5.5), Point::new(10.0, 5.5))
@@ -2140,7 +2297,13 @@ fn an_included_moving_unit_blocks_the_line_tests() {
 #[test]
 fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
     let mut w = walled(6, Point::new(2.0, 5.5));
-    let mut first = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut first = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let found = first
         .find(
             Point::new(2.0, 5.5),
@@ -2152,8 +2315,14 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
     let kept = first.kept();
     assert_eq!((kept.area, kept.hulls.len()), ([0, 3, 14, 7], 2));
     // a kept search from another start reuses them as they are
-    let mut next = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2)
-        .with_kept(kept.clone());
+    let mut next = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .with_kept(kept.clone());
     let from_kept = next.find_keeping(
         Point::new(3.0, 5.5),
         Point::new(12.5, 5.5),
@@ -2161,7 +2330,13 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
         0.1,
     );
     let next_area = next.kept().area;
-    let mut same = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut same = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     same.area = kept.area;
     same.hulls = kept.hulls;
     assert_eq!(
@@ -2175,10 +2350,23 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
     );
     assert_eq!(next_area, [0, 3, 14, 7]);
     // the constructor's state: no area, no hulls
-    let none = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2).kept();
+    let none = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .kept();
     assert_eq!((none.area, none.hulls.len()), ([-1; 4], 0));
-    let mut fresh =
-        HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2).with_kept(none);
+    let mut fresh = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    )
+    .with_kept(none);
     assert_eq!(
         fresh
             .find_keeping(
@@ -2203,7 +2391,13 @@ fn a_unit_within_range_needs_no_path() {
         object_id(9149),
         placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut pather = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
+    let mut pather = HullPather::new(
+        &mut w,
+        object_id(9171),
+        Some(object_id(9149)),
+        TerrainMask::of_bits(6),
+        0.2,
+    );
     let (result, path) = pather
         .find(
             Point::new(9.75, 5.5),
@@ -2221,7 +2415,7 @@ fn a_unit_within_range_needs_no_path() {
 /// the crossing node's index.
 fn around_triangle(at: Point, taken: &[i32]) -> (Vec<(Point, Option<usize>, i32)>, usize) {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, object_id(9171), None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, object_id(9171), None, TerrainMask::of_bits(6), 0.2);
     p.hulls.push(Hull {
         points: vec![
             Point::new(5.0, 6.0),
@@ -2324,7 +2518,7 @@ fn a_crossed_hull_s_points_go_both_ways_and_an_odd_one_the_cheaper() {
 #[test]
 fn a_found_path_follows_its_entrance_and_keeps_a_last_leg_on_the_target() {
     let mut w = walled(8, Point::new(2.0, 5.5));
-    let mut p = HullPather::new(&mut w, object_id(9171), None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, object_id(9171), None, TerrainMask::of_bits(6), 0.2);
     p.entrances[0].points = vec![
         Point::new(12.5, 5.5),
         Point::new(11.9, 5.5),
@@ -2376,7 +2570,7 @@ fn a_found_path_follows_its_entrance_and_keeps_a_last_leg_on_the_target() {
 #[test]
 fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
     let mut w = open_world();
-    let mut p = HullPather::new(&mut w, object_id(9171), None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, object_id(9171), None, TerrainMask::of_bits(6), 0.2);
     p.start = Point::new(2.0, 5.0);
     let q = HullQuery {
         from: Point::new(2.0, 5.0),
@@ -2442,7 +2636,7 @@ fn a_goal_in_the_start_s_hull_is_walked_to_within_it() {
         object_id(48),
         placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
     );
-    let mut p = HullPather::new(&mut w, object_id(9171), None, 6, 0.2);
+    let mut p = HullPather::new(&mut w, object_id(9171), None, TerrainMask::of_bits(6), 0.2);
     let side = Point::new(4.799_9, 5.499_899);
     let (result, path) = p
         .find(Point::new(4.9, 5.5), Point::new(4.85, 6.15), None, 0.0)

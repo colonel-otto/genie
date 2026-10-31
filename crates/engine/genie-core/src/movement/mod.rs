@@ -186,7 +186,7 @@ pub struct MoveStats {
     /// on (its mask).
     pub restriction: usize,
     /// The terrain classes the restriction lets it stand on (its mask).
-    pub restriction_mask: u8,
+    pub restriction_mask: crate::map::TerrainMask,
     /// The master's turn time (`+0x758`, the `.dat`'s `rotation_speed`): the seconds between the
     /// facet steps of a unit facing a target; 0 faces at once (`FUN_141162db0`).
     pub turn_time: f32,

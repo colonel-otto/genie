@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::spatial::RecordId;
 use crate::map::spatial::{Gait, Obstruction, Placed};
@@ -71,7 +72,7 @@ fn stats() -> MoveStats {
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 0.5),
         restriction: 7,
-        restriction_mask: 6,
+        restriction_mask: TerrainMask::of_bits(6),
         turn_time: 0.0,
         move_algorithm: 0,
         min_collision: 1.0,
@@ -508,7 +509,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
         id: object_id(9171),
         radius: 0.6,
         restriction: 0,
-        mask: 6,
+        mask: TerrainMask::of_bits(6),
     };
     let mut out = Path::default();
     let _ = out.push(BVector::new(1.0, 0.0, 1.0));
@@ -522,7 +523,13 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
         &[object_id(9171)],
         &mut out,
     );
-    let mut pather = HullPather::for_list(&mut world, &[object_id(9171)], 6, 0.6, 2);
+    let mut pather = HullPather::for_list(
+        &mut world,
+        &[object_id(9171)],
+        TerrainMask::of_bits(6),
+        0.6,
+        2,
+    );
     let (result, path) = pather
         .find(Point::new(4.5, 5.5), Point::new(8.5, 5.5), None, 0.0)
         .unwrap();
@@ -1480,7 +1487,7 @@ fn the_long_pather_lowers_the_walker_or_its_groups_units_and_the_target() {
         id: object_id(9177),
         position: Position::new(28.0, 89.0, 0.0),
         radius: Footprint::new(0.2, 0.2),
-        mask: 1,
+        mask: TerrainMask::of_bits(1),
         moves: true,
         ignore_units: &ignore,
         group_units: None,

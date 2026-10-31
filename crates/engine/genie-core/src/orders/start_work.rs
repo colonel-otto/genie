@@ -276,7 +276,7 @@ impl World {
             construction_rate: owner.construction_rate,
             groups: &self.groups,
         };
-        let blocked = u64::from(mask ^ 0xff) | crate::map::spatial::BLOCKED;
+        let blocked = mask.blocked() | crate::map::spatial::BLOCKED;
         gather_search::closest_resource_at(
             &seeker,
             None,

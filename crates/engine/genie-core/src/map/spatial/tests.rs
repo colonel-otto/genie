@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::GridSize;
+use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::{Rect, Segment};
 use crate::objects::masters::MasterKind;
@@ -351,11 +352,11 @@ fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses
     );
     // a unit of radius 0.3 cannot stand 0.2 from the edge
     assert!(
-        !s.point_clear(object_id(1), Point::new(0.2, 50.0), 0.3, 0xff)
+        !s.point_clear(object_id(1), Point::new(0.2, 50.0), 0.3, TerrainMask::ALL)
             .unwrap()
     );
     assert!(
-        s.point_clear(object_id(1), Point::new(0.4, 50.0), 0.3, 0xff)
+        s.point_clear(object_id(1), Point::new(0.4, 50.0), 0.3, TerrainMask::ALL)
             .unwrap()
     );
 }
@@ -390,9 +391,19 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
             .unwrap()
     };
     assert!(!across(&s));
-    s.put_tile_records(Point::new(6.0, 1.0), Point::new(8.0, 3.0), 0.0, 3);
+    s.put_tile_records(
+        Point::new(6.0, 1.0),
+        Point::new(8.0, 3.0),
+        0.0,
+        TerrainMask::of_bits(3),
+    );
     assert!(!across(&s));
-    s.put_tile_records(Point::new(6.0, 1.0), Point::new(8.0, 3.0), 0.0, 1);
+    s.put_tile_records(
+        Point::new(6.0, 1.0),
+        Point::new(8.0, 3.0),
+        0.0,
+        TerrainMask::of_bits(1),
+    );
     assert!(across(&s));
     s.clear_tile_records();
     assert!(!across(&s));
@@ -423,44 +434,86 @@ fn a_point_is_clear_among_the_ignored_objects() {
     let mut s = Spatial::with_tiles(GridSize::new(10, 10), Tiles::new(10, 10, classes));
     s.insert(object_id(7), villager(4.0, 6.5));
     assert!(
-        !s.point_clear_among(object_id(1), Point::new(4.0, 6.5), 0.1, 1, &[])
-            .unwrap()
+        !s.point_clear_among(
+            object_id(1),
+            Point::new(4.0, 6.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[]
+        )
+        .unwrap()
     );
     assert!(
         s.point_clear_among(
             object_id(1),
             Point::new(4.0, 6.5),
             0.1,
-            1,
+            TerrainMask::of_bits(1),
             &[object_id(3), object_id(7)]
         )
         .unwrap()
     );
     assert!(
-        s.point_clear_among(object_id(7), Point::new(4.0, 6.5), 0.1, 1, &[])
-            .unwrap()
+        s.point_clear_among(
+            object_id(7),
+            Point::new(4.0, 6.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[]
+        )
+        .unwrap()
     );
     assert!(
-        !s.point_clear_among(object_id(7), Point::new(4.0, 6.5), 0.1, 1, &[object_id(3)])
-            .unwrap()
+        !s.point_clear_among(
+            object_id(7),
+            Point::new(4.0, 6.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[object_id(3)]
+        )
+        .unwrap()
     );
     // the class-2 tile (4, 5) and a point off the map
     assert!(
-        !s.point_clear_among(object_id(7), Point::new(4.5, 5.5), 0.1, 1, &[])
-            .unwrap()
+        !s.point_clear_among(
+            object_id(7),
+            Point::new(4.5, 5.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[]
+        )
+        .unwrap()
     );
     assert!(
-        s.point_clear_among(object_id(7), Point::new(4.5, 5.5), 0.1, 3, &[])
-            .unwrap()
+        s.point_clear_among(
+            object_id(7),
+            Point::new(4.5, 5.5),
+            0.1,
+            TerrainMask::of_bits(3),
+            &[]
+        )
+        .unwrap()
     );
     assert!(
-        !s.point_clear_among(object_id(7), Point::new(-0.5, 5.5), 0.1, 3, &[])
-            .unwrap()
+        !s.point_clear_among(
+            object_id(7),
+            Point::new(-0.5, 5.5),
+            0.1,
+            TerrainMask::of_bits(3),
+            &[]
+        )
+        .unwrap()
     );
     // CVTTSS2SI: a NaN coordinate is i32::MIN, off the map, not tile 0
     assert!(
-        !s.point_clear_among(object_id(7), Point::new(f32::NAN, 5.5), 0.1, 1, &[])
-            .unwrap()
+        !s.point_clear_among(
+            object_id(7),
+            Point::new(f32::NAN, 5.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[]
+        )
+        .unwrap()
     );
 }
 
@@ -481,7 +534,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
             Point::new(2.0, 5.5),
             Point::new(8.0, 5.5),
             0.2,
-            Some(1),
+            Some(TerrainMask::of_bits(1)),
             &[],
         )
         .unwrap();
@@ -502,7 +555,12 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
     assert_eq!(none, Vec::<RecordId>::new());
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(7))]);
     // a record still put counts without the routine's own; the pather's test leaves them out
-    s.put_tile_records(Point::new(5.5, 5.5), Point::new(5.5, 5.5), 0.0, 1);
+    s.put_tile_records(
+        Point::new(5.5, 5.5),
+        Point::new(5.5, 5.5),
+        0.0,
+        TerrainMask::of_bits(1),
+    );
     let kept = s
         .line_query(
             Point::new(2.0, 5.5),
@@ -568,8 +626,13 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     s.set_manager_buffer(Some(0.1));
     assert_eq!(s.manager_grow(), 0.1);
     assert!(
-        s.point_clear(object_id(1), Point::new(6.5, 6.5), 0.2, 1)
-            .unwrap()
+        s.point_clear(
+            object_id(1),
+            Point::new(6.5, 6.5),
+            0.2,
+            TerrainMask::of_bits(1)
+        )
+        .unwrap()
     );
     assert_eq!(s.manager_buffer(), None);
     s.set_manager_buffer(Some(0.1));
@@ -587,7 +650,12 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     assert_eq!(s.manager_buffer(), None);
     // a point query near tile (4, 5) meets its record once it is put, within the grow
     assert!(!s.point_hit(Point::new(3.95, 5.5), 0.1, &[], true).unwrap());
-    s.put_tile_records(Point::new(4.5, 5.5), Point::new(4.5, 5.5), 0.0, 1);
+    s.put_tile_records(
+        Point::new(4.5, 5.5),
+        Point::new(4.5, 5.5),
+        0.0,
+        TerrainMask::of_bits(1),
+    );
     assert!(s.point_hit(Point::new(3.95, 5.5), 0.1, &[], true).unwrap());
     assert!(!s.point_hit(Point::new(3.85, 5.5), 0.1, &[], true).unwrap());
     assert!(
@@ -596,13 +664,25 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     );
     // a stand test counts it too
     assert!(
-        !s.point_clear_among(object_id(1), Point::new(3.95, 5.5), 0.1, 1, &[])
-            .unwrap()
+        !s.point_clear_among(
+            object_id(1),
+            Point::new(3.95, 5.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[]
+        )
+        .unwrap()
     );
     s.clear_tile_records();
     assert!(
-        s.point_clear_among(object_id(1), Point::new(3.95, 5.5), 0.1, 1, &[])
-            .unwrap()
+        s.point_clear_among(
+            object_id(1),
+            Point::new(3.95, 5.5),
+            0.1,
+            TerrainMask::of_bits(1),
+            &[]
+        )
+        .unwrap()
     );
 }
 
@@ -699,9 +779,9 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     s.insert(object_id(13594), bush);
     assert_eq!(s.filed(&bush, ObstructionType::TYPE_2), (5, 3, 19));
     let (from, to) = (Point::new(32.25, 154.59375), Point::new(32.5, 151.5));
-    assert!(!s.segment_blocked(from, to, 0.25, 0xff, &[]));
+    assert!(!s.segment_blocked(from, to, 0.25, TerrainMask::ALL, &[]));
     // a start a hair to the left visits tile 31's cell: the box blocks
-    assert!(s.segment_blocked(Point::new(32.2, 154.59375), to, 0.25, 0xff, &[]));
+    assert!(s.segment_blocked(Point::new(32.2, 154.59375), to, 0.25, TerrainMask::ALL, &[]));
     // off a half tile, the box's far edge is its tile: (31.6 ± 0.5) spans tiles 31 and 32,
     // which share only level 2's cells of 64 tiles
     bush.position = Position::new(31.6, 154.5, 0.0);
@@ -1052,9 +1132,18 @@ fn site() -> (Spatial, Placed) {
 #[test]
 fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
     let (mut s, _) = site();
-    assert_eq!(s.passable(29, 89, 6, object_id(1), 0.2), Ok(true));
-    assert_eq!(s.passable(29, 89, 1, object_id(1), 0.2), Ok(false));
-    assert_eq!(s.passable(-1, 89, 6, object_id(1), 0.2), Ok(false));
+    assert_eq!(
+        s.passable(29, 89, TerrainMask::of_bits(6), object_id(1), 0.2),
+        Ok(true)
+    );
+    assert_eq!(
+        s.passable(29, 89, TerrainMask::of_bits(1), object_id(1), 0.2),
+        Ok(false)
+    );
+    assert_eq!(
+        s.passable(-1, 89, TerrainMask::of_bits(6), object_id(1), 0.2),
+        Ok(false)
+    );
     let mut tree = villager(29.5, 90.5);
     tree.radius = Footprint::new(0.5, 0.5);
     tree.obstruction = Some(Obstruction {
@@ -1062,7 +1151,10 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
         class: ObstructionClass::RESOURCE,
     });
     s.insert(object_id(48), tree);
-    assert_eq!(s.passable(29, 90, 6, object_id(1), 0.2), Ok(false));
+    assert_eq!(
+        s.passable(29, 90, TerrainMask::of_bits(6), object_id(1), 0.2),
+        Ok(false)
+    );
 }
 
 /// A player who lost while the game goes on sees the map revealed: its masks take the ended
@@ -1197,7 +1289,7 @@ fn the_free_spot_beside_a_footprint_is_the_closest_empty_tile_around_it() {
         s.spot_beside(
             Position::new(30.0, 89.0, 0.0),
             (object_id(1), 0.2),
-            6,
+            TerrainMask::of_bits(6),
             (house.position, house.radius)
         ),
         Ok(Some(Point::new(29.5, 89.5)))
@@ -1327,20 +1419,44 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
         class: ObstructionClass::BUILDING,
     });
     s.insert(object_id(7), house);
-    assert!(s.segment_blocked(Point::new(4.0, 8.0), Point::new(12.0, 8.0), 0.2, 1, &[]));
-    assert!(!s.segment_blocked(Point::new(4.0, 11.0), Point::new(12.0, 11.0), 0.2, 1, &[]));
+    assert!(s.segment_blocked(
+        Point::new(4.0, 8.0),
+        Point::new(12.0, 8.0),
+        0.2,
+        TerrainMask::of_bits(1),
+        &[]
+    ));
+    assert!(!s.segment_blocked(
+        Point::new(4.0, 11.0),
+        Point::new(12.0, 11.0),
+        0.2,
+        TerrainMask::of_bits(1),
+        &[]
+    ));
     // within its radius of the box, and the box ignored
-    assert!(s.segment_blocked(Point::new(4.0, 9.1), Point::new(12.0, 9.1), 0.2, 1, &[]));
+    assert!(s.segment_blocked(
+        Point::new(4.0, 9.1),
+        Point::new(12.0, 9.1),
+        0.2,
+        TerrainMask::of_bits(1),
+        &[]
+    ));
     assert!(!s.segment_blocked(
         Point::new(4.0, 8.0),
         Point::new(12.0, 8.0),
         0.2,
-        1,
+        TerrainMask::of_bits(1),
         &[RecordId::from(object_id(7))]
     ));
     // a moving unit's record never blocks the walk
     s.insert(object_id(8), villager(6.0, 3.0));
-    assert!(!s.segment_blocked(Point::new(4.0, 3.0), Point::new(12.0, 3.0), 0.2, 1, &[]));
+    assert!(!s.segment_blocked(
+        Point::new(4.0, 3.0),
+        Point::new(12.0, 3.0),
+        0.2,
+        TerrainMask::of_bits(1),
+        &[]
+    ));
 }
 
 #[test]
@@ -1348,10 +1464,28 @@ fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
     let mut classes = vec![1; 256];
     classes[5 * 16 + 9] = 2;
     let mut s = Spatial::with_tiles(GridSize::new(16, 16), Tiles::new(16, 16, classes));
-    assert!(s.segment_blocked(Point::new(2.0, 5.5), Point::new(14.0, 5.5), 0.2, 1, &[]));
-    assert!(!s.segment_blocked(Point::new(2.0, 5.5), Point::new(14.0, 5.5), 0.2, 3, &[]));
+    assert!(s.segment_blocked(
+        Point::new(2.0, 5.5),
+        Point::new(14.0, 5.5),
+        0.2,
+        TerrainMask::of_bits(1),
+        &[]
+    ));
+    assert!(!s.segment_blocked(
+        Point::new(2.0, 5.5),
+        Point::new(14.0, 5.5),
+        0.2,
+        TerrainMask::of_bits(3),
+        &[]
+    ));
     // a walk whose grown box leaves the map
-    assert!(s.segment_blocked(Point::new(0.1, 5.5), Point::new(14.0, 5.5), 0.2, 3, &[]));
+    assert!(s.segment_blocked(
+        Point::new(0.1, 5.5),
+        Point::new(14.0, 5.5),
+        0.2,
+        TerrainMask::of_bits(3),
+        &[]
+    ));
 }
 
 /// The old short pather's walks within one `FindShortPath` meet the tile records of its
@@ -1363,20 +1497,25 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
     classes[5 * 64 + 5] = 0;
     let mut s = Spatial::with_tiles(GridSize::new(64, 64), Tiles::new(64, 64, classes));
     let (a, b) = (Point::new(6.5, 6.5), Point::new(7.5, 7.5));
-    assert!(!s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
+    assert!(
+        !s.pather_blocked(a, b, Some(0.5), TerrainMask::of_bits(1), &[])
+            .unwrap()
+    );
     s.clear_tile_records();
     assert!(
         s.pather_blocked(
             Point::new(5.5, 4.0),
             Point::new(5.5, 7.0),
             Some(0.5),
-            1,
+            TerrainMask::of_bits(1),
             &[]
         )
         .unwrap()
     );
     assert_eq!(s.tile_records(), vec![Tile::new(5, 5)]);
-    let hits = s.pather_hits(a, b, Some(0.5), 1, &[]).unwrap();
+    let hits = s
+        .pather_hits(a, b, Some(0.5), TerrainMask::of_bits(1), &[])
+        .unwrap();
     assert_eq!(
         hits,
         [Hit {
@@ -1386,11 +1525,20 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
     );
     // the pather's ignore list holds tiles by their record's id
     assert!(
-        !s.pather_blocked(a, b, Some(0.5), 1, &[tile_record_id(5, 5)])
-            .unwrap()
+        !s.pather_blocked(
+            a,
+            b,
+            Some(0.5),
+            TerrainMask::of_bits(1),
+            &[tile_record_id(5, 5)]
+        )
+        .unwrap()
     );
     s.clear_tile_records();
-    assert!(!s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
+    assert!(
+        !s.pather_blocked(a, b, Some(0.5), TerrainMask::of_bits(1), &[])
+            .unwrap()
+    );
 }
 
 /// The old short pather's query on a walk whose grown box leaves the map: the first hit is
@@ -1416,9 +1564,14 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     let (a, b) = (Point::new(0.2, 8.0), Point::new(6.0, 8.0));
     let edge = s.edge_records(Rect::new(-0.3, 7.5, 6.5, 8.5), QUERY_HITS);
     assert_ne!(edge.len(), 0);
-    assert!(s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
+    assert!(
+        s.pather_blocked(a, b, Some(0.5), TerrainMask::of_bits(1), &[])
+            .unwrap()
+    );
     s.clear_tile_records();
-    let hits = s.pather_hits(a, b, Some(0.5), 1, &[]).unwrap();
+    let hits = s
+        .pather_hits(a, b, Some(0.5), TerrainMask::of_bits(1), &[])
+        .unwrap();
     assert_eq!(hits.len(), edge.len() + 1);
     assert_eq!(hits[..edge.len()], edge[..]);
     assert_eq!(hits[edge.len()].id, RecordId::from(object_id(7)));
@@ -1429,7 +1582,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
             Point::new(1.0, 8.0),
             Point::new(6.0, 8.0),
             Some(0.5),
-            1,
+            TerrainMask::of_bits(1),
             &[],
         )
         .unwrap();
@@ -1449,7 +1602,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
             Point::new(1.0, 8.0),
             Point::new(6.0, 8.0),
             Some(0.5),
-            1,
+            TerrainMask::of_bits(1),
             &[]
         )
         .is_err()
@@ -1466,7 +1619,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
             Point::new(1.0, 8.0),
             Point::new(6.0, 8.0),
             Some(0.5),
-            1,
+            TerrainMask::of_bits(1),
             &[]
         )
         .is_err()
@@ -1486,21 +1639,31 @@ fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
         (Point::new(77.5, 91.5), Point::new(76.5, 92.5)),
     );
     // alone, the second walk's tiles stop at y = 91 and its test removes its records
-    assert!(!s.segment_blocked(second.0, second.1, 0.5, 1, &[]));
+    assert!(!s.segment_blocked(second.0, second.1, 0.5, TerrainMask::of_bits(1), &[]));
     assert_eq!(s.tile_records(), Vec::<Tile>::new());
-    s.put_tile_records(first.0, first.1, 0.5, 1);
+    s.put_tile_records(first.0, first.1, 0.5, TerrainMask::of_bits(1));
     assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
     assert!(s.segment_meets(second.0, second.1, 0.5, &[]));
     // the record's id in the ignore list leaves it out
     assert!(!s.segment_meets(second.0, second.1, 0.5, &[tile_record_id(78, 90)]));
     // a tile that holds a record takes no second
-    s.put_tile_records(second.0, Point::new(79.0, 89.0), 0.5, 1);
+    s.put_tile_records(
+        second.0,
+        Point::new(79.0, 89.0),
+        0.5,
+        TerrainMask::of_bits(1),
+    );
     assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
     s.clear_tile_records();
     assert!(!s.segment_meets(second.0, second.1, 0.5, &[]));
     // tile (78, 87)'s grown box touches (77.5, 88.5), but its cell (y 80..87) is not one the
     // walk from y 88.5 visits (y from 88)
-    s.put_tile_records(Point::new(78.5, 86.5), Point::new(78.5, 87.5), 0.0, 1);
+    s.put_tile_records(
+        Point::new(78.5, 86.5),
+        Point::new(78.5, 87.5),
+        0.0,
+        TerrainMask::of_bits(1),
+    );
     assert_eq!(s.tile_records(), vec![Tile::new(78, 87)]);
     assert!(!s.segment_meets(Point::new(77.5, 88.5), Point::new(76.5, 89.5), 0.5, &[]));
     assert!(s.segment_meets(Point::new(77.5, 88.0), Point::new(76.5, 89.5), 0.5, &[]));
@@ -1587,18 +1750,24 @@ fn the_manager_keeps_the_last_ignore_list_set() {
         [RecordId::from(object_id(7)), RecordId::from(object_id(8))]
     );
     assert!(
-        s.point_clear(object_id(3), Point::new(4.5, 4.5), 0.1, 0xff)
+        s.point_clear(object_id(3), Point::new(4.5, 4.5), 0.1, TerrainMask::ALL)
             .unwrap()
     );
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(3))]);
     assert!(
-        s.point_clear_among(object_id(4), Point::new(4.5, 4.5), 0.1, 0xff, &[])
-            .unwrap()
+        s.point_clear_among(
+            object_id(4),
+            Point::new(4.5, 4.5),
+            0.1,
+            TerrainMask::ALL,
+            &[]
+        )
+        .unwrap()
     );
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(4))]);
     // a point off the map's tiles sets nothing
     assert!(
-        !s.point_clear(object_id(5), Point::new(-1.0, 4.5), 0.1, 0xff)
+        !s.point_clear(object_id(5), Point::new(-1.0, 4.5), 0.1, TerrainMask::ALL)
             .unwrap()
     );
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(4))]);

@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::Footprint;
 use crate::map::Radii;
+use crate::map::TerrainMask;
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -424,7 +425,7 @@ fn soldier_mover(speed: f32) -> Mover {
             turn_radius_speed: f32::MAX,
             radius: Radii::new(0.2, 0.2, 0.5),
             restriction: 7,
-            restriction_mask: 6,
+            restriction_mask: TerrainMask::of_bits(6),
             turn_time: 0.0,
             move_algorithm: 0,
             min_collision: 1.0,

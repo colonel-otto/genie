@@ -31,7 +31,7 @@ impl Spatial {
         &mut self,
         from: Position,
         (me, radius_x): (ObjectId, f32),
-        mask: u8,
+        mask: crate::map::TerrainMask,
         (at, radius): (Position, Footprint),
         farthest: bool,
     ) -> Result<Option<Point>, GenieError> {
@@ -219,14 +219,14 @@ impl Spatial {
         me: ObjectId,
         point: Point,
         grow: f32,
-        mask: u8,
+        mask: crate::map::TerrainMask,
     ) -> Result<bool, GenieError> {
         let (x, y) = (point.x(), point.y());
         let (tx, ty) = (x as i32, y as i32);
         let Some(word) = self.tiles.word(tx, ty) else {
             return Ok(false);
         };
-        if word & u64::from(mask ^ 0xff) != 0 {
+        if word & mask.blocked() != 0 {
             return Ok(false);
         }
         // the unit alone the manager's ignore list (FUN_1410562e0 with DAT_143f49fc8); the
@@ -252,7 +252,7 @@ impl Spatial {
         me: ObjectId,
         point: Point,
         grow: f32,
-        mask: u8,
+        mask: crate::map::TerrainMask,
         ignore: &[ObjectId],
     ) -> Result<bool, GenieError> {
         use crate::math::conversions::cvttss2si;
@@ -260,7 +260,7 @@ impl Spatial {
         let Some(word) = self.tiles.word(cvttss2si(point.x()), cvttss2si(point.y())) else {
             return Ok(false);
         };
-        if word & u64::from(mask ^ 0xff) != 0 {
+        if word & mask.blocked() != 0 {
             return Ok(false);
         }
         // the objects as the record query ignores them, the unit alone for none
@@ -352,11 +352,11 @@ impl Spatial {
     /// (`FUN_1410510c0`): the tile is on the map and its word holds neither a terrain class of
     /// `mask` nor a temporary record's bit 0x80 (`mask & 0x7f | 0x80`).
     #[must_use]
-    pub fn makes_tile_record(&self, point: Point, mask: u8) -> bool {
+    pub fn makes_tile_record(&self, point: Point, mask: crate::map::TerrainMask) -> bool {
         let (x, y) = (point.x() as i32, point.y() as i32);
         self.tiles
             .word(x, y)
-            .is_some_and(|w| w & u64::from(mask & 0x7f | 0x80) == 0)
+            .is_some_and(|w| w & (mask.classes() | 0x80) == 0)
             && !self.tile_records.contains(&(y, x))
     }
 

@@ -64,7 +64,7 @@ pub(crate) struct LongWalker<'a> {
     pub(crate) id: ObjectId,
     pub(crate) position: Position,
     pub(crate) radius: Footprint,
-    pub(crate) mask: u8,
+    pub(crate) mask: crate::map::TerrainMask,
     pub(crate) moves: bool,
     pub(crate) ignore_units: &'a [ObjectId],
     /// For a walker in a group the world holds (`+0x6d0`, `FUN_14152ff40`), its group's
@@ -271,7 +271,7 @@ pub(crate) struct Walker {
     pub(crate) id: ObjectId,
     pub(crate) radius: f32,
     pub(crate) restriction: usize,
-    pub(crate) mask: u8,
+    pub(crate) mask: crate::map::TerrainMask,
 }
 
 /// The walk's kept hits (`0x141150f00`'s first hit loop, 0x1411547c0..0x141154855): each joins

@@ -211,7 +211,7 @@ impl HullPather<'_> {
             return Ok(());
         }
         let word = self.world.tiles().word(x, y).unwrap_or(0);
-        if word & u64::from(self.mask ^ 0xff) != 0 {
+        if word & self.mask.blocked() != 0 {
             let id = tile_record_id(x, y);
             if !self.ignore.contains(&id) {
                 let r = self.radius;
@@ -259,7 +259,7 @@ impl HullPather<'_> {
         self.area[2] = self.area[2].min(w - 1);
         self.area[3] = self.area[3].min(h - 1);
         let r = self.radius;
-        let not_mask = u64::from(self.mask ^ 0xff);
+        let not_mask = self.mask.blocked();
         for y in self.area[1]..=self.area[3] {
             let mut run: Option<i32> = None;
             let mut x = self.area[0];
