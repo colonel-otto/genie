@@ -653,7 +653,7 @@ mod stack_tests {
         assert_eq!(
             t.players[1].history.events,
             [crate::players::history::Event {
-                kind: crate::players::history::CASTLE_BUILT,
+                kind: crate::players::history::EventKind::CASTLE_BUILT,
                 time_slice: 1,
                 world_time: 912_000,
                 data1: 1.0,

@@ -25,24 +25,51 @@ use crate::math::image::history::{BATTLE_RECORD, BATTLE_START};
 use crate::players::attribute;
 use crate::world::slots::CheckedIndex;
 
-/// Feudal Age reached (research 101).
-pub const FEUDAL_AGE: u8 = 0;
-/// Castle Age reached (research 102).
-pub const CASTLE_AGE: u8 = 1;
-/// Imperial Age reached (research 103).
-pub const IMPERIAL_AGE: u8 = 2;
-/// A wonder built (master 276); `data1` is its owner.
-pub const WONDER_BUILT: u8 = 4;
-/// A wonder destroyed, on its destroyer's history; `data1` is its owner.
-pub const WONDER_DESTROYED: u8 = 5;
-/// A castle built (master 82); `data1` is its owner.
-pub const CASTLE_BUILT: u8 = 6;
-/// A castle destroyed, on its destroyer's history; `data1` is its owner.
-pub const CASTLE_DESTROYED: u8 = 7;
-/// A battle: `data1` the opponent, `data2` its share of the player's value, `data3` 1.
-pub const BATTLE: u8 = 11;
-/// A defeat: `data1` the player with the most of attribute 300 + its own id, `data2` that value.
-pub const DEFEAT: u8 = 20;
+/// A history event's kind (`event`, `+0x0`): an age reached, a castle or wonder built or
+/// destroyed, a battle or a defeat. Every byte is a kind (a save may hold kinds the slice
+/// does not name).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct EventKind(u8);
+
+impl EventKind {
+    /// Feudal Age reached (research 101).
+    pub const FEUDAL_AGE: Self = Self(0);
+    /// Castle Age reached (research 102).
+    pub const CASTLE_AGE: Self = Self(1);
+    /// Imperial Age reached (research 103).
+    pub const IMPERIAL_AGE: Self = Self(2);
+    /// A wonder built (master 276); `data1` is its owner.
+    pub const WONDER_BUILT: Self = Self(4);
+    /// A wonder destroyed, on its destroyer's history; `data1` is its owner.
+    pub const WONDER_DESTROYED: Self = Self(5);
+    /// A castle built (master 82); `data1` is its owner.
+    pub const CASTLE_BUILT: Self = Self(6);
+    /// A castle destroyed, on its destroyer's history; `data1` is its owner.
+    pub const CASTLE_DESTROYED: Self = Self(7);
+    /// A battle: `data1` the opponent, `data2` its share of the player's value, `data3` 1.
+    pub const BATTLE: Self = Self(11);
+    /// A defeat: `data1` the player with the most of attribute 300 + its own id, `data2` that value.
+    pub const DEFEAT: Self = Self(20);
+
+    /// Its value.
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
+
+impl From<u8> for EventKind {
+    /// The kind a saved event's byte holds: every value is one.
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl genie_diff::Diff for EventKind {
+    fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
+        d.equal(self, other);
+    }
+}
 
 /// The entries' buffer grows by this many (`add_new_history_entry`).
 const ENTRY_GROWTH: i32 = 60;
@@ -58,8 +85,8 @@ const RAZING_VALUE_OF: usize = 425;
 /// An event (`Time_Slice_History_Event`, 0x20 bytes, `calloc`ed).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Event {
-    /// `event` (`+0x0`): one of the kinds above.
-    pub kind: u8,
+    /// `event` (`+0x0`): its kind.
+    pub kind: EventKind,
     /// `time_slice` (`+0x4`): the number of entries when it happened.
     pub time_slice: i32,
     /// `world_time` (`+0x8`): the world's time then, in milliseconds.
@@ -159,7 +186,14 @@ impl History {
     /// `add_history_event` (`FUN_141560ae0`): with at least one entry, an event of `kind` at
     /// the entries' count and the world's time joins the list's head (`data3` the byte as a
     /// float); a battle then goes through [`History::mark_new_battle`].
-    pub fn add_event(&mut self, kind: u8, data1: f32, data2: f32, data3: u8, world_time: u32) {
+    pub fn add_event(
+        &mut self,
+        kind: EventKind,
+        data1: f32,
+        data2: f32,
+        data3: u8,
+        world_time: u32,
+    ) {
         if self.entries.is_empty() {
             return;
         }
@@ -174,7 +208,7 @@ impl History {
                 data3: f32::from(data3),
             },
         );
-        if kind == BATTLE {
+        if kind == EventKind::BATTLE {
             let _ = self.mark_new_battle();
         }
     }
@@ -185,7 +219,11 @@ impl History {
     /// never qualifies, the first of equal gaps wins); with none below it the new battle goes
     /// instead. True unless the new battle went.
     pub fn mark_new_battle(&mut self) -> bool {
-        let battles = self.events.iter().filter(|e| e.kind == BATTLE).count();
+        let battles = self
+            .events
+            .iter()
+            .filter(|e| e.kind == EventKind::BATTLE)
+            .count();
         let Some(new) = self.events.first_mut() else {
             return true;
         };
@@ -201,7 +239,7 @@ impl History {
             if BATTLES_COMPARED <= seen {
                 break;
             }
-            if e.kind != BATTLE {
+            if e.kind != EventKind::BATTLE {
                 continue;
             }
             seen += 1;
@@ -224,7 +262,7 @@ impl History {
 
     /// `FUN_141560e20`: the newest event of `kind`.
     #[must_use]
-    pub fn event_of_kind(&self, kind: u8) -> Option<&Event> {
+    pub fn event_of_kind(&self, kind: EventKind) -> Option<&Event> {
         self.events.iter().find(|e| e.kind == kind)
     }
 
@@ -251,9 +289,9 @@ impl History {
     pub fn age_time(&self, current_age: f32, world_time: u32) -> u32 {
         let now = world_time / 1000;
         let kind = match cvttss2si(current_age) {
-            1 => FEUDAL_AGE,
-            2 => CASTLE_AGE,
-            3 => IMPERIAL_AGE,
+            1 => EventKind::FEUDAL_AGE,
+            2 => EventKind::CASTLE_AGE,
+            3 => EventKind::IMPERIAL_AGE,
             _ => return now,
         };
         self.event_of_kind(kind)
@@ -416,7 +454,7 @@ impl History {
         self.events.insert(
             0,
             Event {
-                kind: BATTLE,
+                kind: EventKind::BATTLE,
                 time_slice: self.entries.len() as i32,
                 world_time,
                 data1: opponent as f32,
@@ -433,9 +471,17 @@ impl History {
 mod tests {
     use super::*;
 
+    /// A saved byte is its kind; the default is the Feudal Age's 0.
+    #[test]
+    fn a_saved_byte_is_its_event_kind() {
+        assert_eq!(EventKind::from(11), EventKind::BATTLE);
+        assert_eq!(EventKind::DEFEAT.get(), 20);
+        assert_eq!(EventKind::default(), EventKind::FEUDAL_AGE);
+    }
+
     fn battle(data2: f32) -> Event {
         Event {
-            kind: BATTLE,
+            kind: EventKind::BATTLE,
             data2,
             ..Event::default()
         }
@@ -473,16 +519,16 @@ mod tests {
     #[test]
     fn an_event_needs_an_entry_and_joins_the_head() {
         let mut h = History::default();
-        h.add_event(CASTLE_BUILT, 2.0, 0.0, 0, 5000);
+        h.add_event(EventKind::CASTLE_BUILT, 2.0, 0.0, 0, 5000);
         assert_eq!(h.events, []);
         h.entries = vec![[0, 0]; 3];
-        h.add_event(FEUDAL_AGE, 0.0, 0.0, 0, 5000);
-        h.add_event(CASTLE_BUILT, 2.0, 0.5, 7, 9000);
+        h.add_event(EventKind::FEUDAL_AGE, 0.0, 0.0, 0, 5000);
+        h.add_event(EventKind::CASTLE_BUILT, 2.0, 0.5, 7, 9000);
         assert_eq!(
             h.events,
             vec![
                 Event {
-                    kind: CASTLE_BUILT,
+                    kind: EventKind::CASTLE_BUILT,
                     time_slice: 3,
                     world_time: 9000,
                     data1: 2.0,
@@ -490,7 +536,7 @@ mod tests {
                     data3: 7.0,
                 },
                 Event {
-                    kind: FEUDAL_AGE,
+                    kind: EventKind::FEUDAL_AGE,
                     time_slice: 3,
                     world_time: 5000,
                     ..Event::default()
@@ -506,25 +552,31 @@ mod tests {
     fn a_fourth_battle_pushes_out_the_weakest_of_the_newest_three() {
         let mut h = with_entry();
         for d in [0.2, 0.9, 0.3] {
-            h.add_event(BATTLE, 1.0, d, 0, 0);
+            h.add_event(EventKind::BATTLE, 1.0, d, 0, 0);
         }
         assert_eq!(h.events.len(), 3);
         assert!(h.events.iter().all(|e| e.data3 == 1.0));
         // the newest three are 0.5 (new), 0.3, 0.9: 0.3 lies furthest below
-        h.add_event(BATTLE, 1.0, 0.5, 0, 0);
+        h.add_event(EventKind::BATTLE, 1.0, 0.5, 0, 0);
         let d: Vec<f32> = h.events.iter().map(|e| e.data2).collect();
         assert_eq!(d, vec![0.5, 0.9, 0.2]);
         // a new battle below the newest three goes itself; 0.2 is fourth and not compared
         h.events.insert(
             0,
             Event {
-                kind: FEUDAL_AGE,
+                kind: EventKind::FEUDAL_AGE,
                 ..Event::default()
             },
         );
-        h.add_event(BATTLE, 1.0, 0.4, 0, 0);
-        assert_eq!(h.events.iter().filter(|e| e.kind == BATTLE).count(), 3);
-        assert_eq!(h.events[0].kind, FEUDAL_AGE);
+        h.add_event(EventKind::BATTLE, 1.0, 0.4, 0, 0);
+        assert_eq!(
+            h.events
+                .iter()
+                .filter(|e| e.kind == EventKind::BATTLE)
+                .count(),
+            3
+        );
+        assert_eq!(h.events[0].kind, EventKind::FEUDAL_AGE);
         // a NaN gap never qualifies
         h.events.insert(0, battle(f32::NAN));
         assert!(!h.mark_new_battle());
@@ -537,7 +589,7 @@ mod tests {
     fn equal_gaps_push_out_the_newer_battle() {
         let mut h = with_entry();
         h.events = vec![battle(0.1), Event::default(), battle(0.1), battle(0.9)];
-        h.add_event(BATTLE, 3.0, 0.6, 0, 0);
+        h.add_event(EventKind::BATTLE, 3.0, 0.6, 0, 0);
         let d: Vec<f32> = h.events.iter().map(|e| e.data2).collect();
         assert_eq!(d, vec![0.6, 0.0, 0.1, 0.9]);
     }
@@ -549,19 +601,19 @@ mod tests {
         let h = History {
             events: vec![
                 Event {
-                    kind: CASTLE_AGE,
+                    kind: EventKind::CASTLE_AGE,
                     time_slice: 4,
                     world_time: 9000,
                     ..Event::default()
                 },
                 Event {
-                    kind: FEUDAL_AGE,
+                    kind: EventKind::FEUDAL_AGE,
                     time_slice: 2,
                     world_time: 4000,
                     ..Event::default()
                 },
                 Event {
-                    kind: FEUDAL_AGE,
+                    kind: EventKind::FEUDAL_AGE,
                     time_slice: 2,
                     world_time: 1000,
                     ..Event::default()
@@ -570,10 +622,10 @@ mod tests {
             ..History::default()
         };
         assert_eq!(
-            h.event_of_kind(FEUDAL_AGE).map(|e| e.world_time),
+            h.event_of_kind(EventKind::FEUDAL_AGE).map(|e| e.world_time),
             Some(4000)
         );
-        assert_eq!(h.event_of_kind(IMPERIAL_AGE), None);
+        assert_eq!(h.event_of_kind(EventKind::IMPERIAL_AGE), None);
         assert_eq!(h.events_at(2), Some((2, 2)));
         assert_eq!(h.events_at(4), Some((1, 1)));
         assert_eq!(h.events_at(3), None);
@@ -584,7 +636,7 @@ mod tests {
     fn the_age_time_counts_from_the_age_s_event() {
         let h = History {
             events: vec![Event {
-                kind: CASTLE_AGE,
+                kind: EventKind::CASTLE_AGE,
                 world_time: 600_999,
                 ..Event::default()
             }],
@@ -683,7 +735,7 @@ mod tests {
         assert_eq!(
             h.events,
             vec![Event {
-                kind: BATTLE,
+                kind: EventKind::BATTLE,
                 time_slice: 2,
                 world_time: 60_000,
                 data1: 2.0,

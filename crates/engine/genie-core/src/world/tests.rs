@@ -11088,7 +11088,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     b.razed.push(crate::combat::damage::Razed {
         attacker_player: 1,
         owner: PlayerId::new(2),
-        event: Some(crate::players::history::CASTLE_DESTROYED),
+        event: Some(crate::players::history::EventKind::CASTLE_DESTROYED),
         adds: vec![
             (PlayerId::new(1), attribute::RAZINGS, 1.0),
             (PlayerId::new(2), attribute::RAZINGS_OTHER, 1.0),
@@ -11109,7 +11109,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     assert_eq!([attacker[170], owner[152]], [1300.0, 650.0]);
     let event = t.players[1]
         .history
-        .event_of_kind(crate::players::history::CASTLE_DESTROYED)
+        .event_of_kind(crate::players::history::EventKind::CASTLE_DESTROYED)
         .unwrap();
     assert_eq!(event.data1, 2.0);
 }
@@ -16079,7 +16079,7 @@ fn a_building_completing_in_its_own_update_leaves_what_a_builder_s_completion_le
         k.progress = f32::from(k.build_time);
         in_update(t, (PlayerId::new(1), 1), 50, |unit, c| {
             unit.complete_on_update(c)?;
-            let events: Vec<(u8, f32)> = c.w.players[1]
+            let events: Vec<(crate::players::history::EventKind, f32)> = c.w.players[1]
                 .history
                 .events
                 .iter()
@@ -16111,7 +16111,7 @@ fn a_building_completing_in_its_own_update_leaves_what_a_builder_s_completion_le
         *masters = Masters::new(masters.iter().cloned().chain([castle]));
     }
     t.players[1].objects[1].life.master_id = ids::CASTLE;
-    let castle_built = crate::players::history::CASTLE_BUILT;
+    let castle_built = crate::players::history::EventKind::CASTLE_BUILT;
     assert_eq!(finish(&mut t), Ok((2, vec![(castle_built, 1.0)])));
 }
 

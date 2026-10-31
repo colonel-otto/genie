@@ -795,13 +795,13 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
 /// but as an annex.
 #[test]
 fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
-    use crate::players::history::{CASTLE_BUILT, WONDER_BUILT};
+    use crate::players::history::EventKind;
     /// The attributes the completion of master `id` gave, by index, and its history events.
     fn complete(
         id: MasterId,
         cost: &[(AttributeId, i16, bool)],
         main: bool,
-    ) -> (Vec<(usize, f32)>, Vec<u8>) {
+    ) -> (Vec<(usize, f32)>, Vec<EventKind>) {
         let mut world = small_map();
         world.insert(
             object_id(10026),
@@ -868,14 +868,14 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             complete(ids::CASTLE, &castle(), main),
             (
                 vec![(134, 1.0), (173, 1.0), (184, 650.0)],
-                vec![CASTLE_BUILT]
+                vec![EventKind::CASTLE_BUILT]
             )
         );
         assert_eq!(
             complete(ids::WONDER, &wonder(), main),
             (
                 vec![(42, 1.0), (174, 1.0), (184, 2000.0)],
-                vec![WONDER_BUILT]
+                vec![EventKind::WONDER_BUILT]
             )
         );
     }

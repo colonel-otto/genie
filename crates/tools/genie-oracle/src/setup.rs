@@ -485,7 +485,7 @@ pub fn history(h: &genie_save::generated::world::History) -> genie_core::players
             .events
             .iter()
             .map(|e| genie_core::players::history::Event {
-                kind: e.temp_event,
+                kind: genie_core::players::history::EventKind::from(e.temp_event),
                 time_slice: e.temp_time_slice,
                 world_time: e.temp_world_time,
                 data1: e.temp_data1,

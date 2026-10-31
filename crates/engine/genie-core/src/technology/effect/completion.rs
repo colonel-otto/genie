@@ -70,9 +70,9 @@ impl World {
             owner.add_attribute(RESEARCH_SPENT, spent)?;
         }
         let age = match t {
-            101 => Some(crate::players::history::FEUDAL_AGE),
-            102 => Some(crate::players::history::CASTLE_AGE),
-            103 => Some(crate::players::history::IMPERIAL_AGE),
+            101 => Some(crate::players::history::EventKind::FEUDAL_AGE),
+            102 => Some(crate::players::history::EventKind::CASTLE_AGE),
+            103 => Some(crate::players::history::EventKind::IMPERIAL_AGE),
             _ => None,
         };
         if let Some(kind) = age {

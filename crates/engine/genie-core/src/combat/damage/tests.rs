@@ -886,7 +886,7 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
         &[Razed {
             attacker_player: 1,
             owner: PlayerId::new(2),
-            event: Some(crate::players::history::CASTLE_DESTROYED),
+            event: Some(crate::players::history::EventKind::CASTLE_DESTROYED),
             adds: vec![
                 (PlayerId::new(1), attribute::RAZINGS, 1.0),
                 (PlayerId::new(1), attribute::KILLS_VALUE, 25.0),
@@ -910,7 +910,10 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
     let razed = &wonder.building.as_ref().unwrap().razed;
     assert_eq!(
         (razed[0].event, razed[0].adds.len()),
-        (Some(crate::players::history::WONDER_DESTROYED), 0)
+        (
+            Some(crate::players::history::EventKind::WONDER_DESTROYED),
+            0
+        )
     );
     let mut gaia = Victim {
         hp: 1.5,

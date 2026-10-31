@@ -126,7 +126,7 @@ impl World {
         }
         let now = self.world_time;
         self.players.player_mut(p)?.history.add_event(
-            crate::players::history::DEFEAT,
+            crate::players::history::EventKind::DEFEAT,
             f32::from(killer),
             most as f32,
             0,

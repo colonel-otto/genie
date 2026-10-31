@@ -108,14 +108,14 @@ pub(super) fn completion_counts(
     building: &crate::objects::masters::BuildingMaster,
     main: bool,
     attributes: &mut Vec<(AttributeId, f32)>,
-) -> Option<u8> {
+) -> Option<crate::players::history::EventKind> {
     // the castle's and the wonder's history event (0x1411dd094), the counts (slot 0xf8 with
     // 1.0, 0x14330eb8c)
     let history = match master.id {
-        CASTLE => Some(crate::players::history::CASTLE_BUILT),
+        CASTLE => Some(crate::players::history::EventKind::CASTLE_BUILT),
         // The Wonder's master (`0x114`), whose construction rate the player's attribute raises at most to
         // `DAT_142ed66b4`.
-        WONDER => Some(crate::players::history::WONDER_BUILT),
+        WONDER => Some(crate::players::history::EventKind::WONDER_BUILT),
         _ => None,
     };
     match master.id {

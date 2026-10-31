@@ -167,8 +167,8 @@ pub(super) fn take_building(
     if t.player != PlayerId::GAIA && ONE > t.hp {
         let (ap, q) = (src.player, t.player);
         let event = match t.master_id {
-            CASTLE => Some(crate::players::history::CASTLE_DESTROYED),
-            WONDER => Some(crate::players::history::WONDER_DESTROYED),
+            CASTLE => Some(crate::players::history::EventKind::CASTLE_DESTROYED),
+            WONDER => Some(crate::players::history::EventKind::WONDER_DESTROYED),
             _ => None,
         };
         let mut adds = Vec::new();

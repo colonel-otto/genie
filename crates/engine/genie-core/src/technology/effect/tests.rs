@@ -1407,7 +1407,7 @@ fn an_age_adds_its_event_to_the_history() {
     assert_eq!(
         t.players[0].history.events,
         [crate::players::history::Event {
-            kind: crate::players::history::CASTLE_AGE,
+            kind: crate::players::history::EventKind::CASTLE_AGE,
             time_slice: 20,
             world_time: 612_345,
             ..crate::players::history::Event::default()
