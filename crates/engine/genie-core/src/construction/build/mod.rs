@@ -13,6 +13,7 @@
 //! the Build end (state 1) and the AI runs its queue.
 
 use self::update::drop_done_orders;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
@@ -108,7 +109,7 @@ pub struct BuildAction {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct BuildTask {
     /// The task's work range.
-    pub range: f32,
+    pub range: Distance,
     /// The task's work value.
     pub work_value: f32,
     /// The builder's work rate: its master's `work_rate` (`+0x798`) plus its `mWorkRatePowerup`
@@ -798,7 +799,7 @@ mod stack_tests {
                         min_collision: 0.0,
                         fast_turn: false,
                         facets: None,
-                        weapon_range: 0.0,
+                        weapon_range: Distance::ZERO,
                     });
                     if let Some(b) = m.building.as_mut() {
                         b.annexes = [None; 4];

@@ -105,7 +105,7 @@ impl UnitView<'_, '_> {
             let tm = t.master(&self.c.w.masters, tq)?;
             let gap = footprint_gap_squared(u.position(), m.radius, t.position(), tm.radius);
             let in_range =
-                gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
+                gap <= m.weapon_range.squared().get() && m.min_range.squared().get() <= gap;
             let spared = patrolling && tm.kind == BUILDING && tm.weapons.is_empty();
             if in_range && !spared {
                 return Ok(false);

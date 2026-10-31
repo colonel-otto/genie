@@ -11,6 +11,7 @@ use genie_core::groups::{
     LinePoint, Member, Motion, PointLine, Slot, SlotState, SpecificMove, TargetData, UnitGroup,
     UnitGroups, UnitTypeStatistic,
 };
+use genie_core::map::Distance;
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
 use genie_core::unit_ai::UnitStance;
@@ -103,8 +104,8 @@ fn formation(f: &saved::Formation) -> Result<Formation, GenieError> {
             .map(|l| FormationLine {
                 depth: l.temp_depth,
                 indices: l.line_indices.clone(),
-                attack_range: l.attack_range,
-                distance_back: l.distance_back,
+                attack_range: Distance::new(l.attack_range),
+                distance_back: Distance::new(l.distance_back),
             })
             .collect(),
         transform_type: f.transform_type,
@@ -141,7 +142,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
                         goal: vec3(&u.specific_moves_goal),
                         timer: Seconds::new(u.specific_moves_timer),
                         consecutive_move_failures: u.specific_moves_consecutive_move_failures,
-                        distance: u.specific_moves_distance,
+                        distance: Distance::new(u.specific_moves_distance),
                         last_position: vec3(&u.specific_moves_last_position),
                     },
                     seconds_since_attacking: Seconds::new(u.seconds_since_attacking),
@@ -158,10 +159,10 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         largest_unit_radius: g.largest_unit_radius,
         smallest_unit_radius: g.smallest_unit_radius,
         desired_spacing: g.desired_spacing,
-        smallest_unit_range: g.smallest_unit_range,
-        smallest_ranged_unit_range: g.smallest_ranged_unit_range,
-        largest_unit_range: g.largest_unit_range,
-        largest_ranged_unit_range: g.largest_ranged_unit_range,
+        smallest_unit_range: Distance::new(g.smallest_unit_range),
+        smallest_ranged_unit_range: Distance::new(g.smallest_ranged_unit_range),
+        largest_unit_range: Distance::new(g.largest_unit_range),
+        largest_ranged_unit_range: Distance::new(g.largest_ranged_unit_range),
         stored_positions: PointLine {
             points: g
                 .stored_positions
@@ -186,7 +187,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
                     formation_category: u.formation_category,
                     units: object_ids(&u.units)?,
                     used: u.used,
-                    attack_range: u.attack_range,
+                    attack_range: Distance::new(u.attack_range),
                     desired_spacing: u.desired_spacing,
                     number_unit_types: u.number_unit_types,
                     unit_types: words(&u.unit_types),
@@ -199,7 +200,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         current_target: TargetData {
             target: GroupTarget::of_saved(t.target, t.type_),
             original_position: vec3(&t.original_position),
-            range: t.range,
+            range: Distance::new(t.range),
             target_radius: t.target_radius,
             disable_retargeting: t.disable_retargeting,
             certain_action: ActionType::of_data(t.certain_action),
@@ -224,7 +225,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             .map(|c| GroupCommand {
                 command: c.new_command_command,
                 target_id: ObjectId::of_field(c.new_command_target_id),
-                range: c.new_command_range,
+                range: Distance::new(c.new_command_range),
                 point: vec3(&c.new_command_point),
                 approved: c.new_command_approved,
                 disable_retargeting: c.new_command_disable_retargeting,
@@ -440,6 +441,13 @@ impl Flat for Millis {
 
 /// A span of seconds flattens as its f32, as the save holds it.
 impl Flat for Seconds {
+    fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
+        self.get().flat(path, out);
+    }
+}
+
+/// A distance flattens as its f32, as the save holds it.
+impl Flat for Distance {
     fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
         self.get().flat(path, out);
     }

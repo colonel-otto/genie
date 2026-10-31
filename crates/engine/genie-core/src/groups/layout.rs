@@ -8,6 +8,7 @@ use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::SlotState;
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
+use crate::map::Distance;
 use crate::math::fmath::{self, BVector};
 use crate::objects::ObjectId;
 use crate::world::World;
@@ -134,7 +135,7 @@ pub(crate) fn slots_by_place(
 pub(crate) fn clear_line(line: &mut FormationLine) {
     line.indices = Vec::new();
     line.depth = 0;
-    line.attack_range = 0.0;
+    line.attack_range = Distance::ZERO;
 }
 
 /// `FUN_141008f50`: for `width` above 0 and `depth` not below 0 the line's places are `width`
@@ -146,7 +147,7 @@ pub(crate) fn reset_line(line: &mut FormationLine, width: i32, depth: i32) -> bo
     if 0 < width && 0 <= depth {
         line.indices = vec![u32::MAX; width as usize];
         line.depth = depth;
-        line.attack_range = 0.0;
+        line.attack_range = Distance::ZERO;
         true
     } else {
         false
@@ -782,8 +783,8 @@ mod tests {
         let line = FormationLine {
             depth: 2,
             indices: vec![7],
-            attack_range: 1.5,
-            distance_back: 4.0,
+            attack_range: Distance::new(1.5),
+            distance_back: Distance::new(4.0),
         };
         let mut l = line.clone();
         assert!(!reset_line(&mut l, 0, 1));
@@ -796,8 +797,8 @@ mod tests {
             FormationLine {
                 depth: 3,
                 indices: vec![u32::MAX; 2],
-                attack_range: 0.0,
-                distance_back: 4.0,
+                attack_range: Distance::ZERO,
+                distance_back: Distance::new(4.0),
             }
         );
         let mut l = line;
@@ -805,7 +806,7 @@ mod tests {
         assert_eq!(
             l,
             FormationLine {
-                distance_back: 4.0,
+                distance_back: Distance::new(4.0),
                 ..FormationLine::default()
             }
         );
@@ -1094,8 +1095,8 @@ mod tests {
             .collect();
         f.lines = vec![
             FormationLine {
-                attack_range: 4.0,
-                distance_back: 2.0,
+                attack_range: Distance::new(4.0),
+                distance_back: Distance::new(2.0),
                 ..FormationLine::default()
             };
             3
@@ -1110,7 +1111,7 @@ mod tests {
         assert_eq!(lines, [(0, vec![0, 2]), (1, vec![1]), (2, vec![3])]);
         assert_eq!(
             (f.lines[0].attack_range, f.lines[0].distance_back),
-            (0.0, 2.0)
+            (Distance::ZERO, Distance::new(2.0))
         );
     }
 

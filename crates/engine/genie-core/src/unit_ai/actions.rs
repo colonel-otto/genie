@@ -1,6 +1,7 @@
 //! The actions' outcomes, the stops and the order queue.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
@@ -319,7 +320,7 @@ impl UnitAi {
         side.effect_now(
             Effect::Move(AiMove {
                 point: Position::new(x, y, at.position.z()),
-                range: WALK_BACK,
+                range: Distance::new(WALK_BACK),
                 force: true,
                 walk: false,
             }),

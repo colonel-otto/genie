@@ -2,6 +2,7 @@
 //! update through the owner's sub-action list (`FUN_140a992b0`).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::PathAsk;
 use crate::movement::move_to::action::ARRIVED;
@@ -39,7 +40,7 @@ impl MoveToAction {
     /// (`FUN_140aa0d30`, then `FUN_140a7a170` with 1: quiet, `+0x60`), with `sprite` (`+0x58`) as
     /// the constructor resolves it; the action list starts it in state 3 (`FUN_140a977e0`).
     #[must_use]
-    pub const fn sub_to_point(point: Position, range: f32, sprite: Option<Graphic>) -> Self {
+    pub const fn sub_to_point(point: Position, range: Distance, sprite: Option<Graphic>) -> Self {
         Self {
             state: MoveTo::Start,
             point,
@@ -60,11 +61,11 @@ impl MoveToAction {
     /// `speed` (slot 0x208) and fails (13) without (`UCOMISS`, `JP`: a NaN speed starts). A quiet
     /// `MoveTo` shows no standing sprite in states 1 and 13 (`0x140aa29e0`).
     #[must_use]
-    pub fn added(self, unit_state: ObjectState, gap: f32, speed: f32) -> Option<Self> {
+    pub fn added(self, unit_state: ObjectState, gap: Distance, speed: f32) -> Option<Self> {
         if ObjectState::Dying <= unit_state {
             return None;
         }
-        let state = if gap <= ARRIVED {
+        let state = if gap <= Distance::new(ARRIVED) {
             MoveTo::Arrived
         } else if speed == 0.0 {
             MoveTo::Failed
@@ -118,7 +119,7 @@ impl MoveToAction {
                 self.wait.ask_again();
                 let goal = self.walks_to();
                 self.state = MoveTo::Moving;
-                let (started, asked) = ask_walk(walk, (goal, self.range), ask, shown)?;
+                let (started, asked) = ask_walk(walk, (goal, self.range.get()), ask, shown)?;
                 if let Some(point) = asked {
                     self.point = point;
                 }
@@ -172,7 +173,7 @@ impl MoveToAction {
     pub(crate) const fn sub_in(state: MoveTo) -> Self {
         Self {
             state,
-            ..Self::sub_to_point(Position::ORIGIN, 0.0, None)
+            ..Self::sub_to_point(Position::ORIGIN, Distance::ZERO, None)
         }
     }
 }

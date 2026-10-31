@@ -1,5 +1,6 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -121,7 +122,7 @@ impl Mover {
             v.velocity = v.velocity.with_y(speed);
         }
         // the position setter runs only for a distance it moves
-        let Some(at) = self.move_forward(dt.get() * speed, map) else {
+        let Some(at) = self.move_forward(Distance::new(dt.get() * speed), map) else {
             return position;
         };
         let at = self.grounded(at, terrain);
@@ -199,12 +200,12 @@ impl Mover {
     /// `moveForward` (slot 182, `FUN_141158490`): `distance × factor` along the forward vector
     /// from where the unit last moved to (`+0x824`, [`Mover::moved_at`]), through the position
     /// setter; a distance below 1e-7 moves nothing.
-    pub(super) fn move_forward(&self, distance: f32, map: GridSize) -> Option<Position> {
+    pub(super) fn move_forward(&self, distance: Distance, map: GridSize) -> Option<Position> {
         let d = distance * self.factor;
-        if d.abs() < EPSILON {
+        if d.get().abs() < EPSILON {
             return None;
         }
-        let to = fmath::add(self.moved_at.vector(), fmath::scale(d, self.forward));
+        let to = fmath::add(self.moved_at.vector(), fmath::scale(d.get(), self.forward));
         Some(self.set_position(to.position(), map))
     }
 
@@ -342,6 +343,7 @@ impl Mover {
                     end.position().with_z(0.0),
                     Footprint::new(0.0, 0.0),
                 )
+                .get()
             }),
         };
         Ok((target, gap, to_end))
@@ -419,7 +421,7 @@ impl Mover {
             let (target, gap, to_end) = self.level_gaps(world, level.target, ground_radius)?;
             let goal = Goal {
                 target: target.as_ref().map(|(id, t)| (*id, t)),
-                gap,
+                gap: Distance::new(gap),
                 to_end,
             };
             if self.paths[0].flags & 1 != 0 {
@@ -515,13 +517,13 @@ impl Mover {
             let (from, to) = self.query_ends(position, projected, world.map);
             let rect = Rect::spanning(from, to);
             let grow = self.stats.radius.x();
-            world.check_known_records(rect.grown(grow))?;
+            world.check_known_records(rect.grown(Distance::new(grow)))?;
             let player = world.get(me.id).map(|p| p.player);
             let hits = world.walk_hits(WalkQuery {
                 start: from,
                 end: to,
                 rect,
-                grow,
+                grow: Distance::new(grow),
                 ally_factor: self.stats.min_collision,
                 player,
                 ignore: &[RecordId::from(me.id)],
@@ -555,7 +557,7 @@ impl Mover {
                 let own =
                     footprint_gap(self.position(), ground_radius, t.position, t.radius) - range;
                 let near = (self.position(), ground_radius);
-                let gap = gate_gap(world, near, (id, t), own, |g| g - range);
+                let gap = gate_gap(world, near, (id, t), own, |g| g - range.get());
                 if gap < EPSILON {
                     // in range of the target: the waypoint counts as reached
                     let level = &mut self.paths[0];
@@ -565,7 +567,7 @@ impl Mover {
                 }
             }
             // a walk to a point with a range ends where its top level's path ends
-            None if level.path_flags & 1 == 0 && RANGE_FLOOR < level.range => {
+            None if level.path_flags & 1 == 0 && RANGE_FLOOR < level.range.get() => {
                 if let Some(&end) = self.top_path().and_then(|p| p.last()) {
                     let gap = footprint_gap(
                         self.position(),
@@ -573,7 +575,7 @@ impl Mover {
                         end.position().with_z(0.0),
                         Footprint::new(0.0, 0.0),
                     );
-                    if gap - level.range < EPSILON {
+                    if gap - level.range < Distance::new(EPSILON) {
                         self.reset_level();
                         self.stop()?;
                         return Ok(Next::Done(Motion::Arrived));

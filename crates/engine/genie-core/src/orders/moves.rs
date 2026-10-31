@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::attack::gaps;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -112,7 +113,7 @@ impl World {
                 target: if target.is_some() { order.target } else { None },
                 target_owner,
                 point: point2.with_height(0.0),
-                range: 0.0,
+                range: Distance::ZERO,
                 shown: order.point,
                 ready: order.direct,
                 target_type,
@@ -196,7 +197,7 @@ impl World {
             let unit = self.players.live_mut(player, idx)?;
             let move_to = crate::movement::move_to::MoveToAction::to_point(
                 point,
-                0.0,
+                Distance::ZERO,
                 sprite,
                 unit.body.mover_mut(),
             );
@@ -392,7 +393,11 @@ impl World {
                         .ok_or(GenieError::unsupported("a target without a place"))?,
                 );
                 let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
-                Some(work_reach(gap, master.weapon_range, master.min_range))
+                Some(work_reach(
+                    Distance::new(gap),
+                    master.weapon_range,
+                    master.min_range,
+                ))
             }
             _ => None,
         })

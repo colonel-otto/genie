@@ -9,6 +9,7 @@ use crate::gathering::gather::{
     WAIT_WORKERS, waits_for_a_farm,
 };
 use crate::gathering::hunt::walk_sprite;
+use crate::map::Distance;
 use crate::math::rng::Stream;
 use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{GiveUp, MoveTo};
@@ -33,7 +34,7 @@ pub(super) const QUIET_CODE: GenieError =
 impl GatherAction {
     /// The object the gather's `MoveTo` walks to, which the update holds as `target`, the unit
     /// `gap` from its footprint.
-    const fn walk_to(&self, target: &Victim, gap: f32) -> WalkTo {
+    const fn walk_to(&self, target: &Victim, gap: Distance) -> WalkTo {
         WalkTo {
             id: Some(target.id),
             at: target.position,
@@ -197,10 +198,10 @@ impl GatherAction {
             } else {
                 target.radius.x()
             };
-            self.set_walk_back(radius, mover, &walks)?;
+            self.set_walk_back(Distance::new(radius), mover, &walks)?;
         } else {
             let rng = c.w.streams.get(Stream::Action);
-            let to = self.walk_to(target, 0.0);
+            let to = self.walk_to(target, Distance::ZERO);
             self.set_walk(to, target.radius, mover, rng, &walks)?;
         }
         Ok(Next::Stay)
@@ -273,7 +274,7 @@ impl GatherAction {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
                 let rng = c.w.streams.get(Stream::Action);
-                let to = self.walk_to(target, 0.0);
+                let to = self.walk_to(target, Distance::ZERO);
                 self.set_walk(to, target.radius, mover, rng, &walks)?;
                 return Ok(Next::Stay);
             }
@@ -321,7 +322,7 @@ impl GatherAction {
                 self.target = None;
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
-                self.set_walk_back(0.0, mover, &walks)?;
+                self.set_walk_back(Distance::ZERO, mover, &walks)?;
                 Ok(Next::Stay)
             }
             code => Err(QUIET_CODE.with("code", code)),

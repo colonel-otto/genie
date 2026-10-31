@@ -7,6 +7,7 @@ use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::motion::hold;
 use crate::groups::steer::{ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO};
+use crate::map::Distance;
 use crate::map::spatial::RecordId;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::movement::ASIDE;
@@ -92,7 +93,7 @@ impl World {
                 } else {
                     own.timer -= dt;
                     !below_or_unordered(0.0, own.timer.get())
-                        || !below_or_unordered(0.0, own.distance)
+                        || !below_or_unordered(0.0, own.distance.get())
                 };
                 if !ends {
                     continue;
@@ -181,7 +182,7 @@ impl World {
         id: ObjectId,
         from: BVector,
         to: BVector,
-        grow: f32,
+        grow: Distance,
         ignore: &[ObjectId],
     ) -> Result<bool, GenieError> {
         let (_, u) = self.object(id).ok_or(GenieError::unreachable(
@@ -334,9 +335,9 @@ impl World {
         };
         let from = u.moved_vector().xhy();
         if !self.line_clear(id, from, to, CLEARANCE, differentiators)? {
-            return self.way_round(group, index, slot, gap, differentiators);
+            return self.way_round(group, index, slot, Distance::new(gap), differentiators);
         }
-        self.steer_member(group, slot, id, gap)?;
+        self.steer_member(group, slot, id, Distance::new(gap))?;
         self.set_state_position(id, to);
         Ok(())
     }

@@ -7,6 +7,7 @@ use crate::combat::attack::{
     Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, NO_RANGE, NONE, Readiness,
     SHORT_RANGE_GAP, TARGET_GONE, face_target, move_reads,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
@@ -44,7 +45,7 @@ impl Attack {
         match self.ready_to_attack(unit, g, f, r, false)? {
             Readiness::Ready => self.set_swing(unit, g, f, r),
             Readiness::Waiting => Ok(()),
-            Readiness::Away(gap) => self.follow(unit, g, r, f, gap),
+            Readiness::Away(gap) => self.follow(unit, g, r, f, Distance::new(gap)),
         }
     }
 
@@ -57,7 +58,7 @@ impl Attack {
         g: &mut Ground<'_>,
         r: &AttackReads,
         f: &Fight,
-        gap: f32,
+        gap: Distance,
     ) -> Result<(), GenieError> {
         self.enter(AttackState::Move, unit)?;
         let reads = move_reads(unit, r, g.graphics)?;
@@ -116,7 +117,7 @@ impl Attack {
             .map(|m| m.stats.radius.ground())
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let gap = footprint_gap(at, ground, t.position, t.radius);
-        let near = if self.range <= NO_RANGE {
+        let near = if self.range <= Distance::new(NO_RANGE) {
             gap + SHORT_RANGE_GAP
         } else {
             gap
@@ -136,7 +137,7 @@ impl Attack {
         }
         // a gate's reach is to the nearest of it and its first two parts (slot 0x680, MINSS)
         let gap = crate::movement::gate_gap(g.map, (at, ground), (target, &t), gap, |g| g);
-        if self.reach() < gap {
+        if self.reach() < Distance::new(gap) {
             if !self.sub_action {
                 g.post(unit, NotifyKind::OUT_OF_REACH, [0; 3])?;
             }
@@ -167,7 +168,12 @@ impl Attack {
     /// (`FUN_140a7bbf0`), or within half a tile of it on each axis (`FUN_140a7bd10`: a NaN
     /// difference is not within) and either `moves_or_volleys` (a unit that moves, or a volley
     /// under way, `FUN_1412161a0`) or the target's gap `near` is in range ([`in_range`]).
-    pub(super) fn ready_at_once(&self, to: Position, near: f32, moves_or_volleys: bool) -> bool {
+    pub(super) fn ready_at_once(
+        &self,
+        to: Position,
+        near: Distance,
+        moves_or_volleys: bool,
+    ) -> bool {
         let moved = to != self.point;
         let p = self.point;
         let far = [to.x() - p.x(), to.y() - p.y(), to.z() - p.z()]
@@ -220,10 +226,11 @@ impl Attack {
 /// readyToAttack's ready-at-once range test of a unit that does not move (`0x140a7fd92`): the
 /// gap `near` (half a tile less for a range up to 0.1) is not beyond the range (`COMISS`/`JA`), and
 /// the least range is at most 0.1 or at most the gap (`COMISS`/`JBE` each: NaN passes).
-pub(super) fn in_range(near: f32, range: f32, min_range: f32) -> bool {
+pub(super) fn in_range(near: Distance, range: Distance, min_range: Distance) -> bool {
     use crate::math::fmath::at_most_or_unordered;
-    at_most_or_unordered(near, range)
-        && (at_most_or_unordered(min_range, NO_RANGE) || at_most_or_unordered(min_range, near))
+    at_most_or_unordered(near.get(), range.get())
+        && (at_most_or_unordered(min_range.get(), NO_RANGE)
+            || at_most_or_unordered(min_range.get(), near.get()))
 }
 
 /// readyToAttack's sight test: a target of a player (not Gaia) whose tile the unit's player does

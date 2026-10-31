@@ -31,6 +31,7 @@ pub(crate) mod slots;
 pub(crate) mod step;
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::objects::ObjectId;
@@ -127,7 +128,7 @@ pub(crate) const ATTACKER_MASTER: GenieError =
 pub(crate) const GATE_EPSILON: f32 = crate::math::image::turn::GATE_EPSILON;
 /// A gate's query grows its records and its own box by this (`FUN_1410562d0` with
 /// `DAT_142eb3630`).
-pub(crate) const GATE_GROW: f32 = crate::math::image::turn::GATE_GROW;
+pub(crate) const GATE_GROW: Distance = Distance::new(crate::math::image::turn::GATE_GROW);
 /// The least height of a shut gate its player opens (`FUN_14162f7e0`, `DAT_14330eb8c`).
 pub(crate) const GATE_SHUT_HEIGHT: f32 = crate::math::image::turn::GATE_SHUT_HEIGHT;
 /// The seconds an open gate with nothing in it waits before it shuts (`FUN_1411e7730`'s

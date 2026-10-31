@@ -1,5 +1,6 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
+use crate::map::Distance;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
@@ -150,11 +151,11 @@ pub(super) fn kept_by_owner_and_class(me: &Searcher, ask: &Ask, t: &Thing) -> bo
 /// within the weapon range unless the unit moves, within `near` (the main walk's sight, the
 /// retry walk's range) unless it may move, within the reference distance when there is one, and
 /// within the sight.
-pub(super) fn within(me: &Searcher, ask: &Ask, gap: f32, near: f32) -> bool {
+pub(super) fn within(me: &Searcher, ask: &Ask, gap: Distance, near: f32) -> bool {
     me.min_range <= gap
         && (gap <= me.weapon_range || me.speed != 0.0)
-        && (me.can_move || gap <= near)
-        && (ask.distance <= 0.0 || gap <= ask.distance)
+        && (me.can_move || gap <= Distance::new(near))
+        && (ask.distance <= Distance::ZERO || gap <= ask.distance)
         && gap <= me.sight
 }
 
@@ -297,7 +298,7 @@ pub(super) fn add_extra(
             if me.speed == 0.0 {
                 continue;
             }
-            gap = gap + me.weapon_range + ONE;
+            gap = gap + me.weapon_range + Distance::new(ONE);
         }
         st.add(&world.candidate(id, gap, category(t.master, t.class))?);
     }
@@ -377,13 +378,13 @@ impl Walked {
                         }
                     }
                     class::WALL => {
-                        if !self.note_wall(id, gap) {
+                        if !self.note_wall(id, Distance::new(gap)) {
                             continue;
                         }
                     }
                     _ => self.beyond_walls = true,
                 }
-                st.add(&world.candidate(id, gap, k)?);
+                st.add(&world.candidate(id, Distance::new(gap), k)?);
             }
         }
         Ok(())
@@ -405,11 +406,11 @@ impl Walked {
             };
             let counts = match t.class {
                 class::GATE => self.walls,
-                class::WALL => self.note_wall(id, gap),
+                class::WALL => self.note_wall(id, Distance::new(gap)),
                 _ => true,
             };
             if counts {
-                st.add(&world.candidate(id, gap, k)?);
+                st.add(&world.candidate(id, Distance::new(gap), k)?);
             }
         }
         Ok(())
@@ -423,28 +424,28 @@ impl Walked {
         ask: &Ask,
         id: ObjectId,
         relation: UnitRelation,
-        near: f32,
+        near: Distance,
         world: &mut dyn Battlefield,
     ) -> Result<Option<(Thing, f32, Option<AttackCategory>)>, crate::GenieError> {
         let Some(t) = tested(me, ask, id, relation, world)? else {
             return Ok(None);
         };
         let gap = t.distance;
-        if !within(me, ask, gap, near) {
+        if !within(me, ask, gap, near.get()) {
             return Ok(None);
         }
         let k = category(t.master, t.class);
         if self.narrowed.is_some_and(|n| k != Some(n)) {
             return Ok(None);
         }
-        Ok(Some((t, gap, k)))
+        Ok(Some((t, gap.get(), k)))
     }
 
     /// A wall `id` at `gap`: the closest wall when it is the first or nearer; whether it counts
     /// (only for a unit that attacks walls).
-    fn note_wall(&mut self, id: ObjectId, gap: f32) -> bool {
-        if self.wall.1 < 0.0 || gap < self.wall.1 {
-            self.wall = (Some(id), gap);
+    fn note_wall(&mut self, id: ObjectId, gap: Distance) -> bool {
+        if self.wall.1 < 0.0 || gap < Distance::new(self.wall.1) {
+            self.wall = (Some(id), gap.get());
         }
         self.walls
     }
@@ -471,7 +472,7 @@ fn rank_entries(
         if !e.fixed || e.category == Some(AttackCategory::SIEGE) {
             return Ok(i32::from(ranked) << 2);
         }
-        if EPSILON < world.weapon_range(e.id)? {
+        if EPSILON < (world.weapon_range(e.id)?).get() {
             return Ok(3);
         }
         let farm = world.thing(e.id)?.is_some_and(|t| t.class == class::FARM);
@@ -551,7 +552,7 @@ fn current_holds(
 fn quick_pick(
     st: &Statistics,
     ranked: bool,
-    range: f32,
+    range: Distance,
     world: &mut dyn Battlefield,
 ) -> Result<Option<ObjectId>, crate::GenieError> {
     for &i in st.order.iter().take(3) {

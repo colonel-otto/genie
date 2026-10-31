@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::gathering::drop_sites::{Seeker, drop_site_search};
 use crate::gathering::gather::GatherState;
 use crate::gathering::gather::{GatherRetarget, Walks};
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
@@ -126,7 +127,7 @@ impl Unit {
                 .mover_mut()
                 .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
             return gather
-                .walk_back(0.0, mover, &walks)
+                .walk_back(Distance::ZERO, mover, &walks)
                 .map(|()| HeadCode::Keeps);
         }
         if c.w.players.player(c.player)?.computer {
@@ -347,7 +348,7 @@ impl Unit {
             ));
         };
         gather.carry_to = site;
-        gather.set_drop(at, gap, mover, &walks)?;
+        gather.set_drop(at, Distance::new(gap), mover, &walks)?;
         Ok(site.filter(|_| site != carry_to))
     }
 
@@ -388,7 +389,7 @@ impl Unit {
             ));
         };
         hunt.carry_to = site;
-        hunt.set_drop(at, gap, mover, &walks)?;
+        hunt.set_drop(at, Distance::new(gap), mover, &walks)?;
         Ok(site.filter(|_| site != carry_to))
     }
 
@@ -436,7 +437,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a drop site without a place"))?;
         Ok((
             Some(site),
-            footprint_gap(self.position(), ground, s.position, s.radius),
+            (footprint_gap(self.position(), ground, s.position, s.radius)).get(),
         ))
     }
 

@@ -1,6 +1,7 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -64,7 +65,9 @@ impl Spatial {
             if (cx - t.x()).abs() < reach && (cy - t.y()).abs() < reach {
                 for n in t.beside() {
                     let at = ((ox + n.x()) * size + n.y() + oy) as usize;
-                    if !*visited.checked(at)? && self.passable(n, mask, me, radius_x)? {
+                    if !*visited.checked(at)?
+                        && self.passable(n, mask, me, Distance::new(radius_x))?
+                    {
                         *visited.checked_mut(at)? = true;
                         list.push(n);
                     }
@@ -219,7 +222,7 @@ impl Spatial {
         &mut self,
         me: ObjectId,
         point: Point,
-        grow: f32,
+        grow: Distance,
         mask: crate::map::TerrainMask,
     ) -> Result<bool, GenieError> {
         let (x, y) = (point.x(), point.y());
@@ -252,7 +255,7 @@ impl Spatial {
         &mut self,
         me: ObjectId,
         point: Point,
-        grow: f32,
+        grow: Distance,
         mask: crate::map::TerrainMask,
         ignore: &[ObjectId],
     ) -> Result<bool, GenieError> {
@@ -292,7 +295,7 @@ impl Spatial {
     pub fn point_hit(
         &self,
         point: Point,
-        grow: f32,
+        grow: Distance,
         ignore: &[RecordId],
         still: bool,
     ) -> Result<bool, GenieError> {
@@ -325,7 +328,7 @@ impl Spatial {
     pub fn object_holds(
         &self,
         point: Point,
-        grow: f32,
+        grow: Distance,
         ignore: &[RecordId],
         still: bool,
     ) -> Result<bool, GenieError> {
@@ -369,7 +372,7 @@ impl Spatial {
     pub fn obstruction_candidates(
         &self,
         rect: Rect,
-        grow: f32,
+        grow: Distance,
         ignore: &[RecordId],
     ) -> Vec<ObjectId> {
         let query = rect.grown(grow);

@@ -2,6 +2,7 @@
 //! queries.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Tile;
 use crate::map::spatial::{
@@ -23,7 +24,7 @@ pub struct WalkQuery<'a> {
     /// The step's rectangle.
     pub rect: Rect,
     /// The walker's radius, which grows the records' boxes and the rectangle.
-    pub grow: f32,
+    pub grow: Distance,
     /// The walker's master's `min_collision_size_multiplier`, for a moving object of `player` or
     /// an ally.
     pub ally_factor: f32,
@@ -346,8 +347,8 @@ impl Spatial {
     /// motion step's waypoint query, the formation's lines `FUN_14103a1f0`, the group's clear
     /// spot `FUN_141007630`).
     #[must_use]
-    pub fn manager_grow(&self) -> f32 {
-        self.manager_buffer.unwrap_or(0.0)
+    pub fn manager_grow(&self) -> Distance {
+        Distance::new(self.manager_buffer.unwrap_or(0.0))
     }
 
     /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
@@ -390,7 +391,7 @@ impl Spatial {
         // be hit (a smaller grow's box lies inside it): skip it before the grid's filing test,
         // which costs the most. Without a player a moving object's test fails, so then all go
         // through it
-        let reach = grow.max(ally_factor * grow);
+        let reach = Distance::new(grow.get().max(ally_factor * grow.get()));
         let skip = |p: &Placed| !rect.overlaps(p.bounds().grown(reach));
         for (id, p) in self.records_in(query) {
             let Some(o) = p.obstruction else {
@@ -437,7 +438,7 @@ impl Spatial {
         &mut self,
         from: Point,
         to: Point,
-        grow: f32,
+        grow: Distance,
         mask: Option<crate::map::TerrainMask>,
         ignore: &[RecordId],
     ) -> Result<Vec<RecordId>, GenieError> {
@@ -471,7 +472,7 @@ impl Spatial {
         &self,
         from: Point,
         to: Point,
-        grow: f32,
+        grow: Distance,
         tiles: bool,
         ignore: &[RecordId],
     ) -> Result<Vec<RecordId>, GenieError> {

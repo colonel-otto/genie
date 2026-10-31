@@ -182,7 +182,7 @@ impl Rig {
 fn task() -> HuntTask {
     HuntTask {
         id: TaskId::test(2),
-        range: 0.25,
+        range: Distance::new(0.25),
         resource: Some(AttributeId::numbered(17)),
         sprites: [-1; 4],
         work_value: 1.0,
@@ -202,7 +202,7 @@ fn bush() -> Resource {
         player: PlayerId::new(0),
         workers: 0,
         drop_site: false,
-        gap: 1.2,
+        gap: Distance::new(1.2),
         state: ObjectState::Alive,
         radius: Footprint::new(0.5, 0.5),
     }
@@ -239,7 +239,7 @@ fn farm() -> Resource {
         player: PlayerId::new(1),
         workers: 0,
         drop_site: false,
-        gap: 0.0,
+        gap: Distance::ZERO,
         state: ObjectState::Alive,
         radius: Footprint::new(1.5, 1.5),
     }
@@ -355,7 +355,7 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
     let to = |state| WalkTo {
         id: Some(object_id(31)),
         at: Position::new(5.0, 6.0, 0.0),
-        gap: 0.0,
+        gap: Distance::ZERO,
         state: Some(state),
     };
     let walk = |state| {
@@ -393,7 +393,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     let to = WalkTo {
         id: g.target,
         at: Position::new(112.5, 173.5, 3.0),
-        gap: 0.0,
+        gap: Distance::ZERO,
         state: Some(ObjectState::Alive),
     };
     g.set_walk(to, Footprint::new(1.5, 1.5), &mut mover, &mut rng, &walks)
@@ -480,7 +480,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
         player: PlayerId::new(7),
         drop_site: true,
         position: Position::new(12.5, 5.5, 0.0),
-        gap: 3.0,
+        gap: Distance::new(3.0),
     };
     let mut g = gatherer();
     g.take_move(

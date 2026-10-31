@@ -1,6 +1,7 @@
 //! The flight of the hunted animals, the boar and the villagers, and their calls for help.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
@@ -197,7 +198,7 @@ impl UnitAi {
         }
         let m = self.move_to(AiMove {
             point: Position::new(x, y, point.z()),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         });
@@ -279,7 +280,7 @@ impl UnitAi {
         let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
             at: at.position.ground(),
-            radius,
+            radius: Distance::new(radius),
             classes,
             size: at.size,
             pick: Pick::Look,

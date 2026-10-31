@@ -8,6 +8,7 @@ use crate::gathering::gather::{
     STOP_CENTRE, STOP_DRAWS, STOP_FARMS, Walks,
 };
 use crate::gathering::hunt::HuntTask;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -100,7 +101,7 @@ pub struct MoveTarget {
     /// Its place.
     pub position: Position,
     /// The footprint gap from the gatherer to it.
-    pub gap: f32,
+    pub gap: Distance,
 }
 
 /// The productivity the time per stop reads (the constructor's and the update's): the player's
@@ -236,7 +237,7 @@ impl GatherAction {
             } else {
                 target.radius.x()
             };
-            self.set_walk_back(radius, mover, &walks)?;
+            self.set_walk_back(Distance::new(radius), mover, &walks)?;
             self.target = None;
             return Ok(());
         }
@@ -321,7 +322,7 @@ impl GatherAction {
             } else {
                 target.radius.x()
             };
-            self.set_walk_back(radius, mover, &walks)?;
+            self.set_walk_back(Distance::new(radius), mover, &walks)?;
             self.target = None;
             self.carry_to = None;
             return Ok(true);
@@ -387,7 +388,7 @@ impl GatherAction {
     pub fn set_drop(
         &mut self,
         site: Position,
-        gap: f32,
+        gap: Distance,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {

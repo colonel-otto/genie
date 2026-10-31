@@ -3,6 +3,7 @@
 use crate::masters::MasterTable;
 use crate::vec3;
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::Point;
 use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
@@ -124,7 +125,7 @@ pub(super) fn unit_ai(
             ai.current_target_yvalue,
             ai.current_target_zvalue,
         ),
-        desired_distance: ai.desired_target_distance_value,
+        desired_distance: Distance::new(ai.desired_target_distance_value),
         defend_target: ObjectId::of_field(ai.defend_target_value),
         last_order: OrderKind::of_field(ai.last_order_value)?,
         last_action: ActionKind::of_field(ai.last_action_value)?,

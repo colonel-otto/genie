@@ -2,6 +2,7 @@
 //! idle timeout.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
@@ -67,13 +68,13 @@ pub const CIVILIAN_CARED: [ClassId; 39] = class::classes([
 
 /// What the civilian's constructor gives the base (`FUN_140c2e080` with 7): `+0x1e8`, which its
 /// search adds to its radius (`FUN_140c63e20`).
-pub const CIVILIAN_SEARCH_GROWTH: f32 = 7.0;
+pub const CIVILIAN_SEARCH_GROWTH: Distance = Distance::new(7.0);
 
 /// The civilian's search radius (`FUN_140c63e20`): its line of sight plus a tile, at least its
 /// search radius, plus [`CIVILIAN_SEARCH_GROWTH`].
 #[must_use]
-pub fn civilian_search_radius(los: f32, search_radius: f32) -> f32 {
-    let sight = los + 1.0;
+pub fn civilian_search_radius(los: Distance, search_radius: Distance) -> Distance {
+    let sight = los + Distance::new(1.0);
     let radius = if sight <= search_radius {
         search_radius
     } else {
@@ -210,8 +211,8 @@ pub(crate) fn cared_classes(
 pub(crate) fn search_area(
     ai_type: UnitAiType,
     class: Option<ClassId>,
-    los: f32,
-    radius: f32,
+    los: Distance,
+    radius: Distance,
     computer: bool,
 ) -> Result<(&'static [ClassId], f32), GenieError> {
     let classes = cared_classes(ai_type, class, computer)?;
@@ -220,7 +221,7 @@ pub(crate) fn search_area(
     } else {
         search_radius(los, radius)
     };
-    Ok((classes, radius))
+    Ok((classes, radius.get()))
 }
 
 /// The action values that need a live target (the target block's mask `0x4002080d` over the
@@ -237,13 +238,13 @@ pub(super) const LIVE_TARGET_ACTIONS: [ActionKind; 6] = [
 /// The radius of the search `bestUnitToAttack` runs (`FUN_140c63e20`): the larger of the unit's
 /// search radius (slot 0x2c8) and its line of sight plus 1, plus `+0x1e8`, which no save holds (0
 /// in every unit probed).
-pub(super) fn attack_search_radius(at: &Surroundings) -> f32 {
+pub(super) fn attack_search_radius(at: &Surroundings) -> Distance {
     search_radius(at.los, at.search_radius)
 }
 
 /// A unit AI's search radius (`FUN_140c63e20`'s, slot 0x2c8 against the line of sight): its
 /// master's line of sight plus [`HUNTED_SIGHT_GROWTH`], or its search radius if that is as far.
-pub(crate) fn search_radius(los: f32, search_radius: f32) -> f32 {
+pub(crate) fn search_radius(los: Distance, search_radius: Distance) -> Distance {
     let sight = los + HUNTED_SIGHT_GROWTH;
     if sight <= search_radius {
         search_radius

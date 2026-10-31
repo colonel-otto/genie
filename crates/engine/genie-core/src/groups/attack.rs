@@ -8,6 +8,7 @@ use crate::groups::command::MoveTo;
 use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
 use crate::groups::{GroupTarget, TargetData, UnitGroup, WorldObject};
+use crate::map::Distance;
 use crate::math::fmath;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
@@ -137,7 +138,7 @@ impl World {
             self.reach_pass(group, main, order, &mut range)?;
         }
         if below_or_unordered(range, 0.0) {
-            range = smallest;
+            range = smallest.get();
         }
         self.refill_special_units(group, main)?;
         self.raise_attack_ranges(group, main)?;
@@ -145,7 +146,7 @@ impl World {
         self.groups.held_mut(group)?.current_target = TargetData {
             target: GroupTarget::Object(main),
             original_position: at,
-            range,
+            range: Distance::new(range),
             target_radius,
             disable_retargeting: u8::from(order.disable_retargeting),
             certain_action: order.filter,
@@ -155,7 +156,7 @@ impl World {
             Some(main),
             at.ground(),
             MoveTo {
-                range,
+                range: Distance::new(range),
                 keep_flag: true,
                 direct: true,
                 ..MoveTo::default()
@@ -259,18 +260,18 @@ impl World {
         );
         let mut reach = self.task_reach(p, master.id, order.filter)?;
         if reach < 0.0 && RANGED_MEMBER_KIND <= master.kind && !self.charge_hits(u, master, &t)? {
-            reach = weapon_range(master);
+            reach = weapon_range(master).get();
         }
         let against = self.range_against(WorldObject::Unit(p, u), Some(t))?;
         let reach_squared = if reach < 0.0 {
-            against * against
+            against.squared().get()
         } else {
             reach * reach
         };
         if *range < reach {
             *range = reach;
         }
-        Ok(gap <= reach_squared && master.min_range * master.min_range <= gap)
+        Ok(gap <= reach_squared && master.min_range.squared().get() <= gap)
     }
 
     /// `FUN_1415cd0d0` of the member master `master` of player `player` with the order's task
@@ -300,10 +301,10 @@ impl World {
                     .ok_or(GenieError::unreachable(
                         "a player's attribute table without the conversion range",
                     ))?;
-                return Ok(bonus + task.work_range);
+                return Ok(bonus + task.work_range.get());
             }
             if task.action_type == filter {
-                return Ok(task.work_range);
+                return Ok(task.work_range.get());
             }
         }
         Ok(NO_RANGE)
@@ -393,7 +394,7 @@ impl World {
             for &id in &stat.units {
                 if let Some(obj) = self.world_object(id) {
                     let range = self.range_against(obj, Some(t))?;
-                    if below_or_unordered(largest, range) {
+                    if below_or_unordered(largest.get(), range.get()) {
                         largest = range;
                     }
                 }

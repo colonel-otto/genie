@@ -2,6 +2,7 @@
 //! the goal's, then the A* over the hulls' points, again after the area grew.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::walk_in::WalkIn;
 use crate::pathing::hull_path::walks::WalkOut;
@@ -187,7 +188,7 @@ impl HullPather<'_> {
         &mut self,
         hull: HullIndex,
         from: Point,
-        range: f32,
+        range: Distance,
     ) -> Result<usize, GenieError> {
         let mut exits = std::mem::take(&mut self.exits);
         for e in &mut exits {
@@ -357,9 +358,9 @@ impl HullPather<'_> {
             || {
                 let d =
                     (at.y() - to.y()) * (at.y() - to.y()) + (at.x() - to.x()) * (at.x() - to.x());
-                d <= (q.range + r) * (q.range + r) + NUDGE
+                d <= (q.range + r).squared().get() + NUDGE
             },
-            |t| self.target_gap(t, at) <= q.range + NUDGE,
+            |t| self.target_gap(t, at) <= q.range + Distance::new(NUDGE),
         )
     }
 

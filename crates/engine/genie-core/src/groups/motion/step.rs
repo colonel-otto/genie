@@ -194,14 +194,16 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<()
     }
     let d = fmath::length(fmath::sub(at, point(level, left)));
     let mut beyond = match target {
-        None => (d - level.range) - NEAR,
+        None => (d - level.range.get()) - NEAR,
         Some(t) => {
             (footprint_gap(
                 t.position,
                 t.radius,
                 Position::new(at.x(), at.y(), 0.0),
                 Footprint::new(0.0, 0.0),
-            ) - level.range)
+            )
+            .get()
+                - level.range.get())
                 - NEAR
         }
     };

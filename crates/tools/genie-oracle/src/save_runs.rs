@@ -390,7 +390,7 @@ pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
                         .rev()
                         .find(|t| t.action_type == action_type::HUNT_RANGE)
                 })
-                .map_or(0.0, |t| t.work_range);
+                .map_or(0.0, |t| t.work_range.get());
             ai.hunted = Some(genie_core::unit_ai::Hunted { origin, leash });
         }
     }

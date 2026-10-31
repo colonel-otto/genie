@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
+use crate::map::Distance;
 use crate::map::Tile;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
@@ -131,14 +132,19 @@ impl World {
         target: Option<ObjectId>,
     ) -> Result<Vec<Victim>, GenieError> {
         let reach = Some(unit.master(&self.masters, p)?.area_effect)
-            .filter(|&r| 0.0 < r)
-            .map(|r| r + 6.0 + 2.0);
+            .filter(|&r| Distance::ZERO < r)
+            .map(|r| r + Distance::new(6.0) + Distance::new(2.0));
         let mut near: Vec<Victim> = Vec::new();
         if let Some(reach) = reach {
             let (x, y) = (unit.position().x(), unit.position().y());
             for (id, o) in self
                 .spatial
-                .objects_within(x - reach, y - reach, x + reach, y + reach)
+                .objects_within(
+                    x - reach.get(),
+                    y - reach.get(),
+                    x + reach.get(),
+                    y + reach.get(),
+                )
                 .filter(|&(id, _)| id != unit.id && Some(id) != target)
             {
                 let seen = self.victim(id, p)?;

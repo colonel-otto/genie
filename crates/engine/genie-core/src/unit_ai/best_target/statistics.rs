@@ -1,6 +1,7 @@
 //! `bestUnitToAttack`'s statistics ([`Statistics`]): the entries, an object's add, the scores,
 //! the ranks and the sort, and the order history's weights.
 
+use crate::map::Distance;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
@@ -44,7 +45,7 @@ pub struct Entry {
     /// over the unit's reload time).
     pub kill_time: f32,
     /// `+0xc`: the footprints' gap.
-    pub distance: f32,
+    pub distance: Distance,
     /// `+0x10`: its attack category ([`category`]).
     ///
     /// [`category`]: crate::unit_ai::best_target::category
@@ -69,7 +70,7 @@ pub struct Candidate {
     /// The object.
     pub id: ObjectId,
     /// Its footprints' gap to the unit (`FUN_14118f680`).
-    pub distance: f32,
+    pub distance: Distance,
     /// Its attack category (`FUN_140c4c8e0` on it, read where the candidate is made; counted
     /// when not −1).
     pub category: Option<AttackCategory>,
@@ -81,7 +82,7 @@ pub struct Candidate {
     /// could work on the unit (its slot 0x1b8 with 1: a priest's conversion test).
     pub armed: bool,
     /// The unit's weapon range against it (slot 0x238).
-    pub reach: f32,
+    pub reach: Distance,
     /// The unit's damage per hit to it (its slot 0x220, `FUN_141083f20`: the unit's elevation
     /// factor and its armor against the unit's attacks).
     pub damage: f32,
@@ -163,12 +164,12 @@ impl Bounds {
 
     /// `v` joins the bounds: the least takes it when above it (`COMISS least, v`, `JBE`: a NaN
     /// changes nothing), then the most when below it (`COMISS v, most`, `JBE`).
-    pub fn take(&mut self, v: f32) {
-        if self.least > v {
-            self.least = v;
+    pub fn take(&mut self, v: Distance) {
+        if self.least > v.get() {
+            self.least = v.get();
         }
-        if v > self.most {
-            self.most = v;
+        if v > Distance::new(self.most) {
+            self.most = v.get();
         }
     }
 
@@ -208,8 +209,8 @@ impl Statistics {
         }
         if 0.0 < c.speed {
             e.moving = true;
-            if self.closest_moving.0 > c.distance {
-                self.closest_moving = (c.distance, Some(c.id));
+            if self.closest_moving.0 > c.distance.get() {
+                self.closest_moving = (c.distance.get(), Some(c.id));
             }
             self.moving += 1;
         }
@@ -217,7 +218,7 @@ impl Statistics {
         if c.armed {
             self.armed += 1;
         }
-        if !(c.reach < c.distance || c.reach.is_nan() || c.distance.is_nan()) {
+        if !(c.reach < c.distance || c.reach.get().is_nan() || c.distance.get().is_nan()) {
             self.in_reach += 1;
         }
         self.distance.take(c.distance);
@@ -228,11 +229,11 @@ impl Statistics {
         } else {
             NEVER
         };
-        self.kill_time.take(e.kill_time);
+        self.kill_time.take(Distance::new(e.kill_time));
         e.bonus = if c.current { NO_DAMAGE_KILL } else { 0.0 };
         if 0.0 < c.speed {
             self.moving_distance.take(c.distance);
-            self.moving_kill_time.take(e.kill_time);
+            self.moving_kill_time.take(Distance::new(e.kill_time));
         }
         self.entries.push(e);
     }
@@ -277,7 +278,7 @@ impl Statistics {
                 e.kill_score = kill;
                 let mut d = DISTANCE_SCORE;
                 if crate::math::fmath::at_most_or_unordered(EPSILON, moving_distance_span) {
-                    d -= ((e.distance - moving_distance_low) / moving_distance_span)
+                    d -= ((e.distance.get() - moving_distance_low) / moving_distance_span)
                         * DISTANCE_SCORE;
                 }
                 e.distance_score = d;
@@ -289,7 +290,8 @@ impl Statistics {
                 e.distance_score = if EPSILON > distance_span {
                     DISTANCE_SCORE
                 } else {
-                    DISTANCE_SCORE - ((e.distance - distance_low) / distance_span) * DISTANCE_SCORE
+                    DISTANCE_SCORE
+                        - ((e.distance.get() - distance_low) / distance_span) * DISTANCE_SCORE
                 };
             }
             e.weight = e.category.map_or(0.0, |k| weights[k] * SCORE);
@@ -396,6 +398,7 @@ pub fn order_weights(history: &[crate::unit_ai::OrderRecord], now: WorldTime) ->
 
 #[cfg(test)]
 mod tests {
+    use crate::map::Distance;
     use crate::unit_ai::best_target::Bounds;
 
     /// The bounds start reset, take a value as both least and most, widen by each value beyond
@@ -404,11 +407,11 @@ mod tests {
     fn bounds_widen_by_each_value_beyond_them_and_pass_over_a_nan() {
         let mut b = Bounds::RESET;
         assert_eq!((b.least, b.most), (f32::MAX, -1.0));
-        b.take(3.0);
+        b.take(Distance::new(3.0));
         assert_eq!((b.least, b.most), (3.0, 3.0));
-        b.take(1.0);
-        b.take(7.0);
-        b.take(f32::NAN);
+        b.take(Distance::new(1.0));
+        b.take(Distance::new(7.0));
+        b.take(Distance::new(f32::NAN));
         assert_eq!((b.least, b.most, b.span()), (1.0, 7.0, 6.0));
     }
 }

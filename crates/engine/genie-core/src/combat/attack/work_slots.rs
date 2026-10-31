@@ -5,6 +5,7 @@ use crate::combat::attack::AttackState;
 use crate::combat::attack::{
     Attack, AttackReads, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, reset_sprite, set_walker_anim,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap;
@@ -41,7 +42,7 @@ pub struct Mark {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Wielder {
     /// Its master's `area_effect_range` (`+0x82c`).
-    pub area_effect: f32,
+    pub area_effect: Distance,
     /// Its top speed (slot 0x208).
     pub speed: f32,
     /// Its place.
@@ -173,7 +174,7 @@ impl Attack {
         let Some(mut target) = target else {
             return Worked::default();
         };
-        if 0.0 < unit.area_effect
+        if Distance::ZERO < unit.area_effect
             && target.kind == BUILDING
             && let Some(m) = main
         {

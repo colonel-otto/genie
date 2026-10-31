@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::GatherPoint;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ListIndex;
@@ -95,7 +96,7 @@ impl World {
                 state: crate::movement::move_to::MoveTo::Start,
                 point,
                 target: None,
-                range: 0.0,
+                range: Distance::ZERO,
                 quiet: false,
                 on_target_moved: crate::movement::move_to::TargetMoved::Follows,
                 wait: crate::movement::move_to::MoveWait::default(),
@@ -160,7 +161,7 @@ impl World {
                 gap(x - u.position().x(), radius.x()),
                 gap(y - u.position().y(), radius.y()),
             );
-            Ok((gy * gy + gx * gx <= los * los).then_some(u.id))
+            Ok((gy * gy + gx * gx <= los.squared().get()).then_some(u.id))
         };
         if let Some(id) = closest(gaia.objects.as_slice())? {
             return Ok(Some(id));

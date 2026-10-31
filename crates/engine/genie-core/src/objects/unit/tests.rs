@@ -1,6 +1,7 @@
 use crate::GenieError;
 use crate::combat::attack::AttackState;
 use crate::construction::wait_solidify::WaitSolidifyState;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::ListIndex;
@@ -119,7 +120,7 @@ fn an_object_past_state_2_loses_its_actions() {
         state: MoveTo::Moving,
         point: Position::new(40.0, 80.0, 0.0),
         target: None,
-        range: 0.0,
+        range: Distance::ZERO,
         quiet: false,
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: MoveWait::default(),
@@ -373,7 +374,7 @@ fn an_object_inside_another_runs_its_inside_update() {
 fn the_top_action_s_object_is_its_target_unless_it_has_none() {
     use crate::construction::build::BuildTask;
     let task = BuildTask {
-        range: 0.1,
+        range: Distance::new(0.1),
         work_value: 1.0,
         work_rate: 1.0,
         resource: None,
@@ -385,7 +386,7 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
             crate::construction::build::tests::started(
                 object_id(800),
                 Position::new(1.0, 2.0, 0.0),
-                0.0,
+                Distance::ZERO,
                 task,
             ),
         )),
@@ -438,9 +439,9 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
     let mut build = crate::construction::build::tests::started(
         object_id(800),
         Position::new(1.0, 2.0, 0.0),
-        0.0,
+        Distance::ZERO,
         crate::construction::build::BuildTask {
-            range: 0.1,
+            range: Distance::new(0.1),
             work_value: 1.0,
             work_rate: 1.0,
             resource: None,
@@ -480,7 +481,10 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     let mut enter = crate::garrison::EnterAction::new(
         object_id(7),
         Position::new(1.0, 2.0, 0.0),
-        &crate::garrison::tests::enter_task(0.5, crate::objects::masters::class::NO_CLASS),
+        &crate::garrison::tests::enter_task(
+            Distance::new(0.5),
+            crate::objects::masters::class::NO_CLASS,
+        ),
     );
     artifact.move_to = None;
     artifact.enter = Some(enter);
@@ -500,7 +504,8 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     );
     fly.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Fly(fly)), walking);
-    let mut attack = crate::combat::attack::tests::own_attack(7, AttackState::Move, 0.5);
+    let mut attack =
+        crate::combat::attack::tests::own_attack(7, AttackState::Move, Distance::new(0.5));
     attack.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Attack(attack)), walking);
     let (mut explore, _) = crate::movement::explore::ExploreAction::new(

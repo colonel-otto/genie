@@ -1,6 +1,7 @@
 //! The idle checks of the boar, the hunted animals and the lions.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
@@ -321,7 +322,7 @@ impl UnitAi {
         let Some(t) = side.seen_unit(id)? else {
             return Ok(false);
         };
-        if 0.0 <= reach && reach * reach < t.gap_squared {
+        if Distance::ZERO <= reach && reach.squared().get() < t.gap_squared {
             return Ok(false);
         }
         let _ = self.attack_object(id, false, false, at, side)?;

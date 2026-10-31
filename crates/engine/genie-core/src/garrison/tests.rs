@@ -3,6 +3,7 @@ use crate::commands::GatherPointState;
 use crate::commands::UnloadPick;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::garrison::transport::TransportState;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -55,7 +56,7 @@ use crate::world::Seconds;
 use crate::world::WorldTime;
 
 /// An Enter task of work range `range` and class `class` without sprites.
-pub(crate) fn enter_task(range: f32, class: ClassId) -> Task {
+pub(crate) fn enter_task(range: Distance, class: ClassId) -> Task {
     Task {
         work_range: range,
         object_group: Some(class),
@@ -240,10 +241,16 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     let mut far = EnterAction::new(
         object_id(100),
         Position::new(104.0, 47.0, 0.0),
-        &enter_task(1.0, class::BUILDING),
+        &enter_task(Distance::new(1.0), class::BUILDING),
     );
     assert_eq!(
-        t.enter_walk_again(PlayerId::new(1), v, &mut far, &tc, start(3.5)),
+        t.enter_walk_again(
+            PlayerId::new(1),
+            v,
+            &mut far,
+            &tc,
+            start(Distance::new(3.5))
+        ),
         Ok(Walking::Walk(None))
     );
     assert_eq!(
@@ -254,10 +261,10 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     let mut close = EnterAction::new(
         object_id(100),
         Position::new(104.0, 47.0, 0.0),
-        &enter_task(1.0, class::BUILDING),
+        &enter_task(Distance::new(1.0), class::BUILDING),
     );
     assert_eq!(
-        t.enter_walk_again(PlayerId::new(1), v, &mut close, &tc, start(0.0)),
+        t.enter_walk_again(PlayerId::new(1), v, &mut close, &tc, start(Distance::ZERO)),
         Ok(Walking::Walk(None))
     );
     assert_eq!(close.move_to.map(|m| m.state), Some(MoveTo::Arrived));
@@ -265,14 +272,20 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     let mut near = EnterAction::new(
         object_id(100),
         Position::new(104.0, 47.0, 0.0),
-        &enter_task(1.0, class::BUILDING),
+        &enter_task(Distance::new(1.0), class::BUILDING),
     );
     let in_reach = EnterTarget {
         in_reach: true,
         ..tc
     };
     assert_eq!(
-        t.enter_walk_again(PlayerId::new(1), v, &mut near, &in_reach, start(0.6)),
+        t.enter_walk_again(
+            PlayerId::new(1),
+            v,
+            &mut near,
+            &in_reach,
+            start(Distance::new(0.6))
+        ),
         Ok(Walking::Enter)
     );
     assert_eq!(near.move_to, None);
@@ -286,15 +299,20 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     let mut reach = |range, gap, speed| {
         EnterAction::in_reach(range, gap, speed, &mut walls(&mut walled, &masters, &stats))
     };
-    assert_eq!(reach(1.0, 1.0, 0.0), Ok(true));
-    assert_eq!(reach(1.0, 1.01, 0.0), Ok(false));
-    assert_eq!(reach(1.0, f32::NAN, 0.0), Ok(true));
-    assert_eq!(reach(1.5, 0.5, 0.8), Ok(true));
-    assert_eq!(reach(f32::NAN, 0.5, 0.8), Ok(true));
-    assert_eq!(reach(1.0, 0.5, f32::NAN), Ok(true));
-    assert_eq!(reach(1.0, 0.5, 0.8), Ok(false));
+    assert_eq!(reach(Distance::new(1.0), 1.0, 0.0), Ok(true));
+    assert_eq!(reach(Distance::new(1.0), 1.01, 0.0), Ok(false));
+    assert_eq!(reach(Distance::new(1.0), f32::NAN, 0.0), Ok(true));
+    assert_eq!(reach(Distance::new(1.5), 0.5, 0.8), Ok(true));
+    assert_eq!(reach(Distance::new(f32::NAN), 0.5, 0.8), Ok(true));
+    assert_eq!(reach(Distance::new(1.0), 0.5, f32::NAN), Ok(true));
+    assert_eq!(reach(Distance::new(1.0), 0.5, 0.8), Ok(false));
     assert_eq!(
-        EnterAction::in_reach(1.0, 0.5, 0.8, &mut walls(&mut open, &masters, &stats)),
+        EnterAction::in_reach(
+            Distance::new(1.0),
+            0.5,
+            0.8,
+            &mut walls(&mut open, &masters, &stats)
+        ),
         Ok(true)
     );
 }
@@ -315,10 +333,18 @@ fn an_enter_of_a_unit_without_speed_starts_failed_beyond_arrived() {
     let mut e = EnterAction::new(
         object_id(100),
         Position::new(104.0, 47.0, 0.0),
-        &enter_task(1.0, class::BUILDING),
+        &enter_task(Distance::new(1.0), class::BUILDING),
     );
     assert_eq!(
-        t.enter_walk_again(PlayerId::new(1), v, &mut e, &tc, WalkStart { gap: 3.5 }),
+        t.enter_walk_again(
+            PlayerId::new(1),
+            v,
+            &mut e,
+            &tc,
+            WalkStart {
+                gap: Distance::new(3.5)
+            }
+        ),
         Ok(Walking::Walk(None))
     );
     assert_eq!(e.move_to.map(|m| m.state), Some(MoveTo::Failed));
@@ -340,11 +366,13 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
         in_reach: false,
         building: false,
     };
-    let start = WalkStart { gap: 6.0 };
+    let start = WalkStart {
+        gap: Distance::new(6.0),
+    };
     let mut enter = EnterAction::new(
         object_id(200),
         Position::new(5.5, 30.5, 0.0),
-        &enter_task(1.0, class::TRANSPORT),
+        &enter_task(Distance::new(1.0), class::TRANSPORT),
     );
     assert_eq!(
         t.enter_walk_again(PlayerId::new(1), v, &mut enter, &ship, start),
@@ -354,8 +382,8 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
         (enter.point, enter.move_to.map(|m| m.state)),
         (Position::new(5.5, 17.5, 0.0), Some(MoveTo::Start))
     );
-    assert_eq!(enter.walk_range(false), 0.0);
-    assert_eq!(enter.walk_range(true), 1.0);
+    assert_eq!(enter.walk_range(false), Distance::ZERO);
+    assert_eq!(enter.walk_range(true), Distance::new(1.0));
     t.object_mut(object_id(200))
         .unwrap()
         .1
@@ -365,7 +393,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
             state: MoveTo::Start,
             point: Position::new(9.5, 19.5, 0.0),
             target: None,
-            range: 0.0,
+            range: Distance::ZERO,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
@@ -412,11 +440,15 @@ fn entering(at: Point, ship: Point, enter: EnterAction) -> World {
 
 /// An Enter on ship 200 at `point` whose `MoveTo` is in `state`.
 fn ship_enter(point: Position, state: MoveTo) -> EnterAction {
-    let mut e =
-        EnterAction::new(object_id(200), point, &enter_task(1.0, class::TRANSPORT)).walking(state);
+    let mut e = EnterAction::new(
+        object_id(200),
+        point,
+        &enter_task(Distance::new(1.0), class::TRANSPORT),
+    )
+    .walking(state);
     // a transport's MoveTo walks to it within 0
     if let Some(m) = e.move_to.as_mut() {
-        m.range = 0.0;
+        m.range = Distance::ZERO;
     }
     e
 }
@@ -595,7 +627,7 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     let failed = EnterAction::new(
         object_id(100),
         Position::new(10.0, 10.0, 0.0),
-        &enter_task(1.0, class::BUILDING),
+        &enter_task(Distance::new(1.0), class::BUILDING),
     )
     .walking(MoveTo::Failed);
     let mut t = entering(Point::new(5.5, 5.5), Point::new(5.5, 30.5), failed);
@@ -685,7 +717,7 @@ fn an_enter_s_target_moved_only_beyond_half_a_tile() {
     let enter = EnterAction::new(
         object_id(7420),
         Position::new(82.5, 89.5, 0.0),
-        &enter_task(1.0, class::TRANSPORT),
+        &enter_task(Distance::new(1.0), class::TRANSPORT),
     );
     let at = |y: f32| EnterTarget {
         position: Position::new(82.5, y, 0.0),
@@ -857,7 +889,7 @@ fn walled_map(
         min_collision: 1.0,
         fast_turn: false,
         facets: None,
-        weapon_range: 0.0,
+        weapon_range: Distance::ZERO,
     };
     (spatial, stats)
 }
@@ -986,7 +1018,7 @@ fn a_villager_inside_a_town_center_adds_one_missile_to_its_volleys() {
         kind: master_type::BUILDING,
         class: class::BUILDING,
         reload: 2.0,
-        weapon_range: 6.0,
+        weapon_range: Distance::new(6.0),
         weapons: vec![ClassAmount::new(3, 5)],
         volley_missile: Some(master_id(54)),
         volley_fire: 1.0,
@@ -1031,7 +1063,7 @@ fn town_center() -> Master {
         kind: master_type::BUILDING,
         class: class::BUILDING,
         reload: 2.0,
-        weapon_range: 6.0,
+        weapon_range: Distance::new(6.0),
         weapons: vec![ClassAmount::new(3, 5)],
         volley_missile: Some(master_id(54)),
         volley_fire: 1.0,
@@ -1058,7 +1090,7 @@ fn an_attack_rate_needs_a_reload_and_a_range_that_compare_above_their_limits() {
     for (reload, range) in [(f32::NAN, 6.0), (2.0, f32::NAN), (0.0, 6.0), (2.0, 1.0)] {
         let tc = Master {
             reload,
-            weapon_range: range,
+            weapon_range: Distance::new(range),
             ..town_center()
         };
         assert_eq!(attack_rate(&tc, &masters, 0.0).to_bits(), 0.0f32.to_bits());
@@ -1444,7 +1476,7 @@ fn standing() -> crate::movement::MoveStats {
         min_collision: 0.0,
         fast_turn: false,
         facets: None,
-        weapon_range: 0.0,
+        weapon_range: Distance::ZERO,
     }
 }
 
@@ -1615,7 +1647,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     });
     let idx = t.players[1].objects.last_place().unwrap();
     let garrison = Task {
-        work_range: 1.0,
+        work_range: Distance::new(1.0),
         ..task(GARRISON, 3)
     };
     t.start_enter(
@@ -1670,7 +1702,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     setup(&mut t);
     let idx = t.players[1].objects.last_place().unwrap();
     let garrison = Task {
-        work_range: 1.0,
+        work_range: Distance::new(1.0),
         ..task(GARRISON, 3)
     };
     let r = t.start_enter(
@@ -2139,7 +2171,7 @@ fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
             target: Some(object_id(100)),
             target_owner: owner(1),
             point: Position::new(10.0, 10.0, 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             shown: Point::new(10.0, 10.0),
             ready: true,
             target_type: Some(OrderTargetType::of_master(TC)),
@@ -2259,7 +2291,7 @@ fn shore_world(at: Point, ship: Point) -> World {
             v.tasks = vec![
                 task(GARRISON, 3),
                 Task {
-                    work_range: 1.0,
+                    work_range: Distance::new(1.0),
                     ..task(GARRISON, 20)
                 },
             ];
@@ -2355,7 +2387,12 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
             ship.sprite.map(|g| g.id),
             ObjectId::field(ship.target)
         ),
-        (Some(Position::new(5.5, 17.5, 0.0)), 0.0, Some(2001), -1)
+        (
+            Some(Position::new(5.5, 17.5, 0.0)),
+            Distance::ZERO,
+            Some(2001),
+            -1
+        )
     );
     let enter = t
         .object(object_id(1000))
@@ -2401,7 +2438,7 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
         state: MoveTo::Start,
         point: Position::new(9.5, 19.5, 0.0),
         target: None,
-        range: 0.0,
+        range: Distance::ZERO,
         quiet: false,
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: crate::movement::move_to::MoveWait::default(),

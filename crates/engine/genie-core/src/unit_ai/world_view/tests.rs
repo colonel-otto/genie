@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -86,12 +87,12 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         class: Some(class::VILLAGER),
         attack_priority: AttackPriority::PRIORITY_0,
         missile: None,
-        range: 0.0,
-        min_range: 0.0,
+        range: Distance::ZERO,
+        min_range: Distance::ZERO,
         charge_type: 0,
-        area_effect: 0.0,
+        area_effect: Distance::ZERO,
         blast_level: 0,
-        los: 4.0,
+        los: Distance::new(4.0),
         position: Position::new(10.0, 10.0, 0.0),
         radius: Footprint::new(0.2, 0.2),
         speed: 0.8,
@@ -197,12 +198,12 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         class: Some(class::CLASS_6),
         attack_priority: AttackPriority::PRIORITY_0,
         missile: None,
-        range: 0.0,
-        min_range: 0.0,
+        range: Distance::ZERO,
+        min_range: Distance::ZERO,
         charge_type: 0,
-        area_effect: 0.0,
+        area_effect: Distance::ZERO,
         blast_level: 0,
-        los: 4.0,
+        los: Distance::new(4.0),
         position: Position::new(10.0, 10.0, 0.0),
         radius: Footprint::new(0.3, 0.3),
         speed: 1.0,
@@ -262,7 +263,7 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
         hit_points: 25,
         weapons: vec![ClassAmount::new(4, 3), ClassAmount::new(21, 6)],
         armors: vec![ClassAmount::new(4, 0), ClassAmount::new(3, 0)],
-        weapon_range: 0.0,
+        weapon_range: Distance::ZERO,
         ..crate::objects::masters::Master::default()
     };
     assert!(harmless(villager.clone()));
@@ -283,9 +284,9 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
         &|m| (m.weapons, m.hit_points) = (vec![ClassAmount::new(4, 3)], 60)
     ));
     assert!(!with(&|m| m.armors = vec![ClassAmount::new(4, 1)]));
-    assert!(with(&|m| m.weapon_range = 0.5));
-    assert!(!with(&|m| m.weapon_range = 0.6));
-    assert!(!with(&|m| m.weapon_range = f32::NAN));
+    assert!(with(&|m| m.weapon_range = Distance::new(0.5)));
+    assert!(!with(&|m| m.weapon_range = Distance::new(0.6)));
+    assert!(!with(&|m| m.weapon_range = Distance::new(f32::NAN)));
 }
 
 /// What the statistics read of a candidate (`FUN_140c44680`'s reads): soldier 123 (master 4,
@@ -351,12 +352,12 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         class: Some(class::CLASS_6),
         attack_priority: AttackPriority::PRIORITY_0,
         missile: None,
-        range: 0.5,
-        min_range: 0.0,
+        range: Distance::new(0.5),
+        min_range: Distance::ZERO,
         charge_type: 0,
-        area_effect: 0.0,
+        area_effect: Distance::ZERO,
         blast_level: 0,
-        los: 4.0,
+        los: Distance::new(4.0),
         position: Position::new(10.0, 10.0, 0.0),
         radius: Footprint::new(0.3, 0.3),
         speed: 1.0,
@@ -387,20 +388,36 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         mode_680: 0,
     };
     let c = picker
-        .candidate(&spatial, object_id(50), 1.4, attack_category(2))
+        .candidate(
+            &spatial,
+            object_id(50),
+            Distance::new(1.4),
+            attack_category(2),
+        )
         .unwrap();
     assert_eq!(
         (c.id, c.distance, c.category, c.class, c.speed),
-        (object_id(50), 1.4, attack_category(2), class::CLASS_6, 0.0)
+        (
+            object_id(50),
+            Distance::new(1.4),
+            attack_category(2),
+            class::CLASS_6,
+            0.0
+        )
     );
     assert_eq!(
         (c.armed, c.reach, c.damage, c.hp, c.reload),
-        (true, 0.5, 6.0, 40.0, 2.0)
+        (true, Distance::new(0.5), 6.0, 40.0, 2.0)
     );
     assert_eq!((c.workable, c.current), (false, false));
     assert!(
         picker
-            .candidate(&spatial, object_id(77), 1.4, attack_category(2))
+            .candidate(
+                &spatial,
+                object_id(77),
+                Distance::new(1.4),
+                attack_category(2)
+            )
             .is_err()
     );
 }

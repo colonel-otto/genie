@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::GroupId;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::spatial::RecordId;
 use crate::map::{GroundOffset, Point, Rect, Tile};
@@ -116,13 +117,13 @@ impl World {
                         ))?;
                     let mut back = 0.0;
                     if 0 < i {
-                        back = line.distance_back;
+                        back = line.distance_back.get();
                         // COMISS/JA at 0x14103a850: a NaN distance back takes the spacing too
                         if crate::math::fmath::at_most_or_unordered(back, 0.0) {
                             back = i as f32 * g.desired_spacing;
                         }
                     }
-                    let point = find_point_from_front(&g.stored_positions, back)
+                    let point = find_point_from_front(&g.stored_positions, Distance::new(back))
                         .unwrap_or_else(|| sub(position, scale(back, forward)));
                     let indices = line.indices.clone();
                     let width = indices.len() as i32;
@@ -356,7 +357,7 @@ impl World {
         &self,
         formation: &Formation,
         position: BVector,
-        grow: f32,
+        grow: Distance,
         members: &[RecordId],
     ) -> Result<(Vec<usize>, Vec<usize>), GenieError> {
         let mut reachable = Vec::new();
@@ -456,7 +457,7 @@ impl World {
         grid: &mut PassGrid,
         found: Tile,
         unit_at: Point,
-        grow: f32,
+        grow: Distance,
         members: &[RecordId],
     ) -> Result<Option<Tile>, GenieError> {
         let (fx, fy) = (found.x(), found.y());
@@ -578,7 +579,7 @@ struct Unreachable<'a> {
     slots: &'a [usize],
     nearest: usize,
     spacing: f32,
-    grow: f32,
+    grow: Distance,
 }
 
 /// The reachable slots' marks on the grid: each of `reachable`'s places marks its cell toward

@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::construction::repair::payment::PaidAttributes;
 use crate::construction::repair::{CountedIn, RepairReads, Repairee};
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
@@ -116,12 +117,12 @@ impl Unit {
                     m.attack_priority
                 }),
             missile: master.and_then(|m| m.missile),
-            range: master.map_or(0.0, |m| m.weapon_range),
-            min_range: master.map_or(0.0, |m| m.min_range),
+            range: master.map_or(Distance::ZERO, |m| m.weapon_range),
+            min_range: master.map_or(Distance::ZERO, |m| m.min_range),
             charge_type: master.map_or(0, |m| m.charge_type),
-            area_effect: master.map_or(0.0, |m| m.area_effect),
+            area_effect: master.map_or(Distance::ZERO, |m| m.area_effect),
             blast_level: master.map_or(0, |m| m.blast_level),
-            los: master.map_or(0.0, |m| m.line_of_sight),
+            los: master.map_or(Distance::ZERO, |m| m.line_of_sight),
             position: self.position(),
             radius: master.map_or(Footprint::ZERO, |m| m.radius),
             speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
@@ -176,7 +177,7 @@ impl Unit {
         }
         Some(AiMove {
             point: Position::new(w.x(), w.y(), w.height()),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         })

@@ -37,7 +37,7 @@ pub(super) fn weapons_sum(weapons: &[ClassAmount], counts: impl Fn(DamageClass) 
 pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
     // COMISS reload, 0 and COMISS range, 1.0, each with JBE
     if at_most_or_unordered(master.reload, 0.0)
-        || at_most_or_unordered(master.weapon_range, RATE_RANGE)
+        || at_most_or_unordered(master.weapon_range.get(), RATE_RANGE)
     {
         return 0.0;
     }

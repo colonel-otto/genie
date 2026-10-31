@@ -1,6 +1,7 @@
 //! The unit AI's state, gates, the auto scout and the STOP, EXPLORE and standing commands.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -167,7 +168,7 @@ impl World {
                 target: None,
                 target_owner: None,
                 point: Position::new(-1.0, -1.0, position.z()),
-                range: 1.0,
+                range: Distance::new(1.0),
                 shown: Point::new(-1.0, -1.0),
                 ready: true,
                 target_type: None,

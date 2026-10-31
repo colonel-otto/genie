@@ -5,6 +5,7 @@ use crate::combat::damage::{
     Attacker, CONE, ELEPHANT_ARCHER, Kill, MINUS_CONE, RAMS, Victim, WIDE_CONE, armor_damage,
     bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus, lose, shield, take,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
@@ -38,7 +39,7 @@ pub(super) fn damage(
         if COMBAT <= src.kind {
             let hit = charge_hit(&src.source, t);
             src.source.charge_hit = hit;
-            if hit && src.source.area_effect <= 0.0 {
+            if hit && src.source.area_effect <= Distance::ZERO {
                 src.source.charge = 0.0;
             }
         }
@@ -86,12 +87,12 @@ pub(super) fn damage(
 /// The blast's rectangle of tiles about `center` for radius `r` (`FUN_14107f690`): the tiles
 /// from `(int)(c - r) - 6` (at least 0) to before `(int)(c + r) + 6` (at most the map's edge,
 /// which no object passes), each `CVTTSS2SI` into 32 bits kept as a short.
-pub(super) fn blast_tiles(center: Position, r: f32) -> (Tile, Tile) {
+pub(super) fn blast_tiles(center: Position, r: Distance) -> (Tile, Tile) {
     let low = |c: f32| {
-        let t = (cvttss2si(c - r) as i16).wrapping_sub(6);
+        let t = (cvttss2si(c - r.get()) as i16).wrapping_sub(6);
         i32::from(t.max(0))
     };
-    let high = |c: f32| i32::from((cvttss2si(c + r) as i16).wrapping_add(6));
+    let high = |c: f32| i32::from((cvttss2si(c + r.get()) as i16).wrapping_add(6));
     (
         Tile::new(low(center.x()), low(center.y())),
         Tile::new(high(center.x()), high(center.y())),
@@ -134,17 +135,21 @@ pub fn blast(
 ) -> Result<bool, GenieError> {
     let a = attacker.source;
     let r = a.area_effect;
-    if !fmath::below_or_unordered(0.0, r) {
+    if !fmath::below_or_unordered(0.0, r.get()) {
         return Ok(false);
     }
-    let wide = if a.blast_level & 0x80 != 0 { r } else { 0.0 };
+    let wide = if a.blast_level & 0x80 != 0 {
+        r
+    } else {
+        Distance::ZERO
+    };
     let blast = Blast {
         a,
         center,
         r,
         wide,
         tiles: blast_tiles(center, r),
-        spares_friends: !(1.0 < a.weapon_range && a.blast_level & 4 == 0),
+        spares_friends: !(Distance::new(1.0) < a.weapon_range && a.blast_level & 4 == 0),
         exclude,
         main,
         factor,
@@ -176,8 +181,8 @@ pub fn blast(
 pub(super) struct Blast {
     pub(super) a: Attacker,
     pub(super) center: Position,
-    pub(super) r: f32,
-    pub(super) wide: f32,
+    pub(super) r: Distance,
+    pub(super) wide: Distance,
     pub(super) tiles: (Tile, Tile),
     pub(super) spares_friends: bool,
     pub(super) exclude: Option<ObjectId>,
@@ -233,15 +238,15 @@ pub(super) fn blast_one(
     if RAMS.contains(&a.master_id) && t.kind != BUILDING && !is_main {
         return Ok(());
     }
-    let Some(d2) = blast_distance2(t, b.center, b.r) else {
+    let Some(d2) = blast_distance2(t, b.center, b.r.get()) else {
         return Ok(());
     };
     if COMBAT <= t.kind && shield(t, false) {
         return Ok(());
     }
-    let mut f = blast_falloff(attacker, a, t, (b.r, d2), is_main);
+    let mut f = blast_falloff(attacker, a, t, (b.r.get(), d2), is_main);
     if !is_main {
-        if outside_cone(attacker, a, t, (d2, b.wide))? {
+        if outside_cone(attacker, a, t, (d2, b.wide.get()))? {
             return Ok(());
         }
         // COMISS share, 0 / JC, then COMISS 0, share / JBE: a share below 0 is a fixed
@@ -305,15 +310,21 @@ pub(super) fn ledger_values(
 /// radius, a NaN gap 0: `COMISS`/`JBE`); None beyond the radius `r` (a NaN square distance is
 /// beyond it: `JBE`). The hit's slack (its info's `+0xc`, `+0x10`) is 0 for a melee hit.
 pub(super) fn blast_distance2(t: &Victim, center: Position, r: f32) -> Option<f32> {
-    let gap = |d: f32, radius: f32| {
-        if fmath::at_most_or_unordered(d, radius) {
+    let gap = |d: f32, radius: Distance| {
+        if fmath::at_most_or_unordered(d, radius.get()) {
             0.0
         } else {
-            d - radius
+            d - radius.get()
         }
     };
-    let dx = gap((t.position.x() - center.x()).abs(), t.radius.x());
-    let dy = gap((t.position.y() - center.y()).abs(), t.radius.y());
+    let dx = gap(
+        (t.position.x() - center.x()).abs(),
+        Distance::new(t.radius.x()),
+    );
+    let dy = gap(
+        (t.position.y() - center.y()).abs(),
+        Distance::new(t.radius.y()),
+    );
     let d2 = dy * dy + dx * dx;
     if fmath::at_most_or_unordered(r * r, d2) {
         None

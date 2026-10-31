@@ -4,6 +4,7 @@
 //! (`0x140ab0370` case 0xdf).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -59,7 +60,7 @@ pub struct Builder {
     /// The builder's place.
     pub position: Position,
     /// Its master's x radius (`+0x5d8`).
-    pub radius: f32,
+    pub radius: Distance,
     /// The building's place.
     pub building: Position,
     /// The search's reach in tiles: the building's line of sight held to 4 to 20 (`DAT_142eb0f48`,
@@ -100,7 +101,7 @@ pub fn more_work(
     // the box: (short)(int) of the building's place, ± the reach plus the builder's radius
     let r = builder
         .range
-        .wrapping_add((builder.radius + 0.5) as i32 as i16);
+        .wrapping_add((builder.radius + Distance::new(0.5)).get() as i32 as i16);
     let (bx, by) = (
         builder.building.x() as i32 as i16,
         builder.building.y() as i32 as i16,
@@ -225,7 +226,7 @@ pub struct Seeker {
     /// The unit's place.
     pub position: Position,
     /// Its master's line of sight (`+0x5d0`).
-    pub line_of_sight: f32,
+    pub line_of_sight: Distance,
     /// `+0x640`.
     pub state: ObjectState,
     /// Its unit AI's current target (`+0x48`), which the search passes over.
@@ -255,7 +256,7 @@ pub struct SearchSite {
     /// Its master's radii (`+0x5d8`, `+0x5dc`).
     pub radius: Footprint,
     /// Its master's line of sight (`+0x5d0`).
-    pub line_of_sight: f32,
+    pub line_of_sight: Distance,
     /// The search starts from the site's footprint: the site's tile lies in the unit's zone (its
     /// restriction's zone of the tile, `FUN_1411958c0`, is the unit's own, `FUN_14118eea0`), or
     /// the site's master is 45 or 2172 (the docks). Else it starts from the site's tile alone.
@@ -384,7 +385,7 @@ pub fn closest_resource_at<W>(
         ));
     }
     let (ux, uy) = (seeker.position.x(), seeker.position.y());
-    let los = seeker.line_of_sight as i32;
+    let los = seeker.line_of_sight.get() as i32;
     let unit_tile = Tile::new(ux as i32, uy as i32);
     // the sort's point, and the box's side (fixed for both passes)
     let (sort_at, side) = sort_point_and_side(Point::new(ux, uy), los, site);
@@ -480,7 +481,7 @@ fn search_passes(
             msvc::sort(&mut seeds, nearer);
             passes.push(Pass {
                 origin: Tile::new(s.position.x() as i32, s.position.y() as i32),
-                max_steps: s.line_of_sight as i32 + 10,
+                max_steps: s.line_of_sight.get() as i32 + 10,
                 seeds,
             });
             passes.push(single(unit_tile));
@@ -531,7 +532,7 @@ fn sort_point_and_side(at: Point, los: i32, site: Option<&SearchSite>) -> ((f32,
             sx * SITE_SHARE + ux * UNIT_SHARE,
             sy * SITE_SHARE + uy * UNIT_SHARE,
         );
-        let site_los = s.line_of_sight as i32;
+        let site_los = s.line_of_sight.get() as i32;
         let wide = if site_los + 10 <= los + 10 {
             los
         } else {
@@ -690,7 +691,7 @@ mod tests {
         let entry = lumber_camp();
         let b = Builder {
             position: Position::new(10.5, 10.5, 0.0),
-            radius: 0.2,
+            radius: Distance::new(0.2),
             building: Position::new(12.0, 10.0, 0.0),
             range: 6,
         };
@@ -726,7 +727,7 @@ mod tests {
         });
         let b = Builder {
             position: Position::new(10.5, 10.5, 0.0),
-            radius: 0.2,
+            radius: Distance::new(0.2),
             building: Position::new(10.0, 10.0, 0.0),
             range: 6,
         };
@@ -754,7 +755,7 @@ mod tests {
         let entry = lumber_camp();
         let b = Builder {
             position: Position::new(10.5, 10.5, 0.0),
-            radius: 0.2,
+            radius: Distance::new(0.2),
             building: Position::new(12.0, 10.0, 0.0),
             range: 6,
         };
@@ -780,7 +781,7 @@ mod tests {
         let seeker = Seeker {
             player: PlayerId::new(1),
             position: Position::new(10.2, 10.7, 0.0),
-            line_of_sight: 4.0,
+            line_of_sight: Distance::new(4.0),
             state: ObjectState::Alive,
             current_target: None,
             my_pasture: None,
@@ -842,7 +843,7 @@ mod tests {
         let seeker = Seeker {
             player: PlayerId::new(1),
             position: Position::new(10.2, 10.7, 0.0),
-            line_of_sight: 4.0,
+            line_of_sight: Distance::new(4.0),
             state: ObjectState::Alive,
             current_target: None,
             my_pasture: None,
@@ -852,7 +853,7 @@ mod tests {
         let site = SearchSite {
             position: Position::new(14.0, 10.0, 0.0),
             radius: Footprint::new(1.0, 1.0),
-            line_of_sight: 6.0,
+            line_of_sight: Distance::new(6.0),
             footprint: true,
         };
         let search = |trees: &[Candidate], site: Option<&SearchSite>| {
@@ -898,7 +899,7 @@ mod tests {
         // nothing within the site's line of sight plus 10 of it: the second pass from the unit
         // finds the tree 8 columns and a row off (its distance from the unit's tile)
         let blind = SearchSite {
-            line_of_sight: 0.0,
+            line_of_sight: Distance::ZERO,
             ..site
         };
         assert_eq!(
@@ -912,7 +913,7 @@ mod tests {
     const SEEKER: Seeker = Seeker {
         player: PlayerId::new(1),
         position: Position::new(10.2, 10.7, 0.0),
-        line_of_sight: 4.0,
+        line_of_sight: Distance::new(4.0),
         state: ObjectState::Alive,
         current_target: None,
         my_pasture: None,

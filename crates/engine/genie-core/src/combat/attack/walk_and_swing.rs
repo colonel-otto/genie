@@ -9,6 +9,7 @@ use crate::combat::attack::{
 use crate::combat::damage::Victim;
 use crate::combat::victims::write_strike_back;
 use crate::combat::volley::Aimed;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
@@ -267,7 +268,7 @@ impl Attack {
             // (`set_state` 4); a ready unit only faces it; the swing goes on either way
             AfterHit::Continue { check: true } => {
                 if let Readiness::Away(gap) = self.ready_to_attack(unit, &mut g, f, r, false)? {
-                    self.follow(unit, &mut g, r, f, gap)?;
+                    self.follow(unit, &mut g, r, f, Distance::new(gap))?;
                 }
             }
             AfterHit::Continue { check: false } => {}
@@ -320,8 +321,8 @@ impl Attack {
         object_rng: &mut Well512,
     ) -> Result<Option<ObjectId>, GenieError> {
         let a = f.own.source;
-        if 0.0 < a.area_effect
-            && a.weapon_range < damage::BLAST_RANGE
+        if Distance::ZERO < a.area_effect
+            && a.weapon_range < Distance::new(damage::BLAST_RANGE)
             && (a.charge_type != 3 || damage::charge_hit(&a, &f.victim))
         {
             return Self::trample(f, blasted, chance, object_rng);

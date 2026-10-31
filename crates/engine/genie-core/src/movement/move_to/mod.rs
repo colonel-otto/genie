@@ -6,6 +6,7 @@
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::Rect;
@@ -256,14 +257,14 @@ pub fn ask_walk(
     let ground = mover.stats.radius.ground();
     let squared = if target.is_none() {
         let gap = footprint_gap(here, ground, point, radius);
-        gap * gap
+        gap.squared().get()
     } else {
         footprint_gap_squared(here, ground, point, radius)
     };
     if ask.ends_in_range && squared <= range * range {
         return Ok((Some(MoveTo::Arrived), None));
     }
-    mover.request_path_asked(here, point, range, target, now, ask);
+    mover.request_path_asked(here, point, Distance::new(range), target, now, ask);
     if let Some(mut shown) = shown {
         shown.show(walk.body.move_stats_mut());
     }
@@ -487,10 +488,10 @@ pub fn target_left(
         let (a, b) = (me.ground(), at.ground());
         let grow = walk.world.manager_grow();
         walk.world.check_known_records(Rect::new(
-            a.x().min(b.x()) - grow,
-            a.y().min(b.y()) - grow,
-            a.x().max(b.x()) + grow,
-            a.y().max(b.y()) + grow,
+            a.x().min(b.x()) - grow.get(),
+            a.y().min(b.y()) - grow.get(),
+            a.x().max(b.x()) + grow.get(),
+            a.y().max(b.y()) + grow.get(),
         ))?;
         let ignore = walk.world.manager_ignore();
         if !walk
@@ -529,7 +530,7 @@ mod tests {
         let mut m = MoveToAction {
             point: Position::new(30.0, 88.0, 0.0),
             target: Some(object_id(10028)),
-            range: 0.1,
+            range: Distance::new(0.1),
             wait: MoveWait {
                 state: MoveWaitState::Waiting,
                 timer: Seconds::ZERO,
@@ -667,7 +668,7 @@ mod tests {
             let mut m = MoveToAction {
                 point: Position::new(30.6, 88.0, 0.0),
                 target: Some(object_id(10028)),
-                range: 0.1,
+                range: Distance::new(0.1),
                 on_target_moved: mode,
                 ..MoveToAction::sub_in(MoveTo::Moving)
             };
@@ -852,37 +853,46 @@ mod tests {
     /// farther it starts with speed (a NaN speed too) and fails without; one to a point is far.
     #[test]
     fn an_added_sub_move_to_arrives_starts_or_fails_and_a_dying_unit_adds_none() {
-        let m = MoveToAction::sub_to_point(Position::new(1.0, 2.0, 0.0), 0.5, None);
+        let m = MoveToAction::sub_to_point(Position::new(1.0, 2.0, 0.0), Distance::new(0.5), None);
         let state = |unit_state, gap, speed| m.added(unit_state, gap, speed).map(|a| a.state);
-        assert_eq!(state(ObjectState::Alive, 0.01, 0.0), Some(MoveTo::Arrived));
-        assert_eq!(state(ObjectState::Alive, 0.0, 1.0), Some(MoveTo::Arrived));
         assert_eq!(
-            state(ObjectState::Alive, 0.010_001, 1.0),
-            Some(MoveTo::Start)
-        );
-        assert_eq!(state(ObjectState::Alive, 0.5, 0.0), Some(MoveTo::Failed));
-        assert_eq!(
-            state(ObjectState::Alive, f32::NAN, 1.0),
-            Some(MoveTo::Start)
+            state(ObjectState::Alive, Distance::new(0.01), 0.0),
+            Some(MoveTo::Arrived)
         );
         assert_eq!(
-            state(ObjectState::Alive, 0.5, f32::NAN),
+            state(ObjectState::Alive, Distance::ZERO, 1.0),
+            Some(MoveTo::Arrived)
+        );
+        assert_eq!(
+            state(ObjectState::Alive, Distance::new(0.010_001), 1.0),
             Some(MoveTo::Start)
         );
         assert_eq!(
-            state(ObjectState::Foundation, NO_TARGET_GAP, 1.0),
-            Some(MoveTo::Start)
-        );
-        assert_eq!(
-            state(ObjectState::Alive, NO_TARGET_GAP, 0.0),
+            state(ObjectState::Alive, Distance::new(0.5), 0.0),
             Some(MoveTo::Failed)
         );
-        assert_eq!(state(ObjectState::Dying, 0.0, 1.0), None);
-        assert_eq!(state(ObjectState::Removed, 0.5, 1.0), None);
-        let added = m.added(ObjectState::Alive, 0.5, 1.0);
+        assert_eq!(
+            state(ObjectState::Alive, Distance::new(f32::NAN), 1.0),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(
+            state(ObjectState::Alive, Distance::new(0.5), f32::NAN),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(
+            state(ObjectState::Foundation, Distance::new(NO_TARGET_GAP), 1.0),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(
+            state(ObjectState::Alive, Distance::new(NO_TARGET_GAP), 0.0),
+            Some(MoveTo::Failed)
+        );
+        assert_eq!(state(ObjectState::Dying, Distance::ZERO, 1.0), None);
+        assert_eq!(state(ObjectState::Removed, Distance::new(0.5), 1.0), None);
+        let added = m.added(ObjectState::Alive, Distance::new(0.5), 1.0);
         assert_eq!(
             added.map(|a| (a.point, a.range, a.quiet)),
-            Some((m.point, 0.5, true))
+            Some((m.point, Distance::new(0.5), true))
         );
     }
 

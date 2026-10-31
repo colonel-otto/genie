@@ -10,6 +10,7 @@ use crate::groups::group_list::{NO_FORMATION, member_gone};
 use crate::groups::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
+use crate::map::Distance;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
 use crate::world::Millis;
@@ -355,8 +356,8 @@ impl World {
                 };
                 let master = self.master(object.player(), object.master_id())?;
                 let reach = crate::groups::stats::weapon_range(master);
-                if range > reach {
-                    range = reach;
+                if range > reach.get() {
+                    range = reach.get();
                 }
             }
             ranges.push(range);
@@ -368,7 +369,7 @@ impl World {
             .as_mut()
             .ok_or(NO_FORMATION)?;
         for (line, range) in f.lines.iter_mut().zip(ranges) {
-            line.attack_range = range;
+            line.attack_range = Distance::new(range);
         }
         Ok(())
     }

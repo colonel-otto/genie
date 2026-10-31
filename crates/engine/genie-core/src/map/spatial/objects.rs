@@ -2,6 +2,7 @@
 //! moves inside and out, and the segment tests.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
@@ -42,7 +43,7 @@ impl Spatial {
             changed: Vec::new(),
             frozen_for: BTreeMap::new(),
             fastest: 0.0,
-            reach: 0.0,
+            reach: Distance::ZERO,
             gaits: BTreeMap::new(),
             scout_maps: BTreeMap::new(),
             annexes: BTreeMap::new(),
@@ -302,7 +303,8 @@ impl Spatial {
             }
             p.unknown.is_some_and(|u| {
                 let bounds = p.bounds();
-                rect.overlaps(bounds.grown(u)) && (0.0 < u || self.touchable(id, bounds))
+                rect.overlaps(bounds.grown(Distance::new(u)))
+                    && (0.0 < u || self.touchable(id, bounds))
             })
         });
         if let Some((id, p)) = near {
@@ -345,8 +347,8 @@ impl Spatial {
                         .copied()
                         .unwrap_or(Seconds::ZERO)
             };
-            let grow = moved + self.reach;
-            rect.overlaps(q.bounds().grown(grow))
+            let grow = moved + self.reach.get();
+            rect.overlaps(q.bounds().grown(Distance::new(grow)))
         })
     }
 
@@ -474,7 +476,7 @@ impl Spatial {
         &mut self,
         a: Point,
         b: Point,
-        grow: f32,
+        grow: Distance,
         mask: crate::map::TerrainMask,
         ignore: &[RecordId],
     ) -> bool {
@@ -492,7 +494,7 @@ impl Spatial {
     /// ([`Spatial::put_tile_records`], kind 3) and the objects' static records (kinds 2, 11 and
     /// 13; flag `0x100` passes the kinds of the mask `0x2804` and the records of no object).
     #[must_use]
-    pub fn segment_meets(&self, a: Point, b: Point, grow: f32, ignore: &[RecordId]) -> bool {
+    pub fn segment_meets(&self, a: Point, b: Point, grow: Distance, ignore: &[RecordId]) -> bool {
         let Some(test) = WalkTest::new(a, b, grow, self.map) else {
             return true;
         };
@@ -540,7 +542,7 @@ impl Spatial {
         &mut self,
         a: Point,
         b: Point,
-        grow: f32,
+        grow: Distance,
         mask: crate::map::TerrainMask,
     ) -> bool {
         self.put_tile_records(a, b, grow, mask);
@@ -558,7 +560,7 @@ impl Spatial {
         &mut self,
         a: Point,
         b: Point,
-        grow: f32,
+        grow: Distance,
         mask: crate::map::TerrainMask,
     ) {
         use crate::math::conversions::cvttss2si;
@@ -572,10 +574,10 @@ impl Spatial {
         );
         let (w, h) = (self.map.width(), self.map.height());
         let (lo_x, lo_y, hi_x, hi_y) = (
-            cvttss2si(lo_x - grow),
-            cvttss2si(lo_y - grow),
-            cvttss2si(hi_x + grow),
-            cvttss2si(hi_y + grow),
+            cvttss2si(lo_x - grow.get()),
+            cvttss2si(lo_y - grow.get()),
+            cvttss2si(hi_x + grow.get()),
+            cvttss2si(hi_y + grow.get()),
         );
         let (x0, y0) = (lo_x.max(0), lo_y.max(0));
         let x1 = if hi_x < w { hi_x } else { w - 1 };

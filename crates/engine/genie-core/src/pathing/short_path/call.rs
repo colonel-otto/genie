@@ -1,6 +1,7 @@
 //! The short pather's call ([`Call`], [`Query`]) and its state between searches
 //! ([`Pather`]): the terrain's shapes, the start test and the core.
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -26,11 +27,11 @@ pub struct Query {
     /// The goal.
     pub to: FixedPoint,
     /// The unit's radius (`+0xc`).
-    pub radius: f32,
+    pub radius: Distance,
     /// The target's half sizes, when the goal is its own position (`+0x10`, `+0x14`).
     pub target_size: Footprint,
     /// The range (`+0x18`).
-    pub range: f32,
+    pub range: Distance,
     /// The terrain classes the unit cannot cross, as a tile mask (`+0x1c`).
     pub blocked: u64,
 }
@@ -39,12 +40,16 @@ impl Query {
     /// `FUN_140f9d300`'s and `FUN_140f9d3e0`'s casts: each float times 2^22 by `CVTTSS2SI` into
     /// a 64-bit register, its low 32 bits kept (the radius through `uint`, the same bits).
     pub(super) fn fixed(&self) -> Fixed {
-        let fixed = |f: f32| crate::math::conversions::cvttss2si_64(f * TO_FIXED) as i32;
+        let fixed =
+            |f: Distance| crate::math::conversions::cvttss2si_64((f * TO_FIXED).get()) as i32;
         Fixed {
             from: self.from,
             to: self.to,
             radius: fixed(self.radius),
-            target_size: [fixed(self.target_size.x()), fixed(self.target_size.y())],
+            target_size: [
+                fixed(Distance::new(self.target_size.x())),
+                fixed(Distance::new(self.target_size.y())),
+            ],
             range: fixed(self.range),
             blocked: self.blocked,
         }
@@ -104,9 +109,9 @@ pub struct Call {
     /// The goal.
     pub to: Point,
     /// The unit's radius.
-    pub radius: f32,
+    pub radius: Distance,
     /// Its range.
-    pub range: f32,
+    pub range: Distance,
     /// The target, when the goal is an object.
     pub target: Option<Target>,
     /// The objects it ignores.
@@ -152,7 +157,7 @@ impl Call {
                 (self.from.y() - t.position.y()).abs() - t.half_size.y(),
                 0.0,
             );
-            if fmath::sqrt(fy * fy + fx * fx) - self.radius <= self.range {
+            if fmath::sqrt(fy * fy + fx * fx) - self.radius.get() <= self.range.get() {
                 return Entry::InRange;
             }
         }

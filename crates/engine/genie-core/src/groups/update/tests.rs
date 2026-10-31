@@ -2,6 +2,7 @@ use crate::combat::attack::AttackState;
 use crate::groups::FormationKind;
 use crate::groups::SlotState;
 use crate::groups::{GroupTarget, Member, UnitGroup, UnitGroups};
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -91,8 +92,8 @@ fn world() -> World {
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,
-        line_of_sight: 4.0,
-        search_radius: 3.0,
+        line_of_sight: Distance::new(4.0),
+        search_radius: Distance::new(3.0),
         radius: Footprint::new(0.2, 0.2),
         standing_sprite: -1,
         formation_category: 1,
@@ -409,8 +410,8 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         target2: None,
         state,
         timer: Seconds::ZERO,
-        range: 0.0,
-        min_range: 0.0,
+        range: Distance::ZERO,
+        min_range: Distance::ZERO,
         point: Position::ORIGIN,
         seen: Position::ORIGIN,
         move_to: None,
@@ -720,7 +721,7 @@ fn the_centroid_front_is_the_members_mean_place() {
 #[test]
 fn each_line_takes_its_units_least_range() {
     let mut t = world();
-    let combat = |id: MasterId, kind: MasterKind, range: f32| Master {
+    let combat = |id: MasterId, kind: MasterKind, range: Distance| Master {
         id,
         kind,
         weapon_range: range,
@@ -728,9 +729,9 @@ fn each_line_takes_its_units_least_range() {
     };
     t.masters = vec![
         Masters::new([
-            combat(master_id(4), master_type::COMBAT, 3.0),
-            combat(master_id(5), master_type::COMBAT, 1.5),
-            combat(ids::ID_6, master_type::MOVING, 2.0)
+            combat(master_id(4), master_type::COMBAT, Distance::new(3.0)),
+            combat(master_id(5), master_type::COMBAT, Distance::new(1.5)),
+            combat(ids::ID_6, master_type::MOVING, Distance::new(2.0))
         ]);
         4
     ];
@@ -770,7 +771,10 @@ fn each_line_takes_its_units_least_range() {
         .unwrap();
     // the fourth line is not in use: it keeps its range
     assert_eq!(
-        f.lines.iter().map(|l| l.attack_range).collect::<Vec<_>>(),
+        f.lines
+            .iter()
+            .map(|l| l.attack_range.get())
+            .collect::<Vec<_>>(),
         [1.5, f32::MAX, 0.0, 0.0]
     );
     t.groups
@@ -1157,7 +1161,7 @@ fn a_member_s_own_move_walks_its_path() {
         path_id: -1,
         reason: 0,
         timer: Seconds::new(3.0),
-        distance: 3.0,
+        distance: Distance::new(3.0),
         last_position: BVector::new(1.0, 0.0, 0.0),
         ..crate::groups::SpecificMove::default()
     };
@@ -1170,7 +1174,7 @@ fn a_member_s_own_move_walks_its_path() {
         (at, own.last_position),
         (BVector::new(1.0, 0.0, 1.0), BVector::new(1.0, 0.0, 1.0))
     );
-    assert_eq!(own.distance, 2.0);
+    assert_eq!(own.distance, Distance::new(2.0));
     // the walks that meet the unit later in the update read its walked level as the step left it
     assert_eq!(
         t.spatial.gait(object_id(10)),
@@ -2000,14 +2004,14 @@ fn a_gate_out_of_reach_is_struck_at_its_nearest_part() {
     // within its weapon range and above the least one: the gate itself
     t.spatial.set_annex(object_id(21), Some(object_id(20)));
     let mut m4 = t.masters[1].get(master_id(4)).unwrap().clone();
-    m4.weapon_range = 10.0;
+    m4.weapon_range = Distance::new(10.0);
     t.masters[1] = Masters::new([m4.clone()]);
     assert_eq!(
         t.gate_part(object_id(11), object_id(20)).unwrap(),
         object_id(20)
     );
     // below the least range (a squared 3.9 against 5 squared) it is out of reach again
-    m4.min_range = 5.0;
+    m4.min_range = Distance::new(5.0);
     t.masters[1] = Masters::new([m4]);
     assert_eq!(
         t.gate_part(object_id(11), object_id(20)).unwrap(),

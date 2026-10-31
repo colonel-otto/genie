@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::groups::FormationKind;
 use crate::groups::{CommandArgs, GroupId};
+use crate::map::Distance;
 use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ListIndex;
@@ -149,7 +150,7 @@ impl World {
             target: if target.is_some() { order.target } else { None },
             target_owner,
             point: point.with_height(0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             shown: order.point,
             ready: order.direct,
             target_type,

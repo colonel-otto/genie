@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
@@ -90,7 +91,7 @@ impl World {
         point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
-        if task.work_range != 0.0 {
+        if task.work_range != Distance::ZERO {
             return Err(GenieError::unsupported(
                 "an attack task with a range of its own",
             ));

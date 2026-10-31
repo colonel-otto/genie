@@ -8,6 +8,7 @@ use crate::groups::GroupId;
 use crate::groups::attack::AttackOrder;
 use crate::groups::group_list::member_gone;
 use crate::groups::{GroupCommand, GroupTarget, SpecificMove, UnitGroup};
+use crate::map::Distance;
 use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
@@ -47,7 +48,7 @@ pub(super) const ATTACK_COMMANDS: [i32; 4] = [7, 9, 0x68, 0x7d];
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MoveTo {
     /// `param_5`: the path level's range.
-    pub range: f32,
+    pub range: Distance,
     /// `param_6`: a patrol's leg, whose path loops.
     pub leg: bool,
     /// `param_7`: the group forgets its target (`mCurrentTarget`).
@@ -89,7 +90,7 @@ impl UnitGroup {
             let t = &mut self.current_target;
             t.target = GroupTarget::None;
             t.original_position = BVector::ZERO;
-            t.range = 0.0;
+            t.range = Distance::ZERO;
             t.target_radius = 0.0;
             t.disable_retargeting = 0;
         }
@@ -245,7 +246,7 @@ impl World {
             let t = &mut g.current_target;
             t.target = GroupTarget::None;
             t.original_position = BVector::ZERO;
-            t.range = 0.0;
+            t.range = Distance::ZERO;
             t.target_radius = 0.0;
             t.disable_retargeting = 0;
         }
@@ -607,7 +608,7 @@ fn move_level(
     path_flags: u32,
     repath_time: f32,
     world_time: WorldTime,
-    range: f32,
+    range: Distance,
     target: Option<ObjectId>,
 ) -> PathData {
     let mut level = PathData {
@@ -700,7 +701,7 @@ mod tests {
         GroupCommand {
             command,
             target_id: ObjectId::of_field(target),
-            range: 0.5,
+            range: Distance::new(0.5),
             point: BVector::new(x, 0.0, z),
             approved,
             disable_retargeting: 0,
@@ -714,7 +715,7 @@ mod tests {
     fn a_queued_move_joins_the_command_queue() {
         let mut t = moving_world();
         let how = MoveTo {
-            range: 0.5,
+            range: Distance::new(0.5),
             queued: true,
             direct: true,
             ..MoveTo::default()
@@ -802,7 +803,7 @@ mod tests {
         let mut t = moving_world();
         t.groups.get_mut(group_id(1)).unwrap().command_queue = vec![command(1, -1, 5.0, 5.0, 1)];
         let how = MoveTo {
-            range: 0.5,
+            range: Distance::new(0.5),
             ..MoveTo::default()
         };
         assert!(

@@ -2,6 +2,7 @@
 //! the explorers' search.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
@@ -166,14 +167,14 @@ impl UnitAi {
         let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
             at: from.ground(),
-            radius,
+            radius: Distance::new(radius),
             classes,
             size: at.size,
             pick: Pick::Attack {
                 lowest: if at.scenario && !computer { 2 } else { 0 },
                 seeker: self.seeker(at),
                 ask: AttackAsk {
-                    distance: 0.0,
+                    distance: Distance::ZERO,
                     idle: false,
                     paths: false,
                     extra: Some(attacker_id),
@@ -362,7 +363,7 @@ impl UnitAi {
             let _ = self.move_aside(
                 AiMove {
                     point: spot.with_height(off.z),
-                    range: 0.0,
+                    range: Distance::ZERO,
                     force: true,
                     // The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
                     // The villagers' class.
@@ -384,7 +385,7 @@ impl UnitAi {
                 target: Some(o.id),
                 target_owner: Some(o.owner),
                 point: o.vector.with_height(0.0),
-                range: 0.0,
+                range: Distance::ZERO,
                 shown: o.vector,
                 ready: true,
                 target_type: Some(OrderTargetType::of_master(o.master)),

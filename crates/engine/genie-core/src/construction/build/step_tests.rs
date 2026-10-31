@@ -321,7 +321,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
         state: BuildState::Wait,
         move_to: None,
         timer: Seconds::new(0.01),
-        ..started(ANNEX, Position::ORIGIN, 0.0, TASK)
+        ..started(ANNEX, Position::ORIGIN, Distance::ZERO, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), b);
     // another builder works on the main building, below 1 hit point: the work stays the annex's
@@ -383,7 +383,7 @@ fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
         let b = BuildAction {
             state: BuildState::Place,
             move_to: None,
-            ..started(HOUSE, AT_HOUSE, 0.0, TASK)
+            ..started(HOUSE, AT_HOUSE, Distance::ZERO, TASK)
         };
         let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), b);
         let v = own(&mut t, BUILDER);
@@ -436,7 +436,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point() {
             ..walk_in(MoveTo::Moving)
         }),
         added: true,
-        ..started(HOUSE, AT_HOUSE, 0.8, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(0.8), TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(8.0, 9.0, 0.0), b);
     let h = own(&mut t, HOUSE);
@@ -475,7 +475,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
     let gone = BuildAction {
         target: None,
         move_to: Some(walk_in(MoveTo::Arrived)),
-        ..started(HOUSE, AT_HOUSE, 0.8, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(0.8), TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(8.0, 9.0, 0.0), gone);
     remove_house(&mut t);
@@ -484,7 +484,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
     let held = BuildAction {
         target: None,
         move_to: Some(walk_in(MoveTo::Moving)),
-        ..started(HOUSE, AT_HOUSE, 0.8, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(0.8), TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(8.0, 9.0, 0.0), held);
     own(&mut t, HOUSE).life.state = ObjectState::Removed;
@@ -499,7 +499,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
                 target: None,
                 ..walk_in(state)
             }),
-            ..started(HOUSE, AT_HOUSE, 0.8, TASK)
+            ..started(HOUSE, AT_HOUSE, Distance::new(0.8), TASK)
         };
         let mut t = site_world(class::VILLAGER, Position::new(8.0, 9.0, 0.0), w);
         assert_eq!(code(&mut t, 20), HeadCode::Keeps);
@@ -522,7 +522,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
         state: BuildState::Wait,
         move_to: None,
         timer: Seconds::new(0.916),
-        ..started(HOUSE, AT_HOUSE, 0.8, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(0.8), TASK)
     };
     // within the task's range of the place, so the walk ends without a path
     let mut t = site_world(class::VILLAGER, Position::new(10.55, 10.5, 0.0), b);
@@ -538,7 +538,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     // the MoveTo ran in the same update
     assert_eq!(walk.state, MoveTo::Arrived);
     assert_eq!(house(&t).1, 0);
-    let taken = started(HOUSE, AT_HOUSE, 0.8, TASK);
+    let taken = started(HOUSE, AT_HOUSE, Distance::new(0.8), TASK);
     let mut t = site_world(class::VILLAGER, Position::new(10.55, 10.5, 0.0), taken);
     let restarted = |t: &mut World, state| {
         own(t, HOUSE).life.state = state;
@@ -624,7 +624,9 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
 fn walk_in(state: MoveTo) -> MoveToAction {
     MoveToAction {
         state,
-        ..started(HOUSE, AT_HOUSE, 5.0, TASK).move_to.unwrap()
+        ..started(HOUSE, AT_HOUSE, Distance::new(5.0), TASK)
+            .move_to
+            .unwrap()
     }
 }
 
@@ -637,7 +639,7 @@ fn walk_state(t: &World) -> Option<MoveTo> {
 fn walking(state: Option<MoveTo>) -> BuildAction {
     BuildAction {
         move_to: state.map(walk_in),
-        ..started(HOUSE, AT_HOUSE, 5.0, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(5.0), TASK)
     }
 }
 
@@ -775,7 +777,7 @@ fn a_build_s_move_to_shows_its_sprite_as_it_starts() {
         let mut t = site_world(
             class::VILLAGER,
             Position::new(2.5, 2.5, 0.0),
-            started(HOUSE, AT_HOUSE, 5.0, task),
+            started(HOUSE, AT_HOUSE, Distance::new(5.0), task),
         );
         plan(&mut t);
         // set_state(4)'s MoveTo, its sprite as its constructor resolves it for the builder
@@ -794,7 +796,7 @@ fn a_build_s_move_to_shows_its_sprite_as_it_starts() {
 #[test]
 fn a_build_s_other_cases_end_walk_to_a_point_go_back_or_wait() {
     let at = Position::new(2.5, 2.5, 0.0);
-    let start = || started(HOUSE, AT_HOUSE, 5.0, TASK);
+    let start = || started(HOUSE, AT_HOUSE, Distance::new(5.0), TASK);
     let done = BuildAction {
         state: BuildState::Done,
         ..start()
@@ -910,7 +912,7 @@ fn placing() -> BuildAction {
         state: BuildState::Wait,
         move_to: None,
         timer: Seconds::new(0.01),
-        ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
+        ..started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK)
     }
 }
 
@@ -1033,7 +1035,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
         state: BuildState::Work,
         move_to: None,
         added: true,
-        ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
+        ..started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), b);
     let h = own(&mut t, HOUSE);
@@ -1079,7 +1081,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
         state: BuildState::Halted,
         move_to: None,
         target: None,
-        ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
+        ..started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), halted);
     assert_eq!(code(&mut t, 20), HeadCode::Keeps);
@@ -1095,7 +1097,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
     let holding = BuildAction {
         state: BuildState::Failed,
         move_to: None,
-        ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
+        ..started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), holding);
     assert_eq!(code(&mut t, 20), HeadCode::Deletes);
@@ -1108,7 +1110,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
     let waiting = BuildAction {
         state: BuildState::Idle,
         move_to: None,
-        ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
+        ..started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), waiting);
     assert_eq!(code(&mut t, 20), HeadCode::Keeps);
@@ -1132,7 +1134,7 @@ fn a_builder_lets_a_dead_foundation_go() {
             state: BuildState::Place,
             move_to: None,
             added: true,
-            ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
+            ..started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK)
         };
         let mut t = site_world(class::VILLAGER, Position::new(10.5, 11.6, 0.0), b);
         plan(&mut t);
@@ -1177,7 +1179,7 @@ fn a_villager_works_the_farm_it_built() {
     let b = BuildAction {
         state: BuildState::Finished,
         move_to: None,
-        ..started(HOUSE, AT_HOUSE, 0.0, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::ZERO, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), b);
     let h = own(&mut t, HOUSE);
@@ -1204,8 +1206,8 @@ fn a_villager_works_the_farm_it_built() {
 /// `MoveTo` goes, and without orders it tells its unit AI (0x202).
 #[test]
 fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it() {
-    let near = started(HOUSE, Position::ORIGIN, 0.0, TASK);
-    let far = started(HOUSE, Position::ORIGIN, 0.8, TASK);
+    let near = started(HOUSE, Position::ORIGIN, Distance::ZERO, TASK);
+    let far = started(HOUSE, Position::ORIGIN, Distance::new(0.8), TASK);
     let state = |b: BuildAction| (b.state, b.move_to.map(|m| m.state));
     assert_eq!(state(near), (BuildState::Move, Some(MoveTo::Arrived)));
     assert_eq!(state(far), (BuildState::Move, Some(MoveTo::Start)));
@@ -1273,7 +1275,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let b = BuildAction {
         state: BuildState::Work,
         added: true,
-        ..started(HOUSE, AT_HOUSE, 5.0, MOVING_TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(5.0), MOVING_TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(2.5, 2.5, 0.0), b);
     with_mill(&mut t);
@@ -1288,7 +1290,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     };
     let site = |sprite| DropSearch::Site {
         id: object_id(300),
-        range: 0.5,
+        range: Distance::new(0.5),
         sprite,
     };
     let b = drop(&mut t, site(Some(7)));
@@ -1305,7 +1307,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
             BuildState::Drop,
             Some(object_id(300)),
             300,
-            0.5,
+            Distance::new(0.5),
             MoveTo::Start
         )
     );
@@ -1368,12 +1370,12 @@ fn at_the_mill(state: MoveTo) -> BuildAction {
         move_to: Some(MoveToAction {
             target: Some(object_id(300)),
             point: Position::new(15.5, 10.5, 0.0),
-            range: 0.5,
+            range: Distance::new(0.5),
             on_target_moved: TargetMoved::AsksAgain,
             ..walk_in(state)
         }),
         site: Some(object_id(300)),
-        ..started(HOUSE, AT_HOUSE, 5.0, TASK)
+        ..started(HOUSE, AT_HOUSE, Distance::new(5.0), TASK)
     }
 }
 

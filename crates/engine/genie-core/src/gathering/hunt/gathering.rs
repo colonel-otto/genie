@@ -9,6 +9,7 @@ use crate::gathering::hunt::{
     GAP, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT, OWN_LIVESTOCK_RANGE,
     REMAINDER,
 };
+use crate::map::Distance;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::footprint_gap;
@@ -57,7 +58,7 @@ impl HuntAction {
         let range = if victim.state <= ObjectState::Alive {
             OWN_LIVESTOCK_RANGE
         } else {
-            self.task.range
+            self.task.range.get()
         };
         let mover = body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let ground = mover.stats.radius.ground();
@@ -68,7 +69,7 @@ impl HuntAction {
             gap,
             state: Some(victim.state),
         };
-        self.move_to = self.move_to_object(to, range, mover, walks)?;
+        self.move_to = self.move_to_object(to, Distance::new(range), mover, walks)?;
         Ok(())
     }
 
@@ -132,7 +133,7 @@ impl HuntAction {
                 .mover()
                 .map(|m| m.stats.radius.ground())
                 .ok_or(crate::world::HUNTER_UNMOVING)?;
-            if self.task.range + GAP
+            if self.task.range + Distance::new(GAP)
                 < footprint_gap(unit.body.position(), ground, t.position, t.radius)
             {
                 let walks = r.walks(&c.w.graphics, unit);

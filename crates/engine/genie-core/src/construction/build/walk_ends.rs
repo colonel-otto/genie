@@ -6,6 +6,7 @@ use crate::construction::build::BuildState;
 use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, FOREIGN_SITE, REACH, SEEN, SITE_GONE, UNSEEN_SITE,
 };
+use crate::map::Distance;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::slots::PlayerSlots;
@@ -45,7 +46,7 @@ impl BuildAction {
             let t = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
             let range = self.task.range;
-            if !(gap <= range * range || gap <= REACH) {
+            if !(gap <= range.squared().get() || gap <= REACH) {
                 return self.restart(c, builder);
             }
         }
@@ -116,7 +117,7 @@ impl BuildAction {
                 from: moved_at.ground(),
                 to: t.position.ground(),
                 radii: radius + ground,
-                range: 0.0,
+                range: Distance::ZERO,
                 closed: Vec::new(),
                 full: false,
             };
@@ -188,7 +189,7 @@ impl BuildAction {
         self.leave(c, builder)?;
         self.state = BuildState::WalkPoint;
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
-        self.move_to = move_reads.to_point(self.point, 0.0, self.task.moving)?;
+        self.move_to = move_reads.to_point(self.point, Distance::ZERO, self.task.moving)?;
         Ok(())
     }
 }

@@ -19,6 +19,7 @@ vision and the unit AI's searches read it.
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`distance.rs`](distance.rs) | A distance on the map in tiles (`Distance`) and its square (`DistanceSquared`), each with the game's `f32` operations. |
 | [`grid_size.rs`](grid_size.rs) | The size of a grid of tiles as one type (`GridSize`): its width and height, apart from a tile on it. |
 | [`mod.rs`](mod.rs) | The map: the terrain of each tile and where the world's objects stand (their places, radii, footprints and the grid that finds them). |
 | [`offset.rs`](offset.rs) | A displacement on the map as one type (`Offset`): x, y and z, apart from a place (`crate::map::Position`) and the game's vectors (x, height, y, `crate::math::fmath::BVector`); and one on the ground (`GroundOffset`): x and y, apart from a point (`crate::map::Point`). |

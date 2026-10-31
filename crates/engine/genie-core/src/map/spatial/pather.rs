@@ -1,6 +1,7 @@
 //! The old short pather's queries, the map's edge records and the segment tests.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Tile;
@@ -58,9 +59,9 @@ impl Spatial {
         let lo_y = if b.y() <= a.y() { b.y() } else { a.y() };
         let hi_y = if a.y() <= b.y() { b.y() } else { a.y() };
         let g = buffer.unwrap_or(0.0);
-        self.put_tile_records(a, b, g, mask);
+        self.put_tile_records(a, b, Distance::new(g), mask);
         let walk_box = Rect::new(lo_x, lo_y, hi_x, hi_y);
-        let grown = walk_box.grown(g);
+        let grown = walk_box.grown(Distance::new(g));
         let mut hits = Vec::new();
         if grown.leaves_map(self.map) {
             hits = self.edge_records(grown, QUERY_HITS);
@@ -71,7 +72,8 @@ impl Spatial {
         self.check_known_records(grown)?;
         let walk = Segment { from: a, to: b };
         let meets = |kind: ObstructionType, bx: Rect| {
-            walk_box.overlaps(bx.grown(g)) && record_meets_segment(kind, bx, g, walk)
+            walk_box.overlaps(bx.grown(Distance::new(g)))
+                && record_meets_segment(kind, bx, Distance::new(g), walk)
         };
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
@@ -237,7 +239,7 @@ pub(super) fn ccw(p0: Point, p1: Point, p2: Point) -> i32 {
 #[derive(Debug)]
 pub struct SmoothingWalls<'a> {
     pub(super) world: &'a mut Spatial,
-    pub(super) radius: f32,
+    pub(super) radius: Distance,
     pub(super) mask: crate::map::TerrainMask,
     pub(super) ignore: &'a [RecordId],
     /// Whether a walk was tested.
@@ -250,7 +252,7 @@ impl<'a> SmoothingWalls<'a> {
     #[must_use]
     pub const fn new(
         world: &'a mut Spatial,
-        radius: f32,
+        radius: Distance,
         mask: crate::map::TerrainMask,
         ignore: &'a [RecordId],
     ) -> Self {
@@ -268,7 +270,7 @@ impl<E> crate::pathing::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
     fn blocked(&mut self, a: Point, b: Point) -> Result<bool, E> {
         self.ran = true;
         // the pass's buffer, the unit's radius (FUN_1410562d0 with 1)
-        self.world.set_manager_buffer(Some(self.radius));
+        self.world.set_manager_buffer(Some(self.radius.get()));
         self.world.put_tile_records(a, b, self.radius, self.mask);
         Ok(self.world.segment_meets(a, b, self.radius, self.ignore))
     }
@@ -285,14 +287,14 @@ pub(super) struct WalkTest {
     pub(super) walk: Segment,
     pub(super) lo: Point,
     pub(super) hi: Point,
-    pub(super) grow: f32,
+    pub(super) grow: Distance,
     pub(super) query: Rect,
 }
 
 impl WalkTest {
     /// The walk from `a` to `b` of a unit `grow` wide; None when its grown box leaves a map of
     /// `map` tiles (the query then counts as met).
-    pub(super) fn new(a: Point, b: Point, grow: f32, map: GridSize) -> Option<Self> {
+    pub(super) fn new(a: Point, b: Point, grow: Distance, map: GridSize) -> Option<Self> {
         let lo = Point::new(
             if b.x() <= a.x() { b.x() } else { a.x() },
             if b.y() <= a.y() { b.y() } else { a.y() },
@@ -332,16 +334,21 @@ pub(super) fn segments_meet(p1: Point, p2: Point, p3: Point, p4: Point) -> bool 
 /// by `r` (the manager's `+0x57`/`+0x58`): the walk crosses one of the grown box's edges or
 /// starts or ends inside it, the box ordered (low and high edges, [`Rect::ordered`]) for the
 /// inside tests.
-pub(super) fn box_meets_segment(b: Rect, r: f32, walk: Segment) -> bool {
-    segment_meets_box(b, r, walk, b.ordered())
+pub(super) fn box_meets_segment(b: Rect, r: Distance, walk: Segment) -> bool {
+    segment_meets_box(b, r.get(), walk, b.ordered())
 }
 
 /// A record's test against the walk by its kind (`FUN_141051e00`, `FUN_141052800`): a circle's
 /// (kind 5, `FUN_141051630` and `FUN_141053130`) reads its box as it stands for the inside tests;
 /// the others' (kinds 2, 3, 11, 13) order it ([`box_meets_segment`]).
-pub(super) fn record_meets_segment(kind: ObstructionType, b: Rect, r: f32, walk: Segment) -> bool {
+pub(super) fn record_meets_segment(
+    kind: ObstructionType,
+    b: Rect,
+    r: Distance,
+    walk: Segment,
+) -> bool {
     if kind == ObstructionType::CIRCLE {
-        segment_meets_box(b, r, walk, b)
+        segment_meets_box(b, r.get(), walk, b)
     } else {
         box_meets_segment(b, r, walk)
     }

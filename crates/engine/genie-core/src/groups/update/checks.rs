@@ -9,6 +9,7 @@ use crate::groups::update::{
     RELIC_PICKUP_ACTION, Shown, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
+use crate::map::Distance;
 use crate::map::Tile;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
@@ -76,7 +77,7 @@ impl World {
                 } else {
                     master.search_radius
                 };
-                let reach = crate::math::fmath::maxss(search, master.line_of_sight);
+                let reach = crate::math::fmath::maxss(search.get(), master.line_of_sight.get());
                 let reach = reach * reach;
                 let mut nearest = FARTHEST;
                 let mut found = false;
@@ -216,7 +217,7 @@ impl World {
         &self,
         a: WorldObject<'_>,
         b: WorldObject<'_>,
-    ) -> Result<f32, GenieError> {
+    ) -> Result<Distance, GenieError> {
         let ra = self.master(a.player(), a.master_id())?.radius;
         let rb = self.master(b.player(), b.master_id())?.radius;
         Ok(crate::movement::footprint_gap(

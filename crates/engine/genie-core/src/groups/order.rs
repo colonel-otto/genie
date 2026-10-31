@@ -7,6 +7,7 @@ use crate::groups::GroupId;
 use crate::groups::attack::AttackOrder;
 use crate::groups::command::{ATTACK_COMMANDS, MOVE_COMMAND, MoveTo};
 use crate::groups::task::TargetTask;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
@@ -95,7 +96,7 @@ impl World {
                     group,
                     (i32::from(task.command.get()), held),
                     point,
-                    task.range.unwrap_or(0.0),
+                    task.range.unwrap_or(Distance::ZERO),
                     order,
                 )?;
             }
@@ -129,7 +130,7 @@ impl World {
         group: GroupId,
         (command, target): (i32, ObjectId),
         point: Point,
-        range: f32,
+        range: Distance,
         order: CommandArgs,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held_mut(group)?;
@@ -159,7 +160,7 @@ impl World {
             g.clear_command_queue();
         }
         g.forget_target_data();
-        g.current_target.range = 0.0;
+        g.current_target.range = Distance::ZERO;
         for m in &mut g.members {
             m.seconds_since_attacking = Seconds::MAX;
         }
@@ -211,7 +212,7 @@ impl World {
         let entry = |approved: u8| GroupCommand {
             command: i32::from(task.command.get()),
             target_id: Some(target),
-            range: task.range.unwrap_or(0.0),
+            range: task.range.unwrap_or(Distance::ZERO),
             point: BVector::new(point.x(), 0.0, point.y()),
             approved,
             disable_retargeting: u8::from(order.disable_retargeting),

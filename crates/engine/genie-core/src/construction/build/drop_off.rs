@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::construction::build::BuildState;
 use crate::construction::build::{BuildAction, BuildReads, DROP_REACH, DROP_WAIT, DROPPED_ORDERS};
+use crate::map::Distance;
 use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
 use crate::objects::ObjectId;
@@ -31,7 +32,7 @@ pub enum DropSearch {
         /// The drop site.
         id: ObjectId,
         /// The `MoveTo`'s range.
-        range: f32,
+        range: Distance,
         /// The found task's carrying sprite, None without the task or the sprite.
         sprite: Option<i16>,
     },
@@ -69,7 +70,7 @@ impl BuildAction {
     fn drop_search(
         c: &Step<'_>,
         builder: &Unit,
-        task_range: f32,
+        task_range: Distance,
     ) -> Result<DropSearch, GenieError> {
         let view = OthersRef::of(&c.w.players, c.player)?;
         let masters =

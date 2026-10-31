@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::victims::victim_of;
+use crate::map::Distance;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
@@ -27,7 +28,8 @@ pub(super) fn attacks(m: &crate::objects::masters::Master) -> f32 {
 /// The hit points (`DAT_14330ebc8`) and the range (`DAT_142e7f384`) below which a villager
 /// fights its attacker back ([`WorldPicker::harmless`]).
 pub(super) const HARMLESS_HP: f32 = crate::math::image::unit_ai::HARMLESS_HP;
-pub(super) const HARMLESS_RANGE: f32 = crate::math::image::unit_ai::HARMLESS_RANGE;
+pub(super) const HARMLESS_RANGE: Distance =
+    Distance::new(crate::math::image::unit_ai::HARMLESS_RANGE);
 
 /// An object the unit AI found or names that the slice does not hold (another player's it does
 /// not keep).
@@ -250,8 +252,8 @@ impl WorldPicker<'_> {
             };
             let gap =
                 crate::movement::footprint_gap(t.position(), tm.radius, a.position(), am.radius);
-            if best.is_none_or(|(least, _)| gap < least) {
-                best = Some((gap, id));
+            if best.is_none_or(|(least, _)| gap < Distance::new(least)) {
+                best = Some((gap.get(), id));
             }
         }
         Ok(best.map_or(NearestAttacker::NoAttacker, |(_, id)| {
@@ -410,7 +412,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         &mut self,
         spatial: &Spatial,
         id: ObjectId,
-        distance: f32,
+        distance: Distance,
         category: Option<crate::unit_ai::best_target::AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         let (_, t, _, m) = self.held(id)?.ok_or(NOT_HELD)?;
@@ -456,12 +458,12 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     }
 
     /// Object `id`'s weapon range (slot 0x230: a combat object's master's, else 0).
-    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, GenieError> {
+    fn weapon_range(&mut self, id: ObjectId) -> Result<Distance, GenieError> {
         let (_, _, _, m) = self.held(id)?.ok_or(NOT_HELD)?;
         Ok(if RGE_COMBAT <= m.kind {
             m.weapon_range
         } else {
-            0.0
+            Distance::ZERO
         })
     }
 
@@ -476,7 +478,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         &mut self,
         spatial: &mut Spatial,
         id: ObjectId,
-        range: f32,
+        range: Distance,
     ) -> Result<bool, GenieError> {
         let terrain = spatial
             .terrain
@@ -491,7 +493,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             self.me,
             Some(id),
             mask,
-            self.attacker.radius.x(),
+            Distance::new(self.attacker.radius.x()),
             range,
         )
     }

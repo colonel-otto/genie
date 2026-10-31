@@ -304,7 +304,7 @@ fn a_saved_attack_reads_its_target_range_and_move_to() {
         (m.state, m.point.x(), m.point.y(), m.quiet),
         (MoveTo::Moving, 3.0, 4.0, true)
     );
-    assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());
+    assert_eq!(a.range.get().to_bits(), 5.0_f32.to_bits());
     let plain = saved_attack(&attack(2, vec![]), Some(&graphics)).unwrap();
     assert_eq!(plain.state, AttackState::Killed);
     assert!(

@@ -12,6 +12,7 @@
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -52,7 +53,7 @@ pub use self::record_id::RecordId;
 pub use self::search::SearchQuery;
 
 /// The range of `ClosestObject`'s reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
-const CLOSEST_RANGE: f32 = crate::math::image::spatial::CLOSEST_RANGE;
+const CLOSEST_RANGE: Distance = Distance::new(crate::math::image::spatial::CLOSEST_RANGE);
 
 /// How near (squared) a unit AI's search comes to the last one's place to skip its query
 /// (`FUN_140c63e20`).
@@ -65,7 +66,7 @@ const LIVESTOCK_CLASS: ClassId = crate::objects::masters::class::LIVESTOCK;
 /// The caller's reachability check of a found object (slot 0x3d0 within a range): it paths over
 /// the spatial index the search reads, which the check's queries write, so the search hands it
 /// over for each call.
-pub type Reach<'a> = dyn FnMut(&mut Spatial, ObjectId, f32) -> Result<bool, GenieError> + 'a;
+pub type Reach<'a> = dyn FnMut(&mut Spatial, ObjectId, Distance) -> Result<bool, GenieError> + 'a;
 
 /// `bestUnitToAttack`'s world ([`crate::unit_ai::best_target::Battlefield`]): the unit AI's picker for its
 /// reads and tests, the search's reachability for its paths (slot 0x3d0).
@@ -103,7 +104,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
     fn candidate(
         &mut self,
         id: ObjectId,
-        distance: f32,
+        distance: Distance,
         category: Option<crate::unit_ai::best_target::AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         self.picker.candidate(self.world, id, distance, category)
@@ -113,7 +114,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
         self.picker.armored(id)
     }
 
-    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, GenieError> {
+    fn weapon_range(&mut self, id: ObjectId) -> Result<Distance, GenieError> {
         self.picker.weapon_range(id)
     }
 
@@ -121,11 +122,11 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
         self.picker.engages(id)
     }
 
-    fn quick_path(&mut self, id: ObjectId, range: f32) -> Result<bool, GenieError> {
+    fn quick_path(&mut self, id: ObjectId, range: Distance) -> Result<bool, GenieError> {
         self.picker.quick_path(self.world, id, range)
     }
 
-    fn path(&mut self, id: ObjectId, range: f32) -> Result<bool, GenieError> {
+    fn path(&mut self, id: ObjectId, range: Distance) -> Result<bool, GenieError> {
         (self.reach)(self.world, id, range)
     }
 }
@@ -586,7 +587,7 @@ pub struct Spatial {
     /// range), for [`Spatial::check_known`]. 0 when not set.
     pub fastest: f32,
     /// The farthest any of the players' units acts beyond its footprint.
-    pub reach: f32,
+    pub reach: Distance,
     /// What the walk reads of the moving objects it meets ([`Gait`]).
     gaits: BTreeMap<ObjectId, Gait>,
     /// Each player's scout map (`player+0x1370`, `mIsScoutMapEnabled` `+0x1368`), once made.

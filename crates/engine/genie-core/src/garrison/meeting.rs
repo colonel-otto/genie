@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, NO_SPEED, WalkStart};
+use crate::map::Distance;
 use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Position;
@@ -19,7 +20,7 @@ use crate::objects::masters::{Master, Masters, class, player_master};
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
 /// to which an Enter's reach of a target with speed tests the tiles about the two
 /// (`FUN_140a85c30`): `DAT_14330eb8c`, 1.0.
-pub(super) const ENTER_NEAR: f32 = crate::math::image::garrison::ENTER_NEAR;
+pub(super) const ENTER_NEAR: Distance = Distance::new(crate::math::image::garrison::ENTER_NEAR);
 /// Half a tile (`DAT_142e7f384`, 0.5): what an Enter's meeting point adds to a tile or to a
 /// place before `floorf` (`FUN_140a85f30`), and how far a target leaves its point before the
 /// Enter walks again (`FUN_140a7bd10`).
@@ -171,7 +172,7 @@ pub fn walled_off(
                 || spatial.point_clear(
                     id,
                     tile.corner(),
-                    stats.radius.x(),
+                    Distance::new(stats.radius.x()),
                     stats.restriction_mask,
                 )?
             {
@@ -327,7 +328,12 @@ fn shore(
             map.zone(Tile::new(x, y))
         };
         if zone == own
-            && spatial.point_clear(id, place, stats.radius.x(), stats.restriction_mask)?
+            && spatial.point_clear(
+                id,
+                place,
+                Distance::new(stats.radius.x()),
+                stats.restriction_mask,
+            )?
         {
             return Ok(Some(tile));
         }
@@ -379,7 +385,7 @@ pub(crate) fn enter_reach(
     masters: &[Masters],
     (id, stats, moved_at): (ObjectId, &MoveStats, Position),
     (target, target_mover): (ObjectId, Option<&crate::movement::Mover>),
-    range: f32,
+    range: Distance,
 ) -> Result<bool, GenieError> {
     let me = spatial
         .get_known(id)?
@@ -414,7 +420,7 @@ pub(crate) fn enter_view(
     masters: &[Masters],
     unit: &crate::objects::unit::Unit,
     (t, tm, room): (&crate::objects::unit::Unit, &Master, bool),
-    range: f32,
+    range: Distance,
 ) -> Result<(EnterTarget, WalkStart), GenieError> {
     let building = tm.kind == BUILDING;
     let mover = unit.body.mover();

@@ -13,6 +13,7 @@
 //! unsynced stream.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Tile;
@@ -37,7 +38,7 @@ const OFF_THE_GRID: GenieError = GenieError::unreachable("a tile the AI's path m
 
 /// The spacing of the points of a ring: the unit's line of sight and this (`DAT_142eb1c98`, the
 /// constant the group port's catch-up span also reads).
-pub const RING_SLACK: f32 = crate::math::image::group::CATCH_UP_SPAN;
+pub const RING_SLACK: Distance = Distance::new(crate::math::image::group::CATCH_UP_SPAN);
 
 /// What the search asks of the world beyond [`Area`].
 pub trait SearchArea: Area {
@@ -125,13 +126,13 @@ impl InfoModule {
 
     /// `FUN_140b96cf0`: the eight points of a ring of `radius` about `centre`, every eighth of a
     /// turn from 0, go onto the stack when they lie on the map.
-    pub fn push_ring(&mut self, radius: f32, centre: Point) {
+    pub fn push_ring(&mut self, radius: Distance, centre: Point) {
         let (cx, cy) = (cvttss2si(centre.x()) as f32, cvttss2si(centre.y()) as f32);
         for i in 0..8 {
             let angle = i as f32 * crate::math::image::facing::QUARTER_PI;
             let (p, moved) = self.clamp(Tile::new(
-                cvttss2si(cos(angle) * radius + cx),
-                cvttss2si(sin(angle) * radius + cy),
+                cvttss2si((cos(angle) * radius + Distance::new(cx)).get()),
+                cvttss2si((sin(angle) * radius + Distance::new(cy)).get()),
             ));
             if !moved {
                 self.search.push(p);

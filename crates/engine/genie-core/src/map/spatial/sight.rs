@@ -2,6 +2,7 @@
 //! spots.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -92,7 +93,7 @@ impl Spatial {
                     && !KEPT.contains(&q.class);
                 // the box grown by the unknown reach (`bx1 + u`: the sum only meets a
                 // comparison, so its operands' order does not show)
-                counts && 0.0 < u && area.overlaps(q.bounds().grown(u))
+                counts && 0.0 < u && area.overlaps(q.bounds().grown(Distance::new(u)))
             })
         });
         if unsure {
@@ -192,7 +193,7 @@ impl Spatial {
         &mut self,
         id: ObjectId,
         new: PlayerId,
-        los: f32,
+        los: Distance,
         sees: bool,
     ) -> Result<(), GenieError> {
         let Some(p) = self.objects.get_mut(&id) else {
@@ -203,7 +204,7 @@ impl Spatial {
         p.player = new;
         let (position, radius) = (p.position, p.radius);
         if let Some(v) = self.sight.as_mut() {
-            v.owner_changed(id, position, radius, (new, los), sees)?;
+            v.owner_changed(id, position, radius, (new, los.get()), sees)?;
         }
         Ok(())
     }
@@ -399,7 +400,7 @@ impl Spatial {
         radius: Footprint,
         class: ClassId,
         master: MasterId,
-        los: f32,
+        los: Distance,
     ) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.master_changed(id, p.position, p.radius, radius, master, los)?;
@@ -498,7 +499,7 @@ impl Spatial {
         tile: Tile,
         mask: crate::map::TerrainMask,
         me: ObjectId,
-        radius_x: f32,
+        radius_x: Distance,
     ) -> Result<bool, GenieError> {
         let (Some(word), Some(tall)) = (self.tiles.word(tile), self.tiles.tall(tile)) else {
             return Ok(false);

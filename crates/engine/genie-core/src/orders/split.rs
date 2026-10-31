@@ -1,6 +1,7 @@
 //! INTERACT and the order splitter: which units move loose and which form groups.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
@@ -170,7 +171,7 @@ impl World {
                     .mover()
                     .map_or_else(|| u.position().ground(), |m| m.moved_at.ground()),
                 state: u.life.state,
-                radius: master.radius.x(),
+                radius: Distance::new(master.radius.x()),
                 restriction: u.body.mover().map(|m| m.stats.restriction),
             });
         }
@@ -227,7 +228,7 @@ impl World {
             let req = crate::pathing::tile_path::Request {
                 from: b.position.ground(),
                 to: a.position.ground(),
-                radii: a.radius,
+                radii: a.radius.get(),
                 range: b.radius,
                 closed: Vec::new(),
                 full: false,

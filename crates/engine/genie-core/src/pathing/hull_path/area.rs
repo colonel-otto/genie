@@ -2,6 +2,7 @@
 //! the area's growth and the entrances' join.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Rect;
 use crate::map::Tile;
 use crate::map::TileRect;
@@ -25,14 +26,17 @@ impl HullPather<'_> {
     /// holding the goal or none.
     pub(super) fn goal_record(&self, to: Point) -> Result<Option<Target>, GenieError> {
         let grow = self.buffer.unwrap_or(0.0);
-        if !self.world.point_hit(to, grow, &self.ignore, false)? {
+        if !self
+            .world
+            .point_hit(to, Distance::new(grow), &self.ignore, false)?
+        {
             return Ok(None);
         }
         let near: Vec<ObjectId> = self
             .world
             .records()
             .filter(|&(id, _, b)| {
-                !self.ignore.contains(&RecordId::from(id)) && b.grown(grow).holds(to)
+                !self.ignore.contains(&RecordId::from(id)) && b.grown(Distance::new(grow)).holds(to)
             })
             .map(|(id, _, _)| id)
             .collect();
@@ -45,7 +49,10 @@ impl HullPather<'_> {
                     .filter(|&&o| o != id)
                     .map(|&o| RecordId::from(o)),
             );
-            if !self.world.point_hit(to, grow, &others, false)? {
+            if !self
+                .world
+                .point_hit(to, Distance::new(grow), &others, false)?
+            {
                 continue;
             }
             let Some(p) = self.world.get(id) else {
@@ -86,7 +93,7 @@ impl HullPather<'_> {
         if t.position.x() != to.x() || t.position.y() != to.y() {
             return Ok(false);
         }
-        let r = self.radius;
+        let r = self.radius.get();
         let (w, h) = (self.world.map.width(), self.world.map.height());
         self.bounds = Rect::new(0.0, 0.0, w as f32 - 0.0, h as f32 - 0.0);
         let b = self.bounds;
@@ -103,7 +110,13 @@ impl HullPather<'_> {
 
     /// `FindShortPath`'s end for a path partway (2): none when it ends at the start (3); within
     /// range of the goal it is a path (1); one that ends no nearer the goal than the start is none.
-    pub(super) fn partway(&self, path: &mut Waypoints, from: Point, to: Point, range: f32) -> u8 {
+    pub(super) fn partway(
+        &self,
+        path: &mut Waypoints,
+        from: Point,
+        to: Point,
+        range: Distance,
+    ) -> u8 {
         let mut result = 2;
         let last = *path
             .points
@@ -121,7 +134,7 @@ impl HullPather<'_> {
         let start =
             (from.y() - to.y()) * (from.y() - to.y()) + (from.x() - to.x()) * (from.x() - to.x());
         if below_or_unordered(d, start) {
-            if d < range * range {
+            if d < range.squared().get() {
                 result = 1;
             }
         } else {

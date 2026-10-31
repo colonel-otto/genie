@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::commands::GatherPointState;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
@@ -184,7 +185,7 @@ impl World {
                 let order = crate::unit_ai::QueuedOrder {
                     priority: 100,
                     point: o.point.with_z(z),
-                    range: 0.0,
+                    range: Distance::ZERO,
                     ready: true,
                     ..*o
                 };

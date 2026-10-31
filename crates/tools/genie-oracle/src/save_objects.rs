@@ -4,6 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{Error, listed, run_from_save};
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::Tile;
 use genie_core::objects::ListIndex;
 use genie_core::objects::ObjectId;
@@ -241,7 +242,7 @@ pub fn registry_from_dump(text: &str) -> Result<genie_core::vision::registry::Re
                 let (p, c) = list.ok_or_else(bad)?;
                 out.lists[p][c].push(Record {
                     id: object(w[1])?,
-                    distance: bits(w[2])?,
+                    distance: Distance::new(bits(w[2])?),
                     owner: number(w[3])? as u8,
                     x: bits(w[4])?,
                     y: bits(w[5])?,

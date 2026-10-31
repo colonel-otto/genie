@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     Around, Changed, DropDraws, MapShore, NONE, Ship, Shore, TRANSPORT, TransportAction, in_zone,
     retry_point,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -371,7 +372,11 @@ impl crate::world::World {
                 crate::production::spawn::placement(&placing, &map, spot, false)?
                     == crate::production::spawn::Tested::Free
             };
-            if free && self.spatial.point_clear(id, spot, grow, mask)? {
+            if free
+                && self
+                    .spatial
+                    .point_clear(id, spot, Distance::new(grow), mask)?
+            {
                 found = Some(spot);
                 break;
             }

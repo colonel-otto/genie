@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::construction::build::Construction;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
@@ -335,7 +336,7 @@ impl World {
             reload_stinger: 0.0,
             reload_powerup: 0.0,
             attack_powerup: 0.0,
-            range_powerup: 0.0,
+            range_powerup: Distance::ZERO,
             armor_powerups: [0; 2],
             armor_removed: [0; 2],
             charge: 0.0,

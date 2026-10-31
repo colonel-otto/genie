@@ -1,5 +1,6 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -77,15 +78,20 @@ impl Mover {
             Footprint::new(0.0, 0.0),
         );
         let range = level.range;
-        let mut beyond = goal.target.map_or((back - range) - RANGE_FLOOR, |(id, t)| {
-            let own = (footprint_gap(self.position(), ground_radius, t.position, t.radius) - range)
-                - RANGE_FLOOR;
-            let near = (self.position(), ground_radius);
-            gate_gap(world, near, (id, t), own, |g| (g - range) - RANGE_FLOOR)
-        });
+        let mut beyond =
+            goal.target
+                .map_or((back - range) - Distance::new(RANGE_FLOOR), |(id, t)| {
+                    let own = (footprint_gap(self.position(), ground_radius, t.position, t.radius)
+                        - range)
+                        - Distance::new(RANGE_FLOOR);
+                    let near = (self.position(), ground_radius);
+                    Distance::new(gate_gap(world, near, (id, t), own, |g| {
+                        (g - range.get()) - RANGE_FLOOR
+                    }))
+                });
         if goal.target.is_some() && level.flags & 4 != 0 {
             self.clear_bit_2();
-            beyond = 0.0;
+            beyond = Distance::ZERO;
         }
         let level = &mut self.paths[0];
         if level.waypoint < level.points.len() as i32 {
@@ -94,10 +100,12 @@ impl Mover {
             }
             return Ok(Next::Dispatch);
         }
-        if EPSILON <= beyond
-            && (goal.target.is_some() || CLOSE <= beyond || level.level == WaypointLevel::WALKED)
+        if EPSILON <= beyond.get()
+            && (goal.target.is_some()
+                || CLOSE <= beyond.get()
+                || level.level == WaypointLevel::WALKED)
         {
-            if EPSILON <= back {
+            if EPSILON <= back.get() {
                 level.waypoint -= 1;
                 level.state = PathState::WantsPath;
                 return Ok(Next::Dispatch);
@@ -179,7 +187,7 @@ impl Mover {
         let level = &self.paths[0];
         let created = level.created;
         let own = world.get(me.id).map(|p| p.player);
-        let yields = self.stats.weapon_range == 0.0
+        let yields = self.stats.weapon_range == Distance::ZERO
             && goal.target.is_some_and(|(target, t)| {
                 let moved = world.gait(target).map_or(WorldTime::ZERO, |g| g.last_move);
                 moved > created
@@ -262,7 +270,13 @@ impl Mover {
             from.x().max(to.x()) + grow,
             from.y().max(to.y()) + grow,
         ))?;
-        let blocked = world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore);
+        let blocked = world.segment_blocked(
+            from,
+            to,
+            Distance::new(grow),
+            self.stats.restriction_mask,
+            &ignore,
+        );
         // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
         world.set_manager_buffer(None);
         Ok(!blocked)
@@ -295,8 +309,8 @@ impl Mover {
         // the query starts at +0x824, where the unit last moved to
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let rect = Rect::spanning(from, to);
-        world.check_known_records(rect.grown(rx))?;
-        if world.tiles_block(from, to, rx, self.stats.restriction_mask) {
+        world.check_known_records(rect.grown(Distance::new(rx)))?;
+        if world.tiles_block(from, to, Distance::new(rx), self.stats.restriction_mask) {
             // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
             world.set_manager_buffer(None);
             return Ok(false);
@@ -306,7 +320,7 @@ impl Mover {
             start: from,
             end: to,
             rect,
-            grow: rx,
+            grow: Distance::new(rx),
             ally_factor: self.stats.min_collision,
             player,
             ignore: &ignore,

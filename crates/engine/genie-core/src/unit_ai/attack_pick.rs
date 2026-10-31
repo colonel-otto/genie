@@ -1,6 +1,7 @@
 //! Which object a unit may attack: the attack search, its picks and each type's rules.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -38,7 +39,7 @@ pub struct Search<'a> {
     /// Where it searches from.
     pub at: Point,
     /// How far.
-    pub radius: f32,
+    pub radius: Distance,
     /// The object classes it cares about.
     pub classes: &'a [ClassId],
     /// The searcher's radii.
@@ -54,7 +55,7 @@ pub struct Search<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AttackAsk {
     /// The reference distance (0: none).
-    pub distance: f32,
+    pub distance: Distance,
     /// An idle check.
     pub idle: bool,
     /// The path checks.
@@ -71,7 +72,7 @@ impl AttackAsk {
     /// The idle checks' call: no reference distance, an idle check, path checks on, no extra
     /// object, any class, not in an attack work state.
     pub const IDLE: Self = Self {
-        distance: 0.0,
+        distance: Distance::ZERO,
         idle: true,
         paths: true,
         extra: None,
@@ -176,17 +177,17 @@ pub struct Attacker {
     /// Its master's missile, −1 for none.
     pub missile: Option<MasterId>,
     /// Its master's weapon range (slot 0x230, `+0x828`).
-    pub range: f32,
+    pub range: Distance,
     /// Its master's least range (slot 0x240, `+0x850`).
-    pub min_range: f32,
+    pub min_range: Distance,
     /// Its master's charge type: 6 and 7 add to the range against a target (slot 0x2f8).
     pub charge_type: i16,
     /// Its master's `area_effect_range` (`+0x82c`).
-    pub area_effect: f32,
+    pub area_effect: Distance,
     /// Its master's `area_effect_level` (`+0x830`).
     pub blast_level: u8,
     /// Its master's line of sight (`+0x5d0`).
-    pub los: f32,
+    pub los: Distance,
     /// Its place.
     pub position: Position,
     /// Its master's radii.
@@ -401,7 +402,8 @@ pub(super) const PACKED_MASTER: MasterId = MasterId::named(109);
 pub(super) const PACKED_CLASS: ClassId = class::CLASS_54;
 /// The soldier's range against a target grows by this for its stance checks
 /// (`DAT_142e7f384`).
-pub(super) const STANCE_RANGE_GROWTH: f32 = crate::math::image::unit_ai::STANCE_RANGE_GROWTH;
+pub(super) const STANCE_RANGE_GROWTH: Distance =
+    Distance::new(crate::math::image::unit_ai::STANCE_RANGE_GROWTH);
 /// And the defend stance's by this more (`DAT_14330ebb8`).
 pub(super) const DEFEND_GROWTH: f32 = crate::math::image::unit_ai::DEFEND_GROWTH;
 
@@ -421,7 +423,7 @@ impl Attacker {
     /// # Errors
     ///
     /// A charge of type 6 or 7.
-    pub const fn range_against(&self) -> Result<f32, GenieError> {
+    pub const fn range_against(&self) -> Result<Distance, GenieError> {
         if matches!(self.charge_type, 6 | 7) {
             return Err(GenieError::unsupported(
                 "an attacker whose charge adds to its range (slot 0x2f8)",
@@ -513,7 +515,7 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     let reach = me.range_against()? + STANCE_RANGE_GROWTH;
     match s.stance {
         UnitStance::STAND_GROUND
-            if !matches!(s.order, Some(OrderKind::Defend)) && reach * reach < d2 =>
+            if !matches!(s.order, Some(OrderKind::Defend)) && reach.squared().get() < d2 =>
         {
             return Ok(false);
         }
@@ -521,8 +523,8 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
             if matches!(s.order, Some(OrderKind::Patrol | OrderKind::AttackMove)) || s.patrol_path {
                 defend_patrol_range()?;
             }
-            let reach = reach + DEFEND_GROWTH;
-            if reach * reach < d2 {
+            let reach = reach + Distance::new(DEFEND_GROWTH);
+            if reach.squared().get() < d2 {
                 return Ok(false);
             }
         }
@@ -539,8 +541,12 @@ pub(crate) fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieErr
     if me.attack_priority == AttackPriority::PRIORITY_3 && !PRIORITY_3_CLASSES.contains(&t.class) {
         return Ok(false);
     }
-    let ranged = 1.0 < me.range;
-    if ranged && me.blast_level & 8 == 0 && 0.0 < me.area_effect && me.blast_level & 4 == 0 {
+    let ranged = Distance::new(1.0) < me.range;
+    if ranged
+        && me.blast_level & 8 == 0
+        && Distance::ZERO < me.area_effect
+        && me.blast_level & 4 == 0
+    {
         return Err(GenieError::unsupported(
             "a blast attacker's scan for friends near its target (FUN_14120e4e0)",
         ));

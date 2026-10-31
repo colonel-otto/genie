@@ -1,6 +1,7 @@
 //! The idle checks of ships, siege, soldiers, units that do not attack and towers.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
@@ -82,16 +83,22 @@ impl UnitAi {
         let (classes, radius): (&[ClassId], f32) = if self.ai_type == FISHING_AI {
             (
                 &FISHING_CARED,
-                civilian_search_radius(at.los, at.search_radius),
+                civilian_search_radius(at.los, at.search_radius).get(),
             )
         } else if at.class == Some(class::TRADE_BOAT) {
-            (&TRADE_SHIP_CARED, search_radius(at.los, at.search_radius))
+            (
+                &TRADE_SHIP_CARED,
+                search_radius(at.los, at.search_radius).get(),
+            )
         } else {
-            (&TRADE_CART_CARED, search_radius(at.los, at.search_radius))
+            (
+                &TRADE_CART_CARED,
+                search_radius(at.los, at.search_radius).get(),
+            )
         };
         let found = side.closest(&Search {
             at: at.position.ground(),
-            radius,
+            radius: Distance::new(radius),
             classes,
             size: at.size,
             pick: Pick::Closest {

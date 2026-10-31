@@ -1,6 +1,7 @@
 //! The repair and enter commands of the unit AI and the auto scout's area.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Tile;
@@ -255,13 +256,13 @@ impl UnitView<'_, '_> {
             reach: master.line_of_sight - LOS_MARGIN,
             scouted: false,
         };
-        Ok((area, map, master.line_of_sight))
+        Ok((area, map, master.line_of_sight.get()))
     }
 }
 
 /// The auto scout's search reaches within its line of sight less this (`FUN_140c65490`,
 /// `DAT_14330eb8c`).
-pub(crate) const LOS_MARGIN: f32 = crate::math::image::explore::LOS_MARGIN;
+pub(crate) const LOS_MARGIN: Distance = Distance::new(crate::math::image::explore::LOS_MARGIN);
 
 /// The masters of a town centre (`FUN_1416597e0`: 109, then 444).
 pub(crate) const TOWN_CENTRES: [MasterId; 2] = [MasterId::named(109), MasterId::named(444)];
@@ -307,7 +308,7 @@ pub(crate) struct ScoutArea<'a> {
     pub(crate) master: MasterId,
     pub(crate) radius: Footprint,
     /// The reach of slot 0x3d8: the line of sight less a tile.
-    pub(crate) reach: f32,
+    pub(crate) reach: Distance,
     /// The search reads the player's scout map for the tiles seen (`FUN_140c4b130` with one).
     pub(crate) scouted: bool,
 }
@@ -336,8 +337,12 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
 
     fn clear(&mut self, tile: Tile) -> Result<bool, GenieError> {
         let mask = self.mover.stats.restriction_mask;
-        self.spatial
-            .point_clear(self.me.id, tile.corner(), self.radius.x(), mask)
+        self.spatial.point_clear(
+            self.me.id,
+            tile.corner(),
+            Distance::new(self.radius.x()),
+            mask,
+        )
     }
 
     fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError> {

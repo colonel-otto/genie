@@ -137,7 +137,9 @@ impl World {
             Travel::Any if speed == 0.0 => STANDING_SPAN,
             _ => {
                 let gap = self.footprint_gap(unit, part)?;
-                Millis::new((cvttss2si_64(gap / speed) as i32).wrapping_mul(TRAVEL_MS) as u32)
+                Millis::new(
+                    (cvttss2si_64((gap / speed).get()) as i32).wrapping_mul(TRAVEL_MS) as u32,
+                )
             }
         };
         let rng = self.streams.get(Stream::Ai);
@@ -209,7 +211,7 @@ impl World {
         }
         let gap = self.footprint_gap_squared(unit, target)?;
         let range = weapon_range(master);
-        Ok(gap <= range * range && master.min_range * master.min_range <= gap)
+        Ok(gap <= range.squared().get() && master.min_range.squared().get() <= gap)
     }
 
     /// Slot 0x208 of a unit of player `player` (`FUN_141202c70`): its top speed, which the

@@ -1,5 +1,6 @@
 //! The RGE combat and missile masters' setters: the armor and attack amounts.
 
+use crate::map::Distance;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{
@@ -31,17 +32,17 @@ impl Master {
             a::ARMOR | a::ATTACK => self.set_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload = v,
             a::ACCURACY_PERCENT => self.hit_chance = low16(v),
-            a::MAXIMUM_RANGE => self.weapon_range = v,
+            a::MAXIMUM_RANGE => self.weapon_range = Distance::new(v),
             a::BASE_ARMOR => self.base_armor = low16(v),
             a::PROJECTILE_UNIT => self.missile = MasterId::of_data(low16(v)),
             a::TERRAIN_DEFENSE_BONUS => self.terrain_bonus = low16(v),
-            a::MINIMUM_RANGE => self.min_range = v,
-            a::BLAST_WIDTH => self.area_effect = v,
+            a::MINIMUM_RANGE => self.min_range = Distance::new(v),
+            a::BLAST_WIDTH => self.area_effect = Distance::new(v),
             a::BONUS_DAMAGE_RESISTANCE => self.resistance = v,
             a::FRAME_DELAY => self.fire_frame = low16(v),
             a::BLAST_ATTACK_LEVEL => self.blast_level = low8(v),
             a::SHOWN_ATTACK => self.shown.attack = low16(v),
-            a::SHOWN_RANGE => self.shown.range = v,
+            a::SHOWN_RANGE => self.shown.range = Distance::new(v),
             a::SHOWN_MELEE_ARMOR => self.shown.melee_armor = low16(v),
             a::COMBAT_ABILITY => self.combat_ability = low8(v),
             a::ATTACK_DISPERSION => self.missed_spread = v,
@@ -101,7 +102,7 @@ impl Master {
             a::ARMOR | a::ATTACK => self.add_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload += v,
             a::ACCURACY_PERCENT => self.hit_chance = self.hit_chance.wrapping_add(low16(v)),
-            a::MAXIMUM_RANGE => self.weapon_range += v,
+            a::MAXIMUM_RANGE => self.weapon_range += Distance::new(v),
             a::BASE_ARMOR => self.base_armor = self.base_armor.wrapping_add(low16(v)),
             a::PROJECTILE_UNIT => {
                 self.missile =
@@ -110,13 +111,13 @@ impl Master {
             a::TERRAIN_DEFENSE_BONUS => {
                 self.terrain_bonus = self.terrain_bonus.wrapping_add(low16(v));
             }
-            a::MINIMUM_RANGE => self.min_range += v,
-            a::BLAST_WIDTH => self.area_effect += v,
+            a::MINIMUM_RANGE => self.min_range += Distance::new(v),
+            a::BLAST_WIDTH => self.area_effect += Distance::new(v),
             a::BONUS_DAMAGE_RESISTANCE => self.resistance += v,
             a::FRAME_DELAY => self.fire_frame = self.fire_frame.wrapping_add(low16(v)),
             a::BLAST_ATTACK_LEVEL => self.blast_level = self.blast_level.wrapping_add(low8(v)),
             a::SHOWN_ATTACK => self.shown.attack = self.shown.attack.wrapping_add(low16(v)),
-            a::SHOWN_RANGE => self.shown.range += v,
+            a::SHOWN_RANGE => self.shown.range += Distance::new(v),
             a::SHOWN_MELEE_ARMOR => {
                 self.shown.melee_armor = self.shown.melee_armor.wrapping_add(low16(v));
             }

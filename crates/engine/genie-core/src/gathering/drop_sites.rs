@@ -1,6 +1,7 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
@@ -80,9 +81,12 @@ impl Seeker<'_, '_> {
                 }
                 *last = length;
                 if length <= SHORT_DROP_REACH
-                    && let Some(short) =
-                        self.mover
-                            .short_reach(&self.me, self.spatial, o.id, DROP_REACH)?
+                    && let Some(short) = self.mover.short_reach(
+                        &self.me,
+                        self.spatial,
+                        o.id,
+                        Distance::new(DROP_REACH),
+                    )?
                     && short < length
                 {
                     *last = short;
@@ -310,7 +314,7 @@ mod tests {
     /// The villager 10 at (20, 20), building the object `target` when there is one.
     fn villager(target: Option<i32>) -> Unit {
         let task = BuildTask {
-            range: 0.1,
+            range: Distance::new(0.1),
             work_value: 1.0,
             work_rate: 1.0,
             resource: None,
@@ -322,7 +326,7 @@ mod tests {
                 crate::construction::build::tests::started(
                     object_id(t),
                     Position::new(20.0, 17.0, 0.0),
-                    0.0,
+                    Distance::ZERO,
                     task,
                 )
             })),

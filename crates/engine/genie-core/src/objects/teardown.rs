@@ -218,6 +218,7 @@ impl ActionList {
 mod tests {
     use super::*;
     use crate::construction::build::{BuildAction, BuildTask};
+    use crate::map::Distance;
     use crate::map::Position;
     use crate::math::fmath::BVector;
     use crate::movement::move_to::MoveToAction;
@@ -239,7 +240,7 @@ mod tests {
     /// A Build of foundation 10028 at its edge (gap 0).
     fn build() -> BuildAction {
         let task = BuildTask {
-            range: 0.0,
+            range: Distance::ZERO,
             work_value: 1.0,
             work_rate: 1.0,
             resource: None,
@@ -249,7 +250,7 @@ mod tests {
         crate::construction::build::tests::started(
             object_id(10028),
             Position::new(30.0, 88.0, 0.0),
-            0.0,
+            Distance::ZERO,
             task,
         )
     }
@@ -315,7 +316,12 @@ mod tests {
     #[test]
     fn a_move_to_s_destructor_stops_the_unit() {
         let mut body = moving();
-        let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), 0.0, None, body.mover_mut());
+        let to = MoveToAction::to_point(
+            Position::new(5.0, 5.0, 0.0),
+            Distance::ZERO,
+            None,
+            body.mover_mut(),
+        );
         let torn = Action::MoveTo(to).tear_down(&mut body).unwrap();
         assert_eq!(torn, TornDown::default());
         assert!(!moves(&body));
@@ -335,7 +341,12 @@ mod tests {
             list.delete_head(&mut body, ObjectState::Alive),
             Ok(TornDown::default())
         );
-        let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), 0.0, None, body.mover_mut());
+        let to = MoveToAction::to_point(
+            Position::new(5.0, 5.0, 0.0),
+            Distance::ZERO,
+            None,
+            body.mover_mut(),
+        );
         let two = ActionList::default()
             .with_build(Some(build()))
             .with_move_to(Some(to));

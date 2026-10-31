@@ -1,5 +1,6 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
+use crate::map::Distance;
 use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::masters::ObstructionType;
@@ -141,7 +142,7 @@ pub(crate) fn long_path_for(
     let req = crate::pathing::long_path::LongRequest {
         from: Tile::new(from.x() as i32, from.y() as i32),
         to: Tile::new(to.x() as i32, to.y() as i32),
-        range,
+        range: Distance::new(range),
         target: long_target,
         moves: walker.moves,
         mask: walker.mask,
@@ -164,7 +165,7 @@ pub struct TileAsk<'a> {
     /// The walker's and the target's radii added.
     pub radii: f32,
     /// How near the goal counts.
-    pub range: f32,
+    pub range: Distance,
     /// The target object's record.
     pub target: Option<&'a Placed>,
 }
@@ -176,7 +177,7 @@ pub struct ShortAsk<'a> {
     /// The goal (x, height, y).
     pub goal: BVector,
     /// How near the goal counts.
-    pub range: f32,
+    pub range: Distance,
     /// The target object (if any).
     pub target: Option<ObjectId>,
     /// The objects the pather ignores.
@@ -269,7 +270,7 @@ pub(super) fn may_plan(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Walker {
     pub(crate) id: ObjectId,
-    pub(crate) radius: f32,
+    pub(crate) radius: Distance,
     pub(crate) restriction: crate::map::RestrictionId,
     pub(crate) mask: crate::map::TerrainMask,
 }
@@ -315,8 +316,8 @@ pub(super) fn include_kept(
 /// manager's setup (`FUN_141054660`) makes both when `FUN_14152bc90` answers 1, and its two
 /// switches have no writer (`DAT_1439e60e0` 1 in `.data`, `DAT_143fb54a8` 0 in `.bss`, each read
 /// by it alone).
-pub(super) fn old_pather_for(radius: f32) -> bool {
-    fmath::below_or_unordered(NEW_PATHER_RADIUS, radius)
+pub(super) fn old_pather_for(radius: Distance) -> bool {
+    fmath::below_or_unordered(NEW_PATHER_RADIUS, radius.get())
 }
 
 /// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within
@@ -331,7 +332,7 @@ pub(crate) fn short_path_for(
     from: Point,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
-    goal: (BVector, f32, Option<ObjectId>),
+    goal: (BVector, Distance, Option<ObjectId>),
     ignore: &[ObjectId],
     out: &mut Path,
 ) -> Result<u8, GenieError> {
@@ -411,7 +412,7 @@ pub(crate) fn short_path_including(
         mask: walker.mask,
     };
     // the search's box: four tiles around its ends
-    let reach = 4.0 + walker.radius;
+    let reach = 4.0 + walker.radius.get();
     world.check_known_records(Rect::new(
         x.min(to.x()) - reach,
         y.min(to.y()) - reach,

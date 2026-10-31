@@ -1,6 +1,7 @@
 //! The slice set up from the header save ([`slice`]): the players' technologies, wonder
 //! times, ghosts, AI settings and history, and the garrisons' firepower.
 
+use genie_core::map::Distance;
 use genie_core::map::GridSize;
 use genie_core::map::Tile;
 use genie_core::objects::ListIndex;
@@ -388,9 +389,12 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         turns.spatial.fastest = all()
             .filter_map(|m| m.moving.as_ref().map(|s| s.speed))
             .fold(0.0, f32::max);
-        turns.spatial.reach = all()
-            .flat_map(|m| m.tasks.iter().map(|t| t.work_range).chain([m.weapon_range]))
-            .fold(0.0, f32::max);
+        turns.spatial.reach = Distance::new(
+            all()
+                .flat_map(|m| m.tasks.iter().map(|t| t.work_range).chain([m.weapon_range]))
+                .map(Distance::get)
+                .fold(0.0, f32::max),
+        );
         garrison_firepower(&mut turns);
         // the planners the load makes and the shape mesh it builds (a dump of the game's mesh
         // replaces it)

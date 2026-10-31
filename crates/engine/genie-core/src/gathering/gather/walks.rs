@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::gather::{GatherAction, GatherReads};
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveToAction, MoveToReads, SpriteReads, TargetMoved, WalkTo};
@@ -97,7 +98,7 @@ impl GatherAction {
     pub(super) fn move_to_point(
         &self,
         point: Position,
-        range: f32,
+        range: Distance,
         on_target_moved: TargetMoved,
         mover: &Mover,
         walks: &Walks<'_>,

@@ -1,5 +1,6 @@
 use super::*;
 use crate::gathering::make::MakeState;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -481,7 +482,7 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
     let mut tower_master = combat(master_id(79), class::TOWER, 1020);
     tower_master.kind = master_type::BUILDING;
     tower_master.reload = 2.0;
-    tower_master.weapon_range = 8.0;
+    tower_master.weapon_range = Distance::new(8.0);
     tower_master.weapons = vec![ClassAmount::new(3, 5)];
     let mut archer_master = combat(master_id(4), class::CLASS_0, 30);
     archer_master.reload = 2.0;
@@ -667,7 +668,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             kind: master_type::STATIC,
             class: class::CLASS_11,
             hit_points: 10,
-            line_of_sight: 2.0,
+            line_of_sight: Distance::new(2.0),
             storage: vec![
                 (None, 0.0, 0),
                 (Some(attribute::HEADROOM), 5.0, 0),
@@ -691,7 +692,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         let seer = crate::vision::visibility::Seer {
             player: PlayerId::new(0),
             master: ids::FARM,
-            los: 2.0,
+            los: Distance::new(2.0),
             state: ObjectState::Alive,
             explored: true,
             building: None,
@@ -858,7 +859,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     (m.death_sprite, m.death_spawns) = (7, [Some(master_id(0)), Some(master_id(9))]);
     (m.build_time, m.obstruction_type, m.obstruction_class) =
         (33, ObstructionType::CIRCLE, ObstructionClass::UNIT);
-    (m.line_of_sight, m.tall) = (6.0, true);
+    (m.line_of_sight, m.tall) = (Distance::new(6.0), true);
     t.masters = vec![Masters::new([m, combat(master_id(5), class::CLASS_6, 60)])];
     for id in [1, 3] {
         t.spatial.insert(
@@ -889,7 +890,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     let seer = crate::vision::visibility::Seer {
         player: PlayerId::new(0),
         master: master_id(4),
-        los: 2.0,
+        los: Distance::new(2.0),
         state: ObjectState::Alive,
         explored: true,
         building: None,
@@ -938,7 +939,10 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     let tall = |id: ObjectId| t.spatial.get(id).unwrap().tall;
     assert_eq!((tall(object_id(1)), tall(object_id(3))), (true, false));
     let los = |id: ObjectId| t.spatial.sight.as_ref().unwrap().seer(id).unwrap().los;
-    assert_eq!((los(object_id(1)), los(object_id(3))), (6.0, 2.0));
+    assert_eq!(
+        (los(object_id(1)), los(object_id(3))),
+        (Distance::new(6.0), Distance::new(2.0))
+    );
     // a dying sprite below 0 is none
     t.masters[0].get_mut(master_id(4)).unwrap().death_sprite = -1;
     t.master_followers(PlayerId::new(0), master_id(4), a::DYING_GRAPHIC)

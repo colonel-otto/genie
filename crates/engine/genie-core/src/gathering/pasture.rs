@@ -4,6 +4,7 @@
 //! pasture's food.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
@@ -23,7 +24,7 @@ use crate::world::slots::PlayerSlots;
 pub const LIVESTOCK: [MasterId; 2] = [MasterId::named(1899), MasterId::named(1900)];
 
 /// The edges lie this far inside the pasture's ground radius (`DAT_142e7f384`).
-const INSET: f32 = crate::math::image::pasture::INSET;
+const INSET: Distance = Distance::new(crate::math::image::pasture::INSET);
 /// The step along an edge (`DAT_142e8c148`).
 const STEP: f32 = crate::math::image::pasture::STEP;
 /// An edge's end (`DAT_14330eb8c`).
@@ -36,14 +37,14 @@ const END: f32 = crate::math::image::pasture::END;
 /// edge from the first corner to the second, the right one from the third to the second, the
 /// top one from the third to the fourth and the left one from the first to the fourth.
 #[must_use]
-pub fn edge_points(at: Position, radius_x: f32) -> Vec<Point> {
+pub fn edge_points(at: Position, radius_x: Distance) -> Vec<Point> {
     let r = radius_x - INSET;
     let (x, y) = (at.x(), at.y());
     let c = [
-        Point::new(x - r, y - r),
-        Point::new(x + r, y - r),
-        Point::new(x + r, y + r),
-        Point::new(x - r, y + r),
+        Point::new(x - r.get(), y - r.get()),
+        Point::new(x + r.get(), y - r.get()),
+        Point::new(x + r.get(), y + r.get()),
+        Point::new(x - r.get(), y + r.get()),
     ];
     let edges = [(c[0], c[1]), (c[2], c[1]), (c[2], c[3]), (c[0], c[3])];
     let mut points = Vec::new();
@@ -94,7 +95,7 @@ impl World {
             .map(|(_, u)| (u.position(), u.life.master_id))
             .ok_or(GenieError::unreachable("a pasture its completion names"))?;
         let radius_x = self.master(p, master)?.radius.x();
-        let mut points = edge_points(at, radius_x);
+        let mut points = edge_points(at, Distance::new(radius_x));
         let owner = self.players.player(p)?;
         let count = cvttss2si(Attributes::get(
             owner,
@@ -272,7 +273,7 @@ mod tests {
     /// 72.3) and the bottom edge's fourth (137.2, 70.5).
     #[test]
     fn a_pasture_s_edges_take_four_points_each() {
-        let points = edge_points(Position::new(136.0, 72.0, 0.0), 2.0);
+        let points = edge_points(Position::new(136.0, 72.0, 0.0), Distance::new(2.0));
         assert_eq!(points.len(), 16);
         let t = [0.0f32, 0.3, 0.6, 0.3 + 0.3 + 0.3];
         assert_eq!(points[0], Point::new(134.5, 70.5));

@@ -2,6 +2,7 @@
 //! herded sheep.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
@@ -173,7 +174,7 @@ pub(crate) fn closest_resource_of(
             passable: &|spatial, tile| spatial.tiles().word(tile).is_some_and(|w| w & blocked == 0),
             objects: &objects,
             reach: &mut |spatial, id| {
-                mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id)
+                mover.reaches_object(&me_walk, spatial, plan, id, Distance::ZERO, master_id)
             },
         },
     )

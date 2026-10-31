@@ -4,6 +4,7 @@ use crate::construction::build::BuildState;
 use crate::construction::repair::RepairState;
 use crate::gathering::gather::GatherState;
 use crate::gathering::hunt::HuntState;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -190,7 +191,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     };
     let task = crate::gathering::hunt::HuntTask {
         id: TaskId::test(0),
-        range: 0.25,
+        range: Distance::new(0.25),
         resource: Some(AttributeId::numbered(17)),
         sprites: [-1; 4],
         work_value: 1.0,
@@ -205,7 +206,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         player: PlayerId::new(0),
         workers: 0,
         drop_site: false,
-        gap: 1.2,
+        gap: Distance::new(1.2),
         state: ObjectState::Alive,
         radius: Footprint::new(0.5, 0.5),
     };
@@ -222,7 +223,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         ..Unit::default()
     });
     let build_task = crate::construction::build::BuildTask {
-        range: 0.0,
+        range: Distance::ZERO,
         work_value: 1.0,
         work_rate: 1.0,
         resource: None,
@@ -235,7 +236,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
             crate::construction::build::tests::started_on(
                 None,
                 Position::new(3.5, 3.5, 0.0),
-                1.0,
+                Distance::new(1.0),
                 build_task,
             ),
         )),
@@ -254,11 +255,11 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
                 crate::movement::move_to::WalkTo {
                     id: None,
                     at: Position::new(3.5, 3.5, 0.0),
-                    gap: crate::movement::move_to::NO_TARGET_GAP,
+                    gap: Distance::new(crate::movement::move_to::NO_TARGET_GAP),
                     state: None,
                 },
                 repair_task,
-                0.0,
+                Distance::ZERO,
                 &crate::movement::move_to::MoveToReads {
                     sprites: crate::movement::move_to::SpriteReads {
                         defaults: crate::movement::move_to::MoveDefaults::default(),
@@ -274,7 +275,8 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         )),
         ..Unit::default()
     });
-    let mut attack = crate::combat::attack::tests::own_attack(-1, AttackState::Done, 1.0);
+    let mut attack =
+        crate::combat::attack::tests::own_attack(-1, AttackState::Done, Distance::new(1.0));
     attack.arms.idle_sprite = Some(crate::objects::sprite::Graphic {
         id: 1,
         frames: 10,
@@ -363,7 +365,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             target_class: None,
             task: HuntTask {
                 id: TaskId::test(0),
-                range: 0.0,
+                range: Distance::ZERO,
                 resource: None,
                 sprites: [-1; 4],
                 work_value: 0.0,

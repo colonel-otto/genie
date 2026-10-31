@@ -7,6 +7,7 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, ClearingSite, EXTRA_BUILDER, FOREIGN_SITE,
     MAX_WAITS, SITE_GONE, WONDER_RATE, footprint_clearing,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::Tile;
@@ -370,7 +371,8 @@ impl BuildAction {
                 ))?;
         self.state = BuildState::Clear;
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
-        self.move_to = move_reads.to_point(spot.with_height(at.z()), 0.0, self.task.moving)?;
+        self.move_to =
+            move_reads.to_point(spot.with_height(at.z()), Distance::ZERO, self.task.moving)?;
         Ok(())
     }
 }

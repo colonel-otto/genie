@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::GroupId;
 use crate::groups::group_list::member_gone;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
+use crate::map::Distance;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -42,7 +43,7 @@ pub(crate) struct FormationUnit {
     pub(crate) hero_flag: u8,
     pub(crate) formation_category: u8,
     /// `FUN_141025920`: the unit's radius in a formation.
-    pub(crate) radius: f32,
+    pub(crate) radius: Distance,
 }
 
 impl FormationUnit {
@@ -61,7 +62,7 @@ impl FormationUnit {
             kind: master.kind,
             hero_flag: master.hero_flag,
             formation_category: master.formation_category,
-            radius,
+            radius: Distance::new(radius),
         }
     }
 }
@@ -126,8 +127,8 @@ impl UnitGroup {
             });
         let stat = self.unit_types.checked_mut(at)?;
         let spacing = unit.radius * SPACING_FACTOR;
-        if stat.desired_spacing < spacing {
-            stat.desired_spacing = spacing;
+        if stat.desired_spacing < spacing.get() {
+            stat.desired_spacing = spacing.get();
         }
         stat.units.push(id);
         count_unit_types(stat, masters_of, scratch);
@@ -411,8 +412,8 @@ impl World {
         });
         g.join_statistic(sub, id, unit, &masters_of, &mut scratch)?;
         let spacing = unit.radius * SPACING_FACTOR;
-        if g.desired_spacing < spacing {
-            g.desired_spacing = spacing;
+        if g.desired_spacing < spacing.get() {
+            g.desired_spacing = spacing.get();
         }
         g.flags |= 2;
         if g.motion.flags & 2 == 0 {

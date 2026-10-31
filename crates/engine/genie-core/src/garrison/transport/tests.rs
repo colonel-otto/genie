@@ -24,7 +24,7 @@ impl Shore for Coast {
         }))
     }
 
-    fn near(&mut self, _zone: u8, _reach: f32) -> Result<bool, GenieError> {
+    fn near(&mut self, _zone: u8, _reach: Distance) -> Result<bool, GenieError> {
         Ok(self.near)
     }
 
@@ -499,7 +499,11 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
     let sailing = |state: Option<MoveTo>| TransportAction {
         move_to: state.map(|state| MoveToAction {
             state,
-            ..MoveToAction::sub_to_point(Position::new(35.5, 88.5, 0.0), MOVE_RANGE, Some(graphic))
+            ..MoveToAction::sub_to_point(
+                Position::new(35.5, 88.5, 0.0),
+                Distance::new(MOVE_RANGE),
+                Some(graphic),
+            )
         }),
         point: Position::new(35.5, 88.5, 0.0),
         ..TransportAction::new(Position::new(28.0, 89.0, 0.0))

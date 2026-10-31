@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -270,9 +271,9 @@ fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
     let mut q = Query {
         from: [5 * ONE + ONE / 2, 5 * ONE + ONE / 2],
         to: [8 * ONE + ONE / 2, 5 * ONE + ONE / 2],
-        radius: 0.25,
+        radius: Distance::new(0.25),
         target_size: Footprint::new(0.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         blocked: 1,
     };
     let mut mesh = Mesh::new(16);
@@ -283,7 +284,7 @@ fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
     let n = mesh.shapes.len() as u32;
     assert!(0 < n && (0..n).all(|id| !mesh.is_shape(ShapeId::new(id))));
     assert!(!pather.start_blocked(&mut mesh, &free, &q).unwrap());
-    q.range = 3.0;
+    q.range = Distance::new(3.0);
     assert!(!pather.start_blocked(&mut mesh, &blocked, &q).unwrap());
 }
 
@@ -296,8 +297,8 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
     let call = |from: Point, target: Option<Target>| Call {
         from,
         to: Point::new(7.0, 5.0),
-        radius: 0.2,
-        range: 0.0,
+        radius: Distance::new(0.2),
+        range: Distance::ZERO,
         target,
         listed: Vec::new(),
         map: GridSize::new(16, 16),
@@ -338,9 +339,9 @@ fn around(walls: &[[f32; 4]], from: Point, to: Point, ignored: bool) -> (u8, Vec
     let q = Query {
         from: [fixed(from.x()), fixed(from.y())],
         to: [fixed(to.x()), fixed(to.y())],
-        radius: 0.25,
+        radius: Distance::new(0.25),
         target_size: Footprint::new(0.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         blocked: 0,
     };
     let ignore = if ignored { ids } else { Vec::new() };
@@ -454,11 +455,11 @@ fn a_path_past_staggered_walls_bends_only_at_their_corners() {
 }
 
 /// A query from (5, 5) to (7, 5) with a radius of a quarter tile and range `range`.
-fn range_query(range: f32) -> Query {
+fn range_query(range: Distance) -> Query {
     Query {
         from: [5 * ONE, 5 * ONE],
         to: [7 * ONE, 5 * ONE],
-        radius: 0.25,
+        radius: Distance::new(0.25),
         target_size: Footprint::new(0.0, 0.0),
         range,
         blocked: 0,
@@ -474,9 +475,9 @@ fn the_search_truncates_its_radius_and_range_to_fixed_point() {
     let below = f32::from_bits(1.75f32.to_bits() - 1);
     let mut mesh = Mesh::new(16);
     let mut pather = Pather::default();
-    let found = pather.search(&mut mesh, &words, &range_query(1.75), &[]);
+    let found = pather.search(&mut mesh, &words, &range_query(Distance::new(1.75)), &[]);
     assert_eq!(found.map(|f| f.result), Ok(0));
-    let found = pather.search(&mut mesh, &words, &range_query(below), &[]);
+    let found = pather.search(&mut mesh, &words, &range_query(Distance::new(below)), &[]);
     assert_eq!(found.map(|f| f.result), Ok(1));
 }
 

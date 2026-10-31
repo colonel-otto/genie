@@ -187,13 +187,13 @@ fn walk_ends(
         None => {
             let top = motion.paths.last().filter(|t| t.has_path);
             if level.path_flags & 1 == 0
-                && NEAR < level.range
+                && NEAR < level.range.get()
                 && let Some(top) = top
             {
                 let end = point(top, top.points.len() as i32 - 1);
                 let d = fmath::sub(at, end);
                 let gap = fmath::sqrt(d.height() * d.height() + d.x() * d.x() + d.y() * d.y());
-                if gap - level.range < EPSILON {
+                if gap - level.range.get() < EPSILON {
                     reset_level(&mut motion.paths)?;
                     motion.stand();
                     return Ok(Some(Pass::Done(true)));
@@ -207,7 +207,7 @@ fn walk_ends(
                 Position::new(at.x(), at.y(), 0.0),
                 Footprint::new(0.0, 0.0),
             );
-            if (gap - level.range).abs() < EPSILON {
+            if (gap - level.range).get().abs() < EPSILON {
                 return Ok(Some(Pass::Reached));
             }
         }

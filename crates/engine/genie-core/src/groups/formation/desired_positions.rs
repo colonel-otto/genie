@@ -7,6 +7,7 @@ use crate::groups::GroupId;
 use crate::groups::formation::EPSILON;
 use crate::groups::group_list::NO_FORMATION;
 use crate::groups::{Formation, UnitGroup};
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::math::fmath::{BVector, Rotation, add, sub};
 use crate::movement::PathData;
@@ -88,7 +89,7 @@ impl World {
             let min_column = formations.min_column_distance as f32;
             if g.current_target.target.key().is_some() {
                 column_to_line =
-                    column_to_line + g.current_target.target_radius + g.current_target.range;
+                    column_to_line + g.current_target.target_radius + g.current_target.range.get();
             }
             let remaining =
                 crate::math::fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
@@ -293,7 +294,11 @@ pub(super) fn transform_slot(
 /// The forward and right it also gives (the two points' halfway, normalized, `FUN_141027d00`)
 /// only reach the transform's log.
 #[must_use]
-pub fn find_point_from_front(line: &crate::groups::PointLine, distance: f32) -> Option<BVector> {
+pub fn find_point_from_front(
+    line: &crate::groups::PointLine,
+    distance: Distance,
+) -> Option<BVector> {
+    let distance = distance.get();
     if line.points.len() < 2 {
         return None;
     }

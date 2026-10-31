@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::garrison::EnterState;
 use crate::gathering::gather::unit::give_load;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
@@ -95,7 +96,12 @@ impl Unit {
                     );
                 (Some(view), start)
             }
-            None => (None, crate::garrison::WalkStart { gap: 0.0 }),
+            None => (
+                None,
+                crate::garrison::WalkStart {
+                    gap: Distance::ZERO,
+                },
+            ),
         };
         let master = self.master(&c.w.masters, c.player)?;
         let villager = master.class == class::VILLAGER;

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::{HuntAction, HuntReads};
+use crate::map::Distance;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, SpriteReads, TargetMoved, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::{Me, Mover};
@@ -44,7 +45,7 @@ impl HuntAction {
     pub(super) fn move_to_object(
         &self,
         to: WalkTo,
-        range: f32,
+        range: Distance,
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {

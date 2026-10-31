@@ -80,7 +80,7 @@ impl UnitAi {
                 made.set_idle_timeout(HUNTED_IDLE_TIMEOUT, ai);
                 made.hunted = Some(Hunted {
                     origin: new.position,
-                    leash: new.hunt_range,
+                    leash: new.hunt_range.get(),
                 });
                 if new.class == class::KING {
                     made.stance = UnitStance::AGGRESSIVE;

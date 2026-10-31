@@ -323,7 +323,7 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
 /// share lacking with `attribute_type4`), and the sum is at least 0.
 #[test]
 fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
-    let task = |object_group: i16, object_id: Option<MasterId>, range: f32, lacking: i16| {
+    let task = |object_group: i16, object_id: Option<MasterId>, range: Distance, lacking: i16| {
         crate::objects::masters::Task {
             action_type: BONUS_DAMAGE,
             object_group: crate::test_ids::class_of(object_group),
@@ -338,44 +338,44 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     let (mut sheep, mut hunter) = (sheep(), hunter());
     sheep.hp = 7.0;
     // any target below type 80: the sheep lacks half its hit points, two steps of 0.25
-    hunter.bonus_tasks = vec![task(-1, None, 1.0, 1)];
+    hunter.bonus_tasks = vec![task(-1, None, Distance::new(1.0), 1)];
     let steps = libm::floorf(0.5 / 0.25 + EPSILON);
     assert_eq!(bonus_damage(&hunter, &sheep), steps * 2.0);
     // the attacker's share (a work range of 0), whole: four steps
-    hunter.bonus_tasks = vec![task(-1, None, 0.0, 0)];
+    hunter.bonus_tasks = vec![task(-1, None, Distance::ZERO, 0)];
     assert_eq!(bonus_damage(&hunter, &sheep), 4.0 * 2.0);
     // by class or master; another class, master or action type adds nothing
     hunter.bonus_tasks = vec![
-        task(class::LIVESTOCK.get(), Some(ids::ID_0), 0.0, 0),
-        task(-1, Some(master_id(705)), 0.0, 0),
-        task(3, Some(ids::ID_0), 0.0, 0),
-        task(-1, Some(master_id(9)), 0.0, 0),
+        task(class::LIVESTOCK.get(), Some(ids::ID_0), Distance::ZERO, 0),
+        task(-1, Some(master_id(705)), Distance::ZERO, 0),
+        task(3, Some(ids::ID_0), Distance::ZERO, 0),
+        task(-1, Some(master_id(9)), Distance::ZERO, 0),
         crate::objects::masters::Task {
             action_type: crate::combat::abilities::REMOVAL_REWARD,
-            ..task(-1, None, 0.0, 0)
+            ..task(-1, None, Distance::ZERO, 0)
         },
     ];
     assert_eq!(bonus_damage(&hunter, &sheep), 16.0);
     // a building of another class than 51 and 54 needs its class or master
     let mut tc = sheep.clone();
     (tc.kind, tc.class) = (BUILDING, class::BUILDING);
-    hunter.bonus_tasks = vec![task(-1, None, 0.0, 0)];
+    hunter.bonus_tasks = vec![task(-1, None, Distance::ZERO, 0)];
     assert_eq!(bonus_damage(&hunter, &tc), 0.0);
     tc.class = class::CLASS_51;
     assert_eq!(bonus_damage(&hunter, &tc), 8.0);
     // no step, no target hit points, or a negative sum: 0
     hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val2: 0.0,
-        ..task(-1, None, 0.0, 0)
+        ..task(-1, None, Distance::ZERO, 0)
     }];
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
-    hunter.bonus_tasks = vec![task(-1, None, 0.0, 0)];
+    hunter.bonus_tasks = vec![task(-1, None, Distance::ZERO, 0)];
     sheep.hp = 0.0;
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
     sheep.hp = 7.0;
     hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val1: -3.0,
-        ..task(-1, None, 0.0, 0)
+        ..task(-1, None, Distance::ZERO, 0)
     }];
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
 }
@@ -445,18 +445,18 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     let shot = Shown {
         projectile: Some(&projectile),
         charge_event: 2,
-        range_powerup: 1.0,
+        range_powerup: Distance::new(1.0),
         ..Shown::default()
     };
     assert_eq!(shown_attack(&v, &shot), 9);
-    v.source.weapon_range = 4.0;
-    assert_eq!(shown_range(&v, &shot), 1.0 + (2.0 + 4.0));
+    v.source.weapon_range = Distance::new(4.0);
+    assert_eq!(shown_range(&v, &shot), Distance::new(1.0 + (2.0 + 4.0)));
     v.source.charge = 0.5;
     assert_eq!(shown_attack(&v, &shot), 4);
-    assert_eq!(shown_range(&v, &shot), 5.0);
+    assert_eq!(shown_range(&v, &shot), Distance::new(5.0));
     v.kind = master_type::RGE_COMBAT;
     v.source.charge = 1.0;
-    assert_eq!(shown_range(&v, &shot), 4.0);
+    assert_eq!(shown_range(&v, &shot), Distance::new(4.0));
     // the melee armor: its best of class 4 plus the powerup; a wall foundation none; type 50
     // without the powerup; else its best of any, else its base armor
     let mut a = hunter();
@@ -744,7 +744,7 @@ fn reflected_damage_comes_back_at_least_one() {
 #[test]
 fn a_blast_s_nan_paths_are_the_game_s() {
     let mut elephant = hunter();
-    elephant.source.area_effect = 1.0;
+    elephant.source.area_effect = Distance::new(1.0);
     elephant.source.blast_level = 0x42;
     elephant.source.area_damage = 0.5;
     elephant.weapons = vec![ClassAmount::new(4, 10)];
@@ -800,23 +800,23 @@ fn a_blast_s_nan_paths_are_the_game_s() {
     );
     assert_eq!(t.hp, 4.0);
     // no radius, no blast; a NaN radius blasts
-    elephant.source.area_effect = 0.0;
+    elephant.source.area_effect = Distance::ZERO;
     assert_eq!(
         blast(&mut elephant, center, None, None, &mut [], 1.0),
         Ok(false)
     );
-    elephant.source.area_effect = f32::NAN;
+    elephant.source.area_effect = Distance::new(f32::NAN);
     assert_eq!(
         blast(&mut elephant, center, None, None, &mut [], 1.0),
         Ok(true)
     );
     // CVTTSS2SI gives 0x80000000 past the i32 range: 0 in the low short
     assert_eq!(
-        blast_tiles(Position::new(3e9, 3e9, 0.0), 1.0),
+        blast_tiles(Position::new(3e9, 3e9, 0.0), Distance::new(1.0)),
         (Tile::new(0, 0), Tile::new(6, 6))
     );
     assert_eq!(
-        blast_tiles(Position::new(10.5, 4.5, 0.0), 1.0),
+        blast_tiles(Position::new(10.5, 4.5, 0.0), Distance::new(1.0)),
         (Tile::new(3, 0), Tile::new(17, 11))
     );
 }
@@ -826,7 +826,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
 #[test]
 fn a_blast_reaches_the_objects_about_its_attacker() {
     let mut elephant = hunter();
-    elephant.source.area_effect = 1.0;
+    elephant.source.area_effect = Distance::new(1.0);
     elephant.source.blast_level = 2;
     elephant.source.area_damage = 0.5;
     elephant.source.player = PlayerId::new(1);
@@ -1312,7 +1312,7 @@ fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
 #[test]
 fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     let mut mangonel = hunter();
-    mangonel.source.area_effect = 2.0;
+    mangonel.source.area_effect = Distance::new(2.0);
     mangonel.source.blast_level = 2;
     mangonel.source.area_damage = 0.5;
     mangonel.weapons = vec![ClassAmount::new(4, 10)];
@@ -1364,7 +1364,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
 #[test]
 fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
     let mut elephant = hunter();
-    elephant.source.area_effect = 1.0;
+    elephant.source.area_effect = Distance::new(1.0);
     elephant.source.blast_level = 2;
     elephant.source.area_damage = 0.5;
     elephant.source.player = PlayerId::new(1);
@@ -1709,16 +1709,16 @@ fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
 fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
     use crate::combat::damage::blasts::{Blast, blast_one, blast_tiles};
     let mut elephant = hunter();
-    elephant.source.area_effect = 1.0;
+    elephant.source.area_effect = Distance::new(1.0);
     elephant.source.blast_level = 2;
     elephant.source.area_damage = 0.5;
     let center = elephant.position;
     let blast = |a: Attacker| Blast {
         a,
         center,
-        r: 1.0,
-        wide: 0.0,
-        tiles: blast_tiles(center, 1.0),
+        r: Distance::new(1.0),
+        wide: Distance::ZERO,
+        tiles: blast_tiles(center, Distance::new(1.0)),
         spares_friends: true,
         exclude: Some(object_id(9)),
         main: None,

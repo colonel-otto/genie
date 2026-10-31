@@ -33,6 +33,7 @@
 //! hold.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::math::fmath;
 use crate::objects::ListIndex;
@@ -231,7 +232,7 @@ impl World {
                 return Ok(rewards);
             }
             for task in &tasks {
-                if task.action_type == REMOVAL_REWARD && task.work_range < EPSILON {
+                if task.action_type == REMOVAL_REWARD && task.work_range < Distance::new(EPSILON) {
                     let held = self.players.player(owner)?;
                     let multiplier = (task.attribute_type2).and_then(|a| held.attribute(a));
                     let cost = player_master(&self.masters, owner, own.id)

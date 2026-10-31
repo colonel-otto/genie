@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::GatherPoint;
 use crate::commands::GatherPointState;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::GroundOffset;
 use crate::map::Radii;
@@ -69,7 +70,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     let villager = crate::objects::masters::Master {
         id: ids::VILLAGER_MALE,
         class: class::VILLAGER,
-        line_of_sight: 4.0,
+        line_of_sight: Distance::new(4.0),
         ..crate::objects::masters::Master::default()
     };
     t.masters = vec![
@@ -501,7 +502,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         target: None,
         target_owner: None,
         point: Position::new(40.0, 80.0, 7.0),
-        range: 2.0,
+        range: Distance::new(2.0),
         shown: Point::new(40.0, 80.0),
         ready: false,
         target_type: None,
@@ -529,7 +530,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
             OrderKind::Move,
             100,
             Position::new(40.0, 80.0, 0.0),
-            0.0,
+            Distance::ZERO,
             true
         )]
     );
@@ -720,7 +721,7 @@ fn queued_move() -> crate::unit_ai::QueuedOrder {
         target: None,
         target_owner: None,
         point: Position::new(40.0, 80.0, 7.0),
-        range: 2.0,
+        range: Distance::new(2.0),
         shown: Point::new(40.0, 80.0),
         ready: false,
         target_type: None,
@@ -764,7 +765,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
             state: MoveTo::Start,
             point: Position::new(40.0, 80.0, 0.0),
             target: None,
-            range: 0.0,
+            range: Distance::ZERO,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: MoveWait::default(),

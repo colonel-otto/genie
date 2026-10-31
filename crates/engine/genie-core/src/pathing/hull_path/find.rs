@@ -2,6 +2,7 @@
 //! its rounds, and the path at their end.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Rect;
 use crate::map::TileRect;
 use crate::math::conversions::cvttss2si;
@@ -30,7 +31,7 @@ impl HullPather<'_> {
         from: Point,
         to: Point,
         target_id: Option<ObjectId>,
-        range: f32,
+        range: Distance,
     ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, false, false)
     }
@@ -46,7 +47,7 @@ impl HullPather<'_> {
         from: Point,
         to: Point,
         target_id: Option<ObjectId>,
-        range: f32,
+        range: Distance,
     ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, true, false)
     }
@@ -62,7 +63,7 @@ impl HullPather<'_> {
         from: Point,
         to: Point,
         target_id: Option<ObjectId>,
-        range: f32,
+        range: Distance,
     ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, false, true)
     }
@@ -76,7 +77,7 @@ impl HullPather<'_> {
         from: Point,
         to: Point,
         target_id: Option<ObjectId>,
-        range: f32,
+        range: Distance,
         keep: bool,
         quick_only: bool,
     ) -> Result<(u8, Waypoints), GenieError> {
@@ -100,11 +101,11 @@ impl HullPather<'_> {
         from: Point,
         to: Point,
         target_id: Option<ObjectId>,
-        range: f32,
+        range: Distance,
         keep: bool,
         quick_only: bool,
     ) -> Result<(u8, Waypoints, bool), GenieError> {
-        let r = self.radius;
+        let r = self.radius.get();
         let mut path = Waypoints::default();
         if !keep {
             self.area = NO_AREA;
@@ -164,7 +165,7 @@ impl HullPather<'_> {
         to: Point,
         target_id: Option<ObjectId>,
     ) -> Result<bool, GenieError> {
-        let r = self.radius;
+        let r = self.radius.get();
         let (w, h) = (self.world.map.width(), self.world.map.height());
         self.bounds = Rect::new(r, r, w as f32 - r, h as f32 - r);
         let (bx1, by1) = (self.bounds.x1(), self.bounds.y1());
@@ -183,7 +184,7 @@ impl HullPather<'_> {
         from: Point,
         to: Point,
         target_id: Option<ObjectId>,
-        range: f32,
+        range: Distance,
     ) -> Result<HullQuery, GenieError> {
         let mut target_id = target_id;
         // the game tests the id's sign: a recyclable object's id is no target either
@@ -218,11 +219,12 @@ impl HullPather<'_> {
         let straight = sqrt(
             (from.y() - to.y()) * (from.y() - to.y()) + (from.x() - to.x()) * (from.x() - to.x()),
         );
+        let radius = self.radius.get();
         let gap = q
             .target
             .as_ref()
-            .map_or(straight - self.radius, |t| self.target_gap(t, from));
-        (from.x() == to.x() && from.y() == to.y()) || gap <= q.range
+            .map_or(straight - radius, |t| self.target_gap(t, from).get());
+        (from.x() == to.x() && from.y() == to.y()) || gap <= q.range.get()
     }
 
     /// The quick path's goal: without a range (or with a target off the goal) the goal, short of
@@ -230,7 +232,7 @@ impl HullPather<'_> {
     /// moved on by the range along the walk.
     fn quick_goal(&self, q: &HullQuery) -> Point {
         let (from, to, r) = (q.from, q.to, self.radius);
-        if q.range != 0.0
+        if q.range != Distance::ZERO
             && !q
                 .target
                 .as_ref()
@@ -239,7 +241,7 @@ impl HullPather<'_> {
             let v = [to.x() - from.x(), to.y() - from.y(), 0.0];
             let len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
             let (ux, uy) = (v[0] / len, v[1] / len);
-            return Point::new(ux * q.range + to.x(), uy * q.range + to.y());
+            return Point::new(ux * q.range.get() + to.x(), uy * q.range.get() + to.y());
         }
         let mut goal = to;
         if let Some(t) = q.target.as_ref()
@@ -251,8 +253,8 @@ impl HullPather<'_> {
             if t.speed != 0.0 || d <= NEAR_TARGET {
                 let len = sqrt(d);
                 goal = Point::new(
-                    goal.x() - (dx / len) * (r + t.radius.x()),
-                    goal.y() - (dy / len) * (r + t.radius.y()),
+                    goal.x() - (dx / len) * (r.get() + t.radius.x()),
+                    goal.y() - (dy / len) * (r.get() + t.radius.y()),
                 );
             }
         }

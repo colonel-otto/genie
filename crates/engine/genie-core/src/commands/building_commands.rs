@@ -5,6 +5,7 @@ use crate::commands::GatherPointState;
 use crate::commands::gather_point::GatherPointCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ListIndex;
@@ -193,7 +194,7 @@ impl World {
                 target,
                 target_owner: owner,
                 point: at.with_height(-1.0),
-                range: 0.0,
+                range: Distance::ZERO,
                 shown: Point::new(-1.0, -1.0),
                 ready: false,
                 target_type: class,

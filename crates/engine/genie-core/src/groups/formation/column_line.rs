@@ -7,6 +7,7 @@ use crate::groups::SlotState;
 use crate::groups::formation::{CATEGORIES, EPSILON, FLANK_SPACING, STAGGER_SHARE, TWO};
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
+use crate::map::Distance;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{BVector, add, scale, sub};
 use crate::world::World;
@@ -243,7 +244,7 @@ struct Style {
 struct Cursor {
     line_index: i32,
     slot_index: i32,
-    distance_back: f32,
+    distance_back: Distance,
     last_spacing: f32,
     used_slots: usize,
 }
@@ -302,8 +303,11 @@ fn lay_category(
     if style.staggered {
         single = BVector::new(single.x() * TWO, single.height() * TWO, single.y() * TWO);
     }
-    if EPSILON < at.distance_back && EPSILON < at.last_spacing && at.last_spacing < cat.spacing {
-        at.distance_back += cat.spacing - at.last_spacing;
+    if EPSILON < at.distance_back.get()
+        && EPSILON < at.last_spacing
+        && at.last_spacing < cat.spacing
+    {
+        at.distance_back += Distance::new(cat.spacing - at.last_spacing);
     }
     for in_category in 0..lines {
         let mut actual = columns;
@@ -331,7 +335,7 @@ fn lay_category(
         } else {
             cat.spacing
         };
-        at.distance_back += at.last_spacing;
+        at.distance_back += Distance::new(at.last_spacing);
     }
     Ok(())
 }

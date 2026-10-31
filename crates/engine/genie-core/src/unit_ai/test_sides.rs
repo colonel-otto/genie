@@ -3,6 +3,7 @@
 //! standing for a side without a unit, and [`With`] around another test side.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -238,7 +239,7 @@ impl UnitSide for With<'_> {
         self.side.foundation_search()
     }
 
-    fn reaches(&mut self, target: ObjectId, range: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, target: ObjectId, range: Distance) -> Result<bool, GenieError> {
         self.side.reaches(target, range)
     }
 

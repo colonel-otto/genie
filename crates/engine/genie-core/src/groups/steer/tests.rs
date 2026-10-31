@@ -234,7 +234,7 @@ fn a_member_s_own_move_is_set_or_ended() {
             goal: BVector::new(1.0, 2.0, 3.0),
             timer: Seconds::new(3.0),
             consecutive_move_failures: 4,
-            distance: 2.5,
+            distance: Distance::new(2.5),
             last_position: BVector::new(5.0, 0.0, 5.0),
         }
     );
@@ -307,7 +307,11 @@ fn a_member_in_place_or_failing_too_often() {
     assert_eq!((own.active, own.path_id, own.reason), (1, -1, ASIDE));
     assert_eq!(
         (own.goal, own.timer, own.distance),
-        (BVector::new(5.0, 0.0, 5.0), Seconds::new(0.1), 0.0)
+        (
+            BVector::new(5.0, 0.0, 5.0),
+            Seconds::new(0.1),
+            Distance::ZERO
+        )
     );
     assert_eq!(own.consecutive_move_failures, 11);
     assert_eq!(g.flags & 0x200, 0x200);
@@ -556,7 +560,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
             own.distance,
             own.consecutive_move_failures
         ),
-        (1, 0, Seconds::new(3.0), 3.0, 1)
+        (1, 0, Seconds::new(3.0), Distance::new(3.0), 1)
     );
     assert_eq!(state(&t, 0), SlotState::Steering);
     // the update's list ignored: clear
@@ -614,7 +618,7 @@ fn the_members_moves_end_wait_or_stop() {
             path_id: 3,
             reason: 0,
             timer: Seconds::new(1.0),
-            distance: 2.0,
+            distance: Distance::new(2.0),
             ..SpecificMove::default()
         };
     }
@@ -647,7 +651,7 @@ fn the_members_moves_end_wait_or_stop() {
     g.members[1].specific_move = SpecificMove {
         active: 1,
         timer: Seconds::new(1.0),
-        distance: 0.0,
+        distance: Distance::ZERO,
         ..SpecificMove::default()
     };
     assert_eq!(t2.members_to_slots(group_id(1), &[object_id(50)]), Ok(()));
@@ -667,7 +671,7 @@ fn rounder(at: BVector) -> detour::Rounder<'static> {
         id: object_id(10),
         walker: crate::movement::Walker {
             id: object_id(10),
-            radius: 0.1,
+            radius: Distance::new(0.1),
             restriction: RestrictionId::named(0),
             mask: TerrainMask::of_bits(2),
         },
@@ -676,7 +680,7 @@ fn rounder(at: BVector) -> detour::Rounder<'static> {
         here: at.position(),
         mask: TerrainMask::of_bits(2),
         restriction: RestrictionId::named(0),
-        grow: 0.1,
+        grow: Distance::new(0.1),
         radius: Footprint::new(0.2, 0.2),
         height: 0.5,
         solid: true,
@@ -729,17 +733,25 @@ fn a_way_round_that_ends_farther_than_the_gap_falls_short() {
     use detour::ends_farther;
     let mut way = Path::default();
     let _ = way.push(BVector::new(9.0, 3.0, 5.0));
-    assert!(ends_farther(&way, BVector::new(10.0, 0.0, 5.0), 0.5));
-    assert!(!ends_farther(&way, BVector::new(10.0, 0.0, 5.0), 1.5));
+    assert!(ends_farther(
+        &way,
+        BVector::new(10.0, 0.0, 5.0),
+        Distance::new(0.5)
+    ));
+    assert!(!ends_farther(
+        &way,
+        BVector::new(10.0, 0.0, 5.0),
+        Distance::new(1.5)
+    ));
     assert!(ends_farther(
         &Path::default(),
         BVector::new(3.0, 0.0, 4.0),
-        4.9
+        Distance::new(4.9)
     ));
     assert!(!ends_farther(
         &Path::default(),
         BVector::new(3.0, 0.0, 4.0),
-        5.0
+        Distance::new(5.0)
     ));
 }
 

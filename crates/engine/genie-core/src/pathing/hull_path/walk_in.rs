@@ -139,10 +139,10 @@ impl HullPather<'_> {
             Some(t) => {
                 let r = self.radius;
                 Rect::new(
-                    (t.at.x() - t.radius.x()) - r,
-                    (t.at.y() - t.radius.y()) - r,
-                    t.at.x() + t.radius.x() + r,
-                    t.at.y() + t.radius.y() + r,
+                    (t.at.x() - t.radius.x()) - r.get(),
+                    (t.at.y() - t.radius.y()) - r.get(),
+                    t.at.x() + t.radius.x() + r.get(),
+                    t.at.y() + t.radius.y() + r.get(),
                 )
             }
         };

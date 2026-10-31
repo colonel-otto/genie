@@ -7,6 +7,7 @@ use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
+use crate::map::Distance;
 use crate::map::spatial::RecordId;
 use crate::map::{GroundOffset, Point};
 use crate::math::fmath::BVector;
@@ -279,7 +280,7 @@ impl World {
             if self.spatial.point_clear_among(
                 lead.id(),
                 centre.ground(),
-                FRONT_SHARE * master.radius.x(),
+                Distance::new(FRONT_SHARE * master.radius.x()),
                 mask,
                 &members,
             )? {

@@ -181,9 +181,21 @@ const fn walk(x0: f32, y0: f32, x1: f32, y1: f32) -> Segment {
 #[test]
 fn a_walk_meets_a_box_by_its_sides_or_from_inside() {
     let b = Rect::new(0.0, 0.0, 1.0, 1.0);
-    assert!(box_meets_segment(b, 0.0, walk(f32::NAN, 0.5, 5.0, 5.0)));
-    assert!(box_meets_segment(b, 0.0, walk(0.5, 0.5, 0.6, 0.6)));
-    assert!(!box_meets_segment(b, 0.0, walk(3.0, 3.0, 5.0, 5.0)));
+    assert!(box_meets_segment(
+        b,
+        Distance::ZERO,
+        walk(f32::NAN, 0.5, 5.0, 5.0)
+    ));
+    assert!(box_meets_segment(
+        b,
+        Distance::ZERO,
+        walk(0.5, 0.5, 0.6, 0.6)
+    ));
+    assert!(!box_meets_segment(
+        b,
+        Distance::ZERO,
+        walk(3.0, 3.0, 5.0, 5.0)
+    ));
 }
 
 /// `FUN_141051630` (and `FUN_141053130`): a circle record's box is read as it stands, so a
@@ -195,19 +207,19 @@ fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
     assert!(record_meets_segment(
         ObstructionType::TYPE_2,
         b,
-        0.0,
+        Distance::ZERO,
         inside
     ));
     assert!(!record_meets_segment(
         ObstructionType::CIRCLE,
         b,
-        0.0,
+        Distance::ZERO,
         inside
     ));
     assert!(record_meets_segment(
         ObstructionType::CIRCLE,
         Rect::new(1.0, 0.0, 2.0, 1.0),
-        0.0,
+        Distance::ZERO,
         inside
     ));
     // grown, the edges and the inside tests take the grow on the box as it stands: the
@@ -215,19 +227,19 @@ fn a_circle_record_s_box_is_read_unordered_and_another_s_ordered() {
     assert!(!record_meets_segment(
         ObstructionType::CIRCLE,
         b,
-        0.25,
+        Distance::new(0.25),
         inside
     ));
     assert!(record_meets_segment(
         ObstructionType::CIRCLE,
         b,
-        0.25,
+        Distance::new(0.25),
         walk(1.0, 0.5, 1.5, 0.5)
     ));
     assert!(record_meets_segment(
         ObstructionType::TYPE_2,
         b,
-        0.25,
+        Distance::new(0.25),
         inside
     ));
 }
@@ -292,14 +304,14 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     let villagers = [class::VILLAGER];
     let look = |at| Search {
         at,
-        radius: 3.0,
+        radius: Distance::new(3.0),
         classes: &villagers,
         size: Footprint::new(0.2, 0.2),
         pick: Pick::Look,
         memory: crate::unit_ai::Memory::default(),
     };
     let mut never = crate::unit_ai::NoAttack;
-    let mut reach = |_: &mut Spatial, _: ObjectId, _: f32| Ok(true);
+    let mut reach = |_: &mut Spatial, _: ObjectId, _: Distance| Ok(true);
     let still = |_: ObjectId| false;
     let none = |_: &Placed| Ok(false);
     let no_farm = |_: ObjectId| None;
@@ -360,12 +372,22 @@ fn a_rectangle_leaving_the_map_meets_the_edge_records_where_its_diagonal_crosses
     );
     // a unit of radius 0.3 cannot stand 0.2 from the edge
     assert!(
-        !s.point_clear(object_id(1), Point::new(0.2, 50.0), 0.3, TerrainMask::ALL)
-            .unwrap()
+        !s.point_clear(
+            object_id(1),
+            Point::new(0.2, 50.0),
+            Distance::new(0.3),
+            TerrainMask::ALL
+        )
+        .unwrap()
     );
     assert!(
-        s.point_clear(object_id(1), Point::new(0.4, 50.0), 0.3, TerrainMask::ALL)
-            .unwrap()
+        s.point_clear(
+            object_id(1),
+            Point::new(0.4, 50.0),
+            Distance::new(0.3),
+            TerrainMask::ALL
+        )
+        .unwrap()
     );
 }
 
@@ -383,8 +405,13 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     );
     s.insert(object_id(7), villager(4.0, 5.0));
     let line = |s: &Spatial, ignore: &[RecordId]| {
-        s.still_line_hit(Point::new(1.0, 5.0), Point::new(8.0, 5.0), 0.0, ignore)
-            .unwrap()
+        s.still_line_hit(
+            Point::new(1.0, 5.0),
+            Point::new(8.0, 5.0),
+            Distance::ZERO,
+            ignore,
+        )
+        .unwrap()
     };
     assert!(line(&s, &[]));
     assert!(!line(&s, &[RecordId::from(object_id(7))]));
@@ -398,29 +425,39 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     assert!(!line(&s, &[]));
     // the class-2 tile (7, 2) once its record is put, for a mask that lacks its class
     let across = |s: &Spatial| {
-        s.still_line_hit(Point::new(7.5, 1.0), Point::new(7.5, 4.0), 0.0, &[])
-            .unwrap()
+        s.still_line_hit(
+            Point::new(7.5, 1.0),
+            Point::new(7.5, 4.0),
+            Distance::ZERO,
+            &[],
+        )
+        .unwrap()
     };
     assert!(!across(&s));
     s.put_tile_records(
         Point::new(6.0, 1.0),
         Point::new(8.0, 3.0),
-        0.0,
+        Distance::ZERO,
         TerrainMask::of_bits(3),
     );
     assert!(!across(&s));
     s.put_tile_records(
         Point::new(6.0, 1.0),
         Point::new(8.0, 3.0),
-        0.0,
+        Distance::ZERO,
         TerrainMask::of_bits(1),
     );
     assert!(across(&s));
     s.clear_tile_records();
     assert!(!across(&s));
     assert!(
-        s.still_line_hit(Point::new(1.0, 5.0), Point::new(10.5, 5.0), 0.0, &[])
-            .unwrap()
+        s.still_line_hit(
+            Point::new(1.0, 5.0),
+            Point::new(10.5, 5.0),
+            Distance::ZERO,
+            &[]
+        )
+        .unwrap()
     );
     // a line 0.3 beside the standing villager (radius 0.2): met only with a buffer of 0.2
     let mut t = Spatial::with_tiles(
@@ -429,12 +466,22 @@ fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
     );
     t.insert(object_id(8), villager(4.0, 5.0));
     assert!(
-        !t.still_line_hit(Point::new(1.0, 5.3), Point::new(8.0, 5.3), 0.0, &[])
-            .unwrap()
+        !t.still_line_hit(
+            Point::new(1.0, 5.3),
+            Point::new(8.0, 5.3),
+            Distance::ZERO,
+            &[]
+        )
+        .unwrap()
     );
     assert!(
-        t.still_line_hit(Point::new(1.0, 5.3), Point::new(8.0, 5.3), 0.2, &[])
-            .unwrap()
+        t.still_line_hit(
+            Point::new(1.0, 5.3),
+            Point::new(8.0, 5.3),
+            Distance::new(0.2),
+            &[]
+        )
+        .unwrap()
     );
 }
 
@@ -454,7 +501,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         !s.point_clear_among(
             object_id(1),
             Point::new(4.0, 6.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[]
         )
@@ -464,7 +511,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         s.point_clear_among(
             object_id(1),
             Point::new(4.0, 6.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[object_id(3), object_id(7)]
         )
@@ -474,7 +521,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         s.point_clear_among(
             object_id(7),
             Point::new(4.0, 6.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[]
         )
@@ -484,7 +531,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         !s.point_clear_among(
             object_id(7),
             Point::new(4.0, 6.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[object_id(3)]
         )
@@ -495,7 +542,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         !s.point_clear_among(
             object_id(7),
             Point::new(4.5, 5.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[]
         )
@@ -505,7 +552,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         s.point_clear_among(
             object_id(7),
             Point::new(4.5, 5.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(3),
             &[]
         )
@@ -515,7 +562,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         !s.point_clear_among(
             object_id(7),
             Point::new(-0.5, 5.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(3),
             &[]
         )
@@ -526,7 +573,7 @@ fn a_point_is_clear_among_the_ignored_objects() {
         !s.point_clear_among(
             object_id(7),
             Point::new(f32::NAN, 5.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[]
         )
@@ -553,7 +600,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
         .line_query(
             Point::new(2.0, 5.5),
             Point::new(8.0, 5.5),
-            0.2,
+            Distance::new(0.2),
             Some(TerrainMask::of_bits(1)),
             &[],
         )
@@ -573,7 +620,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
         .line_query(
             Point::new(2.0, 5.5),
             Point::new(8.0, 5.5),
-            0.2,
+            Distance::new(0.2),
             None,
             &[RecordId::from(object_id(7))],
         )
@@ -584,14 +631,14 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
     s.put_tile_records(
         Point::new(5.5, 5.5),
         Point::new(5.5, 5.5),
-        0.0,
+        Distance::ZERO,
         TerrainMask::of_bits(1),
     );
     let kept = s
         .line_query(
             Point::new(2.0, 5.5),
             Point::new(8.0, 5.5),
-            0.2,
+            Distance::new(0.2),
             None,
             &[RecordId::from(object_id(7))],
         )
@@ -601,7 +648,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
         .line_hits(
             Point::new(2.0, 5.5),
             Point::new(8.0, 5.5),
-            0.2,
+            Distance::new(0.2),
             false,
             &[RecordId::from(object_id(7))],
         )
@@ -612,7 +659,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
         .line_query(
             Point::new(0.1, 5.5),
             Point::new(3.0, 5.5),
-            0.2,
+            Distance::new(0.2),
             None,
             &[RecordId::from(object_id(7))],
         )
@@ -654,14 +701,17 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
         GridSize::new(10, 10),
         Tiles::new(crate::map::GridSize::new(10, 10), classes),
     );
-    assert_eq!((s.manager_buffer(), s.manager_grow()), (None, 0.0));
+    assert_eq!(
+        (s.manager_buffer(), s.manager_grow()),
+        (None, Distance::ZERO)
+    );
     s.set_manager_buffer(Some(0.1));
-    assert_eq!(s.manager_grow(), 0.1);
+    assert_eq!(s.manager_grow(), Distance::new(0.1));
     assert!(
         s.point_clear(
             object_id(1),
             Point::new(6.5, 6.5),
-            0.2,
+            Distance::new(0.2),
             TerrainMask::of_bits(1)
         )
         .unwrap()
@@ -673,7 +723,7 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
             start: Point::new(2.0, 2.0),
             end: Point::new(3.0, 2.0),
             rect: Rect::new(2.0, 2.0, 3.0, 2.0),
-            grow: 0.2,
+            grow: Distance::new(0.2),
             ally_factor: 1.0,
             player: None,
             ignore: &[],
@@ -681,19 +731,28 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
         .unwrap();
     assert_eq!(s.manager_buffer(), None);
     // a point query near tile (4, 5) meets its record once it is put, within the grow
-    assert!(!s.point_hit(Point::new(3.95, 5.5), 0.1, &[], true).unwrap());
+    assert!(
+        !s.point_hit(Point::new(3.95, 5.5), Distance::new(0.1), &[], true)
+            .unwrap()
+    );
     s.put_tile_records(
         Point::new(4.5, 5.5),
         Point::new(4.5, 5.5),
-        0.0,
+        Distance::ZERO,
         TerrainMask::of_bits(1),
     );
-    assert!(s.point_hit(Point::new(3.95, 5.5), 0.1, &[], true).unwrap());
-    assert!(!s.point_hit(Point::new(3.85, 5.5), 0.1, &[], true).unwrap());
+    assert!(
+        s.point_hit(Point::new(3.95, 5.5), Distance::new(0.1), &[], true)
+            .unwrap()
+    );
+    assert!(
+        !s.point_hit(Point::new(3.85, 5.5), Distance::new(0.1), &[], true)
+            .unwrap()
+    );
     assert!(
         !s.point_hit(
             Point::new(3.95, 5.5),
-            0.1,
+            Distance::new(0.1),
             &[tile_record_id(Tile::new(4, 5))],
             true
         )
@@ -704,7 +763,7 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
         !s.point_clear_among(
             object_id(1),
             Point::new(3.95, 5.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[]
         )
@@ -715,7 +774,7 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
         s.point_clear_among(
             object_id(1),
             Point::new(3.95, 5.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::of_bits(1),
             &[]
         )
@@ -736,7 +795,7 @@ fn a_walk_past_the_maps_edge_meets_its_record_first() {
             start: from,
             end: to,
             rect,
-            grow: 0.2,
+            grow: Distance::new(0.2),
             ally_factor: 1.0,
             player: Some(PlayerId::new(2)),
             ignore: &[],
@@ -769,18 +828,18 @@ fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstruct
     // 9177's first step: from (28, 89) toward (28.0143, 88.9928), grown by its radius
     let step = Rect::new(28.0, 88.99284, 28.01431, 89.0);
     assert_eq!(
-        s.obstruction_candidates(step, 0.2, &[RecordId::from(object_id(9177))]),
+        s.obstruction_candidates(step, Distance::new(0.2), &[RecordId::from(object_id(9177))]),
         Vec::new()
     );
     assert_eq!(
-        s.obstruction_candidates(step, 0.2, &[]),
+        s.obstruction_candidates(step, Distance::new(0.2), &[]),
         vec![object_id(9177)]
     );
     // 9175's box grown by 0.2 starts at x 29.6
     assert_eq!(
         s.obstruction_candidates(
             Rect::new(29.0, 89.0, 29.59, 89.0),
-            0.2,
+            Distance::new(0.2),
             &[RecordId::from(object_id(9177))]
         ),
         Vec::new()
@@ -788,7 +847,7 @@ fn a_query_finds_the_boxes_its_rectangle_meets_but_not_the_ignored_or_unobstruct
     assert_eq!(
         s.obstruction_candidates(
             Rect::new(29.0, 89.0, 29.61, 89.0),
-            0.2,
+            Distance::new(0.2),
             &[RecordId::from(object_id(9177))]
         ),
         vec![object_id(9175)]
@@ -816,9 +875,15 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     s.insert(object_id(13594), bush);
     assert_eq!(s.filed(&bush, ObstructionType::TYPE_2), (5, 3, 19));
     let (from, to) = (Point::new(32.25, 154.59375), Point::new(32.5, 151.5));
-    assert!(!s.segment_blocked(from, to, 0.25, TerrainMask::ALL, &[]));
+    assert!(!s.segment_blocked(from, to, Distance::new(0.25), TerrainMask::ALL, &[]));
     // a start a hair to the left visits tile 31's cell: the box blocks
-    assert!(s.segment_blocked(Point::new(32.2, 154.59375), to, 0.25, TerrainMask::ALL, &[]));
+    assert!(s.segment_blocked(
+        Point::new(32.2, 154.59375),
+        to,
+        Distance::new(0.25),
+        TerrainMask::ALL,
+        &[]
+    ));
     // off a half tile, the box's far edge is its tile: (31.6 ± 0.5) spans tiles 31 and 32,
     // which share only level 2's cells of 64 tiles
     bush.position = Position::new(31.6, 154.5, 0.0);
@@ -936,7 +1001,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             start: from,
             end: to,
             rect,
-            grow: 0.25,
+            grow: Distance::new(0.25),
             ally_factor: 0.5,
             player: Some(PlayerId::new(2)),
             ignore: &[]
@@ -951,7 +1016,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             start: longer.0,
             end: longer.1,
             rect,
-            grow: 0.4,
+            grow: Distance::new(0.4),
             ally_factor: 1.0,
             player: Some(PlayerId::new(2)),
             ignore: &[]
@@ -963,7 +1028,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             start: longer.0,
             end: longer.1,
             rect,
-            grow: 0.4,
+            grow: Distance::new(0.4),
             ally_factor: 1.0,
             player: Some(PlayerId::new(2)),
             ignore: &[RecordId::from(object_id(9175))]
@@ -983,7 +1048,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             start: longer.0,
             end: longer.1,
             rect,
-            grow: 0.4,
+            grow: Distance::new(0.4),
             ally_factor: 0.5,
             player: Some(PlayerId::new(2)),
             ignore: &[]
@@ -997,7 +1062,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
             start: longer.0,
             end: longer.1,
             rect,
-            grow: 0.4,
+            grow: Distance::new(0.4),
             ally_factor: 0.5,
             player: Some(PlayerId::new(1)),
             ignore: &[]
@@ -1218,7 +1283,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
             Tile::new(29, 89),
             TerrainMask::of_bits(6),
             object_id(1),
-            0.2
+            Distance::new(0.2)
         ),
         Ok(true)
     );
@@ -1227,7 +1292,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
             Tile::new(29, 89),
             TerrainMask::of_bits(1),
             object_id(1),
-            0.2
+            Distance::new(0.2)
         ),
         Ok(false)
     );
@@ -1236,7 +1301,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
             Tile::new(-1, 89),
             TerrainMask::of_bits(6),
             object_id(1),
-            0.2
+            Distance::new(0.2)
         ),
         Ok(false)
     );
@@ -1252,7 +1317,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
             Tile::new(29, 90),
             TerrainMask::of_bits(6),
             object_id(1),
-            0.2
+            Distance::new(0.2)
         ),
         Ok(false)
     );
@@ -1553,14 +1618,14 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     assert!(s.segment_blocked(
         Point::new(4.0, 8.0),
         Point::new(12.0, 8.0),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(1),
         &[]
     ));
     assert!(!s.segment_blocked(
         Point::new(4.0, 11.0),
         Point::new(12.0, 11.0),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(1),
         &[]
     ));
@@ -1568,14 +1633,14 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     assert!(s.segment_blocked(
         Point::new(4.0, 9.1),
         Point::new(12.0, 9.1),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(1),
         &[]
     ));
     assert!(!s.segment_blocked(
         Point::new(4.0, 8.0),
         Point::new(12.0, 8.0),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(1),
         &[RecordId::from(object_id(7))]
     ));
@@ -1584,7 +1649,7 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     assert!(!s.segment_blocked(
         Point::new(4.0, 3.0),
         Point::new(12.0, 3.0),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(1),
         &[]
     ));
@@ -1601,14 +1666,14 @@ fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
     assert!(s.segment_blocked(
         Point::new(2.0, 5.5),
         Point::new(14.0, 5.5),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(1),
         &[]
     ));
     assert!(!s.segment_blocked(
         Point::new(2.0, 5.5),
         Point::new(14.0, 5.5),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(3),
         &[]
     ));
@@ -1616,7 +1681,7 @@ fn a_walk_meets_a_tile_whose_terrain_the_unit_cannot_cross() {
     assert!(s.segment_blocked(
         Point::new(0.1, 5.5),
         Point::new(14.0, 5.5),
-        0.2,
+        Distance::new(0.2),
         TerrainMask::of_bits(3),
         &[]
     ));
@@ -1782,39 +1847,60 @@ fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
         (Point::new(77.5, 91.5), Point::new(76.5, 92.5)),
     );
     // alone, the second walk's tiles stop at y = 91 and its test removes its records
-    assert!(!s.segment_blocked(second.0, second.1, 0.5, TerrainMask::of_bits(1), &[]));
+    assert!(!s.segment_blocked(
+        second.0,
+        second.1,
+        Distance::new(0.5),
+        TerrainMask::of_bits(1),
+        &[]
+    ));
     assert_eq!(s.tile_records(), Vec::<Tile>::new());
-    s.put_tile_records(first.0, first.1, 0.5, TerrainMask::of_bits(1));
+    s.put_tile_records(
+        first.0,
+        first.1,
+        Distance::new(0.5),
+        TerrainMask::of_bits(1),
+    );
     assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
-    assert!(s.segment_meets(second.0, second.1, 0.5, &[]));
+    assert!(s.segment_meets(second.0, second.1, Distance::new(0.5), &[]));
     // the record's id in the ignore list leaves it out
     assert!(!s.segment_meets(
         second.0,
         second.1,
-        0.5,
+        Distance::new(0.5),
         &[tile_record_id(Tile::new(78, 90))]
     ));
     // a tile that holds a record takes no second
     s.put_tile_records(
         second.0,
         Point::new(79.0, 89.0),
-        0.5,
+        Distance::new(0.5),
         TerrainMask::of_bits(1),
     );
     assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
     s.clear_tile_records();
-    assert!(!s.segment_meets(second.0, second.1, 0.5, &[]));
+    assert!(!s.segment_meets(second.0, second.1, Distance::new(0.5), &[]));
     // tile (78, 87)'s grown box touches (77.5, 88.5), but its cell (y 80..87) is not one the
     // walk from y 88.5 visits (y from 88)
     s.put_tile_records(
         Point::new(78.5, 86.5),
         Point::new(78.5, 87.5),
-        0.0,
+        Distance::ZERO,
         TerrainMask::of_bits(1),
     );
     assert_eq!(s.tile_records(), vec![Tile::new(78, 87)]);
-    assert!(!s.segment_meets(Point::new(77.5, 88.5), Point::new(76.5, 89.5), 0.5, &[]));
-    assert!(s.segment_meets(Point::new(77.5, 88.0), Point::new(76.5, 89.5), 0.5, &[]));
+    assert!(!s.segment_meets(
+        Point::new(77.5, 88.5),
+        Point::new(76.5, 89.5),
+        Distance::new(0.5),
+        &[]
+    ));
+    assert!(s.segment_meets(
+        Point::new(77.5, 88.0),
+        Point::new(76.5, 89.5),
+        Distance::new(0.5),
+        &[]
+    ));
     s.clear_tile_records();
     assert_eq!(s.tile_records(), Vec::<Tile>::new());
 }
@@ -1859,7 +1945,7 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
     };
     s.insert(object_id(9365), tree);
     s.freeze(object_id(9365));
-    s.reach = 1.0;
+    s.reach = Distance::new(1.0);
     let near = Rect::new(24.0, 37.0, 24.6, 38.0);
     assert!(s.check_known(near).is_ok());
     // a stopped villager 10 tiles off, 0.8 tiles a second
@@ -1887,7 +1973,7 @@ fn the_manager_keeps_the_last_ignore_list_set() {
             start: Point::new(2.0, 5.0),
             end: Point::new(3.0, 5.0),
             rect,
-            grow: 0.2,
+            grow: Distance::new(0.2),
             ally_factor: 1.0,
             player: None,
             ignore: &[RecordId::from(object_id(7)), RecordId::from(object_id(8))],
@@ -1898,15 +1984,20 @@ fn the_manager_keeps_the_last_ignore_list_set() {
         [RecordId::from(object_id(7)), RecordId::from(object_id(8))]
     );
     assert!(
-        s.point_clear(object_id(3), Point::new(4.5, 4.5), 0.1, TerrainMask::ALL)
-            .unwrap()
+        s.point_clear(
+            object_id(3),
+            Point::new(4.5, 4.5),
+            Distance::new(0.1),
+            TerrainMask::ALL
+        )
+        .unwrap()
     );
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(3))]);
     assert!(
         s.point_clear_among(
             object_id(4),
             Point::new(4.5, 4.5),
-            0.1,
+            Distance::new(0.1),
             TerrainMask::ALL,
             &[]
         )
@@ -1915,15 +2006,23 @@ fn the_manager_keeps_the_last_ignore_list_set() {
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(4))]);
     // a point off the map's tiles sets nothing
     assert!(
-        !s.point_clear(object_id(5), Point::new(-1.0, 4.5), 0.1, TerrainMask::ALL)
-            .unwrap()
+        !s.point_clear(
+            object_id(5),
+            Point::new(-1.0, 4.5),
+            Distance::new(0.1),
+            TerrainMask::ALL
+        )
+        .unwrap()
     );
     assert_eq!(s.manager_ignore(), [RecordId::from(object_id(4))]);
     s.set_manager_ignore(&[]);
     assert_eq!(s.manager_ignore(), Vec::<RecordId>::new());
-    assert!(s.point_hit(Point::new(0.05, 4.5), 0.1, &[], false).unwrap());
     assert!(
-        !s.object_holds(Point::new(0.05, 4.5), 0.1, &[], false)
+        s.point_hit(Point::new(0.05, 4.5), Distance::new(0.1), &[], false)
+            .unwrap()
+    );
+    assert!(
+        !s.object_holds(Point::new(0.05, 4.5), Distance::new(0.1), &[], false)
             .unwrap()
     );
 }
@@ -1946,7 +2045,7 @@ const fn seer_in(state: ObjectState) -> crate::vision::visibility::Seer {
     crate::vision::visibility::Seer {
         player: PlayerId::new(2),
         master: ids::ID_0,
-        los: 4.0,
+        los: Distance::new(4.0),
         state,
         explored: true,
         building: None,
@@ -1972,27 +2071,42 @@ fn closest_object_keeps_the_nearest_record_and_on_a_tie_the_lower_id() {
         ry: 0.5,
     };
     assert_eq!(
-        nearer(None, &record(object_id(5), 3.0)),
+        nearer(None, &record(object_id(5), Distance::new(3.0))),
         Some((object_id(5), 3.0))
     );
     assert_eq!(
-        nearer(Some((object_id(5), 3.0)), &record(object_id(6), 2.0)),
+        nearer(
+            Some((object_id(5), 3.0)),
+            &record(object_id(6), Distance::new(2.0))
+        ),
         Some((object_id(6), 2.0))
     );
     assert_eq!(
-        nearer(Some((object_id(5), 3.0)), &record(object_id(4), 3.0)),
+        nearer(
+            Some((object_id(5), 3.0)),
+            &record(object_id(4), Distance::new(3.0))
+        ),
         Some((object_id(4), 3.0))
     );
     assert_eq!(
-        nearer(Some((object_id(5), 3.0)), &record(object_id(6), 3.0)),
+        nearer(
+            Some((object_id(5), 3.0)),
+            &record(object_id(6), Distance::new(3.0))
+        ),
         Some((object_id(5), 3.0))
     );
     assert_eq!(
-        nearer(Some((object_id(5), 3.0)), &record(object_id(4), 4.0)),
+        nearer(
+            Some((object_id(5), 3.0)),
+            &record(object_id(4), Distance::new(4.0))
+        ),
         Some((object_id(5), 3.0))
     );
     assert_eq!(
-        nearer(Some((object_id(5), f32::NAN)), &record(object_id(6), 4.0)),
+        nearer(
+            Some((object_id(5), f32::NAN)),
+            &record(object_id(6), Distance::new(4.0))
+        ),
         Some((object_id(6), 4.0))
     );
 }

@@ -1,6 +1,7 @@
 //! The idle part of the update, the retarget check and search, and the types' other checks.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
@@ -301,7 +302,7 @@ impl UnitAi {
             // and JBE); a unit with an action value stops, forgets its target and walks back,
             // and slot 73 returns 10 ("We're too far out, returning.", "SO Call 40.")
             let gap = point_gap_squared(self.state_position, at.position, at.size);
-            if at.weapon_range + STAND_GROUND_SLACK < gap && self.current_action.is_some() {
+            if (at.weapon_range + STAND_GROUND_SLACK).get() < gap && self.current_action.is_some() {
                 self.stop_current(true, at, side, ai)?;
                 self.remove_target();
                 let _ = self.walk_back(at, side, ai)?;
@@ -344,14 +345,14 @@ impl UnitAi {
         let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
             at: from.ground(),
-            radius,
+            radius: Distance::new(radius),
             classes,
             size: at.size,
             pick: Pick::Attack {
                 lowest: if at.scenario && !computer { 2 } else { 0 },
                 seeker: self.seeker(at),
                 ask: AttackAsk {
-                    distance,
+                    distance: Distance::new(distance),
                     idle: true,
                     paths: true,
                     extra: None,
@@ -411,13 +412,13 @@ impl UnitAi {
     pub(super) fn retarget_outcome(
         &self,
         target: Option<(PlayerId, ClassId)>,
-        weapon_range: f32,
+        weapon_range: Distance,
         computer: bool,
         action_state: Option<u8>,
         attack_listed: Option<bool>,
     ) -> Result<Option<RetargetSearch>, GenieError> {
         let attack_order = self.current_order == Some(OrderKind::Attack);
-        if attack_order && RETARGET_RANGE < weapon_range && !computer {
+        if attack_order && RETARGET_RANGE < weapon_range.get() && !computer {
             return Ok(None);
         }
         let mut search = false;
@@ -541,7 +542,7 @@ impl UnitAi {
         } else {
             point_gap_squared(self.target_point.ground(), at.position, at.size)
         };
-        let reach = self.desired_distance + DEFEND_SLACK;
+        let reach = self.desired_distance.get() + DEFEND_SLACK;
         if reach * reach < gap {
             if let Some((target, t)) = defended {
                 let range = self.desired_distance;
@@ -623,7 +624,7 @@ impl UnitAi {
             target.radius,
         );
         let range = self.desired_distance;
-        if range * range < gap {
+        if range.squared().get() < gap {
             let held = (target.state, target.class, target.position);
             self.move_to_object(id, held, range, side, rng)?;
             return Ok(true);
@@ -641,7 +642,7 @@ impl UnitAi {
         &mut self,
         id: ObjectId,
         (state, class, position): (ObjectState, ClassId, Position),
-        range: f32,
+        range: Distance,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {

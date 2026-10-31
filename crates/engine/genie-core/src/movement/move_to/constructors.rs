@@ -3,6 +3,7 @@
 //! object (`FUN_140aa0df0`), to a point (`FUN_140aa0d30`) and to none.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap;
@@ -53,7 +54,7 @@ pub struct WalkTo {
     /// Its place, the `MoveTo`'s point (`+0x38`).
     pub at: Position,
     /// The unit's footprint gap to it.
-    pub gap: f32,
+    pub gap: Distance,
     /// Its object state.
     pub state: Option<ObjectState>,
 }
@@ -66,7 +67,7 @@ impl WalkTo {
         Self {
             id: None,
             at,
-            gap: NO_TARGET_GAP,
+            gap: Distance::new(NO_TARGET_GAP),
             state: None,
         }
     }
@@ -79,7 +80,7 @@ impl WalkTo {
     fn held(&self) -> (Option<ObjectId>, f32) {
         match self.state {
             Some(s) if LAST_TAKEN < s => (None, NO_TARGET_GAP),
-            _ => (self.id, self.gap),
+            _ => (self.id, self.gap.get()),
         }
     }
 }
@@ -147,7 +148,7 @@ impl<'g> MoveToReads<'g> {
     pub fn to_object(
         &self,
         to: WalkTo,
-        range: f32,
+        range: Distance,
         given: Option<i16>,
         on_target_moved: TargetMoved,
     ) -> Result<Option<MoveToAction>, GenieError> {
@@ -162,7 +163,7 @@ impl<'g> MoveToReads<'g> {
             on_target_moved,
             wait: MoveWait::NEW,
         };
-        Ok(walk.added(self.state, gap, self.speed))
+        Ok(walk.added(self.state, Distance::new(gap), self.speed))
     }
 
     /// A quiet `MoveTo` to `point` within `range` (`FUN_140aa0d30`, `FUN_140a7a170` with 1) that
@@ -184,9 +185,9 @@ impl<'g> MoveToReads<'g> {
         let walk = MoveToAction {
             target,
             on_target_moved,
-            ..MoveToAction::sub_to_point(point, range, self.sprites.to_point(given)?)
+            ..MoveToAction::sub_to_point(point, Distance::new(range), self.sprites.to_point(given)?)
         };
-        Ok(walk.added(self.state, gap, self.speed))
+        Ok(walk.added(self.state, Distance::new(gap), self.speed))
     }
 
     /// `FUN_140aa0df0` without a target: no target, its zeroed point ([`NO_TARGET_POINT`]), far
@@ -197,7 +198,7 @@ impl<'g> MoveToReads<'g> {
     /// A sprite the table lacks.
     pub fn to_nothing(
         &self,
-        range: f32,
+        range: Distance,
         given: Option<i16>,
     ) -> Result<Option<MoveToAction>, GenieError> {
         let walk = MoveToAction {
@@ -210,7 +211,7 @@ impl<'g> MoveToReads<'g> {
             on_target_moved: TargetMoved::Follows,
             wait: MoveWait::NEW,
         };
-        Ok(walk.added(self.state, NO_TARGET_GAP, self.speed))
+        Ok(walk.added(self.state, Distance::new(NO_TARGET_GAP), self.speed))
     }
 
     /// A quiet `MoveTo` to `point` within `range` (`FUN_140aa0d30`, then `FUN_140a7a170` with 1)
@@ -223,11 +224,11 @@ impl<'g> MoveToReads<'g> {
     pub fn to_point(
         &self,
         point: Position,
-        range: f32,
+        range: Distance,
         given: Option<i16>,
     ) -> Result<Option<MoveToAction>, GenieError> {
         let walk = MoveToAction::sub_to_point(point, range, self.sprites.to_point(given)?);
-        Ok(walk.added(self.state, NO_TARGET_GAP, self.speed))
+        Ok(walk.added(self.state, Distance::new(NO_TARGET_GAP), self.speed))
     }
 }
 
@@ -279,18 +280,23 @@ mod tests {
         let house = WalkTo {
             id: Some(object_id(10028)),
             at: Position::new(10.5, 10.5, 0.0),
-            gap: 5.0,
+            gap: Distance::new(5.0),
             state: Some(ObjectState::Foundation),
         };
         let to = |w: &MoveToReads<'_>, to, given| {
-            w.to_object(to, 0.1, given, TargetMoved::Follows)
+            w.to_object(to, Distance::new(0.1), given, TargetMoved::Follows)
                 .unwrap()
                 .unwrap()
         };
         let m = to(&move_reads, house, None);
         assert_eq!(
             (m.state, ObjectId::field(m.target), m.point, m.range),
-            (MoveTo::Start, 10028, Position::new(10.5, 10.5, 0.0), 0.1)
+            (
+                MoveTo::Start,
+                10028,
+                Position::new(10.5, 10.5, 0.0),
+                Distance::new(0.1)
+            )
         );
         assert_eq!(
             (m.sprite.map(|g| g.id), m.quiet, m.wait),
@@ -300,10 +306,13 @@ mod tests {
             to(&move_reads, house, Some(3)).sprite.map(|g| g.id),
             Some(3)
         );
-        let near = WalkTo { gap: 0.01, ..house };
+        let near = WalkTo {
+            gap: Distance::new(0.01),
+            ..house
+        };
         assert_eq!(to(&move_reads, near, None).state, MoveTo::Arrived);
         let gone = WalkTo {
-            gap: 0.0,
+            gap: Distance::ZERO,
             state: Some(ObjectState::Removed),
             ..house
         };
@@ -321,7 +330,10 @@ mod tests {
             ..move_reads
         };
         assert_eq!(to(&stuck, house, None).state, MoveTo::Failed);
-        let nothing = move_reads.to_nothing(0.1, None).unwrap().unwrap();
+        let nothing = move_reads
+            .to_nothing(Distance::new(0.1), None)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             (
                 nothing.state,
@@ -331,7 +343,7 @@ mod tests {
             (MoveTo::Start, -1, Position::ORIGIN)
         );
         let point = move_reads
-            .to_point(Position::new(4.0, 5.0, 0.0), 0.0, None)
+            .to_point(Position::new(4.0, 5.0, 0.0), Distance::ZERO, None)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -341,23 +353,23 @@ mod tests {
                 point.range,
                 point.sprite.map(|g| g.id)
             ),
-            (MoveTo::Start, -1, 0.0, Some(20))
+            (MoveTo::Start, -1, Distance::ZERO, Some(20))
         );
         let dying = MoveToReads {
             state: ObjectState::Dying,
             ..move_reads
         };
         assert_eq!(
-            dying.to_object(house, 0.1, None, TargetMoved::Follows),
+            dying.to_object(house, Distance::new(0.1), None, TargetMoved::Follows),
             Ok(None)
         );
         assert_eq!(
-            dying.to_point(Position::new(4.0, 5.0, 0.0), 0.0, None),
+            dying.to_point(Position::new(4.0, 5.0, 0.0), Distance::ZERO, None),
             Ok(None)
         );
         assert!(
             move_reads
-                .to_point(Position::new(4.0, 5.0, 0.0), 0.0, Some(99))
+                .to_point(Position::new(4.0, 5.0, 0.0), Distance::ZERO, Some(99))
                 .is_err()
         );
     }

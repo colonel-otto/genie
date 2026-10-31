@@ -2,6 +2,7 @@
 //! and what it has seen.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -148,11 +149,11 @@ pub struct Surroundings {
     /// (`+0x794`, the unit's slot 0x2c8).
     pub size: Footprint,
     /// The master's line of sight (`+0x5d0`).
-    pub los: f32,
+    pub los: Distance,
     /// The search radius (`+0x794`, the unit's slot 0x2c8).
-    pub search_radius: f32,
+    pub search_radius: Distance,
     /// Slot 0x230 (`FUN_14108d960`): its master's weapon range (`+0x828`).
-    pub weapon_range: f32,
+    pub weapon_range: Distance,
     /// The unit's slot 0x2d0 with 0 (`FUN_14106d170`): its top action may be interrupted, or it
     /// has none.
     pub interruptible: bool,
@@ -209,7 +210,7 @@ pub struct Surroundings {
     /// it; None without one.
     pub top_target: Option<TopTarget>,
     /// Slot 0x240 (`FUN_1410863c0`): its master's least range (`+0x850`).
-    pub min_range: f32,
+    pub min_range: Distance,
     /// The unit's `+0x7fb`, `mAttackMoving`.
     pub attack_moving: bool,
     /// Where the unit last moved to (slot 0x520: `+0x824`), as the game's vector (x, height,
@@ -387,7 +388,7 @@ pub struct AiMove {
     /// The point.
     pub point: Position,
     /// The range within which it arrives.
-    pub range: f32,
+    pub range: Distance,
     /// The sixth argument: the move replaces even a `MoveTo` to the same point.
     pub force: bool,
     /// The seventh: the unit walks (its master's walking sprite, `+0x748`), not runs.

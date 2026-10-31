@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BuildAction, BuildTask};
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
@@ -268,7 +269,7 @@ impl World {
             target: Some(foundation),
             target_owner: Some(fp),
             point: Position::new(position.x(), position.y(), 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             shown: position.ground(),
             ready: true,
             target_type: Some(crate::unit_ai::OrderTargetType::of_master(master)),

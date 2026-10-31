@@ -432,7 +432,7 @@ impl World {
                 placed.position,
                 placed.radius,
                 false,
-                crate::math::conversions::cvttss2si(los),
+                crate::math::conversions::cvttss2si(los.get()),
                 false,
             )?;
             if let Some(s) = sight.seer_mut(id) {
@@ -676,6 +676,7 @@ mod tests {
     use super::*;
     use crate::construction::wait_solidify::WaitSolidifyState;
     use crate::gathering::make::MakeState;
+    use crate::map::Distance;
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
@@ -1053,7 +1054,7 @@ mod tests {
             action_type,
             object_group,
             work_range,
-            work_val1: work_range * 2.0,
+            work_val1: (work_range * 2.0).get(),
             attribute_type: Some(AttributeId::numbered(17)),
             ..Task::default()
         };
@@ -1065,31 +1066,56 @@ mod tests {
             TaskId::test(3),
             action_type::BUILD,
             Some(class_id(3)),
-            0.25,
+            Distance::new(0.25),
         ));
-        let make = task(TaskId::test(4), crate::gathering::make::MAKE, None, 0.0);
+        let make = task(
+            TaskId::test(4),
+            crate::gathering::make::MAKE,
+            None,
+            Distance::ZERO,
+        );
         let waiting = task(
             TaskId::test(9),
             crate::construction::wait_solidify::WAIT_SOLIDIFY,
             Some(class_id(3)),
-            0.0,
+            Distance::ZERO,
         );
         let new = Master {
             id: master_id(121),
             tasks: vec![
-                task(TaskId::test(5), GATHER, Some(class_id(7)), 0.5),
-                task(TaskId::test(6), GATHER, Some(class_id(7)), 0.75),
+                task(
+                    TaskId::test(5),
+                    GATHER,
+                    Some(class_id(7)),
+                    Distance::new(0.5),
+                ),
+                task(
+                    TaskId::test(6),
+                    GATHER,
+                    Some(class_id(7)),
+                    Distance::new(0.75),
+                ),
                 Task {
                     sprites: [12, -1, -1, -1],
-                    ..task(TaskId::test(7), action_type::BUILD, Some(class_id(3)), 1.5)
+                    ..task(
+                        TaskId::test(7),
+                        action_type::BUILD,
+                        Some(class_id(3)),
+                        Distance::new(1.5),
+                    )
                 },
-                task(TaskId::test(8), crate::gathering::make::MAKE, None, 2.0),
+                task(
+                    TaskId::test(8),
+                    crate::gathering::make::MAKE,
+                    None,
+                    Distance::new(2.0),
+                ),
             ],
             ..old.clone()
         };
         let u = &mut t.players[1].objects[ListIndex::new(0)];
         let build = BuildTask {
-            range: 0.25,
+            range: Distance::new(0.25),
             work_value: 0.5,
             work_rate: 1.0,
             resource: Some(AttributeId::numbered(17)),
@@ -1100,7 +1126,7 @@ mod tests {
             .set_build(Some(crate::construction::build::tests::started(
                 object_id(10028),
                 Position::new(30.0, 88.0, 0.0),
-                1.0,
+                Distance::new(1.0),
                 build,
             )));
         u.actions.set_make(Some(crate::gathering::make::MakeAction {
@@ -1125,7 +1151,7 @@ mod tests {
         assert_eq!(
             u.actions.build().copied().unwrap().task,
             BuildTask {
-                range: 1.5,
+                range: Distance::new(1.5),
                 work_value: 3.0,
                 work_rate: 1.0,
                 resource: Some(AttributeId::numbered(17)),
@@ -1435,12 +1461,12 @@ mod tests {
     fn an_upgrade_moves_the_line_of_sight_by_the_masters_change() {
         let old = Master {
             id: master_id(4),
-            line_of_sight: 4.0,
+            line_of_sight: Distance::new(4.0),
             ..Master::default()
         };
         let new = Master {
             id: master_id(5),
-            line_of_sight: 6.0,
+            line_of_sight: Distance::new(6.0),
             ..Master::default()
         };
         let sighted = |state: ObjectState, inside: Option<ObjectId>, keep: bool| {
@@ -1482,7 +1508,7 @@ mod tests {
                 crate::vision::visibility::Seer {
                     player: PlayerId::new(0),
                     master: master_id(4),
-                    los: 5.0,
+                    los: Distance::new(5.0),
                     state: ObjectState::Alive,
                     explored: true,
                     building: None,
@@ -1508,19 +1534,19 @@ mod tests {
         };
         assert_eq!(
             sighted(ObjectState::Alive, None, false),
-            Some((7.0, master_id(5)))
+            Some((Distance::new(7.0), master_id(5)))
         );
         assert_eq!(
             sighted(ObjectState::Alive, None, true),
-            Some((7.0, master_id(4)))
+            Some((Distance::new(7.0), master_id(4)))
         );
         assert_eq!(
             sighted(ObjectState::Alive, Some(object_id(99)), false),
-            Some((5.0, master_id(4)))
+            Some((Distance::new(5.0), master_id(4)))
         );
         assert_eq!(
             sighted(ObjectState::DyingSprite, None, false),
-            Some((5.0, master_id(4)))
+            Some((Distance::new(5.0), master_id(4)))
         );
     }
 

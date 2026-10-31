@@ -41,6 +41,7 @@ use self::taking::kill_bonus;
 pub use self::taking::take;
 #[cfg(test)]
 use self::taking::take_static;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 #[cfg(test)]
@@ -347,9 +348,9 @@ pub struct Attacker {
     /// `area_effect_level` (`+0x830`: the levels it reaches, bit 2 its friends too, bit 5 a wide
     /// cone, bit 6 a falloff, bit 7 a cone) and `area_damage` (`+0x834`: the share of the damage
     /// the objects besides its target take, a fixed damage below 0).
-    pub weapon_range: f32,
+    pub weapon_range: Distance,
     /// Its master's `area_effect_range` (`+0x82c`): the blast's radius.
-    pub area_effect: f32,
+    pub area_effect: Distance,
     /// Its master's `area_effect_level` (`+0x830`).
     pub blast_level: u8,
     /// Its master's `area_damage` (`+0x834`).

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Tile;
@@ -29,7 +30,7 @@ fn a_plan_from_off_the_map_reads_no_start_cell() {
         from: Point::new(-3.0, 2.0),
         to: Point::new(5.5, 2.5),
         radii: 0.2,
-        range: 0.0,
+        range: Distance::ZERO,
         closed: Vec::new(),
         full: true,
     };
@@ -99,7 +100,7 @@ fn the_tile_search_reaches_a_goal_on_an_open_map() {
         from: Point::new(1.5, 2.5),
         to: Point::new(6.5, 5.5),
         radii: 0.2,
-        range: 0.0,
+        range: Distance::ZERO,
         closed: Vec::new(),
         full: true,
     };
@@ -123,7 +124,7 @@ fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
         from: Point::new(1.5, 2.5),
         to: Point::new(6.5, 2.5),
         radii: 0.2,
-        range: 0.0,
+        range: Distance::ZERO,
         closed: Vec::new(),
         full: true,
     };
@@ -144,7 +145,7 @@ fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
             from: Point::new(1.5, 2.5),
             to,
             radii: 0.2,
-            range: 0.0,
+            range: Distance::ZERO,
             closed: Vec::new(),
             full: true,
         };

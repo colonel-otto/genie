@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::ListIndex;
@@ -25,7 +26,7 @@ fn walking_forager() -> World {
         state: MoveTo::Moving,
         point: Position::new(40.0, 80.0, 0.0),
         target: None,
-        range: 0.0,
+        range: Distance::ZERO,
         quiet: false,
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         wait: MoveWait::default(),

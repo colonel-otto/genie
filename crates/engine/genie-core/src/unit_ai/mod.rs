@@ -120,6 +120,7 @@ use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_i
 pub use self::target_type::OrderTargetType;
 pub use self::unit_stance::UnitStance;
 use crate::groups::FormationKind;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 #[cfg(test)]
@@ -189,7 +190,7 @@ const GO_ON: u32 = 2;
 const DEFEND_LEASH: f32 = crate::math::image::unit_ai::DEFEND_LEASH;
 /// What the stand ground stance's leash adds to the unit's range (`DAT_142eb880c`, 0.25, read by
 /// `ADDSS` at `0x140c57c6a`).
-const STAND_GROUND_SLACK: f32 = crate::math::image::unit_ai::STAND_GROUND_SLACK;
+const STAND_GROUND_SLACK: Distance = Distance::new(crate::math::image::unit_ai::STAND_GROUND_SLACK);
 /// "Notify processing returned stop or new action, breaking."
 const BREAK: u32 = 3;
 /// "I'm dead, purging notifyQueue and returning FALSE."
@@ -269,7 +270,7 @@ pub struct QueuedOrder {
     /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
     pub point: Position,
     /// The range.
-    pub range: f32,
+    pub range: Distance,
     /// `+0x24`, `+0x28`: the point the unit's slot 0x2d8 shows (not held).
     pub shown: Point,
     /// `+0x2c` (a byte): 0 leaves the order in the queue.
@@ -309,7 +310,7 @@ impl QueuedOrder {
             target: ObjectId::of_field(w(12)?),
             target_owner: PlayerId::of_field(w(16)?)?,
             point: Position::new(f(20)?, f(24)?, f(28)?),
-            range: f(32)?,
+            range: Distance::new(f(32)?),
             shown: Point::new(f(36)?, f(40)?),
             ready: le_word(b, 44)?[0] != 0,
             target_type: OrderTargetType::of_field(w(48)?)?,
@@ -348,7 +349,7 @@ pub enum Effect {
         /// ([`crate::movement::move_to::holds_object`]).
         state: crate::objects::ObjectState,
         /// The range within which the `MoveTo` arrives.
-        range: f32,
+        range: Distance,
     },
     /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
     /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
@@ -444,7 +445,7 @@ pub struct UnitAi {
     pub target_point: Position,
     /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
     /// (the constructor's 2).
-    pub desired_distance: f32,
+    pub desired_distance: Distance,
     /// `+0x60`, `DefendTarget`: the object the defend order keeps the unit near.
     pub defend_target: Option<ObjectId>,
     /// `+0x64`, `+0x68`, `+0x6c`, `+0x70`: the order, action, target and target class before the

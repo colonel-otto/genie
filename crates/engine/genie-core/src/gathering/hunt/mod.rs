@@ -8,6 +8,7 @@
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
@@ -170,7 +171,7 @@ pub struct HuntTask {
     /// Its id in the master's task list (`+0xa`).
     pub id: TaskId,
     /// The work range (`+0x30`).
-    pub range: f32,
+    pub range: Distance,
     /// The resource it gathers (`attribute_type`, `+0x20`), none for −1.
     pub resource: Option<AttributeId>,
     /// Its moving, proceeding, working and carrying sprites (`+0x40`..`+0x58`).

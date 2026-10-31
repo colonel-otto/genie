@@ -2,6 +2,7 @@
 //! (`pathWithinHull`).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Rect;
 use crate::map::spatial::RecordId;
 use crate::math::fmath::{at_most_or_unordered, maxss, sqrt};
@@ -25,7 +26,7 @@ pub(super) struct WalkOut<'a> {
     /// The target whose range ends the walk too.
     pub(super) target: Option<Target>,
     /// The range of the goal or the target.
-    pub(super) range: f32,
+    pub(super) range: Distance,
     /// Whether each way out is nudged back into the hull.
     pub(super) nudge: bool,
     /// The paths it leaves.
@@ -46,11 +47,11 @@ enum WalkEnd {
 impl HullPather<'_> {
     /// The gap between `p` and the target's box grown by the radius; each axis held at 0 or
     /// more by `MAXSS` (0x140f86bcf, 0x140f85a18): an unordered one is 0.
-    pub(super) fn target_gap(&self, t: &Target, p: Point) -> f32 {
+    pub(super) fn target_gap(&self, t: &Target, p: Point) -> Distance {
         let r = self.radius;
-        let gx = maxss((p.x() - t.at.x()).abs() - (t.radius.x() + r), 0.0);
-        let gy = maxss((p.y() - t.at.y()).abs() - (t.radius.y() + r), 0.0);
-        sqrt(gy * gy + gx * gx)
+        let gx = maxss((p.x() - t.at.x()).abs() - (t.radius.x() + r.get()), 0.0);
+        let gy = maxss((p.y() - t.at.y()).abs() - (t.radius.y() + r.get()), 0.0);
+        Distance::new(sqrt(gy * gy + gx * gx))
     }
 
     // The quick path.
@@ -105,7 +106,7 @@ impl HullPather<'_> {
             dx *= ONE / len;
             dy *= ONE / len;
         }
-        let off = (half + self.radius) * SQRT_2;
+        let off = (half + self.radius.get()) * SQRT_2;
         let (px, py) = (-dy * off, off * dx);
         for k in 0..2 {
             let p = if k == 0 {
@@ -181,7 +182,12 @@ impl HullPather<'_> {
                     m = right;
                 }
                 let r = self.radius;
-                let mut sides = [down < r, right < r, up < r, p.x() - x0 < r];
+                let mut sides = [
+                    down < r.get(),
+                    right < r.get(),
+                    up < r.get(),
+                    p.x() - x0 < r.get(),
+                ];
                 if up < m {
                     side = 2;
                     m = up;
@@ -272,7 +278,7 @@ impl HullPather<'_> {
         let d = self.radius + self.radius;
         let mut made = false;
         for dir in DIRECTIONS {
-            let mut q = Point::new(d * dir.x() + p.x(), d * dir.y() + p.y());
+            let mut q = Point::new(d.get() * dir.x() + p.x(), d.get() * dir.y() + p.y());
             if let Some((at, _)) = self.hulls.checked(hull.index())?.intersection(false, p, q) {
                 q = at;
             }
@@ -456,20 +462,20 @@ impl HullPather<'_> {
         target: Option<&Target>,
         goal: Option<Point>,
         at: Point,
-        range: f32,
+        range: Distance,
     ) -> WalkEnd {
         match (target, goal) {
             (None, None) => WalkEnd::Going,
             (None, Some(g)) => {
                 let d = (at.y() - g.y()) * (at.y() - g.y()) + (at.x() - g.x()) * (at.x() - g.x());
-                if d <= (self.radius + range) * (self.radius + range) + NUDGE {
+                if d <= (self.radius + range).squared().get() + NUDGE {
                     WalkEnd::Goal
                 } else {
                     WalkEnd::Going
                 }
             }
             (Some(t), _) => {
-                if self.target_gap(t, at) <= range + NUDGE {
+                if self.target_gap(t, at) <= range + Distance::new(NUDGE) {
                     WalkEnd::Target
                 } else {
                     WalkEnd::Going
@@ -504,7 +510,7 @@ impl HullPather<'_> {
         let mut made = self.first_steps(hull, root, from, goal)?;
         let bounds = self.hulls.checked(hull.index())?.objects.checked(b)?.bounds;
         let d = self.radius + self.radius;
-        made |= self.side_points(hull, root, bounds, from, EXIT_STEP, Some((from, d)))?;
+        made |= self.side_points(hull, root, bounds, from, EXIT_STEP, Some((from, d.get())))?;
         Ok((inside, !made))
     }
 

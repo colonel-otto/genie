@@ -2,6 +2,7 @@
 //! picker of searches that pick no attack ([`NoAttack`]).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::spatial::Spatial;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -70,7 +71,7 @@ pub trait AttackPicker {
         &mut self,
         world: &Spatial,
         id: ObjectId,
-        distance: f32,
+        distance: Distance,
         category: Option<AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError>;
 
@@ -86,7 +87,7 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// What the read does not model.
-    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, GenieError>;
+    fn weapon_range(&mut self, id: ObjectId) -> Result<Distance, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::engages`].
     ///
@@ -104,7 +105,7 @@ pub trait AttackPicker {
         &mut self,
         world: &mut Spatial,
         id: ObjectId,
-        range: f32,
+        range: Distance,
     ) -> Result<bool, GenieError>;
 }
 
@@ -152,7 +153,7 @@ impl AttackPicker for NoAttack {
         &mut self,
         _: &Spatial,
         _: ObjectId,
-        _: f32,
+        _: Distance,
         _: Option<AttackCategory>,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         Err(NO_ATTACK)
@@ -162,7 +163,7 @@ impl AttackPicker for NoAttack {
         Err(NO_ATTACK)
     }
 
-    fn weapon_range(&mut self, _: ObjectId) -> Result<f32, GenieError> {
+    fn weapon_range(&mut self, _: ObjectId) -> Result<Distance, GenieError> {
         Err(NO_ATTACK)
     }
 
@@ -170,7 +171,12 @@ impl AttackPicker for NoAttack {
         Err(NO_ATTACK)
     }
 
-    fn quick_path(&mut self, _: &mut Spatial, _: ObjectId, _: f32) -> Result<bool, GenieError> {
+    fn quick_path(
+        &mut self,
+        _: &mut Spatial,
+        _: ObjectId,
+        _: Distance,
+    ) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 }

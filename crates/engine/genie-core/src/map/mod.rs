@@ -1,6 +1,7 @@
 //! The map: the terrain of each tile and where the world's objects stand (their places,
 //! radii, footprints and the grid that finds them).
 
+mod distance;
 mod grid_size;
 mod offset;
 mod point;
@@ -13,6 +14,7 @@ pub mod terrain;
 mod terrain_mask;
 mod tile;
 
+pub use self::distance::{Distance, DistanceSquared};
 pub use self::grid_size::GridSize;
 pub use self::offset::{GroundOffset, Offset};
 pub use self::point::{Axis, Point};

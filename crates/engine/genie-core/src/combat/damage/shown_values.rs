@@ -4,6 +4,7 @@
 use crate::combat::damage::{
     EPSILON, ONE, Victim, charge_hit, charged, master_melee_armor, melee_armor, range_charge_hit,
 };
+use crate::map::Distance;
 use crate::math::conversions::cvttss2si;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::class;
@@ -86,7 +87,7 @@ pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
         if !(any || t.object_id == Some(target.master_id) || t.for_class(target.class)) {
             continue;
         }
-        let whose = if fmath::at_most_or_unordered(t.work_range, 0.0) {
+        let whose = if fmath::at_most_or_unordered(t.work_range.get(), 0.0) {
             attacker
         } else {
             target
@@ -116,7 +117,7 @@ pub struct Shown<'a> {
     /// range.
     pub charge_event: i16,
     /// Its max range powerup (`+0xa40`, slot 0x700).
-    pub range_powerup: f32,
+    pub range_powerup: Distance,
 }
 
 /// Slot 0x320 of a combat unit or building (`FUN_141211440`): its charge is ready (slot 0x300,
@@ -209,12 +210,16 @@ pub fn shown_melee_armor(v: &Victim) -> Result<i16, GenieError> {
 /// range (`+0x828`), to which a ready charge of type 6 or 7 ([`charge_shown`]) adds its master's
 /// `charge_event`, plus its max range powerup (`+0xa40`, slot 0x700; 0 for a type 50 or 60).
 #[must_use]
-pub fn shown_range(v: &Victim, s: &Shown<'_>) -> f32 {
+pub fn shown_range(v: &Victim, s: &Shown<'_>) -> Distance {
     let a = &v.source;
     let mut range = a.weapon_range;
     if matches!(a.charge_type, 6 | 7) && charge_shown(v, s.target) {
-        range += f32::from(s.charge_event);
+        range += Distance::new(f32::from(s.charge_event));
     }
-    let powerup = if v.tribe() { s.range_powerup } else { 0.0 };
+    let powerup = if v.tribe() {
+        s.range_powerup
+    } else {
+        Distance::ZERO
+    };
     powerup + range
 }

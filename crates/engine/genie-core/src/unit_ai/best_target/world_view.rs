@@ -1,6 +1,7 @@
 //! What `bestUnitToAttack` reads of the unit whose AI searches, of its arguments and of the
 //! world ([`Battlefield`]).
 
+use crate::map::Distance;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -42,13 +43,13 @@ pub struct Searcher {
     /// The AI's slot 0x1d0 with −1: the unit may move to attack.
     pub can_move: bool,
     /// `FUN_140c47f90`: the farthest it looks (a human player's twice its line of sight).
-    pub sight: f32,
+    pub sight: Distance,
     /// Its weapon range against its current target (slot 0x238 with it, or with none).
-    pub range: f32,
+    pub range: Distance,
     /// Its weapon range (slot 0x230) and least range (slot 0x240).
-    pub weapon_range: f32,
+    pub weapon_range: Distance,
     /// Its least range (slot 0x240).
-    pub min_range: f32,
+    pub min_range: Distance,
     /// Its top speed (slot 0x208).
     pub speed: f32,
     /// The game mode is a scenario's (`FUN_141302540`).
@@ -69,7 +70,7 @@ pub struct Searcher {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Ask {
     /// The reference distance (0: none).
-    pub distance: f32,
+    pub distance: Distance,
     /// An idle check: the current target narrows nothing and is no shortcut.
     pub idle: bool,
     /// The path checks: 1 on, 0 off (the shortcuts answer without a path).
@@ -110,7 +111,7 @@ pub struct Thing {
     /// What it holds (`+0x310`).
     pub held: f32,
     /// The footprints' gap to the unit (`FUN_14118f680`).
-    pub distance: f32,
+    pub distance: Distance,
     /// Its top speed (slot 0x208).
     pub speed: f32,
 }
@@ -161,7 +162,7 @@ pub trait Battlefield {
     fn candidate(
         &mut self,
         id: ObjectId,
-        distance: f32,
+        distance: Distance,
         category: Option<AttackCategory>,
     ) -> Result<Candidate, crate::GenieError>;
 
@@ -177,7 +178,7 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// What the read does not model.
-    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, crate::GenieError>;
+    fn weapon_range(&mut self, id: ObjectId) -> Result<Distance, crate::GenieError>;
 
     /// The current target `id` engages: its attacks sum above 0 (slot 0x228) or its unit AI
     /// could work on the unit (slot 0x1b8 with 1).
@@ -192,12 +193,12 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// What the path does not model.
-    fn quick_path(&mut self, id: ObjectId, range: f32) -> Result<bool, crate::GenieError>;
+    fn quick_path(&mut self, id: ObjectId, range: Distance) -> Result<bool, crate::GenieError>;
 
     /// The unit's path to object `id` within `range` (slot 0x3d0).
     ///
     /// # Errors
     ///
     /// What the path does not model.
-    fn path(&mut self, id: ObjectId, range: f32) -> Result<bool, crate::GenieError>;
+    fn path(&mut self, id: ObjectId, range: Distance) -> Result<bool, crate::GenieError>;
 }

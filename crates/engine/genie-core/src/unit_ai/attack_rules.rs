@@ -2,6 +2,7 @@
 //! types.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -152,7 +153,7 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
 /// # Errors
 ///
 /// A computer player's unit.
-pub const fn attack_sight(me: &Attacker) -> Result<f32, GenieError> {
+pub fn attack_sight(me: &Attacker) -> Result<Distance, GenieError> {
     if me.computer {
         return Err(GenieError::unsupported(
             "a computer player's bestUnitToAttack",
@@ -305,23 +306,25 @@ pub(super) const TREBUCHET_TARGETS: [ClassId; 7] = [
 pub(super) const SIEGE_BUILDING_MASTERS: [MasterId; 2] =
     [MasterId::named(1744), MasterId::named(1746)];
 /// A Gaia target lets the siege unit's range grow by this (`DAT_142eb4838`).
-pub(super) const GAIA_TARGET_REACH: f32 = crate::math::image::unit_ai::GAIA_TARGET_REACH;
+pub(super) const GAIA_TARGET_REACH: Distance =
+    Distance::new(crate::math::image::unit_ai::GAIA_TARGET_REACH);
 /// The packed unit's class (51), which a human player's siege attack check passes over unless
 /// asked for any target.
 pub(super) const PACKED_UNIT_CLASS: ClassId = class::CLASS_51;
 
 /// The defend stance's leash from a saved patrol's path (`DAT_14330ebb8`, 5).
-pub(super) const DEFEND_PATROL_LEASH: f32 = crate::math::image::unit_ai::DEFEND_PATROL_LEASH;
+pub(super) const DEFEND_PATROL_LEASH: Distance =
+    Distance::new(crate::math::image::unit_ai::DEFEND_PATROL_LEASH);
 /// Stand ground's leash from a saved patrol's path (`DAT_142e7f384`, 0.5).
-pub(super) const STAND_GROUND_PATROL_LEASH: f32 =
-    crate::math::image::unit_ai::STAND_GROUND_PATROL_LEASH;
+pub(super) const STAND_GROUND_PATROL_LEASH: Distance =
+    Distance::new(crate::math::image::unit_ai::STAND_GROUND_PATROL_LEASH);
 /// `FUN_140f95e10`'s first least distance (`DAT_14330ebf4`, the largest f32).
 pub(super) const PATROL_FARTHEST: f32 = crate::math::image::unit_ai::PATROL_FARTHEST;
 
 /// `FUN_14087e7c0`: the distance from `p` to the line through `a` and `b` (the cross product's
 /// length over the direction's, its squares divided before `sqrtf`, in the routine's order).
 /// Its flag whether `p` lies between the two (the dot products' signs) is not read here.
-pub(super) fn line_distance(p: BVector, a: BVector, b: BVector) -> f32 {
+pub(super) fn line_distance(p: BVector, a: BVector, b: BVector) -> Distance {
     let [px, py, pz] = [p.x() - a.x(), p.height() - a.height(), p.y() - a.y()];
     let [dx, dy, dz] = [b.x() - a.x(), b.height() - a.height(), b.y() - a.y()];
     let c1 = py * dz - pz * dy;
@@ -329,7 +332,7 @@ pub(super) fn line_distance(p: BVector, a: BVector, b: BVector) -> f32 {
     let c2 = pz * dx - px * dz;
     let cross = c2 * c2 + c1 * c1 + c3 * c3;
     let length = dy * dy + dx * dx + dz * dz;
-    crate::math::fmath::sqrt(cross / length)
+    Distance::new(crate::math::fmath::sqrt(cross / length))
 }
 
 /// `FUN_140f95e10`: the least distance from `point` to the lines through a path's consecutive
@@ -340,24 +343,24 @@ pub(super) fn line_distance(p: BVector, a: BVector, b: BVector) -> f32 {
 /// # Errors
 ///
 /// An empty path, whose loop the game runs past its end.
-pub(crate) fn patrol_distance(points: &[BVector], point: BVector) -> Result<f32, GenieError> {
+pub(crate) fn patrol_distance(points: &[BVector], point: BVector) -> Result<Distance, GenieError> {
     if points.is_empty() {
         return Err(GenieError::unreachable("a saved patrol without points"));
     }
     let mut least = PATROL_FARTHEST;
     for pair in points.windows(2) {
         let d = line_distance(point, *pair.checked(0)?, *pair.checked(1)?);
-        least = if least <= d { least } else { d };
+        least = if least <= d.get() { least } else { d.get() };
     }
-    Ok(least)
+    Ok(Distance::new(least))
 }
 
 /// `FUN_14118faf0`: the gap from an object at `at` with radii `radius` to `point`: each axis's
 /// distance less the radius, `MAXSS` 0 (an unordered one is 0), then the length (`sqrtf`).
-pub(super) fn footprint_point_gap(at: Position, radius: Footprint, point: Point) -> f32 {
+pub(super) fn footprint_point_gap(at: Position, radius: Footprint, point: Point) -> Distance {
     let gx = crate::math::fmath::maxss((point.x() - at.x()).abs() - radius.x(), 0.0);
     let gy = crate::math::fmath::maxss((point.y() - at.y()).abs() - radius.y(), 0.0);
-    crate::math::fmath::sqrt(gy * gy + gx * gx)
+    Distance::new(crate::math::fmath::sqrt(gy * gy + gx * gx))
 }
 
 /// The siege unit's attack check (slot 0xa0, `FUN_140c19190`) with `any` (its third argument):
@@ -424,7 +427,7 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     let diagonal = crate::math::fmath::sqrt(
         crate::math::fmath::powf(me.radius.y(), 2.0) + crate::math::fmath::powf(me.radius.x(), 2.0),
     );
-    let gap = footprint_point_gap(t.position, t.radius, s.state_position) - diagonal;
+    let gap = footprint_point_gap(t.position, t.radius, s.state_position) - Distance::new(diagonal);
     let mut range = me.range;
     if t.owner == PlayerId::GAIA {
         range += GAIA_TARGET_REACH;
@@ -432,7 +435,7 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     match s.stance {
         UnitStance::STAND_GROUND
             if s.order != Some(OrderKind::Defend)
-                && !crate::math::fmath::at_most_or_unordered(gap, range) =>
+                && !crate::math::fmath::at_most_or_unordered(gap.get(), range.get()) =>
         {
             Ok(false)
         }
@@ -442,8 +445,8 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
             }
             // `JA` rejects: an unordered gap passes
             Ok(crate::math::fmath::at_most_or_unordered(
-                gap,
-                me.range + DEFEND_GROWTH,
+                gap.get(),
+                me.range.get() + DEFEND_GROWTH,
             ))
         }
         _ => Ok(true),

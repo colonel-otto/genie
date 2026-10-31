@@ -2,6 +2,7 @@
 //! its master's change.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -50,7 +51,7 @@ impl Visibility {
         let Some(s) = self.seers.get(&id).copied() else {
             return Ok(0);
         };
-        self.sight_on_los(id, position, radius, square, s.los as i32, offset)
+        self.sight_on_los(id, position, radius, square, s.los.get() as i32, offset)
     }
 
     /// Slot 0x1d0 with a line of sight of its own (its fourth argument not −1): a building takes
@@ -158,7 +159,7 @@ impl Visibility {
         let Some(s) = self.seers.get(&id).copied() else {
             return Ok(());
         };
-        self.sight_off_los(id, position, radius, square, s.los as i32, offset)?;
+        self.sight_off_los(id, position, radius, square, s.los.get() as i32, offset)?;
         Ok(())
     }
 
@@ -256,7 +257,7 @@ impl Visibility {
         if old == new || (new < old && new != ObjectState::Foundation) {
             return Ok(());
         }
-        let master_sees = self.seers.get(&id).is_some_and(|s| 0.0 < s.los);
+        let master_sees = self.seers.get(&id).is_some_and(|s| Distance::ZERO < s.los);
         if old == ObjectState::Alive && (ObjectState::Alive < new || new == ObjectState::Foundation)
         {
             self.sight_off(id, position, radius, false, false)?;
@@ -282,7 +283,7 @@ impl Visibility {
         old_radius: Footprint,
         new_radius: Footprint,
         master: MasterId,
-        los: f32,
+        los: Distance,
     ) -> Result<(), GenieError> {
         self.sight_off(id, position, old_radius, false, false)?;
         if let Some(s) = self.seers.get_mut(&id) {
@@ -295,7 +296,7 @@ impl Visibility {
 
     /// The master and line of sight of seer `id` without its sight (a master change inside
     /// another, whose unit has no tile, `+0x2e8` 0: its sight comes with them on its way out).
-    pub fn seer_master(&mut self, id: ObjectId, master: MasterId, los: f32) {
+    pub fn seer_master(&mut self, id: ObjectId, master: MasterId, los: Distance) {
         if let Some(s) = self.seers.get_mut(&id) {
             s.master = master;
             s.los = los;

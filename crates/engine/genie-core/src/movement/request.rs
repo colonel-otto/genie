@@ -2,6 +2,7 @@
 //! goal's reach.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
@@ -26,7 +27,7 @@ pub(super) struct LongAsk<'a> {
     /// The unit's ground distance to it.
     pub(super) way: f32,
     /// How near the waypoint counts.
-    pub(super) range: f32,
+    pub(super) range: Distance,
     /// The target object, its id and record.
     pub(super) target: Option<(ObjectId, &'a Placed)>,
 }
@@ -83,8 +84,8 @@ impl Mover {
                 include,
                 position,
                 waypoint,
-                distance: ground(waypoint, position),
-                radius: self.stats.radius.x(),
+                distance: Distance::new(ground(waypoint, position)),
+                radius: Distance::new(self.stats.radius.x()),
                 level: level.level,
                 range: level.range,
                 target_id: level.target,
@@ -110,12 +111,12 @@ impl Mover {
         let ground_radius = self.stats.radius.ground();
         let here = self.position();
         let level = &mut self.paths[0];
-        let reach = if level.range <= 0.0 {
+        let reach = if level.range <= Distance::ZERO {
             RANGE_FLOOR
         } else {
-            level.range
+            level.range.get()
         };
-        if goal.target.is_some() && goal.gap <= reach {
+        if goal.target.is_some() && goal.gap <= Distance::new(reach) {
             level.state = PathState::Arrived;
             return Some(AfterRequest::Again);
         }
@@ -124,7 +125,7 @@ impl Mover {
             return None;
         }
         let away = goal.target.is_none_or(|(_, t)| {
-            EPSILON < footprint_gap(here, ground_radius, t.position, t.radius)
+            EPSILON < footprint_gap(here, ground_radius, t.position, t.radius).get()
         });
         if away {
             level.flags |= 2;
@@ -250,7 +251,7 @@ impl Mover {
             self.moved_at.ground(),
             world,
             plan.computer,
-            (waypoint, range),
+            (waypoint, range.get()),
             target,
         )?;
         *path = long;
@@ -295,12 +296,12 @@ impl Mover {
         for i in 0..path.points.len().saturating_sub(1) {
             let (from, to) = self.query_ends(path.points[i], path.points[i + 1], world.map);
             let rect = Rect::spanning(from, to);
-            world.check_known_records(rect.grown(grow))?;
+            world.check_known_records(rect.grown(Distance::new(grow)))?;
             let hits = world.walk_hits(WalkQuery {
                 start: from,
                 end: to,
                 rect,
-                grow,
+                grow: Distance::new(grow),
                 ally_factor: self.stats.min_collision,
                 player,
                 ignore: &ignore,
@@ -335,15 +336,19 @@ impl Mover {
     /// `FUN_14114d3d0`: the walked level's goal is in reach: its target's gap (else where its top
     /// path ends) within its range, or a target's last waypoint at most 16 tiles beyond its
     /// range on a top level.
-    pub(super) fn near_goal(&self, way: f32, gap: f32, to_end: f32) -> bool {
+    pub(super) fn near_goal(&self, way: Distance, gap: Distance, to_end: f32) -> bool {
         let level = &self.paths[0];
-        let d = if level.target.is_none() { to_end } else { gap };
-        if d - level.range < EPSILON {
+        let d = if level.target.is_none() {
+            to_end
+        } else {
+            gap.get()
+        };
+        if d - level.range.get() < EPSILON {
             return true;
         }
         level.target.is_some()
             && level.points.len() as i32 == level.waypoint + 1
-            && way - level.range <= SHORT_REACH
+            && way - level.range <= Distance::new(SHORT_REACH)
             && level.level == WaypointLevel::TOP
     }
 }

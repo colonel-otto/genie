@@ -413,7 +413,7 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
 
 /// A villager's Build task: range 0.1, work value 1, work rate 1.
 pub(super) const TASK: BuildTask = BuildTask {
-    range: 0.1,
+    range: Distance::new(0.1),
     work_value: 1.0,
     work_rate: 1.0,
     resource: None,
@@ -448,7 +448,7 @@ pub(crate) fn graphics() -> BTreeMap<i16, crate::objects::sprite::Graphic> {
 
 /// A Build started on the foundation `id` (state 0) at `at`, `gap` from its builder (state 2,
 /// speed 1, no default sprites), with `task` ([`BuildAction::start`]).
-pub(crate) fn started(id: ObjectId, at: Position, gap: f32, task: BuildTask) -> BuildAction {
+pub(crate) fn started(id: ObjectId, at: Position, gap: Distance, task: BuildTask) -> BuildAction {
     started_on(Some(id), at, gap, task)
 }
 
@@ -456,7 +456,7 @@ pub(crate) fn started(id: ObjectId, at: Position, gap: f32, task: BuildTask) -> 
 pub(crate) fn started_on(
     id: Option<ObjectId>,
     at: Position,
-    gap: f32,
+    gap: Distance,
     task: BuildTask,
 ) -> BuildAction {
     let graphics = graphics();
@@ -467,7 +467,7 @@ pub(crate) fn started_on(
         },
         state: ObjectState::Alive,
         speed: 1.0,
-        at: Position::new(at.x() - gap, at.y(), 0.0),
+        at: Position::new(at.x() - gap.get(), at.y(), 0.0),
         ground: Footprint::new(0.2, 0.2),
     };
     let to = WalkTo {
@@ -486,7 +486,7 @@ fn a_build_s_move_to_takes_its_task_s_moving_sprite() {
     let moving = started(
         object_id(10028),
         Position::new(10.5, 10.5, 0.0),
-        5.0,
+        Distance::new(5.0),
         MOVING_TASK,
     );
     assert_eq!(moving.move_to.and_then(|m| m.sprite).map(|g| g.id), Some(3));
@@ -522,7 +522,7 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
         state: BuildState::Move,
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         added: true,
-        ..started(object_id(31148), Position::ORIGIN, 0.0, TASK)
+        ..started(object_id(31148), Position::ORIGIN, Distance::ZERO, TASK)
     };
     assert_eq!(
         b.halt(Some(&mut mover)),
@@ -538,7 +538,7 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
     let mut idle = BuildAction {
         state: BuildState::Work,
         move_to: None,
-        ..started(object_id(31150), Position::ORIGIN, 0.0, TASK)
+        ..started(object_id(31150), Position::ORIGIN, Distance::ZERO, TASK)
     };
     assert_eq!(idle.halt(None), Ok((false, [Some(object_id(31150)), None])));
 }
@@ -547,7 +547,12 @@ fn a_stop_halts_the_build_and_lets_its_foundation_go() {
 /// as the action's point (`+0x38`..`+0x40`) and its `MoveTo` the foundation as its target.
 #[test]
 fn a_build_s_point_is_its_foundation_s_place() {
-    let b = started(object_id(10913), Position::new(61.5, 92.5, 1.0), 0.8, TASK);
+    let b = started(
+        object_id(10913),
+        Position::new(61.5, 92.5, 1.0),
+        Distance::new(0.8),
+        TASK,
+    );
     let walk = b.move_to.unwrap();
     assert_eq!(
         (
@@ -572,9 +577,9 @@ fn a_builder_sent_to_another_foundation_starts_over() {
         move_to: None,
         added: true,
         timer: Seconds::new(0.5),
-        ..started(object_id(31148), Position::ORIGIN, 0.0, TASK)
+        ..started(object_id(31148), Position::ORIGIN, Distance::ZERO, TASK)
     };
-    let walk = started(object_id(31150), Position::ORIGIN, 0.0, TASK).move_to;
+    let walk = started(object_id(31150), Position::ORIGIN, Distance::ZERO, TASK).move_to;
     b.retarget(object_id(31150), Position::ORIGIN, walk, None)
         .unwrap();
     // set_state(4) keeps the timer
@@ -582,7 +587,7 @@ fn a_builder_sent_to_another_foundation_starts_over() {
         b,
         BuildAction {
             timer: Seconds::new(0.5),
-            ..started(object_id(31150), Position::ORIGIN, 0.0, TASK)
+            ..started(object_id(31150), Position::ORIGIN, Distance::ZERO, TASK)
         }
     );
     assert_eq!(
@@ -613,18 +618,21 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         state: BuildState::Place,
         move_to: None,
         added: true,
-        ..started(object_id(31011), Position::ORIGIN, 0.0, TASK)
+        ..started(object_id(31011), Position::ORIGIN, Distance::ZERO, TASK)
     };
-    let walk = started(object_id(31011), Position::ORIGIN, 0.0, TASK).move_to;
+    let walk = started(object_id(31011), Position::ORIGIN, Distance::ZERO, TASK).move_to;
     b.retake(Position::ORIGIN, walk, None, Some(&mut c.builders), false)
         .unwrap();
     assert_eq!(c.builders, 1);
-    assert_eq!(b, started(object_id(31011), Position::ORIGIN, 0.0, TASK));
+    assert_eq!(
+        b,
+        started(object_id(31011), Position::ORIGIN, Distance::ZERO, TASK)
+    );
     assert_eq!(b.move_to.map(|m| m.state), Some(MoveTo::Arrived));
     let mut working = BuildAction {
         state: BuildState::Work,
         move_to: None,
-        ..started(object_id(31011), Position::ORIGIN, 0.0, TASK)
+        ..started(object_id(31011), Position::ORIGIN, Distance::ZERO, TASK)
     };
     let before = working;
     working

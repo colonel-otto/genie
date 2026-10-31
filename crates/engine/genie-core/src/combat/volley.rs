@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::missile::AimAt;
+use crate::map::Distance;
 use crate::map::Radii;
 use crate::map::spatial::Placed;
 use crate::map::{GroundOffset, Offset, Position};
@@ -220,7 +221,7 @@ impl Unit {
         }
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
         // spare friends
-        let spares_friends = !(1.0 < weapon_range && blast_level & 4 == 0);
+        let spares_friends = !(Distance::new(1.0) < weapon_range && blast_level & 4 == 0);
         if !spares_friends
             && c.w
                 .players
@@ -466,7 +467,7 @@ impl Unit {
             direction: Offset::ZERO,
             ballistic_velocity: 0.0,
             ballistic_acceleration: 0.0,
-            distance: 0.0,
+            distance: Distance::ZERO,
             hit_mode: stats.hit_mode,
             result: 0,
             origin: if shot.shooter {
@@ -610,7 +611,7 @@ pub(crate) struct Shot {
     pub(crate) made: MasterId,
     pub(crate) at: Position,
     pub(crate) point: Position,
-    pub(crate) reach: f32,
+    pub(crate) reach: Distance,
     pub(crate) shooter: bool,
     pub(crate) aimer: crate::combat::missile::Aimer,
     pub(crate) attack_count: i32,

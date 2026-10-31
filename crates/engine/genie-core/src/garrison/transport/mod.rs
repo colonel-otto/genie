@@ -14,6 +14,7 @@
 //! (HD's `next_to_drop_off_terrain`).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -134,7 +135,7 @@ pub trait Shore {
     /// # Errors
     ///
     /// A map the caller cannot read.
-    fn near(&mut self, zone: u8, reach: f32) -> Result<bool, GenieError>;
+    fn near(&mut self, zone: u8, reach: Distance) -> Result<bool, GenieError>;
     /// The terrain table's flags of `tile`, its x and y shorts
     /// ([`crate::map::terrain::Terrain::flags_at`]).
     fn flags(&self, tile: Tile) -> u8;

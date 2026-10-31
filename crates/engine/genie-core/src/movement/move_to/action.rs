@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::abilities::Look;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
@@ -38,7 +39,7 @@ pub struct MoveToAction {
     /// The target object it walks to (`+0x20`, its id at `+0x30`), None for a point (−1).
     pub target: Option<ObjectId>,
     /// `+0x68`.
-    pub range: f32,
+    pub range: Distance,
     /// The sprite it shows when it turns to state 4 (`+0x58`, the save's second `short_val`):
     /// the one its maker gave, else its constructor's default ([`point_sprite`],
     /// [`object_sprite`]); None for none (null).
@@ -98,9 +99,9 @@ pub struct MoveStep {
 /// mule cart's); any other's (`FUN_14106a6d0`) is 0. A `MoveTo` to a point (`FUN_140aa0d30`)
 /// keeps its range.
 #[must_use]
-pub fn object_range(range: f32, master: Option<&Master>) -> f32 {
-    if range != 0.0 {
-        return range;
+pub fn object_range(range: Distance, master: Option<&Master>) -> f32 {
+    if range != Distance::ZERO {
+        return range.get();
     }
     let cart = master.is_some_and(|m| {
         m.kind == master_type::BUILDING
@@ -212,12 +213,12 @@ impl MoveToAction {
         me: Position,
         mover: &mut Mover,
         target: ObjectId,
-        range: f32,
+        range: Distance,
         sprite: Option<Graphic>,
     ) -> Result<Self, GenieError> {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let ground = mover.stats.radius.ground();
-        let state = if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
+        let state = if footprint_gap(me, ground, t.position, t.radius) <= Distance::new(ARRIVED) {
             MoveTo::Arrived
         } else if mover.stats.speed == 0.0 {
             MoveTo::Failed
@@ -253,7 +254,7 @@ impl MoveToAction {
         me: Position,
         mover: &mut Mover,
         (target, state): (ObjectId, ObjectState),
-        range: f32,
+        range: Distance,
         (sprite, livestock): (Option<Graphic>, bool),
     ) -> Result<Self, GenieError> {
         let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
@@ -282,7 +283,7 @@ impl MoveToAction {
     #[must_use]
     pub fn to_point(
         point: Position,
-        range: f32,
+        range: Distance,
         sprite: Option<Graphic>,
         mover: Option<&mut Mover>,
     ) -> Self {
@@ -486,7 +487,7 @@ impl MoveToAction {
             rng: &mut *shows.rng,
             graphic: self.sprite.or(shows.master_standing),
         };
-        let (state, asked) = ask_walk(walk, (goal, self.range), ask, Some(shown))?;
+        let (state, asked) = ask_walk(walk, (goal, self.range.get()), ask, Some(shown))?;
         if let Some(point) = asked {
             self.point = point;
         }
@@ -534,7 +535,7 @@ mod tests {
             state,
             point: Position::new(30.0, 88.0, 0.0),
             target: ObjectId::of_field(target),
-            range: 0.1,
+            range: Distance::new(0.1),
             quiet: false,
             on_target_moved: TargetMoved::Follows,
             wait: MoveWait {
@@ -783,13 +784,13 @@ mod tests {
             kind: master_type::COMBAT,
             ..cart.clone()
         };
-        assert_eq!(object_range(0.0, Some(&cart)), 0.75);
-        assert_eq!(object_range(-0.0, Some(&cart)), 0.75);
-        assert_eq!(object_range(0.0, Some(&building)), 0.0);
-        assert_eq!(object_range(0.0, Some(&unit)), 0.0);
-        assert_eq!(object_range(0.0, None), 0.0);
-        assert_eq!(object_range(0.5, Some(&cart)), 0.5);
-        assert!(object_range(f32::NAN, Some(&cart)).is_nan());
+        assert_eq!(object_range(Distance::ZERO, Some(&cart)), 0.75);
+        assert_eq!(object_range(Distance::new(-0.0), Some(&cart)), 0.75);
+        assert_eq!(object_range(Distance::ZERO, Some(&building)), 0.0);
+        assert_eq!(object_range(Distance::ZERO, Some(&unit)), 0.0);
+        assert_eq!(object_range(Distance::ZERO, None), 0.0);
+        assert_eq!(object_range(Distance::new(0.5), Some(&cart)), 0.5);
+        assert!(object_range(Distance::new(f32::NAN), Some(&cart)).is_nan());
     }
 
     #[test]
@@ -800,13 +801,27 @@ mod tests {
         let mut walker = crate::gathering::hunt::tests::walker();
         // footprints 0 apart: within ARRIVED, state 1 (its owner shows the standing sprite)
         let me = Position::new(30.0, 40.0, 0.0);
-        let at_hand =
-            MoveToAction::to_target(&world, me, &mut walker, object_id(9185), 0.0, None).unwrap();
+        let at_hand = MoveToAction::to_target(
+            &world,
+            me,
+            &mut walker,
+            object_id(9185),
+            Distance::ZERO,
+            None,
+        )
+        .unwrap();
         assert!(at_hand.arrived());
         // 4.6 tiles on it starts walking (state 3)
         let mut walker = crate::gathering::hunt::tests::walker();
-        let far =
-            MoveToAction::to_target(&world, me, &mut walker, object_id(9186), 0.0, None).unwrap();
+        let far = MoveToAction::to_target(
+            &world,
+            me,
+            &mut walker,
+            object_id(9186),
+            Distance::ZERO,
+            None,
+        )
+        .unwrap();
         assert!(!far.arrived());
         assert_eq!(walker.stats.speed, 0.8);
     }
@@ -831,8 +846,15 @@ mod tests {
         let to = |target, livestock, speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
-            MoveToAction::to_object(&world, me, &mut walker, target, 0.0, (None, livestock))
-                .unwrap()
+            MoveToAction::to_object(
+                &world,
+                me,
+                &mut walker,
+                target,
+                Distance::ZERO,
+                (None, livestock),
+            )
+            .unwrap()
         };
         let held = to((object_id(9186), ObjectState::Alive), false, 0.8);
         assert_eq!(
@@ -870,7 +892,8 @@ mod tests {
         let start = |speed: f32| {
             let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
-            let m = MoveToAction::to_point(point, 0.5, Some(RUNNING), Some(&mut walker));
+            let m =
+                MoveToAction::to_point(point, Distance::new(0.5), Some(RUNNING), Some(&mut walker));
             (m, walker.stats.speed)
         };
         let (moving, speed) = start(0.8);
@@ -882,7 +905,13 @@ mod tests {
                 moving.range,
                 moving.sprite
             ),
-            (MoveTo::Start, Some(point), -1, 0.5, Some(RUNNING))
+            (
+                MoveTo::Start,
+                Some(point),
+                -1,
+                Distance::new(0.5),
+                Some(RUNNING)
+            )
         );
         assert_eq!(speed, 0.8);
         assert!(!moving.shows_standing());
@@ -891,7 +920,7 @@ mod tests {
         let (stuck, _) = start(0.0);
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
-        let none = MoveToAction::to_point(point, 0.0, None, None);
+        let none = MoveToAction::to_point(point, Distance::ZERO, None, None);
         assert_eq!(none.state, MoveTo::Failed);
     }
 
@@ -904,13 +933,27 @@ mod tests {
         world.insert(object_id(9186), sheep(35.0, 40.0));
         let me = Position::new(30.0, 40.0, 0.0);
         let mut walker = crate::gathering::hunt::tests::walker();
-        let far =
-            MoveToAction::to_target(&world, me, &mut walker, object_id(9186), 0.0, None).unwrap();
+        let far = MoveToAction::to_target(
+            &world,
+            me,
+            &mut walker,
+            object_id(9186),
+            Distance::ZERO,
+            None,
+        )
+        .unwrap();
         assert_eq!(far.point, Position::new(35.0, 40.0, 0.0));
         assert_eq!(walker.stats.speed, 0.8);
         walker.stats.speed = 0.0;
-        let stuck =
-            MoveToAction::to_target(&world, me, &mut walker, object_id(9186), 0.0, None).unwrap();
+        let stuck = MoveToAction::to_target(
+            &world,
+            me,
+            &mut walker,
+            object_id(9186),
+            Distance::ZERO,
+            None,
+        )
+        .unwrap();
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
     }

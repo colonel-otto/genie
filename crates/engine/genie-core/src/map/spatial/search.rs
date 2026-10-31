@@ -2,6 +2,7 @@
 //! best unit to attack.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
@@ -45,7 +46,7 @@ impl Spatial {
         &self,
         from: Point,
         to: Point,
-        grow: f32,
+        grow: Distance,
         ignore: &[RecordId],
     ) -> Result<bool, GenieError> {
         let rect = Rect::new(
@@ -131,12 +132,12 @@ impl Spatial {
             let Some(u) = p.unknown.filter(|&u| 0.0 < u && p.player == player) else {
                 return false;
             };
-            let los = v.seer(id).map_or(0, |s| s.los as i32);
+            let los = v.seer(id).map_or(0, |s| s.los.get() as i32);
             if los <= 0 {
                 return false;
             }
             let grow = u + los as f32 + 1.0;
-            rect.overlaps(p.bounds().grown(grow))
+            rect.overlaps(p.bounds().grown(Distance::new(grow)))
         });
         if near {
             return Err(GenieError::unsupported(
@@ -233,7 +234,7 @@ impl Spatial {
         let (dx, dy) = (x - self.search_cache.at.x(), y - self.search_cache.at.y());
         if SEARCH_REUSE_SQUARED < dy * dy + dx * dx || !self.search_cache.holds {
             self.search_cache.hold(search.at);
-            let radius = search.radius.min(1000.0);
+            let radius = search.radius.get().min(1000.0);
             let (rx, ry) = (search.size.x(), search.size.y());
             let rect = Rect::new(
                 (x - (radius + rx)) - 0.001,
@@ -563,13 +564,13 @@ pub(super) fn farm_kept(
 /// goes to the lower id (a NaN distance so far gives way).
 pub(super) fn nearer(best: Option<(ObjectId, f32)>, record: &Record) -> Option<(ObjectId, f32)> {
     match best {
-        Some((id, d)) if d <= record.distance => {
-            if record.distance == d && record.id < id {
+        Some((id, d)) if d <= record.distance.get() => {
+            if record.distance == Distance::new(d) && record.id < id {
                 Some((record.id, d))
             } else {
                 best
             }
         }
-        _ => Some((record.id, record.distance)),
+        _ => Some((record.id, record.distance.get())),
     }
 }

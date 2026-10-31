@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::missile::MissileState;
 use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
@@ -265,12 +266,13 @@ impl Unit {
         let to = Point::new(hold(at.x(), w), hold(at.y(), h));
         let rect = Rect::spanning(from, to);
         let grow = stats.radius.x();
-        c.w.spatial.check_known_records(rect.grown(grow))?;
+        c.w.spatial
+            .check_known_records(rect.grown(Distance::new(grow)))?;
         let crossed = c.w.spatial.walk_hits(WalkQuery {
             start: from,
             end: to,
             rect,
-            grow,
+            grow: Distance::new(grow),
             ally_factor: 1.0,
             player: Some(c.player),
             ignore: &[RecordId::from(self.id)],
@@ -347,7 +349,7 @@ impl Unit {
                 "a missile's shooter outside its list",
             ))?;
         let master = shooter.master(masters, p)?;
-        if 0.0 < master.area_effect {
+        if Distance::ZERO < master.area_effect {
             return Err(GenieError::unsupported(
                 "a missile of a shooter with an area effect",
             ));
@@ -397,7 +399,7 @@ impl Unit {
             ));
         }
         let master = self.master(&c.w.masters, c.player)?;
-        if 0.0 < master.area_effect {
+        if Distance::ZERO < master.area_effect {
             return Err(GenieError::unsupported(
                 "a shooterless missile with an area effect",
             ));
@@ -474,7 +476,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a landed missile's blast of a master the slice does not have",
                 ))?;
-            if 0.0 < area {
+            if Distance::ZERO < area {
                 return Err(GenieError::unsupported("a landed missile's blast"));
             }
         }

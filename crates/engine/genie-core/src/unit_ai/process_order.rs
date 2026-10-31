@@ -362,7 +362,7 @@ impl UnitAi {
         };
         let gap = t.gap_squared;
         let in_range =
-            gap <= at.weapon_range * at.weapon_range && at.min_range * at.min_range <= gap;
+            gap <= at.weapon_range.squared().get() && at.min_range.squared().get() <= gap;
         Ok(in_range.then_some(t.id))
     }
 

@@ -2,6 +2,7 @@
 //! built back from its end.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::spatial::{Hit, RecordId};
 use crate::math::fmath::sqrt;
 use crate::objects::ObjectId;
@@ -323,7 +324,9 @@ impl HullPather<'_> {
         let grow = self.buffer.unwrap_or(0.0);
         let mut skip = self.ignore.clone();
         loop {
-            let hits = self.world.line_hits(a, b, grow, false, &skip)?;
+            let hits = self
+                .world
+                .line_hits(a, b, Distance::new(grow), false, &skip)?;
             let full = LINE_HITS <= hits.len();
             for id in hits {
                 if let Some(o) = id.object()

@@ -7,6 +7,7 @@ use crate::{
     object_ids, production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::objects::HpPowerup;
@@ -162,7 +163,9 @@ pub(super) fn unit(
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
         reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
         attack_powerup: object.combat().map_or(0.0, |c| c.attack_powerup),
-        range_powerup: object.combat().map_or(0.0, |c| c.max_range_powerup),
+        range_powerup: object
+            .combat()
+            .map_or(Distance::ZERO, |c| Distance::new(c.max_range_powerup)),
         armor_powerups: object.combat().map_or([0; 2], |c| {
             [c.melee_armor_powerup as i16, c.pierce_armor_powerup as i16]
         }),
@@ -268,7 +271,7 @@ pub(super) fn unit(
             Offset::new(m.velocity_x, m.velocity_y, m.velocity_z)
         });
         unit.missile = Some(genie_core::combat::missile::Missile {
-            max_range: mo.max_range,
+            max_range: Distance::new(mo.max_range),
             fired_from: ObjectId::of_field(mo.fired_from_id),
             charge: mo.is_charge_projectile != 0,
             flying: true,

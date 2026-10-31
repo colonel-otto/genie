@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::groups::CommandArgs;
 use crate::groups::GroupId;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::math::image::group::MEMBER_MIN_HP;
 use crate::objects::ObjectId;
@@ -42,7 +43,7 @@ pub(crate) struct TargetTask {
     /// The range the work is done at (`*param_6`): the task's (`+0x30`), the target owner's
     /// attribute 90 for [`OWNER_RANGE_TASK`]. None for [`OWN_RANGE_TASK`], where the routine
     /// asks the unit's slot 0x230 for it and `BUnitGroup::command` never reads it.
-    pub(crate) range: Option<f32>,
+    pub(crate) range: Option<Distance>,
 }
 
 /// What slot 0x130 is asked: the target, the point (x, y; z is 0), the order's task filter
@@ -186,7 +187,7 @@ impl World {
     ) -> Result<TargetTask, GenieError> {
         let range = match task.action_type {
             OWN_RANGE_TASK => None,
-            OWNER_RANGE_TASK => Some(
+            OWNER_RANGE_TASK => Some(Distance::new(
                 self.players
                     .get(target.player.index())
                     .and_then(|p| p.attributes.get(OWNER_RANGE_ATTRIBUTE))
@@ -196,7 +197,7 @@ impl World {
                             .with("player", target.player)
                             .with("attribute", OWNER_RANGE_ATTRIBUTE)
                     })?,
-            ),
+            )),
             _ => Some(task.work_range),
         };
         Ok(TargetTask {

@@ -1,6 +1,7 @@
 //! The planner's entry (`FUN_140f7c530`): the search over the levels, the shortcut near the
 //! start and the search on the tiles.
 
+use crate::map::Distance;
 use crate::map::Point;
 use crate::math::fmath;
 use crate::math::fmath::BVector;
@@ -108,7 +109,7 @@ impl Planner {
         let mut second = None;
         let goal = PlanTile::of_point(req.to);
         // the start's cell is read only once the search over the levels reached the goal
-        if req.range == 0.0
+        if req.range == Distance::ZERO
             && req.full
             && first == Found::Goal
             && self.cell(0, PlanTile::of_point(req.from))[0] != 0
@@ -154,7 +155,7 @@ impl Planner {
             from,
             to,
             radii: 0.0,
-            range: 0.0,
+            range: Distance::ZERO,
             closed: Vec::new(),
             full: false,
         };

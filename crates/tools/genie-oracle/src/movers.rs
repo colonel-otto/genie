@@ -5,6 +5,7 @@ use crate::masters::MasterTable;
 use crate::object_ids;
 use crate::{combat_master, master_facets};
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::{Position, Radii};
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
@@ -124,7 +125,7 @@ pub(super) fn path_level(
         path_flags: path.map_or(0, |p| p.flags_m_bits),
         waypoint: d.waypoint,
         state: genie_core::movement::PathState::of_int(d.state)?,
-        range: d.range,
+        range: Distance::new(d.range),
         target: ObjectId::of_field(d.target_id),
         pause_time: Seconds::new(f32::from_bits(d.pause_time)),
         flags: d.flags_m_bits,
@@ -281,7 +282,7 @@ pub(super) fn mover(
             weapon_range: objects
                 .master(s.master_obj)
                 .and_then(combat_master)
-                .map_or(0.0, |c| c.weapon_range),
+                .map_or(Distance::ZERO, |c| Distance::new(c.weapon_range)),
         },
         waiting: m.waiting_to_move_value,
         wait_delays: m.number_wait_delays,

@@ -676,6 +676,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::Distance;
     use crate::map::GridSize;
     use crate::map::TileOffset;
     use crate::objects::masters::ObstructionClass;
@@ -774,7 +775,7 @@ mod tests {
             Seer {
                 player: PlayerId::new(1),
                 master: HOUSE,
-                los: 2.0,
+                los: Distance::new(2.0),
                 state: ObjectState::Alive,
                 explored: true,
                 building: None,

@@ -1,6 +1,7 @@
 //! A box on the map's ground as one type ([`Rect`]): two corners, x0 and y0 then x1 and y1, apart
 //! from a point ([`crate::map::Point`]) and a walk between two points ([`Segment`]).
 
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 
@@ -83,9 +84,9 @@ impl Rect {
     /// The box `by` larger on each side, as the game grows one: `x0 - by`, `y0 - by`, then
     /// `by + x1`, `by + y1`.
     #[must_use]
-    pub fn grown(self, by: f32) -> Self {
+    pub fn grown(self, by: Distance) -> Self {
         let [x0, y0, x1, y1] = self.0;
-        Self([x0 - by, y0 - by, by + x1, by + y1])
+        Self([x0 - by.get(), y0 - by.get(), by.get() + x1, by.get() + y1])
     }
 
     /// Whether it and `other` overlap, edges included: `x0 <= other.x1`, `other.x0 <= x1`, then
@@ -153,6 +154,7 @@ pub struct Segment {
 
 #[cfg(test)]
 mod tests {
+    use crate::map::Distance;
     use crate::map::{GridSize, Point, Rect};
 
     /// A box keeps its corners' bits in their order, grows the low corner by subtracting first,
@@ -178,7 +180,7 @@ mod tests {
             (r.corner0(), r.corner1()),
             (Point::new(1.0, 2.0), Point::new(3.0, 4.0))
         );
-        assert_eq!(r.grown(0.5), Rect::new(0.5, 1.5, 3.5, 4.5));
+        assert_eq!(r.grown(Distance::new(0.5)), Rect::new(0.5, 1.5, 3.5, 4.5));
         assert!(r.overlaps(Rect::new(3.0, 4.0, 5.0, 6.0)));
         assert!(!r.overlaps(Rect::new(3.5, 4.0, 5.0, 6.0)));
         assert!(!r.overlaps(Rect::new(f32::NAN, 2.0, 3.0, 4.0)));

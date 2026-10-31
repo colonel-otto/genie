@@ -1,6 +1,7 @@
 //! The orders, actions, timers and reaches the unit AI names, its factory types and stances.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
@@ -73,7 +74,7 @@ pub(super) const TOWER_IDLE_TIMEOUT: Millis = Millis::new(1000);
 /// The artifact's idle timeout (`FUN_140c11340`'s `FUN_140c41bc0` with 5000).
 pub(super) const ARTIFACT_IDLE_TIMEOUT: Millis = Millis::new(5000);
 /// The desired target distance (`+0x5c`) the constructor sets.
-pub(super) const DESIRED_DISTANCE: f32 = 2.0;
+pub(super) const DESIRED_DISTANCE: Distance = Distance::new(2.0);
 
 /// The boar's idle check (`FUN_140c1e630`): it stays within a draw of `0..81` plus `DAT_142eb5bbc`
 /// (144) of its origin, squared; within `DAT_142eb0f48` (4) it wanders `-3..=2` tiles each way
@@ -84,12 +85,13 @@ pub(super) const BOAR_HOME: f32 = 4.0;
 pub(super) const BOAR_WANDER: u32 = 7;
 pub(super) const BOAR_STEP: u32 = 6;
 pub(super) const BOAR_OFFSET: i32 = 3;
-pub(super) const AI_MOVE_RANGE: f32 = 0.5;
+pub(super) const AI_MOVE_RANGE: Distance = Distance::new(0.5);
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
 pub(super) const EXPLORE_Z: f32 = crate::math::image::unit_ai::EXPLORE_Z;
 /// The villager's reach test of the foundation its search found (slot 0x3d0 in
 /// `FUN_140c22bf0`, `DAT_142eb5690`).
-pub(super) const FOUNDATION_REACH: f32 = crate::math::image::unit_ai::FOUNDATION_REACH;
+pub(super) const FOUNDATION_REACH: Distance =
+    Distance::new(crate::math::image::unit_ai::FOUNDATION_REACH);
 
 /// A villager's notify, or a part of one, the slice does not model.
 pub(super) const VILLAGER_NOTIFY: GenieError =
@@ -141,7 +143,7 @@ pub(super) const FOLLOW_SLACK_HIGH: f32 = crate::math::image::unit_ai::FOLLOW_SL
 /// 0 in every unit probed).
 pub(super) const HUNTED_HOME: f32 = 4.0;
 pub(super) const HUNTED_STEP: i32 = 3;
-pub(super) const HUNTED_SIGHT_GROWTH: f32 = 1.0;
+pub(super) const HUNTED_SIGHT_GROWTH: Distance = Distance::new(1.0);
 /// What an idle check lowers the unit's last human order time to (`FUN_140fe0d10`), and below
 /// which the moving object's update counts it down.
 pub const HUMAN_ORDER_CAP: WorldTime = WorldTime::from_millis(5000);
@@ -284,7 +286,7 @@ pub struct NewObject {
     /// The object's slot 0x7b0 (`+0xb74`, which the action object's constructor set before
     /// through slot 0x8a8, `FUN_141206d50`: the work range of its master's last task of action
     /// type 6, else 0): the hunted animal's leash.
-    pub hunt_range: f32,
+    pub hunt_range: Distance,
     /// The owner is a computer player (`FUN_141659cf0`: `+0x10` 3).
     pub computer: bool,
     /// The owner's posture (`+0x71c`, its slot 0x90 `FUN_1416224f0`).
@@ -316,7 +318,7 @@ impl NewObject {
                 .iter()
                 .rev()
                 .find(|t| t.action_type == crate::objects::masters::action_type::HUNT_RANGE)
-                .map_or(0.0, |t| t.work_range),
+                .map_or(Distance::ZERO, |t| t.work_range),
             computer: false,
             posture: 0,
             age: 0.0,

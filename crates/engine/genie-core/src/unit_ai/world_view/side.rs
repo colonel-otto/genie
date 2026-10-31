@@ -7,6 +7,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::herded;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -64,7 +65,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         self.c.w.spatial.point_clear(
             unit.id,
             point,
-            mover.stats.radius.x(),
+            Distance::new(mover.stats.radius.x()),
             mover.stats.restriction_mask,
         )
     }
@@ -208,7 +209,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         Ok(class)
     }
 
-    fn reaches(&mut self, target: ObjectId, range: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, target: ObjectId, range: Distance) -> Result<bool, GenieError> {
         let mut plan = Planning {
             pathing: &mut self.c.w.pathing,
             now: self.c.w.world_time,
@@ -280,7 +281,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let (mover, master_id) = (unit.body.mover(), unit.life.master_id);
-        let mut reach = |spatial: &mut Spatial, id: ObjectId, range: f32| {
+        let mut reach = |spatial: &mut Spatial, id: ObjectId, range: Distance| {
             let m = mover.ok_or(GenieError::unsupported(
                 "a reach test of a unit that does not move",
             ))?;
@@ -394,7 +395,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         // none about the town centre: the unit AI's own search (slot 0x90)
         let seeker = crate::movement::explore::Seeker {
             at,
-            line_of_sight,
+            line_of_sight: Distance::new(line_of_sight),
             order: ai.current_order,
             target_point: ai.target_point.ground(),
             computer,
@@ -411,7 +412,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let scouted = self.c.w.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
         area.scouted = scouted;
-        let found = crate::movement::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
+        let found = crate::movement::explore::beyond_sight(
+            &mut area,
+            at,
+            Distance::new(line_of_sight),
+            map,
+            rng,
+        )?;
         // the point found is marked in the scout map (FUN_140f4d5e0 with 1)
         if let Some(t) = found {
             self.c.w.spatial.scout(player, t);

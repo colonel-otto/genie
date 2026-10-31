@@ -3,6 +3,7 @@
 //! `MoveTo` that ends at its start.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
@@ -264,7 +265,7 @@ impl Unit {
                 walks,
                 drops_here: false,
                 my_pasture,
-                gap: 0.0,
+                gap: Distance::ZERO,
             },
             mover,
         )? {
@@ -320,7 +321,7 @@ impl Unit {
     pub(crate) fn move_to_object(
         &mut self,
         (target, state): (ObjectId, crate::objects::ObjectState),
-        range: f32,
+        range: Distance,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
         if self.unmodelled_action.is_some() {
@@ -358,7 +359,7 @@ impl Unit {
             here,
             mover,
             (target, state),
-            range,
+            Distance::new(range),
             (sprite, livestock),
         )?;
         if move_to.shows_standing() {

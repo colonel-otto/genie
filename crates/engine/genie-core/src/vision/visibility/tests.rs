@@ -26,7 +26,7 @@ fn world(players: PlayerId) -> Visibility {
     )
 }
 
-fn unit(player: PlayerId, los: f32) -> Seer {
+fn unit(player: PlayerId, los: Distance) -> Seer {
     Seer {
         player,
         master: ids::VILLAGER_MALE,
@@ -112,10 +112,10 @@ fn the_first_other_player_that_sees_the_object_takes_it_over() {
 fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     let mut v = world(PlayerId::new(3));
     v.registry = Some(Registry::new(3, 65));
-    let mut gaia = unit(PlayerId::new(0), 2.0);
+    let mut gaia = unit(PlayerId::new(0), Distance::new(2.0));
     gaia.capture = 1;
     v.add_seer(object_id(7), gaia);
-    v.add_seer(object_id(8), unit(PlayerId::new(0), 2.0));
+    v.add_seer(object_id(8), unit(PlayerId::new(0), Distance::new(2.0)));
     let i = 10 * 120 + 10;
     v.unified[i] = 0b011;
     let at = Position::new(10.5, 10.5, 0.0);
@@ -190,7 +190,7 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
 fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     let at = Position::new(10.5, 10.5, 0.0);
     let mut v = world(PlayerId::new(3));
-    v.add_seer(object_id(7), unit(PlayerId::new(0), 2.0));
+    v.add_seer(object_id(7), unit(PlayerId::new(0), Distance::new(2.0)));
     let _ = v
         .sight_on(object_id(7), at, Footprint::new(0.2, 0.2), false, false)
         .unwrap();
@@ -208,7 +208,7 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[1].counts[tile(14, 10)], -1);
     let s = v.seer(object_id(7)).copied().unwrap();
-    assert_eq!((s.player, s.los), (PlayerId::new(1), 3.0));
+    assert_eq!((s.player, s.los), (PlayerId::new(1), Distance::new(3.0)));
     v.owner_changed(
         object_id(7),
         at,
@@ -220,7 +220,7 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[2].counts[tile(10, 10)], -1);
     let s = v.seer(object_id(7)).copied().unwrap();
-    assert_eq!((s.player, s.los), (PlayerId::new(2), 4.0));
+    assert_eq!((s.player, s.los), (PlayerId::new(2), Distance::new(4.0)));
 }
 
 /// `AddResource` (`FUN_141288830`): the record goes last in its group's list at the object's
@@ -274,9 +274,9 @@ fn the_closest_resource_skips_the_ids_given_and_keeps_its_distance() {
     r.add(object_id(2), GatherGroup::FISH, 10.0, 12.0);
     r.add(object_id(3), GatherGroup::FISH, 7.0, 10.0);
     assert_eq!(r.closest(10.0, 10.0, 2, &[]), Some(1));
-    assert_eq!(r.lists[2][1].distance, 2.0);
+    assert_eq!(r.lists[2][1].distance, Distance::new(2.0));
     assert_eq!(r.closest(10.0, 10.0, 2, &[object_id(2)]), Some(0));
-    assert_eq!(r.lists[2][0].distance, 3.0);
+    assert_eq!(r.lists[2][0].distance, Distance::new(3.0));
     assert_eq!(
         r.closest(10.0, 10.0, 2, &[object_id(2), object_id(1)]),
         Some(2)
@@ -393,7 +393,7 @@ fn a_sight_counts_its_circle_explored_then_visible_and_leaves_it_explored() {
 #[test]
 fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies() {
     let mut v = world(PlayerId::new(3));
-    v.add_seer(object_id(7), unit(PlayerId::new(1), 2.0));
+    v.add_seer(object_id(7), unit(PlayerId::new(1), Distance::new(2.0)));
     let r = Footprint::new(0.5, 0.5);
     let _ = v
         .sight_on(object_id(7), Position::new(5.5, 5.5, 0.0), r, false, false)
@@ -581,7 +581,7 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
         explored: false,
         state: ObjectState::Foundation,
         building: Some(BuildingSight::default()),
-        ..unit(PlayerId::new(2), 2.0)
+        ..unit(PlayerId::new(2), Distance::new(2.0))
     };
     v.add_seer(object_id(9), site);
     let (at, r) = (Position::new(10.0, 10.0, 0.0), Footprint::new(1.0, 1.0));

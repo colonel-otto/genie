@@ -8,6 +8,7 @@ use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Fight, NO_RANGE, NONE, Readiness, SEEN_RANGE, TOUCH, move_reads,
     set_walker_anim,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::{Stream, Well512};
@@ -335,7 +336,7 @@ impl Attack {
             }
             Readiness::Ready => self.set_swing(unit, &mut g, f, r)?,
             Readiness::Waiting => {}
-            Readiness::Away(gap) => self.follow(unit, &mut g, r, f, gap)?,
+            Readiness::Away(gap) => self.follow(unit, &mut g, r, f, Distance::new(gap))?,
         }
         Ok(0)
     }
@@ -426,7 +427,7 @@ impl Attack {
         }
         if self.state == AttackState::GotoSeen
             && f.own.player != PlayerId::new(0)
-            && SEEN_RANGE <= self.range
+            && SEEN_RANGE <= self.range.get()
             && !r.computer
         {
             self.enter(AttackState::GotoPoint, unit)?;
@@ -482,9 +483,9 @@ pub(super) fn let_go(
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,
 /// or [`TOUCH`] for a range of at most [`NO_RANGE`].
-pub(super) fn squared_reach(range: f32) -> f32 {
-    if NO_RANGE < range {
-        range * range
+pub(super) fn squared_reach(range: Distance) -> f32 {
+    if NO_RANGE < range.get() {
+        range.squared().get()
     } else {
         TOUCH
     }

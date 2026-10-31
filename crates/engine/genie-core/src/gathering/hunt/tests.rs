@@ -79,10 +79,10 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
         let to = WalkTo {
             id: Some(object_id(31)),
             at: Position::new(5.0, 6.0, 0.0),
-            gap: 0.0,
+            gap: Distance::ZERO,
             state: Some(state),
         };
-        h.move_to_object(to, 1.0, &mover, &walks(Held::default()))
+        h.move_to_object(to, Distance::new(1.0), &mover, &walks(Held::default()))
             .unwrap()
             .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
@@ -98,7 +98,7 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
 
 /// The quiet `MoveTo` in `state` to the house 10028 at (30, 88) within `range`, which asks again
 /// when its target moves (`FUN_140aa0df0`, `+0x61` 1).
-fn to_house(state: MoveTo, range: f32) -> MoveToAction {
+fn to_house(state: MoveTo, range: Distance) -> MoveToAction {
     MoveToAction {
         point: Position::new(30.0, 88.0, 0.0),
         target: Some(object_id(10028)),
@@ -109,7 +109,7 @@ fn to_house(state: MoveTo, range: f32) -> MoveToAction {
 }
 
 /// The quiet `MoveTo` in `state` to a point, which asks again when it moves (`+0x61` 1).
-fn to_point(state: MoveTo, point: Position, range: f32) -> MoveToAction {
+fn to_point(state: MoveTo, point: Position, range: Distance) -> MoveToAction {
     MoveToAction {
         state,
         on_target_moved: TargetMoved::AsksAgain,
@@ -248,7 +248,7 @@ pub(crate) fn walker() -> Mover {
                 count: 16,
                 flag_1: true,
             }),
-            weapon_range: 0.0,
+            weapon_range: Distance::ZERO,
         },
         waiting: 1,
         wait_delays: 0,
@@ -286,12 +286,12 @@ fn tree() -> Quarry {
 fn engagement() -> Engagement {
     Engagement {
         gap_squared: 3.726 * 3.726,
-        gap: 3.726,
+        gap: Distance::new(3.726),
         position: Position::new(20.774, 97.5, 0.0),
         target_position: Position::new(24.5, 97.5, 0.0),
         speed: 0.8,
-        range: 0.0,
-        min_range: 0.0,
+        range: Distance::ZERO,
+        min_range: Distance::ZERO,
         can_move: true,
         stance: UnitStance::AGGRESSIVE,
         state_position: Point::ORIGIN,
@@ -315,7 +315,7 @@ const ARMS: Arms = Arms {
 
 const CHOP: HuntTask = HuntTask {
     id: TaskId::test(0),
-    range: 0.0,
+    range: Distance::ZERO,
     resource: Some(attribute::MEAT),
     sprites: [-1, 1239, 1961, 1960],
     work_value: 1.0,
@@ -408,7 +408,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
     };
     let close = Engagement {
         gap_squared: 0.005 * 0.005,
-        gap: 0.005,
+        gap: Distance::new(0.005),
         target_position: beside.position,
         ..engagement()
     };
@@ -660,7 +660,7 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
         player: PlayerId::new(2),
         ..tree()
     };
-    for (q, range) in [(dead, CHOP.range), (sheep, 1.5)] {
+    for (q, range) in [(dead, CHOP.range), (sheep, Distance::new(1.5))] {
         let mut held = Held::default();
         let (hunt, _) = HuntAction::start(
             HuntStart {
@@ -1106,7 +1106,10 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     );
     let mut h = hunting(10028);
     assert_eq!(set_walk(&mut h, &mut rig, &own), Ok(()));
-    assert_eq!(walk(&h).map(|w| w.1), Some(OWN_LIVESTOCK_RANGE));
+    assert_eq!(
+        walk(&h).map(|w| w.1),
+        Some(Distance::new(OWN_LIVESTOCK_RANGE))
+    );
     let mut h = hunting(9177);
     assert_eq!(set_walk(&mut h, &mut rig, &dead), Ok(()));
     assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Arrived));
@@ -1231,7 +1234,10 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
     );
     assert_eq!(
         (h.state, h.move_to.map(|m| (m.state, m.range))),
-        (HuntState::Walk, Some((MoveTo::Start, OWN_LIVESTOCK_RANGE)))
+        (
+            HuntState::Walk,
+            Some((MoveTo::Start, Distance::new(OWN_LIVESTOCK_RANGE)))
+        )
     );
 }
 
@@ -1269,7 +1275,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     let walking = |target, timer, move_to| HuntAction {
         state: HuntState::Walk,
         timer,
-        move_to: Some(to_house(move_to, 0.0)),
+        move_to: Some(to_house(move_to, Distance::ZERO)),
         point: Position::new(35.5, 88.5, 0.0),
         ..hunting(target)
     };
@@ -1350,7 +1356,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
         ..Victim::default()
     };
     let attack = |h: &mut HuntAction, state, victim, queue_empty, ends| {
-        let mut a = own_attack(10028, state, 1.0);
+        let mut a = own_attack(10028, state, Distance::new(1.0));
         (a.sub_action, a.seen) = (true, Position::new(30.0, 88.0, 0.0));
         a.arms.idle_sprite = Some(Graphic {
             id: 1,
@@ -1391,7 +1397,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
     );
     assert_eq!(
         (h.state, h.move_to.map(|m| m.range)),
-        (HuntState::Walk, Some(OWN_LIVESTOCK_RANGE))
+        (HuntState::Walk, Some(Distance::new(OWN_LIVESTOCK_RANGE)))
     );
     let mut h = fresh(-1);
     assert_eq!(
@@ -1663,7 +1669,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
         replay_delay: 0.0,
         flags: 3,
     };
-    let start = |range: f32| {
+    let start = |range: Distance| {
         let house = Victim {
             id: object_id(10028),
             state: ObjectState::Dying,
@@ -1690,7 +1696,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
         (got, walk, paths, rig.sprite())
     };
     assert_eq!(
-        start(0.1),
+        start(Distance::new(0.1)),
         (
             Ok(HuntNext::Stay),
             Some((MoveTo::Moving, MoveWaitState::AskedAgain)),
@@ -1698,7 +1704,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
             Some(1880)
         )
     );
-    let (got, walk, ..) = start(5.0);
+    let (got, walk, ..) = start(Distance::new(5.0));
     assert_eq!(
         (got, walk.map(|w| w.0)),
         (Ok(HuntNext::Stay), Some(MoveTo::Arrived))
@@ -1790,7 +1796,7 @@ fn a_hunt_of_a_tree_searches_on_a_failed_walk_or_a_target_let_go() {
         });
         rig.unit_mut().actions.set_hunt(Some(HuntAction {
             state: HuntState::Walk,
-            move_to: Some(to_house(move_to, 0.0)),
+            move_to: Some(to_house(move_to, Distance::ZERO)),
             ..hunting(-1)
         }));
         rig.run(100, |c, u, _, _| Ok(u.tree_lost(c)))

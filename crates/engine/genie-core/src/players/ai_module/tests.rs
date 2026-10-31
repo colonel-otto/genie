@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Tile;
@@ -431,7 +432,7 @@ fn a_ring_pushes_the_points_on_the_map_and_the_stack_gives_minus_one_when_empty(
     let mut m = info(20, UNEXPLORED);
     assert_eq!(m.top_point(), Tile::new(-1, -1));
     assert_eq!(m.pop_point(), Tile::new(-1, -1));
-    m.push_ring(5.0, Point::new(10.7, 10.2));
+    m.push_ring(Distance::new(5.0), Point::new(10.7, 10.2));
     assert_eq!(m.search.len(), 8);
     // the centre truncates to (10, 10); angle 0 is 5 east, π/2's sine is 1
     assert_eq!(m.search[0], Tile::new(15, 10));
@@ -442,7 +443,7 @@ fn a_ring_pushes_the_points_on_the_map_and_the_stack_gives_minus_one_when_empty(
     assert_ne!(top, Tile::new(-1, -1));
     // a ring at a corner keeps only the points on the map
     let mut corner = info(20, UNEXPLORED);
-    corner.push_ring(5.0, Point::new(1.0, 1.0));
+    corner.push_ring(Distance::new(5.0), Point::new(1.0, 1.0));
     assert!(corner.search.len() < 8);
     assert!(corner.search.iter().all(|p| 0 <= p.x() && 0 <= p.y()));
 }

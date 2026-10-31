@@ -1,6 +1,7 @@
 //! The path request's planners for a unit with a footprint: the tile pathfinder's first plan,
 //! the short pather's tail, the long pather for a far waypoint and the tile pathfinder again.
 
+use crate::map::Distance;
 use crate::movement::PathState;
 use crate::world::WorldTime;
 use std::ops::ControlFlow;
@@ -54,10 +55,10 @@ pub(super) struct Way<'a> {
     pub(super) include: &'a [ObjectId],
     pub(super) position: BVector,
     pub(super) waypoint: BVector,
-    pub(super) distance: f32,
-    pub(super) radius: f32,
+    pub(super) distance: Distance,
+    pub(super) radius: Distance,
     pub(super) level: WaypointLevel,
-    pub(super) range: f32,
+    pub(super) range: Distance,
     pub(super) target_id: Option<ObjectId>,
     pub(super) trade_cart: bool,
 }
@@ -96,7 +97,7 @@ impl Mover {
         if (!np.found || too_short(&np.path)) && w.level == WaypointLevel::TOP && TILE_PATHER {
             self.tile_again(me, world, plan, w, np)?;
         }
-        if !(np.path.length <= w.distance * DETOUR || np.path.length <= LONG) {
+        if !(np.path.length <= (w.distance * DETOUR).get() || np.path.length <= LONG) {
             np.new.repath_time = (plan.object.rand15() as f32 * 0.5) / 32767.0 + 2.0;
         }
         Ok(None)
@@ -140,7 +141,10 @@ impl Mover {
         w: &Way<'_>,
         np: &mut NewPath,
     ) -> Result<bool, GenieError> {
-        if w.goal.target.is_none() || TARGET_SHORT_REACH < w.distance || w.distance.is_nan() {
+        if w.goal.target.is_none()
+            || TARGET_SHORT_REACH < w.distance.get()
+            || w.distance.get().is_nan()
+        {
             return Ok(false);
         }
         let near = self.near_goal(w.distance, w.goal.gap, w.goal.to_end);
@@ -175,7 +179,7 @@ impl Mover {
             .map_or(0.0, |(_, t)| t.radius.x());
         let ask = TileAsk {
             goal: w.waypoint,
-            radii: target_radius + w.radius,
+            radii: target_radius + w.radius.get(),
             range: w.range,
             target: w.goal.target.map(|(_, t)| t),
         };
@@ -191,7 +195,7 @@ impl Mover {
         }
         np.planned = true;
         let last = point_or_zero(&np.path, np.path.points.len() as i32 - 1);
-        let farther = w.distance < ground(w.waypoint, last);
+        let farther = w.distance < Distance::new(ground(w.waypoint, last));
         if farther {
             np.path.points.clear();
         }
@@ -250,7 +254,7 @@ impl Mover {
         }
         if SHORT_PATHER
             && !np.failed
-            && (w.distance <= SHORT_REACH || near)
+            && (w.distance <= Distance::new(SHORT_REACH) || near)
             && let Some(step) = self.short_try(me, world, plan, w, near, np)?
         {
             return Ok(ControlFlow::Break(step));
@@ -258,7 +262,7 @@ impl Mover {
         if np.found {
             return Ok(ControlFlow::Continue(too_short(&np.path)));
         }
-        if (w.distance < CLOSE || w.goal.gap < CLOSE)
+        if (w.distance < Distance::new(CLOSE) || w.goal.gap < Distance::new(CLOSE))
             && self.close_in(me, w.waypoint, w.target_id, world)?
         {
             np.path.points.clear();
@@ -316,10 +320,10 @@ impl Mover {
         w: &Way<'_>,
         now: WorldTime,
     ) -> Result<AfterRequest, GenieError> {
-        let reach = if w.goal.target.is_none() || 0.0 < w.range {
+        let reach = if w.goal.target.is_none() || Distance::ZERO < w.range {
             w.range
         } else {
-            RANGE_FLOOR
+            Distance::new(RANGE_FLOOR)
         };
         let level = &mut self.paths[0];
         if reach < w.goal.gap {
@@ -347,7 +351,7 @@ impl Mover {
         w: &Way<'_>,
         np: &mut NewPath,
     ) -> Result<Option<AfterRequest>, GenieError> {
-        if !(LONG_PATHER && (w.trade_cart || SHORT_REACH < w.distance)) {
+        if !(LONG_PATHER && (w.trade_cart || SHORT_REACH < w.distance.get())) {
             return Ok(None);
         }
         let ground_radius = self.stats.radius.ground();
@@ -365,7 +369,7 @@ impl Mover {
         let target = w.goal.target;
         let ask = LongAsk {
             waypoint: w.waypoint,
-            way: w.distance,
+            way: w.distance.get(),
             range: w.range,
             target,
         };
@@ -400,7 +404,7 @@ impl Mover {
         let mut other = Path::default();
         let ask = TileAsk {
             goal: w.waypoint,
-            radii: target_radius + w.radius,
+            radii: target_radius + w.radius.get(),
             range: w.range,
             target: w.goal.target.map(|(_, t)| t),
         };
@@ -409,7 +413,7 @@ impl Mover {
         };
         let last = point_or_zero(&other, other.points.len() as i32 - 1);
         let end = ground(w.waypoint, last);
-        if end <= w.distance {
+        if end <= w.distance.get() {
             if (r.wrapping_sub(1) < 2 || 4 < r) && end < np.end_gap {
                 np.path.points.clear();
                 for &p in &other.points {

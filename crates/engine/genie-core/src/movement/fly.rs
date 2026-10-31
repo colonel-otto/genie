@@ -4,6 +4,7 @@
 //! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -238,7 +239,7 @@ impl Fly {
                 "a flight to a terrain of its task's",
             ));
         }
-        if t.work_val2 as i32 as i16 != -1 && 0.0 < t.work_range {
+        if t.work_val2 as i32 as i16 != -1 && Distance::ZERO < t.work_range {
             return Err(GenieError::unsupported(
                 "a flight keeping away from a class",
             ));
@@ -252,7 +253,11 @@ impl Fly {
         // FUN_140aa0d30 to the point within 0 with the flight's sprite, not quiet
         self.move_to = Some(MoveToAction {
             quiet: false,
-            ..MoveToAction::sub_to_point(Position::new(point[0], point[1], z), 0.0, sprite)
+            ..MoveToAction::sub_to_point(
+                Position::new(point[0], point[1], z),
+                Distance::ZERO,
+                sprite,
+            )
         });
         let _ = self.set_state(FlyState::Flying, action);
         Ok(false)
@@ -389,7 +394,7 @@ mod tests {
         MoveToAction {
             state,
             quiet: false,
-            ..MoveToAction::sub_to_point(point, 0.0, None)
+            ..MoveToAction::sub_to_point(point, Distance::ZERO, None)
         }
     }
 
@@ -573,7 +578,7 @@ mod tests {
             },
             Task {
                 work_val2: 4.0,
-                work_range: 3.0,
+                work_range: Distance::new(3.0),
                 ..unsprited
             },
             Task {

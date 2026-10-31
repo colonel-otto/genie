@@ -23,6 +23,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
@@ -92,7 +93,7 @@ pub struct Seer {
     /// The master's id (`+0x58`, decoded).
     pub master: MasterId,
     /// The master's `line_of_sight` (`+0x5d0`); slot 0x210 adds the object's powerup (`+0xad4`).
-    pub los: f32,
+    pub los: Distance,
     /// `object_state` (`+0x640`): only state 2 sees from a new tile.
     pub state: crate::objects::ObjectState,
     /// `+0x684`: the object explored since it was made (unsaved; a load sets it, `FUN_14116a500`,
@@ -130,7 +131,7 @@ pub struct VisibleResource {
     pub id: ObjectId,
     /// Its distance from the point of the last search that chose it (`+0x10`,
     /// [`VisibleResources::closest`]); 0 when added.
-    pub distance: f32,
+    pub distance: Distance,
     /// `+0x14`, HD's `zone`: 0 when added.
     pub zone: u8,
     /// The object's x when added (`+0x18`).
@@ -166,7 +167,7 @@ impl VisibleResources {
         }
         list.push(VisibleResource {
             id,
-            distance: 0.0,
+            distance: Distance::ZERO,
             zone: 0,
             x,
             y,
@@ -216,7 +217,7 @@ impl VisibleResources {
             }
         }
         if let Some(i) = best {
-            list.get_mut(i)?.distance = crate::math::fmath::sqrt(nearest);
+            list.get_mut(i)?.distance = Distance::new(crate::math::fmath::sqrt(nearest));
         }
         best
     }

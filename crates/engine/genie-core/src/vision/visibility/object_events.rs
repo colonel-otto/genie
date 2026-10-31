@@ -2,6 +2,7 @@
 //! construction's start and completion.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -217,7 +218,7 @@ impl Visibility {
         }
         if let Some(s) = self.seers.get_mut(&id) {
             s.player = new;
-            s.los = los;
+            s.los = Distance::new(los);
         }
         if sees {
             let _ = self.sight_on(id, position, radius, false, false)?;

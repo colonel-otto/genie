@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::AttackState;
 use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads};
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
@@ -76,7 +77,7 @@ impl Attack {
     pub(super) fn walk_to_target(
         &mut self,
         at: Position,
-        gap: f32,
+        gap: Distance,
         reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
         if self.target.is_none() {
@@ -105,7 +106,7 @@ impl Attack {
     /// A sprite the table lacks.
     pub(super) fn walk_to_seen(&mut self, reads: &MoveToReads<'_>) -> Result<(), GenieError> {
         let range = if self.state == AttackState::GotoPoint {
-            0.0
+            Distance::ZERO
         } else {
             self.range
         };

@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::RestrictionId;
@@ -388,7 +389,7 @@ fn lead() -> Lead {
     Lead {
         walker: Walker {
             id: object_id(7),
-            radius: 0.2,
+            radius: Distance::new(0.2),
             restriction: RestrictionId::named(0),
             mask: TerrainMask::ALL,
         },
@@ -708,7 +709,7 @@ fn a_near_waypoint_takes_the_short_pather_s_path() {
     let mut fx = open_fixture();
     let mut m = requesting(0, 9.0);
     let mut lead = lead();
-    lead.walker.radius = 0.6;
+    lead.walker.radius = Distance::new(0.6);
     assert!(fx.request(&mut m, &lead, false, None, f32::MAX).is_none());
     let new = &m.paths[0];
     assert_eq!(
@@ -1070,7 +1071,7 @@ fn a_walk_in_range_of_its_end_stops() {
     let mut fx = open_fixture();
     let mut m = requesting(0, 9.0);
     m.paths[0].state = PathState::Walking;
-    m.paths[0].range = 1.0;
+    m.paths[0].range = Distance::new(1.0);
     m.paths.push(level(
         2,
         &[Point::new(5.0, 5.0), Point::new(5.0, 5.5)],
@@ -1088,7 +1089,7 @@ fn a_walk_in_range_of_its_end_stops() {
     );
     let mut m = requesting(0, 9.0);
     m.paths[0].state = PathState::Walking;
-    (m.paths[0].range, m.paths[0].target) = (1.5, Some(object_id(7)));
+    (m.paths[0].range, m.paths[0].target) = (Distance::new(1.5), Some(object_id(7)));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Reached));
 }
 

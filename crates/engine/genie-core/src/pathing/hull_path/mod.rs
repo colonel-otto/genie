@@ -22,6 +22,7 @@
 //! pather's ignore list: the caller's objects (slot 0x3e8's the unit and its target) and the tile
 //! under a listed one-tile object that the unit's terrain cannot cross.
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Point;
@@ -258,7 +259,7 @@ struct HullQuery {
     to: Point,
     target: Option<Target>,
     target_id: Option<ObjectId>,
-    range: f32,
+    range: Distance,
 }
 
 /// A walk out of a hull or into one (`pathWithinHull`): its result and whether a ray left the
@@ -296,7 +297,7 @@ impl Default for KeptHulls {
 pub struct HullPather<'w> {
     world: &'w mut Spatial,
     mask: crate::map::TerrainMask,
-    radius: f32,
+    radius: Distance,
     /// `FindShortPath`'s player (its argument 12, the unit's player's number `+0x718`), whom slot
     /// 0x678 asks about a gate.
     player: i32,

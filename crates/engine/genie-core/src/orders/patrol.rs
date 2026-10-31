@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::groups::GroupId;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
@@ -199,7 +200,7 @@ impl World {
                 g.add_waypoint(w.x(), w.y(), true);
             }
             let leg = crate::groups::CommandMoveTo {
-                range: 0.0,
+                range: Distance::ZERO,
                 leg: patrol,
                 forget_target: true,
                 hold: !patrol,
@@ -240,7 +241,7 @@ impl World {
             t.position(),
             tm.radius,
         );
-        Ok(master.line_of_sight * master.line_of_sight < gap)
+        Ok(master.line_of_sight.squared().get() < gap)
     }
 
     /// `FUN_140fd9f40` (the patrol's without a target, INTERACT's and MOVE's with the one the world
@@ -287,7 +288,7 @@ impl World {
                     from,
                     to: at.ground(),
                     radii: 0.0,
-                    range: 0.0,
+                    range: Distance::ZERO,
                     closed: Vec::new(),
                     full: false,
                 };
@@ -384,7 +385,7 @@ impl World {
         {
             let walk = crate::unit_ai::AiMove {
                 point: Position::new(lx, ly, z),
-                range: 0.0,
+                range: Distance::ZERO,
                 force: sweep.patrol,
                 walk: true,
             };

@@ -250,12 +250,20 @@ fn the_movement_damage_timer_runs_down_to_0_and_then_hits() {
 #[test]
 fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
     assert_eq!(
-        reach(Position::new(10.7, 20.2, 0.0), 2.9, GridSize::new(120, 120)),
+        reach(
+            Position::new(10.7, 20.2, 0.0),
+            Distance::new(2.9),
+            GridSize::new(120, 120)
+        ),
         (Tile::new(8, 18), Tile::new(12, 22))
     );
     // from 0, and up to the map's size itself
     assert_eq!(
-        reach(Position::new(1.5, 118.9, 0.0), 3.0, GridSize::new(120, 120)),
+        reach(
+            Position::new(1.5, 118.9, 0.0),
+            Distance::new(3.0),
+            GridSize::new(120, 120)
+        ),
         (Tile::new(0, 115), Tile::new(4, 120))
     );
     // a NaN range is the integer indefinite
@@ -263,7 +271,7 @@ fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
     // tile
     let (low, high) = reach(
         Position::new(5.0, 5.0, 0.0),
-        f32::NAN,
+        Distance::new(f32::NAN),
         GridSize::new(120, 120),
     );
     assert_eq!(low, Tile::new(0, 0));
@@ -298,21 +306,25 @@ fn a_movement_damage_strikes_enemies_in_reach() {
     let h = hitter();
     let b = bystander();
     // the gap is 1.5 - 0.6 = 0.9: within 1 (0.81 at most 1), not within 0.5
-    assert!(struck(&h, 1.0, &b));
-    assert!(!struck(&h, 0.5, &b));
-    assert!(struck(&h, f32::NAN, &b));
+    assert!(struck(&h, Distance::new(1.0), &b));
+    assert!(!struck(&h, Distance::new(0.5), &b));
+    assert!(struck(&h, Distance::new(f32::NAN), &b));
     assert!(!struck(
         &h,
-        1.0,
+        Distance::new(1.0),
         &Bystander {
             id: object_id(1),
             ..b
         }
     ));
-    assert!(!struck(&h, 1.0, &Bystander { allied: true, ..b }));
     assert!(!struck(
         &h,
-        1.0,
+        Distance::new(1.0),
+        &Bystander { allied: true, ..b }
+    ));
+    assert!(!struck(
+        &h,
+        Distance::new(1.0),
         &Bystander {
             player: PlayerId::new(0),
             ..b
@@ -320,7 +332,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
     ));
     assert!(!struck(
         &h,
-        1.0,
+        Distance::new(1.0),
         &Bystander {
             state: ObjectState::Dying,
             ..b
@@ -332,10 +344,10 @@ fn a_movement_damage_strikes_enemies_in_reach() {
         class: class::BUILDING,
         ..b
     };
-    assert!(!struck(&h, 1.0, &building));
+    assert!(!struck(&h, Distance::new(1.0), &building));
     assert!(struck(
         &h,
-        1.0,
+        Distance::new(1.0),
         &Bystander {
             class: class::CLASS_51,
             ..building
@@ -343,7 +355,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
     ));
     assert!(struck(
         &h,
-        1.0,
+        Distance::new(1.0),
         &Bystander {
             class: class::CLASS_54,
             ..building
@@ -354,10 +366,10 @@ fn a_movement_damage_strikes_enemies_in_reach() {
         blast_level: 3,
         ..h
     };
-    assert!(!struck(&high, 1.0, &b));
+    assert!(!struck(&high, Distance::new(1.0), &b));
     assert!(struck(
         &high,
-        1.0,
+        Distance::new(1.0),
         &Bystander {
             blast_defense: 2,
             ..b
@@ -368,7 +380,7 @@ fn a_movement_damage_strikes_enemies_in_reach() {
             blast_level: 1,
             ..h
         },
-        1.0,
+        Distance::new(1.0),
         &Bystander {
             blast_defense: 1,
             ..b
@@ -644,7 +656,7 @@ fn building_sight(t: &mut World, p: PlayerId, id: i32, built: bool) {
         crate::vision::visibility::Seer {
             player: p,
             master: master_id(1021),
-            los: 6.0,
+            los: Distance::new(6.0),
             state: ObjectState::Alive,
             explored: true,
             building: Some(crate::vision::visibility::BuildingSight {
@@ -722,8 +734,8 @@ fn keshik(t: &mut World) {
         target2: None,
         state: AttackState::Swing,
         timer: Seconds::ZERO,
-        range: 0.0,
-        min_range: 0.0,
+        range: Distance::ZERO,
+        min_range: Distance::ZERO,
         point: Position::new(-1.0, -1.0, -1.0),
         seen: Position::new(-1.0, -1.0, -1.0),
         move_to: None,
@@ -784,7 +796,7 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
 /// 5 hit points and a timer of 3 s.
 fn trampler(t: &mut World) {
     let trample = Task {
-        work_range: 2.0,
+        work_range: Distance::new(2.0),
         work_val1: 5.0,
         work_val2: 3.0,
         ..task(MOVEMENT_DAMAGE)
@@ -989,7 +1001,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
 fn a_dead_object_that_leaves_issues_its_removal_rewards() {
     let mut t = world();
     let far = Task {
-        work_range: 1.0,
+        work_range: Distance::new(1.0),
         ..bounty()
     };
     give_master(

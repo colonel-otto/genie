@@ -103,11 +103,12 @@ impl UnitView<'_, '_> {
     pub(crate) fn own_foundation_near(&self) -> Result<Option<ObjectId>, GenieError> {
         let unit = &*self.unit;
         let master = unit.master(&self.c.w.masters, self.player)?;
-        let r = if master.search_radius <= master.line_of_sight {
+        let r = (if master.search_radius <= master.line_of_sight {
             master.line_of_sight
         } else {
             master.search_radius
-        } as i32;
+        })
+        .get() as i32;
         let (ux, uy) = (unit.position().x() as i32, unit.position().y() as i32);
         let (player, others, every, spatial) = (
             self.player,

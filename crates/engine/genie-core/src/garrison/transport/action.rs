@@ -7,6 +7,7 @@ use crate::garrison::transport::{
     Changed, LAND_FLAGS, MOVE_RANGE, MapShore, NEAR, NO_TRANSPORT, NONE, SHORE_MARGIN, Ship, Shore,
     TransportAction, TransportReads, UNLOAD_REACH_SQUARED, Updated, WATER_FLAGS,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -109,7 +110,9 @@ impl TransportAction {
                 {
                     self.point = self.point.with_x(shore_at.x()).with_y(shore_at.y());
                 }
-                self.move_to = ship.walk.to_point(self.point, MOVE_RANGE, ship.given)?;
+                self.move_to =
+                    ship.walk
+                        .to_point(self.point, Distance::new(MOVE_RANGE), ship.given)?;
             }
             _ => {}
         }
@@ -171,7 +174,7 @@ impl TransportAction {
         // MAXSS 0, gap: the gap when it is not below 0, a NaN gap too
         let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius.x());
         let dy = crate::math::fmath::maxss(0.0, (y - uy).abs() - ship.radius.y());
-        let near = shore.near(zone.byte(), NEAR)?;
+        let near = shore.near(zone.byte(), Distance::new(NEAR))?;
         let within =
             !crate::math::fmath::below_or_unordered(UNLOAD_REACH_SQUARED, dy * dy + dx * dx);
         let state = if near && within {
@@ -305,7 +308,7 @@ impl TransportAction {
                 } else {
                     let zone = shore.zone(self.point.tile())?;
                     self.retarget = false;
-                    reaches = shore.near(zone.byte(), NEAR)?;
+                    reaches = shore.near(zone.byte(), Distance::new(NEAR))?;
                 }
                 let mut cannot_unload = !reaches;
                 if reaches && ship.loaded {

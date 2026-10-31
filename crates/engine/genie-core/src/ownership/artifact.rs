@@ -8,6 +8,7 @@
 //! `107 + state` for it.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
@@ -211,7 +212,12 @@ impl Artifact {
         } else {
             to
         };
-        let walk = reads.to_object(held, range, self.moving, TargetMoved::Follows)?;
+        let walk = reads.to_object(
+            held,
+            Distance::new(range),
+            self.moving,
+            TargetMoved::Follows,
+        )?;
         let alive = to.state.is_none_or(|s| s < ObjectState::Removed);
         let released = self.set_target(None, false).released;
         let taken = self.set_target(to.id, alive).taken;
@@ -236,7 +242,7 @@ impl Artifact {
         point: Position,
         reads: &MoveToReads<'_>,
     ) -> Result<SubActionsGone, GenieError> {
-        let walk = reads.to_point(point, 0.0, self.moving)?;
+        let walk = reads.to_point(point, Distance::ZERO, self.moving)?;
         self.goal = Some(point);
         let gone = self.drop_sub_actions();
         self.move_to = walk.map(|m| MoveToAction { quiet: false, ..m });
@@ -604,7 +610,7 @@ mod tests {
         // a MoveTo to the point within 0 that is not quiet: the action's AI hears its end
         let to_point = MoveToAction {
             quiet: false,
-            ..MoveToAction::sub_to_point(Position::new(28.5, 93.5, 0.0), 0.0, None)
+            ..MoveToAction::sub_to_point(Position::new(28.5, 93.5, 0.0), Distance::ZERO, None)
         };
         assert_eq!(a.move_to, Some(to_point));
         // a second move while the first walks: its MoveTo goes, which stops the unit (the
@@ -645,7 +651,7 @@ mod tests {
             crate::garrison::EnterAction::new(
                 object_id(11970),
                 Position::new(34.125, 123.333, 0.0),
-                &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
+                &crate::garrison::tests::enter_task(Distance::ZERO, class::TRANSPORT),
             )
             .walking(MoveTo::Moving)
         };
@@ -693,7 +699,7 @@ mod tests {
         c.enter = Some(crate::garrison::EnterAction::new(
             object_id(11970),
             Position::new(1.0, 2.0, 0.0),
-            &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
+            &crate::garrison::tests::enter_task(Distance::ZERO, class::TRANSPORT),
         ));
         assert_eq!(
             c.take_point(Position::new(3.0, 4.0, 0.0), &move_reads(&sprites())),
@@ -712,7 +718,7 @@ mod tests {
         let mut e = crate::garrison::EnterAction::new(
             object_id(11970),
             Position::new(1.0, 2.0, 0.0),
-            &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
+            &crate::garrison::tests::enter_task(Distance::ZERO, class::TRANSPORT),
         );
         e = e.walking(MoveTo::Moving);
         let by_enter = SubActionsGone {
@@ -760,7 +766,7 @@ mod tests {
             crate::garrison::EnterAction::new(
                 target,
                 Position::new(1.0, 2.0, 0.0),
-                &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
+                &crate::garrison::tests::enter_task(Distance::ZERO, class::TRANSPORT),
             )
         };
         let gone = |stops, released| SubActionsGone { stops, released };
@@ -981,7 +987,7 @@ mod tests {
                 a.target,
                 a.move_to.map(|m| (ObjectId::field(m.target), m.range))
             ),
-            (None, Some((-1, 0.0)))
+            (None, Some((-1, Distance::ZERO)))
         );
         a.target = Some(object_id(9149));
         assert_eq!(
@@ -1068,7 +1074,7 @@ mod tests {
         MoveToAction {
             point: Position::new(10.0, 12.0, 0.0),
             target: ObjectId::of_field(target),
-            range: 1.0,
+            range: Distance::new(1.0),
             ..MoveToAction::sub_in(state)
         }
     }
@@ -1090,7 +1096,7 @@ mod tests {
         WalkTo {
             id: ObjectId::of_field(id),
             at,
-            gap: 5.0,
+            gap: Distance::new(5.0),
             state: Some(if alive {
                 ObjectState::Alive
             } else {
@@ -1181,7 +1187,12 @@ mod tests {
         assert_eq!(
             a.move_to
                 .map(|m| (m.goal(), ObjectId::field(m.target), m.range, m.quiet)),
-            Some((Some(Position::new(9.8, 11.8, 0.0)), -1, 1.0, true))
+            Some((
+                Some(Position::new(9.8, 11.8, 0.0)),
+                -1,
+                Distance::new(1.0),
+                true
+            ))
         );
         assert_eq!(a.target, Some(object_id(9149)));
     }
@@ -1344,7 +1355,7 @@ mod tests {
         let mut e = crate::garrison::EnterAction::new(
             object_id(11970),
             Position::new(1.0, 2.0, 0.0),
-            &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
+            &crate::garrison::tests::enter_task(Distance::ZERO, class::TRANSPORT),
         );
         e = e.walking(MoveTo::Moving);
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())

@@ -1,5 +1,6 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
+use crate::map::Distance;
 use crate::map::Position;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
@@ -183,7 +184,7 @@ pub struct Unit {
     pub attack_powerup: f32,
     /// `mMaxRangePowerup` (`+0xa40`, slot 0x700): what its shown range adds
     /// ([`crate::combat::damage::shown_range`]).
-    pub range_powerup: f32,
+    pub range_powerup: Distance,
     /// Its melee and pierce armor powerups (`+0x9e4`, `+0x9e6`).
     pub armor_powerups: [i16; 2],
     /// The melee and pierce armor taken off it (its charge's hits).

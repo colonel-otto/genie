@@ -6,6 +6,7 @@ use crate::garrison::transport::{
     DEEP_WATER, DRAW_SCALE, DROP_GAP, DROP_TRIES, RETRIES, RETRY_SPREAD, RETRY_STEP, STACK_PLACE,
     Shore, WATER,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -126,20 +127,26 @@ impl<'a> DropDraws<'a> {
         let (rx, ry) = (self.around.radius.x(), self.around.radius.y());
         let off_x = rx + (self.unit_radius.x() + DROP_GAP);
         let off_y = ry + (self.unit_radius.y() + DROP_GAP);
-        let along = |r: u32, radius: f32, centre: f32| {
-            ((r as i32 as f32 * (radius + radius)) / DRAW_SCALE - radius) + centre
+        let along = |r: u32, radius: Distance, centre: f32| {
+            ((r as i32 as f32 * (radius + radius)) / DRAW_SCALE - radius) + Distance::new(centre)
         };
         let side = (self.rng.rand15() as i32 * 4) / 0x7fff;
         let place = match side {
-            0 => Point::new(cx + off_x, along(self.rng.rand15(), ry, cy)),
-            1 => Point::new(cx - off_x, along(self.rng.rand15(), ry, cy)),
+            0 => Point::new(
+                cx + off_x,
+                (along(self.rng.rand15(), Distance::new(ry), cy)).get(),
+            ),
+            1 => Point::new(
+                cx - off_x,
+                (along(self.rng.rand15(), Distance::new(ry), cy)).get(),
+            ),
             2 => {
                 let y = cy + off_y;
-                Point::new(along(self.rng.rand15(), rx, cx), y)
+                Point::new((along(self.rng.rand15(), Distance::new(rx), cx)).get(), y)
             }
             3 => {
                 let y = cy - off_y;
-                Point::new(along(self.rng.rand15(), rx, cx), y)
+                Point::new((along(self.rng.rand15(), Distance::new(rx), cx)).get(), y)
             }
             _ => self.last.ok_or(STACK_PLACE)?,
         };
@@ -254,7 +261,7 @@ impl Shore for MapShore<'_> {
             .map_or(crate::pathing::zones::ZoneId::OFF_MAP, |m| m.zone(tile)))
     }
 
-    fn near(&mut self, zone: u8, reach: f32) -> Result<bool, GenieError> {
+    fn near(&mut self, zone: u8, reach: Distance) -> Result<bool, GenieError> {
         let tile = self.tile;
         Ok(self.zone_map()?.is_some_and(|m| {
             m.near(

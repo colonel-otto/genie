@@ -8,6 +8,7 @@ use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, UNPLACED, UNREACHED, WalkStart, Walking,
     enter_view, ship_reaches,
 };
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::MoveToReads;
@@ -296,7 +297,7 @@ impl World {
         player: PlayerId,
         idx: ListIndex,
         target: ObjectId,
-        range: f32,
+        range: Distance,
     ) -> Result<(EnterTarget, WalkStart), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
@@ -414,7 +415,7 @@ impl World {
         };
         let walk = crate::unit_ai::AiMove {
             point: to,
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         };

@@ -1,5 +1,6 @@
 //! The static, animated, moving and action masters' setters.
 
+use crate::map::Distance;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
@@ -22,7 +23,7 @@ impl Master {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = low16(v),
-            a::LINE_OF_SIGHT => self.line_of_sight = v,
+            a::LINE_OF_SIGHT => self.line_of_sight = Distance::new(v),
             a::GARRISON_CAPACITY => self.garrison = low8(v),
             a::SIZE_X => self.radius = self.radius.with_x(v),
             a::SIZE_Y => self.radius = self.radius.with_y(v),
@@ -163,7 +164,7 @@ impl Master {
         use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = add_short(self.hit_points, v, world.capped),
-            a::LINE_OF_SIGHT => self.line_of_sight += v,
+            a::LINE_OF_SIGHT => self.line_of_sight += Distance::new(v),
             a::GARRISON_CAPACITY => self.garrison = self.garrison.wrapping_add(low8(v)),
             a::SIZE_X => self.radius = self.radius.with_x(self.radius.x() + v),
             a::SIZE_Y => self.radius = self.radius.with_y(self.radius.y() + v),
@@ -434,7 +435,7 @@ impl Master {
     ) {
         match attribute {
             attribute::WORK_RATE => self.work_rate = v,
-            attribute::SEARCH_RADIUS => self.search_radius = v,
+            attribute::SEARCH_RADIUS => self.search_radius = Distance::new(v),
             attribute::RUN_PATTERN => self.run_pattern = low8(v),
             // the command and move sounds (132 to 135) are the interface's
             attribute::COMMAND_SOUND
@@ -454,7 +455,7 @@ impl Master {
     ) {
         match attribute {
             attribute::WORK_RATE => self.work_rate += v,
-            attribute::SEARCH_RADIUS => self.search_radius += v,
+            attribute::SEARCH_RADIUS => self.search_radius += Distance::new(v),
             attribute::RUN_PATTERN => self.run_pattern = self.run_pattern.wrapping_add(low8(v)),
             // the command and move sounds (through slot 0x18) are the interface's
             attribute::COMMAND_SOUND | attribute::MOVE_SOUND => {}

@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -110,7 +111,7 @@ impl World {
             target: Some(target),
             target_owner: Some(tp),
             point: Position::new(x, y, z),
-            range: GUARD_RANGE,
+            range: Distance::new(GUARD_RANGE),
             shown: Point::new(x, y),
             ready: true,
             target_type: Some(crate::unit_ai::OrderTargetType::of_master(tm.id)),
@@ -393,7 +394,7 @@ impl World {
             .players
             .live(player, idx)?
             .master(&self.masters, player)?;
-        let range = crate::movement::move_to::object_range(0.0, Some(master));
+        let range = crate::movement::move_to::object_range(Distance::ZERO, Some(master));
         let sprite = crate::movement::move_to::object_sprite(master)
             .and_then(|id| self.graphics.get(&id).copied());
         let unit = self.players.live_mut(player, idx)?;
@@ -406,7 +407,7 @@ impl World {
             here,
             mover,
             (target, t_state),
-            range,
+            Distance::new(range),
             (sprite, livestock),
         )?;
         if move_to.shows_standing() {

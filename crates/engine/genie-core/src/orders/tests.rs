@@ -256,9 +256,9 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             ..crate::construction::build::tests::started(
                 object_id(600),
                 Position::new(5.0, 10.0, 0.0),
-                0.0,
+                Distance::ZERO,
                 crate::construction::build::BuildTask {
-                    range: 0.1,
+                    range: Distance::new(0.1),
                     work_value: 1.0,
                     work_rate: 1.0,
                     resource: None,
@@ -390,7 +390,12 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             ObjectId::field(walk.target),
             walk.range
         ),
-        (BuildState::Drop, Some(object_id(503)), 503, 0.1)
+        (
+            BuildState::Drop,
+            Some(object_id(503)),
+            503,
+            Distance::new(0.1)
+        )
     );
     assert_eq!(
         (walk.state, walk.on_target_moved, build.added),
@@ -799,7 +804,7 @@ fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
     soldier.standing_sprite = 300;
     soldier.attack_sprite = 301;
     soldier.move_sprite = 302;
-    soldier.weapon_range = 0.0;
+    soldier.weapon_range = Distance::ZERO;
     soldier.reload = 2.0;
     soldier.moving = Some(walker.stats);
     t.masters[0] = crate::objects::masters::Masters::new([Master {
@@ -1168,7 +1173,7 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
         target: None,
         target_owner: None,
         point: Position::new(1.0, 1.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::new(1.0, 1.0),
         ready: true,
         target_type: None,
@@ -1772,7 +1777,7 @@ fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
         target: None,
         target_owner: None,
         point: Position::new(1.0, 1.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::new(1.0, 1.0),
         ready: true,
         target_type: None,
@@ -2318,7 +2323,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
             state: crate::movement::move_to::MoveTo::Start,
             point: Position::new(30.0, 30.0, 0.0),
             target: None,
-            range: 0.0,
+            range: Distance::ZERO,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
@@ -2485,7 +2490,11 @@ fn a_guard_gives_its_units_the_defend_order_at_once() {
         );
         assert_eq!(
             (ai.current_target, ai.defend_target, ai.desired_distance),
-            (Some(object_id(30)), Some(object_id(30)), GUARD_RANGE)
+            (
+                Some(object_id(30)),
+                Some(object_id(30)),
+                Distance::new(GUARD_RANGE)
+            )
         );
         assert_eq!(ai.target_point, Position::new(x, 20.0, 0.0));
         assert_eq!(ai.orders.len(), 0);
@@ -2630,7 +2639,7 @@ fn a_unit_s_own_queued_order_names_its_target() {
         target,
         target_owner: None,
         point: Position::new(1.0, 1.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::new(1.0, 1.0),
         ready: true,
         target_type: None,
@@ -2787,7 +2796,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             move_to: None,
             point: Position::new(-1.0, -1.0, -1.0),
             task: crate::construction::build::BuildTask {
-                range: 0.1,
+                range: Distance::new(0.1),
                 work_value: 1.0,
                 work_rate: 1.0,
                 resource: None,
@@ -3116,13 +3125,38 @@ fn an_ignored_unit_joins_the_end_of_the_ignore_list() {
 /// most the weapon range (COMISS, JC: NaN out) and not too close.
 #[test]
 fn a_target_is_in_reach_within_the_weapon_range_and_not_below_the_least() {
-    assert_eq!(work_reach(3.0, 5.0, 2.0), (true, false));
-    assert_eq!(work_reach(5.0, 5.0, 2.0), (true, false));
-    assert_eq!(work_reach(5.5, 5.0, 2.0), (false, false));
-    assert_eq!(work_reach(1.0, 5.0, 2.0), (false, true));
-    assert_eq!(work_reach(2.0, 5.0, 2.0), (true, false));
-    assert_eq!(work_reach(f32::NAN, 5.0, 2.0), (false, false));
-    assert_eq!(work_reach(0.0, 0.0, 0.0), (true, false));
+    assert_eq!(
+        work_reach(Distance::new(3.0), Distance::new(5.0), Distance::new(2.0)),
+        (true, false)
+    );
+    assert_eq!(
+        work_reach(Distance::new(5.0), Distance::new(5.0), Distance::new(2.0)),
+        (true, false)
+    );
+    assert_eq!(
+        work_reach(Distance::new(5.5), Distance::new(5.0), Distance::new(2.0)),
+        (false, false)
+    );
+    assert_eq!(
+        work_reach(Distance::new(1.0), Distance::new(5.0), Distance::new(2.0)),
+        (false, true)
+    );
+    assert_eq!(
+        work_reach(Distance::new(2.0), Distance::new(5.0), Distance::new(2.0)),
+        (true, false)
+    );
+    assert_eq!(
+        work_reach(
+            Distance::new(f32::NAN),
+            Distance::new(5.0),
+            Distance::new(2.0)
+        ),
+        (false, false)
+    );
+    assert_eq!(
+        work_reach(Distance::ZERO, Distance::ZERO, Distance::ZERO),
+        (true, false)
+    );
 }
 
 /// Player 1's soldier 10 (master 4, ranges 2 to 5) at (10, 10) and player 2's unit 20 at
@@ -3165,8 +3199,8 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
         id,
         kind: master_type::COMBAT,
         class,
-        weapon_range: 5.0,
-        min_range: 2.0,
+        weapon_range: Distance::new(5.0),
+        min_range: Distance::new(2.0),
         radius: Footprint::new(0.2, 0.2),
         ..Master::default()
     };
@@ -3345,7 +3379,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
         position,
         moved_at: position.ground(),
         state: ObjectState::Alive,
-        radius: 0.2,
+        radius: Distance::new(0.2),
         restriction: Some(RestrictionId::named(1)),
     };
     // no planner: the distance decides
@@ -3576,7 +3610,7 @@ fn a_lone_unit_patrols_to_its_waypoint() {
             ObjectId::field(move_to.target),
             move_to.range
         ),
-        (Some(Position::new(30.0, 20.0, 1.5)), -1, 0.0)
+        (Some(Position::new(30.0, 20.0, 1.5)), -1, Distance::ZERO)
     );
     let m = u.body.mover().unwrap();
     assert_eq!(
@@ -3712,7 +3746,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
         .actions
         .move_to_mut()
         .unwrap()
-        .range = 0.25;
+        .range = Distance::new(0.25);
     t.attack_move(
         player_id(1),
         &object_ids([11]),
@@ -3727,7 +3761,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
             .copied()
             .unwrap()
             .range,
-        0.25
+        Distance::new(0.25)
     );
     // a patrol's forced move makes a new one
     t.patrol(
@@ -3744,7 +3778,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
             .copied()
             .unwrap()
             .range,
-        0.0
+        Distance::ZERO
     );
 }
 
@@ -3785,7 +3819,7 @@ fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
         target: None,
         target_owner: None,
         point: Position::new(25.0, 20.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::ORIGIN,
         ready: false,
         target_type: None,
@@ -3905,7 +3939,7 @@ fn a_kept_group_takes_only_the_soldiers_that_do_not_see_the_target() {
     ];
     let world = |target_x: f32| {
         let mut t = soldiers(&units, &[11, 12]);
-        t.masters[1].get_mut(master_id(4)).unwrap().line_of_sight = 5.0;
+        t.masters[1].get_mut(master_id(4)).unwrap().line_of_sight = Distance::new(5.0);
         t.masters[0] = crate::objects::masters::Masters::new([Master {
             id: ids::HOUSE,
             kind: BUILDING,
@@ -4316,7 +4350,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         ask(DropOffBy::Hunt, true, false)
     );
     let task = crate::construction::build::BuildTask {
-        range: 0.1,
+        range: Distance::new(0.1),
         work_value: 1.0,
         work_rate: 1.0,
         resource: Some(attribute::WOOD),
@@ -4328,7 +4362,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         .set_build(Some(crate::construction::build::tests::started(
             object_id(10028),
             Position::new(10.5, 10.5, 0.0),
-            5.0,
+            Distance::new(5.0),
             task,
         )));
     assert_eq!(
@@ -4682,7 +4716,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
             state: crate::movement::move_to::MoveTo::Moving,
             point: Position::new(40.0, 89.5, 0.0),
             target: None,
-            range: 0.0,
+            range: Distance::ZERO,
             quiet: false,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
             wait: crate::movement::move_to::MoveWait::default(),
@@ -4697,7 +4731,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
     );
     let mut t = crate::world::tests::forage_world();
     let build = crate::construction::build::BuildTask {
-        range: 0.1,
+        range: Distance::new(0.1),
         work_value: 1.0,
         work_rate: 1.0,
         resource: None,
@@ -4709,7 +4743,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         .set_build(Some(crate::construction::build::tests::started(
             object_id(10028),
             Position::new(30.0, 88.0, 0.0),
-            1.0,
+            Distance::new(1.0),
             build,
         )));
     let building = Task {

@@ -8,6 +8,7 @@
 //! leave by a swap with its last.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::objects::ObjectId;
@@ -44,7 +45,7 @@ pub struct Record {
     /// The object.
     pub id: ObjectId,
     /// Its distance (`FLT_MAX` in the lists; a query's copy holds its own).
-    pub distance: f32,
+    pub distance: Distance,
     /// The owner's id (`player+0x718`).
     pub owner: u8,
     /// Its x.
@@ -96,7 +97,7 @@ pub struct VisibleQuery<'a> {
     /// The searcher's place (x, y).
     pub position: Point,
     /// How far, at most 44.
-    pub radius: f32,
+    pub radius: Distance,
     /// 0: a rounded box, 1: a box.
     pub mode: i32,
     /// The classes it reads.
@@ -204,7 +205,7 @@ impl Registry {
                 } else {
                     list.push(Record {
                         id,
-                        distance: f32::MAX,
+                        distance: Distance::MAX,
                         owner,
                         x,
                         y,
@@ -286,6 +287,7 @@ impl Registry {
         if classes.is_empty() || self.players <= player.index() {
             return Ok(None);
         }
+        let radius = radius.get();
         let radius = if radius <= MOST_RADIUS {
             radius
         } else {
@@ -340,7 +342,7 @@ impl Registry {
                 let out = &mut found[relation];
                 if out.len() < MOST_FOUND {
                     out.push(Record {
-                        distance: (dy * dy + dx * dx).sqrt(),
+                        distance: Distance::new((dy * dy + dx * dx).sqrt()),
                         ..*r
                     });
                 }
@@ -451,7 +453,7 @@ mod tests {
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
                 position: Point::new(10.0, 10.0),
-                radius: 3.0,
+                radius: Distance::new(3.0),
                 mode: 0,
                 classes: &[class_id(4), class_id(9)],
                 relations: &relations,
@@ -478,13 +480,16 @@ mod tests {
         );
         // the edge distances, the overlap along y included: (1.8, -0.2)
         assert!(
-            (found[UnitRelation::ENEMY][0].distance - (1.8f32 * 1.8 + 0.04).sqrt()).abs() < 1e-6
+            (found[UnitRelation::ENEMY][0].distance - Distance::new((1.8f32 * 1.8 + 0.04).sqrt()))
+                .get()
+                .abs()
+                < 1e-6
         );
         assert_eq!(
             r.visible_units(VisibleQuery {
                 player: PlayerId::new(0),
                 position: Point::new(10.0, 10.0),
-                radius: 3.0,
+                radius: Distance::new(3.0),
                 mode: 0,
                 classes: &[],
                 relations: &relations,
@@ -523,7 +528,7 @@ mod tests {
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
                 position: Point::new(10.0, 10.0),
-                radius: 100.0,
+                radius: Distance::new(100.0),
                 mode: 1,
                 classes: &[class_id(4)],
                 relations: &[
@@ -563,7 +568,7 @@ mod tests {
             .visible_units(VisibleQuery {
                 player: PlayerId::new(0),
                 position: Point::new(10.0, 10.0),
-                radius: 3.0,
+                radius: Distance::new(3.0),
                 mode: 0,
                 classes: &[class_id(4)],
                 relations: &[

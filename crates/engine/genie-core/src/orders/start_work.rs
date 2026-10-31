@@ -18,6 +18,7 @@
 
 use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
+use crate::map::Distance;
 use crate::map::Rect;
 use crate::map::Tile;
 use crate::math::rng::Stream;
@@ -297,7 +298,14 @@ impl World {
                 },
                 objects: &objects,
                 reach: &mut |spatial, id| {
-                    mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id)
+                    mover.reaches_object(
+                        &me_walk,
+                        spatial,
+                        &mut plan,
+                        id,
+                        Distance::ZERO,
+                        master_id,
+                    )
                 },
             },
         )

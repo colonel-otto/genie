@@ -8,6 +8,7 @@ use crate::test_ids::object_id;
 use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
+use genie_core::map::Distance;
 use genie_core::map::Position;
 use genie_core::movement::move_to::MoveWaitState;
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
@@ -45,7 +46,7 @@ fn task(id: i16, range: f32) -> Task {
         wait_time: 0.0,
         work_val1: 0.5,
         work_val2: 0.0,
-        work_range: range,
+        work_range: Distance::new(range),
         work_flag: 0,
         enablement: Some(attribute::FOOD),
         sprites: [-1; 4],
@@ -139,7 +140,7 @@ fn import_drawn(
         objects,
         |_| {
             Ok(BuildTask {
-                range: 1.0,
+                range: Distance::new(1.0),
                 work_value: 0.5,
                 work_rate: 2.0,
                 resource: None,
@@ -233,7 +234,7 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
         (None, bits3(Position::new(1.0, 2.0, 0.0)))
     );
     assert_eq!(
-        (m.target, m.range.to_bits(), m.sprite),
+        (m.target, m.range.get().to_bits(), m.sprite),
         (None, 0.5_f32.to_bits(), None)
     );
     assert_eq!(
@@ -376,7 +377,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
     assert!(
         matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3(Position::new(1.0, 2.0, 0.0)))
     );
-    assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
+    assert_eq!(walk.range.get().to_bits(), 0.5_f32.to_bits());
     let mut to_object = move_to(4, 0.5);
     to_object
         .rge_action_by_type
@@ -505,7 +506,7 @@ fn a_missile_flies_with_its_actions_course() {
         .missile
         .unwrap();
     assert_eq!(
-        (m.fired_from, m.max_range.to_bits()),
+        (m.fired_from, m.max_range.get().to_bits()),
         (Some(object_id(900)), 7.0_f32.to_bits())
     );
     assert!(m.flying && !m.charge);
@@ -666,7 +667,7 @@ fn a_build_takes_its_task_move_to_and_site() {
     );
     assert!(a.added);
     assert_eq!(a.task.work_rate.to_bits(), 2.5_f32.to_bits());
-    assert_eq!(walk.range.to_bits(), 0.75_f32.to_bits());
+    assert_eq!(walk.range.get().to_bits(), 0.75_f32.to_bits());
     assert_eq!(bits3(walk.point), bits3(Position::new(1.0, 2.0, 0.0)));
     assert_eq!(walk.wait.state, MoveWaitState::AskedAgain);
     // a MoveTo without a sprite (−1) keeps none
@@ -705,7 +706,7 @@ fn a_build_takes_its_task_move_to_and_site() {
     .copied()
     .unwrap();
     let walk = a.move_to.unwrap();
-    assert_eq!(walk.range.to_bits(), 0.75_f32.to_bits());
+    assert_eq!(walk.range.get().to_bits(), 0.75_f32.to_bits());
     assert_eq!(walk.sprite, Some(carried));
     let a = imported(BUILD, build(b.clone()))
         .unwrap()
@@ -758,7 +759,7 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     .unwrap();
     let walk = r.move_to.unwrap();
     assert_eq!(
-        (r.task.id, walk.state, walk.quiet, r.range.to_bits()),
+        (r.task.id, walk.state, walk.quiet, r.range.get().to_bits()),
         (TaskId::of_task(2), MoveTo::Moving, true, 0)
     );
     assert!(r.counted && r.quiet);
@@ -766,7 +767,7 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     assert!(
         matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3(Position::new(1.0, 2.0, 0.0)))
     );
-    assert_eq!(walk.range.to_bits(), 0.5_f32.to_bits());
+    assert_eq!(walk.range.get().to_bits(), 0.5_f32.to_bits());
     let r = imported(REPAIR, repair(b.clone()))
         .unwrap()
         .actions
@@ -850,7 +851,7 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         (
             walk.state,
             walk.quiet,
-            walk.range.to_bits(),
+            walk.range.get().to_bits(),
             walk.wait.state
         ),
         (
@@ -953,7 +954,7 @@ fn a_gather_takes_its_stops_and_move_to() {
         matches!(walk.walks_to(), Goal::Point(p) if bits3(p) == bits3(Position::new(1.0, 2.0, 0.0)))
     );
     assert_eq!(
-        (walk.range.to_bits(), walk.wait.state),
+        (walk.range.get().to_bits(), walk.wait.state),
         (0.75_f32.to_bits(), MoveWaitState::AskedAgain)
     );
     assert_eq!(
@@ -1006,7 +1007,7 @@ fn an_enter_takes_its_task_and_retry() {
     );
     assert!(e.retry);
     assert_eq!(
-        (e.range.to_bits(), m.wait.state),
+        (e.range.get().to_bits(), m.wait.state),
         (2.0_f32.to_bits(), MoveWaitState::AskedAgain)
     );
     assert_eq!(

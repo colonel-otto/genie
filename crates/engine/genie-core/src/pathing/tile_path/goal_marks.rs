@@ -1,5 +1,6 @@
 //! A search's request and goal: its ranges and the marks of the cells and tiles within them.
 
+use crate::map::Distance;
 use crate::map::Point;
 use crate::pathing::tile_path::{
     CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, PlanRect, PlanTile, Planner,
@@ -17,7 +18,7 @@ pub struct Request {
     /// level's range).
     pub radii: f32,
     /// How near the goal counts as there (the path level's range).
-    pub range: f32,
+    pub range: Distance,
     /// Rectangles of tiles closed for this search.
     pub closed: Vec<PlanRect>,
     /// A human player's search: no early stop near the goal.
@@ -30,7 +31,7 @@ pub(super) struct Goal {
     pub(super) x: f32,
     pub(super) y: f32,
     pub(super) radii: f32,
-    pub(super) range: f32,
+    pub(super) range: Distance,
 }
 
 impl Request {
@@ -57,13 +58,13 @@ impl Planner {
         if !self.region.holds_at(level, cell) {
             return false;
         }
-        let r = range + HALF;
+        let r = range + Distance::new(HALF);
         let step = 1i16 << level;
         let off = |v: f32, centre: f32| {
             let d = (v - (centre + -HALF)).abs();
             let d = if d <= radii { 0.0 } else { d - radii };
             if d == radii {
-                if 0.0 <= d - r { d - r } else { 0.0 }
+                if 0.0 <= d - r.get() { d - r.get() } else { 0.0 }
             } else {
                 d
             }
@@ -77,11 +78,11 @@ impl Planner {
                     continue;
                 }
                 let ex = off(f32::from(tx), x);
-                if r < ex {
+                if r < Distance::new(ex) {
                     continue;
                 }
                 let ey = off(f32::from(ty), y);
-                if ey <= r && ey * ey + ex * ex <= r * r {
+                if ey <= r.get() && ey * ey + ex * ex <= r.squared().get() {
                     return true;
                 }
             }
@@ -93,8 +94,8 @@ impl Planner {
     /// goal ± the radii and the range (+ 1 when the range is below 1); the far sides grow by `far`.
     pub(super) fn goal_square(&mut self, goal: Goal, far: f32) {
         let Goal { x, y, radii, range } = goal;
-        let mut r = radii + range;
-        if range < ONE {
+        let mut r = radii + range.get();
+        if range < Distance::new(ONE) {
             r += ONE;
         }
         let x0 = tile(x - r).max(0);

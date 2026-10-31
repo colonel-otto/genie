@@ -2,6 +2,7 @@
 //! cannot cross, the cliffs; a point's hull and the area's bounds.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Rect;
 use crate::map::Tile;
 use crate::map::TileRect;
@@ -174,14 +175,19 @@ impl HullPather<'_> {
     /// One object's box into the hulls ([`HullPather::add_tile_objects`]).
     pub(super) fn add_box(
         hulls: &mut Vec<Hull>,
-        r: f32,
+        r: Distance,
         id: ObjectId,
         p: &Placed,
         hull: Option<HullIndex>,
     ) -> Result<(), GenieError> {
         let (x, y) = (p.position.x(), p.position.y());
         let (rx, ry) = (p.radius.x(), p.radius.y());
-        let bounds = Rect::new((x - rx) - r, (y - ry) - r, x + rx + r, y + ry + r);
+        let bounds = Rect::new(
+            (x - rx) - r.get(),
+            (y - ry) - r.get(),
+            x + rx + r.get(),
+            y + ry + r.get(),
+        );
         // `COMISS`/`JA` (0x140f8b772, 0x140f8b7a4): an unordered radius takes the given hull
         let h = match hull {
             Some(h) if at_most_or_unordered(rx, HALF) && at_most_or_unordered(ry, HALF) => h,
@@ -218,10 +224,10 @@ impl HullPather<'_> {
             if !self.ignore.contains(&id) {
                 let r = self.radius;
                 let bounds = Rect::new(
-                    x as f32 - r,
-                    y as f32 - r,
-                    (x + 1) as f32 + r,
-                    (y + 1) as f32 + r,
+                    x as f32 - r.get(),
+                    y as f32 - r.get(),
+                    (x + 1) as f32 + r.get(),
+                    (y + 1) as f32 + r.get(),
                 );
                 let k = match hull {
                     Some(k) => k,
@@ -282,9 +288,15 @@ impl HullPather<'_> {
     }
 
     /// A run of tiles `x0`..`x1` of row `y` the unit cannot cross: one box, then its tiles.
-    pub(super) fn add_run(&mut self, x0: i32, x1: i32, y: i32, r: f32) -> Result<(), GenieError> {
-        let min = Point::new(x0 as f32 - r, y as f32 - r);
-        let max = Point::new(x1 as f32 + r, (y + 1) as f32 + r);
+    pub(super) fn add_run(
+        &mut self,
+        x0: i32,
+        x1: i32,
+        y: i32,
+        r: Distance,
+    ) -> Result<(), GenieError> {
+        let min = Point::new(x0 as f32 - r.get(), y as f32 - r.get());
+        let max = Point::new(x1 as f32 + r.get(), (y + 1) as f32 + r.get());
         let hull = self.add_shape(min, max)?;
         for t in x0..x1 {
             self.process_tile(Tile::new(t, y), self.area, Some(hull))?;
@@ -335,16 +347,19 @@ impl HullPather<'_> {
     pub(super) fn in_area(&self, p: Point) -> bool {
         let r = self.radius;
         let [x0, y0, x1, y1] = self.area.get();
-        at_most_or_unordered(x0 as f32 + r, p.x())
-            && at_most_or_unordered(p.x(), (x1 + 1) as f32 - r)
-            && at_most_or_unordered(y0 as f32 + r, p.y())
-            && at_most_or_unordered(p.y(), (y1 + 1) as f32 - r)
+        at_most_or_unordered(x0 as f32 + r.get(), p.x())
+            && at_most_or_unordered(p.x(), (x1 + 1) as f32 - r.get())
+            && at_most_or_unordered(y0 as f32 + r.get(), p.y())
+            && at_most_or_unordered(p.y(), (y1 + 1) as f32 - r.get())
     }
 
     /// Whether `p` lies on the map, `r` from its edge.
     pub(super) fn on_map(&self, p: Point) -> bool {
         let r = self.radius;
         let (w, h) = (self.world.map.width(), self.world.map.height());
-        !(p.x() < r || w as f32 - r < p.x() || p.y() < r || h as f32 - r < p.y())
+        !(p.x() < r.get()
+            || w as f32 - r.get() < p.x()
+            || p.y() < r.get()
+            || h as f32 - r.get() < p.y())
     }
 }

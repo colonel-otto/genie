@@ -3,6 +3,7 @@
 use crate::{OTHER_SUB_ACTION, combat_master, saved_attack, saved_move_wait, saved_sprite};
 use genie_core::GenieError;
 use genie_core::construction::build::{BuildAction, BuildTask};
+use genie_core::map::Distance;
 use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::movement::fly::{FLY, Fly};
@@ -246,7 +247,7 @@ pub(crate) fn saved_move_to(
         // its point (`+0x38`..`+0x40`), for a target object the target's place it last took
         point: Position::new(base.target_x, base.target_y, base.target_z),
         target: ObjectId::of_field(base.target_id),
-        range: sub_range(action)?,
+        range: Distance::new(sub_range(action)?),
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)
         sprite: saved_move_to_sprite(base.short_val_2, graphics)?,
         quiet,
@@ -306,7 +307,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
         .and_then(|r| r.rge_master_missile_object.as_deref())
         .map_or(0, |m| m.missile_hit_info);
     unit.missile = Some(genie_core::combat::missile::Missile {
-        max_range: mo.max_range,
+        max_range: Distance::new(mo.max_range),
         fired_from: ObjectId::of_field(mo.fired_from_id),
         charge: mo.is_charge_projectile != 0,
         flying: genie_core::combat::missile::LANDING < ma.distance,
@@ -322,7 +323,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
             direction: Offset::new(ma.velocity_x, ma.velocity_y, ma.velocity_z),
             ballistic_velocity: ma.ballistic_velocity,
             ballistic_acceleration: ma.ballistic_acceleration,
-            distance: ma.distance,
+            distance: Distance::new(ma.distance),
             hit_mode,
             result: ma.interacted_with_agility,
             origin: genie_core::combat::missile::Origin::from_bytes(&ma.projectile_data),
@@ -416,7 +417,7 @@ fn import_repair(
                 .objects
                 .master(saved.s.master_obj)
                 .and_then(combat_master)
-                .map_or(0.0, |c| c.weapon_range),
+                .map_or(Distance::ZERO, |c| Distance::new(c.weapon_range)),
             counted: part.added_to_num_builders != 0,
             quiet: base.sub_action_value != 0,
         }));

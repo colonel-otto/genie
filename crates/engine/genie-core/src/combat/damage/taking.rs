@@ -7,6 +7,7 @@ use crate::combat::damage::{
     ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, Victim, charge_hit, damage,
     effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::class;
@@ -354,7 +355,7 @@ pub(super) fn retaliates(
     a: &Armored,
 ) -> Result<bool, GenieError> {
     let reach = src.source.weapon_range;
-    let melee = reach <= RETALIATION_RANGE && RETALIATION_RANGE != reach;
+    let melee = reach <= Distance::new(RETALIATION_RANGE) && RETALIATION_RANGE != reach.get();
     // the conditions are pure: the ones the slice holds decide first
     if !(a.special_attack == 2 && a.unit_ai && !a.busy && melee) {
         return Ok(false);

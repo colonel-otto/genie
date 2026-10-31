@@ -1,6 +1,7 @@
 //! What the unit AI asks of the world ([`UnitSide`]) and the commands it gives its unit.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -183,7 +184,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the reach test does not model.
-    fn reaches(&mut self, _target: ObjectId, _range: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _target: ObjectId, _range: Distance) -> Result<bool, GenieError> {
         Err(GenieError::unsupported("a reach test without the world"))
     }
 

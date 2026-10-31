@@ -176,8 +176,8 @@ impl World {
             a::LINE_OF_SIGHT => {
                 let los = match change {
                     Change::Set => v,
-                    Change::Add => v + master.line_of_sight,
-                    Change::Multiply => v * master.line_of_sight,
+                    Change::Add => v + master.line_of_sight.get(),
+                    Change::Multiply => (v * master.line_of_sight).get(),
                 };
                 self.sight_again(id, crate::math::conversions::cvttss2si(los))?;
             }

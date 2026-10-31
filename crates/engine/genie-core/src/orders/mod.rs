@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::groups::GroupId;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ListIndex;
@@ -169,7 +170,7 @@ struct Splittable {
     position: Position,
     moved_at: Point,
     state: ObjectState,
-    radius: f32,
+    radius: Distance,
     restriction: Option<crate::map::RestrictionId>,
 }
 
@@ -457,7 +458,7 @@ pub(crate) fn readiness(orders: &mut Vec<crate::unit_ai::QueuedOrder>, drop_read
 /// 0x1d0): none of them is held.
 const fn clear_powerups(unit: &mut Unit) {
     unit.attack_powerup = 0.0;
-    unit.range_powerup = 0.0;
+    unit.range_powerup = Distance::ZERO;
     unit.reload_powerup = 0.0;
     unit.work_rate_powerup = 0.0;
     unit.hp_powerup.max = 0.0;
@@ -582,9 +583,10 @@ fn ignore_unit(ignore: &mut Vec<ObjectId>, id: ObjectId) {
 /// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it
 /// is within the weapon range (slot 0x230; `COMISS`, `JC`: NaN out) and not too close, and
 /// whether it is too close, below the least range (slot 0x240; `COMISS`, `SETA`: NaN not).
-fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
+fn work_reach(gap: Distance, weapon_range: Distance, min_range: Distance) -> (bool, bool) {
     let too_close = gap < min_range;
-    let within = !crate::math::fmath::below_or_unordered(weapon_range, gap) && !too_close;
+    let within =
+        !crate::math::fmath::below_or_unordered(weapon_range.get(), gap.get()) && !too_close;
     (within, too_close)
 }
 

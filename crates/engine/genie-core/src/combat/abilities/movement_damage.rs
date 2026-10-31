@@ -3,6 +3,7 @@
 
 use crate::combat::abilities::{ALWAYS_REACHED, ONE, Own, STRUCK_BUILDING_CLASSES};
 use crate::combat::damage::Victim;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -43,8 +44,8 @@ pub fn movement_damage_due(timer: &mut Seconds, dt: Seconds) -> bool {
 /// is 0, `CMOVS`) to the map's width and height (`CMOVL`; both included). Returns the low and
 /// the high corner.
 #[must_use]
-pub fn reach(position: Position, range: f32, map: GridSize) -> (Tile, Tile) {
-    let r = crate::math::conversions::cvttss2si(range);
+pub fn reach(position: Position, range: Distance, map: GridSize) -> (Tile, Tile) {
+    let r = crate::math::conversions::cvttss2si(range.get());
     let low = |v: f32| {
         let d = crate::math::conversions::cvttss2si(v).wrapping_sub(r);
         if d < 0 { 0 } else { d }
@@ -105,7 +106,7 @@ pub struct Hitter {
 /// footprint gap squared (`FUN_14118f8c0`) not past the range squared (`COMISS`/`JA`: a NaN is
 /// within).
 #[must_use]
-pub fn struck(hitter: &Hitter, range: f32, b: &Bystander) -> bool {
+pub fn struck(hitter: &Hitter, range: Distance, b: &Bystander) -> bool {
     if b.id == hitter.id || b.allied || b.player == PlayerId::GAIA {
         return false;
     }
@@ -124,7 +125,7 @@ pub fn struck(hitter: &Hitter, range: f32, b: &Bystander) -> bool {
         b.position,
         b.radius,
     );
-    fmath::at_most_or_unordered(d2, range * range)
+    fmath::at_most_or_unordered(d2, range.squared().get())
 }
 
 /// The hit's end on an object left below 1 hit point (`COMISS 1.0, hp` / `JBE`: a NaN is not):

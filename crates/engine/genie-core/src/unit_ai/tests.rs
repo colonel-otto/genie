@@ -283,7 +283,8 @@ impl UnitSide for HelpSide {
         None
     }
     fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
-        self.searches.push((search.classes.to_vec(), search.radius));
+        self.searches
+            .push((search.classes.to_vec(), search.radius.get()));
         Ok(Found {
             id: None,
             enemies: true,
@@ -487,8 +488,8 @@ fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
 fn a_call_for_help_searches_what_the_unit_cares_about_then_walks_the_lists() {
     let at = Surroundings {
         position: Position::new(124.5, 174.5, 0.0),
-        los: 6.0,
-        search_radius: 4.0,
+        los: Distance::new(6.0),
+        search_radius: Distance::new(4.0),
         class: Some(class::GATE),
         ..Surroundings::default()
     };
@@ -639,7 +640,7 @@ fn a_unit_sent_off_a_footprint_walks_to_the_spot_and_comes_back_to_its_work() {
         fx,
         vec![Effect::Command(AiCommand::MoveAside(AiMove {
             point: Position::new(29.5, 89.5, 2.0),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: true,
         }))]
@@ -717,7 +718,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
         fx,
         vec![Effect::Command(AiCommand::MoveAside(AiMove {
             point: Position::new(164.5, 51.5, 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         }))]
@@ -802,7 +803,7 @@ fn sent_off_queue() -> UnitAi {
         target: ObjectId::of_field(target),
         target_owner: owner(1),
         point: Position::new(x, 2.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::new(x, 2.0),
         ready: true,
         target_type: order_type(70),
@@ -840,7 +841,7 @@ fn the_build_order_builds_and_takes_the_order_at_once() {
             target: Some(object_id(10028)),
             target_owner: owner(1),
             point: Position::new(30.0, 88.0, 0.0),
-            range: 2.0,
+            range: Distance::new(2.0),
             shown: Point::new(30.0, 88.0),
             ready: true,
             target_type: order_type(3),
@@ -1043,7 +1044,7 @@ impl UnitSide for ResourceSide {
             .map(|(id, _)| id)
             .ok_or(GenieError::unsupported("no search here"))
     }
-    fn reaches(&mut self, _: ObjectId, _: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _: ObjectId, _: Distance) -> Result<bool, GenieError> {
         Ok(self.foundation.is_some_and(|(_, reaches)| reaches))
     }
     fn attack(&mut self, _: ObjectId, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
@@ -1867,8 +1868,8 @@ fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
     let run = |found: [i32; 2], gap_squared: f32| {
         let mut lion = idle(UnitAiType::LION);
         let at = Surroundings {
-            los: 4.0,
-            search_radius: 1.0,
+            los: Distance::new(4.0),
+            search_radius: Distance::new(1.0),
             ..Surroundings::default()
         };
         let mut side = LionSide {
@@ -2045,7 +2046,7 @@ impl UnitSide for DamageSide {
     fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
         self.patrol.clone()
     }
-    fn reaches(&mut self, _: ObjectId, _: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _: ObjectId, _: Distance) -> Result<bool, GenieError> {
         Ok(self.reaches)
     }
     fn call_for_help(&mut self, attacker: ObjectId) -> Result<(), GenieError> {
@@ -2715,7 +2716,7 @@ fn guarding(defend_target: i32) -> UnitAi {
         current_action: Some(ActionKind::Defend),
         current_target: ObjectId::of_field(defend_target),
         defend_target: ObjectId::of_field(defend_target),
-        desired_distance: 2.5,
+        desired_distance: Distance::new(2.5),
         target_point: Position::new(11.0, 10.0, 0.0),
         ..idle(UnitAiType::SOLDIER)
     }
@@ -2813,7 +2814,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
         vec![Effect::MoveToObject {
             target: object_id(20),
             state: ObjectState::Alive,
-            range: 2.5
+            range: Distance::new(2.5)
         }]
     );
     assert_eq!(
@@ -2852,7 +2853,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(20.0, 10.0, 0.0),
-            range: 2.5,
+            range: Distance::new(2.5),
             force: true,
             walk: false
         })]
@@ -2895,8 +2896,8 @@ fn soldier_at() -> Surroundings {
         kind: master_type::COMBAT,
         class: Some(class::CLASS_6),
         speed: 1.0,
-        los: 4.0,
-        weapon_range: 0.0,
+        los: Distance::new(4.0),
+        weapon_range: Distance::ZERO,
         action_state: Some(0),
         position: Position::new(10.0, 10.0, 0.0),
         ..Surroundings::default()
@@ -3443,7 +3444,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
             kind: master_type::COMBAT,
             master: ids::ID_448,
             class: Some(class::CLASS_47),
-            weapon_range: 0.0,
+            weapon_range: Distance::ZERO,
             action_state: Some(0),
             ..Surroundings::default()
         };
@@ -3537,15 +3538,33 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
     };
     let sheep = Some((PlayerId::new(1), class::LIVESTOCK));
     assert_eq!(
-        scout(UnitStance::STAND_GROUND).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
+        scout(UnitStance::STAND_GROUND).retarget_outcome(
+            sheep,
+            Distance::ZERO,
+            false,
+            Some(4),
+            Some(true)
+        ),
         Ok(None)
     );
     assert_eq!(
-        scout(UnitStance::AGGRESSIVE).retarget_outcome(sheep, 0.0, false, Some(6), Some(true)),
+        scout(UnitStance::AGGRESSIVE).retarget_outcome(
+            sheep,
+            Distance::ZERO,
+            false,
+            Some(6),
+            Some(true)
+        ),
         Ok(None)
     );
     assert_eq!(
-        scout(UnitStance::AGGRESSIVE).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
+        scout(UnitStance::AGGRESSIVE).retarget_outcome(
+            sheep,
+            Distance::ZERO,
+            false,
+            Some(4),
+            Some(true)
+        ),
         Ok(Some(RetargetSearch {
             building: false,
             work_state: false
@@ -3555,7 +3574,7 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
     assert_eq!(
         scout(UnitStance::AGGRESSIVE).retarget_outcome(
             Some((PlayerId::new(1), class::BUILDING)),
-            0.0,
+            Distance::ZERO,
             true,
             Some(6),
             Some(true)
@@ -3577,7 +3596,7 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
     assert_eq!(
         entering.retarget_outcome(
             Some((PlayerId::new(8), class::BUILDING)),
-            0.0,
+            Distance::ZERO,
             false,
             Some(4),
             Some(false)
@@ -3589,7 +3608,7 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
         entering
             .retarget_outcome(
                 Some((PlayerId::new(8), class::BUILDING)),
-                0.0,
+                Distance::ZERO,
                 false,
                 None,
                 None
@@ -3918,7 +3937,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
             Effect::Stop,
             Effect::Move(AiMove {
                 point: Position::new(10.0, 10.0, 0.0),
-                range: 1.0,
+                range: Distance::new(1.0),
                 force: true,
                 walk: false,
             })
@@ -4159,7 +4178,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             current_target: None,
             target_class: None,
             target_point: Position::new(-1.0, -1.0, -1.0),
-            desired_distance: 2.0,
+            desired_distance: Distance::new(2.0),
             defend_target: None,
             last_order: None,
             last_action: None,
@@ -4281,7 +4300,7 @@ impl UnitSide for ArtifactSide {
             _ => true,
         };
         self.searches
-            .push((search.radius, search.classes.to_vec(), reach));
+            .push((search.radius.get(), search.classes.to_vec(), reach));
         Ok(self.found)
     }
     fn attack(&mut self, _: ObjectId, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
@@ -4451,8 +4470,8 @@ fn rock_church() -> (UnitAi, Surroundings) {
     let at = Surroundings {
         position: Position::new(136.0, 100.0, 0.0),
         size: Footprint::new(2.0, 2.0),
-        los: 5.0,
-        search_radius: 5.0,
+        los: Distance::new(5.0),
+        search_radius: Distance::new(5.0),
         player: PlayerId::new(0),
         state: ObjectState::Alive,
         class: Some(class::ARTIFACT),
@@ -4781,7 +4800,7 @@ fn a_unit_ai_type_without_a_constructor_makes_none_and_draws_nothing() {
 #[test]
 fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
     let mut deer = placed(Position::new(20.0, 30.0, 2.0), class::PREY);
-    deer.hunt_range = 7.5;
+    deer.hunt_range = Distance::new(7.5);
     let mut r = rng();
     let ai = UnitAi::constructed(UnitAiType::HUNTED, &deer, &mut r).unwrap();
     assert_eq!(
@@ -4983,10 +5002,13 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
         object_flags: 0x30,
         hero_flag: 4,
         tasks: vec![
-            task(ActionType::named(6), 2.0),
-            task(crate::objects::masters::action_type::COMBAT, 9.0),
-            task(ActionType::named(6), 3.5),
-            task(crate::gathering::gather::GATHER, 1.0),
+            task(ActionType::named(6), Distance::new(2.0)),
+            task(
+                crate::objects::masters::action_type::COMBAT,
+                Distance::new(9.0),
+            ),
+            task(ActionType::named(6), Distance::new(3.5)),
+            task(crate::gathering::gather::GATHER, Distance::new(1.0)),
         ],
         ..crate::objects::masters::Master::default()
     };
@@ -5000,7 +5022,7 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
             class: class::PREY,
             object_flags: 0x30,
             hero_flag: 4,
-            hunt_range: 3.5,
+            hunt_range: Distance::new(3.5),
             ..NewObject::default()
         }
     );
@@ -5009,7 +5031,7 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
         master_id(1),
         &crate::objects::masters::Master::default(),
     );
-    assert_eq!(none.hunt_range, 0.0);
+    assert_eq!(none.hunt_range, Distance::ZERO);
 }
 
 #[test]
@@ -5134,7 +5156,7 @@ fn a_boar_wanders_up_to_three_tiles_once_in_seven() {
         moved,
         AiMove {
             point,
-            range: 0.5,
+            range: Distance::new(0.5),
             force: true,
             walk: true,
         }
@@ -5315,8 +5337,8 @@ fn deer_at(position: Position) -> Surroundings {
         position,
         class: Some(class::PREY),
         size: Footprint::new(0.2, 0.2),
-        los: 2.0,
-        search_radius: 1.0,
+        los: Distance::new(2.0),
+        search_radius: Distance::new(1.0),
         ..Surroundings::default()
     }
 }
@@ -5358,7 +5380,12 @@ fn a_deer_that_sees_nothing_stays_six_times_in_seven_and_otherwise_wanders() {
     // the search reaches the line of sight plus 1, the search radius being shorter
     assert_eq!(
         searched,
-        vec![(Point::new(31.5, 106.5), 3.0, 28, Footprint::new(0.2, 0.2))]
+        vec![(
+            Point::new(31.5, 106.5),
+            Distance::new(3.0),
+            28,
+            Footprint::new(0.2, 0.2)
+        )]
     );
     assert_eq!(r.draws, 1);
 
@@ -5464,7 +5491,7 @@ fn a_deer_that_sees_an_object_evades_it() {
         (moved.point, moved.range, moved.force, moved.walk),
         (
             Position::new(31.5 - 1.2 * 3.0, 106.5, 0.0),
-            0.0,
+            Distance::ZERO,
             true,
             false
         )
@@ -5534,7 +5561,7 @@ fn scout() -> UnitAi {
         target: None,
         target_owner: None,
         point: Position::new(x, y, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::new(x, y),
         ready: true,
         target_type: None,
@@ -5579,7 +5606,7 @@ fn between_turns_an_arrived_move_runs_the_next_queued_order() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(89.09375, 60.677_082, 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: true,
         })]
@@ -5990,7 +6017,7 @@ fn a_saved_order_and_notify_read_as_the_game_wrote_them() {
             OrderKind::Move,
             100,
             Position::new(91.822_914, 52.489_582, 0.0),
-            0.0,
+            Distance::ZERO,
             true,
             None
         )
@@ -6328,7 +6355,7 @@ fn a_dead_target_stops_an_action_that_needs_a_live_one() {
             Effect::CapHumanOrder(HUMAN_ORDER_CAP),
             Effect::Move(AiMove {
                 point: Position::new(30.0, 88.0, 0.0),
-                range: 0.0,
+                range: Distance::ZERO,
                 force: true,
                 walk: false,
             })
@@ -6360,7 +6387,7 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
         current_target: Some(object_id(9655)),
         target_class: class_of(9),
         target_point: Position::new(115.6998, 39.299_213, 0.0),
-        desired_distance: 2.0,
+        desired_distance: Distance::new(2.0),
         stance: UnitStance::STAND_GROUND,
         ..UnitAi::default()
     };
@@ -6396,7 +6423,7 @@ fn the_follow_order_moves_to_a_target_that_left_its_point() {
         vec![Effect::MoveToObject {
             target: object_id(9655),
             state: ObjectState::Alive,
-            range: 2.0
+            range: Distance::new(2.0)
         }]
     );
     assert_eq!(
@@ -6483,8 +6510,8 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         player: PlayerId::new(2),
         class: Some(class::CLASS_12),
         size: Footprint::new(0.2, 0.2),
-        los: 4.0,
-        search_radius: 4.0,
+        los: Distance::new(4.0),
+        search_radius: Distance::new(4.0),
         state: ObjectState::Alive,
         kind: master_type::COMBAT,
         master: ids::ID_448,
@@ -6498,7 +6525,7 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
     let (mut u, at) = idle_scout();
     let mut searched = Vec::new();
     let mut closest = |s: &Search<'_>| {
-        searched.push((s.radius, s.classes.len(), s.pick));
+        searched.push((s.radius.get(), s.classes.len(), s.pick));
         Ok(Found::NONE)
     };
     let fx = u
@@ -6567,7 +6594,7 @@ fn an_idle_soldier_caps_its_human_order_time_and_searches_for_something_to_attac
             Effect::CapHumanOrder(WorldTime::from_millis(5000)),
             Effect::Move(AiMove {
                 point: Position::new(25.0, 92.5, 0.0),
-                range: 1.0,
+                range: Distance::new(1.0),
                 force: true,
                 walk: false,
             })
@@ -6616,12 +6643,12 @@ const TC: Attacker = Attacker {
     class: Some(class::BUILDING),
     attack_priority: AttackPriority::PRIORITY_0,
     missile: Some(MasterId::named(54)),
-    range: 6.0,
-    min_range: 0.0,
+    range: Distance::new(6.0),
+    min_range: Distance::ZERO,
     charge_type: 0,
-    area_effect: 0.0,
+    area_effect: Distance::ZERO,
     blast_level: 0,
-    los: 8.0,
+    los: Distance::new(8.0),
     position: Position::new(29.0, 94.0, 0.0),
     radius: Footprint::new(2.0, 2.0),
     speed: 0.0,
@@ -6802,8 +6829,8 @@ const SCOUT: Attacker = Attacker {
     class: Some(class::CLASS_47),
     master: ids::ID_448,
     missile: None,
-    range: 0.0,
-    los: 4.0,
+    range: Distance::ZERO,
+    los: Distance::new(4.0),
     position: Position::new(118.5, 183.5, 0.0),
     radius: Footprint::new(0.4, 0.4),
     speed: 1.2,
@@ -6873,8 +6900,8 @@ fn an_idle_tower_searches_with_its_classes() {
         position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
         size: Footprint::new(2.0, 2.0),
-        los: 8.0,
-        search_radius: 0.0,
+        los: Distance::new(8.0),
+        search_radius: Distance::ZERO,
         state: ObjectState::Alive,
         kind: BUILDING,
         ..Surroundings::default()
@@ -6898,7 +6925,7 @@ fn an_idle_tower_searches_with_its_classes() {
         fx,
         vec![Effect::CapHumanOrder(WorldTime::from_millis(5000))]
     );
-    assert_eq!(searched, vec![(9.0, TOWER_CARED.to_vec())]);
+    assert_eq!(searched, vec![(Distance::new(9.0), TOWER_CARED.to_vec())]);
 }
 
 /// `FUN_140c4dcb0`: both targets and their classes go and the point is −1 on all three axes;
@@ -7091,7 +7118,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         current_target: Some(object_id(50)),
         target_class: class_of(3),
         target_point: Position::new(20.0, 21.0, 0.0),
-        desired_distance: 2.0,
+        desired_distance: Distance::new(2.0),
         ..idle(UnitAiType::CIVILIAN)
     };
     let order = QueuedOrder {
@@ -7101,7 +7128,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         target: None,
         target_owner: None,
         point: Position::new(10.0, 11.0, 0.0),
-        range: 0.5,
+        range: Distance::new(0.5),
         shown: Point::new(10.0, 11.0),
         ready: true,
         target_type: None,
@@ -7123,7 +7150,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
         target: Some(object_id(50)),
         target_owner: None,
         point: Position::new(20.0, 21.0, 0.0),
-        range: 2.0,
+        range: Distance::new(2.0),
         shown: Point::new(10.0, 11.0),
         ready: true,
         target_type: order_type(3),
@@ -7135,7 +7162,7 @@ fn an_immediate_order_in_front_keeps_the_current_order_behind_it() {
             Effect::Stop,
             Effect::Move(AiMove {
                 point: Position::new(10.0, 11.0, 0.0),
-                range: 0.5,
+                range: Distance::new(0.5),
                 force: true,
                 walk: true,
             })
@@ -7258,7 +7285,7 @@ fn a_unit_off_its_state_position_walks_back_and_keeps_its_target() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(10.0, 10.0, 2.5),
-            range: 1.0,
+            range: Distance::new(1.0),
             force: true,
             walk: false,
         })]
@@ -7328,7 +7355,7 @@ fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
             Effect::CapHumanOrder(WorldTime::from_millis(5000)),
             Effect::Move(AiMove {
                 point: Position::new(25.0, 92.5, 0.0),
-                range: 1.0,
+                range: Distance::new(1.0),
                 force: true,
                 walk: false,
             })
@@ -7414,7 +7441,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
         target: None,
         target_owner: None,
         point: Position::new(9.0, 9.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         shown: Point::new(9.0, 9.0),
         ready: true,
         target_type: None,
@@ -7560,7 +7587,7 @@ fn a_villager_whose_attack_target_died_walks_to_its_point() {
         ..idle(UnitAiType::CIVILIAN)
     };
     let at = Surroundings {
-        weapon_range: 0.25,
+        weapon_range: Distance::new(0.25),
         ..Surroundings::default()
     };
     let mut fx = Vec::new();
@@ -7577,7 +7604,7 @@ fn a_villager_whose_attack_target_died_walks_to_its_point() {
             Effect::CapHumanOrder(HUMAN_ORDER_CAP),
             Effect::Move(AiMove {
                 point: Position::new(5.0, 6.0, 0.0),
-                range: 0.25,
+                range: Distance::new(0.25),
                 force: true,
                 walk: false,
             })
@@ -7602,8 +7629,8 @@ fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
         ..idle(UnitAiType::LION)
     };
     let at = Surroundings {
-        los: 4.0,
-        search_radius: 1.0,
+        los: Distance::new(4.0),
+        search_radius: Distance::new(1.0),
         ..Surroundings::default()
     };
     let mut side = LionSide {
@@ -7644,14 +7671,14 @@ fn a_no_attack_tower_only_searches() {
         position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
         size: Footprint::new(2.0, 2.0),
-        los: 8.0,
+        los: Distance::new(8.0),
         state: ObjectState::Alive,
         kind: BUILDING,
         ..Surroundings::default()
     };
     let mut searched = Vec::new();
     let mut closest = |s: &Search<'_>| {
-        searched.push((s.radius, s.classes.len(), s.pick));
+        searched.push((s.radius.get(), s.classes.len(), s.pick));
         Ok(Found {
             id: None,
             enemies: true,
@@ -7690,7 +7717,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
         position: Position::new(29.0, 94.0, 0.0),
         player: PlayerId::new(2),
         size: Footprint::new(2.0, 2.0),
-        los: 8.0,
+        los: Distance::new(8.0),
         state: ObjectState::Alive,
         kind: BUILDING,
         ..Surroundings::default()
@@ -8020,7 +8047,7 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
     let at = |x: f32| Surroundings {
         position: Position::new(10.0, 10.0, 0.0),
         size: Footprint::new(0.5, 0.5),
-        los: 4.0,
+        los: Distance::new(4.0),
         target: Some(Seen {
             state: ObjectState::Alive,
             class: class::VILLAGER,
@@ -8320,7 +8347,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(ex, ey, 1.5),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         })]
@@ -8356,7 +8383,7 @@ fn an_evasive_move_steps_off_a_point_the_unit_cannot_stand_at() {
 fn a_move_off_a_footprint_needs_force_or_no_action() {
     let m = |force| AiMove {
         point: Position::new(4.0, 5.0, 0.0),
-        range: 0.0,
+        range: Distance::ZERO,
         force,
         walk: true,
     };
@@ -8391,7 +8418,7 @@ fn a_move_off_a_footprint_needs_force_or_no_action() {
 fn an_ai_move_needs_force_or_no_action_and_keeps_the_target_class() {
     let m = |force| AiMove {
         point: Position::new(4.0, 5.0, 0.5),
-        range: 0.5,
+        range: Distance::new(0.5),
         force,
         walk: true,
     };
@@ -8639,7 +8666,7 @@ fn a_human_player_s_king_runs_from_its_attacker() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(18.0, 30.0, 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         })]
@@ -8709,7 +8736,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     let to = |point| {
         vec![Effect::Move(AiMove {
             point,
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         })]
@@ -8972,8 +8999,8 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
         kind: master_type::COMBAT,
         state: ObjectState::Alive,
         size: Footprint::new(0.2, 0.2),
-        los: 4.0,
-        weapon_range: 1.0,
+        los: Distance::new(4.0),
+        weapon_range: Distance::new(1.0),
         busy: true,
         ..Surroundings::default()
     };
@@ -9104,9 +9131,9 @@ fn a_soldier_s_idle_check_attacks_its_top_action_s_target_in_range() {
         UnitAi::top_target_in_range(at, &mut With::at(side, &mut Vec::new(), at))
     };
     assert_eq!(in_range(&at, &mut side), Ok(Some(object_id(50))));
-    at.min_range = 1.0;
+    at.min_range = Distance::new(1.0);
     assert_eq!(in_range(&at, &mut side), Ok(None));
-    at.min_range = 0.0;
+    at.min_range = Distance::ZERO;
     let mut fx = Vec::new();
     assert_eq!(
         u.soldier_idle(
@@ -9654,7 +9681,7 @@ fn a_transport_ship_runs_from_its_attackers_without_an_order() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(18.0, 30.0, 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         })]
@@ -9907,7 +9934,7 @@ impl UnitSide for ShipSide {
     }
     fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
         self.searched
-            .push((search.radius, search.classes.to_vec(), search.pick));
+            .push((search.radius.get(), search.classes.to_vec(), search.pick));
         Ok(if self.found.is_empty() {
             Found::NONE
         } else {
@@ -9940,7 +9967,7 @@ impl UnitSide for ShipSide {
     fn seen_unit(&mut self, id: ObjectId) -> Result<Option<UnitSeen>, GenieError> {
         Ok(self.units.iter().find(|u| u.id == id).copied())
     }
-    fn reaches(&mut self, _: ObjectId, _: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _: ObjectId, _: Distance) -> Result<bool, GenieError> {
         Ok(self.reach)
     }
 }
@@ -9956,7 +9983,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
         position: Position::new(20.0, 30.0, 0.0),
         speed: 1.0,
         map: GridSize::new(64, 64),
-        los: 4.0,
+        los: Distance::new(4.0),
         player: PlayerId::new(1),
         class: Some(class::FISHING_SHIP),
         ..Surroundings::default()
@@ -9995,7 +10022,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
             Effect::CapHumanOrder(HUMAN_ORDER_CAP),
             Effect::Move(AiMove {
                 point: Position::new(13.0, 30.0, 0.0),
-                range: 0.0,
+                range: Distance::ZERO,
                 force: true,
                 walk: false,
             }),
@@ -10172,7 +10199,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
     let at = Surroundings {
         id: object_id(500),
         position: Position::new(20.0, 30.0, 0.0),
-        los: 4.0,
+        los: Distance::new(4.0),
         player: PlayerId::new(1),
         state: ObjectState::Alive,
         ..Surroundings::default()
@@ -10281,8 +10308,8 @@ const MANGONEL: Attacker = Attacker {
     class: Some(class::SIEGE),
     master: MasterId::named(280),
     missile: Some(MasterId::named(656)),
-    range: 7.0,
-    los: 9.0,
+    range: Distance::new(7.0),
+    los: Distance::new(9.0),
     position: Position::new(20.0, 20.0, 0.0),
     radius: Footprint::new(0.6, 0.6),
     speed: 0.6,
@@ -10310,7 +10337,7 @@ fn an_attacker_spares_by_its_priority_and_its_blast() {
     assert_eq!(spares_friends(&priority_3, &villager), Ok(false));
     assert_eq!(spares_friends(&priority_3, &tower), Ok(true));
     let blast = Attacker {
-        area_effect: 1.0,
+        area_effect: Distance::new(1.0),
         ..MANGONEL
     };
     assert!(spares_friends(&blast, &villager).is_err());
@@ -10322,7 +10349,7 @@ fn an_attacker_spares_by_its_priority_and_its_blast() {
         assert_eq!(spares_friends(&a, &villager), Ok(true));
     }
     let melee = Attacker {
-        range: 1.0,
+        range: Distance::new(1.0),
         ..blast
     };
     assert_eq!(spares_friends(&melee, &villager), Ok(true));
@@ -10590,7 +10617,7 @@ impl UnitSide for SiegeSide {
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn reaches(&mut self, _: ObjectId, _: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _: ObjectId, _: Distance) -> Result<bool, GenieError> {
         Ok(self.reach)
     }
 }
@@ -10607,8 +10634,8 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
         player: PlayerId::new(1),
         class: Some(class::SIEGE),
         kind: master_type::COMBAT,
-        los: 9.0,
-        weapon_range: 7.0,
+        los: Distance::new(9.0),
+        weapon_range: Distance::new(7.0),
         state: ObjectState::Alive,
         ..Surroundings::default()
     };
@@ -10692,7 +10719,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
         player: PlayerId::new(1),
         class: Some(class::SIEGE),
         kind: master_type::COMBAT,
-        weapon_range: 7.0,
+        weapon_range: Distance::new(7.0),
         state: ObjectState::Alive,
         target: Some(Seen::default()),
         top_target: Some(TopTarget {
@@ -10748,7 +10775,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
 fn a_siege_unit_hands_its_notifies_to_the_base_handler() {
     let at = Surroundings {
         id: object_id(500),
-        weapon_range: 7.0,
+        weapon_range: Distance::new(7.0),
         player: PlayerId::new(1),
         ..Surroundings::default()
     };
@@ -11102,7 +11129,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
         Effect::Explore(Point::new(1.0, 2.0)),
         Effect::Move(AiMove {
             point: Position::new(1.0, 2.0, 0.0),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         }),
@@ -11118,7 +11145,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
     let to = Effect::MoveToObject {
         target: object_id(600),
         state: ObjectState::Alive,
-        range: 2.0,
+        range: Distance::new(2.0),
     };
     let mut fx = vec![to];
     u.top_target_tail(&at, &mut With::new(&mut side, &mut fx), &mut rng())
@@ -11207,7 +11234,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     // (4 tiles: 16) against the range plus 0.25
     let at = Surroundings {
         position: Position::new(14.0, 10.0, 0.0),
-        weapon_range: 15.0,
+        weapon_range: Distance::new(15.0),
         player: PlayerId::new(1),
         ..Surroundings::default()
     };
@@ -11236,7 +11263,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
         fx[1],
         Effect::Move(AiMove {
             point: Position::new(10.0, 10.0, 0.0),
-            range: WALK_BACK,
+            range: Distance::new(WALK_BACK),
             force: true,
             walk: false,
         })
@@ -11248,7 +11275,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
     // within the range plus 0.25, without an action value, moving aside, on a patrol order
     // or in a group that patrols: it stays
     let near = Surroundings {
-        weapon_range: 15.75,
+        weapon_range: Distance::new(15.75),
         ..at.clone()
     };
     let patrolling = Surroundings {
@@ -11313,7 +11340,7 @@ fn a_patrol_s_distance_is_the_least_to_the_lines_through_its_points() {
             BVector::ZERO,
             BVector::new(10.0, 0.0, 0.0)
         ),
-        4.0
+        Distance::new(4.0)
     );
     // beyond the segment's end the line still counts
     assert_eq!(
@@ -11322,28 +11349,32 @@ fn a_patrol_s_distance_is_the_least_to_the_lines_through_its_points() {
             BVector::ZERO,
             BVector::new(10.0, 0.0, 0.0)
         ),
-        4.0
+        Distance::new(4.0)
     );
     let path = [
         BVector::ZERO,
         BVector::new(10.0, 0.0, 0.0),
         BVector::new(10.0, 0.0, 10.0),
     ];
-    assert_eq!(patrol_distance(&path, BVector::new(9.0, 0.0, 4.0)), Ok(1.0));
+    assert_eq!(
+        patrol_distance(&path, BVector::new(9.0, 0.0, 4.0)),
+        Ok(Distance::new(1.0))
+    );
     assert_eq!(
         patrol_distance(&path[..1], BVector::new(9.0, 0.0, 4.0)),
-        Ok(PATROL_FARTHEST)
+        Ok(Distance::new(PATROL_FARTHEST))
     );
     assert!(patrol_distance(&[], BVector::new(9.0, 0.0, 4.0)).is_err());
     // two equal points make a NaN, which the next line replaces
     let doubled = [BVector::ZERO, BVector::ZERO, BVector::new(10.0, 0.0, 0.0)];
     assert_eq!(
         patrol_distance(&doubled, BVector::new(3.0, 0.0, 4.0)),
-        Ok(4.0)
+        Ok(Distance::new(4.0))
     );
     assert!(
         patrol_distance(&doubled[..2], BVector::new(3.0, 0.0, 4.0))
             .unwrap()
+            .get()
             .is_nan()
     );
 }
@@ -11366,7 +11397,7 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
     let at = |y: f32| Surroundings {
         position: Position::new(14.0, y, 0.0),
         moved_at: BVector::new(14.0, 0.0, y),
-        weapon_range: 15.0,
+        weapon_range: Distance::new(15.0),
         player: PlayerId::new(1),
         ..Surroundings::default()
     };
@@ -11555,7 +11586,7 @@ impl UnitSide for OrderSide {
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
         Err(GenieError::unsupported("no world here"))
     }
-    fn reaches(&mut self, _: ObjectId, _: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _: ObjectId, _: Distance) -> Result<bool, GenieError> {
         Ok(self.reach)
     }
     fn can_stand(&mut self, _: Point) -> Result<bool, GenieError> {
@@ -11605,7 +11636,7 @@ fn queued(order: OrderKind, target: i32) -> QueuedOrder {
         target: ObjectId::of_field(target),
         target_owner: None,
         point: Position::new(12.7, 30.2, 0.5),
-        range: 3.0,
+        range: Distance::new(3.0),
         shown: Point::new(12.5, 30.5),
         ready: true,
         target_type: None,
@@ -11830,7 +11861,7 @@ fn the_defend_order_keeps_near_its_target_or_its_point() {
     );
     assert_eq!(
         (u.desired_distance, u.defend_target),
-        (3.0, Some(object_id(70)))
+        (Distance::new(3.0), Some(object_id(70)))
     );
     // without a target: the point at the unit's height, no defend target
     let mut u = idle(SOLDIER_AI);
@@ -12036,7 +12067,7 @@ fn the_run_away_order_runs_from_the_unit_s_attackers() {
         fx,
         vec![Effect::Move(AiMove {
             point: Position::new(5.0, 6.0, 0.25),
-            range: 0.0,
+            range: Distance::ZERO,
             force: true,
             walk: false,
         })]
@@ -12163,7 +12194,7 @@ fn the_move_orders_move_to_their_point_within_their_range() {
                 Ok(1),
                 vec![Effect::Move(AiMove {
                     point: Position::new(12.7, 30.2, 0.5),
-                    range: 3.0,
+                    range: Distance::new(3.0),
                     force: true,
                     walk: true,
                 })]
@@ -12199,7 +12230,7 @@ fn the_follow_order_follows_and_moves_to_a_target_beyond_its_range() {
             Some(OrderKind::Follow),
             Some(ActionKind::Follow),
             Some(object_id(70)),
-            3.0
+            Distance::new(3.0)
         )
     );
     // beyond it: the move to the object (slot 0x138)
@@ -12217,7 +12248,7 @@ fn the_follow_order_follows_and_moves_to_a_target_beyond_its_range() {
         vec![Effect::MoveToObject {
             target: object_id(70),
             state: ObjectState::Alive,
-            range: 3.0,
+            range: Distance::new(3.0),
         }]
     );
     assert_eq!(
@@ -12485,7 +12516,7 @@ fn the_order_on_a_target_goes_to_the_caller_or_moves_to_a_gone_one_s_point() {
             fx,
             vec![Effect::Move(AiMove {
                 point: Position::new(12.7, 30.2, 0.5),
-                range: 3.0,
+                range: Distance::new(3.0),
                 force: true,
                 walk: true,
             })]
@@ -13059,7 +13090,7 @@ impl UnitSide for RetargetSide {
     fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
         if let Pick::Attack { ask, .. } = &search.pick {
             self.searched
-                .push((search.at, ask.distance, ask.any_class, ask.work_state));
+                .push((search.at, ask.distance.get(), ask.any_class, ask.work_state));
         }
         self.soldier.closest(search)
     }
@@ -13122,7 +13153,7 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
         class: Some(class::CLASS_6),
         player: PlayerId::new(1),
         position: Position::new(10.0, 10.0, 0.0),
-        los: 6.0,
+        los: Distance::new(6.0),
         units: vec![
             seen(
                 object_id(25954),

@@ -7,6 +7,7 @@ use crate::gathering::gather::Walks;
 use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{HuntAction, HuntTask, Lead, OWN_LIVESTOCK_RANGE, Quarry};
+use crate::map::Distance;
 use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
@@ -100,7 +101,7 @@ pub struct HuntMove<'a> {
     /// The pasture the unit is on (`mMyPastureId`).
     pub my_pasture: Option<ObjectId>,
     /// The gap to a drop site target.
-    pub gap: f32,
+    pub gap: Distance,
 }
 
 impl HuntAction {
@@ -198,7 +199,7 @@ impl HuntAction {
             let range = if ObjectState::Alive < target.state {
                 self.task.range
             } else {
-                OWN_LIVESTOCK_RANGE
+                Distance::new(OWN_LIVESTOCK_RANGE)
             };
             let to = WalkTo {
                 id: Some(target.id),
@@ -294,7 +295,7 @@ impl HuntAction {
             gap,
         } = take;
         let held = walks.held.amount;
-        if target.is_none() && self.task.range != 0.0 {
+        if target.is_none() && self.task.range != Distance::ZERO {
             return Ok(false);
         }
         if my_pasture.is_some() && target.is_none_or(|t| Some(t.id) != my_pasture) {

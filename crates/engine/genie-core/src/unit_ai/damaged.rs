@@ -199,7 +199,7 @@ impl UnitAi {
     /// class (`+0x4c`) other than 3, 27, 39, 49 and 4, then a draw (`processNotify`) whose
     /// `r * 100 / 0x7fff` is at least the owner's `chance_for_archers_to_maintain_distance`.
     pub(super) fn keeps_distance(&self, at: &Surroundings, ai: &mut Well512) -> bool {
-        if !crate::math::fmath::at_most_or_unordered(1.0, at.weapon_range)
+        if !crate::math::fmath::at_most_or_unordered(1.0, at.weapon_range.get())
             || matches!(
                 self.target_class,
                 Some(class::BUILDING | class::WALL | class::GATE | class::FARM | class::VILLAGER)

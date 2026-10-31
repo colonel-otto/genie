@@ -7,6 +7,7 @@ use crate::construction::repair::{
     EXTRA_REPAIRER, LEAST_HP, MOVING_REACH, ONE, REACH, RepairAction, RepairReads, RepairTask,
     Repairee, SHIP_REPAIR, SHIPS,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, Sprites, TargetMoved, WalkTo};
@@ -75,7 +76,7 @@ impl RepairAction {
     pub fn start(
         to: WalkTo,
         task: RepairTask,
-        range: f32,
+        range: Distance,
         move_reads: &MoveToReads<'_>,
     ) -> Result<Self, GenieError> {
         let mut repair = Self {
@@ -122,7 +123,7 @@ impl RepairAction {
         point: Position,
         move_reads: &MoveToReads<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        move_reads.to_point(point, 0.0, self.task.moving)
+        move_reads.to_point(point, Distance::ZERO, self.task.moving)
     }
 
     /// One update (slot 6, `0x140adaa20`) of `repairer` (`me`) through its step, with what it
@@ -300,8 +301,8 @@ impl RepairAction {
             repairer.id,
             self.target,
             mask,
-            reads.radius.x(),
-            REACH,
+            Distance::new(reads.radius.x()),
+            Distance::new(REACH),
         )
     }
 
@@ -334,18 +335,18 @@ impl RepairAction {
             return false;
         };
         let gap = Self::gap(repairer, reads, t);
-        !crate::math::fmath::below_or_unordered(REACH, gap)
+        !crate::math::fmath::below_or_unordered(REACH, gap.get())
     }
 
     /// The footprints' gap less the moving target's or the scenario's margin.
-    pub(super) fn gap(repairer: &Unit, reads: &RepairReads, t: Repairee) -> f32 {
+    pub(super) fn gap(repairer: &Unit, reads: &RepairReads, t: Repairee) -> Distance {
         let margin = if reads.scenario || t.moves {
             MOVING_REACH
         } else {
             0.0
         };
         let at = repairer.body.position();
-        footprint_gap(at, reads.radius, t.position, t.radius) - margin
+        footprint_gap(at, reads.radius, t.position, t.radius) - Distance::new(margin)
     }
 
     /// State 7 (`0x140adaa20` case 6): a target that left the action's point (`UCOMISS` on x
@@ -368,7 +369,7 @@ impl RepairAction {
         let moved = t.position.x() != self.point.x() || t.position.y() != self.point.y();
         if moved {
             let gap = Self::gap(repairer, reads, t);
-            if REACH < gap {
+            if REACH < gap.get() {
                 return self.set_state(c, repairer, RepairState::Move, reads);
             }
             self.point = t.position;

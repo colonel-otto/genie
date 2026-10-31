@@ -8,6 +8,7 @@ use crate::groups::GroupId;
 use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
+use crate::map::Distance;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterKind;
@@ -46,7 +47,7 @@ struct MemberView {
     /// Slot 0x208: its top speed.
     speed: f32,
     /// Slot 0x230: its weapon range.
-    range: f32,
+    range: Distance,
     /// `+0x685`, `under_attack_value` (`FUN_1411a6f80`).
     under_attack: bool,
     /// Its unit AI's current action is the attack.
@@ -102,8 +103,8 @@ impl World {
         if held == 0 {
             g.smallest_unit_radius = 0.0;
             g.desired_spacing = 0.0;
-            g.smallest_unit_range = 0.0;
-            g.smallest_ranged_unit_range = 0.0;
+            g.smallest_unit_range = Distance::ZERO;
+            g.smallest_ranged_unit_range = Distance::ZERO;
             return Ok(false);
         }
         // a member inside another object (`+0x2f0`) stops (slot 0x5d0), in the members' order
@@ -204,8 +205,8 @@ impl World {
                 i += 1;
                 continue;
             }
-            if largest < view.unit.radius {
-                largest = view.unit.radius;
+            if largest < view.unit.radius.get() {
+                largest = view.unit.radius.get();
             }
             views.push((i, view));
             i += 1;
@@ -233,8 +234,8 @@ impl World {
                 };
                 let r = self.range_against(object, self.world_object(target))?;
                 // COMISS/JBE at 0x14100c506 and 0x14100c51e
-                if range < r {
-                    range = r;
+                if range < r.get() {
+                    range = r.get();
                 }
                 let radius = match object {
                     crate::groups::WorldObject::Unit(p, u) => {
@@ -244,12 +245,12 @@ impl World {
                         FormationUnit::of(self.master(p, object.master_id())?).radius
                     }
                 };
-                if k == 0 || widest < radius {
-                    widest = radius;
+                if k == 0 || widest < radius.get() {
+                    widest = radius.get();
                 }
             }
             let g = self.groups.held_mut(group)?;
-            g.unit_types.checked_mut(n)?.attack_range = range;
+            g.unit_types.checked_mut(n)?.attack_range = Distance::new(range);
             g.unit_types.checked_mut(n)?.desired_spacing = widest + widest;
         }
         Ok(())
@@ -306,7 +307,7 @@ impl World {
         )?;
         let search = crate::unit_ai::Search {
             at: u.position().ground(),
-            radius,
+            radius: Distance::new(radius),
             classes,
             size: master.radius,
             pick: crate::unit_ai::Pick::Look,
@@ -374,10 +375,10 @@ impl World {
         &self,
         object: crate::groups::WorldObject<'_>,
         target: Option<crate::groups::WorldObject<'_>>,
-    ) -> Result<f32, GenieError> {
+    ) -> Result<Distance, GenieError> {
         let master = self.master(object.player(), object.master_id())?;
         if !COMBAT_KINDS.contains(&master.kind) {
-            return Ok(0.0);
+            return Ok(Distance::ZERO);
         }
         let range = weapon_range(master);
         let crate::groups::WorldObject::Unit(_, u) = object else {
@@ -393,7 +394,7 @@ impl World {
         };
         // slot 0x300 of a charge type other than 1 and 3: at least 1 (`COMISS`, a NaN is not)
         Ok(if self.charge_hits(u, master, &t)? {
-            range + f32::from(master.charge_event)
+            range + Distance::new(f32::from(master.charge_event))
         } else {
             range
         })
@@ -498,10 +499,10 @@ fn member_totals(
     g.largest_unit_radius = 0.0;
     g.smallest_unit_radius = f32::MAX;
     g.desired_spacing = 0.0;
-    g.smallest_unit_range = f32::MAX;
-    g.smallest_ranged_unit_range = f32::MAX;
-    g.largest_unit_range = 0.0;
-    g.largest_ranged_unit_range = 0.0;
+    g.smallest_unit_range = Distance::new(f32::MAX);
+    g.smallest_ranged_unit_range = Distance::new(f32::MAX);
+    g.largest_unit_range = Distance::ZERO;
+    g.largest_ranged_unit_range = Distance::ZERO;
     g.total_spacing = 0.0;
     g.sighted = objects;
     let mut slowest = f32::MAX;
@@ -515,12 +516,12 @@ fn member_totals(
             g.centroid.y() + v.at.y(),
         );
         let r = v.unit.radius;
-        g.total_spacing += r;
-        if g.largest_unit_radius < r {
-            g.largest_unit_radius = r;
+        g.total_spacing += r.get();
+        if g.largest_unit_radius < r.get() {
+            g.largest_unit_radius = r.get();
         }
-        if r < g.smallest_unit_radius {
-            g.smallest_unit_radius = r;
+        if r < Distance::new(g.smallest_unit_radius) {
+            g.smallest_unit_radius = r.get();
         }
         if v.speed < slowest {
             slowest = v.speed;
@@ -531,10 +532,10 @@ fn member_totals(
         if g.largest_unit_range < v.range {
             g.largest_unit_range = v.range;
         }
-        if 0.0 < v.range && v.range < g.smallest_ranged_unit_range {
+        if Distance::ZERO < v.range && v.range < g.smallest_ranged_unit_range {
             g.smallest_ranged_unit_range = v.range;
         }
-        if 0.0 < v.range && g.largest_ranged_unit_range < v.range {
+        if Distance::ZERO < v.range && g.largest_ranged_unit_range < v.range {
             g.largest_ranged_unit_range = v.range;
         }
         under_attack |= v.under_attack;
@@ -550,11 +551,11 @@ fn member_totals(
 
 /// Slot 0x230 of an object of `master`: a combat object's weapon range (`+0x828`,
 /// `FUN_14108d960`), any other's 0 (`FUN_14106ff50`).
-pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> f32 {
+pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> Distance {
     if COMBAT_KINDS.contains(&master.kind) {
         master.weapon_range
     } else {
-        0.0
+        Distance::ZERO
     }
 }
 
@@ -603,20 +604,20 @@ mod tests {
                 .unwrap()
         };
         charging(&mut t, 6, -1);
-        assert_eq!(range(&t, Some(object_id(20))), 1.0);
+        assert_eq!(range(&t, Some(object_id(20))), Distance::new(1.0));
         t.players[1].objects[ListIndex::new(0)].charge = 1.0;
-        assert_eq!(range(&t, Some(object_id(20))), 3.0);
-        assert_eq!(range(&t, None), 1.0);
+        assert_eq!(range(&t, Some(object_id(20))), Distance::new(3.0));
+        assert_eq!(range(&t, None), Distance::new(1.0));
         charging(&mut t, 7, 1 << 5);
         assert_eq!(
             (
                 range(&t, Some(object_id(20))),
                 range(&t, Some(object_id(31)))
             ),
-            (1.0, 3.0)
+            (Distance::new(1.0), Distance::new(3.0))
         );
         charging(&mut t, 1, -1);
-        assert_eq!(range(&t, Some(object_id(20))), 1.0);
+        assert_eq!(range(&t, Some(object_id(20))), Distance::new(1.0));
     }
 
     /// Player 1's soldier 10 (master 4, class 6) at (5, 5) in group 1; player 2 (its enemy)
@@ -671,8 +672,8 @@ mod tests {
             kind: master_type::COMBAT,
             class,
             formation_category: 1,
-            line_of_sight: 4.0,
-            weapon_range: 1.0,
+            line_of_sight: Distance::new(4.0),
+            weapon_range: Distance::new(1.0),
             radius: Footprint::new(0.2, 0.2),
             ..Master::default()
         };
@@ -846,7 +847,7 @@ mod tests {
                 id: ids::ID_7,
                 kind: master_type::COMBAT,
                 class: class::CLASS_0,
-                weapon_range: 6.0,
+                weapon_range: Distance::new(6.0),
                 radius: Footprint::new(0.3, 0.3),
                 ..Master::default()
             };
@@ -860,7 +861,7 @@ mod tests {
         g.objects = vec![object_id(77)];
         let _ = t.statistics_only(group_id(1), false).unwrap();
         let g = t.groups.get(group_id(1)).unwrap();
-        assert_eq!(g.unit_types[0].attack_range, 6.0);
+        assert_eq!(g.unit_types[0].attack_range, Distance::new(6.0));
         // the searches fill their own list (+0x49c), not the units kept apart (+0x458)
         assert_eq!(
             (&g.sighted[..], &g.objects[..]),

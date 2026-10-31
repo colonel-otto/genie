@@ -7,6 +7,7 @@ use crate::groups::motion::{
     CLOSE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, PATROL_PAUSE, Pass, SHORT_LENGTH,
     SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
@@ -27,7 +28,7 @@ use crate::world::slots::CheckedIndex;
 /// them.
 struct Leg {
     level: WaypointLevel,
-    range: f32,
+    range: Distance,
     target_id: Option<ObjectId>,
     waypoint: BVector,
     at: BVector,
@@ -85,9 +86,9 @@ pub(super) fn request(
     let level = motion.paths.checked(0)?;
     let (short_range, beyond) =
         if leg.level == WaypointLevel::TOP && level.points.len() as i32 == level.waypoint + 1 {
-            (leg.range, leg.way - leg.range)
+            (leg.range, leg.way - leg.range.get())
         } else {
-            (0.0, leg.way)
+            (Distance::ZERO, leg.way)
         };
     let mut long = false;
     if !plan.has_plan || plan.path.points.len() < 3 {
@@ -172,7 +173,7 @@ fn tile_plan(
     plan: &mut PathSoFar,
 ) -> Result<(), GenieError> {
     let spatial = &mut *world.spatial;
-    let radii = target.map_or(0.0, |t| t.radius.x()) + lead.walker.radius;
+    let radii = target.map_or(0.0, |t| t.radius.x()) + lead.walker.radius.get();
     let mut planning = world.plan.reborrow();
     planning.computer = lead.computer;
     let r = tile_plan_for(
@@ -221,7 +222,7 @@ fn short_plan(
     world: &mut StepWorld<'_, '_>,
     leg: &Leg,
     (target, target_gap2): (Option<&Placed>, f32),
-    short_range: f32,
+    short_range: Distance,
     plan: &mut PathSoFar,
 ) -> Result<Option<Pass>, GenieError> {
     let spatial = &mut *world.spatial;
@@ -257,10 +258,10 @@ fn short_plan(
     if r != 0 || !(plan.path.points.len() < 2 || plan.path.length < EPSILON) {
         return Ok(None);
     }
-    let reach = if target.is_none() || 0.0 < leg.range {
+    let reach = if target.is_none() || Distance::ZERO < leg.range {
         leg.range
     } else {
-        NEAR
+        Distance::new(NEAR)
     };
     Ok(Some(in_range(motion, reach, target_gap2, world.plan.now)?))
 }
@@ -272,11 +273,11 @@ fn short_plan(
 /// (state 4).
 fn in_range(
     motion: &mut Motion,
-    reach: f32,
+    reach: Distance,
     target_gap2: f32,
     now: WorldTime,
 ) -> Result<Pass, GenieError> {
-    if reach < target_gap2 {
+    if reach < Distance::new(target_gap2) {
         let level = motion.paths.checked(0)?;
         if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
             motion.stand();
@@ -348,7 +349,7 @@ fn long_plan(
         leg.from,
         spatial,
         lead.computer,
-        (leg.waypoint, leg.range),
+        (leg.waypoint, leg.range.get()),
         leg.target_id.zip(target),
     )?;
     plan.path = long;

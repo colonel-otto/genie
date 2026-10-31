@@ -2,6 +2,7 @@
 //! sound events, its costs in their slots and the rest the work command reads.
 
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::{Footprint, GroundOffset, Radii};
 use genie_core::objects::masters as work;
 use genie_core::objects::masters::ActionType;
@@ -70,7 +71,7 @@ fn dat_task(
         wait_time: t.search_wait_time,
         work_val1: t.work_value1,
         work_val2: t.work_value2,
-        work_range: t.work_range,
+        work_range: Distance::new(t.work_range),
         work_flag: t.gather_type,
         enablement: t.enabled.map(AttributeId::of_field).transpose()?.flatten(),
         sprites: [

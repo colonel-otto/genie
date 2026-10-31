@@ -13,6 +13,7 @@
 //! from build 158041, whose addresses each port cites.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::math::fmath::BVector;
 use crate::movement::PathData;
 use crate::objects::ObjectId;
@@ -115,7 +116,7 @@ pub struct SpecificMove {
     /// `mConsecutiveMoveFailures`.
     pub consecutive_move_failures: i32,
     /// `mDistance`.
-    pub distance: f32,
+    pub distance: Distance,
     /// `mLastPosition`.
     pub last_position: BVector,
 }
@@ -168,9 +169,9 @@ pub struct FormationLine {
     /// `mLineIndices` (as many as `tempWidth`).
     pub indices: Vec<u32>,
     /// `mAttackRange`.
-    pub attack_range: f32,
+    pub attack_range: Distance,
     /// `mDistanceBack`.
-    pub distance_back: f32,
+    pub distance_back: Distance,
 }
 
 /// A formation (`BFormation`, read by `FUN_1410180b0`).
@@ -280,7 +281,7 @@ pub struct UnitTypeStatistic {
     /// `mUsed`.
     pub used: u32,
     /// `mAttackRange`.
-    pub attack_range: f32,
+    pub attack_range: Distance,
     /// `mDesiredSpacing`.
     pub desired_spacing: f32,
     /// `mNumberUnitTypes`.
@@ -299,7 +300,7 @@ pub struct TargetData {
     /// `mOriginalPosition`.
     pub original_position: BVector,
     /// `mRange`.
-    pub range: f32,
+    pub range: Distance,
     /// `mTargetRadius`.
     pub target_radius: f32,
     /// `mDisableRetargeting`.
@@ -331,7 +332,7 @@ pub struct GroupCommand {
     /// `mTargetID`.
     pub target_id: Option<ObjectId>,
     /// `mRange`.
-    pub range: f32,
+    pub range: Distance,
     /// `mPoint`.
     pub point: BVector,
     /// `mApproved`.
@@ -378,13 +379,13 @@ pub struct UnitGroup {
     /// `mDesiredSpacing`.
     pub desired_spacing: f32,
     /// `mSmallestUnitRange`.
-    pub smallest_unit_range: f32,
+    pub smallest_unit_range: Distance,
     /// `mSmallestRangedUnitRange`.
-    pub smallest_ranged_unit_range: f32,
+    pub smallest_ranged_unit_range: Distance,
     /// `mLargestUnitRange`.
-    pub largest_unit_range: f32,
+    pub largest_unit_range: Distance,
     /// `mLargestRangedUnitRange`.
-    pub largest_ranged_unit_range: f32,
+    pub largest_ranged_unit_range: Distance,
     /// `mStoredPositions`.
     pub stored_positions: PointLine,
     /// `mUnitTypes`: the members by formation category.

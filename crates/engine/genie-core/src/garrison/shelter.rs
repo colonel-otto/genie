@@ -6,6 +6,7 @@ use crate::garrison::{
     COMPUTER_IDS, FAR, HUMAN_IDS, NEARBY, TOWN_BELL_REACH, TRANSPORTED, class_has_flags,
     has_garrison_task,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
@@ -393,7 +394,7 @@ impl World {
                     target: Some(building),
                     target_owner: Some(owner),
                     point,
-                    range: 0.0,
+                    range: Distance::ZERO,
                     shown: point.ground(),
                     ready: true,
                     target_type: Some(crate::unit_ai::OrderTargetType::of_master(master)),

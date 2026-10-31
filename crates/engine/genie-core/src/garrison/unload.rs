@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::commands::unload::{UnloadCommand, UnloadPick};
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::objects::ListIndex;
@@ -24,7 +25,7 @@ use crate::world::World;
 /// UNLOAD's point without one (`DAT_14330ec20`).
 pub(super) const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 /// UNLOAD's order range (`DAT_14330eb8c`).
-pub(super) const UNLOAD_RANGE: f32 = crate::math::image::garrison::UNLOAD_RANGE;
+pub(super) const UNLOAD_RANGE: Distance = Distance::new(crate::math::image::garrison::UNLOAD_RANGE);
 
 impl World {
     /// UNLOAD (`FUN_14161f410`) by player `player` of the objects `ids` its check keeps

@@ -9,6 +9,7 @@ mod to_slots;
 
 #[cfg(test)]
 use crate::groups::SpecificMove;
+use crate::map::Distance;
 use crate::objects::masters::ActionType;
 #[cfg(test)]
 use crate::world::World;
@@ -17,7 +18,7 @@ use crate::world::World;
 const EPSILON: f32 = crate::math::image::group::EPSILON;
 /// The members' obstruction tests grow the records by the member's radius times this
 /// (`DAT_142e7f384`).
-const CLEARANCE: f32 = crate::math::image::group::CLEARANCE;
+const CLEARANCE: Distance = Distance::new(crate::math::image::group::CLEARANCE);
 /// A member whose moves to its slot failed more than this many times in a row is moved aside
 /// (`FUN_141025fb0`'s `0xa`).
 const MOST_FAILURES: i32 = 10;

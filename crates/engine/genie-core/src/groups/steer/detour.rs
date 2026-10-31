@@ -8,6 +8,7 @@ use crate::groups::steer::{
     BLOCKED, EPSILON, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
     ROUND_STILL, ROUND_TIMER,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -65,7 +66,7 @@ impl World {
         group: GroupId,
         index: usize,
         slot: usize,
-        gap: f32,
+        gap: Distance,
         differentiators: &[ObjectId],
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
@@ -163,7 +164,7 @@ impl World {
         Ok(Rounder {
             id,
             walker: crate::movement::Walker {
-                radius: grow,
+                radius: Distance::new(grow),
                 ..mover.walker(id)
             },
             computer: self.players.get(p.index()).is_some_and(|q| q.computer),
@@ -171,7 +172,7 @@ impl World {
             here: u.position(),
             mask: mover.stats.restriction_mask,
             restriction: mover.stats.restriction,
-            grow,
+            grow: Distance::new(grow),
             radius: master.radius,
             height: master.height,
             solid: mover.stats.radius.sized(),
@@ -364,7 +365,7 @@ impl World {
             from,
             &mut self.spatial,
             &mut plan,
-            (to, 0.0, None),
+            (to, Distance::ZERO, None),
             ignore,
             record,
         )?;
@@ -415,7 +416,7 @@ impl World {
             from,
             to: to.ground(),
             radii: 0.0,
-            range: 0.0,
+            range: Distance::ZERO,
             closed: Vec::new(),
             full: false,
         };
@@ -437,7 +438,7 @@ pub(super) struct Rounder<'d> {
     pub(super) here: Position,
     pub(super) mask: crate::map::TerrainMask,
     pub(super) restriction: crate::map::RestrictionId,
-    pub(super) grow: f32,
+    pub(super) grow: Distance,
     pub(super) radius: Footprint,
     pub(super) height: f32,
     pub(super) solid: bool,
@@ -499,7 +500,7 @@ pub(super) fn one_step_toward(
 
 /// `FUN_140f9bcd0` outside the path (its static point): the way's end lies farther than `gap`
 /// from the slot `to` on the ground.
-pub(super) fn ends_farther(record: &Path, to: BVector, gap: f32) -> bool {
+pub(super) fn ends_farther(record: &Path, to: BVector, gap: Distance) -> bool {
     let end = record
         .points
         .last()
@@ -507,5 +508,5 @@ pub(super) fn ends_farther(record: &Path, to: BVector, gap: f32) -> bool {
         .unwrap_or(crate::movement::OUTSIDE_PATH);
     let mut d = fmath::sub(to, end);
     d = d.with_height(0.0);
-    gap < fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y())
+    gap < Distance::new(fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y()))
 }

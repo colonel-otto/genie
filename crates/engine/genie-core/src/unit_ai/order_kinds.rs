@@ -2,6 +2,7 @@
 //! seek and explore; an order on a target and one taken at once.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
@@ -27,7 +28,7 @@ impl UnitAi {
     pub(super) fn defend_object(
         &mut self,
         target: ObjectId,
-        range: f32,
+        range: Distance,
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -52,7 +53,7 @@ impl UnitAi {
     pub(super) const fn defend_point(
         &mut self,
         point: Point,
-        range: f32,
+        range: Distance,
         force: bool,
         at: &Surroundings,
     ) -> bool {
@@ -183,7 +184,7 @@ impl UnitAi {
     pub(super) fn follow_object(
         &mut self,
         target: ObjectId,
-        range: f32,
+        range: Distance,
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -198,7 +199,7 @@ impl UnitAi {
         self.set_action(Some(ActionKind::Follow));
         self.target_at(Some(target), Some(t.class), t.position);
         self.desired_distance = range;
-        if range * range < t.gap_squared {
+        if range.squared().get() < t.gap_squared {
             let seen = Seen {
                 state: t.state,
                 class: t.class,

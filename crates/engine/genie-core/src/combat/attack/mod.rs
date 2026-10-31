@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
@@ -134,9 +135,9 @@ pub struct Attack {
     /// `+0x44`: seconds in the state, the update adds dt.
     pub timer: Seconds,
     /// `+0x90`: the range it attacks from; `+0x94`, the least.
-    pub range: f32,
+    pub range: Distance,
     /// `+0x94`: the least range it attacks from.
-    pub min_range: f32,
+    pub min_range: Distance,
     /// `+0x38`..`+0x40`: the point it attacks; -1 for none.
     pub point: Position,
     /// `+0xa4`..`+0xac`: where it last saw its target.
@@ -224,7 +225,7 @@ pub struct Engagement {
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
     pub gap_squared: f32,
     /// The gap's root (`FUN_14118f680`).
-    pub gap: f32,
+    pub gap: Distance,
     /// The unit's and the target's positions.
     pub position: Position,
     /// The target's place.
@@ -233,9 +234,9 @@ pub struct Engagement {
     /// target (slot 0x238) and its least range.
     pub speed: f32,
     /// Its master's weapon range with any bonus against the target (slot 0x238).
-    pub range: f32,
+    pub range: Distance,
     /// Its least range.
-    pub min_range: f32,
+    pub min_range: Distance,
     /// The unit AI's `canMoveToAttack` (`FUN_140c48420`): it has an order, or no order but a stance
     /// below 2.
     pub can_move: bool,
@@ -442,11 +443,11 @@ pub(crate) const fn set_walker_anim(body: &mut Body, speed: f32) {
 }
 
 /// readyToAttack's gap for a range up to [`NO_RANGE`]: half a tile less (`DAT_142eb6e58`).
-const SHORT_RANGE_GAP: f32 = crate::math::image::attack::SHORT_RANGE_GAP;
+const SHORT_RANGE_GAP: Distance = Distance::new(crate::math::image::attack::SHORT_RANGE_GAP);
 
 /// readyToAttack's leash of stance 1 lets a target this much past the range from the unit AI's
 /// `state_position` (`DAT_14330ebb8`, read by `ADDSS` at `0x140a80051`).
-const LEASH_SLACK: f32 = crate::math::image::attack::LEASH_SLACK;
+const LEASH_SLACK: Distance = Distance::new(crate::math::image::attack::LEASH_SLACK);
 
 /// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
 const MASTER_1704: MasterId = MasterId::named(1704);

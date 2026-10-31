@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::garrison::EnterState;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -65,7 +66,7 @@ pub struct EnterAction {
     pub point: Position,
     /// The task's work range (`+0x30`): a building's `MoveTo` stops this near, and the enter
     /// needs it.
-    pub range: f32,
+    pub range: Distance,
     /// `+0x44`: state 2's wait, in seconds.
     pub timer: Seconds,
     /// `+0x68`, 1 at first: a `MoveTo` that fails (code 3) asks once more.
@@ -98,7 +99,7 @@ pub struct EnterTarget {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WalkStart {
     /// The footprints' gap of the unit and its target (`FUN_14118f680`).
-    pub gap: f32,
+    pub gap: Distance,
 }
 
 /// What an Enter's update (`FUN_140a87a80`) reads as it starts.
@@ -206,7 +207,7 @@ impl EnterAction {
         } else {
             reads.to_point_of(
                 to,
-                (self.point, self.walk_range(false)),
+                (self.point, self.walk_range(false).get()),
                 self.moving,
                 TargetMoved::Ignores,
             )?
@@ -236,8 +237,8 @@ impl EnterAction {
     }
 
     /// The range its `MoveTo` stops within: the task's for a building, 0 for a transport.
-    pub(super) const fn walk_range(&self, building: bool) -> f32 {
-        if building { self.range } else { 0.0 }
+    pub(super) const fn walk_range(&self, building: bool) -> Distance {
+        if building { self.range } else { Distance::ZERO }
     }
 
     /// `set_state(2)` (`FUN_140a87320` case 2): the wait of [`WAIT_SECONDS`], and the unit shows
@@ -270,12 +271,12 @@ impl EnterAction {
     ///
     /// [`Walls::walled_off`]: crate::garrison::Walls::walled_off
     pub fn in_reach(
-        range: f32,
+        range: Distance,
         gap_squared: f32,
         target_speed: f32,
         walls: &mut crate::garrison::Walls<'_>,
     ) -> Result<bool, GenieError> {
-        if range * range < gap_squared {
+        if range.squared().get() < gap_squared {
             return Ok(false);
         }
         if range <= ENTER_NEAR && 0.0 < target_speed {

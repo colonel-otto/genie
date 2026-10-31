@@ -7,6 +7,7 @@ use crate::combat::attack::{
     Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, Ground, LEASH_SLACK,
     MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -86,7 +87,7 @@ impl Attack {
             ));
         }
         let mut posted = Vec::new();
-        let begun = a.begin((e, e.gap), (true, 0), mover, &mut posted, reads)?;
+        let begun = a.begin((e, e.gap.get()), (true, 0), mover, &mut posted, reads)?;
         if begun.ready {
             return Err(GenieError::unsupported(
                 "an attack that starts in reach and cannot move (set_state 6)",
@@ -249,7 +250,7 @@ impl Attack {
                 posted.push((crate::unit_ai::NotifyKind::TOO_CLOSE, [-1; 3]));
             }
             failed_first = !movable;
-        } else if !crate::math::fmath::at_most_or_unordered(reach_gap, self.reach()) {
+        } else if !crate::math::fmath::at_most_or_unordered(reach_gap, self.reach().get()) {
             if !self.sub_action {
                 posted.push((crate::unit_ai::NotifyKind::OUT_OF_REACH, [0; 3]));
             }
@@ -290,7 +291,7 @@ impl Attack {
     /// least the range plus [`LEASH_SLACK`] (`COMISS`/`JNC`: a NaN distance is within).
     pub(super) fn off_leash(&self, at: Position, centre: Point) -> bool {
         let (dx, dy) = (at.x() - centre.x(), at.y() - centre.y());
-        crate::math::fmath::sqrt(dy * dy + dx * dx) >= self.range + LEASH_SLACK
+        crate::math::fmath::sqrt(dy * dy + dx * dx) >= (self.range + LEASH_SLACK).get()
     }
 
     /// The start's `set_state(13)` for a unit that cannot move out of reach of its target
@@ -395,7 +396,7 @@ pub fn engagement(
     let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
     Ok(Engagement {
         gap_squared,
-        gap,
+        gap: Distance::new(gap),
         position: me.position,
         target_position: them.position,
         speed,
@@ -416,5 +417,5 @@ pub fn engagement(
 #[must_use]
 pub fn gaps(a: Position, a_radius: Footprint, b: Position, b_radius: Footprint) -> (f32, f32) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
-    (squared, footprint_gap(a, a_radius, b, b_radius))
+    (squared, footprint_gap(a, a_radius, b, b_radius).get())
 }

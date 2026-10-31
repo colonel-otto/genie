@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::{Formation, UnitGroup, sub_formation};
+use crate::map::Distance;
 use crate::objects::ObjectId;
 use crate::world::slots::CheckedIndex;
 
@@ -102,13 +103,13 @@ impl World {
 
     /// The ground distance from slot place `at` to unit `id`'s (`FUN_14087e560`, its height
     /// zeroed, `sqrt(x² + 0 + y²)`), None for a unit the world does not hold.
-    pub(super) fn slot_distance(&self, at: BVector, id: ObjectId) -> Option<f32> {
+    pub(super) fn slot_distance(&self, at: BVector, id: ObjectId) -> Option<Distance> {
         let object = self.world_object(id)?;
         let mut d = sub(at, object.moved_vector().xhy());
         d = d.with_height(0.0);
-        Some(crate::math::fmath::sqrt(
+        Some(Distance::new(crate::math::fmath::sqrt(
             d.x() * d.x() + 0.0 + d.y() * d.y(),
-        ))
+        )))
     }
 
     /// `FUN_141009760` of `formation` for group `g` without the settings' flag `DAT_143f01834`
@@ -430,7 +431,7 @@ impl World {
 /// What [`World::populate_slots`] reads: the unit nearest a slot not in `used`, and its distance.
 struct Picker<'a> {
     ask: &'a AskUnit<'a>,
-    dist: &'a dyn Fn(usize, ObjectId) -> Option<f32>,
+    dist: &'a dyn Fn(usize, ObjectId) -> Option<Distance>,
 }
 
 /// The unit nearest a slot, not among those taken.
@@ -454,7 +455,7 @@ impl Picker<'_> {
             let Some(d) = (self.dist)(i, id) else {
                 continue;
             };
-            sum += d;
+            sum += d.get();
             if leading {
                 leading = false;
                 *used.checked_mut(0)? = Some(id);

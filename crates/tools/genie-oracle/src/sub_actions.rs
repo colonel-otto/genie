@@ -5,6 +5,7 @@ use crate::masters::{DefaultAction, MasterTable};
 use crate::top_actions::{first_action, saved_move_to};
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::Position;
 use genie_core::movement::move_to::TargetMoved;
 use genie_core::objects::ObjectId;
@@ -118,8 +119,8 @@ pub(super) fn saved_attack(
         target2: ObjectId::of_field(b.target2_id),
         state: genie_core::combat::attack::AttackState::of_byte(b.state)?,
         timer: Seconds::new(b.timer),
-        range: a.range,
-        min_range: a.min_range,
+        range: Distance::new(a.range),
+        min_range: Distance::new(a.min_range),
         point: Position::new(b.target_x, b.target_y, b.target_z),
         seen: Position::new(
             a.last_target_position_x,

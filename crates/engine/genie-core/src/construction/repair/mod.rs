@@ -11,6 +11,7 @@
 //! reaches ([`repair_target`]).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
@@ -118,7 +119,7 @@ pub struct RepairAction {
     /// The task it repairs with (`+0x48`).
     pub task: RepairTask,
     /// The `MoveTo`'s range toward the target: the unit's master's weapon range (`+0x828`).
-    pub range: f32,
+    pub range: Distance,
     /// `+0x6c`: the action counts among its target's repairers (`+0x9e8` of the object
     /// `FUN_140ad9050` gives: the target, an annex's main building).
     pub counted: bool,

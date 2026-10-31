@@ -15,6 +15,7 @@ use self::path_points::{
     ground, ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
 };
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -138,7 +139,7 @@ pub struct PathData {
     /// `+0x28`: its state.
     pub state: PathState,
     /// `+0x2c`: how near the target counts as there.
-    pub range: f32,
+    pub range: Distance,
     /// `+0x30`: the target object's id, none for a point.
     pub target: Option<ObjectId>,
     /// `+0x34`, in seconds.
@@ -211,7 +212,7 @@ pub struct MoveStats {
     pub facets: Option<crate::objects::facing::SpriteFacets>,
     /// The master's weapon range (slot 0x230, `+0x828`; 0 for an object without combat values),
     /// which the drop-off walker's start test reads (`FUN_140fa0110`).
-    pub weapon_range: f32,
+    pub weapon_range: Distance,
 }
 
 impl MoveStats {
@@ -329,7 +330,7 @@ const REACH_NEAR: f32 = crate::math::image::movement::REACH_NEAR;
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
 pub(crate) const LONG_PATH_MOVER: MasterId = MasterId::named(42);
 const WIDE_CLASS: ClassId = class::CLASS_33;
-const WIDE_RANGE: f32 = crate::math::image::movement::WIDE_RANGE;
+const WIDE_RANGE: Distance = Distance::new(crate::math::image::movement::WIDE_RANGE);
 /// A long path's stretch is checked for walls with the unit's radius times this
 /// (`DAT_142e85190`).
 const LONG_PATH_GROW: f32 = crate::math::image::movement::LONG_PATH_GROW;
@@ -420,7 +421,7 @@ impl PathData {
             path_flags: 6,
             waypoint: 0,
             state: PathState::Idle,
-            range: 0.0,
+            range: Distance::ZERO,
             target: None,
             pause_time: Seconds::ZERO,
             flags: 0,
@@ -445,7 +446,7 @@ impl PathData {
             path_flags: 0,
             waypoint: 0,
             state: PathState::Idle,
-            range: 0.0,
+            range: Distance::ZERO,
             target: None,
             pause_time: Seconds::ZERO,
             flags: 0,
@@ -480,11 +481,12 @@ impl PathData {
 /// tile or more without a target; with one (its own gap, `FUN_14118f680`, and its master), its
 /// gap a tile or more (`COMISS`/`JNC` at 0x141152f0e: a NaN is near) or its master 45 however
 /// near.
-fn far_waypoint(way: f32, target: Option<(f32, MasterId)>) -> bool {
+fn far_waypoint(way: Distance, target: Option<(Distance, MasterId)>) -> bool {
+    let way = way.get();
     target.map_or(CLOSE <= way, |(gap, master)| {
         // A target of this master (raw `0x60c9`) or class gives the tile planner of a reach test this
         // much more range (`FUN_140fa0370`, `DAT_142eb1c98`).
-        CLOSE <= gap || master == ID_45
+        CLOSE <= gap.get() || master == ID_45
     })
 }
 
@@ -508,20 +510,23 @@ pub(crate) fn gate_gap(
     world: &Spatial,
     (at, radius): (Position, Footprint),
     (id, target): (ObjectId, &Placed),
-    own: f32,
+    own: Distance,
     annex: impl Fn(f32) -> f32,
 ) -> f32 {
     // The class the motion step measures by its annexes (`-0xe85` encoded).
     if target.class != class::GATE {
-        return own;
+        return own.get();
     }
     let mut gap = own;
     for a in world.annexes_of(id).into_iter().take(2) {
         if let Some(p) = world.get(a) {
-            gap = fmath::minss(annex(footprint_gap(at, radius, p.position, p.radius)), gap);
+            gap = Distance::new(fmath::minss(
+                annex(footprint_gap(at, radius, p.position, p.radius).get()),
+                gap.get(),
+            ));
         }
     }
-    gap
+    gap.get()
 }
 
 /// `FUN_140f98bc0` with 1 on a level's path: the waypoint after `index`. A path that does not

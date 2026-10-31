@@ -28,6 +28,7 @@
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -144,13 +145,13 @@ pub struct LongTarget {
     /// The unit's footprint gap to it, squared (`FUN_14118f8c0`) and not (`FUN_14118f680`).
     pub gap_squared: f32,
     /// The gap, not squared (`FUN_14118f680`).
-    pub gap: f32,
+    pub gap: Distance,
 }
 
 impl LongTarget {
     /// The target at `position` with radii `radius`, `gap` and `gap_squared` from the unit.
     #[must_use]
-    pub fn new(position: Position, radius: Footprint, gap: f32, gap_squared: f32) -> Self {
+    pub fn new(position: Position, radius: Footprint, gap: Distance, gap_squared: f32) -> Self {
         let (x, y) = (position.x(), position.y());
         Self {
             tile: Tile::new(x as i32, y as i32),
@@ -174,7 +175,7 @@ pub struct LongRequest {
     /// The goal tile.
     pub to: Tile,
     /// How near counts as there.
-    pub range: f32,
+    pub range: Distance,
     /// The target object, None for a point.
     pub target: Option<LongTarget>,
     /// The unit moves: its speed (slot 0x208, `FUN_141202c70`) is not 0, or its master is 42.
@@ -363,11 +364,14 @@ fn search_refused(map: GridSize, req: &LongRequest, gap2: i32) -> Option<Searche
     }
     if req
         .target
-        .is_some_and(|t| t.gap_squared <= req.range * req.range)
+        .is_some_and(|t| t.gap_squared <= req.range.squared().get())
     {
         return Some(Searched::InRange);
     }
-    if REACHED < req.range && req.target.is_none() && (gap2 as f32) < req.range * req.range {
+    if REACHED < req.range.get()
+        && req.target.is_none()
+        && (gap2 as f32) < req.range.squared().get()
+    {
         return Some(Searched::InRange);
     }
     (!req.moves).then_some(Searched::Refused)
@@ -378,8 +382,8 @@ fn search_refused(map: GridSize, req: &LongRequest, gap2: i32) -> Option<Searche
 /// range by `d` against the range, else `d` within [`REACHED`].
 fn search_reached(req: &LongRequest, d: f32) -> bool {
     match req.target {
-        Some(t) => t.gap - req.range < EPSILON || d < REACHED,
-        None if req.within_range => d - req.range < EPSILON,
+        Some(t) => t.gap - req.range < Distance::new(EPSILON) || d < REACHED,
+        None if req.within_range => d - req.range.get() < EPSILON,
         None => d < REACHED,
     }
 }
@@ -707,7 +711,7 @@ mod tests {
         LongRequest {
             from: Tile::from(from),
             to: Tile::from(to),
-            range: 3.0,
+            range: Distance::new(3.0),
             target: None,
             moves: true,
             mask: TerrainMask::of_bits(1),
@@ -762,7 +766,7 @@ mod tests {
         assert_eq!(walk.points.last(), Some(&BVector::new(4.5, 0.0, 2.5)));
         // a goal within the range: yes, and no path
         let mut req = request([0, 1], [4, 1]);
-        req.range = 4.5;
+        req.range = Distance::new(4.5);
         assert_eq!(path(&t, map, &req, 0.0).unwrap(), (true, Path::default()));
     }
 
@@ -888,7 +892,7 @@ mod tests {
         let mut req = request([0, 1], [4, 1]);
         req.moves = false;
         assert_eq!(reaches(&t, map, &req), Ok(false));
-        req.range = 4.5;
+        req.range = Distance::new(4.5);
         assert_eq!(reaches(&t, map, &req), Ok(true));
     }
 

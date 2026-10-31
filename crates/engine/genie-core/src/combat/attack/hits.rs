@@ -3,6 +3,7 @@
 
 use crate::combat::attack::{DRAW_SCALE, QUIET_SWINGS};
 use crate::combat::damage::Victim;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
@@ -110,7 +111,7 @@ pub(crate) fn strike(
         executed: None,
     };
     if MISSILE <= a.kind
-        && 0.0 < a.area_effect
+        && Distance::ZERO < a.area_effect
         && (a.charge_type != 3 || damage::charge_hit(&a, victim))
     {
         let main = victim.id;

@@ -6,6 +6,7 @@
 //! `.dat`'s values for what the save does not carry.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Offset;
@@ -79,7 +80,7 @@ pub struct Task {
     /// `+0x2c`, the save's `work_val2`.
     pub work_val2: f32,
     /// `+0x30`: how near the target the work is done.
-    pub work_range: f32,
+    pub work_range: Distance,
     /// `+0x34`, `work_flag` (the `.dat`'s `gather_type`): a Make adds to its player's attribute,
     /// not to its object's holding ([`crate::gathering::make`]).
     pub work_flag: i16,
@@ -123,7 +124,7 @@ impl Default for Task {
             wait_time: 0.0,
             work_val1: 0.0,
             work_val2: 0.0,
-            work_range: 0.0,
+            work_range: Distance::ZERO,
             work_flag: 0,
             enablement: None,
             sprites: [-1; 4],
@@ -240,7 +241,7 @@ pub struct Master {
     /// (`FUN_14113f740`).
     pub height: f32,
     /// `line_of_sight` (`+0x5d0`).
-    pub line_of_sight: f32,
+    pub line_of_sight: Distance,
     /// `+0x606`, its terrain restriction (the save's `terrain_restriction_mask_id`; −1 for none),
     /// which a placement test reads.
     pub terrain_restriction: Option<crate::map::RestrictionId>,
@@ -264,7 +265,7 @@ pub struct Master {
     /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.
     pub work_rate: f32,
     /// `search_radius` (`+0x794`, the object's slot 0x2c8).
-    pub search_radius: f32,
+    pub search_radius: Distance,
     /// The `.dat`'s `drop_sites` (`+0x7a0`..`+0x7a8`, `FUN_14109d4f0`): the buildings a unit of
     /// this master takes its load to.
     pub drop_sites: Vec<MasterId>,
@@ -278,9 +279,9 @@ pub struct Master {
     pub trained_at: Vec<MasterId>,
     /// The combat master's `weapon_range` (`+0x828`, object slot 0x230) and
     /// `minimum_weapon_range` (`+0x850`, slot 0x240).
-    pub weapon_range: f32,
+    pub weapon_range: Distance,
     /// `minimum_weapon_range` (`+0x850`, slot 0x240).
-    pub min_range: f32,
+    pub min_range: Distance,
     /// `charge_type` (`+0x922`): 6 and 7 add `charge_event` (`+0x920`) to the range against some
     /// targets (slot 0x2f8).
     pub charge_type: i16,
@@ -353,7 +354,7 @@ pub struct Master {
     /// `area_effect_object_level` (`+0x62b`): the blasts that reach it.
     pub blast_defense: u8,
     /// `area_effect_range` (`+0x82c`): its blast's radius.
-    pub area_effect: f32,
+    pub area_effect: Distance,
     /// `area_effect_level` (`+0x830`).
     pub blast_level: u8,
     /// `area_damage` (`+0x834`).
@@ -569,7 +570,7 @@ pub struct Shown {
     /// `+0x856`, `orig_weapon`.
     pub attack: i16,
     /// `+0x858`, `orig_weapon_range`.
-    pub range: f32,
+    pub range: Distance,
     /// `+0x854`, `orig_armor`.
     pub melee_armor: i16,
     /// `+0x8b0`, `orig_pierce_armor`.

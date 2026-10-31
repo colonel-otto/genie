@@ -75,13 +75,13 @@ const fn move_reads(
 const TARGET: WalkTo = WalkTo {
     id: Some(object_id(20)),
     at: Position::new(11.0, 10.0, 0.0),
-    gap: 0.3,
+    gap: Distance::new(0.3),
     state: Some(ObjectState::Alive),
 };
 
 /// The Repair of the work command on [`TARGET`], within 0, with [`TASK`].
 fn started() -> RepairAction {
-    RepairAction::start(TARGET, TASK, 0.0, &move_reads(&graphics())).unwrap()
+    RepairAction::start(TARGET, TASK, Distance::ZERO, &move_reads(&graphics())).unwrap()
 }
 
 /// A villager's master work rate 1 with a powerup of 0: half a hit point per second per the
@@ -364,12 +364,12 @@ fn a_repair_s_move_to_shows_its_task_s_moving_sprite_else_its_default() {
 #[test]
 fn a_repair_s_move_tos_are_quiet() {
     let g = graphics();
-    let r = RepairAction::start(TARGET, TASK, 1.5, &move_reads(&g)).unwrap();
+    let r = RepairAction::start(TARGET, TASK, Distance::new(1.5), &move_reads(&g)).unwrap();
     let to_target = MoveToAction {
         state: MoveTo::Start,
         point: Position::new(11.0, 10.0, 0.0),
         target: Some(object_id(20)),
-        range: 1.5,
+        range: Distance::new(1.5),
         sprite: Some(g[&21]),
         quiet: true,
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
@@ -380,7 +380,7 @@ fn a_repair_s_move_tos_are_quiet() {
         r.to_point(Position::new(1.0, 2.0, 0.0), &move_reads(&g)),
         Ok(Some(MoveToAction::sub_to_point(
             Position::new(1.0, 2.0, 0.0),
-            0.0,
+            Distance::ZERO,
             Some(g[&20])
         )))
     );
@@ -393,13 +393,13 @@ fn a_repair_s_move_tos_are_quiet() {
 fn a_repair_s_move_to_starts_as_its_list_adds_it() {
     let g = graphics();
     let state = |to, reads: MoveToReads<'_>| {
-        RepairAction::start(to, TASK, 0.0, &reads)
+        RepairAction::start(to, TASK, Distance::ZERO, &reads)
             .unwrap()
             .move_to
             .map(|m| m.state)
     };
     let beside = WalkTo {
-        gap: 0.01,
+        gap: Distance::new(0.01),
         ..TARGET
     };
     assert_eq!(state(beside, move_reads(&g)), Some(MoveTo::Arrived));

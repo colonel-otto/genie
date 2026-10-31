@@ -1,5 +1,6 @@
 //! The pather's construction ([`HullPather`]) and `canQuickPath` (object slot 0x3e0).
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Rect;
 use crate::map::Tile;
@@ -31,8 +32,8 @@ pub fn quick_reach(
     me: ObjectId,
     target: Option<ObjectId>,
     mask: crate::map::TerrainMask,
-    radius: f32,
-    range: f32,
+    radius: Distance,
+    range: Distance,
 ) -> Result<bool, GenieError> {
     let from = world
         .get(me)
@@ -61,8 +62,8 @@ pub fn quick_reach_from(
     from: Point,
     target: Option<ObjectId>,
     mask: crate::map::TerrainMask,
-    radius: f32,
-    range: f32,
+    radius: Distance,
+    range: Distance,
 ) -> Result<Option<f32>, GenieError> {
     let Some(t) = world.get_known(target)? else {
         return Ok(None);
@@ -98,7 +99,7 @@ impl<'w> HullPather<'w> {
         unit: ObjectId,
         target: Option<ObjectId>,
         mask: crate::map::TerrainMask,
-        radius: f32,
+        radius: Distance,
     ) -> Self {
         let player = world.get(unit).map_or(-1, |p| i32::from(p.player.get()));
         let ids: Vec<ObjectId> = [Some(unit), target].into_iter().flatten().collect();
@@ -118,7 +119,7 @@ impl<'w> HullPather<'w> {
         world: &'w mut Spatial,
         ids: &[ObjectId],
         mask: crate::map::TerrainMask,
-        radius: f32,
+        radius: Distance,
         player: i32,
     ) -> Self {
         let mut ignore: Vec<RecordId> = ids.iter().copied().map(RecordId::from).collect();

@@ -4,6 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{animated_master, combat_master, moving_master};
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
@@ -146,7 +147,7 @@ pub(super) fn core_task(
         wait_time: t.search_wait_time,
         work_val1: t.work_val1,
         work_val2: t.work_val2,
-        work_range: t.work_range,
+        work_range: Distance::new(t.work_range),
         work_flag: t.work_flag,
         enablement,
         sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
@@ -183,12 +184,12 @@ pub(super) fn work_masters(
         work.hit_points = s.read_temp_6;
         work.available = s.available != 0;
         work.disabled = s.disabled != 0;
-        work.line_of_sight = s.los;
+        work.line_of_sight = Distance::new(s.los);
         work.capacity = s.attribute_max_amount;
         work.blast_defense = s.area_effect_object_level;
         if let Some(a) = action_part(m) {
             work.work_rate = a.work_rate;
-            work.search_radius = a.search_radius;
+            work.search_radius = Distance::new(a.search_radius);
             if let Some(tasks) = a.tasks.as_deref() {
                 work.tasks = match tasks.list.iter().map(|e| task(&e.task)).collect() {
                     Ok(tasks) => tasks,
@@ -232,8 +233,8 @@ pub(super) fn work_masters(
                 .map(|mm| &mm.rge_master_combat_object)
         });
         if let Some(rc) = rge_combat {
-            work.weapon_range = rc.weapon_range;
-            work.min_range = rc.minimum_weapon_range;
+            work.weapon_range = Distance::new(rc.weapon_range);
+            work.min_range = Distance::new(rc.minimum_weapon_range);
             work.missile = MasterId::of_data(rc.missile_id);
             work.weapon_offset =
                 Offset::new(rc.weapon_offset_x, rc.weapon_offset_y, rc.weapon_offset_z);
@@ -258,7 +259,7 @@ pub(super) fn work_masters(
             work.combat_ability = rc.combat_ability;
             work.reflection = rc.damage_reflection;
             work.friendly_fire = rc.friendly_fire_damage;
-            work.area_effect = rc.area_effect_range;
+            work.area_effect = Distance::new(rc.area_effect_range);
             work.blast_level = rc.area_effect_level;
             work.area_damage = rc.area_damage;
             work.garrison_firepower = rc.garrison_firepower;
@@ -400,7 +401,7 @@ pub(super) fn moving_stats(
         min_collision: turning.min_collision_size_multiplier,
         fast_turn: s.object_flags & 2 != 0,
         facets: master_facets(m, s, table),
-        weapon_range: combat_master(m).map_or(0.0, |c| c.weapon_range),
+        weapon_range: combat_master(m).map_or(Distance::ZERO, |c| Distance::new(c.weapon_range)),
     })
 }
 

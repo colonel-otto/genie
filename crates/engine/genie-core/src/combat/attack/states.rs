@@ -7,6 +7,7 @@ use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
     AiOrder, Attack, AttackReads, Engagement, Fight, HALF, NO_RANGE, NONE, set_walker_anim,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
@@ -41,9 +42,9 @@ impl Attack {
     }
 
     /// How far the unit reaches: the range, half a tile more without one.
-    pub(super) fn reach(&self) -> f32 {
-        if self.range <= NO_RANGE {
-            self.range + HALF
+    pub(super) fn reach(&self) -> Distance {
+        if self.range <= Distance::new(NO_RANGE) {
+            self.range + Distance::new(HALF)
         } else {
             self.range
         }
@@ -74,9 +75,9 @@ impl Attack {
     /// An Attack without a target.
     pub(super) fn moving(
         &mut self,
-        range: f32,
+        range: Distance,
         at: Position,
-        gap: f32,
+        gap: Distance,
         reads: &MoveToReads<'_>,
     ) -> Result<bool, GenieError> {
         self.range = range;

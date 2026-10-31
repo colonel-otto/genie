@@ -1,5 +1,6 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -72,12 +73,16 @@ pub(super) fn ground(a: BVector, b: BVector) -> f32 {
 /// goal is in reach ([`Mover::near_goal`]), at least 0; else 0.
 ///
 /// [`Mover::near_goal`]: crate::movement::Mover::near_goal
-pub(super) fn short_range(near: bool, range: f32) -> f32 {
+pub(super) fn short_range(near: bool, range: Distance) -> Distance {
     if !near {
-        return 0.0;
+        return Distance::ZERO;
     }
-    let r = range - RANGE_FLOOR;
-    if r <= 0.0 { 0.0 } else { r }
+    let r = range - Distance::new(RANGE_FLOOR);
+    if r <= Distance::ZERO {
+        Distance::ZERO
+    } else {
+        r
+    }
 }
 
 /// A master whose object flags have bit 1 turns as if dt were this many times longer
@@ -117,7 +122,7 @@ pub fn turn_rate(turn_speed: f32, walking_facets: Option<i16>) -> f32 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Turning {
     /// `+0x76c`: the turn radius.
-    pub radius: f32,
+    pub radius: Distance,
     /// `+0x770`: the speed at which the turn radius is its value.
     pub radius_speed: f32,
     /// `+0x774`: the most the unit turns per second.
@@ -133,7 +138,7 @@ impl Turning {
     /// `FUN_1410d9790`) set: radius 0, the largest float, and the 8-byte stores
     /// `0x7f7fffff` at `+0x774` and `+0x77c` (the largest float, then 0 above it).
     pub const PRESET: Self = Self {
-        radius: 0.0,
+        radius: Distance::ZERO,
         radius_speed: f32::MAX,
         rate: f32::MAX,
         revolution: 0.0,
@@ -207,7 +212,7 @@ pub(super) fn split(path: &mut Path, i: i32) {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Goal<'w> {
     pub(super) target: Option<(ObjectId, &'w Placed)>,
-    pub(super) gap: f32,
+    pub(super) gap: Distance,
     pub(super) to_end: f32,
 }
 
@@ -289,8 +294,13 @@ pub fn footprint_gap_squared(
 /// The distance between two footprints on the ground (`FUN_14118f680`): per axis the centre
 /// distance minus both radii, at least 0, then the length of the two.
 #[must_use]
-pub fn footprint_gap(a: Position, a_radius: Footprint, b: Position, b_radius: Footprint) -> f32 {
+pub fn footprint_gap(
+    a: Position,
+    a_radius: Footprint,
+    b: Position,
+    b_radius: Footprint,
+) -> Distance {
     let x = ((b.x() - a.x()).abs() - (b_radius.x() + a_radius.x())).max(0.0);
     let y = ((b.y() - a.y()).abs() - (b_radius.y() + a_radius.y())).max(0.0);
-    fmath::sqrt(x * x + y * y)
+    Distance::new(fmath::sqrt(x * x + y * y))
 }

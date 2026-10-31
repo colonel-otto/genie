@@ -16,6 +16,7 @@
 use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -169,14 +170,17 @@ pub fn snap(radius: Footprint, map: GridSize, at: Point) -> Point {
     if far_y <= high_y {
         y += far_y - high_y;
     }
-    Point::new(snap_one(x, rx), snap_one(y, ry))
+    Point::new(
+        snap_one(x, Distance::new(rx)),
+        snap_one(y, Distance::new(ry)),
+    )
 }
 
 /// One coordinate of [`snap`].
-fn snap_one(v: f32, radius: f32) -> f32 {
+fn snap_one(v: f32, radius: Distance) -> f32 {
     let whole = |f: f32| f32::from(f as i32 as i16);
     let t = whole(v);
-    if radius - whole(radius) == 0.0 {
+    if radius - Distance::new(whole(radius.get())) == Distance::ZERO {
         if HALF < v - t { t + ONE } else { t }
     } else {
         t + HALF

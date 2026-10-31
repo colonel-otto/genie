@@ -1,6 +1,7 @@
 //! A new level's path: no path, its link under the walked level, the short pather's ignore list
 //! and a blocked start.
 
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Rect;
 use crate::map::Tile;
@@ -41,7 +42,7 @@ impl Mover {
             }
         }
         let level = &mut self.paths[0];
-        if !found || level.range < to_end {
+        if !found || level.range < Distance::new(to_end) {
             if level.points.len() as i32 - 1 <= level.waypoint {
                 if 0 < level.continue_counter {
                     // the unit pauses itself (slot 0x5f0, the walked level's `+0x34`) and stops
@@ -178,11 +179,11 @@ impl Mover {
             // the query's point: slot 0x520, +0x824
             let (x, y) = (self.moved_at.x(), self.moved_at.y());
             let rect = Rect::new(x, y, x, y);
-            world.check_known_records(rect.grown(grow))?;
+            world.check_known_records(rect.grown(Distance::new(grow)))?;
             let owner = world.get(me.id).map(|p| p.player);
             let r = self.stats.radius.x();
             let skip = [RecordId::from(me.id), RecordId::from(target_id)];
-            for id in world.obstruction_candidates(rect, grow, &skip) {
+            for id in world.obstruction_candidates(rect, Distance::new(grow), &skip) {
                 let Some(p) = world.get(id) else { continue };
                 let gait = world.gait(id);
                 if gait.is_some_and(|g| g.moving) {
@@ -246,7 +247,7 @@ impl Mover {
         let query = short_path::Query {
             from: [fixed(from.x()), fixed(from.y())],
             to: [fixed(to.x()), fixed(to.y())],
-            radius: self.stats.radius.x(),
+            radius: Distance::new(self.stats.radius.x()),
             target_size: target.radius,
             range: self.stats.weapon_range,
             blocked: self.stats.restriction_mask.blocked(),
@@ -299,7 +300,7 @@ impl Mover {
     pub(crate) const fn walker(&self, id: ObjectId) -> Walker {
         Walker {
             id,
-            radius: self.stats.radius.x(),
+            radius: Distance::new(self.stats.radius.x()),
             restriction: self.stats.restriction,
             mask: self.stats.restriction_mask,
         }
@@ -346,7 +347,7 @@ impl Mover {
         world: &mut Spatial,
         plan: &mut Planning<'_>,
         to: Point,
-        range: f32,
+        range: Distance,
         master: MasterId,
     ) -> Result<bool, GenieError> {
         let ask = ReachAsk {
@@ -367,7 +368,7 @@ impl Mover {
         world: &mut Spatial,
         plan: &mut Planning<'_>,
         target: ObjectId,
-        range: f32,
+        range: Distance,
         master: MasterId,
     ) -> Result<bool, GenieError> {
         let Some(t) = world.get_known(target)? else {
@@ -394,14 +395,20 @@ impl Mover {
         me: &Me,
         world: &mut Spatial,
         target: ObjectId,
-        range: f32,
+        range: Distance,
     ) -> Result<Option<f32>, GenieError> {
         let Some(t) = world.get_known(target)? else {
             return Ok(None);
         };
         let to = t.position.ground();
         let mask = self.stats.restriction_mask;
-        let mut pather = HullPather::new(world, me.id, Some(target), mask, self.stats.radius.x());
+        let mut pather = HullPather::new(
+            world,
+            me.id,
+            Some(target),
+            mask,
+            Distance::new(self.stats.radius.x()),
+        );
         let (result, path) = pather.find(self.position().ground(), to, Some(target), range)?;
         // the slot removes the manager's temporary tile records after (FUN_1410561f0)
         world.clear_tile_records();
@@ -426,7 +433,7 @@ impl Mover {
             from: self.position().ground(),
             to,
             radii,
-            range: 0.0,
+            range: Distance::ZERO,
             closed: Vec::new(),
             full,
         };

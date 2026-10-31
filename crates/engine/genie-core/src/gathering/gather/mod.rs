@@ -15,6 +15,7 @@
 //! walk or a drop-off out of reach (the Action stream's `"update"` draws) are in `work.rs`.
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -173,7 +174,7 @@ pub struct Resource {
     pub drop_site: bool,
     /// The footprint gap between the gatherer and it (`FUN_14118f680`), which the `MoveTo`'s start
     /// reads.
-    pub gap: f32,
+    pub gap: Distance,
     /// Its object state (`+0x640`), which a `MoveTo` to it reads (`FUN_140a7a230`).
     pub state: ObjectState,
     /// Its master's radii (`+0x5d8`, `+0x5dc`), over which a farm's stops spread.

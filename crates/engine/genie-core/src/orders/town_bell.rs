@@ -6,6 +6,7 @@
 use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
@@ -446,7 +447,7 @@ impl World {
                 ui,
                 crate::unit_ai::AiMove {
                     point: Position::new(x, y, 0.0),
-                    range: 0.0,
+                    range: Distance::ZERO,
                     force: true,
                     walk: false,
                 },

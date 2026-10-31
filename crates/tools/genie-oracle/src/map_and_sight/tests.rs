@@ -1,5 +1,6 @@
 use crate::map_and_sight::{resource_differences, visibility_differences};
 use crate::test_ids::object_id;
+use genie_core::map::Distance;
 use genie_core::map::GridSize;
 use genie_core::vision::visibility::{Visibility, VisibleMap, VisibleResource, VisibleResources};
 
@@ -13,7 +14,7 @@ fn sight() -> Visibility {
         capacities: vec![4],
         lists: vec![vec![VisibleResource {
             id: object_id(7),
-            distance: 0.0,
+            distance: Distance::ZERO,
             zone: 0,
             x: 1.5,
             y: 2.5,

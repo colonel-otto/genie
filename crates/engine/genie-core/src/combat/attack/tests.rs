@@ -100,14 +100,14 @@ fn walking(state: MoveTo) -> MoveToAction {
 }
 
 /// A unit's own Attack on `target` in `state` with range `range`.
-pub(crate) fn own_attack(target: i32, state: AttackState, range: f32) -> Attack {
+pub(crate) fn own_attack(target: i32, state: AttackState, range: Distance) -> Attack {
     Attack {
         target: ObjectId::of_field(target),
         target2: None,
         state,
         timer: Seconds::ZERO,
         range,
-        min_range: 0.0,
+        min_range: Distance::ZERO,
         point: Position::new(NONE, NONE, NONE),
         seen: Position::new(NONE, NONE, NONE),
         move_to: None,
@@ -143,7 +143,7 @@ fn a_stop_ends_the_attack_and_the_unit_stands() {
         replay_delay: 0.0,
         flags: 0,
     };
-    let mut a = own_attack(77, AttackState::Move, 1.0);
+    let mut a = own_attack(77, AttackState::Move, Distance::new(1.0));
     a.move_to = Some(walking(MoveTo::Moving));
     a.arms.idle_sprite = Some(stand);
     let mut body = Body::Moving(crate::gathering::hunt::tests::walker());
@@ -163,7 +163,7 @@ fn a_stop_ends_the_attack_and_the_unit_stands() {
     assert_eq!(sprite.map(|s| s.graphic.id), Some(1));
     assert_eq!(body.mover().unwrap().velocity.unwrap().velocity.y(), 0.0);
     // a unit without a standing sprite is not modelled
-    let mut bare = own_attack(77, AttackState::Ready, 1.0);
+    let mut bare = own_attack(77, AttackState::Ready, Distance::new(1.0));
     assert!(
         bare.halt(&mut Body::default(), &mut sprite, &mut rng)
             .is_err()
@@ -184,7 +184,7 @@ fn mark(id: i32, x: f32) -> Mark {
 
 /// A lion (speed 1.2, radii 0.4) at (10, 10) without an area effect.
 const LION: Wielder = Wielder {
-    area_effect: 0.0,
+    area_effect: Distance::ZERO,
     speed: 1.2,
     position: Position::new(10.0, 10.0, 0.0),
     radius: Footprint::new(0.4, 0.4),
@@ -203,7 +203,7 @@ fn an_attack_keeps_its_own_target_and_sees_it_again_out_of_its_moving_states() {
         AttackState::Swing,
         AttackState::GotoPoint,
     ] {
-        let mut a = own_attack(7, state, 0.0);
+        let mut a = own_attack(7, state, Distance::ZERO);
         let w = a.work(Some(deer), None, &LION, |_| panic!("no range test"));
         assert_eq!(
             w,
@@ -220,7 +220,7 @@ fn an_attack_keeps_its_own_target_and_sees_it_again_out_of_its_moving_states() {
         AttackState::New,
         AttackState::Failed,
     ] {
-        let mut a = own_attack(7, state, 0.0);
+        let mut a = own_attack(7, state, Distance::ZERO);
         let w = a.work(Some(deer), None, &LION, |id| id == object_id(7));
         assert_eq!(
             w,
@@ -236,7 +236,7 @@ fn an_attack_keeps_its_own_target_and_sees_it_again_out_of_its_moving_states() {
         );
     }
     // none answers false
-    let mut a = own_attack(7, AttackState::Done, 0.0);
+    let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     assert_eq!(a.work(None, None, &LION, |_| true), Worked::default());
 }
 
@@ -247,24 +247,24 @@ fn an_attack_keeps_its_own_target_and_sees_it_again_out_of_its_moving_states() {
 fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
     // the gap: 13 - 10 - (0.4 + 0.2) = 2.4
     let deer = mark(7, 13.0);
-    let reach = |range: f32, speed: f32, can: bool| {
+    let reach = |range: Distance, speed: f32, can: bool| {
         let mut a = own_attack(7, AttackState::Done, range);
         let unit = Wielder { speed, ..LION };
         a.work(Some(deer), None, &unit, |_| can).kept
     };
-    assert!(reach(0.0, 1.2, true));
-    assert!(!reach(2.0, 1.2, false));
-    assert!(!reach(2.0, 0.0, true));
-    assert!(reach(2.4, 0.0, true));
-    assert!(reach(2.5, 0.0, false));
+    assert!(reach(Distance::ZERO, 1.2, true));
+    assert!(!reach(Distance::new(2.0), 1.2, false));
+    assert!(!reach(Distance::new(2.0), 0.0, true));
+    assert!(reach(Distance::new(2.4), 0.0, true));
+    assert!(reach(Distance::new(2.5), 0.0, false));
     // a range up to 0.1 reaches half a tile more: 0.1 + 0.5 against a gap of 0.6
     let near = mark(7, 11.2);
-    let mut a = own_attack(7, AttackState::Done, 0.1);
+    let mut a = own_attack(7, AttackState::Done, Distance::new(0.1));
     assert!(
         a.work(Some(near), None, &Wielder { speed: 0.0, ..LION }, |_| true)
             .kept
     );
-    let mut a = own_attack(7, AttackState::Done, 0.0);
+    let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     let farther = mark(7, 11.3);
     assert!(
         !a.work(Some(farther), None, &Wielder { speed: 0.0, ..LION }, |_| {
@@ -274,7 +274,7 @@ fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
     );
     // UCOMISS/JP: a NaN speed is not 0, so the unit AI decides
     let mut asked = false;
-    let mut a = own_attack(7, AttackState::Done, 0.0);
+    let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     let unit = Wielder {
         speed: f32::NAN,
         ..LION
@@ -292,7 +292,7 @@ fn an_attack_that_cannot_follow_keeps_a_target_only_in_reach() {
         position: Position::new(f32::NAN, 10.0, 0.0),
         ..deer
     };
-    let mut a = own_attack(7, AttackState::Done, 0.0);
+    let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     assert!(
         a.work(Some(lost), None, &Wielder { speed: 0.0, ..LION }, |_| false)
             .kept
@@ -317,10 +317,10 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         ..annex
     };
     let mangonel = Wielder {
-        area_effect: 1.0,
+        area_effect: Distance::new(1.0),
         ..LION
     };
-    let mut a = own_attack(30, AttackState::Ready, 0.0);
+    let mut a = own_attack(30, AttackState::Ready, Distance::ZERO);
     let w = a.work(Some(annex), Some(main), &mangonel, |id| id == object_id(31));
     assert_eq!(
         w,
@@ -333,7 +333,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
     );
     assert_eq!((a.target, a.seen), (Some(object_id(31)), main.position));
     // without an area effect the annex itself is the target, its own in state 6
-    let mut a = own_attack(30, AttackState::Ready, 0.0);
+    let mut a = own_attack(30, AttackState::Ready, Distance::ZERO);
     assert_eq!(
         a.work(Some(annex), Some(main), &LION, |_| true),
         Worked {
@@ -342,7 +342,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         }
     );
     // a sub-action lets go and takes nothing
-    let mut a = own_attack(30, AttackState::Ready, 0.0);
+    let mut a = own_attack(30, AttackState::Ready, Distance::ZERO);
     a.sub_action = true;
     let w = a.work(Some(annex), Some(main), &mangonel, |_| true);
     assert_eq!(
@@ -355,7 +355,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         (None, None, true, 31)
     );
     // a new target in state 7 or more leaves the Attack without one
-    let mut a = own_attack(30, AttackState::Ready, 0.0);
+    let mut a = own_attack(30, AttackState::Ready, Distance::ZERO);
     let dying = Mark {
         state: ObjectState::Removed,
         ..main
@@ -366,7 +366,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         (Some(object_id(30)), None, -1)
     );
     // class 60: slot 0x68 returns at once; the seen point still follows
-    let mut a = own_attack(7, AttackState::Done, 0.0);
+    let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     let odd = Mark {
         class: CLASS_60,
         ..mark(8, 10.5)
@@ -384,7 +384,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         )
     );
     // slot 0x68 with none: the count clears and the old target goes
-    let mut a = own_attack(7, AttackState::Done, 0.0);
+    let mut a = own_attack(7, AttackState::Done, Distance::ZERO);
     assert_eq!(
         a.set_target(None),
         Worked {
@@ -455,7 +455,7 @@ fn soldier_mover(speed: f32) -> Mover {
                 count: 8,
                 flag_1: true,
             }),
-            weapon_range: 0.0,
+            weapon_range: Distance::ZERO,
         },
         waiting: 0,
         wait_delays: 0,
@@ -863,7 +863,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
                 class: class::CLASS_6,
                 missile: None,
                 player: PlayerId::new(1),
-                area_effect: 1.0,
+                area_effect: Distance::new(1.0),
                 blast_level: 2,
                 area_damage: 0.5,
                 ..damage::Attacker::default()
@@ -940,9 +940,9 @@ fn world_with(id: i32, player: PlayerId, class: ClassId, at: Position) -> Spatia
 
 /// An own Attack of the soldier at (10, 10) on `target` in state 6, range `range` and least
 /// range `min`, its point `point`.
-fn soldier_attack(target: i32, range: f32, min: f32, point: Position) -> Attack {
+fn soldier_attack(target: i32, range: Distance, min: f32, point: Position) -> Attack {
     let mut a = own_attack(target, AttackState::Ready, range);
-    a.min_range = min;
+    a.min_range = Distance::new(min);
     a.point = point;
     a.arms.idle_sprite = Some(STANDING);
     a
@@ -965,7 +965,7 @@ fn ready_to_attack_under_the_least_range_posts_0x1fe_and_waits_or_fails() {
             speed,
             target(),
         );
-        let mut a = soldier_attack(7, 4.0, 2.0, Position::from([NONE; 3]));
+        let mut a = soldier_attack(7, Distance::new(4.0), 2.0, Position::from([NONE; 3]));
         let r = rig.ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false));
         assert!(matches!(r, Ok(Readiness::Waiting)));
         assert_eq!(
@@ -983,7 +983,7 @@ fn ready_to_attack_under_the_least_range_posts_0x1fe_and_waits_or_fails() {
         0.8,
         target(),
     );
-    let mut a = soldier_attack(7, 4.0, 2.0, Position::from([NONE; 3]));
+    let mut a = soldier_attack(7, Distance::new(4.0), 2.0, Position::from([NONE; 3]));
     a.sub_action = true;
     let _ = rig
         .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
@@ -1008,7 +1008,7 @@ fn ready_to_attack_out_of_reach_follows_or_fails() {
             victim,
         );
         rig.r.can_move = can_move;
-        let mut a = soldier_attack(7, 1.0, 0.0, Position::new(NONE, NONE, NONE));
+        let mut a = soldier_attack(7, Distance::new(1.0), 0.0, Position::new(NONE, NONE, NONE));
         let r = rig
             .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
             .unwrap();
@@ -1050,27 +1050,27 @@ fn an_attack_on_a_target_out_of_sight_fails() {
         a.arms.idle_sprite = Some(STANDING);
         a
     };
-    let mut a = own_attack(77, AttackState::Move, 1.0);
+    let mut a = own_attack(77, AttackState::Move, Distance::new(1.0));
     let got = run(&mut a, class::CLASS_6, Some(UnitAiType::SOLDIER), true);
     assert_eq!(got, (Ok(3), true, true, false, failed));
     assert_eq!((a.target, a.state), (None, AttackState::Failed));
-    let mut a = own_attack(77, AttackState::Move, 1.0);
+    let mut a = own_attack(77, AttackState::Move, Distance::new(1.0));
     assert!(run(&mut a, class::PREDATOR, Some(BOAR_AI), false).3);
-    let mut a = own_attack(77, AttackState::Move, 1.0);
+    let mut a = own_attack(77, AttackState::Move, Distance::new(1.0));
     let lion = run(&mut a, class::PREDATOR, Some(LION_AI), false);
     assert_eq!((lion.2, lion.3, lion.4), (true, false, vec![]));
-    let mut a = own_attack(77, AttackState::Move, 1.0);
+    let mut a = own_attack(77, AttackState::Move, Distance::new(1.0));
     let alone = run(&mut a, class::PREDATOR, None, true);
     assert_eq!((alone.0, alone.3), (Ok(3), false));
     let mut a = Attack {
         sub_action: true,
-        ..own_attack(77, AttackState::Move, 1.0)
+        ..own_attack(77, AttackState::Move, Distance::new(1.0))
     };
     assert_eq!(
         run(&mut a, class::CLASS_6, Some(UnitAiType::SOLDIER), true),
         (Ok(3), false, false, false, vec![])
     );
-    let mut a = own_attack(77, AttackState::Move, 1.0);
+    let mut a = own_attack(77, AttackState::Move, Distance::new(1.0));
     assert!(
         run(&mut a, class::PREDATOR, Some(UnitAiType::SOLDIER), true)
             .0
@@ -1098,7 +1098,7 @@ fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
         };
         let mut rig = Rig::on(world, 0.8, victim);
         rig.r.stance = stance;
-        let mut a = soldier_attack(7, 4.0, 0.0, at);
+        let mut a = soldier_attack(7, Distance::new(4.0), 0.0, at);
         a.seen = at;
         let r = rig.ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false));
         assert!(matches!(r, Ok(Readiness::Waiting)));
@@ -1152,8 +1152,8 @@ fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
         };
         let mut rig = Rig::on(world, 0.8, victim);
         rig.r.ai_order = AiOrder::Order(OrderKind::Attack);
-        rig.f.own.source.weapon_range = 3.0;
-        let mut a = soldier_attack(7, 1.0, 0.0, seen_at);
+        rig.f.own.source.weapon_range = Distance::new(3.0);
+        let mut a = soldier_attack(7, Distance::new(1.0), 0.0, seen_at);
         (a.state, a.seen, a.move_to) = (state, seen_at, Some(walking(MoveTo::Moving)));
         let code = rig
             .run(20, |c, u, f, r| {
@@ -1176,14 +1176,19 @@ fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
             AttackState::GotoSeen,
             now_at,
             Some((now_at, MoveTo::Start)),
-            3.0
+            Distance::new(3.0)
         )
     );
     for state in [AttackState::GotoSeen, AttackState::GotoPoint] {
         let (code, a) = run(state, true);
         assert_eq!(
             (code, a.state, a.move_to.map(|m| m.state), a.range),
-            (0, AttackState::Move, Some(MoveTo::Start), 3.0),
+            (
+                0,
+                AttackState::Move,
+                Some(MoveTo::Start),
+                Distance::new(3.0)
+            ),
             "{state}"
         );
     }
@@ -1196,7 +1201,7 @@ fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
 #[test]
 fn an_attack_arrived_where_it_saw_its_target_looks_again() {
     let at = Position::new(13.0, 10.0, 0.0);
-    let run = |state: AttackState, seen: bool, range: f32, computer: bool| {
+    let run = |state: AttackState, seen: bool, range: Distance, computer: bool| {
         let mut world = world_with(7, PlayerId::new(2), class::CLASS_6, at);
         world.sight = Some(sight(seen));
         let victim = Victim {
@@ -1208,7 +1213,7 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
         };
         let mut rig = Rig::on(world, 0.8, victim).holding(7, PlayerId::new(2));
         rig.r.computer = computer;
-        rig.f.own.source.weapon_range = 4.0;
+        rig.f.own.source.weapon_range = Distance::new(4.0);
         let mut a = soldier_attack(7, range, 0.0, at);
         (a.state, a.seen, a.move_to) = (state, at, Some(walking(MoveTo::Arrived)));
         let code = rig
@@ -1219,14 +1224,14 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
         let let_go = rig.workers(7, PlayerId::new(2)) == Some(0);
         (code, a, rig.posted(), let_go)
     };
-    let (code, a, _, _) = run(AttackState::GotoSeen, true, 2.0, false);
+    let (code, a, _, _) = run(AttackState::GotoSeen, true, Distance::new(2.0), false);
     assert_eq!(code, 0);
     assert!(
         !matches!(a.state, AttackState::GotoSeen | AttackState::Failed),
         "{}",
         a.state
     );
-    let (code, a, posted, _) = run(AttackState::GotoSeen, false, 1.0, false);
+    let (code, a, posted, _) = run(AttackState::GotoSeen, false, Distance::new(1.0), false);
     assert_eq!(
         (
             code,
@@ -1239,7 +1244,7 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
             0,
             AttackState::GotoPoint,
             Some((at, MoveTo::Start)),
-            4.0,
+            Distance::new(4.0),
             vec![]
         )
     );
@@ -1249,7 +1254,7 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
         (AttackState::GotoSeen, 2.0, true),
         (AttackState::GotoPoint, 2.0, false),
     ] {
-        let (code, a, posted, let_go) = run(state, false, range, computer);
+        let (code, a, posted, let_go) = run(state, false, Distance::new(range), computer);
         assert_eq!(
             (code, a.state, a.target, let_go, posted),
             (
@@ -1271,7 +1276,7 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
 #[test]
 fn ready_to_attack_s_at_once_test_and_its_nan_paths() {
     let at = Position::new(11.0, 10.0, 0.0);
-    let run = |point: Position, skip: bool, range: f32, timer: f32| {
+    let run = |point: Position, skip: bool, range: Distance, timer: f32| {
         let victim = Victim {
             id: object_id(7),
             position: at,
@@ -1289,30 +1294,79 @@ fn ready_to_attack_s_at_once_test_and_its_nan_paths() {
             .unwrap();
         (r, a.point)
     };
-    assert!(matches!(run(at, false, 0.0, 0.0).0, Readiness::Ready));
+    assert!(matches!(
+        run(at, false, Distance::ZERO, 0.0).0,
+        Readiness::Ready
+    ));
     // the third argument skips it: the gap 0.6 lies beyond a reach of 0.5
-    assert!(matches!(run(at, true, 0.0, 0.0).0, Readiness::Away(_)));
+    assert!(matches!(
+        run(at, true, Distance::ZERO, 0.0).0,
+        Readiness::Away(_)
+    ));
     // a NaN point: moved and far, the reach decides (2 > 0.6) and the point follows
-    let (r, point) = run(Position::new(f32::NAN, 10.0, 0.0), false, 2.0, 0.0);
+    let (r, point) = run(
+        Position::new(f32::NAN, 10.0, 0.0),
+        false,
+        Distance::new(2.0),
+        0.0,
+    );
     assert!(matches!(r, Readiness::Ready));
     assert_eq!(point, at);
-    assert!(matches!(run(at, false, 0.0, f32::NAN).0, Readiness::Ready));
-    assert!(matches!(run(at, false, 0.0, 0.5).0, Readiness::Waiting));
+    assert!(matches!(
+        run(at, false, Distance::ZERO, f32::NAN).0,
+        Readiness::Ready
+    ));
+    assert!(matches!(
+        run(at, false, Distance::ZERO, 0.5).0,
+        Readiness::Waiting
+    ));
 }
 
 /// The ready-at-once range test of a unit that does not move: `COMISS`/`JA` past the range,
 /// `JBE` on each least-range test, so NaN passes all three.
 #[test]
 fn the_ready_at_once_range_test_passes_nan() {
-    assert!(in_range(1.0, 2.0, 0.0));
-    assert!(!in_range(3.0, 2.0, 0.0));
-    assert!(in_range(f32::NAN, 2.0, 0.0));
-    assert!(in_range(1.0, f32::NAN, 0.0));
+    assert!(in_range(
+        Distance::new(1.0),
+        Distance::new(2.0),
+        Distance::new(0.0)
+    ));
+    assert!(!in_range(
+        Distance::new(3.0),
+        Distance::new(2.0),
+        Distance::new(0.0)
+    ));
+    assert!(in_range(
+        Distance::new(f32::NAN),
+        Distance::new(2.0),
+        Distance::new(0.0)
+    ));
+    assert!(in_range(
+        Distance::new(1.0),
+        Distance::new(f32::NAN),
+        Distance::new(0.0)
+    ));
     // a least range above 0.1 needs the gap at least as far
-    assert!(!in_range(0.5, 2.0, 1.0));
-    assert!(in_range(1.5, 2.0, 1.0));
-    assert!(in_range(0.5, 2.0, f32::NAN));
-    assert!(in_range(f32::NAN, 2.0, 1.0));
+    assert!(!in_range(
+        Distance::new(0.5),
+        Distance::new(2.0),
+        Distance::new(1.0)
+    ));
+    assert!(in_range(
+        Distance::new(1.5),
+        Distance::new(2.0),
+        Distance::new(1.0)
+    ));
+    assert!(in_range(
+        Distance::new(0.5),
+        Distance::new(2.0),
+        Distance::new(f32::NAN)
+    ));
+    assert!(in_range(
+        Distance::new(f32::NAN),
+        Distance::new(2.0),
+        Distance::new(1.0)
+    ));
 }
 
 /// `FUN_140a82ae0`'s state without a case (of an Attack's, 0) returns 0; its timer runs.
@@ -1330,7 +1384,7 @@ fn an_attack_in_a_state_without_a_case_returns_0() {
         0.8,
         victim,
     );
-    let mut a = soldier_attack(7, 1.0, 0.0, at);
+    let mut a = soldier_attack(7, Distance::new(1.0), 0.0, at);
     (a.state, a.seen) = (AttackState::New, at);
     let code = rig.run(20, |c, u, f, r| {
         a.update(c, u, me(1, AttackState::Ready), f, r)
@@ -1361,7 +1415,7 @@ fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
             };
             let mut rig = Rig::on(world_with(7, PlayerId::new(1), class, at), 0.8, victim);
             rig.f.own.player = player;
-            let mut a = soldier_attack(7, 1.0, 0.0, at);
+            let mut a = soldier_attack(7, Distance::new(1.0), 0.0, at);
             // state 0 has no case: an Attack the test spares returns 0
             (a.state, a.seen, a.same_owner, a.sub_action) =
                 (AttackState::New, at, same_owner, sub_action);
@@ -1422,7 +1476,7 @@ fn a_sub_action_s_attack_after_its_kill_posts_0x1fb_and_returns_5() {
         victim,
     )
     .holding(7, PlayerId::new(0));
-    let mut a = soldier_attack(7, 0.0, 0.0, at);
+    let mut a = soldier_attack(7, Distance::ZERO, 0.0, at);
     (a.state, a.seen, a.sub_action) = (AttackState::Killed, at, true);
     let code = rig.run(20, |c, u, f, r| {
         a.update(c, u, me(1, AttackState::Ready), f, r)
@@ -1458,7 +1512,7 @@ fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
         )
         .holding(7, PlayerId::new(0));
         rig.f.own.class = unit_class;
-        let mut a = soldier_attack(7, 1.0, 0.0, at);
+        let mut a = soldier_attack(7, Distance::new(1.0), 0.0, at);
         a.seen = at;
         let code = rig
             .run(20, |c, u, f, r| {
@@ -1511,7 +1565,7 @@ fn a_swing_that_fails_its_interrupt_check_stays_failed() {
         frame: 9,
         ..ActiveSprite::start(swing, &mut Well512::default())
     });
-    let mut a = soldier_attack(7, 1.0, 0.0, Position::new(NONE, NONE, NONE));
+    let mut a = soldier_attack(7, Distance::new(1.0), 0.0, Position::new(NONE, NONE, NONE));
     (a.state, a.seen, a.arms.interrupt_frame) = (AttackState::Swing, at, 5);
     let code = rig.run(20, |c, u, f, r| {
         a.update(c, u, me(1, AttackState::Ready), f, r)
@@ -1525,9 +1579,12 @@ fn a_swing_that_fails_its_interrupt_check_stays_failed() {
 #[test]
 fn a_rangeless_attack_reaches_a_tenth_squared_in_f32() {
     // the image holds 0x3c23d70b (0.1f * 0.1f), one ULP above 0.01f
-    assert_eq!(squared_reach(0.0).to_bits(), 0x3c23_d70b);
-    assert_eq!(squared_reach(NO_RANGE).to_bits(), 0x3c23_d70b);
-    assert_eq!(squared_reach(2.0), 4.0);
+    assert_eq!(squared_reach(Distance::ZERO).to_bits(), 0x3c23_d70b);
+    assert_eq!(
+        squared_reach(Distance::new(NO_RANGE)).to_bits(),
+        0x3c23_d70b
+    );
+    assert_eq!(squared_reach(Distance::new(2.0)), 4.0);
 }
 
 /// 425906646's town centre 27171 (player 6) in update 6224: its Attack lost the boar 29826
@@ -1550,8 +1607,8 @@ fn a_disarmed_building_s_targetless_attack_ends_with_its_notify() {
         target2: None,
         state: AttackState::Ready,
         timer: Seconds::ZERO,
-        range: 6.0,
-        min_range: 0.0,
+        range: Distance::new(6.0),
+        min_range: Distance::ZERO,
         point: Position::new(NONE, NONE, NONE),
         seen: Position::new(NONE, NONE, NONE),
         move_to: None,
@@ -1642,15 +1699,15 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
 /// The soldier at (10, 10), master 4, of speed `speed` whose unit AI may move to attack
 /// (`can_move`) in stance `stance`, its leash centre on itself, and a target of class 6 `gap`
 /// east of it; range 1, no least range.
-fn engaged(gap: f32, speed: f32, can_move: bool, stance: UnitStance) -> Engagement {
+fn engaged(gap: Distance, speed: f32, can_move: bool, stance: UnitStance) -> Engagement {
     Engagement {
-        gap_squared: gap * gap,
+        gap_squared: gap.squared().get(),
         gap,
         position: Position::new(10.0, 10.0, 0.0),
-        target_position: Position::new(10.0 + gap, 10.0, 0.0),
+        target_position: Position::new(10.0 + gap.get(), 10.0, 0.0),
         speed,
-        range: 1.0,
-        min_range: 0.0,
+        range: Distance::new(1.0),
+        min_range: Distance::ZERO,
         can_move,
         stance,
         state_position: Point::new(10.0, 10.0),
@@ -1664,7 +1721,7 @@ fn engaged(gap: f32, speed: f32, can_move: bool, stance: UnitStance) -> Engageme
 fn standing_arms() -> Arms {
     Arms {
         idle_sprite: Some(STANDING),
-        ..own_attack(0, AttackState::New, 0.0).arms
+        ..own_attack(0, AttackState::New, Distance::ZERO).arms
     }
 }
 
@@ -1733,9 +1790,14 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
         .unwrap()
     };
     for e in [
-        engaged(0.5, 1.2, false, UnitStance::STAND_GROUND),
-        engaged(0.5, 0.0, true, UnitStance::AGGRESSIVE),
-        engaged(f32::NAN, 1.2, false, UnitStance::STAND_GROUND),
+        engaged(Distance::new(0.5), 1.2, false, UnitStance::STAND_GROUND),
+        engaged(Distance::new(0.5), 0.0, true, UnitStance::AGGRESSIVE),
+        engaged(
+            Distance::new(f32::NAN),
+            1.2,
+            false,
+            UnitStance::STAND_GROUND,
+        ),
     ] {
         let c = start(e);
         assert_eq!(
@@ -1748,15 +1810,20 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
         );
         assert_eq!(c.attack.move_to, None);
     }
-    let away = start(engaged(3.0, 1.2, false, UnitStance::STAND_GROUND));
+    let away = start(engaged(
+        Distance::new(3.0),
+        1.2,
+        false,
+        UnitStance::STAND_GROUND,
+    ));
     assert_eq!(
         (away.ready, away.failed, away.posted),
         (false, true, vec![(NotifyKind::OUT_OF_REACH, [0; 3])])
     );
     assert_eq!(away.attack.point, Position::new(NONE, NONE, NONE));
     let close = start(Engagement {
-        min_range: 1.0,
-        ..engaged(0.5, 1.2, false, UnitStance::STAND_GROUND)
+        min_range: Distance::new(1.0),
+        ..engaged(Distance::new(0.5), 1.2, false, UnitStance::STAND_GROUND)
     });
     assert_eq!(
         (close.ready, close.failed, close.posted),
@@ -1793,37 +1860,52 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
         (c.failed_first, c.posted, mover.animated.speed == 0.0)
     };
     assert_eq!(
-        start(engaged(0.5, 1.2, true, UnitStance::AGGRESSIVE), true),
+        start(
+            engaged(Distance::new(0.5), 1.2, true, UnitStance::AGGRESSIVE),
+            true
+        ),
         (false, vec![], false)
     );
     let close = Engagement {
-        min_range: 1.0,
-        ..engaged(0.5, 1.2, true, UnitStance::AGGRESSIVE)
+        min_range: Distance::new(1.0),
+        ..engaged(Distance::new(0.5), 1.2, true, UnitStance::AGGRESSIVE)
     };
     assert_eq!(
         start(close, true),
         (false, vec![(NotifyKind::TOO_CLOSE, [-1; 3])], false)
     );
     assert_eq!(
-        start(engaged(3.0, 1.2, true, UnitStance::AGGRESSIVE), true),
+        start(
+            engaged(Distance::new(3.0), 1.2, true, UnitStance::AGGRESSIVE),
+            true
+        ),
         (false, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], true)
     );
     assert_eq!(
-        start(engaged(3.0, 1.2, true, UnitStance::AGGRESSIVE), false),
+        start(
+            engaged(Distance::new(3.0), 1.2, true, UnitStance::AGGRESSIVE),
+            false
+        ),
         (false, vec![], true)
     );
     assert_eq!(
-        start(engaged(3.0, 1.2, true, UnitStance::STAND_GROUND), false),
+        start(
+            engaged(Distance::new(3.0), 1.2, true, UnitStance::STAND_GROUND),
+            false
+        ),
         (true, vec![], false)
     );
     // stance 1: the target 3 from the centre stays within 1 + 5, 7 from it does not
     assert_eq!(
-        start(engaged(3.0, 1.2, true, UnitStance::DEFENSIVE), true),
+        start(
+            engaged(Distance::new(3.0), 1.2, true, UnitStance::DEFENSIVE),
+            true
+        ),
         (false, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], true)
     );
     let far = Engagement {
         state_position: Point::new(3.0, 10.0),
-        ..engaged(3.0, 1.2, true, UnitStance::DEFENSIVE)
+        ..engaged(Distance::new(3.0), 1.2, true, UnitStance::DEFENSIVE)
     };
     assert_eq!(
         start(far, true),
@@ -1831,7 +1913,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
     );
     // a target out of sight of a unit that cannot follow it fails
     let mut mover = soldier_mover(1.2);
-    let e = engaged(3.0, 1.2, false, UnitStance::STAND_GROUND);
+    let e = engaged(Distance::new(3.0), 1.2, false, UnitStance::STAND_GROUND);
     let world = world_with(7, PlayerId::new(2), class::CLASS_6, e.target_position);
     let c = own_start(
         &world,
@@ -1851,7 +1933,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
 fn the_start_faces_the_target_but_for_masters_1704_and_1706() {
     let north = Engagement {
         target_position: Position::new(10.0, 10.5, 0.0),
-        ..engaged(0.5, 0.0, false, UnitStance::STAND_GROUND)
+        ..engaged(Distance::new(0.5), 0.0, false, UnitStance::STAND_GROUND)
     };
     let world = world_with(7, PlayerId::new(2), class::CLASS_6, north.target_position);
     let angle = |master| {
@@ -1897,7 +1979,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     let world = gated();
     let e = Engagement {
         target_class: class::GATE,
-        ..engaged(3.0, 0.0, false, UnitStance::STAND_GROUND)
+        ..engaged(Distance::new(3.0), 0.0, false, UnitStance::STAND_GROUND)
     };
     let mut mover_body = Body::new(
         Position::new(10.0, 10.0, 0.0),
@@ -1936,7 +2018,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     };
     let mut rig = Rig::on(gated(), 0.0, victim);
     rig.r.can_move = false;
-    let mut a = soldier_attack(7, 1.0, 0.0, Position::new(NONE, NONE, NONE));
+    let mut a = soldier_attack(7, Distance::new(1.0), 0.0, Position::new(NONE, NONE, NONE));
     let r = rig
         .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
         .unwrap();
@@ -1968,7 +2050,7 @@ fn the_ready_start_swings_at_once_when_its_timer_ran_out() {
         );
         rig.unit_mut().attack_timer = Seconds::new(timer);
         rig.r.can_move = false;
-        let mut a = soldier_attack(7, 1.0, 0.0, at);
+        let mut a = soldier_attack(7, Distance::new(1.0), 0.0, at);
         a.arms.sprite = Some(attack_sprite);
         a.state = AttackState::New;
         rig.ground(|u, g, f, r| a.enter_ready(u, g, f, r)).unwrap();
@@ -1982,7 +2064,7 @@ fn the_ready_start_swings_at_once_when_its_timer_ran_out() {
         0.0,
         Victim::default(),
     );
-    let mut a = soldier_attack(-1, 1.0, 0.0, Position::from([NONE; 3]));
+    let mut a = soldier_attack(-1, Distance::new(1.0), 0.0, Position::from([NONE; 3]));
     rig.ground(|u, g, f, r| a.enter_ready(u, g, f, r)).unwrap();
     assert_eq!(a.state, AttackState::Done);
     assert_eq!(
@@ -2013,7 +2095,7 @@ fn a_swing_with_a_second_sprite_draws_which_one_it_shows() {
         *rig.t.streams.get(Stream::Object) = object;
         rig.r.can_move = false;
         rig.r.swing_sprites = sprites;
-        let mut a = soldier_attack(7, 1.0, 0.0, at);
+        let mut a = soldier_attack(7, Distance::new(1.0), 0.0, at);
         a.arms.sprite = Some(sprite(301));
         a.arms.second_sprite = Some(sprite(302));
         a.state = AttackState::New;
@@ -2072,7 +2154,7 @@ fn ready_to_attack_s_leash_fails_a_target_too_far_from_the_unit_ai_s_point() {
             victim,
         );
         (rig.r.stance, rig.r.state_position) = (UnitStance::DEFENSIVE, centre);
-        let mut a = soldier_attack(7, 1.0, 0.0, Position::new(NONE, NONE, NONE));
+        let mut a = soldier_attack(7, Distance::new(1.0), 0.0, Position::new(NONE, NONE, NONE));
         let r = rig
             .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
             .unwrap();
@@ -2118,7 +2200,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         masters.get_mut(ids::TOWN_CENTRE).unwrap().missile = None;
     }
     let centre = &mut t.players[1].objects[ListIndex::new(2)];
-    let mut attack = own_attack(-1, AttackState::Done, 0.0);
+    let mut attack = own_attack(-1, AttackState::Done, Distance::ZERO);
     attack.arms.idle_sprite = Some(stand);
     centre.actions.set_attack(Some(attack));
     // its unit AI on the attack's action, which takes the Attack's invalidation
@@ -2149,7 +2231,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     let mut t = forage_world();
     t.players[1].objects[ListIndex::new(0)]
         .actions
-        .set_attack(Some(own_attack(77, AttackState::Done, 0.0)));
+        .set_attack(Some(own_attack(77, AttackState::Done, Distance::ZERO)));
     let r = in_update(&mut t, (PlayerId::new(1), ListIndex::new(0)), 50, |u, c| {
         let code = u.attack_part(c, me(object_id(9175)), None)?;
         u.end_head_update(c, code)
@@ -2175,7 +2257,7 @@ fn at_frame(frame: i16, last: i16) -> ActiveSprite {
 /// [`own_attack`] on the house 10028 in state `state`, its swing pending, with the standing
 /// sprite to end with and a missile (`ranged`) firing at frame `fire`.
 fn swinging_attack(state: AttackState, ranged: bool, fire: i16) -> Attack {
-    let mut a = own_attack(10028, state, 0.1);
+    let mut a = own_attack(10028, state, Distance::new(0.1));
     a.pending = true;
     a.arms.idle_sprite = Some(STANDING);
     a.arms.missile = if ranged { Some(master_id(5)) } else { None };
@@ -2415,7 +2497,7 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
         )
     };
     assert_eq!(
-        start(0.1),
+        start(Distance::new(0.1)),
         (
             0,
             Some((MoveTo::Moving, MoveWaitState::AskedAgain)),
@@ -2424,7 +2506,7 @@ fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
             1.2
         )
     );
-    let (code, move_to, shown, anim, _) = start(5.0);
+    let (code, move_to, shown, anim, _) = start(Distance::new(5.0));
     assert_eq!(
         (code, move_to, shown, anim),
         (
@@ -2444,7 +2526,7 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
     let at = Position::new(12.0, 10.0, 0.0);
     let table = BTreeMap::from([(STANDING.id, STANDING)]);
     let made = |gap, speed, state, mode| {
-        let mut a = own_attack(7, AttackState::Move, 2.0);
+        let mut a = own_attack(7, AttackState::Move, Distance::new(2.0));
         a.arms.move_sprite = Some(STANDING);
         a.on_target_moved = mode;
         a.timer = Seconds::new(5.0);
@@ -2452,7 +2534,12 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
         let arrived = a.walk_to_target(at, gap, &reads).unwrap();
         (arrived, a.timer, a.move_to)
     };
-    let (arrived, timer, m) = made(1.0, 1.0, ObjectState::Alive, TargetMoved::AsksAgain);
+    let (arrived, timer, m) = made(
+        Distance::new(1.0),
+        1.0,
+        ObjectState::Alive,
+        TargetMoved::AsksAgain,
+    );
     let m = m.unwrap();
     assert_eq!((arrived, timer), (false, Seconds::ZERO));
     assert_eq!(
@@ -2464,31 +2551,53 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
             m.sprite,
             m.quiet
         ),
-        (MoveTo::Start, at, 7, 2.0, Some(STANDING), true)
+        (
+            MoveTo::Start,
+            at,
+            7,
+            Distance::new(2.0),
+            Some(STANDING),
+            true
+        )
     );
     assert_eq!(m.on_target_moved, TargetMoved::AsksAgain);
-    let (arrived, _, m) = made(0.01, 1.0, ObjectState::Alive, TargetMoved::Follows);
+    let (arrived, _, m) = made(
+        Distance::new(0.01),
+        1.0,
+        ObjectState::Alive,
+        TargetMoved::Follows,
+    );
     assert_eq!(
         (arrived, m.map(|m| (m.state, m.on_target_moved))),
         (true, Some((MoveTo::Arrived, TargetMoved::Follows)))
     );
-    let (arrived, _, m) = made(1.0, 0.0, ObjectState::Alive, TargetMoved::Follows);
+    let (arrived, _, m) = made(
+        Distance::new(1.0),
+        0.0,
+        ObjectState::Alive,
+        TargetMoved::Follows,
+    );
     assert_eq!((arrived, m.map(|m| m.state)), (false, Some(MoveTo::Failed)));
-    let (arrived, _, m) = made(0.0, 1.0, ObjectState::Dying, TargetMoved::Follows);
+    let (arrived, _, m) = made(
+        Distance::ZERO,
+        1.0,
+        ObjectState::Dying,
+        TargetMoved::Follows,
+    );
     assert_eq!((arrived, m), (false, None));
-    let mut none = own_attack(-1, AttackState::Move, 2.0);
+    let mut none = own_attack(-1, AttackState::Move, Distance::new(2.0));
     let reads = walking_reads(&table, MoveDefaults::default(), ObjectState::Alive, 1.0);
-    assert!(none.walk_to_target(at, 1.0, &reads).is_err());
+    assert!(none.walk_to_target(at, Distance::new(1.0), &reads).is_err());
     // without a sprite of its own the constructor's default is taken
     let defaults = MoveDefaults {
         point: Some(STANDING.id),
         object: Some(STANDING.id),
     };
     let reads = walking_reads(&table, defaults, ObjectState::Alive, 1.0);
-    let mut bare = own_attack(7, AttackState::Move, 2.0);
-    let _ = bare.walk_to_target(at, 1.0, &reads).unwrap();
+    let mut bare = own_attack(7, AttackState::Move, Distance::new(2.0));
+    let _ = bare.walk_to_target(at, Distance::new(1.0), &reads).unwrap();
     assert_eq!(bare.move_to.and_then(|m| m.sprite), Some(STANDING));
-    let mut seen = own_attack(7, AttackState::GotoSeen, 2.0);
+    let mut seen = own_attack(7, AttackState::GotoSeen, Distance::new(2.0));
     seen.walk_to_seen(&reads).unwrap();
     assert_eq!(seen.move_to.and_then(|m| m.sprite), Some(STANDING));
 }
@@ -2500,7 +2609,7 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
 fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it() {
     let seen = Position::new(12.0, 10.0, 0.0);
     let made = |state, speed, unit_state| {
-        let mut a = own_attack(7, state, 3.0);
+        let mut a = own_attack(7, state, Distance::new(3.0));
         a.seen = seen;
         a.timer = Seconds::new(5.0);
         let reads = walking_reads(&NO_GRAPHICS, MoveDefaults::default(), unit_state, speed);
@@ -2513,11 +2622,17 @@ fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it
     };
     assert_eq!(
         made(AttackState::GotoSeen, 1.0, ObjectState::Alive),
-        (Seconds::ZERO, Some((MoveTo::Start, seen, 3.0, -1)))
+        (
+            Seconds::ZERO,
+            Some((MoveTo::Start, seen, Distance::new(3.0), -1))
+        )
     );
     assert_eq!(
         made(AttackState::GotoPoint, 1.0, ObjectState::Alive),
-        (Seconds::ZERO, Some((MoveTo::Start, seen, 0.0, -1)))
+        (
+            Seconds::ZERO,
+            Some((MoveTo::Start, seen, Distance::ZERO, -1))
+        )
     );
     assert_eq!(
         made(AttackState::GotoSeen, 0.0, ObjectState::Alive)
@@ -2537,7 +2652,7 @@ fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it
 fn an_attack_s_walk_walks_waits_arrives_or_fails() {
     let walked = |move_to: Option<MoveTo>, timer: f32| {
         let mut rig = Rig::on_the_path(Victim::default());
-        let mut a = own_attack(10028, AttackState::Move, 0.1);
+        let mut a = own_attack(10028, AttackState::Move, Distance::new(0.1));
         a.arms.idle_sprite = Some(STANDING);
         let wait = MoveWait {
             state: MoveWaitState::Waiting,
@@ -2600,7 +2715,7 @@ fn an_attack_s_walk_walks_waits_arrives_or_fails() {
 fn an_attack_without_a_target_walks_to_where_it_saw_it_and_ends_there() {
     let gone = |state: MoveTo, sub_action: bool| {
         let mut rig = Rig::on_the_path(Victim::default());
-        let mut a = own_attack(-1, AttackState::GotoSeen, 1.0);
+        let mut a = own_attack(-1, AttackState::GotoSeen, Distance::new(1.0));
         a.arms.idle_sprite = Some(STANDING);
         a.sub_action = sub_action;
         a.move_to = Some(walk_to_house(state, MoveWait::default()));
@@ -2663,7 +2778,7 @@ fn on_target(
     };
     let mut rig = Rig::on(world, 0.8, victim).holding(7, player);
     rig.r.ai_order = AiOrder::Order(OrderKind::Attack);
-    let mut a = soldier_attack(7, 1.0, 0.0, at);
+    let mut a = soldier_attack(7, Distance::new(1.0), 0.0, at);
     (a.state, a.seen, a.sub_action) = (attack_state, at, sub);
     (rig, a)
 }

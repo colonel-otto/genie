@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
+use crate::map::Distance;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -272,7 +273,7 @@ impl World {
                 target: Some(target),
                 target_owner: Some(owner),
                 point: place,
-                range: 0.0,
+                range: Distance::ZERO,
                 shown: place.ground(),
                 ready: true,
                 target_type: Some(OrderTargetType::of_master(master)),
@@ -341,7 +342,7 @@ impl World {
                 target: id,
                 target_owner: owner,
                 point: Position::new(x, y, 0.0),
-                range: 0.0,
+                range: Distance::ZERO,
                 shown: Point::new(x, y),
                 ready: true,
                 target_type,

@@ -1,6 +1,7 @@
 use super::*;
 use crate::groups::FormationKind;
 use crate::groups::GroupTarget;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -186,31 +187,31 @@ fn the_point_from_the_front_runs_along_the_stored_positions() {
         ..crate::groups::PointLine::default()
     };
     assert_eq!(
-        find_point_from_front(&line, 0.0),
+        find_point_from_front(&line, Distance::ZERO),
         Some(BVector::new(0.0, 7.0, 0.0))
     );
     assert_eq!(
-        find_point_from_front(&line, -1.0),
+        find_point_from_front(&line, Distance::new(-1.0)),
         Some(BVector::new(0.0, 7.0, 0.0))
     );
     assert_eq!(
-        find_point_from_front(&line, 2.5),
+        find_point_from_front(&line, Distance::new(2.5)),
         Some(BVector::new(1.5, 7.0, 2.0))
     );
     assert_eq!(
-        find_point_from_front(&line, 8.0),
+        find_point_from_front(&line, Distance::new(8.0)),
         Some(BVector::new(3.0, 1.0, 7.0))
     );
     assert_eq!(
-        find_point_from_front(&line, 11.0),
+        find_point_from_front(&line, Distance::new(11.0)),
         Some(BVector::new(3.0, 1.0, 10.0))
     );
-    assert_eq!(find_point_from_front(&line, 12.0), None);
+    assert_eq!(find_point_from_front(&line, Distance::new(12.0)), None);
     let one = crate::groups::PointLine {
         points: vec![point(BVector::ZERO)],
         ..crate::groups::PointLine::default()
     };
-    assert_eq!(find_point_from_front(&one, 0.0), None);
+    assert_eq!(find_point_from_front(&one, Distance::ZERO), None);
 }
 
 /// `FUN_141011300`: a null object (none in the world's table) is -1; a ghost (its master 243
@@ -755,7 +756,7 @@ fn a_nan_distance_back_takes_the_index_times_the_spacing() {
         },
         FormationLine {
             indices: vec![1],
-            distance_back: f32::NAN,
+            distance_back: Distance::new(f32::NAN),
             ..FormationLine::default()
         },
     ];
@@ -867,7 +868,7 @@ fn level(points: &[BVector], waypoint: i32, flags: u32) -> PathData {
         path_flags: flags,
         waypoint,
         state: PathState::Idle,
-        range: 0.0,
+        range: Distance::ZERO,
         target: None,
         pause_time: Seconds::ZERO,
         flags: 0,
@@ -983,7 +984,7 @@ fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
     let g = &mut t.groups.groups[0];
     g.current_target.target = GroupTarget::of_saved(3, -1);
     g.current_target.target_radius = 5.0;
-    g.current_target.range = 2.5;
+    g.current_target.range = Distance::new(2.5);
     assert_eq!(own(&t), FormationKind::LINE);
     // a lone level measures its own path; one point measures to the origin
     let mut t = type_world(vec![level(&[BVector::new(30.0, 0.0, 0.0)], 0, 0)]);
@@ -1098,7 +1099,7 @@ fn a_line_of_two_unit_types_alternates_its_slots() {
     assert_eq!(f.slots[4].offset, BVector::new(0.0, 0.0, 2.0));
     let subs: Vec<i32> = f.slots.iter().map(|s| s.desired_sub_category).collect();
     assert_eq!(subs, [4, 24, 4, 24, 4, 4, 24, 4, 24, 24]);
-    assert_eq!(f.lines[1].distance_back, 1.0);
+    assert_eq!(f.lines[1].distance_back, Distance::new(1.0));
     assert_eq!(f.lines[1].indices, [5, 6, 7, 8, 9]);
 }
 
@@ -1119,7 +1120,7 @@ fn a_staggered_line_shifts_its_lines_and_a_flanked_one_parts_them() {
     assert_eq!(f.kind, FormationKind::STAGGERED);
     assert_eq!(offsets(&f, 0), [-3.5, -1.5, 0.5, 2.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.5, -2.5, -0.5, 1.5, 3.5]);
-    assert_eq!(f.lines[1].distance_back, 2.0);
+    assert_eq!(f.lines[1].distance_back, Distance::new(2.0));
     let mut f = Formation::new();
     assert!(column_line_slots(&mut f, &g, false, (false, true), WorldTime::ZERO).unwrap());
     assert_eq!(f.kind, FormationKind::FLANKED);
@@ -1165,7 +1166,7 @@ fn a_narrow_sub_formation_takes_one_line_ahead_of_a_wider_one() {
     assert_eq!(first, [(-1.0, 0), (0.0, 0), (1.0, 0)]);
     assert_eq!(f.lines[0].indices, [0, 1, 2]);
     assert_eq!(f.lines[1].indices, [3, 4, 5, 6, 7]);
-    let back: Vec<f32> = f.lines.iter().map(|l| l.distance_back).collect();
+    let back: Vec<f32> = f.lines.iter().map(|l| l.distance_back.get()).collect();
     assert_eq!(back, [0.0, 1.5, 3.0]);
 }
 

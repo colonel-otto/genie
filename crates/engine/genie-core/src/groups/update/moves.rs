@@ -10,6 +10,7 @@ use crate::groups::update::{
     ATTACK, CLOSE, FOLLOW, FOLLOW_SHARE, IDLE_LIMIT, IDLE_SPAN, NO_COMMAND, OTHER_COMMANDS,
 };
 use crate::groups::{SpecificMove, UnitGroup};
+use crate::map::Distance;
 use crate::math::fmath::BVector;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::world::Millis;
@@ -63,7 +64,7 @@ impl World {
                         let range = sight * FOLLOW_SHARE;
                         let d = crate::math::fmath::sub(from, moved);
                         let squared = d.x() * d.x() + 0.0 + d.y() * d.y();
-                        if !crate::math::fmath::below_or_unordered(squared, range * range) {
+                        if !crate::math::fmath::below_or_unordered(squared, range.squared().get()) {
                             let _ = self.command_move_to(
                                 group,
                                 target,
@@ -361,7 +362,9 @@ impl World {
                     .specific_move;
                 let mut d = crate::math::fmath::sub(at, own.last_position);
                 d = d.with_height(0.0);
-                own.distance -= crate::math::fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y());
+                own.distance -= Distance::new(crate::math::fmath::sqrt(
+                    d.x() * d.x() + 0.0 + d.y() * d.y(),
+                ));
                 own.last_position = at;
                 continue;
             }

@@ -3,6 +3,7 @@
 //! `ClosestResourceObject` names it.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::map::spatial::Spatial;
@@ -56,12 +57,12 @@ impl Unit {
             master.class,
             c.w.players.player(c.player)?.civ,
         );
-        let los = site.line_of_sight;
+        let los = site.line_of_sight.get();
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
         let reach = if held <= REACH_CAP { held } else { REACH_CAP };
         let builder = gather_search::Builder {
             position: self.position(),
-            radius: master.radius.x(),
+            radius: Distance::new(master.radius.x()),
             building: at.position,
             range: reach as i32 as i16,
         };

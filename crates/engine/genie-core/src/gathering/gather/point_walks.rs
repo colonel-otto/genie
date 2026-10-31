@@ -9,6 +9,7 @@ use crate::gathering::gather::{
     FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, NO_GATHER_POINT, Next, SEARCH_WAIT,
     STOP_FARMS, TRAP_WAITERS, Walks,
 };
+use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::move_to::TargetMoved;
@@ -47,7 +48,7 @@ impl GatherAction {
     /// A sprite the table lacks.
     pub(super) fn set_walk_back(
         &mut self,
-        radius: f32,
+        radius: Distance,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
@@ -62,7 +63,7 @@ impl GatherAction {
     /// A sprite the table lacks.
     pub fn walk_back(
         &mut self,
-        radius: f32,
+        radius: Distance,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
@@ -78,7 +79,7 @@ impl GatherAction {
     /// A sprite the table lacks.
     pub(super) fn begin_reseed_walk(
         &mut self,
-        radius: f32,
+        radius: Distance,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
@@ -95,7 +96,7 @@ impl GatherAction {
     pub(super) fn walk_to_point(
         &mut self,
         state: GatherState,
-        radius: f32,
+        radius: Distance,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
@@ -172,7 +173,7 @@ impl GatherAction {
             if self.target_class == Some(class::FARM) && target.is_some_and(|t| 1 < t.workers) {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
-                self.set_walk_back(radius, mover, &walks)?;
+                self.set_walk_back(Distance::new(radius), mover, &walks)?;
                 self.target = None;
                 return Ok(Next::Stay);
             }
@@ -182,7 +183,7 @@ impl GatherAction {
         }
         let walks = r.walks(&c.w.graphics, unit);
         let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
-        self.begin_reseed_walk(radius, mover, &walks)?;
+        self.begin_reseed_walk(Distance::new(radius), mover, &walks)?;
         Ok(Next::Stay)
     }
 

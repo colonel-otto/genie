@@ -1,6 +1,7 @@
 //! The map and the players' sight: the terrain and its differences, the objects as movement
 //! sees them, the visible maps and resources against the game's.
 
+use genie_core::map::Distance;
 use genie_core::map::{GridSize, TileOffset};
 
 use crate::masters::{MasterTable, TerrainTable};
@@ -211,7 +212,7 @@ pub(super) fn spatial(
                 Seer {
                     player,
                     master,
-                    los: m.los,
+                    los: Distance::new(m.los),
                     state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
                     // a foundation made in the game explores first when its construction starts
                     explored: building.is_none_or(|b| b.built != 0 || b.build_pts != 0.0),
@@ -354,7 +355,7 @@ pub(super) fn saved_resources(
                     .map(|r| {
                         Ok(VisibleResource {
                             id: ObjectId::try_from(r.object_id)?,
-                            distance: r.distance,
+                            distance: Distance::new(r.distance),
                             zone: r.zone,
                             x: r.pos_x,
                             y: r.pos_y,
@@ -449,7 +450,7 @@ pub(super) fn resource_differences(
     let bits = |r: &VisibleResource| {
         (
             r.id,
-            r.distance.to_bits(),
+            r.distance.get().to_bits(),
             r.zone,
             r.x.to_bits(),
             r.y.to_bits(),

@@ -9,6 +9,7 @@ use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
 use crate::groups::update::{ATTACK, NO_COMMAND};
 use crate::groups::{GroupTarget, UnitTypeStatistic, WorldObject};
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::math::fmath;
@@ -119,7 +120,7 @@ impl World {
         g.motion.stop_walk()?;
         g.current_command = NO_COMMAND;
         g.forget_target_data();
-        g.current_target.range = 0.0;
+        g.current_target.range = Distance::ZERO;
         if let Some(target) = target {
             let (nearest, gap) = self.nearest_member(group, target)?;
             if let Some(member) = nearest.and_then(|m| self.world_object(m)) {
@@ -130,7 +131,7 @@ impl World {
                     range = sight;
                 }
             }
-            if gap <= range {
+            if gap <= range.get() {
                 return Ok(true);
             }
         }
@@ -168,8 +169,8 @@ impl World {
                 continue;
             };
             let gap = self.footprint_gap(object, t)?;
-            if gap < best.1 {
-                best = (Some(m.id), gap);
+            if gap < Distance::new(best.1) {
+                best = (Some(m.id), gap.get());
             }
         }
         Ok(best)
@@ -225,7 +226,7 @@ impl World {
     fn category_in_reach(
         &self,
         units: &[ObjectId],
-        listed: f32,
+        listed: Distance,
         target: ObjectId,
     ) -> Result<bool, GenieError> {
         let t = self
@@ -239,9 +240,14 @@ impl World {
                 .is_some_and(crate::movement::Mover::is_moving),
             WorldObject::Ghost(..) => false,
         };
-        let outranged = moves && below_or_unordered(weapon_range(master) + RANGED_SLACK, listed);
-        let range = if 0.0 <= listed { listed } else { 0.0 };
-        let slack = if 0.0 < range {
+        let outranged =
+            moves && below_or_unordered(weapon_range(master).get() + RANGED_SLACK, listed.get());
+        let range = if Distance::ZERO <= listed {
+            listed
+        } else {
+            Distance::ZERO
+        };
+        let slack = if Distance::ZERO < range {
             if outranged {
                 CHASING_SLACK
             } else {
@@ -254,7 +260,7 @@ impl World {
             let Some(unit) = self.world_object(id) else {
                 continue;
             };
-            if self.footprint_gap(unit, t)? - slack <= range {
+            if self.footprint_gap(unit, t)? - Distance::new(slack) <= range {
                 return Ok(true);
             }
         }
@@ -300,7 +306,7 @@ impl World {
                 None,
                 from.ground(),
                 MoveTo {
-                    range: 0.0,
+                    range: Distance::ZERO,
                     forget_target: true,
                     direct: true,
                     ..MoveTo::default()
@@ -370,7 +376,7 @@ impl World {
         } else if !g.motion.waits_to_move() {
             g.flags |= ARRIVED;
         }
-        if point_gap(at, radius, g.motion.position[0].ground()) <= g.current_target.range {
+        if point_gap(at, radius, g.motion.position[0].ground()) <= g.current_target.range.get() {
             g.motion.stop_walk()?;
             g.flags |= ARRIVED;
         }

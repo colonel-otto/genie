@@ -8,6 +8,7 @@
 //! is done it goes back to state 3.
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
@@ -135,7 +136,9 @@ impl ExploreAction {
             ExploreState::Done | ExploreState::Failed | ExploreState::Ended => Owner::Standing,
             ExploreState::Walk => {
                 let walk = walk.ok_or(WALK_WITHOUT_READS)?;
-                self.move_to = walk.reads.to_point(self.point, 0.0, walk.given)?;
+                self.move_to = walk
+                    .reads
+                    .to_point(self.point, Distance::ZERO, walk.given)?;
                 Owner::Nothing
             }
             ExploreState::New => Owner::Nothing,
@@ -375,7 +378,7 @@ pub struct Seeker {
     /// The unit's place.
     pub at: Position,
     /// Its master's line of sight (`+0x5d0`).
-    pub line_of_sight: f32,
+    pub line_of_sight: Distance,
     /// The unit AI's current order (`+0x3c`).
     pub order: Option<OrderKind>,
     /// The unit AI's target point (`+0x50`, `+0x54`; x is −1 without one).
@@ -404,7 +407,7 @@ pub fn closest_undiscovered(
         return Ok(None);
     }
     let (ux, uy) = (seeker.at.x(), seeker.at.y());
-    let reach = (seeker.line_of_sight as i32 + SEARCH_PAST_SIGHT) as f32;
+    let reach = (seeker.line_of_sight.get() as i32 + SEARCH_PAST_SIGHT) as f32;
     let (mut x0, mut x1) = ((ux - reach) as i32, (reach + ux) as i32);
     let (mut y0, mut y1) = ((uy - reach) as i32, (reach + uy) as i32);
     let (px, py) = (seeker.target_point.x(), seeker.target_point.y());
@@ -464,13 +467,13 @@ const SQUARE_PAST_SIGHT: i32 = 2;
 pub fn beyond_sight(
     area: &mut dyn Area,
     at: Position,
-    line_of_sight: f32,
+    line_of_sight: Distance,
     map: GridSize,
     ai: &mut crate::math::rng::Well512,
 ) -> Result<Option<Tile>, GenieError> {
     let own = area.own_zone();
     let (w, h) = (map.width(), map.height());
-    let r = line_of_sight as i32 + SQUARE_PAST_SIGHT;
+    let r = line_of_sight.get() as i32 + SQUARE_PAST_SIGHT;
     let (ux, uy) = (at.x() as i32, at.y() as i32);
     let (x0, x1, y0, y1) = (ux - r, ux + r, uy - r, uy + r);
     let on_x = |x: i32| 0 <= x && x < w;
@@ -747,7 +750,7 @@ mod tests {
             state: crate::movement::move_to::MoveTo::Start,
             point: Position::new(19.0, 84.0, 0.0),
             target: None,
-            range: 0.0,
+            range: Distance::ZERO,
             sprite: Some(walking),
             quiet: true,
             on_target_moved: crate::movement::move_to::TargetMoved::Follows,
@@ -823,7 +826,7 @@ mod tests {
         let found = beyond_sight(
             &mut area,
             Position::new(20.5, 92.5, 0.0),
-            2.0,
+            Distance::new(2.0),
             GridSize::new(120, 120),
             &mut rng(),
         );
@@ -836,7 +839,7 @@ mod tests {
         let found = beyond_sight(
             &mut area,
             Position::new(20.5, 92.5, 0.0),
-            2.0,
+            Distance::new(2.0),
             GridSize::new(120, 120),
             &mut rng(),
         );
@@ -954,7 +957,7 @@ mod tests {
     fn the_unit_ai_s_search_takes_the_nearest_unexplored_tile_it_reaches() {
         let seeker = Seeker {
             at: Position::new(20.5, 92.5, 0.0),
-            line_of_sight: 4.0,
+            line_of_sight: Distance::new(4.0),
             order: None,
             target_point: Point::new(NO_POINT, NO_POINT),
             computer: false,

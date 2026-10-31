@@ -9,6 +9,7 @@
 //! (update `0x14113e520`).
 
 use crate::GenieError;
+use crate::map::Distance;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Radii;
@@ -38,7 +39,7 @@ const HEIGHT_SHARE: f32 = crate::math::image::missile::HEIGHT_SHARE;
 const DRAW_SCALE: f32 = crate::math::image::missile::DRAW_SCALE;
 const HALF: f32 = crate::math::image::missile::HALF;
 /// A missile past its reach ends this far beyond its point (`DAT_142eb5be8`).
-const BEYOND: f32 = crate::math::image::missile::BEYOND;
+const BEYOND: Distance = Distance::new(crate::math::image::missile::BEYOND);
 /// A missile within this of its point may touch the ground (`DAT_142eb5690`, `+0x994`).
 pub const LANDING: f32 = crate::math::image::missile::LANDING;
 /// The hit query holds its ends this far inside the map's far edges (`FUN_1411570c0`,
@@ -139,7 +140,7 @@ pub struct MissileAction {
     /// `+0x78`: the arc's vertical acceleration.
     pub ballistic_acceleration: f32,
     /// `+0x7c`: the way left to the aimed point.
-    pub distance: f32,
+    pub distance: Distance,
     /// `+0x80`: the master's hit mode, 1 after a miss.
     pub hit_mode: u8,
     /// `+0x98`: the last hit's result.
@@ -155,7 +156,7 @@ pub struct MissileAction {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Missile {
     /// `+0x990`: how far it flies at most (`max_range`).
-    pub max_range: f32,
+    pub max_range: Distance,
     /// `+0x998` (`fired_from_id`) and `+0x99c` (`mIsChargeProjectile`).
     pub fired_from: Option<ObjectId>,
     /// `+0x99c` (`mIsChargeProjectile`): a charge's projectile.
@@ -182,8 +183,10 @@ pub fn spawn_point(at: Position, angle: f32, offset: Offset) -> Position {
 
 /// `FUN_141081020`'s reach: the firing master's radii's length plus its range plus 2.
 #[must_use]
-pub fn reach(radius: Footprint, range: f32) -> f32 {
-    fmath::sqrt(radius.x() * radius.x() + radius.y() * radius.y()) + range + REACH_MARGIN
+pub fn reach(radius: Footprint, range: Distance) -> Distance {
+    Distance::new(
+        fmath::sqrt(radius.x() * radius.x() + radius.y() * radius.y()) + range.get() + REACH_MARGIN,
+    )
 }
 
 /// `FUN_141203140` (no charge): a volley's missiles, the object's firepower (`+0xa00`, in whole
@@ -239,8 +242,12 @@ pub fn volley_spawn_point(
 
 /// `FUN_141226690`'s reach: the firing master's radii's length plus its range plus 6.
 #[must_use]
-pub fn volley_reach(radius: Footprint, range: f32) -> f32 {
-    fmath::sqrt(radius.x() * radius.x() + radius.y() * radius.y()) + range + VOLLEY_REACH_MARGIN
+pub fn volley_reach(radius: Footprint, range: Distance) -> Distance {
+    Distance::new(
+        fmath::sqrt(radius.x() * radius.x() + radius.y() * radius.y())
+            + range.get()
+            + VOLLEY_REACH_MARGIN,
+    )
 }
 
 /// The missile master whose miss strays by its attack count's share (`0x62ac` raw; the game
@@ -351,7 +358,7 @@ impl MissileAction {
         let dz = aimed.z() - from.z();
         let dz2 = dz * dz;
         let way = fmath::sqrt(dy * dy + dx * dx + dz2);
-        self.distance = way;
+        self.distance = Distance::new(way);
         if stats.smart_mode & 1 != 0 && self.target.is_some() {
             return Err(GenieError::unsupported(
                 "a smart missile leading its target",
@@ -409,7 +416,7 @@ impl MissileAction {
     pub fn fly(
         &mut self,
         dt: Seconds,
-        max_range: f32,
+        max_range: Distance,
         stats: &MissileStats,
     ) -> Result<(Offset, bool), GenieError> {
         let mut step = match stats.projectile_type {
@@ -417,15 +424,15 @@ impl MissileAction {
                 let way = stats.speed * dt;
                 let d = self.direction.scaled(way);
                 self.timer += way;
-                self.distance -= way;
-                if max_range <= self.timer && self.distance < BEYOND {
+                self.distance -= Distance::new(way);
+                if max_range <= Distance::new(self.timer) && self.distance < BEYOND {
                     // State 1: the missile ends.
                     self.state = MissileState::Done;
                 }
                 d
             }
             3 => {
-                self.distance = 0.0;
+                self.distance = Distance::ZERO;
                 self.direction
             }
             _ => {
@@ -442,7 +449,7 @@ impl MissileAction {
             );
             self.ballistic_velocity += dt.get() * self.ballistic_acceleration;
         }
-        Ok((step, LANDING < self.distance))
+        Ok((step, LANDING < self.distance.get()))
     }
 }
 
@@ -508,7 +515,7 @@ mod tests {
             direction: Offset::ZERO,
             ballistic_velocity: 0.0,
             ballistic_acceleration: 0.0,
-            distance: 0.0,
+            distance: Distance::ZERO,
             hit_mode: 0,
             result: 0,
             origin: Origin::NONE,
@@ -527,9 +534,11 @@ mod tests {
         assert!((a.ballistic_acceleration - -23.52).abs() < 1e-3);
         assert!((a.ballistic_velocity - 4.71503).abs() < 1e-4);
         // one update of 52 ms: 0.364 of the way
-        let (step, flying) = a.fly(Seconds::new(0.052), 5.282_842_6, &stats).unwrap();
+        let (step, flying) = a
+            .fly(Seconds::new(0.052), Distance::new(5.282_842_6), &stats)
+            .unwrap();
         assert!((a.timer - 0.364).abs() < 1e-6);
-        assert!((a.distance - 2.44257).abs() < 1e-5);
+        assert!((a.distance - Distance::new(2.44257)).get().abs() < 1e-5);
         assert!((step.x() - 0.364).abs() < 1e-6);
         assert!(flying);
     }
@@ -631,8 +640,8 @@ mod tests {
         );
         assert_eq!(p, Position::new(10.5, 20.0, 1.5));
         assert_eq!(
-            reach(Footprint::new(0.2, 0.2), 3.0),
-            0.282_842_73 + 3.0 + 2.0
+            reach(Footprint::new(0.2, 0.2), Distance::new(3.0)),
+            Distance::new(0.282_842_73 + 3.0 + 2.0)
         );
     }
 
@@ -679,7 +688,10 @@ mod tests {
         assert_eq!(scatter(0, 0.5), -0.25);
         assert_eq!(scatter(0x7fff, 0.5), 0.25);
         // the reach adds 6 to the range
-        assert_eq!(volley_reach(Footprint::new(2.0, 0.0), 6.0), 14.0);
+        assert_eq!(
+            volley_reach(Footprint::new(2.0, 0.0), Distance::new(6.0)),
+            Distance::new(14.0)
+        );
     }
 
     #[test]

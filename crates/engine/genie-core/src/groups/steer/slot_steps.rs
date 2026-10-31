@@ -8,6 +8,7 @@ use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone, slot_gone};
 use crate::groups::motion::passes_waypoint;
 use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
+use crate::map::Distance;
 use crate::math::fmath::{BVector, at_most_or_unordered, below_or_unordered};
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
@@ -104,7 +105,7 @@ impl World {
                 at.ground(),
                 &mut self.spatial,
                 &mut plan,
-                (to, 0.0, None),
+                (to, Distance::ZERO, None),
                 &members,
                 &mut path,
             )?;
@@ -144,7 +145,7 @@ impl World {
         group: GroupId,
         slot: usize,
         id: ObjectId,
-        gap: f32,
+        gap: Distance,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let to = g
@@ -171,8 +172,8 @@ impl World {
         let radius = mover.stats.radius.x();
         let speed = mover.stats.speed;
         self.set_slot_state(group, slot, state)?;
-        let within = !below_or_unordered(radius, gap);
-        let near = !within && !below_or_unordered(radius * SLOT_REACH, gap);
+        let within = !below_or_unordered(radius, gap.get());
+        let near = !within && !below_or_unordered(radius * SLOT_REACH, gap.get());
         if state == SlotState::Stopping {
             self.stop_at_slot(group, id)?;
         } else if near {
@@ -183,7 +184,7 @@ impl World {
             self.set_member_speed(id, top);
             let _ = self.show_walking(id)?;
         } else {
-            self.catch_up_to_slot(group, id, (gap, speed))?;
+            self.catch_up_to_slot(group, id, (gap.get(), speed))?;
         }
         Ok(())
     }
@@ -384,7 +385,7 @@ impl World {
                 reason,
                 goal,
                 timer: Seconds::new(timer),
-                distance,
+                distance: Distance::new(distance),
                 last_position: last,
                 ..*own
             }

@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::create::FormationUnit;
+use crate::map::Distance;
 use crate::objects::ObjectId;
 use crate::unit_ai::UnitStance;
 use crate::world::World;
@@ -95,8 +96,8 @@ impl World {
             if let Some((p, u)) = self.object(m.id) {
                 let unit = FormationUnit::of(u.master(&self.masters, p)?);
                 let s = unit.radius * crate::math::image::group::SPACING_FACTOR;
-                if spacing <= s && s != spacing {
-                    spacing = s;
+                if spacing <= s.get() && s != Distance::new(spacing) {
+                    spacing = s.get();
                 }
             }
         }

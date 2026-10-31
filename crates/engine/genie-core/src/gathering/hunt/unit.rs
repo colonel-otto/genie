@@ -5,6 +5,7 @@ use crate::combat::victims::victim;
 use crate::gathering::closest_resource::herded;
 use crate::gathering::hunt::HuntRetarget;
 use crate::gathering::hunt::HuntState;
+use crate::map::Distance;
 use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
@@ -373,7 +374,7 @@ impl Unit {
             groups: &c.w.groups,
         };
         let master_id = self.life.master_id;
-        let mut reach = |spatial: &mut Spatial, id: ObjectId, range: f32| {
+        let mut reach = |spatial: &mut Spatial, id: ObjectId, range: Distance| {
             mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
         };
         let mut no_attack = crate::unit_ai::NoAttack;

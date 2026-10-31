@@ -1,5 +1,6 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
+use crate::map::Distance;
 use crate::map::Tile;
 use crate::movement::PathState;
 use crate::movement::WaypointLevel;
@@ -38,7 +39,7 @@ pub(super) struct ReachAsk {
     /// The target object's id.
     pub(super) target: Option<ObjectId>,
     /// How near the goal counts.
-    pub(super) range: f32,
+    pub(super) range: Distance,
     /// The unit's master's id.
     pub(super) master: MasterId,
 }
@@ -246,7 +247,7 @@ impl Mover {
         &mut self,
         from: Position,
         goal: Position,
-        range: f32,
+        range: Distance,
         target: Option<ObjectId>,
         now: WorldTime,
     ) {
@@ -305,7 +306,7 @@ impl Mover {
         &mut self,
         from: Position,
         goal: Position,
-        range: f32,
+        range: Distance,
         target: Option<ObjectId>,
         now: WorldTime,
         ask: PathAsk,

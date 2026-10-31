@@ -171,7 +171,11 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
     use attribute as a;
     let rows: &[(MasterAttribute, Read, [f32; 3])] = &[
         (a::HIT_POINTS, |m| f32::from(m.hit_points), [3.0, 5.0, 10.0]),
-        (a::LINE_OF_SIGHT, |m| m.line_of_sight, [3.0, 5.0, 10.0]),
+        (
+            a::LINE_OF_SIGHT,
+            |m| m.line_of_sight.get(),
+            [3.0, 5.0, 10.0],
+        ),
         (
             a::GARRISON_CAPACITY,
             |m| f32::from(m.garrison),
@@ -383,7 +387,7 @@ fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
             |m| f32::from(m.hit_chance),
             [3.0, 5.0, 10.0],
         ),
-        (a::MAXIMUM_RANGE, |m| m.weapon_range, [3.0, 5.0, 10.0]),
+        (a::MAXIMUM_RANGE, |m| m.weapon_range.get(), [3.0, 5.0, 10.0]),
         (a::BASE_ARMOR, |m| f32::from(m.base_armor), [3.0, 5.0, 10.0]),
         (
             a::PROJECTILE_UNIT,
@@ -395,8 +399,8 @@ fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
             |m| f32::from(m.terrain_bonus),
             [3.0, 5.0, 10.0],
         ),
-        (a::MINIMUM_RANGE, |m| m.min_range, [3.0, 5.0, 10.0]),
-        (a::BLAST_WIDTH, |m| m.area_effect, [3.0, 5.0, 10.0]),
+        (a::MINIMUM_RANGE, |m| m.min_range.get(), [3.0, 5.0, 10.0]),
+        (a::BLAST_WIDTH, |m| m.area_effect.get(), [3.0, 5.0, 10.0]),
         (
             a::BONUS_DAMAGE_RESISTANCE,
             |m| m.resistance,
@@ -417,7 +421,7 @@ fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
             |m| f32::from(m.shown.attack),
             [3.0, 5.0, 10.0],
         ),
-        (a::SHOWN_RANGE, |m| m.shown.range, [3.0, 5.0, 10.0]),
+        (a::SHOWN_RANGE, |m| m.shown.range.get(), [3.0, 5.0, 10.0]),
         (
             a::SHOWN_MELEE_ARMOR,
             |m| f32::from(m.shown.melee_armor),
@@ -998,7 +1002,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
         min_collision: 0.0,
         fast_turn: false,
         facets: None,
-        weapon_range: 0.0,
+        weapon_range: Distance::ZERO,
     });
     m.multiply_attribute(attribute::MOVEMENT_SPEED, 1.1, &world(false));
     m.follow(attribute::MOVEMENT_SPEED, &graphics, None);
@@ -1049,7 +1053,10 @@ fn the_action_and_moving_setters_change_their_values() {
     m.set_attribute(attribute::COMMAND_SOUND, 9.0, &world(false));
     m.add_attribute(attribute::COMMAND_SOUND, 9.0, &world(false));
     assert_eq!(m, before);
-    assert_eq!((m.work_rate, m.search_radius, m.run_pattern), (1.5, 6.0, 1));
+    assert_eq!(
+        (m.work_rate, m.search_radius, m.run_pattern),
+        (1.5, Distance::new(6.0), 1)
+    );
     assert_eq!(m.turn_speed, 1.0);
     assert_eq!(
         m.trail,
@@ -1127,7 +1134,7 @@ fn the_missile_building_and_animated_setters() {
     m.set_attribute(attribute::MAXIMUM_RANGE, 5.0, &world(false));
     let s = m.missile_stats.unwrap();
     assert_eq!((s.smart_mode, s.hit_mode, s.arc), (1, 2, 0.5));
-    assert_eq!(m.weapon_range, 5.0);
+    assert_eq!(m.weapon_range, Distance::new(5.0));
     let mut b = of_type(master_type::BUILDING);
     b.building = Some(BuildingMaster::default());
     b.add_attribute(attribute::BUILDING_ICON_OVERRIDE, 3.0, &world(false));

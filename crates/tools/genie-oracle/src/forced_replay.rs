@@ -8,6 +8,7 @@ use crate::{
     save_header, tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit,
 };
 use genie_core::GenieError;
+use genie_core::map::Distance;
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
 use genie_core::world::World;
@@ -85,11 +86,11 @@ pub fn old_pather_paths(
             id,
             Some(target),
             mask,
-            radius,
+            Distance::new(radius),
         );
         out.push(
             pather
-                .find(from, to, Some(target), range)
+                .find(from, to, Some(target), Distance::new(range))
                 .map(|(r, p)| (r, p.points)),
         );
     }
