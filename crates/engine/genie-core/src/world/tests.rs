@@ -1,5 +1,6 @@
 use super::*;
 use crate::GenieError;
+use crate::combat::attack::AttackState;
 use crate::commands::UnloadPick;
 use crate::commands::game::GameCommand;
 use crate::commands::{
@@ -4496,7 +4497,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
             h.state,
             h.attack.map(|a| (a.state, a.move_to.map(|m| m.state)))
         ),
-        (ATTACK, Some((4, Some(MoveTo::Moving))))
+        (ATTACK, Some((AttackState::Move, Some(MoveTo::Moving))))
     );
     assert!(v.body.mover().is_some_and(|m| !m.paths.is_empty()));
     let gathering = |held: f32| {
@@ -12493,7 +12494,7 @@ fn mover_unit(id: i32) -> Unit {
 }
 
 /// A unit's own Attack on `target` (second target `target2`) in `state`, without a `MoveTo`.
-fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::Attack {
+fn own_attack(target: i32, target2: i32, state: AttackState) -> crate::combat::attack::Attack {
     crate::combat::attack::Attack {
         target: ObjectId::of_field(target),
         target2: ObjectId::of_field(target2),
@@ -12595,7 +12596,8 @@ fn forced(walk: bool) -> crate::unit_ai::AiMove {
 #[test]
 fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     let mut u = mover_unit(123);
-    u.actions.set_attack(Some(own_attack(9149, 9150, DONE)));
+    u.actions
+        .set_attack(Some(own_attack(9149, 9150, AttackState::Done)));
     assert_eq!(
         ai_move_of(&mut u, forced(false), class::CLASS_47),
         Ok(vec![object_id(9149), object_id(9150)])
@@ -13412,7 +13414,10 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
         assert!(!helper_free(ai, None));
     }
     // an action of its own makes it busy
-    assert!(!helper_free(idle, Some(&own_attack(50, -1, 4))));
+    assert!(!helper_free(
+        idle,
+        Some(&own_attack(50, -1, AttackState::Move))
+    ));
 }
 
 /// `AskForHelp`'s helper in a group answers whatever it does while its group patrols, and not
@@ -13461,7 +13466,10 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
     ));
     assert!(!helper_free_of(
         PlayerId::new(1),
-        in_group(Some(group_id(7)), Some(&own_attack(50, -1, 4))),
+        in_group(
+            Some(group_id(7)),
+            Some(&own_attack(50, -1, AttackState::Move))
+        ),
         &groups
     ));
     let mut thoughtless = helper_scout(idle.clone(), None);
@@ -13481,25 +13489,29 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
 /// changes either.
 #[test]
 fn an_attack_command_on_its_own_attack_s_target_asks_that_attack_again() {
-    let own = |state: u8| crate::combat::attack::Attack {
+    let own = |state: AttackState| crate::combat::attack::Attack {
         state,
         seen: Position::new(-1.0, -1.0, -1.0),
         ..own_attack(50, -1, state)
     };
-    let (unit, attacked, takes) = scout_attack_on(0.0, None, Some(&own(1)), true);
+    let (unit, attacked, takes) = scout_attack_on(0.0, None, Some(&own(AttackState::Done)), true);
     assert_eq!((attacked.attacks, takes), (true, vec![]));
     let a = unit.actions.attack().copied().expect("the scout's Attack");
     assert_eq!(
         (a.state, a.target, a.seen),
-        (1, Some(object_id(50)), Position::new(10.5, 10.0, 0.0))
+        (
+            AttackState::Done,
+            Some(object_id(50)),
+            Position::new(10.5, 10.0, 0.0)
+        )
     );
-    let (unit, attacked, _) = scout_attack_on(0.0, None, Some(&own(4)), true);
+    let (unit, attacked, _) = scout_attack_on(0.0, None, Some(&own(AttackState::Move)), true);
     assert!(attacked.attacks);
     assert_eq!(
         unit.actions.attack().map(|a| a.seen),
         Some(Position::from([-1.0; 3]))
     );
-    let (unit, _, _) = scout_attack_on(0.0, None, Some(&own(1)), false);
+    let (unit, _, _) = scout_attack_on(0.0, None, Some(&own(AttackState::Done)), false);
     assert_eq!(
         unit.actions.attack().map(|a| a.seen),
         Some(Position::from([-1.0; 3]))
@@ -13520,23 +13532,19 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     let attack = unit.actions.attack().copied().expect("the scout's Attack");
     assert_eq!(
         (attack.state, attack.pending, attack.point),
-        (
-            crate::combat::attack::SWING,
-            true,
-            Position::new(10.5, 10.0, 0.0)
-        )
+        (AttackState::Swing, true, Position::new(10.5, 10.0, 0.0))
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(301));
     let (unit, _, _) = scout_attack(0.5, None);
     let attack = unit.actions.attack().copied().expect("the scout's Attack");
-    assert_eq!(
-        (attack.state, attack.pending),
-        (crate::combat::attack::READY, false)
-    );
+    assert_eq!((attack.state, attack.pending), (AttackState::Ready, false));
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
     let (unit, attacked, takes) = scout_attack(0.0, Some(object_id(9149)));
     assert_eq!((attacked.attacks, takes), (true, vec![50]));
-    assert_eq!(unit.actions.attack().map(|a| a.state), Some(FAILED));
+    assert_eq!(
+        unit.actions.attack().map(|a| a.state),
+        Some(AttackState::Failed)
+    );
     assert_eq!(unit.body.anim_speed(), Some(1.0));
 }
 
@@ -14467,7 +14475,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
         });
     }
     archer.firepower = f32::from(max_volley);
-    let mut attack = own_attack(50, -1, crate::combat::attack::READY);
+    let mut attack = own_attack(50, -1, AttackState::Ready);
     attack.range = 4.0;
     attack.arms.missile = Some(master_id(363));
     attack.arms.fire_frame = 5;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::combat::attack::AttackState;
 use crate::gathering::gather::Walks;
 use crate::map::Footprint;
 use crate::map::Radii;
@@ -14,7 +15,6 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
-use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::test_ids::carrying;
@@ -344,7 +344,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
     let attack = hunt.attack.unwrap();
     assert_eq!(
         (attack.state, attack.move_to.map(|m| m.state)),
-        (4, Some(MoveTo::Start))
+        (AttackState::Move, Some(MoveTo::Start))
     );
     // the first MoveTo's teardown stopped the unit
     let v = mover.velocity.unwrap();
@@ -419,7 +419,12 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
             attack.state,
             attack.move_to.map(|m| m.state)
         ),
-        (Some(object_id(9366)), ATTACK, 4, Some(MoveTo::Arrived))
+        (
+            Some(object_id(9366)),
+            ATTACK,
+            AttackState::Move,
+            Some(MoveTo::Arrived)
+        )
     );
 }
 
@@ -1329,11 +1334,14 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
     };
     let mut h = fresh(10028);
     assert_eq!(
-        attack(&mut h, 14, sheep(), true, false),
+        attack(&mut h, AttackState::New, sheep(), true, false),
         (Ok(HuntNext::Stay), false)
     );
-    assert_eq!((h.state, h.attack.map(|a| a.state)), (ATTACK, Some(14)));
-    let done = DONE;
+    assert_eq!(
+        (h.state, h.attack.map(|a| a.state)),
+        (ATTACK, Some(AttackState::New))
+    );
+    let done = AttackState::Done;
     let mut h = fresh(10028);
     assert_eq!(
         attack(&mut h, done, sheep(), true, false),
@@ -1359,7 +1367,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
         "a hunt that ends with its Attack on a predator (set_state 1)"
     );
     let mut h = fresh(10028);
-    let failed = FAILED;
+    let failed = AttackState::Failed;
     assert_eq!(
         attack(&mut h, failed, sheep(), true, false),
         (Ok(HuntNext::AttackFailed), false)

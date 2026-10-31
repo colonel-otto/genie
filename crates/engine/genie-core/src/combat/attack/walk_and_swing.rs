@@ -1,10 +1,10 @@
 //! State 4's walk to the target and state 7's swing with its hit and its trample.
 
+use crate::combat::attack::AttackState;
 use crate::combat::attack::walks::QUIET_CODE;
 use crate::combat::attack::{
-    AfterHit, Attack, AttackReads, DRAW_SCALE, EPSILON, Fight, HALF, Hit, KILLED, MOVE, Readiness,
-    after_hit, blast_so_far, reset_sprite, set_attack_timer, set_walker_anim, squared_reach,
-    strike,
+    AfterHit, Attack, AttackReads, DRAW_SCALE, EPSILON, Fight, HALF, Hit, Readiness, after_hit,
+    blast_so_far, reset_sprite, set_attack_timer, set_walker_anim, squared_reach, strike,
 };
 use crate::combat::damage::Victim;
 use crate::combat::victims::write_strike_back;
@@ -20,7 +20,6 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
 use crate::objects::unit::Unit;
-use crate::orders::action_state::FAILED;
 use crate::unit_ai::NotifyKind;
 
 use crate::world::step::Step;
@@ -56,7 +55,7 @@ impl Attack {
             0 => self.within_reach(c, unit, f, r, (target, radius)),
             1 | 2 => {
                 self.delete_move_to(unit)?;
-                if self.state != MOVE {
+                if self.state != AttackState::Move {
                     return self.arrived_at_seen(c, unit, f, r, target);
                 }
                 self.ready(unit, &mut c.w.attack_ground(), f, r)?;
@@ -101,7 +100,7 @@ impl Attack {
         unit: &mut Unit,
     ) -> Result<u8, GenieError> {
         self.move_to = None;
-        self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
+        self.finish_in(AttackState::Failed, unit, c.w.streams.get(Stream::Sprite))?;
         if !self.sub_action {
             unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
         }
@@ -226,7 +225,7 @@ impl Attack {
         }
         self.pending = false;
         if f.victim.hp <= 0.0 {
-            return self.enter(KILLED, unit);
+            return self.enter(AttackState::Killed, unit);
         }
         let rest = r.reload - f32::from(sprite.graphic.frames) * sprite.graphic.frame_duration;
         self.rest = rest;
@@ -260,7 +259,7 @@ impl Attack {
             self.arms.fire_frame,
             sprite.frame,
         ) {
-            AfterHit::Done => return self.enter(KILLED, unit),
+            AfterHit::Done => return self.enter(AttackState::Killed, unit),
             AfterHit::Ready => return self.ready(unit, &mut g, f, r),
             // readyToAttack with its third argument 0: a target out of reach is followed
             // (`set_state` 4); a ready unit only faces it; the swing goes on either way

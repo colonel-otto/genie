@@ -1,9 +1,9 @@
 //! The swing's state (7), slot 9 (`RGE_Action_Attack::work`) and slot 0x68
 //! (`set_target_obj`).
 
+use crate::combat::attack::AttackState;
 use crate::combat::attack::{
-    Attack, AttackReads, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, SWING, reset_sprite,
-    set_walker_anim,
+    Attack, AttackReads, CLASS_60, Fight, Ground, NO_OBJECT_STREAM, reset_sprite, set_walker_anim,
 };
 use crate::map::Footprint;
 use crate::map::Position;
@@ -83,7 +83,7 @@ impl Attack {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<(), GenieError> {
-        self.enter(SWING, unit)?;
+        self.enter(AttackState::Swing, unit)?;
         let alternates = unit
             .body
             .mover()
@@ -144,7 +144,7 @@ impl Attack {
     /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
     /// needs the unit's and the target's values.
     pub fn keeps(&self, target: Option<ObjectId>) -> Result<bool, GenieError> {
-        if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+        if target == self.target && self.state.keeps_target() {
             return Ok(true);
         }
         Err(GenieError::unsupported(
@@ -178,7 +178,7 @@ impl Attack {
         {
             target = m;
         }
-        if Some(target.id) == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+        if Some(target.id) == self.target && self.state.keeps_target() {
             return Worked {
                 kept: true,
                 ..Worked::default()

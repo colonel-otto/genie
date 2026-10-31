@@ -2,9 +2,10 @@
 //! target, one out of sight, the finish and the halt.
 
 use crate::GenieError;
+use crate::combat::attack::AttackState;
 use crate::combat::attack::update::let_go;
 use crate::combat::attack::{
-    AiOrder, Attack, AttackReads, Engagement, Fight, HALF, MOVE, NO_RANGE, NONE, set_walker_anim,
+    AiOrder, Attack, AttackReads, Engagement, Fight, HALF, NO_RANGE, NONE, set_walker_anim,
 };
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
@@ -15,8 +16,6 @@ use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
@@ -62,7 +61,7 @@ impl Attack {
         if self.move_to.take().is_some() {
             mover.stop()?;
         }
-        self.state = MOVE;
+        self.state = AttackState::Move;
         self.moving(e.range, e.target_position, e.gap, reads)
     }
 
@@ -97,7 +96,7 @@ impl Attack {
 
     /// The start of every `set_state` (`0x140a820c0`): the sub-actions go (a `MoveTo`'s teardown stops
     /// the unit and its animation, `+0x7b8`), then the state.
-    pub(super) fn enter(&mut self, state: u8, unit: &mut Unit) -> Result<(), GenieError> {
+    pub(super) fn enter(&mut self, state: AttackState, unit: &mut Unit) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
             unit.body
                 .mover_mut()
@@ -174,7 +173,7 @@ impl Attack {
         r: &AttackReads,
     ) -> Result<u8, GenieError> {
         let target = self.target.take();
-        self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
+        self.finish_in(AttackState::Failed, unit, c.w.streams.get(Stream::Sprite))?;
         // The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
         // The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
         // The lion's unit-AI type, whose slot 0x1f0 (`FUN_140c16d60`) does nothing.
@@ -211,7 +210,7 @@ impl Attack {
     ) -> Result<(), GenieError> {
         // The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
         // swinging, 13 failed.
-        self.finish_in(DONE, unit, sprite_rng)
+        self.finish_in(AttackState::Done, unit, sprite_rng)
     }
 
     /// Slot 0x38 (`FUN_140a82ac0`) as the unit's stop calls it: `set_state(1)` (the
@@ -233,7 +232,7 @@ impl Attack {
                 .ok_or(crate::world::ATTACKER_UNMOVING)?
                 .stop()?;
         }
-        self.state = DONE;
+        self.state = AttackState::Done;
         body.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
@@ -245,7 +244,7 @@ impl Attack {
     /// `set_state` cases 1, 13 and 14: as [`Attack::finish`], in `state`.
     pub(super) fn finish_in(
         &mut self,
-        state: u8,
+        state: AttackState,
         unit: &mut Unit,
         sprite_rng: &mut Well512,
     ) -> Result<(), GenieError> {

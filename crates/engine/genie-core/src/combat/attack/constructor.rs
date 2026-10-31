@@ -2,9 +2,10 @@
 //! and what it reads of its unit and its target.
 
 use crate::GenieError;
+use crate::combat::attack::AttackState;
 use crate::combat::attack::{
-    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, GOTO_SEEN, Ground,
-    LEASH_SLACK, MASTER_1704, MASTER_1706, NONE, Posted, face_target,
+    Arms, Attack, AttackCommand, AttackReads, Begun, Engagement, Fight, Ground, LEASH_SLACK,
+    MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::map::Footprint;
 use crate::map::Point;
@@ -18,7 +19,6 @@ use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
-use crate::orders::action_state::FAILED;
 use crate::unit_ai::UnitStance;
 use crate::world::step::Step;
 
@@ -32,7 +32,7 @@ impl Attack {
         Self {
             target: Some(target),
             target2: None,
-            state: 0,
+            state: AttackState::New,
             timer: 0.0,
             range: e.range,
             min_range: e.min_range,
@@ -236,7 +236,7 @@ impl Attack {
         let mut ready_end = false;
         if 0 < target_owner && !visible {
             if e.stance == UnitStance::AGGRESSIVE && 0.0 < e.speed && e.can_move {
-                self.state = GOTO_SEEN;
+                self.state = AttackState::GotoSeen;
                 self.range = e.range;
                 self.walk_to_seen(reads)?;
             } else {
@@ -306,7 +306,7 @@ impl Attack {
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         // State 13 ("Failed"): the target went out of sight.
-        self.state = FAILED;
+        self.state = AttackState::Failed;
         body.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",

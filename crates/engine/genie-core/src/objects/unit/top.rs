@@ -205,7 +205,7 @@ impl Unit {
                 .attack
                 .map(|a| TopAction {
                     kind: crate::combat::attack::ATTACK,
-                    state: a.state,
+                    state: a.state.get(),
                 })
                 .or_else(|| walking(h.move_to.map(|m| m.state))),
             Action::Build(b) => walking(b.move_to.map(|m| m.state)),

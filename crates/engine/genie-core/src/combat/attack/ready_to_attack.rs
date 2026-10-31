@@ -2,9 +2,10 @@
 //! and the facing at its end.
 
 use crate::GenieError;
+use crate::combat::attack::AttackState;
 use crate::combat::attack::{
-    Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SHORT_RANGE_GAP, TARGET_GONE, face_target, move_reads,
+    Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, NO_RANGE, NONE, Readiness,
+    SHORT_RANGE_GAP, TARGET_GONE, face_target, move_reads,
 };
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
@@ -13,7 +14,6 @@ use crate::movement::footprint_gap;
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::UnitStance;
@@ -33,7 +33,7 @@ impl Attack {
         f: &Fight,
         r: &AttackReads,
     ) -> Result<(), GenieError> {
-        self.enter(READY, unit)?;
+        self.enter(AttackState::Ready, unit)?;
         if self.target.is_none() && self.point.x() == NONE {
             if !self.sub_action {
                 g.post(unit, NotifyKind::ACTION_COMPLETED, [600, 0, 0])?;
@@ -58,7 +58,7 @@ impl Attack {
         f: &Fight,
         gap: f32,
     ) -> Result<(), GenieError> {
-        self.enter(MOVE, unit)?;
+        self.enter(AttackState::Move, unit)?;
         let reads = move_reads(unit, r, g.graphics)?;
         if self.moving(f.own.source.weapon_range, f.victim.position, gap, &reads)? {
             self.arrived_sprite(unit, g.sprite_rng)?;
@@ -181,7 +181,7 @@ impl Attack {
         unit: &mut Unit,
         sprite_rng: &mut Well512,
     ) -> Result<Readiness, GenieError> {
-        self.finish_in(FAILED, unit, sprite_rng)?;
+        self.finish_in(AttackState::Failed, unit, sprite_rng)?;
         Ok(Readiness::Waiting)
     }
 

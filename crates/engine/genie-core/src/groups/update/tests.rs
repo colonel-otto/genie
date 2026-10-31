@@ -1,3 +1,4 @@
+use crate::combat::attack::AttackState;
 use crate::groups::FormationKind;
 use crate::groups::{GroupTarget, Member, UnitGroup, UnitGroups};
 use crate::map::Footprint;
@@ -391,7 +392,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     ai(&mut t, None, None);
     t.players[1].objects[0].ai = None;
     assert!(t.member_idle(object_id(10)).unwrap());
-    // an Attack in state 2 is not free, in states 3 and 13 it is; a state 4 is not
+    // an Attack in state 2 is not free, in state 13 it is; a state 4 is not
     let attack = |state| crate::combat::attack::Attack {
         target: None,
         target2: None,
@@ -419,14 +420,20 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         on_target_moved: crate::movement::move_to::TargetMoved::Follows,
         same_owner: false,
     };
-    for (state, free) in [(2, false), (3, true), (13, true), (14, true), (4, false)] {
+    for (state, free) in [
+        (AttackState::Killed, false),
+        (AttackState::Failed, true),
+        (AttackState::Move, false),
+    ] {
         t.players[1].objects[0]
             .actions
             .set_attack(Some(attack(state)));
         assert_eq!(t.member_idle(object_id(10)).unwrap(), free, "{state}");
     }
     // a trade cart's state 2 is free, whatever its action
-    t.players[1].objects[0].actions.set_attack(Some(attack(2)));
+    t.players[1].objects[0]
+        .actions
+        .set_attack(Some(attack(AttackState::Killed)));
     for m in &mut t.masters {
         let mut master = m.get(master_id(4)).unwrap().clone();
         master.class = class::TRADE_CART;

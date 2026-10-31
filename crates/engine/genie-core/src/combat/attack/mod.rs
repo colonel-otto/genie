@@ -33,6 +33,7 @@ use crate::unit_ai::{OrderKind, UnitAi};
 use crate::world::World;
 use genie_diff::Diff;
 
+mod attack_state;
 mod constructor;
 mod hits;
 mod ready_to_attack;
@@ -45,6 +46,7 @@ mod walk_and_swing;
 mod walks;
 mod work_slots;
 
+pub use self::attack_state::AttackState;
 pub use self::constructor::{arms, arms_looking, engagement, gaps};
 use self::hits::{AfterHit, after_hit, blast_so_far};
 pub(crate) use self::hits::{Hit, strike};
@@ -86,21 +88,8 @@ const NONE: f32 = crate::math::image::attack::NONE;
 const RELOAD_MS: f32 = crate::math::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
 const DRAW_SCALE: i64 = 0x7fff_ffff;
-/// State 2: the target died.
-pub const KILLED: u8 = 2;
-/// State 4: on the way.
-pub const MOVE: u8 = 4;
-/// State 6: waiting to swing.
-pub const READY: u8 = 6;
-/// State 7: swinging.
-pub const SWING: u8 = 7;
-/// The waiting state 5 ("Goto2"), a `MoveTo` to where the target was seen.
-const GOTO_SEEN: u8 = 5;
-/// State 11: a human player's unit that reached where its target was seen without seeing it
-/// walks onto that point (a `MoveTo` without a range).
-const GOTO_POINT: u8 = 11;
 /// The least range of a unit that walks onto the point where it saw its target
-/// (`DAT_14330eb8c`, [`GOTO_POINT`]).
+/// (`DAT_14330eb8c`, [`AttackState::GotoPoint`]).
 const SEEN_RANGE: f32 = crate::math::image::attack::SEEN_RANGE;
 
 /// The sprites and frames the Attack takes from its constructor.
@@ -139,7 +128,7 @@ pub struct Attack {
     /// target as this too (`FUN_140a7a190`, slot 0x178), −1 for none.
     pub target2: Option<ObjectId>,
     /// The action state (`+0x18`).
-    pub state: u8,
+    pub state: AttackState,
     /// `+0x44`: seconds in the state, the update adds dt.
     pub timer: f32,
     /// `+0x90`: the range it attacks from; `+0x94`, the least.

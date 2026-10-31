@@ -2,7 +2,8 @@
 //! of its sub-action list (`FUN_140a992b0`).
 
 use crate::GenieError;
-use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads, GOTO_POINT};
+use crate::combat::attack::AttackState;
+use crate::combat::attack::{ATTACK_WITHOUT_TARGET, Attack, AttackReads};
 use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
@@ -102,7 +103,7 @@ impl Attack {
     ///
     /// A sprite the table lacks.
     pub(super) fn walk_to_seen(&mut self, reads: &MoveToReads<'_>) -> Result<(), GenieError> {
-        let range = if self.state == GOTO_POINT {
+        let range = if self.state == AttackState::GotoPoint {
             0.0
         } else {
             self.range

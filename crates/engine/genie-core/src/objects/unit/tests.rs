@@ -1,4 +1,5 @@
 use crate::GenieError;
+use crate::combat::attack::AttackState;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::ObjectState;
@@ -408,7 +409,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     );
     fly.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Fly(fly)), walking);
-    let mut attack = crate::combat::attack::tests::own_attack(7, 4, 0.5);
+    let mut attack = crate::combat::attack::tests::own_attack(7, AttackState::Move, 0.5);
     attack.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
     assert_eq!(of(Action::Attack(attack)), walking);
     let (mut explore, _) = crate::movement::explore::ExploreAction::new(

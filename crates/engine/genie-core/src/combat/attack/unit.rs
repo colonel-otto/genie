@@ -2,7 +2,8 @@
 //! follows.
 
 use crate::GenieError;
-use crate::combat::attack::{AttackReads, Fight, GOTO_POINT, GOTO_SEEN};
+use crate::combat::attack::AttackState;
+use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{KillLeft, file_kill, victim, victim_of};
 use crate::combat::volley::armed;
@@ -50,7 +51,7 @@ impl Unit {
         let walking = self
             .actions
             .attack()
-            .is_some_and(|a| matches!(a.state, GOTO_SEEN | GOTO_POINT));
+            .is_some_and(|a| matches!(a.state, AttackState::GotoSeen | AttackState::GotoPoint));
         if walking && armed {
             return self.attack_walks_unseen(c, me, master_class);
         }

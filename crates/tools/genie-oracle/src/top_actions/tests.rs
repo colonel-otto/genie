@@ -1135,7 +1135,7 @@ fn attack(state: u8, walk: u16, pending: bool) -> Action {
 /// come, or in another state, keeps no rest. A swing longer than the reload rests 0.
 #[test]
 fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
-    use genie_core::combat::attack::{ATTACK, SWING};
+    use genie_core::combat::attack::{ATTACK, AttackState};
     use genie_core::gathering::hunt::{HUNT, WALK};
     let master = |reload: f32| {
         let mut m = combat_master(83);
@@ -1147,11 +1147,15 @@ fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
         with_masters(vec![m])
     };
     let sprites = swing_sprites();
-    let swing = |state: u8, pending: bool, objects: &PlayerObjects| {
+    let swing = |state: AttackState, pending: bool, objects: &PlayerObjects| {
         let a = import_drawn(
             &acting(
                 HUNT,
-                hunt(with_sub(base(WALK), ATTACK, attack(state, 4, pending))),
+                hunt(with_sub(
+                    base(WALK),
+                    ATTACK,
+                    attack(state.get(), 4, pending),
+                )),
             ),
             objects,
             Unit::default(),
@@ -1168,11 +1172,14 @@ fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
     };
     let rest = 2.5_f32 - 10.0 * 0.1_f32;
     assert_eq!(
-        swing(SWING, false, &master(2.5)),
+        swing(AttackState::Swing, false, &master(2.5)),
         (rest.to_bits(), rest.to_bits())
     );
-    assert_eq!(swing(SWING, true, &master(2.5)), (0, 0));
-    assert_eq!(swing(4, false, &master(2.5)), (0, 0));
+    assert_eq!(swing(AttackState::Swing, true, &master(2.5)), (0, 0));
+    assert_eq!(swing(AttackState::Move, false, &master(2.5)), (0, 0));
     let short = 0.5_f32 - 10.0 * 0.1_f32;
-    assert_eq!(swing(SWING, false, &master(0.5)), (short.to_bits(), 0));
+    assert_eq!(
+        swing(AttackState::Swing, false, &master(0.5)),
+        (short.to_bits(), 0)
+    );
 }

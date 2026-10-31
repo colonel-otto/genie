@@ -2,10 +2,11 @@
 //! the target was seen.
 
 use crate::GenieError;
+use crate::combat::attack::AttackState;
 use crate::combat::attack::walks::QUIET_CODE;
 use crate::combat::attack::{
-    AiOrder, Attack, AttackReads, Fight, GOTO_POINT, GOTO_SEEN, KILLED, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SEEN_RANGE, SWING, TOUCH, move_reads, set_walker_anim,
+    AiOrder, Attack, AttackReads, Fight, NO_RANGE, NONE, Readiness, SEEN_RANGE, TOUCH, move_reads,
+    set_walker_anim,
 };
 use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
@@ -20,8 +21,6 @@ use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::unit_ai::NotifyKind;
 use crate::world::step::Step;
@@ -41,10 +40,10 @@ impl Attack {
     ) -> Result<(u8, bool), GenieError> {
         self.timer += dt;
         if !armed {
-            self.state = DONE;
+            self.state = AttackState::Done;
             return Ok((1, true));
         }
-        if self.state != DONE {
+        if self.state != AttackState::Done {
             return Err(GenieError::unsupported(
                 "an Attack without a target in a state but 1",
             ));
@@ -139,11 +138,11 @@ impl Attack {
             && (f.victim.class != class::TREE
                 || f.own.class == class::VILLAGER
                 || ObjectState::Dead < f.victim.state);
-        if self.state != KILLED && gone {
+        if self.state != AttackState::Killed && gone {
             return self.target_died(c, unit, f, r);
         }
         let (_, t) = self.held_target(&c.w.spatial)?;
-        if self.state != KILLED
+        if self.state != AttackState::Killed
             && (t.position.x() != self.seen.x() || t.position.y() != self.seen.y())
             && let Some(code) = self.target_moved(c, unit, f, r, &t)?
         {
@@ -154,25 +153,28 @@ impl Attack {
         }
         match self.state {
             // case 0: the unit's animation stops; the list deletes the Attack
-            DONE => {
+            AttackState::Done => {
                 set_walker_anim(&mut unit.body, 0.0);
                 Ok(1)
             }
             // case 3 (state 4) walks the MoveTo to the target, cases 4 and 10 (states 5 and
             // 11) to where it was seen
-            MOVE | GOTO_SEEN | GOTO_POINT => self.walk(c, unit, me, f, r, (t.position, t.radius)),
-            READY => self.ready_step(c, unit, f, r, alive),
-            SWING => self.swing(c, unit, f, r),
-            KILLED => self.killed_step(c, unit),
+            AttackState::Move | AttackState::GotoSeen | AttackState::GotoPoint => {
+                self.walk(c, unit, me, f, r, (t.position, t.radius))
+            }
+            AttackState::Ready => self.ready_step(c, unit, f, r, alive),
+            AttackState::Swing => self.swing(c, unit, f, r),
+            AttackState::Killed => self.killed_step(c, unit),
             // case 0xc: a failed attack posts 0x1f9 with 600 every update (quiet or not), the
             // unit's animation stops and the update returns 3
-            FAILED => {
+            AttackState::Failed => {
                 unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
                 set_walker_anim(&mut unit.body, 0.0);
                 Ok(3)
             }
-            // the states without a case (0, 3, 8 to 10, 12, 14 and above) return 0
-            _ => Ok(0),
+            // the states without a case (0; 3, 8 to 10, 12, 14 and above, which no step sets)
+            // return 0
+            AttackState::New => Ok(0),
         }
     }
 
@@ -230,7 +232,7 @@ impl Attack {
         // ([`Attack::out_of_sight`])
         self.seen = t.position;
         let seen = sees(&c.w.spatial, f, t.position)?;
-        if seen && matches!(self.state, GOTO_SEEN | GOTO_POINT) {
+        if seen && matches!(self.state, AttackState::GotoSeen | AttackState::GotoPoint) {
             let ground = unit
                 .body
                 .mover()
@@ -240,7 +242,7 @@ impl Attack {
             self.follow(unit, &mut c.w.attack_ground(), r, f, gap)?;
             return Ok(Some(0));
         }
-        if !seen && matches!(self.state, MOVE | GOTO_SEEN) {
+        if !seen && matches!(self.state, AttackState::Move | AttackState::GotoSeen) {
             let gives_up = match r.ai_order {
                 AiOrder::Absent => false,
                 AiOrder::Idle => true,
@@ -249,7 +251,7 @@ impl Attack {
             if f.own.player == PlayerId::new(0) || gives_up {
                 return self.out_of_sight(c, unit, f, r).map(Some);
             }
-            if self.state != GOTO_SEEN {
+            if self.state != AttackState::GotoSeen {
                 self.wait_at_seen(unit, f, r, &c.w.graphics)?;
                 return Ok(Some(0));
             }
@@ -381,7 +383,7 @@ impl Attack {
         r: &AttackReads,
         graphics: &BTreeMap<i16, Graphic>,
     ) -> Result<(), GenieError> {
-        self.enter(GOTO_SEEN, unit)?;
+        self.enter(AttackState::GotoSeen, unit)?;
         self.range = f.own.source.weapon_range;
         self.goto_point(unit, r, graphics)
     }
@@ -421,12 +423,12 @@ impl Attack {
             self.ready(unit, &mut c.w.attack_ground(), f, r)?;
             return Ok(0);
         }
-        if self.state == GOTO_SEEN
+        if self.state == AttackState::GotoSeen
             && f.own.player != PlayerId::new(0)
             && SEEN_RANGE <= self.range
             && !r.computer
         {
-            self.enter(GOTO_POINT, unit)?;
+            self.enter(AttackState::GotoPoint, unit)?;
             self.range = f.own.source.weapon_range;
             self.goto_point(unit, r, &c.w.graphics)?;
             return Ok(0);
@@ -435,7 +437,7 @@ impl Attack {
         if !self.sub_action {
             let_go(c, unit, target)?;
         }
-        self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
+        self.finish_in(AttackState::Failed, unit, c.w.streams.get(Stream::Sprite))?;
         if !self.sub_action {
             unit.post_own(NotifyKind::ACTION_FAILED, [600, 0, 0])?;
         }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::combat::attack::AttackState;
 use crate::combat::damage::Victim;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -707,7 +708,7 @@ fn keshik(t: &mut World) {
     let attack = crate::combat::attack::Attack {
         target: Some(object_id(77)),
         target2: None,
-        state: 7,
+        state: AttackState::Swing,
         timer: 0.0,
         range: 0.0,
         min_range: 0.0,
@@ -756,7 +757,7 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     assert_eq!(t.players[1].attributes[169], given);
     assert_eq!(t.players[1].generated[3], 0.0);
     // in another state, nothing
-    t.players[1].objects[0].actions.attack_mut().unwrap().state = 6;
+    t.players[1].objects[0].actions.attack_mut().unwrap().state = AttackState::Ready;
     run(&mut t, PlayerId::new(1), 60);
     assert_eq!(t.players[1].generated[3], 0.0);
 }

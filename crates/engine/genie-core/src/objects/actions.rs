@@ -153,7 +153,7 @@ impl Action {
             Self::Fly(a) => a.state,
             Self::Hunt(a) => a.state,
             Self::Gather(a) => a.state,
-            Self::Attack(a) => a.state,
+            Self::Attack(a) => a.state.get(),
             Self::Explore(a) => a.state,
             Self::Enter(a) => a.state,
             Self::Transport(a) => a.state,

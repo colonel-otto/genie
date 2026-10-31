@@ -1,4 +1,5 @@
 use super::*;
+use crate::combat::attack::AttackState;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -12,7 +13,6 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
 use crate::players::Relation;
 use crate::players::attribute;
@@ -264,7 +264,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         )),
         ..Unit::default()
     });
-    let mut attack = crate::combat::attack::tests::own_attack(-1, DONE, 1.0);
+    let mut attack = crate::combat::attack::tests::own_attack(-1, AttackState::Done, 1.0);
     attack.arms.idle_sprite = Some(crate::objects::sprite::Graphic {
         id: 1,
         frames: 10,
@@ -313,7 +313,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     assert_eq!(objects[build].actions.build().map(|b| b.state), Some(2));
     assert_eq!(objects[repair].actions.repair().map(|r| r.state), Some(2));
     let a = &objects[attack];
-    assert_eq!(a.actions.attack().map(|a| a.state), Some(DONE));
+    assert_eq!(a.actions.attack().map(|a| a.state), Some(AttackState::Done));
     assert_eq!(a.body.anim_speed(), Some(1.0));
     assert!(a.sprite.is_some());
     assert_eq!(

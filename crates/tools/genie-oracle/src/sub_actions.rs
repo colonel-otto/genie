@@ -115,7 +115,7 @@ pub(super) fn saved_attack(
     Ok(genie_core::combat::attack::Attack {
         target: ObjectId::of_field(b.target_id),
         target2: ObjectId::of_field(b.target2_id),
-        state: b.state,
+        state: genie_core::combat::attack::AttackState::of_byte(b.state)?,
         timer: b.timer,
         range: a.range,
         min_range: a.min_range,

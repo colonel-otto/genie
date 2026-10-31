@@ -19,7 +19,6 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
-use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
@@ -462,7 +461,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
             attack.target2
         ),
         (
-            crate::combat::attack::MOVE,
+            crate::combat::attack::AttackState::Move,
             Some(crate::movement::move_to::MoveTo::Arrived),
             Some(object_id(50))
         )
@@ -630,8 +629,11 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
 /// attack sprite.
 #[test]
 fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
-    use crate::combat::attack::{READY, SWING};
-    for (timer, state, pending, sprite) in [(0.5, READY, false, 300), (0.0, SWING, true, 301)] {
+    use crate::combat::attack::AttackState;
+    for (timer, state, pending, sprite) in [
+        (0.5, AttackState::Ready, false, 300),
+        (0.0, AttackState::Swing, true, 301),
+    ] {
         let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
         let unit = &mut t.players[1].objects[0];
         unit.ai = None;
@@ -4227,7 +4229,7 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
 /// soldier that may move starts its `MoveTo` arrived and shows its standing sprite.
 #[test]
 fn an_attack_task_s_start_ends_where_the_start_does() {
-    use crate::combat::attack::MOVE;
+    use crate::combat::attack::AttackState;
     let started = |ai: bool, at: f32| {
         let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
         let unit = &mut t.players[1].objects[0];
@@ -4260,13 +4262,13 @@ fn an_attack_task_s_start_ends_where_the_start_does() {
     let (far, _, _, far_notifies) = started(true, 30.0);
     assert_eq!(
         (far, far_notifies),
-        (Some(MOVE), near_notifies.map(|n| n + 1))
+        (Some(AttackState::Move), near_notifies.map(|n| n + 1))
     );
     assert_ne!(near, None);
     let (failed, speed, sprite, _) = started(false, 30.0);
     assert_eq!(
         (failed, speed, sprite),
-        (Some(FAILED), Some(1.0), Some(300))
+        (Some(AttackState::Failed), Some(1.0), Some(300))
     );
 }
 

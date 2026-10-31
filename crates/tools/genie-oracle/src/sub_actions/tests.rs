@@ -2,6 +2,7 @@ use crate::fixtures::{action_list, building_mut, building_object, combat_object,
 use crate::masters::{DefaultAction, MasterTable};
 use crate::sub_actions::{DefaultStart, default_task, production, saved_attack};
 use crate::test_ids::object_id;
+use genie_core::combat::attack::AttackState;
 use genie_core::movement::move_to::MoveTo;
 use genie_core::objects::masters::ActionType;
 use genie_core::players::attribute;
@@ -239,7 +240,10 @@ fn a_saved_attack_reads_its_target_range_and_move_to() {
         Some(&graphics),
     )
     .unwrap();
-    assert_eq!((a.target, a.state), (Some(object_id(700)), 5));
+    assert_eq!(
+        (a.target, a.state),
+        (Some(object_id(700)), AttackState::GotoSeen)
+    );
     // the MoveTo is quiet and holds its own state, point and range
     let m = a.move_to.unwrap();
     assert_eq!(
@@ -248,7 +252,7 @@ fn a_saved_attack_reads_its_target_range_and_move_to() {
     );
     assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());
     let plain = saved_attack(&attack(2, vec![]), Some(&graphics)).unwrap();
-    assert_eq!(plain.state, 2);
+    assert_eq!(plain.state, AttackState::Killed);
     assert!(
         saved_attack(
             &attack(
