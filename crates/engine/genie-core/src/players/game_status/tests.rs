@@ -22,7 +22,9 @@ use crate::players::Relation;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
-use crate::production::{Entry, MakeObj, MakeTech, MakeTechState, Making, Production, Queue};
+use crate::production::{
+    Entry, MakeObj, MakeObjState, MakeTech, MakeTechState, Making, Production, Queue,
+};
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -80,7 +82,7 @@ fn game() -> World {
         production: Some(Production {
             queue: queue(&[villager(Some(ids::VILLAGER_MALE), 1, 46.0)]),
             action: Some(Making::Unit(MakeObj {
-                state: MakeObj::MAKING,
+                state: MakeObjState::Making,
                 progress: 3.0,
                 ..MakeObj::for_entry(&villager(Some(ids::VILLAGER_MALE), 1, 46.0))
             })),

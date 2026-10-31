@@ -7860,7 +7860,11 @@ fn a_queue_pays_its_cost_and_the_building_starts_making() {
     };
     assert_eq!(
         (make.progress, make.state, make.master),
-        (0.104, 6, production.queue.slots[0].master)
+        (
+            0.104,
+            crate::production::MakeObjState::Making,
+            production.queue.slots[0].master
+        )
     );
     let q = &production.queue;
     assert_eq!(

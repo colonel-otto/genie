@@ -8,7 +8,9 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::IN_PRODUCTION;
 use crate::players::attribute::QUEUED;
-use crate::production::{MakeObj, MakeTech, MakeTechState, Making, housed, population};
+use crate::production::{
+    MakeObj, MakeObjState, MakeTech, MakeTechState, Making, housed, population,
+};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::unit_ai::NotifyKind;
@@ -215,7 +217,7 @@ impl World {
                     self.players
                         .player_mut(p)?
                         .add_attribute(IN_PRODUCTION, pop)?;
-                    make.state = MakeObj::MAKING;
+                    make.state = MakeObjState::Making;
                 }
             }
             Making::Research(r) => self.start_research(p, i, r)?,
@@ -298,9 +300,9 @@ impl World {
             return Err(NO_MAKE_ACTION);
         };
         match make.state {
-            MakeObj::DONE => return Ok(1),
-            MakeObj::MAKING => {}
-            _ => return Ok(0),
+            MakeObjState::Done => return Ok(1),
+            MakeObjState::Making => {}
+            MakeObjState::New | MakeObjState::NoSpot => return Ok(0),
         }
         let site = building.master(&self.masters, p)?;
         let rate = building.work_rate_powerup + site.work_rate;
@@ -335,7 +337,7 @@ impl World {
             .as_mut()
             .map(|q| q.action.as_mut())
         {
-            m.state = MakeObj::DONE;
+            m.state = MakeObjState::Done;
         }
         Ok(1)
     }
@@ -361,7 +363,7 @@ impl World {
     }
 
     /// A production action's destructor at the building at `i` of player `p`. The make
-    /// action's (`FUN_140ace3f0`): in state 6 or 2, while the game is not over, its unit's
+    /// action's (`FUN_140ace3f0`): in state 6 or 10, while the game is not over, its unit's
     /// population leaves attribute 81 and, made without the queue's payment (`+0x60` clear),
     /// the master's paid costs come back ([`crate::production::refund_master`]); the building's
     /// unit AI is told the make action completed (0x1fa with 0x26b). The research's: its
@@ -376,7 +378,8 @@ impl World {
             Making::Unit(make) => make,
             Making::Research(r) => return self.research_destroyed(p, i, &r),
         };
-        if matches!(make.state, MakeObj::MAKING | 2) && self.game_state == 0 {
+        if matches!(make.state, MakeObjState::Making | MakeObjState::NoSpot) && self.game_state == 0
+        {
             let made = make.master.and_then(|m| player_master(&self.masters, p, m));
             let pop = made.map_or(0.0, |m| population(&m.storage));
             let refund = (!make.paid).then(|| made.cloned()).flatten();

@@ -245,7 +245,7 @@ pub(super) fn production(
     object: &genie_save::Object,
 ) -> Result<Option<genie_core::production::Production>, GenieError> {
     use genie_core::production::{
-        Entry, MakeObj, MakeTech, MakeTechState, Making, Production, Queue,
+        Entry, MakeObj, MakeObjState, MakeTech, MakeTechState, Making, Production, Queue,
     };
     let Some(building) = object.tribe_building_object.as_deref() else {
         return Ok(None);
@@ -293,7 +293,7 @@ pub(super) fn production(
                 "a saved make action without its base",
             ))?;
             Some(Making::Unit(MakeObj {
-                state: base.state,
+                state: MakeObjState::of_byte(base.state)?,
                 paid: base.sub_action_value != 0,
                 master: MasterId::of_data(make.obj_id),
                 progress: make.work_done,

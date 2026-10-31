@@ -6,18 +6,18 @@ use genie_core::combat::attack::AttackState;
 use genie_core::movement::move_to::MoveTo;
 use genie_core::objects::masters::ActionType;
 use genie_core::players::attribute;
-use genie_core::production::{MakeTechState, Making};
+use genie_core::production::{MakeObjState, MakeTechState, Making};
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByType, RgeActionMoveTo, RgeObject,
     TribeActionMakeObj, TribeActionMakeTech, TribeBuildingObjectEntry1,
 };
 
-/// A make action (type 102) of master 83, `work_done` 0.5, in state 4, paid.
+/// A make action (type 102) of master 83, `work_done` 0.5, making (state 6), paid.
 fn make() -> Action {
     Action {
         tribe_action_make_obj: Some(Box::new(TribeActionMakeObj {
             rge_action: RgeAction {
-                state: 4,
+                state: 6,
                 sub_action_value: 1,
                 ..RgeAction::default()
             },
@@ -64,7 +64,7 @@ fn a_building_s_production_holds_its_slots_and_make_action() {
     assert_eq!(
         (made.state, made.paid, made.master),
         (
-            4,
+            MakeObjState::Making,
             true,
             Some(genie_core::objects::masters::ids::VILLAGER_MALE)
         )
@@ -90,6 +90,21 @@ fn a_research_is_a_production_action_too() {
     assert!(
         matches!(p.action, Some(Making::Research(r)) if r.tech == genie_core::technology::TechId::try_from(22).unwrap() && !r.paid && r.state == MakeTechState::New)
     );
+}
+
+/// A make action saved in a state no make action has (2) fails the read.
+#[test]
+fn a_make_action_in_a_state_of_none_fails() {
+    let mut barracks = building_object(11, 12);
+    let mut made = make();
+    if let Some(m) = made.tribe_action_make_obj.as_deref_mut() {
+        m.rge_action.state = 2;
+    }
+    building_mut(&mut barracks).production_queue_actions = action_list(vec![(
+        genie_core::objects::masters::action_type::MAKE_OBJECT,
+        made,
+    )]);
+    assert!(production(&barracks).is_err());
 }
 
 /// A research saved in a state no research has (2) fails the read.

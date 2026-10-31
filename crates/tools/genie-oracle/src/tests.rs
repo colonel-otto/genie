@@ -23,7 +23,7 @@ fn a_building_s_production_state_comes_before_its_top_action_s() {
     let making = genie_core::production::Production {
         action: Some(genie_core::production::Making::Unit(
             genie_core::production::MakeObj {
-                state: 6,
+                state: genie_core::production::MakeObjState::Making,
                 paid: true,
                 master: Some(ids::VILLAGER_MALE),
                 progress: 0.5,

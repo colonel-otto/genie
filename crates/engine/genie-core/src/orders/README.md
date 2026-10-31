@@ -27,7 +27,6 @@ The files hold the orders by kind:
 <!-- files -->
 | File | What it holds |
 | --- | --- |
-| [`action_state.rs`](action_state.rs) | The action states every action type shares (the state byte `+0x18`, set by `set_state`): 1 done and 13 failed. |
 | [`actions.rs`](actions.rs) | Taking and releasing targets, the order record, actions cleared, transformations, gates and master switches. |
 | [`attack.rs`](attack.rs) | An attack's start, a hunt's and an action's retarget. |
 | [`commands.rs`](commands.rs) | The unit AI's state, gates, the auto scout and the STOP, EXPLORE and standing commands. |

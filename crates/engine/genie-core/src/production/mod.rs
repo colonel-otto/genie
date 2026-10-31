@@ -25,6 +25,7 @@ use crate::technology::TechId;
 use genie_diff::Diff;
 
 mod costs;
+mod make_obj_state;
 mod make_tech_state;
 pub mod spawn;
 
@@ -32,6 +33,7 @@ pub use self::costs::{
     as_entry_costs, cost_test, costed, master_costs, pay, refund, refund_master, refund_research,
     refund_tech,
 };
+pub use self::make_obj_state::MakeObjState;
 pub use self::make_tech_state::MakeTechState;
 
 /// One slot of a building's queue (`+0xbe8`, 0x30 bytes; the save's `mProductionQueue[i]`). A
@@ -288,9 +290,8 @@ const OWN_TRAIN_TIME: u32 = 0x80;
 /// queue entry (the save's `tribe_action_make_obj`).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MakeObj {
-    /// `+0x18`: its state (6 while it works, 1 once its unit came; 0 when its start found no
-    /// master, `FUN_140acf0a0`).
-    pub state: u8,
+    /// `+0x18`: its state.
+    pub state: MakeObjState,
     /// `+0x60`: the queue paid for its unit (`FUN_140acb140`'s `param_5` 0), so its destructor
     /// gives nothing back; clear, the destructor refunds the master's paid costs
     /// (`FUN_141630770`).
@@ -308,17 +309,12 @@ pub struct MakeObj {
 }
 
 impl MakeObj {
-    /// The make action's state while it works.
-    pub const MAKING: u8 = crate::gathering::make::MakeState::Making.get();
-    /// Its state once its unit came.
-    pub const DONE: u8 = crate::orders::action_state::DONE;
-
     /// The building's update's make action (`FUN_140acb140` with the first entry's master, −1,
     /// 0, its train time and button): paid, nothing done, state 0 until the list starts it.
     #[must_use]
     pub const fn for_entry(entry: &Entry) -> Self {
         Self {
-            state: 0,
+            state: MakeObjState::New,
             paid: true,
             master: entry.master,
             progress: 0.0,
@@ -378,7 +374,7 @@ impl Making {
     #[must_use]
     pub const fn state(&self) -> u8 {
         match self {
-            Self::Unit(m) => m.state,
+            Self::Unit(m) => m.state.get(),
             Self::Research(r) => r.state.get(),
         }
     }
@@ -404,9 +400,6 @@ pub struct Production {
 }
 
 impl Production {
-    /// The make action's state while it works, which the building's action-state slot reports.
-    pub const MAKING: u8 = MakeObj::MAKING;
-
     /// `FUN_1411c5250`: technology `tech` leaves the building's disabled list, every time it
     /// is there (`std::remove` and `erase`, the order of the rest kept).
     pub fn enable_tech(&mut self, tech: TechId) {
