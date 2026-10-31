@@ -104,7 +104,6 @@ impl Rig {
     fn with_attributes(n: usize) -> Self {
         let owner = Player {
             attributes: vec![0.0; n],
-            construction_rate: 1.0,
             ..Player::default()
         };
         let mut rig = Self {
@@ -439,7 +438,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
     let owner = &rig.t.players[1];
     assert_eq!(
         (
-            owner.resources[0],
+            owner.attributes[0],
             owner.attributes[166],
             rig.load().amount,
             field.amount

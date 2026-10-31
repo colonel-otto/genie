@@ -103,14 +103,14 @@ impl World {
 
     /// The base player's attribute add (`FUN_14165d040`) of `amount` to attribute `kind` of
     /// player `p`, for a kind out of 0 to the attribute count nothing: the attribute takes
-    /// `amount` plus its value (the resources are [`crate::world::Player::resources`]). A
-    /// computer player's resource fills its escrow: an `amount` above 0 with a share above 0
-    /// (`COMISS`, `JBE`) adds the share times it; an escrow above the resource (`JBE` skips a
-    /// NaN) falls to it, or to 0 when the resource is below 0. With `share`, a player who shares
-    /// its gathered resources (`+0x1426`, [`crate::world::Player::sharing`]) gives each resource
-    /// to the players, in order, it counts as allies and who count it as theirs
-    /// ([`World::shares_with`]): their slot 0xf8 with `stat` and no sharing. Attribute 11's peak
-    /// (`+0x6fc`, unsaved) is not held; no resource add reaches it.
+    /// `amount` plus its value. A computer player's resource fills its escrow: an `amount` above
+    /// 0 with a share above 0 (`COMISS`, `JBE`) adds the share times it; an escrow above the
+    /// resource (`JBE` skips a NaN) falls to it, or to 0 when the resource is below 0. With
+    /// `share`, a player who shares its gathered resources (`+0x1426`,
+    /// [`crate::world::Player::sharing`]) gives each resource to the players, in order, it counts
+    /// as allies and who count it as theirs ([`World::shares_with`]): their slot 0xf8 with `stat`
+    /// and no sharing. Attribute 11's peak (`+0x6fc`, unsaved) is not held; no resource add
+    /// reaches it.
     pub(super) fn add_attribute_base(
         &mut self,
         p: PlayerId,
@@ -124,18 +124,13 @@ impl World {
         if player.attributes.len() <= k {
             return Ok(());
         }
-        let value = if kind.is_resource() {
-            player.resources.checked_mut(k)?
-        } else {
-            player.attributes.checked_mut(k)?
-        };
-        *value += amount;
+        *player.attributes.checked_mut(k)? += amount;
         if player.kind == PlayerType::COMPUTER && kind.is_resource() {
             let pct = *player.escrow_percentage.checked(k)?;
             if !at_most_or_unordered(amount, 0.0) && !at_most_or_unordered(pct, 0.0) {
                 *player.escrow.checked_mut(k)? += pct * amount;
             }
-            let held = *player.resources.checked(k)?;
+            let held = *player.attributes.checked(k)?;
             if !at_most_or_unordered(*player.escrow.checked(k)?, held) {
                 *player.escrow.checked_mut(k)? = if at_most_or_unordered(0.0, held) {
                     held

@@ -51,11 +51,9 @@ impl World {
         let owner = self.players.player_mut(player)?;
         for (resource, amount, paid) in crate::objects::masters::cost_entries(&cost) {
             let slot = owner
-                .resources
+                .attributes
                 .get_mut(resource.index())
-                .ok_or(GenieError::unsupported(
-                    "a cost in a resource other than the four",
-                ))?;
+                .ok_or(crate::world::NO_ATTRIBUTE)?;
             if paid {
                 *slot -= f32::from(amount);
             }

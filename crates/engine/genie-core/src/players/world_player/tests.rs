@@ -174,14 +174,14 @@ fn the_trickles_give_a_sixtieth_of_their_rate_each_second() {
     (a[230], a[231], a[232], a[233]) = (6.0, -1.0, f32::NAN, 60.0);
     t.update_world_player(PlayerId::new(1)).unwrap();
     let p = &t.players[1];
-    assert_eq!(p.resources, [6.0 / 60.0, 0.0, 0.0, 1.0]);
+    assert_eq!(p.resources(), [6.0 / 60.0, 0.0, 0.0, 1.0]);
     assert_eq!(
         [166, 167, 168, 169, 49].map(|k| p.attributes[k]),
         [6.0 / 60.0, 0.0, 0.0, 1.0, 1.0]
     );
     t.players[1].game_status = LOST;
     t.update_world_player(PlayerId::new(1)).unwrap();
-    assert_eq!(t.players[1].resources[3], 1.0);
+    assert_eq!(t.players[1].attributes[3], 1.0);
 }
 
 /// The mills' food: the livestock of the objects filed under the mill (68) that are
@@ -217,7 +217,7 @@ fn a_mill_s_livestock_makes_food() {
     t.update_world_player(PlayerId::new(1)).unwrap();
     let grows = crate::math::fmath::log(400.0 / 200.0 + 1.0);
     let food = 15.0 / 60.0 * (1.5 * grows);
-    assert_eq!(t.players[1].resources[0], food);
+    assert_eq!(t.players[1].attributes[0], food);
     assert_eq!(t.players[1].attributes[166], food);
 }
 
@@ -232,7 +232,7 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     t.add_resource(PlayerId::new(1), attribute::FOOD, 10.0, 1, true)
         .unwrap();
     assert_eq!(
-        (t.players[1].resources[0], t.players[1].escrow[0]),
+        (t.players[1].attributes[0], t.players[1].escrow[0]),
         (10.0, 5.0)
     );
     t.add_resource(PlayerId::new(1), attribute::FOOD, -20.0, 1, true)
@@ -247,10 +247,10 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     t.add_resource(PlayerId::new(1), attribute::WOOD, 4.0, 1, true)
         .unwrap();
     assert_eq!(
-        [1, 2, 3].map(|p| (t.players[p].resources[1], t.players[p].attributes[167])),
+        [1, 2, 3].map(|p| (t.players[p].attributes[1], t.players[p].attributes[167])),
         [(4.0, 4.0), (4.0, 4.0), (0.0, 0.0)]
     );
-    assert_eq!(t.players[0].resources[1], 0.0);
+    assert_eq!(t.players[0].attributes[1], 0.0);
     assert!(
         t.shares_with(PlayerId::new(1), PlayerId::new(2))
             && !t.shares_with(PlayerId::new(1), PlayerId::new(3))

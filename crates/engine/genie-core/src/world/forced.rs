@@ -171,7 +171,9 @@ impl World {
         let stopped = player.stopped;
         if stopped {
             if let Some(r) = game.resources.get(p.index()) {
-                player.resources = *r;
+                for (v, r) in player.attributes.iter_mut().zip(r) {
+                    *v = *r;
+                }
             }
             if let Some(d) = game.pending_debit.get(p.index()) {
                 player.pending_debit = *d;
@@ -346,18 +348,18 @@ mod tests {
             ..GameState::default()
         };
         let mut t = forage_world();
-        let before = t.players[1].resources;
+        let before = t.players[1].resources();
         t.players[1].unsupported = Some((1, ListIndex::new(0), GenieError::unsupported("a part")));
         assert!(!t.force_player_values(PlayerId::new(1), &game).unwrap());
         let player = &t.players[1];
-        assert_eq!(player.resources, before);
+        assert_eq!(player.resources(), before);
         assert_eq!((player.game_status, player.resigned), (2, true));
         assert!(player.unsupported.is_none());
         t.players[1].stopped = true;
         assert!(t.force_player_values(PlayerId::new(1), &game).unwrap());
         let player = &t.players[1];
         assert_eq!(
-            (player.resources, player.pending_debit, player.techs.len()),
+            (player.resources(), player.pending_debit, player.techs.len()),
             ([1.0, 2.0, 3.0, 4.0], [5.0; 4], 2)
         );
         assert!(!player.stopped);

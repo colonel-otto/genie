@@ -300,10 +300,9 @@ mod tests {
     /// Player 1 with 100 of each resource, a commodity volume of 100, a fee of 0.3 and the
     /// market above.
     fn trading() -> World {
-        let mut attributes = vec![0.0; 250];
+        let mut attributes = crate::test_ids::attributes(250, [100.0; 4]);
         attributes[attribute::MARKET_FEE.index()] = 0.3;
         let player = Player {
-            resources: [100.0; 4],
             attributes,
             commodity_volume: 100,
             ..Player::default()
@@ -327,7 +326,7 @@ mod tests {
         let mut t = trading();
         t.sell(player_id(1), attribute::WOOD, 2).unwrap();
         let p = &t.players[1];
-        assert_eq!(p.resources, [100.0, 0.0, 100.0, 170.0]);
+        assert_eq!(p.resources(), [100.0, 0.0, 100.0, 170.0]);
         assert_eq!((p.attributes[49], p.attributes[169]), (70.0, 70.0));
         assert_eq!(
             (t.market.wood.price, t.market.wood.trades),
@@ -341,10 +340,10 @@ mod tests {
     #[test]
     fn a_purchase_costs_the_lot_s_worth_and_the_fee_at_least_21() {
         let mut t = trading();
-        t.players[1].resources[attribute::GOLD.index()] = 170.0;
+        t.players[1].attributes[attribute::GOLD.index()] = 170.0;
         t.buy(player_id(1), attribute::FOOD, 2).unwrap();
         let p = &t.players[1];
-        assert_eq!(p.resources, [200.0, 100.0, 100.0, 21.0]);
+        assert_eq!(p.resources(), [200.0, 100.0, 100.0, 21.0]);
         assert_eq!((p.attributes[49], p.attributes[169]), (0.0, 0.0));
         assert_eq!(
             (t.market.food.price, t.market.food.trades),
@@ -354,12 +353,12 @@ mod tests {
         t.players[1].commodity_volume = 10;
         t.buy(player_id(1), attribute::WOOD, 1).unwrap();
         assert_eq!(
-            t.players[1].resources[attribute::GOLD.index()],
+            t.players[1].attributes[attribute::GOLD.index()],
             100.0 - 21.0
         );
         // no volume, no purchase
         t.players[1].commodity_volume = 0;
         t.buy(player_id(1), attribute::WOOD, 1).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD.index()], 79.0);
+        assert_eq!(t.players[1].attributes[attribute::GOLD.index()], 79.0);
     }
 }

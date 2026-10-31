@@ -199,7 +199,6 @@ fn a_stopped_player_s_stock_is_not_compared() {
 fn resources_and_attributes_differ_apart() {
     let mut turns = slice(&save(), None);
     let player = &mut turns.players[1];
-    player.resources = [1.0, 2.0, 3.0, 4.0];
     player.attributes = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     let game = GameState {
         resources: vec![[0.0; 4], [1.0, 2.0, 3.0, 5.0]],

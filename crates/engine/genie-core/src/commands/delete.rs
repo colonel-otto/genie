@@ -732,7 +732,7 @@ mod tests {
         t.delete(player_id(1), object_id(11)).unwrap();
         let house = &t.players[1].objects[ListIndex::new(1)].life;
         assert_eq!(
-            (t.players[1].resources[1], house.hp, house.state),
+            (t.players[1].attributes[1], house.hp, house.state),
             (25.0, HitPoints::ZERO, ObjectState::Removed)
         );
         // 10 of its 25 seconds of work done: 15/25 of the wood (in f32: 15.000001); it dies in
@@ -742,7 +742,7 @@ mod tests {
         let house = &t.players[1].objects[ListIndex::new(1)].life;
         let share = (25.0_f32 - 10.0) / 25.0;
         assert_eq!(
-            (t.players[1].resources[1], house.hp, house.state),
+            (t.players[1].attributes[1], house.hp, house.state),
             (25.0 * share, HitPoints::ZERO, ObjectState::Foundation)
         );
     }
@@ -766,7 +766,7 @@ mod tests {
         t.delete(player_id(1), object_id(11)).unwrap();
         let tc = &t.players[1].objects[ListIndex::new(1)].life;
         assert_eq!(
-            (t.players[1].resources[1], tc.hp, tc.state),
+            (t.players[1].attributes[1], tc.hp, tc.state),
             (25.0, HitPoints::ZERO, ObjectState::Removed)
         );
         let mut t = game(0.0, true);

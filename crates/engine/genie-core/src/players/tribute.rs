@@ -92,7 +92,11 @@ impl World {
             let Some(&kind) = attribute::RESOURCES.get(usize::from(gift.attribute)) else {
                 continue;
             };
-            let have = *self.players.player(from)?.resources.checked(kind.index())?;
+            let have = *self
+                .players
+                .player(from)?
+                .attributes
+                .checked(kind.index())?;
             let (given, paid) = settle(have, gift);
             self.players.player_mut(to)?.add_attribute(kind, given)?;
             self.players.player_mut(from)?.add_attribute(kind, -paid)?;
@@ -159,8 +163,7 @@ mod tests {
     /// (master 84) when `market`.
     fn world(market: bool) -> World {
         let player = || Player {
-            resources: [500.0; 4],
-            attributes: vec![0.0; 600],
+            attributes: crate::test_ids::attributes(600, [500.0; 4]),
             ..Player::default()
         };
         let mut t = World::new(
@@ -206,10 +209,10 @@ mod tests {
         t.tribute(player_id(1), player_id(2), &gifts).unwrap();
         let (giver, receiver) = (&t.players[1], &t.players[2]);
         assert_eq!(
-            giver.resources,
+            giver.resources(),
             [500.0, 500.0 - 130.0, 500.0, 500.0 - 260.0]
         );
-        assert_eq!(receiver.resources, [500.0, 600.0, 500.0, 700.0]);
+        assert_eq!(receiver.resources(), [500.0, 600.0, 500.0, 700.0]);
         assert_eq!(
             (
                 giver.attributes[53],

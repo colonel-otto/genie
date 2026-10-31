@@ -101,8 +101,8 @@ impl World {
         Ok(())
     }
 
-    /// `FUN_1416674b0`, the attribute's store: within the player's attributes' count it takes `v`
-    /// (the resources are [`crate::world::Player::resources`]). A computer player's resource
+    /// `FUN_1416674b0`, the attribute's store: within the player's attributes' count it takes `v`.
+    /// A computer player's resource
     /// peaks (`+0x6dc`) and attribute 262's fields (`+0x628`..`+0x630`) are not held.
     pub(super) fn store_attribute(
         &mut self,
@@ -115,11 +115,7 @@ impl World {
         if player.attributes.len() <= i {
             return Ok(());
         }
-        if i < 4 {
-            *player.resources.checked_mut(i)? = v;
-        } else {
-            *player.attributes.checked_mut(i)? = v;
-        }
+        *player.attributes.checked_mut(i)? = v;
         Ok(())
     }
 

@@ -129,9 +129,9 @@ fn stock_differences(
 ) {
     let id = p as u32;
     if let Some(r) = game.resources.get(p)
-        && *r != player.resources
+        && *r != player.resources()
     {
-        let d = format!("resources slice {:?} game {:?}", player.resources, r);
+        let d = format!("resources slice {:?} game {:?}", player.resources(), r);
         report.differences.push((id, d));
     }
     if let Some(saved) = game.attributes.get(p) {

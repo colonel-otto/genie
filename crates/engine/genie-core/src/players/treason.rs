@@ -13,7 +13,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::{self, AttributeId};
 use crate::players::tracker::ListKey;
 use crate::world::World;
-use crate::world::slots::PlayerSlots;
+use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The building of the content mode 1 (`0xd1`) that stands for the castle (`FUN_140fe0ec0`).
 const CASTLE_MODE_1: MasterId = MasterId::named(0xd1);
@@ -62,11 +62,19 @@ impl World {
         } else {
             TREASON_COST
         };
-        let gold = self.players.player(p)?.resources[attribute::GOLD.index()];
+        let gold = *self
+            .players
+            .player(p)?
+            .attributes
+            .checked(attribute::GOLD.index())?;
         if cost > gold || !self.settings.regicide() {
             return Ok(());
         }
-        self.players.player_mut(p)?.resources[attribute::GOLD.index()] = gold - cost;
+        *self
+            .players
+            .player_mut(p)?
+            .attributes
+            .checked_mut(attribute::GOLD.index())? = gold - cost;
         let n = self.players.len();
         for i in PlayerId::each(n).skip(1) {
             if crate::unit_ai::task_finder::allied(&self.players.player(p)?.relations, p, i, false)
@@ -131,7 +139,7 @@ mod tests {
             vec![Millis::ZERO; 4],
             (0..4).map(player).collect(),
         );
-        t.players[1].resources[attribute::GOLD.index()] = 500.0;
+        t.players[1].attributes[attribute::GOLD.index()] = 500.0;
         t
     }
 
@@ -140,14 +148,14 @@ mod tests {
     fn treason_needs_the_regicide_rule_and_the_gold() {
         let mut t = world();
         t.treason(PlayerId::new(1)).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD.index()], 500.0);
+        assert_eq!(t.players[1].attributes[attribute::GOLD.index()], 500.0);
         t.settings.game_mode = 1;
-        t.players[1].resources[attribute::GOLD.index()] = 399.0;
+        t.players[1].attributes[attribute::GOLD.index()] = 399.0;
         t.treason(PlayerId::new(1)).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD.index()], 399.0);
+        assert_eq!(t.players[1].attributes[attribute::GOLD.index()], 399.0);
         t.players[1].attributes[DISCOUNT.index()] = 1.0;
         t.treason(PlayerId::new(1)).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD.index()], 199.0);
+        assert_eq!(t.players[1].attributes[attribute::GOLD.index()], 199.0);
     }
 
     /// The treason pays 400 gold; without a king anywhere it flares nothing.
@@ -157,7 +165,7 @@ mod tests {
         t.settings.game_mode = 1;
         let before = t.players[3].objects.len();
         t.treason(PlayerId::new(1)).unwrap();
-        assert_eq!(t.players[1].resources[attribute::GOLD.index()], 100.0);
+        assert_eq!(t.players[1].attributes[attribute::GOLD.index()], 100.0);
         assert_eq!(t.players[3].objects.len(), before);
     }
 

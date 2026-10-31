@@ -356,7 +356,7 @@ impl World {
             object: self.streams.get(Stream::Object),
             world_time: self.world_time,
             computer: player.computer,
-            construction_rate: player.construction_rate,
+            construction_rate: player.construction_rate(),
             groups: &self.groups,
         };
         let others = crate::world::others::OthersRef::of(&self.players, p)?;

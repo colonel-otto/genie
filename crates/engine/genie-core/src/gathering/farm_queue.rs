@@ -431,8 +431,7 @@ mod tests {
     /// food entry unpaid) and the fish trap (100 wood).
     fn world(wood: f32) -> World {
         let player = Player {
-            attributes: vec![0.0; 300],
-            resources: [0.0, wood, 0.0, 0.0],
+            attributes: crate::test_ids::attributes(300, [0.0, wood, 0.0, 0.0]),
             ..Player::default()
         };
         let mut t = World::new(
@@ -460,7 +459,7 @@ mod tests {
         let mut t = world(250.0);
         assert!(t.queue_farms(PlayerId::new(1), 5, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 4);
-        assert_eq!(t.players[1].resources[1], 10.0);
+        assert_eq!(t.players[1].attributes[1], 10.0);
         assert!(!t.queue_farms(PlayerId::new(1), 1, FARM).unwrap());
         assert!(!t.queue_farms(PlayerId::new(1), 0, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 4);
@@ -471,18 +470,18 @@ mod tests {
     #[test]
     fn pastures_and_fish_traps_pay_their_paid_entries() {
         let mut t = world(1000.0);
-        t.players[1].resources[0] = 99.0;
+        t.players[1].attributes[0] = 99.0;
         assert!(t.queue_farms(PlayerId::new(1), 2, PASTURE).unwrap());
         assert_eq!(t.players[1].farm_queue, 1);
-        assert_eq!(t.players[1].resources, [99.0, 900.0, 0.0, 0.0]);
-        t.players[1].resources[0] = 100.0;
+        assert_eq!(t.players[1].resources(), [99.0, 900.0, 0.0, 0.0]);
+        t.players[1].attributes[0] = 100.0;
         assert!(t.queue_farms(PlayerId::new(1), 2, PASTURE).unwrap());
-        assert_eq!(t.players[1].resources, [100.0, 700.0, 0.0, 0.0]);
+        assert_eq!(t.players[1].resources(), [100.0, 700.0, 0.0, 0.0]);
         t.players[1].farm_queue = 2;
         assert!(t.queue_fish_traps(PlayerId::new(1), 3).unwrap());
         assert_eq!(t.players[1].fish_trap_queue, 3);
         assert_eq!(t.players[1].farm_queue, 2);
-        assert_eq!(t.players[1].resources[1], 400.0);
+        assert_eq!(t.players[1].attributes[1], 400.0);
     }
 
     /// A queue at 40 takes no purchase; one below may pass 40.
@@ -501,7 +500,7 @@ mod tests {
     fn a_master_the_player_lacks_buys_nothing() {
         let mut t = world(1000.0);
         assert!(!t.queue_farms(PlayerId::new(1), 2, ids::ID_1187).unwrap());
-        assert_eq!(t.players[1].resources[1], 1000.0);
+        assert_eq!(t.players[1].attributes[1], 1000.0);
     }
 
     /// A building master `id` of class `class` and base id `base`, available or not, heading
@@ -596,15 +595,15 @@ mod tests {
         t.players[1].farm_queue = 3;
         assert!(t.unqueue_farms(PlayerId::new(1), 5, FARM).unwrap());
         assert_eq!(t.players[1].farm_queue, 0);
-        assert_eq!(t.players[1].resources[1], 180.0);
+        assert_eq!(t.players[1].attributes[1], 180.0);
         assert!(!t.unqueue_farms(PlayerId::new(1), 1, FARM).unwrap());
         t.players[1].farm_queue = 2;
         assert!(t.unqueue_farms(PlayerId::new(1), 1, PASTURE).unwrap());
-        assert_eq!(t.players[1].resources, [0.0, 280.0, 0.0, 0.0]);
+        assert_eq!(t.players[1].resources(), [0.0, 280.0, 0.0, 0.0]);
         t.players[1].fish_trap_queue = 1;
         assert!(!t.unqueue_fish_traps(PlayerId::new(1), 0).unwrap());
         assert!(t.unqueue_fish_traps(PlayerId::new(1), 2).unwrap());
         assert_eq!(t.players[1].fish_trap_queue, 0);
-        assert_eq!(t.players[1].resources[1], 380.0);
+        assert_eq!(t.players[1].attributes[1], 380.0);
     }
 }

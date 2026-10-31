@@ -139,7 +139,7 @@ impl OwnerView {
                 player: c.player,
                 new_owner: None,
                 civ: owner.civ,
-                construction_rate: owner.construction_rate,
+                construction_rate: owner.construction_rate(),
                 ai_settings: owner.ai_settings,
             });
         };
@@ -147,7 +147,7 @@ impl OwnerView {
             player: new,
             new_owner: Some(new),
             civ: q.civ,
-            construction_rate: q.construction_rate,
+            construction_rate: q.construction_rate(),
             ai_settings: q.ai_settings,
         })
     }

@@ -211,11 +211,7 @@ impl World {
                     "a BUILD whose cost lists the population",
                 ));
             }
-            let held = if r < 4 {
-                owner.resources[r]
-            } else {
-                owner.attributes.get(r).copied().unwrap_or(0.0)
-            };
+            let held = owner.attributes.get(r).copied().unwrap_or(0.0);
             if held < f32::from(amount) {
                 return Ok(false);
             }

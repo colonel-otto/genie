@@ -268,8 +268,7 @@ impl World {
             .map_or(amount, |scale| amount * scale)
     }
 
-    /// Player `p`'s attribute `attribute` (the resources are
-    /// [`crate::world::Player::resources`]), 0 past its count (`+0x90`, the saved attributes').
+    /// Player `p`'s attribute `attribute`, 0 past its count (`+0x90`, the saved attributes').
     pub(super) fn attribute_of(&self, p: PlayerId, attribute: AttributeId) -> f32 {
         self.players
             .get(p.index())

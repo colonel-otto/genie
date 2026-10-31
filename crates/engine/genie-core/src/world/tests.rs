@@ -1685,8 +1685,7 @@ fn build_world() -> World {
                     villager(object_id(9181), VILLAGER_FEMALE, 29.0, 99.0),
                 ]
                 .into(),
-                resources: [200.0, 100.0, 200.0, 100.0],
-                attributes: vec![0.0; 250],
+                attributes: crate::test_ids::attributes(250, [200.0, 100.0, 200.0, 100.0]),
                 ..Player::default()
             },
         ],
@@ -1750,7 +1749,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
         })],
     );
     let p = &t.players[1];
-    assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
+    assert_eq!(p.resources(), [200.0, 75.0, 200.0, 100.0]);
     // the house's paid cost, as a building with a train location, in attribute 247
     assert_eq!(p.attributes[247], 25.0);
     let foundation = p.objects.last().unwrap();
@@ -1879,8 +1878,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
             Player::default(),
             Player {
                 objects: vec![villager(object_id(9175), VILLAGER_MALE, 30.0, 89.0)].into(),
-                resources: [200.0, 100.0, 200.0, 100.0],
-                attributes: vec![0.0; 250],
+                attributes: crate::test_ids::attributes(250, [200.0, 100.0, 200.0, 100.0]),
                 ..Player::default()
             },
             Player {
@@ -4680,7 +4678,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.life.amount, Amount::ZERO);
-    assert_eq!(t.players[1].resources[0], 5.0);
+    assert_eq!(t.players[1].attributes[0], 5.0);
     let h = v.actions.hunt().copied().unwrap();
     assert_eq!(
         (h.state, h.target, h.carry_to),
@@ -6985,8 +6983,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
             vec![Millis::ZERO, Millis::ZERO],
             vec![
                 Player {
-                    resources: [0.0, 100.0, 0.0, 0.0],
-                    attributes: vec![0.0; 250],
+                    attributes: crate::test_ids::attributes(250, [0.0, 100.0, 0.0, 0.0]),
                     computer: true,
                     ..Player::default()
                 },
@@ -7285,7 +7282,7 @@ fn life_part(
 fn attribute_values(t: &World, p: usize) -> Vec<f32> {
     let owner = &t.players[p];
     owner
-        .resources
+        .resources()
         .iter()
         .chain(owner.attributes.iter().skip(4))
         .copied()
@@ -8300,7 +8297,7 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
     };
     let _ = t.force(&game);
     assert_eq!(
-        (t.players[0].stopped, t.players[0].resources),
+        (t.players[0].stopped, t.players[0].resources()),
         (false, [1.0, 2.0, 3.0, 4.0])
     );
     assert_eq!(retarget(&t), vec![900, 901]);
@@ -8368,7 +8365,7 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
 
 /// A player with the villagers' masters (a population of one each) and room for more.
 fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
-    let mut attributes = vec![0.0; 250];
+    let mut attributes = crate::test_ids::attributes(250, resources);
     (attributes[4], attributes[11], attributes[32]) = (5.0, 4.0, 10.0);
     let mut t = World::new(
         WorldTime::ZERO,
@@ -8377,7 +8374,6 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
         vec![Millis::ZERO],
         vec![Player {
             objects: objects.into(),
-            resources,
             attributes,
             ..Player::default()
         }],
@@ -8436,7 +8432,7 @@ fn a_queue_pays_its_cost_and_the_building_starts_making() {
     let mut t = one_player(vec![centre(9)], [200.0; 4]);
     t.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let p = &t.players[0];
-    assert_eq!(p.resources, [154.0, 200.0, 200.0, 200.0]);
+    assert_eq!(p.resources(), [154.0, 200.0, 200.0, 200.0]);
     let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
     // the make action works in the tick it is created in
     let Some(crate::production::Making::Unit(make)) = production.action else {
@@ -8489,7 +8485,7 @@ fn a_queue_the_player_cannot_pay_or_at_a_missing_building_queues_nothing() {
     let mut poor = one_player(vec![centre(9)], [40.0, 0.0, 0.0, 0.0]);
     poor.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     assert!(poor.players[0].unsupported.is_none());
-    assert_eq!(poor.players[0].resources[0], 40.0);
+    assert_eq!(poor.players[0].attributes[0], 40.0);
     let tc = &poor.players[0].objects[ListIndex::new(0)];
     assert!(
         tc.production
@@ -8506,7 +8502,7 @@ fn a_queue_the_player_cannot_pay_or_at_a_missing_building_queues_nothing() {
     let mut missing = one_player(vec![centre(9)], [200.0; 4]);
     missing.tick_with(Millis::new(104), &[queue(9 - 1, 83, 1)]);
     assert!(missing.players[0].unsupported.is_none());
-    assert_eq!(missing.players[0].resources, [200.0; 4]);
+    assert_eq!(missing.players[0].resources(), [200.0; 4]);
 }
 
 /// `FUN_141614450` over two town centres: unit by unit the one with room and the least load
@@ -8611,7 +8607,7 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
     let mut alone = with_trophy(vec![trophy(9)]);
     alone.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     assert!(alone.players[0].unsupported.is_none());
-    assert_eq!(alone.players[0].resources, [200.0; 4]);
+    assert_eq!(alone.players[0].resources(), [200.0; 4]);
     assert!(
         alone.players[0].objects[ListIndex::new(0)]
             .production
@@ -8629,7 +8625,7 @@ fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
         let mut t = one_player(vec![], [200.0; 4]);
         let mut other = t.players[0].clone();
         other.objects = vec![centre(10)].into();
-        other.resources = [100.0, 0.0, 0.0, 0.0];
+        other.attributes[..4].copy_from_slice(&[100.0, 0.0, 0.0, 0.0]);
         t.players.push(other);
         t.player_time.push(Millis::ZERO);
         t.masters.push(t.masters[0].clone());
@@ -8639,8 +8635,8 @@ fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
     let mut t = two(true);
     t.tick_with(Millis::new(104), &[queue(10, 83, 1)]);
     assert!(t.players.iter().all(|p| p.unsupported.is_none()));
-    assert_eq!(t.players[0].resources, [200.0; 4]);
-    assert_eq!(t.players[1].resources[0], 54.0);
+    assert_eq!(t.players[0].resources(), [200.0; 4]);
+    assert_eq!(t.players[1].attributes[0], 54.0);
     let production = t.players[1].objects[ListIndex::new(0)]
         .production
         .as_ref()
@@ -8648,7 +8644,7 @@ fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
     assert_eq!(production.queue.total, 1);
     let mut t = two(false);
     t.tick_with(Millis::new(104), &[queue(10, 83, 1)]);
-    assert_eq!(t.players[1].resources[0], 100.0);
+    assert_eq!(t.players[1].attributes[0], 100.0);
     assert!(t.players[1].objects[ListIndex::new(0)].production.is_none());
 }
 
@@ -9041,7 +9037,7 @@ fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
             .total
     };
     assert_eq!(queued(&two), 2);
-    assert_eq!(two.players[0].resources[0], 100.0 - 2.0 * 46.0);
+    assert_eq!(two.players[0].attributes[0], 100.0 - 2.0 * 46.0);
     assert_eq!(
         two.streams.get(Stream::Action).draws,
         one.streams.get(Stream::Action).draws + 1
@@ -9110,7 +9106,7 @@ fn a_computer_player_s_housed_building_cancels_its_queue() {
     t.tick_with(Millis::new(104), &[queue(9, 83, 1)]);
     let p = &t.players[0];
     assert_eq!(
-        (p.resources[0], p.attributes[80], p.attributes[81]),
+        (p.attributes[0], p.attributes[80], p.attributes[81]),
         (1000.0, 0.0, 0.0)
     );
     let production = p.objects[ListIndex::new(0)].production.as_ref().unwrap();
@@ -14588,8 +14584,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
                     ..Unit::default()
                 }]
                 .into(),
-                resources: [200.0, 100.0, 200.0, 100.0],
-                attributes: vec![0.0; 250],
+                attributes: crate::test_ids::attributes(250, [200.0, 100.0, 200.0, 100.0]),
                 ..Player::default()
             },
         ],
@@ -14678,8 +14673,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
                         ..Unit::default()
                     }]
                     .into(),
-                    resources: [200.0, 100.0, 200.0, 100.0],
-                    attributes: vec![0.0; 250],
+                    attributes: crate::test_ids::attributes(250, [200.0, 100.0, 200.0, 100.0]),
                     ..Player::default()
                 },
             ],
@@ -14825,8 +14819,7 @@ fn reseed_world() -> World {
             Player::default(),
             Player {
                 objects: vec![farmer].into(),
-                resources: [0.0, 100.0, 0.0, 0.0],
-                attributes: vec![0.0; 250],
+                attributes: crate::test_ids::attributes(250, [0.0, 100.0, 0.0, 0.0]),
                 ..Player::default()
             },
         ],
@@ -14846,7 +14839,7 @@ fn a_farmer_whose_farm_ran_out_reseeds_it_with_the_automatic_queue() {
     t.reseed_after_walk(PlayerId::new(1), ListIndex::new(0), true)
         .unwrap();
     let p = &t.players[1];
-    assert_eq!(p.resources[1], 40.0);
+    assert_eq!(p.attributes[1], 40.0);
     assert_eq!(p.farm_queue, 0);
     let foundation = p.objects.last().unwrap();
     assert_eq!(
@@ -14873,12 +14866,12 @@ fn a_reseed_takes_a_queued_farm() {
     for (auto, wood) in [(false, 100.0), (true, 59.0)] {
         let mut t = reseed_world();
         t.players[1].auto_farm_queue = auto;
-        t.players[1].resources[1] = wood;
+        t.players[1].attributes[1] = wood;
         t.players[1].farm_queue = 2;
         t.reseed_after_walk(PlayerId::new(1), ListIndex::new(0), true)
             .unwrap();
         let p = &t.players[1];
-        assert_eq!((p.resources[1], p.farm_queue), (wood, 1));
+        assert_eq!((p.attributes[1], p.farm_queue), (wood, 1));
         assert_eq!(p.objects.last().unwrap().life.master_id, ids::FARM);
     }
 }
@@ -14901,12 +14894,12 @@ fn without_a_farm_to_make_the_farmer_idles() {
     );
     let mut t = reseed_world();
     t.players[1].auto_farm_queue = true;
-    t.players[1].resources[1] = 59.0;
+    t.players[1].attributes[1] = 59.0;
     t.players[1].computer = true;
     t.reseed_after_walk(PlayerId::new(1), ListIndex::new(0), true)
         .unwrap();
     let p = &t.players[1];
-    assert_eq!((p.objects.len(), p.resources[1]), (1, 59.0));
+    assert_eq!((p.objects.len(), p.attributes[1]), (1, 59.0));
     assert_eq!(
         p.objects[ListIndex::new(0)]
             .actions
@@ -14976,7 +14969,7 @@ fn a_fishing_ship_reseeds_a_fish_trap() {
     t.players[1].fish_trap_queue = 2;
     assert_eq!(t.reseed(PlayerId::new(1), ListIndex::new(0)), Ok(true));
     let p = &t.players[1];
-    assert_eq!((p.resources[1], p.fish_trap_queue), (100.0, 1));
+    assert_eq!((p.attributes[1], p.fish_trap_queue), (100.0, 1));
     let trap = p.objects.last().unwrap();
     assert_eq!(
         (trap.life.master_id, trap.position()),
@@ -14987,7 +14980,7 @@ fn a_fishing_ship_reseeds_a_fish_trap() {
     t.players[1].auto_fishtrap_queue = true;
     assert_eq!(t.reseed(PlayerId::new(1), ListIndex::new(0)), Ok(true));
     let p = &t.players[1];
-    assert_eq!((p.resources[1], p.fish_trap_queue), (40.0, 0));
+    assert_eq!((p.attributes[1], p.fish_trap_queue), (40.0, 0));
 }
 
 /// The farm's placement test passes over the gather's old target (the spent farm 12557 on the
@@ -15076,8 +15069,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
                     ..Unit::default()
                 }]
                 .into(),
-                resources: [200.0, 100.0, 200.0, 100.0],
-                attributes: vec![0.0; 250],
+                attributes: crate::test_ids::attributes(250, [200.0, 100.0, 200.0, 100.0]),
                 ..Player::default()
             },
         ],
@@ -15398,14 +15390,14 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
     t.tick_with(Millis::new(50), &[build(vec![9181])]);
     let p = &t.players[1];
     assert_eq!(
-        (p.resources, p.objects.len()),
+        (p.resources(), p.objects.len()),
         ([200.0, 100.0, 200.0, 100.0], 1)
     );
     assert_eq!(t.next_object_id, object_id(10028));
     assert_eq!(p.freezes, vec![]);
     t.tick_with(Millis::new(50), &[build(vec![9181, 9175])]);
     let p = &t.players[1];
-    assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
+    assert_eq!(p.resources(), [200.0, 75.0, 200.0, 100.0]);
     assert_eq!(p.objects.last().map(|f| f.id.get()), Some(10028));
     assert_eq!(
         p.objects[ListIndex::new(0)]
@@ -16081,7 +16073,7 @@ fn a_forager_fills_up_carries_its_berries_home_and_comes_back() {
             GatherState::Work
         ]
     );
-    assert_eq!(t.players[1].resources[0], 10.0);
+    assert_eq!(t.players[1].attributes[0], 10.0);
     let g = t.players[1].objects[ListIndex::new(0)]
         .actions
         .gather()
@@ -16173,7 +16165,7 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
                 != Some(GatherState::Drop)
         };
         forage_until(&mut t, 400, dropped);
-        assert_eq!(t.players[1].resources[0], 10.0);
+        assert_eq!(t.players[1].attributes[0], 10.0);
         t.players[1].objects[ListIndex::new(0)]
             .actions
             .gather()
@@ -16209,7 +16201,7 @@ fn dropped_without_a_bush(setup: impl FnOnce(&mut World)) -> World {
             != Some(GatherState::Drop)
     };
     forage_until(&mut t, 400, dropped);
-    assert_eq!(t.players[1].resources[0], 10.0);
+    assert_eq!(t.players[1].attributes[0], 10.0);
     t
 }
 
@@ -17752,7 +17744,7 @@ pub(crate) fn repairing(at: Position) -> World {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = at;
     v.body.put_mover(Some(mover));
-    t.players[1].resources = [100.0; 4];
+    t.players[1].attributes[..4].copy_from_slice(&[100.0; 4]);
     t.build_mesh().unwrap();
     t
 }
@@ -17848,7 +17840,7 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
         (house.life.hp, house.repairers(), house.workers),
         (HitPoints::new(309.947_57), 1, 1)
     );
-    assert_eq!(t.players[1].resources, [100.0; 4]);
+    assert_eq!(t.players[1].resources(), [100.0; 4]);
 }
 
 /// A repair pays from what its owner holds when it pays, within the update (`FUN_141618db0` on
@@ -17873,7 +17865,7 @@ fn a_repair_pays_from_what_its_owner_holds_at_the_payment() {
         (PlayerId::new(1), ListIndex::new(0)),
         50,
         |unit, c| {
-            c.w.players[1].resources[1] = 0.0;
+            c.w.players[1].attributes[1] = 0.0;
             let me = crate::movement::Me {
                 id: unit.id,
                 group: unit.group.id,
@@ -17885,7 +17877,7 @@ fn a_repair_pays_from_what_its_owner_holds_at_the_payment() {
     )
     .unwrap();
     let house = &t.players[1].objects[ListIndex::new(1)];
-    assert_eq!((house.life.hp, t.players[1].resources[1]), (hp, 0.0));
+    assert_eq!((house.life.hp, t.players[1].attributes[1]), (hp, 0.0));
 }
 
 /// The Repair's payment, its end and another player's target ([`Unit::repair_part`]): with a
@@ -17912,7 +17904,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
         t.players[1].objects[ListIndex::new(1)].life.hp,
         HitPoints::new(302.449_4)
     );
-    assert_eq!(t.players[1].resources, [100.0, 99.888_596, 100.0, 100.0]);
+    assert_eq!(t.players[1].resources(), [100.0, 99.888_596, 100.0, 100.0]);
     // a castle (650 stone, 4800 hit points) pays its share in stone
     let mut t = repairing(near);
     for masters in &mut t.masters {
@@ -17949,7 +17941,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
         t.players[1].objects[ListIndex::new(1)].life.hp,
         HitPoints::new(3_002.440_4)
     );
-    assert_eq!(t.players[1].resources, [100.0, 100.0, 99.668_03, 100.0]);
+    assert_eq!(t.players[1].resources(), [100.0, 100.0, 99.668_03, 100.0]);
     let mut t = repairing(near);
     let house = &mut t.players[1].objects[ListIndex::new(1)];
     (house.life.hp, house.armor_removed) = (HitPoints::new(549.0), [3, 4]);
@@ -18147,7 +18139,7 @@ fn repaired_by(n: usize) -> [(f32, f32); 2] {
     let seen = |t: &World| {
         (
             t.players[1].objects[ListIndex::new(1)].life.hp.get(),
-            t.players[1].resources[1],
+            t.players[1].attributes[1],
         )
     };
     (0..10).for_each(|_| update(&mut t));
@@ -18342,7 +18334,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
             (344, (BuildState::Place, None, None, 0.0)),
         ]
     );
-    assert_eq!(t.players[1].resources[0], 6.0);
+    assert_eq!(t.players[1].attributes[0], 6.0);
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)].life.attribute_type,
         None

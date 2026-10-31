@@ -417,14 +417,14 @@ mod tests {
             ..Master::default()
         };
         let mut t = world();
-        t.players[1].resources = [0.0, 1000.0, 0.0, 0.0];
+        t.players[1].attributes[..4].copy_from_slice(&[0.0, 1000.0, 0.0, 0.0]);
         let masters = Masters::new([
             costing(FARM, 60),
             costing(PASTURE, 100),
             costing(FISH_TRAP, 100),
         ]);
         t.masters = vec![Masters::new([]), masters];
-        let wood = |t: &World| t.players[1].resources[1];
+        let wood = |t: &World| t.players[1].attributes[1];
         t.game(&game(1, sub::FARM_QUEUE, 1, 2, 0)).unwrap();
         assert_eq!((t.players[1].farm_queue, wood(&t)), (2, 880.0));
         t.game(&game(1, sub::PASTURE_QUEUE, 1, 1, 0)).unwrap();

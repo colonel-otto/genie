@@ -1803,7 +1803,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
     assert_eq!(v.life.inside, Some(object_id(100)));
     assert_eq!(v.life.held(), carrying(None, 0.0));
     let p = &t.players[1];
-    assert_eq!((p.resources[0], p.attributes[166]), (6.0, 6.0));
+    assert_eq!((p.attributes[0], p.attributes[166]), (6.0, 6.0));
     let (r, t) = enters_the_centre(with_food);
     assert_eq!(r, Ok(()));
     let v = t.object(object_id(400)).unwrap().1;

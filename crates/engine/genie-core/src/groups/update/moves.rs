@@ -418,7 +418,7 @@ impl World {
             .unwrap_or_default();
         self.refresh_gaits(members);
         let computer = self.players.player(p)?.computer;
-        let construction_rate = self.players.player(p)?.construction_rate;
+        let construction_rate = self.players.player(p)?.construction_rate();
         let unit = self.players.live_mut(p, idx)?;
         let me = Me {
             id,

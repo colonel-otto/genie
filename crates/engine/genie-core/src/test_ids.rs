@@ -104,6 +104,14 @@ pub(crate) const fn carrying(kind: Option<AttributeId>, amount: f32) -> Held {
     }
 }
 
+/// A player's `n` attributes (at least the four resources): food, wood, stone and gold from
+/// `resources`, the rest 0.
+pub(crate) fn attributes(n: usize, resources: [f32; 4]) -> Vec<f32> {
+    let mut a = vec![0.0; n.max(4)];
+    a[..4].copy_from_slice(&resources);
+    a
+}
+
 /// A master's cost slots of `entries` in their order, the slots after them empty.
 pub(crate) fn costs(entries: &[(AttributeId, i16, bool)]) -> [CostSlot; COST_SLOTS] {
     assert!(entries.len() <= COST_SLOTS, "a master has three cost slots");

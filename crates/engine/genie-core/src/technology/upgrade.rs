@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(v.life.held(), carrying(None, 0.0));
         let a = &t.players[0].attributes;
         assert_eq!((a[37], a[40]), (0.0, 1.0));
-        assert_eq!(t.players[0].resources[0], 10.0);
+        assert_eq!(t.players[0].attributes[0], 10.0);
         assert_eq!(
             t.masters[0].get(ids::VILLAGER_MALE).map(|m| m.class),
             Some(class::VILLAGER)
@@ -1447,7 +1447,7 @@ mod tests {
             let v = &t.players[0].objects[ListIndex::new(0)];
             (
                 v.life.held(),
-                [t.players[0].resources[0], t.players[0].resources[1]],
+                [t.players[0].attributes[0], t.players[0].attributes[1]],
                 t.players[0].attributes[37],
             )
         };

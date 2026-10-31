@@ -175,7 +175,7 @@ pub fn repair_unit(
 }
 
 /// A repairer's player's attributes as its repair pays from them ([`crate::construction::repair::Payer`]):
-/// the resources (`Player::resources`) and the other attributes as the repair reads them, each
+/// the attributes as the repair reads them, each
 /// payment kept as an add the caller makes the owner's right after the repair's step (a
 /// subtraction, so the player's value comes out as the repair saw it).
 pub(crate) struct PaidAttributes {
@@ -184,15 +184,9 @@ pub(crate) struct PaidAttributes {
 }
 
 impl PaidAttributes {
-    pub(crate) fn new(resources: [f32; 4], attributes: &[f32]) -> Self {
-        let mut values = attributes.to_vec();
-        for (i, r) in resources.into_iter().enumerate() {
-            if let Some(v) = values.get_mut(i) {
-                *v = r;
-            }
-        }
+    pub(crate) fn new(attributes: &[f32]) -> Self {
         Self {
-            values,
+            values: attributes.to_vec(),
             adds: Vec::new(),
         }
     }

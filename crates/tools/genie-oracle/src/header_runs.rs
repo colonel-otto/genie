@@ -23,10 +23,6 @@ use genie_save::{Header, PlayerSection};
 /// `doc/reverse_engineering/game_mechanics/formations.md` describes for `AoC`).
 pub const GROUP_COMMANDS: [u8; 7] = [0x00, 0x02, 0x03, 0x17, 0x1f, 0x66, 0x6e];
 
-/// The player attribute of the construction rate modifier (195; the work reads it at player
-/// attributes `+0x618`, eight bytes per attribute).
-pub(super) const CONSTRUCTION_RATE: usize = 195;
-
 /// A command that may create a unit group and so take the frame-seed chain out of the slice's model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GroupCommand {
@@ -140,7 +136,7 @@ pub fn simulate_word9(
 /// retarget timer.
 pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32; 11] {
     let mut state = player_totals(section, id);
-    state.resources = simulated.resources;
+    state.resources = simulated.resources();
     state.sleeping_count = simulated.sleeping.len() as u32;
     state.live = simulated
         .objects

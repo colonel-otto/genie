@@ -284,7 +284,7 @@ impl Unit {
                 now: c.w.world_time,
                 computer: c.w.players.player(c.player)?.computer,
                 object: c.w.streams.get(Stream::Object),
-                construction_rate: c.w.players.player(c.player)?.construction_rate,
+                construction_rate: c.w.players.player(c.player)?.construction_rate(),
                 groups: &c.w.groups,
             },
         };

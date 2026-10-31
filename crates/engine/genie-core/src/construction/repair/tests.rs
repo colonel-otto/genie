@@ -626,7 +626,7 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
     let mut t = repair_at(NEAR, working);
     t.players[1].attributes.resize(300, 0.0);
     t.players[1].attributes[BUILDING_REPAIR_COST] = 1.0;
-    t.players[1].resources = [0.0; 4];
+    t.players[1].attributes[..4].copy_from_slice(&[0.0; 4]);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
         heard(&t),

@@ -5,6 +5,7 @@ use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::object_list::ObjectList;
 use crate::players::PlayerId;
+use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::world::Seconds;
 use crate::world::World;
@@ -78,12 +79,8 @@ pub struct Player {
     /// `player+0x10`, the player's type (the save's class byte): 1 human, 2 Gaia, 3 computer
     /// (0 the scenario editor's phantom).
     pub kind: crate::players::PlayerType,
-    /// Food, wood, stone and gold (the player's attributes 0 to 3).
-    pub resources: [f32; 4],
-    /// Attribute 195, the construction rate modifier, which builders' work reads.
-    pub construction_rate: f32,
-    /// Every attribute as saved (the first four are `resources`, which the slice keeps); the
-    /// task finder reads attribute 95, the work command a task's enabling resource.
+    /// Every attribute (`player+0x100`, count `+0x90`): the first four are food, wood, stone and
+    /// gold ([`Player::resources`]).
     pub attributes: Vec<f32>,
     /// `+0x658` (saved, the save's second attribute array): per attribute what the player's
     /// generation tasks made and did not give yet ([`crate::combat::abilities::store`]).
@@ -200,23 +197,14 @@ pub(crate) const NO_ATTRIBUTE: GenieError =
     GenieError::unsupported("an attribute the player does not have");
 
 impl crate::technology::Attributes for Player {
-    /// An attribute's value (the resources' from [`Player::resources`]).
+    /// An attribute's value.
     fn get(&self, i: AttributeId) -> Result<f32, GenieError> {
-        let k = i.index();
-        self.resources
-            .get(k)
-            .or_else(|| self.attributes.get(k))
-            .copied()
-            .ok_or(NO_ATTRIBUTE)
+        self.attribute(i).ok_or(NO_ATTRIBUTE)
     }
 
     /// An attribute set to `v`, as a technology's payment writes it (no side effects).
     fn set(&mut self, i: AttributeId, v: f32) -> Result<(), GenieError> {
-        let k = i.index();
-        match self.resources.get_mut(k) {
-            Some(r) => *r = v,
-            None => *self.attributes.get_mut(k).ok_or(NO_ATTRIBUTE)? = v,
-        }
+        *self.attributes.get_mut(i.index()).ok_or(NO_ATTRIBUTE)? = v;
         Ok(())
     }
 }
@@ -244,29 +232,36 @@ impl Player {
         self.stopped = true;
     }
 
-    /// Attribute `attribute` (`player+0x100`, decoded; the first four are
-    /// [`Player::resources`]), None past its count (`+0x90`, the saved attributes').
+    /// Attribute `attribute` (`player+0x100`, decoded), None past its count (`+0x90`).
     #[must_use]
     pub fn attribute(&self, attribute: AttributeId) -> Option<f32> {
-        let i = attribute.index();
-        let value = self.attributes.get(i).copied()?;
-        Some(self.resources.get(i).copied().unwrap_or(value))
+        self.attributes.get(attribute.index()).copied()
+    }
+
+    /// Food, wood, stone and gold (attributes 0 to 3; 0 for one past the count), as the
+    /// checkpoint's word 1 reads them.
+    #[must_use]
+    pub fn resources(&self) -> [f32; 4] {
+        [0, 1, 2, 3].map(|i| self.attributes.get(i).copied().unwrap_or(0.0))
+    }
+
+    /// Attribute 195, the construction rate modifier ([`attribute::CONSTRUCTION_RATE`]), 0 past
+    /// the count.
+    #[must_use]
+    pub fn construction_rate(&self) -> f32 {
+        self.attribute(attribute::CONSTRUCTION_RATE).unwrap_or(0.0)
     }
 
     /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows
     /// by `amount` (`FUN_14165d040`; the peak of attribute 11, `+0x6fc`, and the resource events of
-    /// `FUN_140c898a0` are not held). Food, wood, stone and gold are the slice's `resources`; the
-    /// attributes whose change has side effects (50, 183, 196) are not modelled.
+    /// `FUN_140c898a0` are not held). The attributes whose change has side effects (50, 183, 196)
+    /// are not modelled.
     pub fn add_attribute(&mut self, kind: AttributeId, amount: f32) -> Result<(), GenieError> {
         let i = kind.index();
         match i {
             50 | 183 | 196 => Err(GenieError::unsupported(
                 "an attribute whose change has side effects",
             )),
-            0..=3 => {
-                *self.resources.get_mut(i).ok_or(NO_ATTRIBUTE)? += amount;
-                Ok(())
-            }
             _ => {
                 let v = self.attributes.get_mut(i).ok_or(NO_ATTRIBUTE)?;
                 *v += amount;
@@ -283,20 +278,12 @@ impl Player {
     /// [`Player::add_attribute`]'s.
     pub fn take_at_least_zero(&mut self, kind: AttributeId, amount: f32) -> Result<(), GenieError> {
         self.add_attribute(kind, -amount)?;
-        if let Some(v) = self.value_mut(kind.index())
+        if let Some(v) = self.attributes.get_mut(kind.index())
             && *v < 0.0
         {
             *v = 0.0;
         }
         Ok(())
-    }
-
-    /// Attribute `i`'s value: food, wood, stone and gold are `resources`.
-    fn value_mut(&mut self, i: usize) -> Option<&mut f32> {
-        match i {
-            0..=3 => self.resources.get_mut(i),
-            _ => self.attributes.get_mut(i),
-        }
     }
 
     /// [`Player::add_attribute`] for each of `adds`, in order.

@@ -697,10 +697,10 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
     run(&mut t, PlayerId::new(1), 50);
     let made = 0.5_f32 * 1.6 * 1.0;
     assert_eq!(t.players[1].generated[0], made);
-    assert_eq!(t.players[1].resources[0], 0.0);
+    assert_eq!(t.players[1].attributes[0], 0.0);
     run(&mut t, PlayerId::new(1), 50);
     let given = made + made;
-    assert_eq!(t.players[1].resources[0], given);
+    assert_eq!(t.players[1].attributes[0], given);
     assert_eq!(t.players[1].attributes[166], given);
     assert_eq!(t.players[1].generated[0], 0.0);
     // unbuilt, nothing
@@ -780,7 +780,7 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     );
     run(&mut t, PlayerId::new(1), 60);
     let given = 0.5_f32 * 0.01 * 0.5 + 0.999;
-    assert_eq!(t.players[1].resources[3], given);
+    assert_eq!(t.players[1].attributes[3], given);
     assert_eq!(t.players[1].attributes[49], given);
     assert_eq!(t.players[1].attributes[169], given);
     assert_eq!(t.players[1].generated[3], 0.0);
@@ -1055,16 +1055,22 @@ fn an_object_of_another_type_has_no_abilities() {
     assert_eq!(rewards(&mut t, PlayerId::new(1), 90, true), Vec::new());
 }
 
-/// `FUN_1416625b0`: an attribute below the player's count, the resources' from the slice's
-/// own (food, wood, stone and gold); none past it.
+/// `FUN_1416625b0`: an attribute below the player's count, none past it; the resources are the
+/// first four attributes, and the construction rate attribute 195 (0 past the count).
 #[test]
-fn a_player_s_attribute_reads_the_resources_first() {
-    let p = Player {
-        resources: [1.0, 2.0, 3.0, 4.0],
-        attributes: vec![9.0; 6],
+fn a_player_s_attribute_reads_its_place_and_none_past_the_count() {
+    let mut p = Player {
+        attributes: crate::test_ids::attributes(6, [1.0, 2.0, 3.0, 4.0]),
         ..Player::default()
     };
+    p.attributes[5] = 9.0;
     assert_eq!(p.attribute(attribute::STONE), Some(3.0));
     assert_eq!(p.attribute(AttributeId::numbered(5)), Some(9.0));
     assert_eq!(p.attribute(attribute::CURRENT_AGE), None);
+    assert_eq!(p.resources(), [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(p.construction_rate(), 0.0);
+    p.attributes.resize(196, 0.0);
+    p.attributes[attribute::CONSTRUCTION_RATE.index()] = 1.5;
+    assert_eq!(p.construction_rate(), 1.5);
+    assert_eq!(Player::default().resources(), [0.0; 4]);
 }

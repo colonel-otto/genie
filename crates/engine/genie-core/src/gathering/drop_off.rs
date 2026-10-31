@@ -305,7 +305,7 @@ impl Unit {
             object: c.w.streams.get(Stream::Object),
             world_time: c.w.world_time,
             computer: c.w.players.player(c.player)?.computer,
-            construction_rate: c.w.players.player(c.player)?.construction_rate,
+            construction_rate: c.w.players.player(c.player)?.construction_rate(),
             groups: &c.w.groups,
         };
         let others = OthersRef::of(&c.w.players, c.player)?;

@@ -399,7 +399,7 @@ fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
         let v = builder(&t);
         // the four resources live apart from the other attributes
         let gained: Vec<(usize, f32)> = (0..4)
-            .map(|k| (k, t.players[1].resources[k]))
+            .map(|k| (k, t.players[1].attributes[k]))
             .filter(|&(_, a)| a != 0.0)
             .collect();
         (gained, v.life.held())
@@ -1066,7 +1066,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     let ai = builder(&t).ai.as_ref().unwrap();
     assert_eq!((ai.current_order, ai.current_action), (None, None));
     assert_eq!((house(&t).0, house(&t).1), (0, 0));
-    assert_eq!(t.players[1].resources[0], 7.0);
+    assert_eq!(t.players[1].attributes[0], 7.0);
     assert_eq!(builder(&t).life.attribute_type, None);
     assert!(stands(&t));
 }
@@ -1398,7 +1398,7 @@ fn wood(t: &World) -> (f32, f32, i32) {
         .map_or(-1, |m| m.workers);
     (
         builder(t).life.amount.get(),
-        t.players[1].resources[1],
+        t.players[1].attributes[1],
         mill,
     )
 }

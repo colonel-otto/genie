@@ -269,7 +269,7 @@ pub(crate) fn repair_target(
             .ok_or(GenieError::missing_data("a repairer's player's masters"))?;
     // what the owner holds now: the update may have paid or gained before the repair
     let owner = c.w.players.player(player)?;
-    let mut paid = PaidAttributes::new(owner.resources, &owner.attributes);
+    let mut paid = PaidAttributes::new(&owner.attributes);
     let mut payer = crate::construction::repair::Payer {
         masters,
         attributes: &mut paid,

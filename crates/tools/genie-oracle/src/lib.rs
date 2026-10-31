@@ -106,13 +106,11 @@ pub use self::forced_replay::{
 pub use self::game_tables::{DropSitesError, UnitLinesError, drop_sites, linked_techs, unit_lines};
 #[cfg(test)]
 use self::header_runs::checkpoint_action;
-use self::header_runs::{
-    CONSTRUCTION_RATE, header_slice, lane_block, run, top_action, watch_at_load,
-};
 pub use self::header_runs::{
     GROUP_COMMANDS, GroupCommand, Word9, Word9Terms, blocks_per_tick, header_run, simulate_word9,
     slice_from_header, trace_commands, word9_terms,
 };
+use self::header_runs::{header_slice, lane_block, run, top_action, watch_at_load};
 use self::map_and_sight::{SavedStep, spatial, tile_differences};
 pub use self::map_and_sight::{saved_visibility, terrain_differences, visibility_differences};
 use self::movers::{animated_master, mover, moving_master, path_level, vec3};

@@ -528,7 +528,7 @@ mod tests {
                 amount: Amount::new(1.5)
             })
         );
-        assert_eq!(owner.resources, [0.0, 2.0, 0.0, 0.0]);
+        assert_eq!(owner.resources(), [0.0, 2.0, 0.0, 0.0]);
         let gained: Vec<(usize, f32)> = owner
             .attributes
             .iter()
@@ -536,7 +536,7 @@ mod tests {
             .enumerate()
             .filter(|&(_, v)| v != 0.0)
             .collect();
-        assert_eq!(gained, [(11, 5.0), (12, 3.0)]);
+        assert_eq!(gained, [(1, 2.0), (11, 5.0), (12, 3.0)]);
         assert_eq!(static_storage(&mut owner, &[]), Ok(Held::default()));
     }
 }

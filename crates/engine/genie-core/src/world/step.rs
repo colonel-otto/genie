@@ -221,7 +221,7 @@ impl Step<'_> {
             dt: self.dt.seconds(),
             now: self.w.world_time,
             computer: self.w.players[self.player.index()].computer,
-            construction_rate: self.w.players[self.player.index()].construction_rate,
+            construction_rate: self.w.players[self.player.index()].construction_rate(),
         }
     }
 }
@@ -245,7 +245,7 @@ impl Step<'_> {
                     now: self.w.world_time,
                     computer: self.w.players[self.player.index()].computer,
                     object,
-                    construction_rate: self.w.players[self.player.index()].construction_rate,
+                    construction_rate: self.w.players[self.player.index()].construction_rate(),
                     groups: &self.w.groups,
                 }),
             },

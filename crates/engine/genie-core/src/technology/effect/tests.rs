@@ -1050,7 +1050,7 @@ fn the_resource_commands_set_add_and_multiply_an_attribute() {
         .unwrap();
     let a = &t.players[0].attributes;
     assert_eq!(
-        (a[78], a[36], t.players[0].resources[3]),
+        (a[78], a[36], t.players[0].attributes[3]),
         (0.3, 150.0, 50.0)
     );
 }

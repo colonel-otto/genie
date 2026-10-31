@@ -10,7 +10,7 @@ use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
 
 use crate::masters::{MasterTable, TerrainTable};
-use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
+use crate::{groups, market, spatial, unit, work_masters};
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
@@ -102,7 +102,6 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         .map(|(i, p)| {
             let civ = p.world_player().base.civ_id;
             let attributes = &p.world_player().base.attributes;
-            let resource = |i: usize| attributes.get(i).copied().unwrap_or_default();
             Player {
                 objects: p
                     .live_objects()
@@ -132,8 +131,6 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                     .collect(),
                 computer: false,
                 kind: genie_core::players::PlayerType::from(p.player.type_),
-                resources: [resource(0), resource(1), resource(2), resource(3)],
-                construction_rate: resource(CONSTRUCTION_RATE),
                 attributes: attributes.clone(),
                 // the second attribute array (+0x658), floats as their bits
                 generated: p
