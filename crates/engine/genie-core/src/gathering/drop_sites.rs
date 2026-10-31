@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
@@ -122,7 +123,8 @@ impl Seeker<'_, '_> {
 }
 /// The squared footprint gap within which a fishing ship counts a drop site its path does not
 /// reach (`DAT_14330ebcc`).
-pub(crate) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
+pub(crate) const FISHING_REACH: DistanceSquared =
+    DistanceSquared::new(crate::math::image::turn::FISHING_REACH);
 
 /// Whether the planner's result `code` lets a drop site count in [`drop_site_search`]: a path
 /// to it or into its range (below 2), or for a fishing ship seeking by path one the planner

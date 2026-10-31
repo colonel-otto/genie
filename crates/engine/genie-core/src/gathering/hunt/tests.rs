@@ -285,7 +285,7 @@ fn tree() -> Quarry {
 
 fn engagement() -> Engagement {
     Engagement {
-        gap_squared: 3.726 * 3.726,
+        gap_squared: DistanceSquared::new(3.726 * 3.726),
         gap: Distance::new(3.726),
         position: Position::new(20.774, 97.5, 0.0),
         target_position: Position::new(24.5, 97.5, 0.0),
@@ -407,7 +407,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
         ..tree()
     };
     let close = Engagement {
-        gap_squared: 0.005 * 0.005,
+        gap_squared: DistanceSquared::new(0.005 * 0.005),
         gap: Distance::new(0.005),
         target_position: beside.position,
         ..engagement()
@@ -1451,7 +1451,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
 /// one unprepared is not modelled.
 #[test]
 fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
-    let herd = |site: Option<(ObjectId, f32)>, idle| Herd {
+    let herd = |site: Option<(ObjectId, DistanceSquared)>, idle| Herd {
         own: true,
         drop_site: site,
         engagement: engagement(),
@@ -1488,7 +1488,10 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     let led = face(
         &mut h,
         sheep(ObjectState::Alive),
-        Some(herd(Some((object_id(500), 16.0)), false)),
+        Some(herd(
+            Some((object_id(500), DistanceSquared::new(16.0))),
+            false,
+        )),
     );
     assert_eq!(led, Ok(HuntNext::Stay));
     assert_eq!(
@@ -1502,7 +1505,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
         )
     );
     for (gap_squared, moved, state) in [
-        (4.0, false, HuntState::Attack),
+        (DistanceSquared::new(4.0), false, HuntState::Attack),
         (HERD_FAR, false, HuntState::Attack),
         (HERD_FAR, true, HuntState::Lead),
     ] {
@@ -1568,7 +1571,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     rig.t.players[1].attributes = vec![0.0; 230];
     let site = DropOff {
         takes: true,
-        gap_squared: 0.5,
+        gap_squared: DistanceSquared::new(0.5),
     };
     let who = PointWalker {
         computer: false,
@@ -1625,7 +1628,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     // at the wait's end it tries again
     hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let far = DropOff {
-        gap_squared: 1.5,
+        gap_squared: DistanceSquared::new(1.5),
         ..site
     };
     rig.unit_mut().body.set_anim_speed(1.0);

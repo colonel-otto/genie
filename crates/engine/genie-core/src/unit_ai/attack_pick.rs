@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -409,11 +410,11 @@ pub(super) const DEFEND_GROWTH: f32 = crate::math::image::unit_ai::DEFEND_GROWTH
 
 /// The squared gap between a point and an object's footprint (`FUN_140a847c0`: per axis the
 /// distance less the radius, `MAXSS 0` of it, so a gap that is not a number stays one).
-pub(super) fn point_gap_squared(point: Point, at: Position, radius: Footprint) -> f32 {
+pub(super) fn point_gap_squared(point: Point, at: Position, radius: Footprint) -> DistanceSquared {
     let gap = |d: f32, r: f32| crate::math::fmath::maxss(0.0, d.abs() - r);
     let x = gap(point.x() - at.x(), radius.x());
     let y = gap(point.y() - at.y(), radius.y());
-    y * y + x * x
+    DistanceSquared::new(y * y + x * x)
 }
 
 impl Attacker {
@@ -515,7 +516,7 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     let reach = me.range_against()? + STANCE_RANGE_GROWTH;
     match s.stance {
         UnitStance::STAND_GROUND
-            if !matches!(s.order, Some(OrderKind::Defend)) && reach.squared().get() < d2 =>
+            if !matches!(s.order, Some(OrderKind::Defend)) && reach.squared() < d2 =>
         {
             return Ok(false);
         }
@@ -524,7 +525,7 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
                 defend_patrol_range()?;
             }
             let reach = reach + Distance::new(DEFEND_GROWTH);
-            if reach.squared().get() < d2 {
+            if reach.squared() < d2 {
                 return Ok(false);
             }
         }

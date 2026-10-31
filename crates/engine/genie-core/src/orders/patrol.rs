@@ -241,7 +241,7 @@ impl World {
             t.position(),
             tm.radius,
         );
-        Ok(master.line_of_sight.squared().get() < gap)
+        Ok(master.line_of_sight.squared() < gap)
     }
 
     /// `FUN_140fd9f40` (the patrol's without a target, INTERACT's and MOVE's with the one the world

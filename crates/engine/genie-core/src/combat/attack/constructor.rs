@@ -8,6 +8,7 @@ use crate::combat::attack::{
     MASTER_1704, MASTER_1706, NONE, Posted, face_target,
 };
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -396,7 +397,7 @@ pub fn engagement(
     let (gap_squared, gap) = gaps(me.position, me.radius, them.position, them.radius);
     Ok(Engagement {
         gap_squared,
-        gap: Distance::new(gap),
+        gap,
         position: me.position,
         target_position: them.position,
         speed,
@@ -415,7 +416,12 @@ pub fn engagement(
 
 /// The gap between two footprints, for an [`Engagement`].
 #[must_use]
-pub fn gaps(a: Position, a_radius: Footprint, b: Position, b_radius: Footprint) -> (f32, f32) {
+pub fn gaps(
+    a: Position,
+    a_radius: Footprint,
+    b: Position,
+    b_radius: Footprint,
+) -> (DistanceSquared, Distance) {
     let squared = footprint_gap_squared(a, a_radius, b, b_radius);
-    (squared, footprint_gap(a, a_radius, b, b_radius).get())
+    (squared, footprint_gap(a, a_radius, b, b_radius))
 }

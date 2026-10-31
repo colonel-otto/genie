@@ -211,7 +211,7 @@ impl World {
         }
         let gap = self.footprint_gap_squared(unit, target)?;
         let range = weapon_range(master);
-        Ok(gap <= range.squared().get() && master.min_range.squared().get() <= gap)
+        Ok(gap <= range.squared() && master.min_range.squared() <= gap)
     }
 
     /// Slot 0x208 of a unit of player `player` (`FUN_141202c70`): its top speed, which the

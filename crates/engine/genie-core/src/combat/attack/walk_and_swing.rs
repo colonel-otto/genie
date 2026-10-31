@@ -85,7 +85,8 @@ impl Attack {
             .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let at = unit.body.position();
         let reach = squared_reach(self.range);
-        if reach.abs() <= EPSILON || reach < footprint_gap_squared(at, ground, target, radius) {
+        if reach.get().abs() <= EPSILON || reach < footprint_gap_squared(at, ground, target, radius)
+        {
             return Ok(0);
         }
         self.ready(unit, &mut c.w.attack_ground(), f, r)?;

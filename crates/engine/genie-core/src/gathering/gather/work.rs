@@ -202,7 +202,7 @@ impl GatherAction {
             self.set_idle(c, unit, r);
             return Ok(Dropped::Idle);
         }
-        if DROP_REACH < site.gap_squared {
+        if DROP_REACH < site.gap_squared.get() {
             self.random_wait(c, unit);
             return Ok(Dropped::Going);
         }

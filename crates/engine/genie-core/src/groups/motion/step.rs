@@ -5,6 +5,7 @@ use crate::groups::motion::{
     CLOSE, EPSILON, GroupView, Lead, LeadGroup, NEAR, PASSES, looping_next, point, request,
     reset_level, set_flag, steer,
 };
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
@@ -112,7 +113,7 @@ pub(super) fn pass(
     };
     let at = motion.position[0];
     // `fVar39`: the target's footprint gap to the group's place, squared (FUN_140a847c0)
-    let target_gap2 = target.as_ref().map_or(f32::MAX, |t| {
+    let target_gap2 = target.as_ref().map_or(DistanceSquared::MAX, |t| {
         footprint_gap_squared(
             t.position,
             t.radius,

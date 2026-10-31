@@ -182,7 +182,7 @@ impl UnitAi {
         let leash = h.leash * h.leash;
         if 0.0 < leash {
             let gap = point_gap_squared(h.origin.ground(), at.position, at.size);
-            if leash < gap {
+            if leash < gap.get() {
                 if let Some(m) = self.move_to(go_home) {
                     side.effect_now(Effect::Move(m), self, ai)?;
                 }
@@ -322,7 +322,7 @@ impl UnitAi {
         let Some(t) = side.seen_unit(id)? else {
             return Ok(false);
         };
-        if Distance::ZERO <= reach && reach.squared().get() < t.gap_squared {
+        if Distance::ZERO <= reach && reach.squared() < t.gap_squared {
             return Ok(false);
         }
         let _ = self.attack_object(id, false, false, at, side)?;

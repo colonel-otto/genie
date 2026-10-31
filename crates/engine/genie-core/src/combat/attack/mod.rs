@@ -14,6 +14,7 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
@@ -82,7 +83,7 @@ const NO_RANGE: f32 = 0.1;
 const HALF: f32 = 0.5;
 /// The squared reach of an attack without a range (`DAT_142ed48e4`): `0x3c23d70b`, which is
 /// `0.1f * 0.1f`, one ULP above `0.01f`.
-const TOUCH: f32 = crate::math::image::attack::TOUCH;
+const TOUCH: DistanceSquared = DistanceSquared::new(crate::math::image::attack::TOUCH);
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::math::image::attack::EPSILON;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
@@ -223,7 +224,7 @@ struct Begun {
 #[derive(Clone, Copy, Debug)]
 pub struct Engagement {
     /// The gap between the two footprints squared (`FUN_14118f8c0`) and its root (`FUN_14118f680`).
-    pub gap_squared: f32,
+    pub gap_squared: DistanceSquared,
     /// The gap's root (`FUN_14118f680`).
     pub gap: Distance,
     /// The unit's and the target's positions.

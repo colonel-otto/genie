@@ -9,6 +9,7 @@ use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
 use crate::groups::{GroupTarget, TargetData, UnitGroup, WorldObject};
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::math::fmath;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
@@ -264,14 +265,14 @@ impl World {
         }
         let against = self.range_against(WorldObject::Unit(p, u), Some(t))?;
         let reach_squared = if reach < 0.0 {
-            against.squared().get()
+            against.squared()
         } else {
-            reach * reach
+            DistanceSquared::new(reach * reach)
         };
         if *range < reach {
             *range = reach;
         }
-        Ok(gap <= reach_squared && master.min_range.squared().get() <= gap)
+        Ok(gap <= reach_squared && master.min_range.squared() <= gap)
     }
 
     /// `FUN_1415cd0d0` of the member master `master` of player `player` with the order's task

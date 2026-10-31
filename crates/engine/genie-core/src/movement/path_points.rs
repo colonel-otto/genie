@@ -1,6 +1,7 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -285,10 +286,10 @@ pub fn footprint_gap_squared(
     a_radius: Footprint,
     b: Position,
     b_radius: Footprint,
-) -> f32 {
+) -> DistanceSquared {
     let x = ((b.x() - a.x()).abs() - (a_radius.x() + b_radius.x())).max(0.0);
     let y = ((b.y() - a.y()).abs() - (a_radius.y() + b_radius.y())).max(0.0);
-    x * x + y * y
+    DistanceSquared::new(x * x + y * y)
 }
 
 /// The distance between two footprints on the ground (`FUN_14118f680`): per axis the centre

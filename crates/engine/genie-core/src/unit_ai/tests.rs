@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Tile;
@@ -323,7 +324,7 @@ impl UnitSide for HelpSide {
             combat_level: 0,
             state: ObjectState::DyingSprite,
             target: None,
-            gap_squared: 0.0,
+            gap_squared: DistanceSquared::ZERO,
             position: Position::new(101.5, 158.5, 0.0),
             hp: 0.0,
             master: ids::ID_0,
@@ -1596,7 +1597,7 @@ fn hit_boar() -> UnitAi {
     }
 }
 
-fn attacker(id: i32, class: ClassId, gap_squared: f32) -> UnitSeen {
+fn attacker(id: i32, class: ClassId, gap_squared: DistanceSquared) -> UnitSeen {
     UnitSeen {
         id: object_id(id),
         class,
@@ -1618,8 +1619,8 @@ fn a_boar_attacks_its_first_attacker_and_keeps_it() {
     let at = Surroundings {
         id: object_id(9729),
         units: vec![
-            attacker(10049, class::VILLAGER, 9.0),
-            attacker(10050, class::VILLAGER, 1.0),
+            attacker(10049, class::VILLAGER, DistanceSquared::new(9.0)),
+            attacker(10050, class::VILLAGER, DistanceSquared::new(1.0)),
         ],
         ..Surroundings::default()
     };
@@ -1679,7 +1680,7 @@ fn a_stop_before_an_attack_command_runs_first() {
     };
     let at = Surroundings {
         id: object_id(29825),
-        units: vec![attacker(27240, class::VILLAGER, 1.0)],
+        units: vec![attacker(27240, class::VILLAGER, DistanceSquared::new(1.0))],
         ..Surroundings::default()
     };
     let mut side = Recorder::default();
@@ -1747,7 +1748,7 @@ fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
         id: object_id(29823),
         class: Some(class::PREDATOR),
         combat_level,
-        units: vec![attacker(29001, class::VILLAGER, 1.0)],
+        units: vec![attacker(29001, class::VILLAGER, DistanceSquared::new(1.0))],
         ..Surroundings::default()
     };
     let n = Notify::own(object_id(29823), NotifyKind::IN_THE_WAY, [29001, -1, -1]);
@@ -1865,7 +1866,7 @@ impl UnitSide for LionSide {
 /// sight (outside mode 1) it attacks, not forced; finding none, any enemy within a third.
 #[test]
 fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
-    let run = |found: [i32; 2], gap_squared: f32| {
+    let run = |found: [i32; 2], gap_squared: DistanceSquared| {
         let mut lion = idle(UnitAiType::LION);
         let at = Surroundings {
             los: Distance::new(4.0),
@@ -1900,7 +1901,7 @@ fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
     };
     // a villager: the reach is 2 (half of 4); slot 0xb8 then gives 6 whatever it did
     assert_eq!(
-        run([700, -1], 3.9),
+        run([700, -1], DistanceSquared::new(3.9)),
         (
             true,
             vec![(object_id(700), false)],
@@ -1908,10 +1909,13 @@ fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
             Some(object_id(700))
         )
     );
-    assert_eq!(run([700, -1], 4.1), (false, vec![], None, None));
+    assert_eq!(
+        run([700, -1], DistanceSquared::new(4.1)),
+        (false, vec![], None, None)
+    );
     // any enemy: a third of 4
     assert_eq!(
-        run([-1, 701], 1.7),
+        run([-1, 701], DistanceSquared::new(1.7)),
         (
             true,
             vec![(object_id(701), false)],
@@ -1919,7 +1923,10 @@ fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
             Some(object_id(701))
         )
     );
-    assert_eq!(run([-1, 701], 1.8), (false, vec![], None, None));
+    assert_eq!(
+        run([-1, 701], DistanceSquared::new(1.8)),
+        (false, vec![], None, None)
+    );
 }
 
 /// A soldier's world: what its `bestUnitToAttack` finds and the attack commands it gave.
@@ -2695,7 +2702,7 @@ fn a_moving_villager_keeps_its_way() {
 }
 
 /// A friend (player 1, allied) at (11, 10) the soldier guards, `gap_squared` from it.
-fn ward(gap_squared: f32) -> UnitSeen {
+fn ward(gap_squared: DistanceSquared) -> UnitSeen {
     UnitSeen {
         id: object_id(20),
         class: class::CLASS_6,
@@ -2730,11 +2737,11 @@ fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
     let at = soldier_at();
     let foreign = UnitSeen {
         allied: false,
-        ..ward(1.0)
+        ..ward(DistanceSquared::new(1.0))
     };
     let dead = UnitSeen {
         state: ObjectState::Dying,
-        ..ward(1.0)
+        ..ward(DistanceSquared::new(1.0))
     };
     for units in [vec![], vec![foreign], vec![dead]] {
         let mut u = guarding(20);
@@ -2779,7 +2786,7 @@ fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
         ..guarding(20)
     };
     let mut side = DamageSide {
-        units: vec![ward(1.0)],
+        units: vec![ward(DistanceSquared::new(1.0))],
         ..DamageSide::default()
     };
     let mut fx = Vec::new();
@@ -2801,7 +2808,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
     let at = soldier_at();
     let mut u = guarding(20);
     let mut side = DamageSide {
-        units: vec![ward(100.0)],
+        units: vec![ward(DistanceSquared::new(100.0))],
         ..DamageSide::default()
     };
     let mut fx = Vec::new();
@@ -2824,7 +2831,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
     // (2.5 + 1)^2 is 12.25: within it the ward's nearest attacker is attacked
     let mut u = guarding(20);
     let mut side = DamageSide {
-        units: vec![ward(12.25), foe(40, class::CLASS_6)],
+        units: vec![ward(DistanceSquared::new(12.25)), foe(40, class::CLASS_6)],
         defended: Some(NearestAttacker::Attacker(object_id(40))),
         ..DamageSide::default()
     };
@@ -3642,7 +3649,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     };
     let boar = UnitSeen {
         owner: PlayerId::new(0),
-        ..attacker(9731, class::PREDATOR, 0.5)
+        ..attacker(9731, class::PREDATOR, DistanceSquared::new(0.5))
     };
     let at = Surroundings {
         id: object_id(10041),
@@ -3682,7 +3689,7 @@ fn a_hunter_hit_by_its_boar_ignores_the_damage() {
     // another player's attacker that is not its target would make it call for help
     let enemy = UnitSeen {
         owner: PlayerId::new(1),
-        ..attacker(9800, class::VILLAGER, 1.0)
+        ..attacker(9800, class::VILLAGER, DistanceSquared::new(1.0))
     };
     let at = Surroundings {
         units: vec![enemy],
@@ -3711,9 +3718,9 @@ fn closest_valid_attacker_skips_classes_and_flips_a_coin_on_a_tie() {
     u.attackers = Attackers::of_saved(&[1, 2, 3]);
     let at = Surroundings {
         units: vec![
-            attacker(1, class::SIEGE, 0.5),
-            attacker(2, class::VILLAGER, 4.0),
-            attacker(3, class::VILLAGER, 4.03),
+            attacker(1, class::SIEGE, DistanceSquared::new(0.5)),
+            attacker(2, class::VILLAGER, DistanceSquared::new(4.0)),
+            attacker(3, class::VILLAGER, DistanceSquared::new(4.03)),
         ],
         ..Surroundings::default()
     };
@@ -3729,9 +3736,9 @@ fn closest_valid_attacker_skips_classes_and_flips_a_coin_on_a_tie() {
 fn an_attacker_that_no_longer_targets_the_unit_leaves_one_an_update() {
     let mut u = hit_boar();
     u.attackers = Attackers::of_saved(&[10049, 10050]);
-    let mut walked_off = attacker(10049, class::VILLAGER, 1.0);
+    let mut walked_off = attacker(10049, class::VILLAGER, DistanceSquared::new(1.0));
     walked_off.target = None;
-    let mut dead = attacker(10050, class::VILLAGER, 1.0);
+    let mut dead = attacker(10050, class::VILLAGER, DistanceSquared::new(1.0));
     dead.state = ObjectState::Dying;
     let at = Surroundings {
         id: object_id(9729),
@@ -7314,7 +7321,7 @@ fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
             Position::ORIGIN,
             Footprint::new(1.0, 1.0)
         ),
-        4.0
+        DistanceSquared::new(4.0)
     );
     assert!(
         point_gap_squared(
@@ -7322,6 +7329,7 @@ fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
             Position::ORIGIN,
             Footprint::new(1.0, 1.0)
         )
+        .get()
         .is_nan()
     );
 }
@@ -7641,7 +7649,7 @@ fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
             class: class::VILLAGER,
             owner: PlayerId::new(1),
             state: ObjectState::Alive,
-            gap_squared: 1.0,
+            gap_squared: DistanceSquared::new(1.0),
             ..UnitSeen::default()
         },
         attacks: Vec::new(),
@@ -7818,10 +7826,10 @@ fn a_villager_hunts_an_animal_and_attacks_another_object() {
         state: ObjectState::Alive,
         attack_priority: AttackPriority::of_byte(priority),
         units: vec![
-            attacker(9731, class::PREDATOR, 0.5),
-            attacker(9800, class::CLASS_6, 1.0),
-            attacker(9801, class::RELIC, 1.0),
-            attacker(9802, class::BUILDING, 1.0),
+            attacker(9731, class::PREDATOR, DistanceSquared::new(0.5)),
+            attacker(9800, class::CLASS_6, DistanceSquared::new(1.0)),
+            attacker(9801, class::RELIC, DistanceSquared::new(1.0)),
+            attacker(9802, class::BUILDING, DistanceSquared::new(1.0)),
         ],
         ..Surroundings::default()
     };
@@ -7920,7 +7928,7 @@ fn a_ship_or_livestock_may_attack_anything_and_a_building_nothing() {
     let at = Surroundings {
         id: object_id(10041),
         state: ObjectState::Alive,
-        units: vec![attacker(9800, class::CLASS_6, 1.0)],
+        units: vec![attacker(9800, class::CLASS_6, DistanceSquared::new(1.0))],
         ..Surroundings::default()
     };
     for (ai_type, attacks) in [
@@ -11533,7 +11541,7 @@ impl OrderSide {
                     id: object_id(id),
                     class,
                     state: ObjectState::Alive,
-                    gap_squared: 1.0,
+                    gap_squared: DistanceSquared::new(1.0),
                     position: Position::new(10.0, 20.0, 0.0),
                     ..UnitSeen::default()
                 })
@@ -12234,7 +12242,7 @@ fn the_follow_order_follows_and_moves_to_a_target_beyond_its_range() {
         )
     );
     // beyond it: the move to the object (slot 0x138)
-    side.world[0].gap_squared = 9.5;
+    side.world[0].gap_squared = DistanceSquared::new(9.5);
     let mut u = idle(SOLDIER_AI);
     let (r, fx, _) = run_order(
         &mut u,
@@ -12256,7 +12264,7 @@ fn the_follow_order_follows_and_moves_to_a_target_beyond_its_range() {
         (Some(ActionKind::Move), Some(ActionKind::Follow))
     );
     // a gap that is not a number stays (COMISS, JBE); a gone target is not taken
-    side.world[0].gap_squared = f32::NAN;
+    side.world[0].gap_squared = DistanceSquared::new(f32::NAN);
     let mut u = idle(SOLDIER_AI);
     assert_eq!(
         run_order(

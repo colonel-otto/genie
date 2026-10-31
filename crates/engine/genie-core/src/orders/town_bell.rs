@@ -265,7 +265,7 @@ impl World {
                 let (o_at, o_radius) = t.ground(id)?;
                 let gap = footprint_gap_squared(o_at, o_radius, at, radius);
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
-                Ok(!crate::math::fmath::below_or_unordered(REACH, gap))
+                Ok(!crate::math::fmath::below_or_unordered(REACH, gap.get()))
             };
             if (class == class::VILLAGER && kind == COMBAT && near(self)?)
                 || (master == MASTER_1808 && near(self)?)
@@ -320,7 +320,7 @@ impl World {
             let (b_at, b_radius) = self.ground(id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
-            if crate::math::fmath::below_or_unordered(REACH, gap) {
+            if crate::math::fmath::below_or_unordered(REACH, gap.get()) {
                 continue;
             }
             self.workers_out(owner, idx)?;
@@ -367,7 +367,7 @@ impl World {
             let (b_at, b_radius) = self.ground(b.id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
-            if crate::math::fmath::below_or_unordered(REACH, gap) {
+            if crate::math::fmath::below_or_unordered(REACH, gap.get()) {
                 continue;
             }
             self.workers_out(owner, idx)?;

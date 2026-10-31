@@ -310,7 +310,7 @@ impl GatherAction {
                 let at = unit.body.position();
                 let gap =
                     crate::movement::footprint_gap_squared(at, me, target.position, target.radius);
-                if target.workers as f32 <= WAIT_WORKERS || WAIT_GAP <= gap {
+                if target.workers as f32 <= WAIT_WORKERS || WAIT_GAP <= gap.get() {
                     self.random_wait(c, unit);
                     return Ok(Next::Stay);
                 }

@@ -474,12 +474,12 @@ impl UnitAi {
                 continue;
             }
             let d = u.gap_squared;
-            if best.0 - ATTACKER_TIE <= d
-                && (best.0 + ATTACKER_TIE <= d || ai_rng.rand15() & 1 == 0)
+            if best.0 - ATTACKER_TIE <= d.get()
+                && (best.0 + ATTACKER_TIE <= d.get() || ai_rng.rand15() & 1 == 0)
             {
                 continue;
             }
-            best = (d, Some(id));
+            best = (d.get(), Some(id));
         }
         best.1
     }

@@ -1082,7 +1082,7 @@ fn a_villager_tends_the_nearest_livestock_with_room() {
                 near,
                 Footprint::new(0.2, 0.2),
             );
-            (g, id)
+            (g.get(), id)
         })
         .collect();
     gaps.sort_by(|a, b| a.0.total_cmp(&b.0));

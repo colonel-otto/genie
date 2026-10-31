@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::RestrictionId;
@@ -494,7 +495,7 @@ impl Fixture {
         lead: &Lead,
         budget: bool,
         target: Option<&Placed>,
-        target_gap2: f32,
+        target_gap2: DistanceSquared,
     ) -> Option<Pass> {
         let mut plan = Planning {
             pathing: &mut self.pathing,
@@ -572,7 +573,7 @@ fn a_request_over_the_budget_waits_and_the_last_plan_spent_gives_up() {
     let mut m = requesting(0, 30.0);
     m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(
-        fx.request(&mut m, &lead(), true, None, f32::MAX),
+        fx.request(&mut m, &lead(), true, None, DistanceSquared::new(f32::MAX)),
         Some(Pass::Done(false))
     ));
     assert_eq!((m.number_wait_delays, m.velocity.y()), (1, 0.0));
@@ -580,7 +581,13 @@ fn a_request_over_the_budget_waits_and_the_last_plan_spent_gives_up() {
     let mut m = requesting(0, 6.0);
     m.paths[0].continue_counter = 1;
     m.number_wait_delays = 4;
-    let p = fx.request(&mut m, &grouped(0), false, None, f32::MAX);
+    let p = fx.request(
+        &mut m,
+        &grouped(0),
+        false,
+        None,
+        DistanceSquared::new(f32::MAX),
+    );
     assert!(matches!(p, Some(Pass::Done(false))));
     assert_eq!(fx.pathing.budgets[1].plans, 2);
     assert_eq!(
@@ -595,7 +602,7 @@ fn a_request_over_the_budget_waits_and_the_last_plan_spent_gives_up() {
             solid: false,
             ..lead
         };
-        let _ = fx.request(&mut m, &lead, false, None, f32::MAX);
+        let _ = fx.request(&mut m, &lead, false, None, DistanceSquared::new(f32::MAX));
         assert_eq!(m.paths.last().map(|l| l.continue_counter), Some(1));
     }
 }
@@ -609,7 +616,7 @@ fn a_top_level_without_a_planner_plans_the_straight_way() {
     let mut m = requesting(2, 30.0);
     m.paths[0].continue_counter = 4;
     assert!(matches!(
-        fx.request(&mut m, &lead(), false, None, f32::MAX),
+        fx.request(&mut m, &lead(), false, None, DistanceSquared::new(f32::MAX)),
         Some(Pass::Next)
     ));
     assert_eq!(m.paths.len(), 2);
@@ -642,13 +649,13 @@ fn a_near_waypoint_without_a_way_is_reached_or_arrived_at() {
     };
     let mut m = requesting(0, 6.0);
     assert!(matches!(
-        fx.request(&mut m, &lead, false, None, f32::MAX),
+        fx.request(&mut m, &lead, false, None, DistanceSquared::new(f32::MAX)),
         Some(Pass::Reached)
     ));
     m.paths[0].created = WorldTime::from_millis(100);
     m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(
-        fx.request(&mut m, &lead, false, None, f32::MAX),
+        fx.request(&mut m, &lead, false, None, DistanceSquared::new(f32::MAX)),
         Some(Pass::Done(true))
     ));
     assert_eq!(
@@ -659,13 +666,25 @@ fn a_near_waypoint_without_a_way_is_reached_or_arrived_at() {
     let mut m = requesting(0, 6.0);
     let placed = target_at(6.0);
     assert!(matches!(
-        fx.request(&mut m, &lead, false, Some(&placed), NEAR),
+        fx.request(
+            &mut m,
+            &lead,
+            false,
+            Some(&placed),
+            DistanceSquared::new(NEAR)
+        ),
         Some(Pass::Next)
     ));
     assert_eq!(m.paths[0].state, PathState::Arrived);
     let mut m = requesting(0, 6.0);
     assert!(matches!(
-        fx.request(&mut m, &lead, false, Some(&placed), 0.2),
+        fx.request(
+            &mut m,
+            &lead,
+            false,
+            Some(&placed),
+            DistanceSquared::new(0.2)
+        ),
         Some(Pass::Reached)
     ));
 }
@@ -678,8 +697,14 @@ fn a_near_target_takes_the_straight_way() {
     let mut m = requesting(0, 30.0);
     let placed = target_at(30.0);
     assert!(
-        fx.request(&mut m, &lead(), false, Some(&placed), 0.5)
-            .is_none()
+        fx.request(
+            &mut m,
+            &lead(),
+            false,
+            Some(&placed),
+            DistanceSquared::new(0.5)
+        )
+        .is_none()
     );
     let new = &m.paths[0];
     assert_eq!(
@@ -710,7 +735,10 @@ fn a_near_waypoint_takes_the_short_pather_s_path() {
     let mut m = requesting(0, 9.0);
     let mut lead = lead();
     lead.walker.radius = Distance::new(0.6);
-    assert!(fx.request(&mut m, &lead, false, None, f32::MAX).is_none());
+    assert!(
+        fx.request(&mut m, &lead, false, None, DistanceSquared::new(f32::MAX))
+            .is_none()
+    );
     let new = &m.paths[0];
     assert_eq!(
         (new.level.get(), new.state, new.linked_type),
@@ -727,7 +755,10 @@ fn a_near_waypoint_takes_the_short_pather_s_path() {
 fn a_far_waypoint_takes_the_long_pather_s_path() {
     let mut fx = open_fixture();
     let mut m = requesting(0, 30.0);
-    assert!(fx.request(&mut m, &lead(), false, None, f32::MAX).is_none());
+    assert!(
+        fx.request(&mut m, &lead(), false, None, DistanceSquared::new(f32::MAX))
+            .is_none()
+    );
     let new = &m.paths[0];
     assert_eq!(
         (new.level.get(), new.state, new.linked_type),

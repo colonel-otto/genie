@@ -259,7 +259,7 @@ pub fn ask_walk(
         let gap = footprint_gap(here, ground, point, radius);
         gap.squared().get()
     } else {
-        footprint_gap_squared(here, ground, point, radius)
+        footprint_gap_squared(here, ground, point, radius).get()
     };
     if ask.ends_in_range && squared <= range * range {
         return Ok((Some(MoveTo::Arrived), None));

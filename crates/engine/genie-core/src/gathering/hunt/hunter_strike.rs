@@ -9,6 +9,7 @@ use crate::gathering::drop_sites::nearest_drop_site;
 use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::NO_HUNT;
 use crate::gathering::hunt::{Herd, HuntAction, HuntNext, HuntReads, HuntSprites};
+use crate::map::DistanceSquared;
 use crate::movement::move_to::{MoveDefaults, MoveTo};
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::ObjectId;
@@ -200,13 +201,15 @@ impl Unit {
                     .map(|d| d.building)
                     .collect();
             nearest_drop_site(others, &sites, them.position)
-                .map(|(id, _)| -> Result<(ObjectId, f32), GenieError> {
-                    let s = at(Some(id))?;
-                    Ok((
-                        id,
-                        footprint_gap_squared(them.position, them.radius, s.position, s.radius),
-                    ))
-                })
+                .map(
+                    |(id, _)| -> Result<(ObjectId, DistanceSquared), GenieError> {
+                        let s = at(Some(id))?;
+                        Ok((
+                            id,
+                            footprint_gap_squared(them.position, them.radius, s.position, s.radius),
+                        ))
+                    },
+                )
                 .transpose()?
         };
         // the animal's top action without a target or a point (slots 0x190, 0x288)

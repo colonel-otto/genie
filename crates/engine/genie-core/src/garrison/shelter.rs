@@ -205,7 +205,7 @@ impl World {
             let (o_at, o_radius) = self.ground(id)?;
             // COMISS NEARBY, gap; JC: a gap above it, or a NaN, is out
             let gap = footprint_gap_squared(o_at, o_radius, at, radius);
-            if crate::math::fmath::below_or_unordered(NEARBY, gap) {
+            if crate::math::fmath::below_or_unordered(NEARBY, gap.get()) {
                 continue;
             }
             let om = o.master(&self.masters, op)?;
@@ -279,7 +279,7 @@ impl World {
             let gap_to = |shelter: ObjectId| -> Result<f32, GenieError> {
                 let (at, r) = self.ground(id)?;
                 let (sat, sr) = self.ground(shelter)?;
-                Ok(footprint_gap_squared(at, r, sat, sr))
+                Ok(footprint_gap_squared(at, r, sat, sr).get())
             };
             for (j, &building) in shelters.buildings.iter().enumerate() {
                 let (is_building, capacity, _) = capacities[j];

@@ -10,6 +10,7 @@ use crate::groups::update::{
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Tile;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
@@ -92,8 +93,8 @@ impl World {
                         continue;
                     };
                     let gap = self.footprint_gap_squared(object, target)?;
-                    if reach > gap && nearest > gap {
-                        nearest = gap;
+                    if reach > gap.get() && nearest > gap.get() {
+                        nearest = gap.get();
                         found = true;
                     }
                 }
@@ -196,7 +197,7 @@ impl World {
         &self,
         a: WorldObject<'_>,
         b: WorldObject<'_>,
-    ) -> Result<f32, GenieError> {
+    ) -> Result<DistanceSquared, GenieError> {
         let ra = self.master(a.player(), a.master_id())?.radius;
         let rb = self.master(b.player(), b.master_id())?.radius;
         Ok(crate::movement::footprint_gap_squared(

@@ -8,6 +8,7 @@ use crate::groups::motion::{
     SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Point;
 use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
@@ -63,7 +64,7 @@ pub(super) fn request(
     world: &mut StepWorld<'_, '_>,
     budget: bool,
     target: Option<&Placed>,
-    target_gap2: f32,
+    target_gap2: DistanceSquared,
 ) -> Result<Option<Pass>, GenieError> {
     if let Some(pass) = take_turn(motion, lead, world, budget)? {
         return Ok(Some(pass));
@@ -98,7 +99,7 @@ pub(super) fn request(
                 lead,
                 world,
                 &leg,
-                (target, target_gap2),
+                (target, target_gap2.get()),
                 short_range,
                 &mut plan,
             )?
@@ -106,7 +107,7 @@ pub(super) fn request(
             return Ok(Some(pass));
         }
         if !plan.has_plan {
-            if beyond < CLOSE || target_gap2 < CLOSE {
+            if beyond < CLOSE || target_gap2 < DistanceSquared::new(CLOSE) {
                 straight_way(lead, world.spatial, &leg, &mut plan)?;
             }
             long = !plan.found;
@@ -263,7 +264,12 @@ fn short_plan(
     } else {
         Distance::new(NEAR)
     };
-    Ok(Some(in_range(motion, reach, target_gap2, world.plan.now)?))
+    Ok(Some(in_range(
+        motion,
+        reach,
+        DistanceSquared::new(target_gap2),
+        world.plan.now,
+    )?))
 }
 
 /// The short pather found no way, the group at its waypoint: a group farther than `reach` from
@@ -274,10 +280,10 @@ fn short_plan(
 fn in_range(
     motion: &mut Motion,
     reach: Distance,
-    target_gap2: f32,
+    target_gap2: DistanceSquared,
     now: WorldTime,
 ) -> Result<Pass, GenieError> {
-    if reach < Distance::new(target_gap2) {
+    if reach < Distance::new(target_gap2.get()) {
         let level = motion.paths.checked(0)?;
         if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
             motion.stand();

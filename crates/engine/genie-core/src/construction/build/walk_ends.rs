@@ -7,6 +7,7 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildReads, FOREIGN_SITE, REACH, SEEN, SITE_GONE, UNSEEN_SITE,
 };
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::world::slots::PlayerSlots;
@@ -46,7 +47,7 @@ impl BuildAction {
             let t = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
             let range = self.task.range;
-            if !(gap <= range.squared().get() || gap <= REACH) {
+            if !(gap <= range.squared() || gap <= DistanceSquared::new(REACH)) {
                 return self.restart(c, builder);
             }
         }

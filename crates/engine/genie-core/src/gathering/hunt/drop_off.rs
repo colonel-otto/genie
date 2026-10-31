@@ -129,7 +129,7 @@ impl HuntAction {
                 "a drop site that does not take the load (set_state 2)",
             ));
         }
-        if DROP_REACH < site.gap_squared {
+        if DROP_REACH < site.gap_squared.get() {
             self.timer = DROP_WAIT;
             set_walker_anim(&mut unit.body, 0.0);
             return Ok(Dropped::Going);

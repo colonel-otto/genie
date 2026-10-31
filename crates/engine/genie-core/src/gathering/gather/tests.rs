@@ -1,4 +1,5 @@
 use super::*;
+use crate::map::DistanceSquared;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
@@ -705,15 +706,21 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Again));
     assert_eq!(g.move_to, None);
     let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
-    assert_eq!(drop(&mut g, &mut rig, site(false, 0.0)), Ok(Dropped::Idle));
+    assert_eq!(
+        drop(&mut g, &mut rig, site(false, DistanceSquared::ZERO)),
+        Ok(Dropped::Idle)
+    );
     assert_eq!(g.state, GatherState::Idle);
     let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
     let far = DROP_REACH + 1.0;
-    assert_eq!(drop(&mut g, &mut rig, site(true, far)), Ok(Dropped::Going));
+    assert_eq!(
+        drop(&mut g, &mut rig, site(true, DistanceSquared::new(far))),
+        Ok(Dropped::Going)
+    );
     assert!(g.timer < Seconds::ZERO);
     let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
     assert_eq!(
-        drop(&mut g, &mut rig, site(true, 0.0)),
+        drop(&mut g, &mut rig, site(true, DistanceSquared::ZERO)),
         Ok(Dropped::Load(
             crate::gathering::hunt::resource_kind(Some(AttributeId::numbered(17)), 4),
             3.0

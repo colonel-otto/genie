@@ -9,6 +9,7 @@
 
 use crate::combat::attack::{Arms, Attack, AttackReads, Engagement};
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
@@ -59,13 +60,13 @@ pub const HUNT: ActionType = ActionType::named(110);
 
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
-const HERD_REACH: f32 = crate::math::image::hunt::HERD_REACH;
+const HERD_REACH: DistanceSquared = DistanceSquared::new(crate::math::image::hunt::HERD_REACH);
 /// Own livestock this far squared from its drop site or farther is slaughtered where it stands
 /// (`DAT_142eb0f64`).
-const HERD_FAR: f32 = 900.0;
+const HERD_FAR: DistanceSquared = DistanceSquared::new(900.0);
 /// A herder within this squared gap of the livestock it leads waits for it again
 /// (`DAT_142ed7180`).
-const LEAD_REACH: f32 = 2.25;
+const LEAD_REACH: DistanceSquared = DistanceSquared::new(2.25);
 /// The wait of a herder leading livestock (`set_state(10)`'s timer, `0xbf800000`).
 const LEAD_WAIT: Seconds = Seconds::new(-1.0);
 /// A face on dead livestock beyond the task's range plus this walks again (`DAT_142eb5690`).
@@ -140,7 +141,7 @@ pub struct DropOff {
     /// The site takes what the unit carries (`FUN_140fdd190`).
     pub takes: bool,
     /// The gap between the two footprints squared (`FUN_14118f8c0`).
-    pub gap_squared: f32,
+    pub gap_squared: DistanceSquared,
 }
 
 /// What `set_state(6)` reads of a live livestock target (`0x140ac60e0` case 6).
@@ -150,7 +151,7 @@ pub struct Herd {
     pub own: bool,
     /// For its own livestock, the drop site (the hunt's, else the nearest that takes livestock,
     /// `FUN_1411671e0`) and the gap between it and the target squared (`FUN_14118f8c0`).
-    pub drop_site: Option<(ObjectId, f32)>,
+    pub drop_site: Option<(ObjectId, DistanceSquared)>,
     /// The Attack `set_state(12)` starts.
     pub engagement: Engagement,
     /// The Attack's sprites and frames.

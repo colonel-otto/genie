@@ -124,7 +124,7 @@ impl UnitAi {
         let flags = at.target.map_or(0, |t| t.flags);
         if let Some(gap) = gap
             && let Some(target) = self.current_target
-            && !crate::math::fmath::below_or_unordered(at.los.squared().get(), gap)
+            && !crate::math::fmath::below_or_unordered(at.los.squared().get(), gap.get())
             && flags & 0x10 == 0
         {
             let _ = self.attack_object(target, true, false, at, side)?;

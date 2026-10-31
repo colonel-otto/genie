@@ -144,7 +144,7 @@ impl Mover {
             // the gap from the unit's place (its decoded x and y), not +0x824
             let (px, py) = (self.position().x(), self.position().y());
             let (gx, gy) = (gap(to.x() - px, radius.x()), gap(to.y() - py, radius.y()));
-            if gx * gx + gy * gy < REACH_NEAR {
+            if gx * gx + gy * gy < REACH_NEAR.get() {
                 return Ok(false);
             }
             None

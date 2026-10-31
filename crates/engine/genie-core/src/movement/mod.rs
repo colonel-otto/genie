@@ -16,6 +16,7 @@ use self::path_points::{
 };
 use crate::GenieError;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -326,7 +327,7 @@ const RANGE_FLOOR: f32 = crate::math::image::movement::RANGE_FLOOR;
 const REACH_SHORT: f32 = crate::math::image::movement::REACH_SHORT;
 /// A point whose squared gap to the unit's footprint is below this is not reached when the
 /// short pather did not reach it (`FUN_140fa0370`, `DAT_14330eb8c`).
-const REACH_NEAR: f32 = crate::math::image::movement::REACH_NEAR;
+const REACH_NEAR: DistanceSquared = DistanceSquared::new(crate::math::image::movement::REACH_NEAR);
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
 pub(crate) const LONG_PATH_MOVER: MasterId = MasterId::named(42);
 const WIDE_CLASS: ClassId = class::CLASS_33;

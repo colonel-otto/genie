@@ -199,7 +199,7 @@ impl UnitAi {
         self.set_action(Some(ActionKind::Follow));
         self.target_at(Some(target), Some(t.class), t.position);
         self.desired_distance = range;
-        if range.squared().get() < t.gap_squared {
+        if range.squared() < t.gap_squared {
             let seen = Seen {
                 state: t.state,
                 class: t.class,

@@ -29,6 +29,7 @@
 
 use crate::GenieError;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -143,7 +144,7 @@ pub struct LongTarget {
     /// `EDGE_GAP`, whole).
     pub rect: TileRect,
     /// The unit's footprint gap to it, squared (`FUN_14118f8c0`) and not (`FUN_14118f680`).
-    pub gap_squared: f32,
+    pub gap_squared: DistanceSquared,
     /// The gap, not squared (`FUN_14118f680`).
     pub gap: Distance,
 }
@@ -151,7 +152,12 @@ pub struct LongTarget {
 impl LongTarget {
     /// The target at `position` with radii `radius`, `gap` and `gap_squared` from the unit.
     #[must_use]
-    pub fn new(position: Position, radius: Footprint, gap: Distance, gap_squared: f32) -> Self {
+    pub fn new(
+        position: Position,
+        radius: Footprint,
+        gap: Distance,
+        gap_squared: DistanceSquared,
+    ) -> Self {
         let (x, y) = (position.x(), position.y());
         Self {
             tile: Tile::new(x as i32, y as i32),
@@ -364,7 +370,7 @@ fn search_refused(map: GridSize, req: &LongRequest, gap2: i32) -> Option<Searche
     }
     if req
         .target
-        .is_some_and(|t| t.gap_squared <= req.range.squared().get())
+        .is_some_and(|t| t.gap_squared <= req.range.squared())
     {
         return Some(Searched::InRange);
     }

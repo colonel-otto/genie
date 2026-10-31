@@ -241,7 +241,7 @@ impl BuildAction {
             self.halt_in(c, builder, reads)?;
             return Ok(HeadCode::Keeps);
         }
-        if DROP_REACH < drop.gap_squared {
+        if DROP_REACH < drop.gap_squared.get() {
             self.timer = DROP_WAIT;
             builder.body.set_anim_speed(0.0);
             return Ok(HeadCode::Keeps);

@@ -2,6 +2,7 @@
 //! and a blocked start.
 
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Point;
 use crate::map::Rect;
 use crate::map::Tile;
@@ -222,7 +223,7 @@ impl Mover {
                     crate::unit_ai::task_finder::allied(relations, p.player, o, true)
                 });
                 let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
-                if !allied || gap <= r * r {
+                if !allied || gap <= DistanceSquared::new(r * r) {
                     continue;
                 }
                 list.push(id);

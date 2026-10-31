@@ -284,7 +284,7 @@ impl UnitAi {
             // state position stops (slot 0xb0 with 1), forgets its target and walks back ("We're
             // too far out, returning."), then on to the retarget check
             let gap = point_gap_squared(self.state_position, at.position, at.size);
-            if DEFEND_LEASH < gap {
+            if DEFEND_LEASH < gap.get() {
                 self.stop_current(true, at, side, ai)?;
                 self.remove_target();
                 let _ = self.walk_back(at, side, ai)?;
@@ -301,7 +301,7 @@ impl UnitAi {
             // stand ground's: the squared gap against the range plus 0.25 (ADDSS, then COMISS
             // and JBE); a unit with an action value stops, forgets its target and walks back,
             // and slot 73 returns 10 ("We're too far out, returning.", "SO Call 40.")
-            let gap = point_gap_squared(self.state_position, at.position, at.size);
+            let gap = point_gap_squared(self.state_position, at.position, at.size).get();
             if (at.weapon_range + STAND_GROUND_SLACK).get() < gap && self.current_action.is_some() {
                 self.stop_current(true, at, side, ai)?;
                 self.remove_target();
@@ -543,7 +543,7 @@ impl UnitAi {
             point_gap_squared(self.target_point.ground(), at.position, at.size)
         };
         let reach = self.desired_distance.get() + DEFEND_SLACK;
-        if reach * reach < gap {
+        if reach * reach < gap.get() {
             if let Some((target, t)) = defended {
                 let range = self.desired_distance;
                 self.move_to_object(target, (t.state, t.class, t.position), range, side, ai)?;
@@ -624,7 +624,7 @@ impl UnitAi {
             target.radius,
         );
         let range = self.desired_distance;
-        if range.squared().get() < gap {
+        if range.squared() < gap {
             let held = (target.state, target.class, target.position);
             self.move_to_object(id, held, range, side, rng)?;
             return Ok(true);

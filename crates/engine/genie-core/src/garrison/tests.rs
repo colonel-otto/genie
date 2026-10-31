@@ -4,6 +4,7 @@ use crate::commands::UnloadPick;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::garrison::transport::TransportState;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
@@ -299,17 +300,38 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     let mut reach = |range, gap, speed| {
         EnterAction::in_reach(range, gap, speed, &mut walls(&mut walled, &masters, &stats))
     };
-    assert_eq!(reach(Distance::new(1.0), 1.0, 0.0), Ok(true));
-    assert_eq!(reach(Distance::new(1.0), 1.01, 0.0), Ok(false));
-    assert_eq!(reach(Distance::new(1.0), f32::NAN, 0.0), Ok(true));
-    assert_eq!(reach(Distance::new(1.5), 0.5, 0.8), Ok(true));
-    assert_eq!(reach(Distance::new(f32::NAN), 0.5, 0.8), Ok(true));
-    assert_eq!(reach(Distance::new(1.0), 0.5, f32::NAN), Ok(true));
-    assert_eq!(reach(Distance::new(1.0), 0.5, 0.8), Ok(false));
+    assert_eq!(
+        reach(Distance::new(1.0), DistanceSquared::new(1.0), 0.0),
+        Ok(true)
+    );
+    assert_eq!(
+        reach(Distance::new(1.0), DistanceSquared::new(1.01), 0.0),
+        Ok(false)
+    );
+    assert_eq!(
+        reach(Distance::new(1.0), DistanceSquared::new(f32::NAN), 0.0),
+        Ok(true)
+    );
+    assert_eq!(
+        reach(Distance::new(1.5), DistanceSquared::new(0.5), 0.8),
+        Ok(true)
+    );
+    assert_eq!(
+        reach(Distance::new(f32::NAN), DistanceSquared::new(0.5), 0.8),
+        Ok(true)
+    );
+    assert_eq!(
+        reach(Distance::new(1.0), DistanceSquared::new(0.5), f32::NAN),
+        Ok(true)
+    );
+    assert_eq!(
+        reach(Distance::new(1.0), DistanceSquared::new(0.5), 0.8),
+        Ok(false)
+    );
     assert_eq!(
         EnterAction::in_reach(
             Distance::new(1.0),
-            0.5,
+            DistanceSquared::new(0.5),
             0.8,
             &mut walls(&mut open, &masters, &stats)
         ),

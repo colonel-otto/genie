@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
+use crate::map::DistanceSquared;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
@@ -96,7 +97,8 @@ impl World {
         p: PlayerId,
         idx: ListIndex,
     ) -> Result<(Option<ObjectId>, Position), GenieError> {
-        const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
+        const CART_REACH: DistanceSquared =
+            DistanceSquared::new(crate::math::image::turn::CART_REACH);
         let id = self.players.live(p, idx)?.id;
         let current = self
             .players

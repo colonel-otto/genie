@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -104,7 +105,7 @@ impl Spatial {
         let attribute_97 = |o: usize| players.get(o).and_then(|q| q.attributes.get(97).copied());
         let players = self.relations.len().max(players.len());
         let mut counts = vec![0i32; players];
-        let mut nearest = vec![999.0f32; players];
+        let mut nearest = vec![DistanceSquared::new(999.0); players];
         let mut own_seen = false;
         let mut taker = false;
         let livestock = p.class == class::LIVESTOCK;
@@ -159,7 +160,7 @@ impl Spatial {
             [] => Ok(None),
             [one] => Ok(Some(one)),
             _ if !taker => {
-                let mut best = (999.0f32, None);
+                let mut best = (DistanceSquared::new(999.0), None);
                 for (o, &d) in PlayerId::each(nearest.len()).zip(&nearest) {
                     if d < best.0 && !out(o.index()) {
                         best = (d, Some(o));

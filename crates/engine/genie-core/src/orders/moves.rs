@@ -393,11 +393,7 @@ impl World {
                         .ok_or(GenieError::unsupported("a target without a place"))?,
                 );
                 let (_, gap) = gaps(me.position, me.radius, them.position, them.radius);
-                Some(work_reach(
-                    Distance::new(gap),
-                    master.weapon_range,
-                    master.min_range,
-                ))
+                Some(work_reach(gap, master.weapon_range, master.min_range))
             }
             _ => None,
         })

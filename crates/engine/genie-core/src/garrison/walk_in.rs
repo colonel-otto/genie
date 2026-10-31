@@ -6,6 +6,7 @@ use crate::garrison::EnterState;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -272,11 +273,11 @@ impl EnterAction {
     /// [`Walls::walled_off`]: crate::garrison::Walls::walled_off
     pub fn in_reach(
         range: Distance,
-        gap_squared: f32,
+        gap_squared: DistanceSquared,
         target_speed: f32,
         walls: &mut crate::garrison::Walls<'_>,
     ) -> Result<bool, GenieError> {
-        if range.squared().get() < gap_squared {
+        if range.squared() < gap_squared {
             return Ok(false);
         }
         if range <= ENTER_NEAR && 0.0 < target_speed {

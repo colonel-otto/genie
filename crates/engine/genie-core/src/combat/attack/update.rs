@@ -9,6 +9,7 @@ use crate::combat::attack::{
     set_walker_anim,
 };
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::{Stream, Well512};
@@ -483,9 +484,9 @@ pub(super) fn let_go(
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,
 /// or [`TOUCH`] for a range of at most [`NO_RANGE`].
-pub(super) fn squared_reach(range: Distance) -> f32 {
+pub(super) fn squared_reach(range: Distance) -> DistanceSquared {
     if NO_RANGE < range.get() {
-        range.squared().get()
+        range.squared()
     } else {
         TOUCH
     }

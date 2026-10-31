@@ -1579,12 +1579,12 @@ fn a_swing_that_fails_its_interrupt_check_stays_failed() {
 #[test]
 fn a_rangeless_attack_reaches_a_tenth_squared_in_f32() {
     // the image holds 0x3c23d70b (0.1f * 0.1f), one ULP above 0.01f
-    assert_eq!(squared_reach(Distance::ZERO).to_bits(), 0x3c23_d70b);
+    assert_eq!(squared_reach(Distance::ZERO).get().to_bits(), 0x3c23_d70b);
     assert_eq!(
-        squared_reach(Distance::new(NO_RANGE)).to_bits(),
+        squared_reach(Distance::new(NO_RANGE)).get().to_bits(),
         0x3c23_d70b
     );
-    assert_eq!(squared_reach(Distance::new(2.0)), 4.0);
+    assert_eq!(squared_reach(Distance::new(2.0)), DistanceSquared::new(4.0));
 }
 
 /// 425906646's town centre 27171 (player 6) in update 6224: its Attack lost the boar 29826
@@ -1701,7 +1701,7 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
 /// east of it; range 1, no least range.
 fn engaged(gap: Distance, speed: f32, can_move: bool, stance: UnitStance) -> Engagement {
     Engagement {
-        gap_squared: gap.squared().get(),
+        gap_squared: DistanceSquared::new(gap.squared().get()),
         gap,
         position: Position::new(10.0, 10.0, 0.0),
         target_position: Position::new(10.0 + gap.get(), 10.0, 0.0),

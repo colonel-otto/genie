@@ -123,7 +123,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             }
             let gap =
                 footprint_gap_squared(self.unit.position(), my_radius, u.position(), m.radius);
-            if HELP_REACH < gap {
+            if HELP_REACH < gap.get() {
                 continue;
             }
             if !self.helper_free(owner, u, m, attacker)? {

@@ -125,7 +125,7 @@ pub fn struck(hitter: &Hitter, range: Distance, b: &Bystander) -> bool {
         b.position,
         b.radius,
     );
-    fmath::at_most_or_unordered(d2, range.squared().get())
+    fmath::at_most_or_unordered(d2.get(), range.squared().get())
 }
 
 /// The hit's end on an object left below 1 hit point (`COMISS 1.0, hp` / `JBE`: a NaN is not):

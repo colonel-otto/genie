@@ -138,6 +138,8 @@ pub struct DistanceSquared(f32);
 impl DistanceSquared {
     /// No distance.
     pub const ZERO: Self = Self(0.0);
+    /// The farthest, the game's `FLT_MAX`: no square found yet.
+    pub const MAX: Self = Self(f32::MAX);
 
     /// A square of `tiles` square tiles.
     #[must_use]

@@ -313,7 +313,7 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let gap = point_gap_squared(self.state_position, at.position, at.size);
-        if !crate::math::fmath::below_or_unordered(WALK_BACK, gap) {
+        if !crate::math::fmath::below_or_unordered(WALK_BACK, gap.get()) {
             return Ok(false);
         }
         let (x, y) = (self.state_position.x(), self.state_position.y());

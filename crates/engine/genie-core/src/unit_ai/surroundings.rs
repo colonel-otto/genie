@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
@@ -259,7 +260,7 @@ pub(super) struct LiveTop {
     /// Its type (`+0xf`).
     pub(super) kind: MasterKind,
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
-    pub(super) gap_squared: f32,
+    pub(super) gap_squared: DistanceSquared,
 }
 
 /// The idle part's group test (`0x140c67e8f`): no group, or one that is idle (`FUN_141017ad0`) of
@@ -309,7 +310,7 @@ pub struct UnitSeen {
     /// Its unit AI's current target (`+0x48`); None without a unit AI or a target.
     pub target: Option<ObjectId>,
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
-    pub gap_squared: f32,
+    pub gap_squared: DistanceSquared,
     /// Its place.
     pub position: Position,
     /// Its hit points (`+0x278`).

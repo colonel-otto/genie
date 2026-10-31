@@ -8,6 +8,7 @@ use crate::groups::GroupId;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
 use crate::map::Distance;
+use crate::map::DistanceSquared;
 use crate::map::spatial::RecordId;
 use crate::map::{GroundOffset, Point};
 use crate::math::fmath::BVector;
@@ -298,7 +299,7 @@ impl World {
         let through = centre.with_height(0.0);
         let mut in_front: Vec<(ObjectId, BVector)> = Vec::new();
         let mut nearest = None;
-        let mut nearest_d = FARTHEST;
+        let mut nearest_d = DistanceSquared::new(FARTHEST);
         for &(id, p) in &held {
             let q = p.with_height(0.0);
             if fmath::line_distance(q, through, forward) < limit {
@@ -316,7 +317,7 @@ impl World {
             _ => None,
         };
         let mut beside = FARTHEST;
-        let mut chosen_d = FARTHEST;
+        let mut chosen_d = DistanceSquared::new(FARTHEST);
         for &(id, p) in &in_front {
             let d = ground_squared(p, front);
             if d < chosen_d {
@@ -387,9 +388,9 @@ const FARTHEST: f32 = crate::math::image::group::FARTHEST;
 
 /// `p − q` squared on the ground, the height difference zeroed (`FUN_14087e560`, then
 /// `x² + 0 + y²`).
-fn ground_squared(p: BVector, q: BVector) -> f32 {
+fn ground_squared(p: BVector, q: BVector) -> DistanceSquared {
     let d = fmath::sub(p, q);
-    d.x() * d.x() + 0.0 + d.y() * d.y()
+    DistanceSquared::new(d.x() * d.x() + 0.0 + d.y() * d.y())
 }
 
 #[cfg(test)]
