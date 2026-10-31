@@ -41,36 +41,6 @@ const ATTRIBUTE_39: usize = 39;
 /// mode that never enables it (11).
 const MODE_TESTED_MASTER: MasterId = MasterId::named(0x26d);
 const MODE_WITHOUT_0X26D: i32 = 11;
-/// The `TRIBE_Effects` command kinds that change technologies (`'e'`, `'f'`, `'g'`): a cost, the
-/// disabling and a research time.
-const TECH_COST: u8 = b'e';
-const TECH_DISABLE: u8 = b'f';
-const TECH_TIME: u8 = b'g';
-
-/// The `RGE_Effects` command kinds the base (`FUN_140ec2ac0`) switches on: the player's own (0 to
-/// 8), the same for its mutual allies (10 to 18), enemies (20 to 28), neutrals (30 to 38) and Gaia
-/// (40 to 48), and the objects' (200 to 206).
-mod kind {
-    pub const SET: u8 = 0;
-    pub const RESOURCE: u8 = 1;
-    pub const ENABLE: u8 = 2;
-    pub const UPGRADE: u8 = 3;
-    pub const ADD: u8 = 4;
-    pub const MULTIPLY: u8 = 5;
-    pub const RESOURCE_MULTIPLY: u8 = 6;
-    pub const SPAWN: u8 = 7;
-    pub const TECH: u8 = 8;
-    /// A set, add and multiply on the objects with masters of their own of a master or class
-    /// (200 to 202), on the effect's object (203 to 205), and its master's change (206).
-    pub const OBJECTS_SET: u8 = 200;
-    pub const OBJECT_SET: u8 = 203;
-    pub const OBJECT_UPGRADE: u8 = 206;
-}
-
-/// The cost attributes a multiply by a negative amount turns into a cost entry's removal or
-/// addition (`FUN_1415c1f70`): 103 to 106.
-const COST_ATTRIBUTES: std::ops::RangeInclusive<i16> = 103..=106;
-
 /// How slot 0x148 changes an attribute (its second argument): set (0, slot 0x150), add (1, slot
 /// 0x158) or multiply (2, slot 0x160); the masters' slots 0x18, 0x20, 0x28 and the objects' slots
 /// 0x78, 0x80, 0x88 follow it.

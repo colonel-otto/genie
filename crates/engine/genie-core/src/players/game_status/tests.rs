@@ -722,13 +722,7 @@ fn a_research_gives_the_effect_attribute_269_names() {
         t.players[1].attributes.resize(300, 0.0);
         t.players[1].attributes[269] = reward;
         t.effects = vec![Vec::new(); 301];
-        t.effects[300] = vec![EffectCommand {
-            kind: 1,
-            a: 3,
-            b: 1,
-            c: -1,
-            d: 20.0,
-        }];
+        t.effects[300] = vec![EffectCommand::of_data(1, 3, 1, -1, 20.0).unwrap()];
         let gold = t.players[1].resources[3];
         t.produce(PlayerId::new(1), 0, 1.0).unwrap();
         t.players[1].resources[3] - gold

@@ -9,12 +9,10 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::RESEARCH_SPENT;
 use crate::players::attribute::TECHS_RESEARCHED;
-use crate::technology::EffectCommand;
 use crate::technology::RESEARCHED;
 use crate::technology::TechId;
-use crate::technology::effect::{
-    ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, TECH_DISABLE, kind,
-};
+use crate::technology::effect::{ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D};
+use crate::technology::{EffectCommand, ObjectsKind, Party};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -95,18 +93,31 @@ impl World {
         let t = t.index();
         let def = self.techs.checked(t)?;
         let state = &self.players.player(p)?.techs.checked(t)?;
-        let shared = |c: &EffectCommand| {
+        let shared = |tech: i32| {
             // FUN_1413d1020 tests the whole id
-            usize::try_from(crate::math::conversions::cvttss2si(c.d))
+            usize::try_from(tech)
                 .ok()
                 .and_then(|d| self.techs.get(d))
                 .is_some_and(|d| d.kind == crate::technology::TechType::SHARED)
         };
-        let reaches_object = def.effect.iter().any(|c| match c.kind {
-            kind::ENABLE => c.c == 1,
-            kind::UPGRADE => c.c == 2,
-            TECH_DISABLE => shared(c),
-            k => (kind::OBJECT_SET..=kind::OBJECT_UPGRADE).contains(&k),
+        // the player's own enable for one building and upgrade of the object (kinds 2 and 3),
+        // the disable of a shared technology, the object's kinds 203 to 206
+        let reaches_object = def.effect.iter().any(|c| match *c {
+            EffectCommand::Enable {
+                party: Party::Own,
+                one,
+                ..
+            } => one,
+            EffectCommand::Upgrade {
+                party: Party::Own,
+                mode,
+                ..
+            } => mode == 2,
+            EffectCommand::TechDisable { tech } => shared(tech),
+            EffectCommand::Objects(kind) => {
+                matches!(kind, ObjectsKind::Object(_) | ObjectsKind::ObjectMaster)
+            }
+            _ => false,
         });
         if state.effect_override != -1 && state.effect_override != def.effect_id {
             return Err(GenieError::unsupported("a technology's effect override"));

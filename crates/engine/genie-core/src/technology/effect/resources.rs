@@ -7,6 +7,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::technology::ResourceChange;
 use crate::technology::effect::OBJECT_GONE;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -38,8 +39,8 @@ pub(super) const FARMS: [MasterId; 4] = [
 impl World {
     /// Slot 0x1b0 (`FUN_141620c70`) of player `p` on resource `attribute` with `amount`: every
     /// live combat unit's and building's volleys lose the shares of the units inside, the
-    /// attribute changes (`FUN_141661160`: `mode` 0 sets it, slot 0xf0
-    /// [`World::set_player_attribute`]; any other adds to it, slot 0xf8 with no statistics,
+    /// attribute changes (`FUN_141661160`: `change` sets it, slot 0xf0
+    /// [`World::set_player_attribute`]; or adds to it, slot 0xf8 with no statistics,
     /// [`World::add_player_attribute`]; the local player's statistics are not simulation), and
     /// the volleys take the shares again. A change of resource 0x20 would not run in the screen's
     /// mode 4 (a playback's is not) or with the game's `+0x668` set (not held: taken unset).
@@ -48,13 +49,12 @@ impl World {
         p: PlayerId,
         attribute: AttributeId,
         amount: f32,
-        mode: u8,
+        change: ResourceChange,
     ) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
-        if mode == 0 {
-            self.set_player_attribute(p, attribute, amount)?;
-        } else {
-            self.add_player_attribute(p, attribute, amount)?;
+        match change {
+            ResourceChange::Set => self.set_player_attribute(p, attribute, amount)?,
+            ResourceChange::Add => self.add_player_attribute(p, attribute, amount)?,
         }
         self.all_garrison_volleys(p, true)
     }

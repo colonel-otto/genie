@@ -14,10 +14,14 @@ use crate::players::attribute::AttributeId;
 use crate::world::slots::CheckedIndex;
 
 pub mod effect;
+mod effect_command;
 mod tech_id;
 mod tech_type;
 pub mod upgrade;
 
+pub use self::effect_command::{
+    CostEdit, CostUnits, EffectCommand, ObjectsKind, Party, ResourceChange,
+};
 pub use self::tech_id::TechId;
 pub use self::tech_type::TechType;
 
@@ -100,37 +104,30 @@ pub struct TechDef {
     pub locations: Vec<(i16, i16)>,
 }
 
-/// One command of an effect (12 bytes): its kind and arguments.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct EffectCommand {
-    /// The command's kind (4 adds to an attribute).
-    pub kind: u8,
-    /// Its first argument (a master, −1 for none).
-    pub a: i16,
-    /// Its second (a class, −1 for none).
-    pub b: i16,
-    /// Its third (an attribute).
-    pub c: i16,
-    /// Its amount.
-    pub d: f32,
-}
-
-/// The effect command kinds whose first preparation (`FUN_140ec4540` from the research's start,
-/// `FUN_1413d1530`) marks a master with the unit it turns into (`+0x330`).
-const MARKS_UPGRADE: [u8; 5] = [3, 0x0d, 0x17, 0x21, 0x2b];
-
 impl TechDef {
-    /// Its effect upgrades a unit (a command of kind 3), which keeps RESEARCH's queue to one at
-    /// a time (`FUN_1411d70f0`).
+    /// Its effect upgrades a unit (a command of kind 3, the player's own), which keeps
+    /// RESEARCH's queue to one at a time (`FUN_1411d70f0`).
     #[must_use]
     pub fn upgrades(&self) -> bool {
-        self.effect.iter().any(|c| c.kind == 3)
+        self.effect.iter().any(|c| {
+            matches!(
+                c,
+                EffectCommand::Upgrade {
+                    party: Party::Own,
+                    ..
+                }
+            )
+        })
     }
 
-    /// Its effect marks a master with an upgrade when its research starts ([`MARKS_UPGRADE`]).
+    /// Its effect marks a master with an upgrade when its research starts: an upgrade of any
+    /// block (kinds 3, 13, 23, 33, 43; `FUN_140ec4540` from the research's start,
+    /// `FUN_1413d1530`, marks the master with the unit it turns into, `+0x330`).
     #[must_use]
     pub fn marks_upgrade(&self) -> bool {
-        self.effect.iter().any(|c| MARKS_UPGRADE.contains(&c.kind))
+        self.effect
+            .iter()
+            .any(|c| matches!(c, EffectCommand::Upgrade { .. }))
     }
 }
 

@@ -336,27 +336,9 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         ..Master::default()
     }])];
     let loom = [
-        EffectCommand {
-            kind: 4,
-            a: -1,
-            b: 4,
-            c: 0,
-            d: 15.0,
-        },
-        EffectCommand {
-            kind: 4,
-            a: -1,
-            b: 4,
-            c: 8,
-            d: 1025.0,
-        },
-        EffectCommand {
-            kind: 4,
-            a: -1,
-            b: 4,
-            c: 8,
-            d: 770.0,
-        },
+        EffectCommand::of_data(4, -1, 4, 0, 15.0).unwrap(),
+        EffectCommand::of_data(4, -1, 4, 8, 1025.0).unwrap(),
+        EffectCommand::of_data(4, -1, 4, 8, 770.0).unwrap(),
     ];
     // the load files the objects in the players' trackers
     t.load_trackers().unwrap();
@@ -412,7 +394,7 @@ fn combat(id: MasterId, class: ClassId, hit_points: i16) -> Master {
 }
 
 fn attribute(kind: u8, a: i16, b: i16, c: i16, d: f32) -> EffectCommand {
-    EffectCommand { kind, a, b, c, d }
+    EffectCommand::of_data(kind, a, b, c, d).unwrap()
 }
 
 /// `FUN_14165a400` (a master within the table, kind 0 with its id): only that master's
@@ -1536,7 +1518,9 @@ fn the_technology_commands_disable_and_adjust_costs() {
         kind(crate::technology::TechType::REENABLED),
         kind(crate::technology::TechType::SHARED),
     ];
-    let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| EffectCommand { kind, a, b, c, d };
+    let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| {
+        EffectCommand::of_data(kind, a, b, c, d).unwrap()
+    };
     for tech in 0..4 {
         t.do_effect(
             PlayerId::new(0),
@@ -1578,13 +1562,7 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     t.techs = vec![TechDef::default(); 3];
-    let disable = |d: f32| EffectCommand {
-        kind: b'f',
-        a: -1,
-        b: -1,
-        c: -1,
-        d,
-    };
+    let disable = |d: f32| EffectCommand::of_data(b'f', -1, -1, -1, d).unwrap();
     t.do_effect(PlayerId::new(0), &[disable(65538.0)], None)
         .unwrap();
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
@@ -1617,21 +1595,11 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
         ],
         ..TechDef::default()
     }];
-    let change = EffectCommand {
-        kind: b'e',
-        a: 0,
-        b: 0,
-        c: 1,
-        d: 3.0e9,
-    };
+    let change = EffectCommand::of_data(b'e', 0, 0, 1, 3.0e9).unwrap();
     t.do_effect(PlayerId::new(0), &[change], None).unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [0, 0, 0]);
     // mode 2 at 1.5: (1.5 − 1) × 150 + 0.5 = 75.5, truncated to 75
-    let scale = EffectCommand {
-        c: 2,
-        d: 1.5,
-        ..change
-    };
+    let scale = EffectCommand::of_data(b'e', 0, 0, 2, 1.5).unwrap();
     t.do_effect(PlayerId::new(0), &[scale], None).unwrap();
     assert_eq!(t.players[0].techs[0].cost_adj, [75, 0, 0]);
 }

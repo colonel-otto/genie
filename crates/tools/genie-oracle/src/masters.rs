@@ -283,7 +283,7 @@ fn tech_def(
     let effect = usize::try_from(t.effect_id)
         .ok()
         .and_then(|e| dat.effects.get(e))
-        .map_or_else(Vec::new, effect_commands);
+        .map_or_else(|| Ok(Vec::new()), effect_commands)?;
     Ok(genie_core::technology::TechDef {
         costs: [cost(0)?, cost(1)?, cost(2)?],
         kind: genie_core::technology::TechType::from(t.kind),
@@ -301,17 +301,35 @@ fn tech_def(
     })
 }
 
-/// An effect's commands as the engine's effect table holds them.
-fn effect_commands(e: &genie_dat::de::Effect) -> Vec<genie_core::technology::EffectCommand> {
+/// The technologies ([`tech_def`]) and the effect table ([`effect_commands`]), by id.
+fn tech_tables(dat: &DatFile) -> Result<TechTables, GenieError> {
+    let techs = dat
+        .techs
+        .iter()
+        .map(|t| tech_def(dat, t))
+        .collect::<Result<_, _>>()?;
+    let effects = dat
+        .effects
+        .iter()
+        .map(effect_commands)
+        .collect::<Result<_, _>>()?;
+    Ok((techs, effects))
+}
+
+/// The technologies and the effects' commands, by id.
+type TechTables = (
+    Vec<genie_core::technology::TechDef>,
+    Vec<Vec<genie_core::technology::EffectCommand>>,
+);
+
+/// An effect's commands as the engine's effect table holds them, each parsed by its kind
+/// ([`genie_core::technology::EffectCommand::of_data`]).
+fn effect_commands(
+    e: &genie_dat::de::Effect,
+) -> Result<Vec<genie_core::technology::EffectCommand>, GenieError> {
     e.commands
         .iter()
-        .map(|c| genie_core::technology::EffectCommand {
-            kind: c.kind,
-            a: c.a,
-            b: c.b,
-            c: c.c,
-            d: c.d,
-        })
+        .map(|c| genie_core::technology::EffectCommand::of_data(c.kind, c.a, c.b, c.c, c.d))
         .collect()
 }
 
@@ -421,12 +439,7 @@ impl MasterTable {
                 ))
             })
             .collect();
-        table.techs = dat
-            .techs
-            .iter()
-            .map(|t| tech_def(dat, t))
-            .collect::<Result<_, _>>()?;
-        table.effects = dat.effects.iter().map(effect_commands).collect();
+        (table.techs, table.effects) = tech_tables(dat)?;
         table.time_slice = dat.time_slice;
         Ok(table)
     }

@@ -18,6 +18,7 @@ the player's masters, resources or other technologies.
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`effect_command.rs`](effect_command.rs) | An effect's commands by kind: the `.dat`'s 12 bytes each (a kind and four arguments) as `TRIBE_Effects::do_effect` (`FUN_141462440`) and its base (`FUN_140ec2ac0`) read them, parsed once where the `.dat` is read. |
 | [`mod.rs`](mod.rs) | Technologies and upgrades: the players' technologies, a research's effects and an object's upgrade to another master. |
 | [`tech_id.rs`](tech_id.rs) | A technology's id as one type: the place of a technology in the tech tree and in a player's technologies, the `.dat`'s technology record index. |
 | [`tech_type.rs`](tech_type.rs) | A technology's type as one type: its record's `+0x3c`, the `.dat`'s `type`. |

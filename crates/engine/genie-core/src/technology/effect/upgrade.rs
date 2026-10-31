@@ -8,11 +8,10 @@ use crate::objects::ObjectId;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
-use crate::objects::masters::{ClassId, CostSlot, Master, master_type, player_master};
+use crate::objects::masters::{CostSlot, Master, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
-use crate::technology::EffectCommand;
-use crate::technology::effect::kind;
+use crate::technology::{CostEdit, CostUnits, ObjectsKind};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -311,57 +310,59 @@ impl World {
     /// its own (`FUN_14165abe0`, `FUN_141186d10`, not held); 206 changes the effect's object's
     /// master (`FUN_14165ae40`). Without an object only 200 to 202 run.
     pub(super) const fn object_effect(
-        c: &EffectCommand,
+        kind: ObjectsKind,
         object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
-        match (c.kind, object) {
-            (kind::OBJECTS_SET..kind::OBJECT_SET, _) | (_, None) => Ok(()),
-            (kind::OBJECT_UPGRADE, Some(_)) => Err(GenieError::unsupported(
+        match (kind, object) {
+            (ObjectsKind::OwnMasters(_), _) | (_, None) => Ok(()),
+            (ObjectsKind::ObjectMaster, Some(_)) => Err(GenieError::unsupported(
                 "an effect's master change of its object (kind 206, FUN_14165ae40)",
             )),
-            (_, Some(_)) => Err(GenieError::unsupported(
+            (ObjectsKind::Object(_), Some(_)) => Err(GenieError::unsupported(
                 "an effect on its object's own master (kinds 203 to 205, FUN_141186d10)",
             )),
         }
     }
 
     /// `FUN_1415c1f70` (a multiply of a cost by a negative amount) of player `p`: the cost
-    /// attribute (103 to 106) names the resource (food, wood, gold 3, stone 2); `how` −2 empties
-    /// its first cost slot of master `unit` in its place (`FUN_141612df0`: −1, 0, unpaid), −1
-    /// fills the first empty slot with it, amount −1 and paid (`FUN_14160c450`); a `unit` of 900
-    /// and up names class `unit − 900`, every master of it by id. Only a master from type 70 on
-    /// has costs. The game scans four slots, the fourth past the three (not modelled).
+    /// attribute (103 to 106) names the resource (food, wood, gold 3, stone 2); a removal
+    /// (`how` −2) empties its first cost slot of the masters `units` name in its place
+    /// (`FUN_141612df0`: −1, 0, unpaid), an addition (−1) fills the first empty slot with it,
+    /// amount −1 and paid (`FUN_14160c450`); a class names every master of it by id. Only a
+    /// master from type 70 on has costs. The game scans four slots, the fourth past the three
+    /// (not modelled).
     pub(super) fn cost_entries(
         &mut self,
         p: PlayerId,
-        unit: i16,
+        units: Option<CostUnits>,
         attribute: MasterAttribute,
-        how: i32,
+        edit: Option<CostEdit>,
     ) {
         let Some(resource) = crate::objects::masters::cost_resource(attribute) else {
             return;
         };
-        if how != -2 && how != -1 {
+        let (Some(units), Some(edit)) = (units, edit) else {
             return;
-        }
+        };
         let Some(masters) = self.masters.get_mut(p.index()) else {
             return;
         };
-        let class = (900..1000)
-            .contains(&unit)
-            .then(|| ClassId::try_from(unit - 900).ok())
-            .flatten();
         for m in masters.iter_mut() {
-            let named = class.map_or_else(|| m.id.get() == unit, |c| m.class == c);
+            let named = match units {
+                CostUnits::Master(id) => m.id == id,
+                CostUnits::Class(class) => m.class == class,
+            };
             if !named || m.kind < master_type::COMBAT {
                 continue;
             }
-            let wanted = if how == -2 { Some(resource) } else { None };
+            let wanted = match edit {
+                CostEdit::Remove => Some(resource),
+                CostEdit::Add => None,
+            };
             if let Some(slot) = m.cost.iter_mut().find(|c| c.attribute == wanted) {
-                *slot = if how == -2 {
-                    CostSlot::default()
-                } else {
-                    CostSlot::new(resource, -1, true)
+                *slot = match edit {
+                    CostEdit::Remove => CostSlot::default(),
+                    CostEdit::Add => CostSlot::new(resource, -1, true),
                 };
             }
         }
