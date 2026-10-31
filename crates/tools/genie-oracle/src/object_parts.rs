@@ -131,7 +131,7 @@ pub(super) fn unit_ai(
         look_around_timeout: ai.look_around_timeout_value,
         last_retarget_time: ai.last_retarget_time,
         retarget_timer: ai.randomized_retarget_timer,
-        stance: ai.state_value,
+        stance: genie_core::unit_ai::UnitStance::of_byte(ai.state_value),
         formation_type: genie_core::groups::FormationKind::of_byte(ai.formation_type),
         state_position: Point::new(ai.state_position_xvalue, ai.state_position_yvalue),
         retarget_disabled: ai.disable_retargeting,

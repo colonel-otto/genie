@@ -114,7 +114,7 @@ pub(crate) struct EnterReads {
     /// The `MoveTo`'s give-up waits (a human player's villager), by the unit AI's stance.
     pub(crate) waits: bool,
     /// The unit AI's stance.
-    pub(crate) stance: u8,
+    pub(crate) stance: crate::unit_ai::UnitStance,
     /// The sprites its `MoveTo`s' constructors take for none (`FUN_140aa0d30`,
     /// `FUN_140aa0df0`).
     pub(crate) defaults: MoveDefaults,

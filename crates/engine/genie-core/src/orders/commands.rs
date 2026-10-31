@@ -26,7 +26,7 @@ impl World {
         &mut self,
         player: PlayerId,
         ids: &[Option<ObjectId>],
-        state: u8,
+        state: crate::unit_ai::UnitStance,
     ) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, ids)? else {
             return Ok(());
@@ -56,7 +56,7 @@ impl World {
                 continue;
             }
             let master = unit.master(&self.masters, p)?;
-            if matches!(state, 1 | 2)
+            if state.leashed()
                 && (matches!(master.class, class::CLASS_51 | class::CLASS_54)
                     || matches!(master.id, ids::ID_42 | ids::ID_331))
             {

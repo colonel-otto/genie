@@ -525,14 +525,14 @@ fn own_order_target(ai: &crate::unit_ai::UnitAi, id: ObjectId) -> Option<ObjectI
 /// stream `rng`) and forgets the target (`FUN_140c5e1e0`).
 pub(crate) fn set_stance(
     ai: &mut crate::unit_ai::UnitAi,
-    state: u8,
+    state: crate::unit_ai::UnitStance,
     place: (Point, Option<ClassId>),
     side: &mut dyn crate::unit_ai::UnitSide,
     rng: &mut crate::math::rng::Well512,
 ) -> Result<(), GenieError> {
     ai.stance = state;
     ai.state_position = place.0;
-    if state == 3
+    if state == crate::unit_ai::UnitStance::NO_ATTACK
         && (ai.current_order == Some(OrderKind::Attack)
             || ai.current_action == Some(ActionKind::Attack))
     {

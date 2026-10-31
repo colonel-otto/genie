@@ -13,6 +13,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, OrderTargetType,
     Pick, QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
@@ -326,7 +327,7 @@ impl UnitAi {
             && at.unit(met).is_some()
             && self.retarget_disabled == 0
             && self.current_order.is_none()
-            && self.stance == 0
+            && self.stance == UnitStance::AGGRESSIVE
         {
             // slot 0xb8 forced, by the type
             let _ = self.attack_slot(met, false, at, side, rng)?;

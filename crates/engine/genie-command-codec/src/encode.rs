@@ -125,7 +125,7 @@ fn listed(command: &Command) -> Result<Packet, GenieError> {
             commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
-            state: c.state,
+            state: c.state.get(),
             gap_0x09: [0; 3],
             ids: ids(&c.units.ids, packets::UnitAiState::FIXED)?,
         }),

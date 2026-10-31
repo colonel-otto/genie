@@ -21,6 +21,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::world::World;
 use crate::world::others::OthersRef;
 use crate::world::scenario_mode;
@@ -64,7 +65,10 @@ impl Unit {
             scenario: scenario_mode(c.w.settings.game_mode),
             rate: self.work_rate_powerup + own.work_rate,
             waits: own.class == class::VILLAGER && !c.w.players.player(c.player)?.computer,
-            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: self
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
             standing: sprite_id(own.standing_sprite),
             restriction: usize::try_from(own.terrain_restriction).ok(),
         })

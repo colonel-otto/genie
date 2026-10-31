@@ -29,7 +29,7 @@ pub struct GiveUp {
     /// which waits once before it asks again.
     pub waits: bool,
     /// The unit AI's stance (`+0x1a9`), 0 without one: below 2 it waits a second, else two.
-    pub stance: u8,
+    pub stance: crate::unit_ai::UnitStance,
 }
 
 impl MoveToAction {

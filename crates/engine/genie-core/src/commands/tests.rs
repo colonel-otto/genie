@@ -17,6 +17,7 @@ use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
 use crate::test_ids::player_id;
 use crate::test_ids::unit_list;
+use crate::unit_ai::UnitStance;
 
 /// A GAME command of `issuer`'s for player 0, its operands 0.
 fn game_of(issuer: u8) -> GameCommand {
@@ -191,7 +192,7 @@ fn one_of_each(p: u8) -> Vec<Command> {
         Command::UnitAiState(UnitAiStateCommand {
             player: player_id(p),
             units: unit_list(object_ids(ids.clone())),
-            state: 1,
+            state: UnitStance::DEFENSIVE,
         }),
         Command::UnitOrder(UnitOrderCommand {
             player: player_id(p),

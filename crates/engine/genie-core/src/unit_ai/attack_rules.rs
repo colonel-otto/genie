@@ -15,6 +15,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     Attacker, BUILDING_AI, CIVILIAN, DEFEND_GROWTH, LION_AI, PREDATOR_AI, PRIEST_AI,
     PRIORITY_3_CLASSES, SIEGE_AI, SOLDIER_AI, Seeker, TOWER_AI, Target,
@@ -378,7 +379,7 @@ pub fn siege_can_attack(
     any: bool,
 ) -> Result<bool, GenieError> {
     if matches!(t.class, class::ARTIFACT | class::RELIC)
-        || s.stance == 3
+        || s.stance == UnitStance::NO_ATTACK
         || !siege_in_reach(me, s, t)?
     {
         return Ok(false);
@@ -423,12 +424,13 @@ pub(super) fn siege_in_reach(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
         range += GAIA_TARGET_REACH;
     }
     match s.stance {
-        2 if s.order != Some(OrderKind::Defend)
-            && !crate::math::fmath::at_most_or_unordered(gap, range) =>
+        UnitStance::STAND_GROUND
+            if s.order != Some(OrderKind::Defend)
+                && !crate::math::fmath::at_most_or_unordered(gap, range) =>
         {
             Ok(false)
         }
-        1 => {
+        UnitStance::DEFENSIVE => {
             if matches!(s.order, Some(OrderKind::Patrol | OrderKind::AttackMove)) || s.patrol_path {
                 defend_patrol_range()?;
             }

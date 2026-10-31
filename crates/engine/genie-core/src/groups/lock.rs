@@ -127,10 +127,12 @@ impl World {
         let ids: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
         let mut n = [0i32; 4];
         for &id in &ids {
-            if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
-                && ai.stance < 4
+            if let Some(at) = self
+                .object(id)
+                .and_then(|(_, u)| u.ai.as_ref())
+                .and_then(|ai| ai.stance.counted())
             {
-                *n.checked_mut(ai.stance as usize)? += 1;
+                *n.checked_mut(at)? += 1;
             }
         }
         let state = if ids.is_empty() || (n[1] <= n[0] && n[2] <= n[0] && n[3] <= n[0]) {

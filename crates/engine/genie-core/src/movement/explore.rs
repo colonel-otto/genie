@@ -25,6 +25,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitStance;
 use crate::world::step::Step;
 use genie_diff::Diff;
 use std::collections::BTreeMap;
@@ -224,7 +225,10 @@ impl ExploreAction {
         let villager = master.is_some_and(|m| m.class == class::VILLAGER);
         let gives_up = GiveUp {
             waits: villager && !c.w.players[c.player.index()].computer,
-            stance: explorer.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: explorer
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
         };
         let how = ListUpdate {
             gives_up,

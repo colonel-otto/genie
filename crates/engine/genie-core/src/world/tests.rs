@@ -81,6 +81,7 @@ use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::world::{
     SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
 };
@@ -12789,15 +12790,23 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         u
     };
     let mut u = deer(&mut rng);
-    u.own_move_gave_up(false, 0, (Some(&masters), &graphics, &mut rng))
-        .unwrap();
+    u.own_move_gave_up(
+        false,
+        UnitStance::AGGRESSIVE,
+        (Some(&masters), &graphics, &mut rng),
+    )
+    .unwrap();
     assert_eq!(u.actions.move_to().map(|m| m.state), Some(MoveTo::Failed));
     assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(0.737));
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(764));
     assert_eq!(u.body.anim_speed(), Some(0.0));
     let mut v = deer(&mut rng);
-    v.own_move_gave_up(true, 0, (Some(&masters), &graphics, &mut rng))
-        .unwrap();
+    v.own_move_gave_up(
+        true,
+        UnitStance::AGGRESSIVE,
+        (Some(&masters), &graphics, &mut rng),
+    )
+    .unwrap();
     assert_eq!(v.actions.move_to().map(|m| m.state), Some(MoveTo::Waiting));
     assert_eq!(v.body.mover().map(|m| m.stats.speed), Some(1.4003));
     assert_eq!(v.sprite.map(|s| s.graphic.id), Some(765));
@@ -12976,7 +12985,7 @@ fn scout_attack_on(
         ..Unit::default()
     };
     let ai = UnitAi {
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         current_order: None,
         ai_type: UnitAiType::SOLDIER,
         ..UnitAi::default()
@@ -13102,7 +13111,7 @@ fn attack_by(
         ..Unit::default()
     };
     let ai = UnitAi {
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         current_order: None,
         ai_type: UnitAiType::SOLDIER,
         ..UnitAi::default()
@@ -13317,7 +13326,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
         current_order: None,
         current_action: None,
         current_target: None,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         ..UnitAi::default()
     };
     assert!(helper_free(idle.clone(), None));
@@ -13353,7 +13362,7 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
         current_order: None,
         current_action: None,
         current_target: None,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         ..UnitAi::default()
     };
     let busy = UnitAi {
@@ -17336,10 +17345,10 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &Command::UnitAiState(UnitAiStateCommand {
                 player: player_id(1),
                 units: unit_list(v.clone()),
-                state: 1,
+                state: UnitStance::DEFENSIVE,
             }),
             PlayerId::new(1),
-            |w| w.unit_ai_state(player_id(1), &v, 1),
+            |w| w.unit_ai_state(player_id(1), &v, UnitStance::DEFENSIVE),
         ),
         routes(
             &t,
@@ -17829,7 +17838,7 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
         current_order: None,
         current_action: None,
         current_target: None,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         ..UnitAi::default()
     };
     let record = |id, x| Record {

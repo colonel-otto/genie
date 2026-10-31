@@ -21,6 +21,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::BOAR_AI;
 use crate::unit_ai::LION_AI;
 use crate::unit_ai::NotifyKind;
+use crate::unit_ai::UnitStance;
 use crate::world::step::Step;
 
 impl Attack {
@@ -141,7 +142,7 @@ impl Attack {
         };
         if human && waits {
             let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
-            if r.stance == 0 && 0.0 < speed && f.own.class != class::VILLAGER {
+            if r.stance == UnitStance::AGGRESSIVE && 0.0 < speed && f.own.class != class::VILLAGER {
                 // a mover of stance 0 that is not a villager waits where it saw the target:
                 // 0x1fb with 600 and 0x202 for a unit's own Attack, then `set_state(5)`
                 if !self.sub_action {

@@ -177,7 +177,7 @@ pub(crate) struct RepairReads {
     pub(crate) waits: bool,
     /// The unit AI's stance (`+0x1a9`), which sets the wait
     /// ([`crate::movement::move_to::MoveWait::give_up`]).
-    pub(crate) stance: u8,
+    pub(crate) stance: crate::unit_ai::UnitStance,
     /// The master's standing sprite (`+0x470`), which slot 0x68 shows for none.
     pub(crate) standing: Option<i16>,
     /// The master's terrain restriction, whose mask its quick path takes.

@@ -19,6 +19,7 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
+use crate::unit_ai::UnitStance;
 use crate::world::step::Step;
 
 impl Attack {
@@ -234,7 +235,7 @@ impl Attack {
         let mut failed_first = false;
         let mut ready_end = false;
         if 0 < target_owner && !visible {
-            if e.stance == 0 && 0.0 < e.speed && e.can_move {
+            if e.stance == UnitStance::AGGRESSIVE && 0.0 < e.speed && e.can_move {
                 self.state = GOTO_SEEN;
                 self.range = e.range;
                 self.walk_to_seen(reads)?;
@@ -250,7 +251,10 @@ impl Attack {
             if !self.sub_action {
                 posted.push((crate::unit_ai::NotifyKind::OUT_OF_REACH, [0; 3]));
             }
-            if (e.stance == 1 && self.off_leash(e.target_position, e.state_position)) || !movable {
+            if (e.stance == UnitStance::DEFENSIVE
+                && self.off_leash(e.target_position, e.state_position))
+                || !movable
+            {
                 failed_first = true;
             } else {
                 let _ = self.set_move(e, mover, reads)?;
@@ -395,8 +399,9 @@ pub fn engagement(
         speed,
         range: master.weapon_range,
         min_range: master.min_range,
-        can_move: ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1),
-        stance: ai.map_or(0, |ai| ai.stance),
+        can_move: ai
+            .is_some_and(|ai| ai.current_order.is_some() || ai.stance <= UnitStance::DEFENSIVE),
+        stance: ai.map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
         state_position: ai.map_or(Point::ORIGIN, |ai| ai.state_position),
         world_time,
         master: master.id,

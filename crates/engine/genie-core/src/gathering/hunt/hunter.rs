@@ -15,6 +15,7 @@ use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, second_target_checked};
 use crate::orders::action_state::FAILED;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::others::OthersRef;
@@ -200,7 +201,10 @@ impl Unit {
         let who = crate::gathering::hunt::PointWalker {
             computer: c.w.players.player(c.player)?.computer,
             villager: master.class == class::VILLAGER,
-            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: self
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
         };
         let dropped = hunt.update_drop(c, self, me, site, who);
         if let Some(h) = self.actions.hunt_mut() {
@@ -263,7 +267,10 @@ impl Unit {
         let who = crate::gathering::hunt::PointWalker {
             computer: c.w.players.player(c.player)?.computer,
             villager: master.class == class::VILLAGER,
-            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: self
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
         };
         let walked = hunt.update_point_walk(c, self, me, who);
         if let Some(h) = self.actions.hunt_mut() {

@@ -21,6 +21,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
@@ -157,7 +158,10 @@ impl Unit {
             class: master.class,
             defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
             master: self.life.master_id,
-            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: self
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
             farm_stops: c.w.settings.walkable_farms,
             computer: c.w.players.player(c.player)?.computer,
             stop_productivity: crate::gathering::gather::productivity_of(

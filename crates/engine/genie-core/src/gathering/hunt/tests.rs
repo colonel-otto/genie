@@ -18,6 +18,7 @@ use crate::players::attribute;
 use crate::test_ids::carrying;
 use crate::test_ids::class_of;
 use crate::test_ids::object_id;
+use crate::unit_ai::UnitStance;
 
 use crate::combat::attack::tests::Rig;
 use crate::movement::{Me, MoveStats, Velocity};
@@ -288,7 +289,7 @@ fn engagement() -> Engagement {
         range: 0.0,
         min_range: 0.0,
         can_move: true,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         state_position: Point::ORIGIN,
         world_time: 0,
         master: ids::VILLAGER_MALE,
@@ -800,7 +801,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
     let walker_at = PointWalker {
         computer: false,
         villager: true,
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
     };
     let run = |h: &mut HuntAction, who: PointWalker| {
         let mut rig = Rig::on(
@@ -883,7 +884,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     let who = PointWalker {
         computer: false,
         villager: true,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
     };
     let drop = |h: &mut HuntAction, rig: &mut Rig| {
         (
@@ -985,7 +986,7 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
     let who = PointWalker {
         computer: false,
         villager: true,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
     };
     let in_the_way = vec![
         (crate::unit_ai::NotifyKind::IN_THE_WAY, [77, -1, -1]),
@@ -1499,7 +1500,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     let who = PointWalker {
         computer: false,
         villager: true,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
     };
     let drop = |rig: &mut Rig, hunt: &mut HuntAction, held: Held, site| {
         (
@@ -1657,7 +1658,7 @@ fn a_move_to_that_lost_its_target_ends_the_drop_off_and_the_point_walk() {
     let who = PointWalker {
         computer: false,
         villager: true,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
     };
     let lost = || {
         let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));

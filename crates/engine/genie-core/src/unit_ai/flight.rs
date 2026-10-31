@@ -10,6 +10,7 @@ use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::NotifyKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     AiMove, BREAK, DEAD, EVADE_EDGE, EVASIVE_NEAR, Effect, FOUNDATION_REACH, GO_ON, Memory, Notify,
     Pick, RUN_DRAW_SCALE, RUN_EPSILON, RUN_LEASH, RUN_ONE, RUN_REACH, SIEGE_AI, Search,
@@ -82,7 +83,11 @@ impl UnitAi {
                 ));
             }
         }
-        if matches!(self.stance, 2 | 3) && at.player != PlayerId::GAIA {
+        if matches!(
+            self.stance,
+            UnitStance::STAND_GROUND | UnitStance::NO_ATTACK
+        ) && at.player != PlayerId::GAIA
+        {
             return Ok(false);
         }
         if !uncon && self.current_action.is_some() {
@@ -122,7 +127,7 @@ impl UnitAi {
         }
         let mut ex = x - (vx / d) * reach;
         let mut ey = y - (vy / d) * reach;
-        if at.player != PlayerId::GAIA && self.stance == 1 {
+        if at.player != PlayerId::GAIA && self.stance == UnitStance::DEFENSIVE {
             let gx = self.state_position.x() - ex;
             let gy = self.state_position.y() - ey;
             if RUN_LEASH < crate::math::fmath::sqrt(gy * gy + gx * gx) {

@@ -22,6 +22,7 @@ use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
+use crate::unit_ai::UnitStance;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -345,7 +346,10 @@ impl BuildAction {
         let computer = c.w.players.player(c.player)?.computer;
         Ok(GiveUp {
             waits: reads.class == Some(class::VILLAGER) && !computer,
-            stance: builder.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: builder
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
         })
     }
 

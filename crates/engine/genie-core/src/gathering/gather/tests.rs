@@ -17,6 +17,7 @@ use crate::test_ids::carrying;
 use crate::test_ids::class_of;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::unit_ai::UnitStance;
 use crate::world::step::Step;
 use crate::world::{Player, World};
 
@@ -31,7 +32,7 @@ fn reads() -> GatherReads {
         class: class::VILLAGER,
         defaults: MoveDefaults::default(),
         master: ids::VILLAGER_MALE,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         farm_stops: false,
         computer: false,
         stop_productivity: 1.0,

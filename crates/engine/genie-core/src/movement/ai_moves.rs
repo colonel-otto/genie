@@ -385,7 +385,7 @@ impl Unit {
     pub(crate) fn own_move_gave_up(
         &mut self,
         waits: bool,
-        stance: u8,
+        stance: crate::unit_ai::UnitStance,
         (masters, graphics, sprite_rng): (
             Option<&Masters>,
             &std::collections::BTreeMap<i16, Graphic>,

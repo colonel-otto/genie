@@ -17,6 +17,7 @@ use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::masters::ActionType;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite};
+use crate::unit_ai::UnitStance;
 use genie_diff::Diff;
 
 mod action;
@@ -88,11 +89,15 @@ impl MoveWait {
     /// 4): a human player's villager (`waits`) whose `MoveTo` has not waited yet (`+0x6c` 0) waits
     /// (`set_state` 2, `+0x6c` 1) a second with a stance (`+0x1a9`) below 2, else two, then asks
     /// again; any other `MoveTo` fails (`set_state` 13). Returns the `MoveTo`'s state.
-    pub const fn give_up(&mut self, waits: bool, stance: u8) -> MoveTo {
+    pub const fn give_up(&mut self, waits: bool, stance: UnitStance) -> MoveTo {
         if self.state != 0 || !waits {
             return MoveTo::Failed;
         }
-        self.delay = if stance < 2 { 1.0 } else { 2.0 };
+        self.delay = if stance.below(UnitStance::STAND_GROUND) {
+            1.0
+        } else {
+            2.0
+        };
         self.state = 1;
         MoveTo::Waiting
     }
@@ -521,7 +526,7 @@ mod tests {
         };
         let gives_up = GiveUp {
             waits: true,
-            stance: 0,
+            stance: UnitStance::AGGRESSIVE,
         };
         let mut ai = None;
         let mut update = |m: &mut MoveToAction| {
@@ -572,12 +577,18 @@ mod tests {
     #[test]
     fn a_human_villager_s_moveto_waits_once_before_it_fails() {
         let mut wait = MoveWait::default();
-        assert_eq!(wait.give_up(true, 0), MoveTo::Waiting);
+        assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Waiting);
         assert_eq!((wait.state, wait.delay), (1, 1.0));
-        assert_eq!(wait.give_up(true, 0), MoveTo::Failed);
-        assert_eq!(MoveWait::default().give_up(false, 0), MoveTo::Failed);
+        assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Failed);
+        assert_eq!(
+            MoveWait::default().give_up(false, UnitStance::AGGRESSIVE),
+            MoveTo::Failed
+        );
         let mut guarded = MoveWait::default();
-        assert_eq!(guarded.give_up(true, 2), MoveTo::Waiting);
+        assert_eq!(
+            guarded.give_up(true, UnitStance::STAND_GROUND),
+            MoveTo::Waiting
+        );
         assert_eq!(guarded.delay, 2.0);
     }
 

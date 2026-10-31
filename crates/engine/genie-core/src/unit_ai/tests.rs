@@ -1762,7 +1762,7 @@ fn a_unit_in_the_way_is_attacked_by_a_wolf_not_by_a_boar() {
     );
     assert_eq!(wolf.current_target, Some(object_id(29001)));
     let mut defensive = UnitAi {
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
         ..idle(UnitAiType::LION)
     };
     let mut side = Recorder::default();
@@ -3110,7 +3110,7 @@ fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
     assert_eq!(u.attackers, Attackers::of_saved(&[7, 8]));
 
     let mut u = UnitAi {
-        stance: 3,
+        stance: UnitStance::NO_ATTACK,
         ..idle(UnitAiType::SOLDIER)
     };
     let mut side = DamageSide {
@@ -3361,7 +3361,7 @@ fn a_scout_whose_sheep_died_attacks_the_next_or_walks_to_its_point() {
             current_target: Some(object_id(25954)),
             target_class: class_of(58),
             target_point: Position::new(5.0, 6.0, 0.0),
-            stance: 2,
+            stance: UnitStance::STAND_GROUND,
             ..idle(UnitAiType::SOLDIER)
         };
         let at = Surroundings {
@@ -3454,7 +3454,7 @@ fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
 /// in state 6 or 7); otherwise the search for a better target follows.
 #[test]
 fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
-    let scout = |stance: u8| UnitAi {
+    let scout = |stance: UnitStance| UnitAi {
         current_order: Some(OrderKind::Attack),
         current_action: Some(ActionKind::Attack),
         current_target: Some(object_id(25954)),
@@ -3463,15 +3463,15 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
     };
     let sheep = Some((PlayerId::new(1), class::LIVESTOCK));
     assert_eq!(
-        scout(2).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
+        scout(UnitStance::STAND_GROUND).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
         Ok(None)
     );
     assert_eq!(
-        scout(0).retarget_outcome(sheep, 0.0, false, Some(6), Some(true)),
+        scout(UnitStance::AGGRESSIVE).retarget_outcome(sheep, 0.0, false, Some(6), Some(true)),
         Ok(None)
     );
     assert_eq!(
-        scout(0).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
+        scout(UnitStance::AGGRESSIVE).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
         Ok(Some(RetargetSearch {
             building: false,
             work_state: false
@@ -3479,7 +3479,7 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
     );
     // a building target is searched past even while attacking
     assert_eq!(
-        scout(0).retarget_outcome(
+        scout(UnitStance::AGGRESSIVE).retarget_outcome(
             Some((PlayerId::new(1), class::BUILDING)),
             0.0,
             true,
@@ -3497,7 +3497,7 @@ fn a_retarget_check_stops_in_stand_ground_and_while_attacking() {
         current_order: Some(OrderKind::Enter),
         current_action: Some(ActionKind::Enter),
         current_target: Some(object_id(3301)),
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         ..idle(UnitAiType::HUNTED)
     };
     assert_eq!(
@@ -3777,7 +3777,7 @@ fn a_defending_unit_beyond_five_tiles_of_its_state_position_stops_to_walk_back()
     // tiles of its state position (from its footprint) it goes on to the retarget check
     let defender = |x: f32| {
         let u = UnitAi {
-            stance: 1,
+            stance: UnitStance::DEFENSIVE,
             current_order: None,
             current_action: Some(ActionKind::Build),
             current_target: Some(object_id(4321)),
@@ -4070,7 +4070,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             look_around_timeout: 1000,
             last_retarget_time: a % 500,
             retarget_timer: 750 + c % 500,
-            stance: 0,
+            stance: UnitStance::AGGRESSIVE,
             formation_type: FormationKind::HORDE,
             state_position: Point::new(30.0, 88.0),
             retarget_disabled: 0,
@@ -4126,7 +4126,7 @@ fn a_new_artifact_unit_ai_draws_four_timers() {
             ai.retarget_timer,
             ai.idle_timeout,
             ai.adjusted_idle_timeout,
-            ai.stance,
+            ai.stance.get(),
             ai.notify_capacity,
         ),
         (
@@ -4537,7 +4537,7 @@ fn a_new_tower_unit_ai_draws_four_timers() {
             ai.retarget_timer,
             ai.idle_timeout,
             ai.adjusted_idle_timeout,
-            ai.stance,
+            ai.stance.get(),
         ),
         (TOWER_AI, a % 500, 750 + c % 500, 1000, d % 500 + 750, 0)
     );
@@ -4606,7 +4606,7 @@ fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
                 ai.retarget_timer,
                 ai.idle_timeout,
                 ai.adjusted_idle_timeout,
-                ai.stance,
+                ai.stance.get(),
                 ai.notify_capacity,
                 ai.state_position,
             ),
@@ -4631,7 +4631,7 @@ fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
     )
     .unwrap();
     assert_eq!(
-        (r.draws, livestock.stance, livestock.notify_capacity),
+        (r.draws, livestock.stance.get(), livestock.notify_capacity),
         (3, 1, 5)
     );
 }
@@ -4661,7 +4661,7 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
     let mut r = rng();
     let ai = UnitAi::constructed(UnitAiType::HUNTED, &deer, &mut r).unwrap();
     assert_eq!(
-        (ai.hunted, ai.stance, ai.home),
+        (ai.hunted, ai.stance.get(), ai.home),
         (
             Some(Hunted {
                 origin: Position::new(20.0, 30.0, 2.0),
@@ -4677,7 +4677,7 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
         &mut rng(),
     )
     .unwrap();
-    assert_eq!(king.stance, 0);
+    assert_eq!(king.stance, UnitStance::AGGRESSIVE);
     let boar = UnitAi::constructed(
         BOAR_AI,
         &placed(Position::new(5.0, 6.0, 0.5), class::PREDATOR),
@@ -4685,7 +4685,7 @@ fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
     )
     .unwrap();
     assert_eq!(
-        (boar.home, boar.hunted, boar.stance),
+        (boar.home, boar.hunted, boar.stance.get()),
         (
             Some(Home {
                 origin: Position::new(5.0, 6.0, 0.5),
@@ -4710,7 +4710,7 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
     let mut expected = rng();
     let _ = (expected.rand15(), expected.rand15(), expected.rand15());
     assert_eq!(
-        (ai.idle_timeout, ai.adjusted_idle_timeout, ai.stance),
+        (ai.idle_timeout, ai.adjusted_idle_timeout, ai.stance.get()),
         (1500, expected.rand15() % 750 + 1125, 1)
     );
     let stance = |f: &dyn Fn(&mut NewObject)| {
@@ -4719,44 +4719,44 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
         soldier_stance(&new)
     };
     // the owner's posture, its low byte
-    assert_eq!(stance(&|_| {}), 0);
-    assert_eq!(stance(&|n| n.posture = 0x101), 1);
+    assert_eq!(stance(&|_| {}), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(&|n| n.posture = 0x101), UnitStance::DEFENSIVE);
     // the scout of the Dark Age stands its ground: flag 0x10, its own copy, age 0 (or -0)
-    assert_eq!(stance(&|n| n.object_flags = 0x10), 2);
+    assert_eq!(stance(&|n| n.object_flags = 0x10), UnitStance::STAND_GROUND);
     assert_eq!(
         stance(&|n| {
             n.object_flags = 0x10;
             n.age = -0.0;
         }),
-        2
+        UnitStance::STAND_GROUND
     );
     assert_eq!(
         stance(&|n| {
             n.object_flags = 0x10;
             n.age = 1.0;
         }),
-        0
+        UnitStance::AGGRESSIVE
     );
     assert_eq!(
         stance(&|n| {
             n.object_flags = 0x10;
             n.age = f32::NAN;
         }),
-        0
+        UnitStance::AGGRESSIVE
     );
     assert_eq!(
         stance(&|n| {
             n.object_flags = 0x10;
             n.copy_id = Some(ids::ID_448);
         }),
-        0
+        UnitStance::AGGRESSIVE
     );
     assert_eq!(
         stance(&|n| {
             n.object_flags = 0x10;
             n.computer = true;
         }),
-        0
+        UnitStance::AGGRESSIVE
     );
     // the demolition ships defend
     for master in DEFENSIVE_MASTERS {
@@ -4765,7 +4765,7 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
                 n.master = master;
                 n.copy_id = Some(master);
             }),
-            1
+            UnitStance::DEFENSIVE
         );
     }
     assert_eq!(
@@ -4773,39 +4773,48 @@ fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
             n.master = ids::ID_527;
             n.computer = true;
         }),
-        0
+        UnitStance::AGGRESSIVE
     );
     // a human player's petards and class 64 do not attack; a computer's take its posture
-    assert_eq!(stance(&|n| n.class = class::CLASS_35), 3);
-    assert_eq!(stance(&|n| n.class = class::CLASS_64), 3);
+    assert_eq!(
+        stance(&|n| n.class = class::CLASS_35),
+        UnitStance::NO_ATTACK
+    );
+    assert_eq!(
+        stance(&|n| n.class = class::CLASS_64),
+        UnitStance::NO_ATTACK
+    );
     assert_eq!(
         stance(&|n| {
             n.class = class::CLASS_35;
             n.computer = true;
         }),
-        0
+        UnitStance::AGGRESSIVE
     );
     // a hero defends: bit 0 or 3, not 3 with 7
-    assert_eq!(stance(&|n| n.hero_flag = 1), 1);
-    assert_eq!(stance(&|n| n.hero_flag = 8), 1);
-    assert_eq!(stance(&|n| n.hero_flag = 0x81), 1);
-    assert_eq!(stance(&|n| n.hero_flag = 0x88), 0);
-    assert_eq!(stance(&|n| n.hero_flag = 0x10), 0);
+    assert_eq!(stance(&|n| n.hero_flag = 1), UnitStance::DEFENSIVE);
+    assert_eq!(stance(&|n| n.hero_flag = 8), UnitStance::DEFENSIVE);
+    assert_eq!(stance(&|n| n.hero_flag = 0x81), UnitStance::DEFENSIVE);
+    assert_eq!(stance(&|n| n.hero_flag = 0x88), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(&|n| n.hero_flag = 0x10), UnitStance::AGGRESSIVE);
     // class 61 does not attack, unless a hero
-    assert_eq!(stance(&|n| n.class = class::CLASS_61), 3);
+    assert_eq!(
+        stance(&|n| n.class = class::CLASS_61),
+        UnitStance::NO_ATTACK
+    );
     assert_eq!(
         stance(&|n| {
             n.class = class::CLASS_61;
             n.hero_flag = 1;
         }),
-        1
+        UnitStance::DEFENSIVE
     );
     assert_eq!(
         stance(&|n| {
             n.class = class::CLASS_61;
             n.computer = true;
         }),
-        3
+        UnitStance::NO_ATTACK
     );
 }
 
@@ -4821,14 +4830,14 @@ fn a_new_siege_unit_takes_its_stance_from_its_class_and_owner() {
             ..NewObject::default()
         })
     };
-    assert_eq!(stance(class::SIEGE, false, 0), 1);
-    assert_eq!(stance(class::SIEGE, true, 0), 0);
-    assert_eq!(stance(class::CLASS_51, false, 1), 0);
-    assert_eq!(stance(class::CLASS_54, false, 1), 0);
-    assert_eq!(stance(class::CLASS_55, false, 1), 1);
-    assert_eq!(stance(class::CLASS_55, false, 0), 0);
-    assert_eq!(stance(class::CLASS_55, true, 1), 0);
-    assert_eq!(stance(class::CLASS_6, false, 0), 1);
+    assert_eq!(stance(class::SIEGE, false, 0), UnitStance::DEFENSIVE);
+    assert_eq!(stance(class::SIEGE, true, 0), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(class::CLASS_51, false, 1), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(class::CLASS_54, false, 1), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(class::CLASS_55, false, 1), UnitStance::DEFENSIVE);
+    assert_eq!(stance(class::CLASS_55, false, 0), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(class::CLASS_55, true, 1), UnitStance::AGGRESSIVE);
+    assert_eq!(stance(class::CLASS_6, false, 0), UnitStance::DEFENSIVE);
 }
 
 /// [`NewObject::of`]: the master's copy, class, flags and hero flag, and the work range of
@@ -4918,7 +4927,7 @@ fn boar() -> UnitAi {
         last_action: None,
         last_target: None,
         last_target_class: None,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         home: Some(Home {
             origin: Position::new(23.5, 105.5, 0.0),
             ..Home::default()
@@ -5354,7 +5363,7 @@ fn scout() -> UnitAi {
         last_action: Some(ActionKind::Move),
         last_target: None,
         last_target_class: None,
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         orders: vec![order(89.09375, 60.677_082), order(91.822_914, 52.489_582)],
         ..idle(UnitAiType::SOLDIER)
     }
@@ -6139,7 +6148,7 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
         target_class: class_of(9),
         target_point: Position::new(115.6998, 39.299_213, 0.0),
         desired_distance: 2.0,
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         ..UnitAi::default()
     };
     let at = Surroundings {
@@ -6238,7 +6247,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
     let u = UnitAi {
         idle_timer: 504,
         adjusted_idle_timeout: 503,
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         state_position: Point::new(21.947_916, 92.489_586),
         ..idle(UnitAiType::SOLDIER)
     };
@@ -6379,7 +6388,7 @@ const BOAR: Target = Target {
 
 /// A unit AI without an order or a target, in the aggressive stance.
 const IDLE: Seeker = Seeker {
-    stance: 0,
+    stance: UnitStance::AGGRESSIVE,
     state_position: Point::new(0.0, 0.0),
     order: None,
     action: None,
@@ -6540,7 +6549,7 @@ const SCOUT: Attacker = Attacker {
     ..TC
 };
 const STAND_GROUND: Seeker = Seeker {
-    stance: 2,
+    stance: UnitStance::STAND_GROUND,
     state_position: Point::new(118.5, 183.5),
     ..IDLE
 };
@@ -6566,14 +6575,14 @@ fn a_soldier_standing_its_ground_attacks_within_its_range_of_its_state_position(
     };
     assert_eq!(reach(&ordered, 130.0), Ok(true));
     let defend = Seeker {
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
         ..STAND_GROUND
     };
     assert_eq!(reach(&defend, 124.2), Ok(true));
     assert_eq!(reach(&defend, 124.3), Ok(false));
     // never in NoAttack, never an object its targeting flag leaves out, never class 1
     let no_attack = Seeker {
-        stance: 3,
+        stance: UnitStance::NO_ATTACK,
         ..STAND_GROUND
     };
     assert_eq!(reach(&no_attack, 119.0), Ok(false));
@@ -7009,7 +7018,7 @@ fn the_point_gap_keeps_a_gap_that_is_not_a_number() {
 #[test]
 fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
     let (mut u, at) = idle_scout();
-    u.stance = 3;
+    u.stance = UnitStance::NO_ATTACK;
     u.state_position = Point::new(25.0, 92.5);
     let mut picks = Vec::new();
     let mut look = |s: &Search<'_>| {
@@ -7034,7 +7043,7 @@ fn a_no_attack_soldier_searches_then_walks_back_to_its_state_position() {
     );
     // on a patrol order it stays
     let (mut u, at) = idle_scout();
-    u.stance = 3;
+    u.stance = UnitStance::NO_ATTACK;
     u.state_position = Point::new(25.0, 92.5);
     u.current_order = Some(OrderKind::Patrol);
     let mut fx = Vec::new();
@@ -7321,7 +7330,7 @@ fn a_no_attack_tower_only_searches() {
     let mut u = UnitAi {
         idle_timer: 504,
         adjusted_idle_timeout: 503,
-        stance: 3,
+        stance: UnitStance::NO_ATTACK,
         ..idle(UnitAiType::TOWER)
     };
     let at = Surroundings {
@@ -8378,7 +8387,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         attackers: Attackers::of_saved(&attackers),
         ..idle(UnitAiType::HUNTED)
     };
-    for stance in [2, 3] {
+    for stance in [UnitStance::STAND_GROUND, UnitStance::NO_ATTACK] {
         let mut u = UnitAi {
             stance,
             ..runner(vec![77])
@@ -8420,7 +8429,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
     assert_eq!(run(&mut u, &at, true, false).1, to(away));
     // a defensive unit with its state position 5 tiles east runs no farther than that
     let mut u = UnitAi {
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
         state_position: Point::new(25.0, 30.0),
         ..runner(vec![77])
     };
@@ -9942,26 +9951,52 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         ..IDLE
     };
     let check = |me: &Attacker, s: &Seeker, t: &Target| siege_can_attack(me, s, t, false);
-    assert_eq!(check(&MANGONEL, &seeker(0), &villager(40.0)), Ok(true));
-    assert_eq!(check(&MANGONEL, &seeker(3), &villager(21.0)), Ok(false));
+    assert_eq!(
+        check(&MANGONEL, &seeker(UnitStance::AGGRESSIVE), &villager(40.0)),
+        Ok(true)
+    );
+    assert_eq!(
+        check(&MANGONEL, &seeker(UnitStance::NO_ATTACK), &villager(21.0)),
+        Ok(false)
+    );
     for class in [1, 42].map(ClassId::of_master) {
         let t = Target {
             class,
             ..villager(21.0)
         };
-        assert_eq!(check(&MANGONEL, &seeker(0), &t), Ok(false));
+        assert_eq!(
+            check(&MANGONEL, &seeker(UnitStance::AGGRESSIVE), &t),
+            Ok(false)
+        );
     }
     // the diagonal: sqrt(0.36 + 0.36) = 0.8485; a gap of 7.8 - 0.8485 is within 7
     let diagonal = crate::math::fmath::sqrt(0.6f32 * 0.6 + 0.6 * 0.6);
     let x = 20.0 + 0.2 + 7.0 + diagonal;
-    assert_eq!(check(&MANGONEL, &seeker(2), &villager(x - 0.01)), Ok(true));
-    assert_eq!(check(&MANGONEL, &seeker(2), &villager(x + 0.01)), Ok(false));
+    assert_eq!(
+        check(
+            &MANGONEL,
+            &seeker(UnitStance::STAND_GROUND),
+            &villager(x - 0.01)
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        check(
+            &MANGONEL,
+            &seeker(UnitStance::STAND_GROUND),
+            &villager(x + 0.01)
+        ),
+        Ok(false)
+    );
     let gaia = Target {
         owner: PlayerId::new(0),
         ..villager(x + 1.4)
     };
-    assert_eq!(check(&MANGONEL, &seeker(2), &gaia), Ok(true));
-    let defend = seeker(1);
+    assert_eq!(
+        check(&MANGONEL, &seeker(UnitStance::STAND_GROUND), &gaia),
+        Ok(true)
+    );
+    let defend = seeker(UnitStance::DEFENSIVE);
     assert_eq!(check(&MANGONEL, &defend, &villager(x + 4.99)), Ok(true));
     assert_eq!(check(&MANGONEL, &defend, &villager(x + 5.01)), Ok(false));
     let patrolling = Seeker {
@@ -9975,31 +10010,55 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         capture: 1,
         ..MANGONEL
     };
-    assert_eq!(check(&gaia_unit, &seeker(0), &villager(30.0)), Ok(false));
+    assert_eq!(
+        check(&gaia_unit, &seeker(UnitStance::AGGRESSIVE), &villager(30.0)),
+        Ok(false)
+    );
     let gaia_taker = Attacker {
         capture: 0,
         ..gaia_unit
     };
-    assert_eq!(check(&gaia_taker, &seeker(0), &villager(30.0)), Ok(true));
+    assert_eq!(
+        check(
+            &gaia_taker,
+            &seeker(UnitStance::AGGRESSIVE),
+            &villager(30.0)
+        ),
+        Ok(true)
+    );
     let low = Attacker {
         state: 1,
         ..MANGONEL
     };
-    assert_eq!(check(&low, &seeker(0), &villager(30.0)), Ok(false));
+    assert_eq!(
+        check(&low, &seeker(UnitStance::AGGRESSIVE), &villager(30.0)),
+        Ok(false)
+    );
     let packed = Attacker {
         class: Some(class::CLASS_51),
         ..MANGONEL
     };
-    assert_eq!(check(&packed, &seeker(0), &villager(30.0)), Ok(false));
     assert_eq!(
-        siege_can_attack(&packed, &seeker(0), &villager(30.0), true),
+        check(&packed, &seeker(UnitStance::AGGRESSIVE), &villager(30.0)),
+        Ok(false)
+    );
+    assert_eq!(
+        siege_can_attack(
+            &packed,
+            &seeker(UnitStance::AGGRESSIVE),
+            &villager(30.0),
+            true
+        ),
         Ok(true)
     );
     let packing = Attacker {
         top_action: Some(crate::objects::masters::action_type::PACK),
         ..MANGONEL
     };
-    assert_eq!(check(&packing, &seeker(0), &villager(30.0)), Ok(false));
+    assert_eq!(
+        check(&packing, &seeker(UnitStance::AGGRESSIVE), &villager(30.0)),
+        Ok(false)
+    );
     // a ram attacks buildings and siege, a trebuchet buildings only
     let ram = Attacker {
         master: ids::ID_35,
@@ -10009,19 +10068,31 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         class: class::SIEGE,
         ..villager(30.0)
     };
-    assert_eq!(check(&ram, &seeker(0), &villager(30.0)), Ok(false));
-    assert_eq!(check(&ram, &seeker(0), &siege), Ok(true));
+    assert_eq!(
+        check(&ram, &seeker(UnitStance::AGGRESSIVE), &villager(30.0)),
+        Ok(false)
+    );
+    assert_eq!(
+        check(&ram, &seeker(UnitStance::AGGRESSIVE), &siege),
+        Ok(true)
+    );
     let trebuchet = Attacker {
         class: Some(class::CLASS_54),
         ..MANGONEL
     };
-    assert_eq!(check(&trebuchet, &seeker(0), &siege), Ok(false));
+    assert_eq!(
+        check(&trebuchet, &seeker(UnitStance::AGGRESSIVE), &siege),
+        Ok(false)
+    );
     let house = Target {
         class: class::BUILDING,
         kind: BUILDING,
         ..villager(30.0)
     };
-    assert_eq!(check(&trebuchet, &seeker(0), &house), Ok(true));
+    assert_eq!(
+        check(&trebuchet, &seeker(UnitStance::AGGRESSIVE), &house),
+        Ok(true)
+    );
     // masters 1744 and 1746 on a building: priority 1 or 4 and up only
     let elephant = |attack_priority| Attacker {
         master: ids::ID_1744,
@@ -10031,7 +10102,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
     let on_building = Seeker {
         target: Some(object_id(900)),
         target_kind: Some(BUILDING),
-        ..seeker(0)
+        ..seeker(UnitStance::AGGRESSIVE)
     };
     for (priority, attacks) in [(0, false), (1, true), (2, false), (3, false), (4, true)] {
         assert_eq!(
@@ -10044,8 +10115,18 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         attack_priority: 3,
         ..MANGONEL
     };
-    assert_eq!(check(&priority_3, &seeker(0), &villager(30.0)), Ok(false));
-    assert_eq!(check(&priority_3, &seeker(0), &house), Ok(true));
+    assert_eq!(
+        check(
+            &priority_3,
+            &seeker(UnitStance::AGGRESSIVE),
+            &villager(30.0)
+        ),
+        Ok(false)
+    );
+    assert_eq!(
+        check(&priority_3, &seeker(UnitStance::AGGRESSIVE), &house),
+        Ok(true)
+    );
     // its neutral test spares the trade cart's class no more
     assert!(siege_attacks_neutral(0, class::TRADE_CART));
     assert!(!soldier_attacks_neutral(0, class::TRADE_CART));
@@ -10151,7 +10232,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
         ..at.clone()
     };
     let mut u = UnitAi {
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
         state_position: Point::new(10.0, 20.0),
         ..idle(SIEGE_AI)
     };
@@ -10722,7 +10803,7 @@ fn a_unit_standing_its_ground_that_strayed_with_an_action_stops_and_walks_back()
         ..Surroundings::default()
     };
     let standing = |action| UnitAi {
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         state_position: Point::new(10.0, 10.0),
         current_action: action,
         current_target: Some(object_id(500)),
@@ -10902,12 +10983,12 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
         (r, fx)
     };
     // stand ground within 0.5: no leash, on to the retarget check (the timer runs out)
-    let mut u = unit(2);
+    let mut u = unit(UnitStance::STAND_GROUND);
     let (r, fx) = run(&mut u, &at(10.0));
     assert_eq!((r, fx), (Ok(true), vec![]));
     assert_eq!(u.last_retarget_time, 1000);
     // beyond it: stop, the target forgotten, the patrol walked on (10)
-    let mut u = unit(2);
+    let mut u = unit(UnitStance::STAND_GROUND);
     let (r, fx) = run(&mut u, &at(11.0));
     assert_eq!(
         (r, fx),
@@ -10918,12 +10999,12 @@ fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
         (None, Some(OrderKind::Patrol), 750)
     );
     // the defend stance within 5 ends slot 73 before the retarget check (9)
-    let mut u = unit(1);
+    let mut u = unit(UnitStance::DEFENSIVE);
     let (r, fx) = run(&mut u, &at(11.0));
     assert_eq!((r, fx), (Ok(false), vec![]));
     assert_eq!(u.last_retarget_time, 0);
     // beyond 5 it walks the patrol on
-    let mut u = unit(1);
+    let mut u = unit(UnitStance::DEFENSIVE);
     let (r, fx) = run(&mut u, &at(16.0));
     assert_eq!(
         (r, fx),
@@ -11550,7 +11631,7 @@ fn the_run_away_order_runs_from_the_unit_s_attackers() {
     );
     // standing its ground, a player's unit stays: not taken
     let mut u = UnitAi {
-        stance: 2,
+        stance: UnitStance::STAND_GROUND,
         ..idle(SOLDIER_AI)
     };
     assert_eq!(

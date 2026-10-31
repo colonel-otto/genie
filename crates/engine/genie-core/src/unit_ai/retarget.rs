@@ -11,6 +11,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::NearestAttacker;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     AiMove, AttackAsk, DEFEND_LEASH, DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH,
     FOLLOW_SLACK_LOW, GroupState, INVALID_POINT, Pick, RETARGET_RANGE, RETARGET_REACH,
@@ -247,7 +248,7 @@ impl UnitAi {
         // the leashes (unless on orders 0x2c7, 0x2dd and 0x323, which no order holds, or in a
         // group that patrols: FUN_141017c30, FUN_141017c40), measured from the unit's footprint
         // (FUN_140a847c0)
-        let leashed = matches!(self.stance, 1 | 2)
+        let leashed = self.stance.leashed()
             && !matches!(
                 self.current_order,
                 Some(OrderKind::Patrol | OrderKind::AttackMove)
@@ -259,7 +260,7 @@ impl UnitAi {
         // (restorePatrolInformation): "That's too far out, returning to patrol." (10); within
         // it the defend stance ends slot 73 (9), stand ground goes on to the retarget check
         if let Some(saved) = self.patrol_path.as_ref().filter(|_| leashed) {
-            let leash = if self.stance == 1 {
+            let leash = if self.stance == UnitStance::DEFENSIVE {
                 DEFEND_PATROL_LEASH
             } else {
                 STAND_GROUND_PATROL_LEASH
@@ -270,11 +271,11 @@ impl UnitAi {
                 let _ = self.restore_patrol(at, ai, side)?;
                 return Ok(true);
             }
-            if self.stance == 1 {
+            if self.stance == UnitStance::DEFENSIVE {
                 return Ok(true);
             }
         }
-        if leashed && self.stance == 1 && self.patrol_path.is_none() {
+        if leashed && self.stance == UnitStance::DEFENSIVE && self.patrol_path.is_none() {
             // the defend stance's: a unit more than 5 tiles (DAT_142ed6f20, squared) from its
             // state position stops (slot 0xb0 with 1), forgets its target and walks back ("We're
             // too far out, returning."), then on to the retarget check
@@ -286,7 +287,7 @@ impl UnitAi {
             }
         }
         if leashed
-            && self.stance == 2
+            && self.stance == UnitStance::STAND_GROUND
             && self.patrol_path.is_none()
             && !matches!(
                 self.current_action,
@@ -359,7 +360,7 @@ impl UnitAi {
         })?;
         self.add_retries(&found);
         self.attack_search_alert(found, computer)?;
-        let keeps = search.building && computer && self.stance == 0;
+        let keeps = search.building && computer && self.stance == UnitStance::AGGRESSIVE;
         let new = Self::world_object(found.id, at, side)?;
         if !keeps
             && self.current_order == Some(OrderKind::Attack)
@@ -439,7 +440,7 @@ impl UnitAi {
             return Ok(None);
         }
         // a unit in stand ground or no attack with an order goes no further
-        if 1 < self.stance && self.current_order.is_some() {
+        if UnitStance::DEFENSIVE < self.stance && self.current_order.is_some() {
             return Ok(None);
         }
         // "I have an game attack action without an order ... inAttackWorkState"

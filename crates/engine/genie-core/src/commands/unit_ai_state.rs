@@ -14,7 +14,7 @@ pub struct UnitAiStateCommand {
     /// The units.
     pub units: UnitList,
     /// The stance.
-    pub state: u8,
+    pub state: crate::unit_ai::UnitStance,
 }
 
 impl UnitAiStateCommand {

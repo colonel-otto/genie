@@ -477,7 +477,7 @@ pub(crate) fn reads() -> AttackReads {
         computer: false,
         world_time: 0,
         can_move: true,
-        stance: 0,
+        stance: UnitStance::AGGRESSIVE,
         state_position: Point::ORIGIN,
         queue_empty: true,
         ai_order: AiOrder::Idle,
@@ -1041,7 +1041,10 @@ fn an_attack_on_a_target_out_of_sight_fails() {
 #[test]
 fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
     let at = Position::new(11.0, 10.0, 0.0);
-    for (stance, fails) in [(0, false), (2, true)] {
+    for (stance, fails) in [
+        (UnitStance::AGGRESSIVE, false),
+        (UnitStance::STAND_GROUND, true),
+    ] {
         let mut world = world_with(7, PlayerId::new(2), class::CLASS_6, at);
         world.sight = Some(sight(false));
         let victim = Victim {
@@ -1549,7 +1552,7 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
 /// The soldier at (10, 10), master 4, of speed `speed` whose unit AI may move to attack
 /// (`can_move`) in stance `stance`, its leash centre on itself, and a target of class 6 `gap`
 /// east of it; range 1, no least range.
-fn engaged(gap: f32, speed: f32, can_move: bool, stance: u8) -> Engagement {
+fn engaged(gap: f32, speed: f32, can_move: bool, stance: UnitStance) -> Engagement {
     Engagement {
         gap_squared: gap * gap,
         gap,
@@ -1635,9 +1638,9 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
         .unwrap()
     };
     for e in [
-        engaged(0.5, 1.2, false, 2),
-        engaged(0.5, 0.0, true, 0),
-        engaged(f32::NAN, 1.2, false, 2),
+        engaged(0.5, 1.2, false, UnitStance::STAND_GROUND),
+        engaged(0.5, 0.0, true, UnitStance::AGGRESSIVE),
+        engaged(f32::NAN, 1.2, false, UnitStance::STAND_GROUND),
     ] {
         let c = start(e);
         assert_eq!(
@@ -1650,7 +1653,7 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
         );
         assert_eq!(c.attack.move_to, None);
     }
-    let away = start(engaged(3.0, 1.2, false, 2));
+    let away = start(engaged(3.0, 1.2, false, UnitStance::STAND_GROUND));
     assert_eq!(
         (away.ready, away.failed, away.posted),
         (false, true, vec![(NotifyKind::OUT_OF_REACH, [0; 3])])
@@ -1658,7 +1661,7 @@ fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it(
     assert_eq!(away.attack.point, Position::new(NONE, NONE, NONE));
     let close = start(Engagement {
         min_range: 1.0,
-        ..engaged(0.5, 1.2, false, 2)
+        ..engaged(0.5, 1.2, false, UnitStance::STAND_GROUND)
     });
     assert_eq!(
         (close.ready, close.failed, close.posted),
@@ -1692,37 +1695,37 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
         (c.failed_first, c.posted, mover.animated.speed == 0.0)
     };
     assert_eq!(
-        start(engaged(0.5, 1.2, true, 0), true),
+        start(engaged(0.5, 1.2, true, UnitStance::AGGRESSIVE), true),
         (false, vec![], false)
     );
     let close = Engagement {
         min_range: 1.0,
-        ..engaged(0.5, 1.2, true, 0)
+        ..engaged(0.5, 1.2, true, UnitStance::AGGRESSIVE)
     };
     assert_eq!(
         start(close, true),
         (false, vec![(NotifyKind::TOO_CLOSE, [-1; 3])], false)
     );
     assert_eq!(
-        start(engaged(3.0, 1.2, true, 0), true),
+        start(engaged(3.0, 1.2, true, UnitStance::AGGRESSIVE), true),
         (false, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], true)
     );
     assert_eq!(
-        start(engaged(3.0, 1.2, true, 0), false),
+        start(engaged(3.0, 1.2, true, UnitStance::AGGRESSIVE), false),
         (false, vec![], true)
     );
     assert_eq!(
-        start(engaged(3.0, 1.2, true, 2), false),
+        start(engaged(3.0, 1.2, true, UnitStance::STAND_GROUND), false),
         (true, vec![], false)
     );
     // stance 1: the target 3 from the centre stays within 1 + 5, 7 from it does not
     assert_eq!(
-        start(engaged(3.0, 1.2, true, 1), true),
+        start(engaged(3.0, 1.2, true, UnitStance::DEFENSIVE), true),
         (false, vec![(NotifyKind::OUT_OF_REACH, [0; 3])], true)
     );
     let far = Engagement {
         state_position: Point::new(3.0, 10.0),
-        ..engaged(3.0, 1.2, true, 1)
+        ..engaged(3.0, 1.2, true, UnitStance::DEFENSIVE)
     };
     assert_eq!(
         start(far, true),
@@ -1730,7 +1733,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
     );
     // a target out of sight of a unit that cannot follow it fails
     let mut mover = soldier_mover(1.2);
-    let e = engaged(3.0, 1.2, false, 2);
+    let e = engaged(3.0, 1.2, false, UnitStance::STAND_GROUND);
     let world = world_with(7, PlayerId::new(2), class::CLASS_6, e.target_position);
     let c = own_start(
         &world,
@@ -1750,7 +1753,7 @@ fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_f
 fn the_start_faces_the_target_but_for_masters_1704_and_1706() {
     let north = Engagement {
         target_position: Position::new(10.0, 10.5, 0.0),
-        ..engaged(0.5, 0.0, false, 2)
+        ..engaged(0.5, 0.0, false, UnitStance::STAND_GROUND)
     };
     let world = world_with(7, PlayerId::new(2), class::CLASS_6, north.target_position);
     let angle = |master| {
@@ -1796,7 +1799,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     let world = gated();
     let e = Engagement {
         target_class: class::GATE,
-        ..engaged(3.0, 0.0, false, 2)
+        ..engaged(3.0, 0.0, false, UnitStance::STAND_GROUND)
     };
     let mut mover_body = Body::new(
         Position::new(10.0, 10.0, 0.0),
@@ -1970,7 +1973,7 @@ fn ready_to_attack_s_leash_fails_a_target_too_far_from_the_unit_ai_s_point() {
             0.8,
             victim,
         );
-        (rig.r.stance, rig.r.state_position) = (1, centre);
+        (rig.r.stance, rig.r.state_position) = (UnitStance::DEFENSIVE, centre);
         let mut a = soldier_attack(7, 1.0, 0.0, Position::new(NONE, NONE, NONE));
         let r = rig
             .ground(|u, g, f, r| a.ready_to_attack(u, g, f, r, false))
@@ -2780,7 +2783,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
         );
     }
     let posted_1fa = vec![(NotifyKind::ACTION_COMPLETED, [600, 0, 0])];
-    let stance_1 = lost(order, |rig| rig.r.stance = 1);
+    let stance_1 = lost(order, |rig| rig.r.stance = UnitStance::DEFENSIVE);
     assert_eq!(
         (stance_1.0, stance_1.1, stance_1.2, stance_1.3, stance_1.4),
         (Ok(5), posted_1fa, true, Some(0), DONE)

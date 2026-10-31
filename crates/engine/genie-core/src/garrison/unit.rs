@@ -23,6 +23,7 @@ use crate::pathing::Pathing;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::Actor;
 use crate::vision::registry::UnitUpdate;
 use crate::world::others::OthersRef;
@@ -101,7 +102,10 @@ impl Unit {
             target,
             start,
             waits: villager && !c.w.players.player(c.player)?.computer,
-            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            stance: self
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
             defaults: MoveDefaults::of(master, self.abilities.look.as_ref()),
         })
     }

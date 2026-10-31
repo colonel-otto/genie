@@ -8,6 +8,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
@@ -352,43 +353,43 @@ pub(super) const STAND_GROUND_FLAG: u32 = 0x10;
 /// (defensive) to a human player's of masters 527, 528 and 1104; 3 (no attack) to a human
 /// player's of classes 35 and 64; then 1 to a hero (`hero_flag` with bit 0 or 3, not both 3
 /// and 7); 3 to class 61; else the owner's posture (slot 0x90, `+0x71c`, its low byte).
-pub(super) fn soldier_stance(new: &NewObject) -> u8 {
+pub(super) fn soldier_stance(new: &NewObject) -> UnitStance {
     // UCOMISS with JP, JNZ: the age equals 0 (a NaN does not)
     if !new.computer
         && new.object_flags & STAND_GROUND_FLAG != 0
         && new.copy_id == Some(new.master)
         && new.age == 0.0
     {
-        return 2;
+        return UnitStance::STAND_GROUND;
     }
     if !new.computer && DEFENSIVE_MASTERS.contains(&new.master) {
-        return 1;
+        return UnitStance::DEFENSIVE;
     }
     if !new.computer && NO_ATTACK_CLASSES.contains(&new.class) {
-        return 3;
+        return UnitStance::NO_ATTACK;
     }
     // TEST 9, then a signed byte at least 0 or bit 3 clear
     let hero = new.hero_flag & 9 != 0 && (new.hero_flag & 0x80 == 0 || new.hero_flag & 8 == 0);
     if hero {
-        return 1;
+        return UnitStance::DEFENSIVE;
     }
     if new.class == NO_ATTACK_CLASS {
-        return 3;
+        return UnitStance::NO_ATTACK;
     }
-    new.posture as u8
+    UnitStance::of_byte(new.posture as u8)
 }
 
 /// The siege unit's stance (`+0x1a9`) its constructor (`FUN_140c12040`) gives a new object: 0
 /// for a computer player's and for classes 51 and 54 (`-0xe79`, `-0xe76` raw); the owner's
 /// posture (slot 0x90, its low byte) for class 55 (`-0xe75`); 1 for any other.
-pub(super) fn siege_stance(new: &NewObject) -> u8 {
+pub(super) fn siege_stance(new: &NewObject) -> UnitStance {
     if new.computer || matches!(new.class, class::CLASS_51 | class::CLASS_54) {
-        return 0;
+        return UnitStance::AGGRESSIVE;
     }
     if new.class == class::CLASS_55 {
-        return new.posture as u8;
+        return UnitStance::of_byte(new.posture as u8);
     }
-    1
+    UnitStance::DEFENSIVE
 }
 
 /// A ship's draw on a missile's warning (`0x20f`, `processNotify`): `r * 100 / 0x7fff` below

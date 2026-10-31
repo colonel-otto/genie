@@ -31,7 +31,7 @@ pub struct PointWalker {
     /// The unit is a villager (class 4): its `MoveTo` waits once when the motion step gives up.
     pub villager: bool,
     /// Its unit AI's stance (`+0x1a9`), 0 without one: the wait is a second below 2, else two.
-    pub stance: u8,
+    pub stance: crate::unit_ai::UnitStance,
 }
 
 /// What a hunt's walk to its point did in an update ([`HuntAction::update_point_walk`]).

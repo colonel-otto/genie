@@ -16,6 +16,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::Inbox;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::UnitAi;
+use crate::unit_ai::UnitStance;
 use crate::world::SPEED_EPSILON;
 use crate::world::step::Step;
 
@@ -115,7 +116,10 @@ impl Unit {
         let step = self.own_move_step(c, me)?;
         if step.gave_up {
             let villager = self.master(&c.w.masters, c.player)?.class == class::VILLAGER;
-            let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
+            let stance = self
+                .ai
+                .as_ref()
+                .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance);
             self.own_move_gave_up(
                 villager && !c.w.players[c.player.index()].computer,
                 stance,

@@ -233,7 +233,7 @@ pub(crate) struct GatherReads {
     /// (`set_state(0xf3)`, [`FARM_WAITERS`]).
     pub(crate) master: MasterId,
     /// The unit AI's stance (`+0x1a9`), 0 without a unit AI.
-    pub(crate) stance: u8,
+    pub(crate) stance: crate::unit_ai::UnitStance,
     /// The game's setting at `FUN_140c87b90()`'s `+0x69` (farmers walk their farm's stops); with
     /// it `set_state(7)` leaves `mGatherX`, `mGatherY` as they are.
     pub(crate) farm_stops: bool,

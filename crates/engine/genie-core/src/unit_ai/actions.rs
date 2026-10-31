@@ -8,6 +8,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     AiMove, ENDED_ACTIONS, Effect, GO_ON, Notify, PRODUCED, QueuedOrder, Surroundings, UnitAi,
     UnitSide, WALK_BACK, point_gap_squared,
@@ -335,7 +336,9 @@ impl UnitAi {
             .current_action
             .is_some_and(|a| ENDED_ACTIONS.contains(&a))
         {
-            if self.current_action == Some(ActionKind::MoveAside) && self.stance == 2 {
+            if self.current_action == Some(ActionKind::MoveAside)
+                && self.stance == UnitStance::STAND_GROUND
+            {
                 self.state_position = at.position.ground();
             }
             self.current_action = None;

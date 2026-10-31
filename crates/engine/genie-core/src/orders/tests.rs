@@ -36,6 +36,7 @@ use crate::unit_ai::Issuer;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 
 /// The object's own update knows its slot: it is taken while it still holds the object, and
 /// the object is found by its id once the list moved or the slot is out of the lists; an
@@ -441,7 +442,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
 /// clears `+0x7b8`; the Attack waits in state 4 for the `MoveTo`'s end.
 #[test]
 fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
-    let (mut t, task) = work_attack(0);
+    let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
     t.start_attack(
         PlayerId::new(1),
         0,
@@ -476,7 +477,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
 /// does not keep it.
 #[test]
 fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
-    let (mut t, task) = work_attack(0);
+    let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
     let at = Position::new(10.4, 10.0, 0.0);
     t.start_attack(PlayerId::new(1), 0, object_id(50), &task, at, true)
         .unwrap();
@@ -522,7 +523,7 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
 /// place and class; a target or a main building the slice does not hold fails.
 #[test]
 fn an_attack_task_aims_at_its_target_or_an_annex_s_main_building() {
-    let (mut t, _) = work_attack(0);
+    let (mut t, _) = work_attack(UnitStance::AGGRESSIVE);
     let aim = t.attack_aim(object_id(50)).unwrap();
     assert_eq!(
         (aim.owner, aim.class, aim.fog_visibility),
@@ -570,7 +571,7 @@ fn an_attack_task_aims_at_its_target_or_an_annex_s_main_building() {
 /// A soldier without a unit AI only takes the target.
 #[test]
 fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
-    let (mut t, _) = work_attack(0);
+    let (mut t, _) = work_attack(UnitStance::AGGRESSIVE);
     annexed(&mut t);
     t.world_time = 1730;
     let aim = t.attack_aim(object_id(61)).unwrap();
@@ -630,7 +631,7 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
 fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
     use crate::combat::attack::{READY, SWING};
     for (timer, state, pending, sprite) in [(0.5, READY, false, 300), (0.0, SWING, true, 301)] {
-        let (mut t, task) = work_attack(0);
+        let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
         let unit = &mut t.players[1].objects[0];
         unit.ai = None;
         unit.attack_timer = timer;
@@ -710,7 +711,7 @@ fn annexed(t: &mut World) {
 /// [`soldiers`]' soldier 11 (master 4, melee, reload 2) at (10, 10) on its feet with a walker
 /// of speed 1.2 and a unit AI of `stance`, touching Gaia's wolf 50 (master 126, class 10, 25
 /// hit points) at (10.4, 10), and the attack task (action type 7, no sprites of its own).
-fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
+fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
     use crate::objects::sprite::Graphic;
@@ -1799,13 +1800,16 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
     let mut fx: Vec<crate::unit_ai::Effect> = Vec::new();
     set_stance(
         &mut ai,
-        1,
+        UnitStance::DEFENSIVE,
         (Point::new(3.0, 4.0), Some(class::CLASS_6)),
         &mut fx,
         &mut crate::math::rng::Well512::default(),
     )
     .unwrap();
-    assert_eq!((ai.stance, ai.state_position), (1, Point::new(3.0, 4.0)));
+    assert_eq!(
+        (ai.stance, ai.state_position),
+        (UnitStance::DEFENSIVE, Point::new(3.0, 4.0))
+    );
     assert_eq!(
         (ai.current_action, ai.current_target),
         (Some(ActionKind::Attack), Some(object_id(40)))
@@ -1813,13 +1817,13 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
     assert_eq!(fx, []);
     set_stance(
         &mut ai,
-        3,
+        UnitStance::NO_ATTACK,
         (Point::new(3.0, 5.0), Some(class::CLASS_6)),
         &mut fx,
         &mut crate::math::rng::Well512::default(),
     )
     .unwrap();
-    assert_eq!(ai.stance, 3);
+    assert_eq!(ai.stance, UnitStance::NO_ATTACK);
     // order 700 is the action's (600 + 100): the stop ends it, the state position the place
     assert_eq!((ai.current_order, ai.current_action), (None, None));
     assert_eq!(
@@ -1855,14 +1859,23 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
         ..Unit::default()
     });
     let stance = |t: &World, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
-    t.unit_ai_state(player_id(1), &object_ids([11, 30]), 2)
-        .unwrap();
-    assert_eq!((stance(&t, 1), stance(&t, 2)), (2, 0));
+    t.unit_ai_state(
+        player_id(1),
+        &object_ids([11, 30]),
+        UnitStance::STAND_GROUND,
+    )
+    .unwrap();
+    assert_eq!(
+        (stance(&t, 1), stance(&t, 2)),
+        (UnitStance::STAND_GROUND, UnitStance::AGGRESSIVE)
+    );
     t.settings.cheats_enabled = true;
-    t.unit_ai_state(player_id(1), &object_ids([30]), 1).unwrap();
-    assert_eq!(stance(&t, 2), 0);
-    t.unit_ai_state(player_id(1), &object_ids([30]), 3).unwrap();
-    assert_eq!(stance(&t, 2), 3);
+    t.unit_ai_state(player_id(1), &object_ids([30]), UnitStance::DEFENSIVE)
+        .unwrap();
+    assert_eq!(stance(&t, 2), UnitStance::AGGRESSIVE);
+    t.unit_ai_state(player_id(1), &object_ids([30]), UnitStance::NO_ATTACK)
+        .unwrap();
+    assert_eq!(stance(&t, 2), UnitStance::NO_ATTACK);
 }
 
 /// `FUN_1411a6a70` on a unit inside a building (`+0x2f0` set, `+0x2e8` 0): no sight slots and
@@ -4202,7 +4215,7 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
 fn an_attack_task_s_start_ends_where_the_start_does() {
     use crate::combat::attack::MOVE;
     let started = |ai: bool, at: f32| {
-        let (mut t, task) = work_attack(0);
+        let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
         let unit = &mut t.players[1].objects[0];
         if !ai {
             unit.ai = None;

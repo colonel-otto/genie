@@ -166,7 +166,7 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
         Packet::UnitAiState(c) => Command::UnitAiState(UnitAiStateCommand {
             player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            state: c.state,
+            state: genie_core::unit_ai::UnitStance::of_byte(c.state),
         }),
         Packet::AutoScout(c) => Command::AutoScout(AutoScoutCommand {
             player: PlayerId::from(c.commp_id),

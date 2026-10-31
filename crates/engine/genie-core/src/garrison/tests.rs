@@ -42,6 +42,7 @@ use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::OrderTargetType;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::world::Player;
 
 /// An Enter task of work range `range` and class `class` without sprites.
@@ -3319,7 +3320,7 @@ fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
     v.ai = Some(crate::unit_ai::UnitAi {
         current_action: Some(ActionKind::Gather),
         current_target: Some(object_id(77)),
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
         ..crate::unit_ai::UnitAi::default()
     });
     assert_eq!(
@@ -3339,7 +3340,7 @@ fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
         (
             ai.current_action,
             ai.current_target,
-            ai.stance,
+            ai.stance.get(),
             ai.last_action
         ),
         (None, None, 1, Some(ActionKind::Gather))
@@ -3601,7 +3602,7 @@ fn let_out_beside_a_second_centre(
     t.object_mut(object_id(1000)).unwrap().1.ai = Some(crate::unit_ai::UnitAi {
         current_action: Some(ActionKind::Gather),
         current_target: Some(object_id(77)),
-        stance: 1,
+        stance: UnitStance::DEFENSIVE,
         ..crate::unit_ai::UnitAi::default()
     });
     let mut second = unit(101, TC, 2400.0);

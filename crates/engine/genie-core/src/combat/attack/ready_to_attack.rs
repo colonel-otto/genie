@@ -16,6 +16,7 @@ use crate::objects::unit::Unit;
 use crate::orders::action_state::FAILED;
 use crate::players::PlayerId;
 use crate::unit_ai::NotifyKind;
+use crate::unit_ai::UnitStance;
 
 impl Attack {
     /// `set_state(6)` (case 6): with a target or a point (`+0x38` not −1, `UCOMISS`: a NaN one
@@ -101,7 +102,7 @@ impl Attack {
             .stats
             .speed;
         if target_unseen(g.map, f, &t)? {
-            if r.stance == 0 && 0.0 < speed && r.can_move {
+            if r.stance == UnitStance::AGGRESSIVE && 0.0 < speed && r.can_move {
                 self.wait_at_seen(unit, f, r, g.graphics)?;
                 return Ok(Readiness::Waiting);
             }
@@ -138,7 +139,7 @@ impl Attack {
             if !self.sub_action {
                 g.post(unit, NotifyKind::OUT_OF_REACH, [0; 3])?;
             }
-            if (r.stance == 1 && self.off_leash(t.position, r.state_position))
+            if (r.stance == UnitStance::DEFENSIVE && self.off_leash(t.position, r.state_position))
                 || speed == 0.0
                 || !r.can_move
             {

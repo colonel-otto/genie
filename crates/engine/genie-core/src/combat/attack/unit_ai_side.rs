@@ -16,6 +16,7 @@ use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::world::SideWorld;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView};
@@ -234,7 +235,7 @@ impl UnitView<'_, '_> {
             position: unit.position(),
             radius: master.radius,
         };
-        let can_move = ai.current_order.is_some() || ai.stance <= 1;
+        let can_move = ai.current_order.is_some() || ai.stance <= UnitStance::DEFENSIVE;
         let attack = unit.actions.attack_mut().expect("the caller's own Attack");
         let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
         let by = Releaser {

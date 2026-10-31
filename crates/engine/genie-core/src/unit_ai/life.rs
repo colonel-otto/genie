@@ -13,6 +13,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::Attackers;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, AiMove, BOAR_AI, COMPUTER_SOLDIER_IDLE_TIMEOUT,
     DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP, HUNTED_IDLE_TIMEOUT, Home, Hunted,
@@ -79,11 +80,11 @@ impl UnitAi {
                     leash: new.hunt_range,
                 });
                 if new.class == class::KING {
-                    made.stance = 0;
+                    made.stance = UnitStance::AGGRESSIVE;
                 }
             }
             BOAR_AI => {
-                made.stance = 0;
+                made.stance = UnitStance::AGGRESSIVE;
                 made.home = Some(Home {
                     origin: new.position,
                     furious: false,
@@ -91,13 +92,13 @@ impl UnitAi {
                 });
             }
             UnitAiType::LION => {
-                made.stance = 0;
+                made.stance = UnitStance::AGGRESSIVE;
                 made.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
             }
             // the base's stance 3
             UnitAiType::RANGED_6 | UnitAiType::RANGED_7 => {}
             UnitAiType::PRIEST => {
-                made.stance = 1;
+                made.stance = UnitStance::DEFENSIVE;
                 made.set_idle_timeout(PRIEST_IDLE_TIMEOUT, ai);
             }
             SOLDIER_AI => {
@@ -110,20 +111,20 @@ impl UnitAi {
                 made.stance = soldier_stance(new);
             }
             ARTIFACT_AI => {
-                made.stance = 0;
+                made.stance = UnitStance::AGGRESSIVE;
                 made.set_idle_timeout(ARTIFACT_IDLE_TIMEOUT, ai);
             }
             TOWER_AI => {
-                made.stance = 0;
+                made.stance = UnitStance::AGGRESSIVE;
                 made.set_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
             }
             UnitAiType::SIEGE => {
                 made.stance = siege_stance(new);
                 made.set_idle_timeout(SIEGE_IDLE_TIMEOUT, ai);
             }
-            UnitAiType::LIVESTOCK => made.stance = 1,
+            UnitAiType::LIVESTOCK => made.stance = UnitStance::DEFENSIVE,
             // 3, 8, 0xa, 0xb, 0xc, 0x11 and 0x12
-            _ => made.stance = 0,
+            _ => made.stance = UnitStance::AGGRESSIVE,
         }
         Some(made)
     }
@@ -161,7 +162,7 @@ impl UnitAi {
             look_around_timeout: 1000,
             last_retarget_time,
             retarget_timer,
-            stance: 3,
+            stance: UnitStance::NO_ATTACK,
             // the constructor's word at +0x1d4 (0x140c2e080)
             formation_type: FormationKind::HORDE,
             // the object's place

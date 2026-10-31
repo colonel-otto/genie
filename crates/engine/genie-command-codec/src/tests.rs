@@ -18,6 +18,7 @@ use genie_core::objects::masters::MasterId;
 use genie_core::orders::{Interact, MoveOrder};
 use genie_core::players::PlayerId;
 use genie_core::players::tribute::Gift;
+use genie_core::unit_ai::UnitStance;
 use genie_core::{ErrorKind, GenieError};
 use genie_rec::de::command as packets;
 
@@ -313,7 +314,7 @@ fn the_unit_lists_keep_their_counted_ids() {
         Command::UnitAiState(UnitAiStateCommand {
             player: player_id(3),
             units: unit_list(object_ids([34])),
-            state: 2,
+            state: UnitStance::STAND_GROUND,
         })
     );
     let scout = packets::AutoScout {

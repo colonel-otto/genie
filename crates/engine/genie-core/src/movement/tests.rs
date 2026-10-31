@@ -17,6 +17,7 @@ use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
+use crate::unit_ai::UnitStance;
 
 const DT: f32 = 0.02;
 
@@ -2893,7 +2894,7 @@ fn a_new_move_to_s_wait_lasts_a_second() {
     let new = MoveWait::default();
     assert_eq!((new.state, new.timer, new.delay), (0, 0.0, 1.0));
     let mut wait = new;
-    let _ = wait.give_up(true, 2);
+    let _ = wait.give_up(true, UnitStance::STAND_GROUND);
     assert_eq!((wait.state, wait.delay), (1, 2.0));
 }
 

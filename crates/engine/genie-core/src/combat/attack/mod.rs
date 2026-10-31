@@ -28,6 +28,7 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{OrderKind, UnitAi};
 use crate::world::World;
 use genie_diff::Diff;
@@ -248,7 +249,7 @@ pub struct Engagement {
     /// below 2.
     pub can_move: bool,
     /// The unit AI's stance (`+0x1a9`), whose 1 adds a leash test.
-    pub stance: u8,
+    pub stance: UnitStance,
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the leash's centre.
     pub state_position: Point,
     /// The world's time (`FUN_1415300d0`), which a facing over time reads.
@@ -290,7 +291,7 @@ pub(crate) struct AttackReads {
     /// of a target out of reach.
     pub(crate) can_move: bool,
     /// The unit AI's stance (`+0x1a9`).
-    pub(crate) stance: u8,
+    pub(crate) stance: UnitStance,
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`), the centre of stance 1's leash.
     pub(crate) state_position: Point,
     /// The unit has a unit AI whose order queue is empty (`FUN_140c564a0` is 0).
@@ -326,8 +327,9 @@ impl AttackReads {
             swing_sprites: swing_sprites(unit.abilities.look.as_ref(), master, graphics),
             computer,
             world_time: now,
-            can_move: ai.is_some_and(|ai| ai.current_order.is_some() || ai.stance <= 1),
-            stance: ai.map_or(0, |ai| ai.stance),
+            can_move: ai
+                .is_some_and(|ai| ai.current_order.is_some() || ai.stance <= UnitStance::DEFENSIVE),
+            stance: ai.map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
             state_position: ai.map_or(Point::ORIGIN, |ai| ai.state_position),
             queue_empty: ai.is_some_and(|ai| ai.orders.is_empty()),
             ai_order: AiOrder::of(ai),

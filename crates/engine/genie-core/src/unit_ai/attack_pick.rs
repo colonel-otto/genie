@@ -19,6 +19,7 @@ use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     ARTIFACT_AI, BOAR_AI, BUILDING_AI, CIVILIAN, FISHING_AI, OrderRecord, SIEGE_AI, SIEGE_TOWER_AI,
     TRADE_AI, TRANSPORT_AI, civilian_may_attack, defend_patrol_range, lion_may_attack,
@@ -237,7 +238,7 @@ pub struct Target {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seeker {
     /// `+0x1a9`.
-    pub stance: u8,
+    pub stance: UnitStance,
     /// `+0x1ac`, `+0x1b0`.
     pub state_position: Point,
     /// `+0x3c`.
@@ -264,7 +265,7 @@ impl Seeker {
     /// unit groups): with an order, or without one in a stance below 2.
     #[must_use]
     pub const fn can_move(&self) -> bool {
-        self.order.is_some() || self.stance <= 1
+        self.order.is_some() || self.stance.below(UnitStance::STAND_GROUND)
     }
 }
 
@@ -468,7 +469,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if t.kind == BUILDING && t.desolid {
         return Ok(false);
     }
-    if s.stance == 3 {
+    if s.stance == UnitStance::NO_ATTACK {
         return Ok(false);
     }
     if !stance_reaches(me, s, t)? {
@@ -505,8 +506,12 @@ pub(super) fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bo
     let d2 = point_gap_squared(s.state_position, t.position, t.radius);
     let reach = me.range_against()? + STANCE_RANGE_GROWTH;
     match s.stance {
-        2 if !matches!(s.order, Some(OrderKind::Defend)) && reach * reach < d2 => return Ok(false),
-        1 => {
+        UnitStance::STAND_GROUND
+            if !matches!(s.order, Some(OrderKind::Defend)) && reach * reach < d2 =>
+        {
+            return Ok(false);
+        }
+        UnitStance::DEFENSIVE => {
             if matches!(s.order, Some(OrderKind::Patrol | OrderKind::AttackMove)) || s.patrol_path {
                 defend_patrol_range()?;
             }

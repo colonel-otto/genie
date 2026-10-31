@@ -11,6 +11,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
+use crate::unit_ai::UnitStance;
 use crate::unit_ai::{
     ARTIFACT_AI, AttackAsk, BOAR_AI, CIVILIAN, ENEMY_SIGHTING_GAP, FISHING_AI, FISHING_CARED,
     Found, Memory, Pick, SHIP_EVADE_REACH, SIEGE_AI, SIEGE_CARED, SIEGE_TOWER_AI, SOLDIER_AI,
@@ -151,7 +152,7 @@ impl UnitAi {
         if at.player == PlayerId::GAIA && !searches {
             return Ok(false);
         }
-        if self.stance == 3 {
+        if self.stance == UnitStance::NO_ATTACK {
             self.siege_no_attack(at, computer, side, ai)?;
             return Ok(false);
         }
@@ -296,7 +297,7 @@ impl UnitAi {
             if at.group.is_some() {
                 return Ok(false);
             }
-            if matches!(self.stance, 1 | 2) {
+            if self.stance.leashed() {
                 let _ = self.walk_back(at, side, ai)?;
             }
         }
@@ -331,7 +332,7 @@ impl UnitAi {
         if at.player == PlayerId::GAIA && !searches {
             return Ok(false);
         }
-        if self.stance == 3 {
+        if self.stance == UnitStance::NO_ATTACK {
             return self.no_attack_idle(at, computer, side, ai).map(|()| false);
         }
         if at.master == SOLDIER_IDLE_MASTER {
@@ -450,7 +451,7 @@ impl UnitAi {
         ) {
             return Ok(false);
         }
-        if matches!(self.stance, 1 | 2) {
+        if self.stance.leashed() {
             let _ = self.walk_back(at, side, ai)?;
         }
         if self.restore_patrol(at, ai, side)? {
@@ -535,7 +536,7 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         self.cap_human_order(side, rng)?;
-        if self.stance == 3 {
+        if self.stance == UnitStance::NO_ATTACK {
             let found = side.closest(&Search {
                 at: at.position.ground(),
                 radius: attack_search_radius(at),

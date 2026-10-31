@@ -47,6 +47,7 @@ mod target_type;
 pub mod task_finder;
 mod type_notifies;
 pub(crate) mod unit;
+mod unit_stance;
 mod update;
 pub(crate) mod world_view;
 
@@ -117,6 +118,7 @@ pub use self::surroundings::{
 };
 use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle};
 pub use self::target_type::OrderTargetType;
+pub use self::unit_stance::UnitStance;
 use crate::groups::FormationKind;
 use crate::map::Point;
 use crate::map::Position;
@@ -467,8 +469,8 @@ pub struct UnitAi {
     pub last_retarget_time: u32,
     /// `+0x1cc`, `mRandomizedRetargetTimer`: the word-9 input.
     pub retarget_timer: u32,
-    /// `+0x1a9`: 1 and 2 add leash checks to slot 73.
-    pub stance: u8,
+    /// `+0x1a9`: defensive and stand ground add leash checks to slot 73.
+    pub stance: UnitStance,
     /// `+0x1d4`, `mFormationType`: the formation the unit's group last took for it, which its
     /// next group's type counts (`FUN_14100b940`).
     pub formation_type: FormationKind,
