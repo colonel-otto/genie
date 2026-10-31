@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -384,45 +385,48 @@ impl UnitAi {
             return Ok(GO_ON);
         };
         let kind = civilian_kind(class);
-        let found = if kind == -1 {
-            let found = side.closest(&Search {
-                at: at.position.ground(),
-                radius: civilian_search_radius(at.los, at.search_radius),
-                classes: &CIVILIAN_CARED,
-                size: at.size,
-                pick: Pick::Closest {
-                    group: Some(class),
-                    relation: -1,
-                    state: -1,
-                    master: None,
-                    workers: if class == class::FARM { 1 } else { -1 },
-                    spared: -1,
-                    reach: true,
-                },
-                memory: Memory::default(),
-            })?;
-            self.alert(found, at.dt_seconds);
-            match (found.id, found.position) {
-                (Some(id), Some(position)) => Some(Gatherable {
-                    id,
-                    position,
-                    class,
-                }),
-                (Some(_), None) => {
-                    return Err(GenieError::unsupported("a found object without its place"));
+        let found = match kind {
+            None => {
+                let found = side.closest(&Search {
+                    at: at.position.ground(),
+                    radius: civilian_search_radius(at.los, at.search_radius),
+                    classes: &CIVILIAN_CARED,
+                    size: at.size,
+                    pick: Pick::Closest {
+                        group: Some(class),
+                        relation: -1,
+                        state: -1,
+                        master: None,
+                        workers: if class == class::FARM { 1 } else { -1 },
+                        spared: -1,
+                        reach: true,
+                    },
+                    memory: Memory::default(),
+                })?;
+                self.alert(found, at.dt_seconds);
+                match (found.id, found.position) {
+                    (Some(id), Some(position)) => Some(Gatherable {
+                        id,
+                        position,
+                        class,
+                    }),
+                    (Some(_), None) => {
+                        return Err(GenieError::unsupported("a found object without its place"));
+                    }
+                    (None, _) => None,
                 }
-                (None, _) => None,
             }
-        } else {
-            // slot 0x80 from the notify's drop site: kind 0 below 2 workers, any other any
-            side.closest_resource(ResourceSearch {
-                kind: kind as u8,
-                cap: if kind == 0 { 2 } else { -1 },
-                site: ObjectId::of_field(n.p[2]),
-                current: self.current_target,
-                point: NO_POINT,
-                min_state: 2,
-            })?
+            Some(kind) => {
+                // slot 0x80 from the notify's drop site: kind 0 below 2 workers, any other any
+                side.closest_resource(ResourceSearch {
+                    kind,
+                    cap: if kind == GatherGroup::WOOD { 2 } else { -1 },
+                    site: ObjectId::of_field(n.p[2]),
+                    current: self.current_target,
+                    point: NO_POINT,
+                    min_state: 2,
+                })?
+            }
         };
         let Some(found) = found else {
             if computer {
@@ -466,47 +470,54 @@ impl UnitAi {
             return Ok(GO_ON);
         };
         let kind = civilian_kind(class);
-        let found = if kind == -1 {
-            // "Calling closest object for a farm that's alive": the friends' pass over
-            let spared = if noted == Some(class::FARM) { 0 } else { -1 };
-            let found = side.closest(&Search {
-                at: at.position.ground(),
-                radius: civilian_search_radius(at.los, at.search_radius),
-                classes: &CIVILIAN_CARED,
-                size: at.size,
-                pick: Pick::Closest {
-                    group: Some(class),
-                    relation: -1,
-                    state: -1,
-                    master: None,
-                    workers: -1,
-                    spared,
-                    reach: true,
-                },
-                memory: Memory::default(),
-            })?;
-            self.alert(found, at.dt_seconds);
-            match (found.id, found.position) {
-                (Some(id), Some(position)) => Some(Gatherable {
-                    id,
-                    position,
-                    class,
-                }),
-                (Some(_), None) => {
-                    return Err(GenieError::unsupported("a found object without its place"));
+        let found = match kind {
+            None => {
+                // "Calling closest object for a farm that's alive": the friends' pass over
+                let spared = if noted == Some(class::FARM) { 0 } else { -1 };
+                let found = side.closest(&Search {
+                    at: at.position.ground(),
+                    radius: civilian_search_radius(at.los, at.search_radius),
+                    classes: &CIVILIAN_CARED,
+                    size: at.size,
+                    pick: Pick::Closest {
+                        group: Some(class),
+                        relation: -1,
+                        state: -1,
+                        master: None,
+                        workers: -1,
+                        spared,
+                        reach: true,
+                    },
+                    memory: Memory::default(),
+                })?;
+                self.alert(found, at.dt_seconds);
+                match (found.id, found.position) {
+                    (Some(id), Some(position)) => Some(Gatherable {
+                        id,
+                        position,
+                        class,
+                    }),
+                    (Some(_), None) => {
+                        return Err(GenieError::unsupported("a found object without its place"));
+                    }
+                    (None, _) => None,
                 }
-                (None, _) => None,
             }
-        } else {
-            let cap = if matches!(kind, 3 | 4) { 4 } else { -1 };
-            side.closest_resource(ResourceSearch {
-                kind: kind as u8,
-                cap,
-                site: ObjectId::of_field(n.p[2]),
-                current: self.current_target,
-                point: NO_POINT,
-                min_state: 2,
-            })?
+            Some(kind) => {
+                let cap = if matches!(kind, GatherGroup::STONE | GatherGroup::GOLD) {
+                    4
+                } else {
+                    -1
+                };
+                side.closest_resource(ResourceSearch {
+                    kind,
+                    cap,
+                    site: ObjectId::of_field(n.p[2]),
+                    current: self.current_target,
+                    point: NO_POINT,
+                    min_state: 2,
+                })?
+            }
         };
         let Some(found) = found else {
             if computer {

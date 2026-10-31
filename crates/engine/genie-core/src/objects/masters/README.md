@@ -36,6 +36,7 @@ file for what the save does not hold.
 | [`cost_slot.rs`](cost_slot.rs) | A master's cost (`+0x880`): three slots in their places, an empty one among them. |
 | [`derived.rs`](derived.rs) | The values the slice derives from a master after a change (`Master::follow`): the sprites' speed and facets, a moving unit's values. |
 | [`dispatch.rs`](dispatch.rs) | The attribute setters by master type (slots 0x18, 0x20 and 0x28), the master copy (slot 8), the loader's defaults and the selected entries. |
+| [`gather_group.rs`](gather_group.rs) | A master's gather group as one type: the kind of resource the unit AI's resource searches look for, the value the `.dat` names `resource_gather_group`. |
 | [`ids.rs`](ids.rs) | The master ids (`i16`, `crate::objects::masters::Master::id`): the one definition of the masters the engine names, by the `.dat`'s unit id. |
 | [`lookup.rs`](lookup.rs) | A player's masters by id (`Masters`) and the work command's choice of master and task. |
 | [`master_id.rs`](master_id.rs) | A master's id as one type: the master a command builds, trains or turns an object into, and a target's master. |

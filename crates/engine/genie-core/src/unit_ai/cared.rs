@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAiType;
@@ -80,17 +81,18 @@ pub fn civilian_search_radius(los: f32, search_radius: f32) -> f32 {
     radius + CIVILIAN_SEARCH_GROWTH
 }
 
-/// The civilian's slot 0x1b0 (`FUN_140c1c4f0`): the kind of a target class (0 for 15, 1 for 7, 2
-/// for 5, 31 and 33, 3 for 8, 4 for 32 and 63), −1 for any other.
+/// The civilian's slot 0x1b0 (`FUN_140c1c4f0`): the gather group of a target class (wood for
+/// 15, forage for 7, fish for 5, 31 and 33, stone for 8, gold for 32 and 63), none (−1) for any
+/// other.
 #[must_use]
-pub const fn civilian_kind(class: ClassId) -> i8 {
+pub const fn civilian_kind(class: ClassId) -> Option<GatherGroup> {
     match class {
-        class::CLASS_5 | class::CLASS_31 | class::CLASS_33 => 2,
-        class::CLASS_7 => 1,
-        class::CLASS_8 => 3,
-        class::TREE => 0,
-        class::CLASS_32 | class::CLASS_63 => 4,
-        _ => -1,
+        class::CLASS_5 | class::CLASS_31 | class::CLASS_33 => Some(GatherGroup::FISH),
+        class::CLASS_7 => Some(GatherGroup::FORAGE),
+        class::CLASS_8 => Some(GatherGroup::STONE),
+        class::TREE => Some(GatherGroup::WOOD),
+        class::CLASS_32 | class::CLASS_63 => Some(GatherGroup::GOLD),
+        _ => None,
     }
 }
 

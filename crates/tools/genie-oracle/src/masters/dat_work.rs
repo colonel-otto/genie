@@ -5,6 +5,7 @@ use genie_core::GenieError;
 use genie_core::map::{Footprint, GroundOffset, Radii};
 use genie_core::objects::masters as work;
 use genie_core::objects::masters::ActionType;
+use genie_core::objects::masters::GatherGroup;
 use genie_core::objects::masters::MasterId;
 use genie_core::objects::masters::{COST_SLOTS, CostSlot};
 use genie_core::players::attribute::AttributeId;
@@ -200,7 +201,7 @@ pub(super) fn dat_work(
         garrison: unit.garrison_capacity,
         recyclable: unit.recyclable != 0,
         auto_gather: unit.enable_auto_gather != 0,
-        gather_group: unit.resource_gather_group,
+        gather_group: GatherGroup::from(unit.resource_gather_group),
         hill_mode: unit.hill_mode,
         fog_visibility: unit.fog_visibility,
         available: unit.enabled != 0,

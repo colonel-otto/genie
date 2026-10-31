@@ -363,8 +363,8 @@ pub struct Master {
     /// (`FUN_141194170`).
     pub auto_gather: bool,
     /// `+0x683`, `resource_gather_group`: the resource kind a gatherer's search
-    /// (`ClosestResourceObject`) takes it for (0 wood, 1 food, 3 stone, 4 gold, 2 the rest).
-    pub gather_group: u8,
+    /// (`ClosestResourceObject`) takes it for ([`GatherGroup`]).
+    pub gather_group: GatherGroup,
     /// `+0x604`, `hill_mode`: how a placement test checks the elevation.
     pub hill_mode: u8,
     /// `+0x605`, `fog_visibility`: an object of it the player only explored stays a target
@@ -577,6 +577,7 @@ pub mod action_type;
 pub mod attribute;
 pub mod class;
 mod class_id;
+mod gather_group;
 pub mod ids;
 mod master_id;
 mod master_kind;
@@ -585,6 +586,7 @@ pub mod master_type;
 pub use self::action_type::ActionType;
 pub use self::attribute::MasterAttribute;
 pub use self::class_id::ClassId;
+pub use self::gather_group::GatherGroup;
 pub use self::master_id::MasterId;
 pub use self::master_kind::MasterKind;
 

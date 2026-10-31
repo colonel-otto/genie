@@ -229,10 +229,10 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
 #[test]
 fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
     let mut r = resources(5);
-    r.add(object_id(10), 4, 3.5, 7.5);
-    r.add(object_id(11), 4, 1.5, 2.5);
+    r.add(object_id(10), GatherGroup::GOLD, 3.5, 7.5);
+    r.add(object_id(11), GatherGroup::GOLD, 1.5, 2.5);
     assert_eq!(r.capacities[4], 2);
-    r.add(object_id(12), 4, 0.5, 0.5);
+    r.add(object_id(12), GatherGroup::GOLD, 0.5, 0.5);
     assert_eq!(r.capacities, [2, 2, 2, 2, 4]);
     assert_eq!(
         r.lists[4],
@@ -240,7 +240,7 @@ fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
     );
     assert!(r.lists[..4].iter().all(Vec::is_empty));
     let mut none = VisibleResources::default();
-    none.add(object_id(10), 0, 1.0, 1.0);
+    none.add(object_id(10), GatherGroup::WOOD, 1.0, 1.0);
     assert_eq!(none, VisibleResources::default());
 }
 
@@ -250,15 +250,18 @@ fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
 fn a_removed_resource_s_place_takes_the_last_record() {
     let mut r = resources(5);
     for id in [1, 2, 3] {
-        r.add(object_id(id), 0, id as f32, 0.0);
+        r.add(object_id(id), GatherGroup::WOOD, id as f32, 0.0);
     }
-    assert_eq!(r.remove(object_id(1), 0), 0);
+    assert_eq!(r.remove(object_id(1), GatherGroup::WOOD), 0);
     assert_eq!(r.lists[0], [rec(3, 3.0, 0.0), rec(2, 2.0, 0.0)]);
-    assert_eq!(r.remove(object_id(2), 0), 1);
+    assert_eq!(r.remove(object_id(2), GatherGroup::WOOD), 1);
     assert_eq!(r.lists[0], [rec(3, 3.0, 0.0)]);
-    assert_eq!(r.remove(object_id(9), 0), -1);
-    assert_eq!(r.remove(object_id(9), 1), 0);
-    assert_eq!(VisibleResources::default().remove(object_id(3), 0), -1);
+    assert_eq!(r.remove(object_id(9), GatherGroup::WOOD), -1);
+    assert_eq!(r.remove(object_id(9), GatherGroup::FORAGE), 0);
+    assert_eq!(
+        VisibleResources::default().remove(object_id(3), GatherGroup::WOOD),
+        -1
+    );
 }
 
 /// `Get_Closest_Resource` (`FUN_141289000`): the group's record nearest the point (squared,
@@ -267,9 +270,9 @@ fn a_removed_resource_s_place_takes_the_last_record() {
 #[test]
 fn the_closest_resource_skips_the_ids_given_and_keeps_its_distance() {
     let mut r = resources(5);
-    r.add(object_id(1), 2, 13.0, 10.0);
-    r.add(object_id(2), 2, 10.0, 12.0);
-    r.add(object_id(3), 2, 7.0, 10.0);
+    r.add(object_id(1), GatherGroup::FISH, 13.0, 10.0);
+    r.add(object_id(2), GatherGroup::FISH, 10.0, 12.0);
+    r.add(object_id(3), GatherGroup::FISH, 7.0, 10.0);
     assert_eq!(r.closest(10.0, 10.0, 2, &[]), Some(1));
     assert_eq!(r.lists[2][1].distance, 2.0);
     assert_eq!(r.closest(10.0, 10.0, 2, &[object_id(2)]), Some(0));
@@ -328,11 +331,15 @@ fn a_resource_leaves_the_lists_of_the_players_that_explored_its_tile() {
     let mut v = world(PlayerId::new(3));
     v.resources = vec![resources(5), resources(5), resources(5)];
     for r in &mut v.resources {
-        r.add(object_id(7), 1, 20.5, 30.5);
+        r.add(object_id(7), GatherGroup::FORAGE, 20.5, 30.5);
     }
     let _ = v.explore(PlayerId::new(2), 20, 30, 0, false).unwrap();
-    v.forget_resource(object_id(7), Position::new(20.5, 30.5, 0.0), 1)
-        .unwrap();
+    v.forget_resource(
+        object_id(7),
+        Position::new(20.5, 30.5, 0.0),
+        GatherGroup::FORAGE,
+    )
+    .unwrap();
     assert_eq!(v.resources[2].lists[1], []);
     assert_eq!(v.resources[0].lists[1], [rec(7, 20.5, 30.5)]);
     assert_eq!(v.resources[1].lists[1], [rec(7, 20.5, 30.5)]);

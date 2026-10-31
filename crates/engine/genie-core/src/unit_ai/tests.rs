@@ -5,6 +5,7 @@ use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -1001,7 +1002,7 @@ struct ResourceSide {
     /// What `ClosestResourceObject` finds.
     resource: Option<Gatherable>,
     /// The resource searches asked: kind, cap, drop site, current target.
-    searches: Vec<(u8, i32, Option<ObjectId>, Option<ObjectId>)>,
+    searches: Vec<(GatherGroup, i32, Option<ObjectId>, Option<ObjectId>)>,
     /// What `ClosestObject` finds (none: no search here).
     closest: Option<Found>,
     /// The foundation the builder's search finds and whether the unit reaches it (none: no
@@ -1159,7 +1160,12 @@ fn a_hunter_asked_for_another_target_hunts_what_its_search_finds() {
     );
     assert_eq!(
         boar.searches,
-        vec![(2, -1, Some(object_id(31247)), Some(object_id(28202)))]
+        vec![(
+            GatherGroup::FISH,
+            -1,
+            Some(object_id(31247)),
+            Some(object_id(28202))
+        )]
     );
 }
 
@@ -1209,7 +1215,12 @@ fn a_gatherer_without_a_class_stops_and_one_on_a_farm_searches_for_another() {
     let _ = search(&mut gatherer(-1, 8), &mut stone, -1, false);
     assert_eq!(
         stone.searches,
-        vec![(3, 4, Some(object_id(31247)), Some(object_id(28202)))]
+        vec![(
+            GatherGroup::STONE,
+            4,
+            Some(object_id(31247)),
+            Some(object_id(28202))
+        )]
     );
     let mut farm = ResourceSide {
         closest: Some(found_at(12557)),
@@ -1418,7 +1429,12 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
     );
     assert_eq!(
         side.searches,
-        vec![(1, -1, Some(object_id(31247)), Some(object_id(28202)))]
+        vec![(
+            GatherGroup::FORAGE,
+            -1,
+            Some(object_id(31247)),
+            Some(object_id(28202))
+        )]
     );
     assert_eq!(
         fx,
@@ -1459,7 +1475,10 @@ fn a_gatherer_asked_for_another_target_gathers_what_its_search_finds() {
         ),
         Ok(GO_ON)
     );
-    assert_eq!((side.searches[0].0, side.searches[0].1), (4, 4));
+    assert_eq!(
+        (side.searches[0].0, side.searches[0].1),
+        (GatherGroup::GOLD, 4)
+    );
     assert_eq!(fx, Vec::new());
     assert_eq!(ai.current_action, Some(ActionKind::Gather));
 }
@@ -1501,7 +1520,12 @@ fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
     );
     assert_eq!(
         side.searches,
-        vec![(0, 2, Some(object_id(31247)), Some(object_id(28301)))]
+        vec![(
+            GatherGroup::WOOD,
+            2,
+            Some(object_id(31247)),
+            Some(object_id(28301))
+        )]
     );
     // the AI's stop (slot 0xb0 with 1) reaches the unit before its hunt command
     assert_eq!(
@@ -1534,7 +1558,7 @@ fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
         ),
         Ok(GO_ON)
     );
-    assert_eq!(side.searches, vec![(4, -1, None, None)]);
+    assert_eq!(side.searches, vec![(GatherGroup::GOLD, -1, None, None)]);
     assert_eq!(fx, Vec::new());
 }
 
@@ -11963,7 +11987,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
     assert_eq!(
         side.searches,
         [ResourceSearch {
-            kind: 0,
+            kind: GatherGroup::WOOD,
             cap: 2,
             site: None,
             current: Some(object_id(7)),
@@ -11988,7 +12012,10 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
         run_order(&mut u, owned(66), class::VILLAGER, &mut side).0,
         Ok(0)
     );
-    assert_eq!((side.searches[0].kind, side.searches[0].cap), (4, -1));
+    assert_eq!(
+        (side.searches[0].kind, side.searches[0].cap),
+        (GatherGroup::GOLD, -1)
+    );
     let (r, fx, _) = run_order(&mut u, owned(67), class::VILLAGER, &mut side);
     assert_eq!((r, fx, side.searches.len()), (Ok(0), Vec::new(), 1));
     side.resource = None;
@@ -12013,17 +12040,19 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
 #[test]
 fn slot_0x1b0_gives_the_kind_of_resource_by_the_unit_ai_s_type() {
     let kind = |ai_type, class| idle(ai_type).resource_kind(class_id(class));
+    // the byte the game returns: −1 for none
+    let group = |n: i32| (0 <= n).then(|| GatherGroup::try_from(n).unwrap());
     for ai_type in [CIVILIAN, UnitAiType::BUILDING] {
         assert_eq!(
             [15, 7, 5, 31, 33, 8, 32, 63, 6].map(|c| kind(ai_type, c)),
-            [0, 1, 2, 2, 2, 3, 4, 4, -1]
+            [0, 1, 2, 2, 2, 3, 4, 4, -1].map(group)
         );
     }
     assert_eq!(
         [5, 31, 33, 63, 15, 32, 34].map(|c| kind(FISHING_AI, c)),
-        [2, 2, 2, 4, -1, -1, -1]
+        [2, 2, 2, 4, -1, -1, -1].map(group)
     );
-    assert_eq!([15, 5, 63].map(|c| kind(SOLDIER_AI, c)), [-1, -1, -1]);
+    assert_eq!([15, 5, 63].map(|c| kind(SOLDIER_AI, c)), [None; 3]);
 }
 
 #[test]

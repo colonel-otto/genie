@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::ObjectId;
+use crate::objects::masters::GatherGroup;
 use crate::players::PlayerId;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
@@ -109,10 +110,10 @@ impl World {
                 class = t.object_group;
             }
             let kind = match class {
-                7 => 1,
-                8 => 3,
-                15 => 0,
-                32 | 63 => 4,
+                7 => GatherGroup::FORAGE,
+                8 => GatherGroup::STONE,
+                15 => GatherGroup::WOOD,
+                32 | 63 => GatherGroup::GOLD,
                 _ => continue,
             };
             kinds.push(kind);

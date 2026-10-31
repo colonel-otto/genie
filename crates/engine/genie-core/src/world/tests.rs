@@ -33,6 +33,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -1216,9 +1217,9 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
     };
     t.masters = vec![
         Masters::new([
-            master(master_id(411), true, 0),
-            master(master_id(412), false, 0),
-            master(master_id(413), true, 4),
+            master(master_id(411), true, GatherGroup::WOOD),
+            master(master_id(412), false, GatherGroup::WOOD),
+            master(master_id(413), true, GatherGroup::GOLD),
         ]),
         Masters::default(),
     ];
@@ -1313,7 +1314,10 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
         ..Master::default()
     };
     t.masters = vec![
-        Masters::new([master(master_id(411), 0), master(master_id(412), 1)]),
+        Masters::new([
+            master(master_id(411), GatherGroup::WOOD),
+            master(master_id(412), GatherGroup::FORAGE),
+        ]),
         Masters::default(),
     ];
     placeable(&mut t);
@@ -1323,8 +1327,8 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
             capacities: vec![32; 5],
             lists: vec![Vec::new(); 5],
         };
-        v.resources[p].add(object_id(501), 0, 10.5, 10.5);
-        v.resources[p].add(object_id(502), 1, 10.5, 10.5);
+        v.resources[p].add(object_id(501), GatherGroup::WOOD, 10.5, 10.5);
+        v.resources[p].add(object_id(502), GatherGroup::FORAGE, 10.5, 10.5);
     }
     let held = |t: &World| -> Vec<(usize, usize)> {
         let v = t.spatial.sight.as_ref().unwrap();
@@ -1369,7 +1373,7 @@ fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
         id,
         kind: master_type::MOVING,
         auto_gather,
-        gather_group: 2,
+        gather_group: GatherGroup::FISH,
         ..Master::default()
     };
     t.masters = vec![Masters::new([master(master_id(53), true), master(master_id(54), false)]); 3];
@@ -3521,7 +3525,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
     let mut t = forage_world();
     for masters in &mut t.masters {
         let bush = masters.get_mut(master_id(59)).unwrap();
-        (bush.auto_gather, bush.gather_group) = (true, 2);
+        (bush.auto_gather, bush.gather_group) = (true, GatherGroup::FISH);
         // the walk reaches the forager's line of sight plus 5 tiles: 601 lies 7 away
         masters.get_mut(master_id(120)).unwrap().line_of_sight = 4.0;
     }
@@ -3535,7 +3539,7 @@ fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
         found.unwrap().map(|g| (g.id, g.class))
     };
     let any = ResourceSearch {
-        kind: 2,
+        kind: GatherGroup::FISH,
         cap: -1,
         site: None,
         current: None,
@@ -3592,7 +3596,7 @@ fn cart_world() -> World {
     let mut t = forage_world();
     for masters in &mut t.masters {
         let bush = masters.get_mut(master_id(59)).unwrap();
-        (bush.auto_gather, bush.gather_group) = (true, 1);
+        (bush.auto_gather, bush.gather_group) = (true, GatherGroup::FORAGE);
         let cart = Master {
             id: ids::MASTER_1808,
             kind: BUILDING,
@@ -4684,7 +4688,7 @@ fn lumber_world(near: f32) -> World {
             class: class::TREE,
             radius: Footprint::new(0.5, 0.5),
             auto_gather: true,
-            gather_group: 0,
+            gather_group: GatherGroup::WOOD,
             ..Master::default()
         };
         *masters = Masters::new(masters.iter().cloned().chain([tree]));
@@ -14775,7 +14779,7 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
         let mut t = foraging();
         for masters in &mut t.masters {
             let bush = masters.get_mut(master_id(59)).unwrap();
-            (bush.auto_gather, bush.gather_group) = (true, 1);
+            (bush.auto_gather, bush.gather_group) = (true, GatherGroup::FORAGE);
             masters.get_mut(master_id(120)).unwrap().line_of_sight = 4.0;
         }
         t.players[1].objects[0].ai.as_mut().unwrap().target_class = None;
@@ -15682,7 +15686,7 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
     t.build_mesh().unwrap();
     for masters in &mut t.masters {
         let bush = masters.get_mut(master_id(59)).unwrap();
-        (bush.auto_gather, bush.gather_group) = (true, 1);
+        (bush.auto_gather, bush.gather_group) = (true, GatherGroup::FORAGE);
         masters.get_mut(master_id(120)).unwrap().line_of_sight = 4.0;
         masters.get_mut(ids::TOWN_CENTRE).unwrap().line_of_sight = 16.0;
     }

@@ -12,6 +12,7 @@ use crate::map::Tile;
 use crate::math::msvc;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -47,7 +48,7 @@ pub struct Candidate {
     /// Its master's `enable_auto_gather` (`+0x681`).
     pub auto_gather: bool,
     /// Its master's `resource_gather_group` (`+0x683`).
-    pub gather_group: u8,
+    pub gather_group: GatherGroup,
 }
 
 /// What a builder's search reads of the builder and the building it completed.
@@ -342,7 +343,7 @@ impl<W> std::fmt::Debug for ResourceWorld<'_, W> {
 /// or another object beside one that fails the first test).
 pub fn closest_resource<W>(
     seeker: &Seeker,
-    kind: u8,
+    kind: GatherGroup,
     max_workers: i32,
     reads: ResourceWorld<'_, W>,
 ) -> Result<Option<ObjectId>, GenieError> {
@@ -371,7 +372,7 @@ pub fn closest_resource<W>(
 pub fn closest_resource_at<W>(
     seeker: &Seeker,
     site: Option<&SearchSite>,
-    kind: u8,
+    kind: GatherGroup,
     max_workers: i32,
     reads: ResourceWorld<'_, W>,
 ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
@@ -613,7 +614,10 @@ fn pass_distance(origin: Tile, x: i32, y: i32) -> i32 {
 /// The object of a tile's list `ClosestResourceObject` takes: the first in a pasture or
 /// targetable whose master gathers by itself as `kind` with some amount held; with none, the
 /// last object when it is neither in a pasture nor targetable.
-fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, GenieError> {
+fn first_resource(
+    on_tile: &[Candidate],
+    kind: GatherGroup,
+) -> Result<Option<Candidate>, GenieError> {
     let open = |o: &Candidate| o.pasture.is_some() || !o.untargetable;
     let found: Vec<&Candidate> = on_tile
         .iter()
@@ -631,19 +635,19 @@ fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, 
 
 /// `FUN_140fdd470` then `FUN_140fdd5f0`: the gather group of a resource held, and the most workers
 /// the Build's search for more work lets an object of it have (`0x140ab0c57`): food (0, 15 to 17)
-/// 1 and 6, wood 0 and 2, stone 3 and 3, gold 4 and 3, the rest 2 and 2.
+/// forage (1) and 6, wood (0) and 2, stone (3) and 3, gold (4) and 3, the rest fish (2) and 2.
 #[must_use]
-pub fn gather_group(attribute: Option<AttributeId>) -> (u8, i32) {
+pub fn gather_group(attribute: Option<AttributeId>) -> (GatherGroup, i32) {
     let kind = match attribute.and_then(AttributeId::load_resource) {
-        Some(attribute::FOOD) => 1,
-        Some(attribute::WOOD) => 0,
-        Some(attribute::STONE) => 3,
-        Some(attribute::GOLD) => 4,
-        _ => 2,
+        Some(attribute::FOOD) => GatherGroup::FORAGE,
+        Some(attribute::WOOD) => GatherGroup::WOOD,
+        Some(attribute::STONE) => GatherGroup::STONE,
+        Some(attribute::GOLD) => GatherGroup::GOLD,
+        _ => GatherGroup::FISH,
     };
     let workers = match kind {
-        1 => 6,
-        3 | 4 => 3,
+        GatherGroup::FORAGE => 6,
+        GatherGroup::STONE | GatherGroup::GOLD => 3,
         _ => 2,
     };
     (kind, workers)
@@ -671,7 +675,7 @@ mod tests {
             attribute: Some(attribute::WOOD),
             amount: 100.0,
             auto_gather: true,
-            gather_group: 0,
+            gather_group: GatherGroup::WOOD,
         }
     }
 
@@ -827,7 +831,7 @@ mod tests {
         let mut asked = Vec::new();
         let found = closest_resource(
             &seeker,
-            0,
+            GatherGroup::WOOD,
             2,
             ResourceWorld {
                 map: GridSize::new(40, 40),
@@ -850,7 +854,7 @@ mod tests {
         };
         let found = closest_resource(
             &busy,
-            0,
+            GatherGroup::WOOD,
             2,
             ResourceWorld {
                 map: GridSize::new(40, 40),
@@ -900,7 +904,7 @@ mod tests {
             closest_resource_at(
                 &seeker,
                 site,
-                0,
+                GatherGroup::WOOD,
                 2,
                 ResourceWorld {
                     map: GridSize::new(40, 40),
@@ -969,7 +973,7 @@ mod tests {
         closest_resource_at(
             seeker,
             None,
-            0,
+            GatherGroup::WOOD,
             max_workers,
             ResourceWorld {
                 map: GridSize::new(40, 40),
@@ -1065,10 +1069,16 @@ mod tests {
 
     #[test]
     fn a_held_resource_names_its_gather_group_and_the_workers_the_build_lets_it_have() {
-        assert_eq!(gather_group(Some(attribute::WOOD)), (0, 2));
-        assert_eq!(gather_group(Some(attribute::FARM_FOOD)), (1, 6));
-        assert_eq!(gather_group(Some(attribute::STONE)), (3, 3));
-        assert_eq!(gather_group(Some(attribute::GOLD)), (4, 3));
-        assert_eq!(gather_group(None), (2, 2));
+        assert_eq!(gather_group(Some(attribute::WOOD)), (GatherGroup::WOOD, 2));
+        assert_eq!(
+            gather_group(Some(attribute::FARM_FOOD)),
+            (GatherGroup::FORAGE, 6)
+        );
+        assert_eq!(
+            gather_group(Some(attribute::STONE)),
+            (GatherGroup::STONE, 3)
+        );
+        assert_eq!(gather_group(Some(attribute::GOLD)), (GatherGroup::GOLD, 3));
+        assert_eq!(gather_group(None), (GatherGroup::FISH, 2));
     }
 }

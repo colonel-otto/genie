@@ -27,6 +27,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::map::TileOffset;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -153,8 +154,8 @@ impl VisibleResources {
     /// puts its record last in list `group`, doubling a full list's capacity. The masters' groups
     /// are 0 to 4 and every manager holds 5 lists; the game writes past its lists for a group out
     /// of range.
-    pub fn add(&mut self, id: ObjectId, group: u8, x: f32, y: f32) {
-        let g = usize::from(group);
+    pub fn add(&mut self, id: ObjectId, group: GatherGroup, x: f32, y: f32) {
+        let g = group.index();
         let (Some(list), Some(capacity)) = (self.lists.get_mut(g), self.capacities.get_mut(g))
         else {
             return;
@@ -174,8 +175,8 @@ impl VisibleResources {
     /// `Remove_Resource` (`FUN_141289b80`): the first record of the object `id` in list `group`
     /// takes the last record and the list shortens. Its index; 0 for an empty list, -1 when the
     /// object is not in it or the manager has no lists.
-    pub fn remove(&mut self, id: ObjectId, group: u8) -> i32 {
-        let Some(list) = self.lists.get_mut(usize::from(group)) else {
+    pub fn remove(&mut self, id: ObjectId, group: GatherGroup) -> i32 {
+        let Some(list) = self.lists.get_mut(group.index()) else {
             return -1;
         };
         if list.is_empty() {
@@ -381,7 +382,7 @@ impl Visibility {
         &mut self,
         id: ObjectId,
         position: Position,
-        group: u8,
+        group: GatherGroup,
     ) -> Result<(), GenieError> {
         let (x, y) = (position.x() as i32, position.y() as i32);
         if x < 0 || y < 0 || self.width <= x || self.height <= y {

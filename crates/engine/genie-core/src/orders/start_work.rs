@@ -23,6 +23,7 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::orders::Work;
@@ -34,7 +35,13 @@ use crate::world::slots::PlayerSlots;
 pub const EMPIRE_WARS: i32 = 13;
 
 /// The gather groups the resource search tries, in order (0 to 4).
-const GROUPS: u8 = 5;
+const GROUPS: [GatherGroup; 5] = [
+    GatherGroup::WOOD,
+    GatherGroup::FORAGE,
+    GatherGroup::FISH,
+    GatherGroup::STONE,
+    GatherGroup::GOLD,
+];
 /// The distance a group's answer must be below (the pass's 99).
 const NO_DISTANCE: i32 = 99;
 
@@ -161,7 +168,7 @@ impl World {
     /// `param_6` 2, no point): the answer at the least distance, the first group at a tie.
     fn closest_of_groups(&mut self, p: PlayerId, i: usize) -> Result<Option<ObjectId>, GenieError> {
         let mut best = (NO_DISTANCE, None);
-        for kind in 0..GROUPS {
+        for kind in GROUPS {
             let (id, distance) = self.resource_search_from(p, i, kind)?;
             if let Some(d) = distance.filter(|&d| d < best.0) {
                 best = (d, id);
@@ -209,7 +216,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: usize,
-        kind: u8,
+        kind: GatherGroup,
     ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
         let owner = self.players.player(p)?;
         let unit = owner.live(i)?;

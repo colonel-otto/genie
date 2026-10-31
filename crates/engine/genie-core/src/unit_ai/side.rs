@@ -8,6 +8,7 @@ use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
@@ -441,7 +442,7 @@ pub struct TargetFlags {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ResourceSearch {
     /// The gather group (`param_2`).
-    pub kind: u8,
+    pub kind: GatherGroup,
     /// Fewer workers than this (`param_4`; −1 any).
     pub cap: i32,
     /// The drop site the search starts from (`param_3`).

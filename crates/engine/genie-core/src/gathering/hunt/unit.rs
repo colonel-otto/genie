@@ -10,6 +10,7 @@ use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -292,7 +293,10 @@ impl Unit {
     /// point; the probe of 4533's call); a hunt of class 10 searches nothing; any other class
     /// `ClosestObject` ([`Unit::hunt_closest_object`]). The object found, if any, and the
     /// kind.
-    fn hunt_next_search(&mut self, c: &mut Step<'_>) -> Result<(Option<ObjectId>, i8), GenieError> {
+    fn hunt_next_search(
+        &mut self,
+        c: &mut Step<'_>,
+    ) -> Result<(Option<ObjectId>, Option<GatherGroup>), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
@@ -303,14 +307,14 @@ impl Unit {
                 "slot 0x1b0 of another unit AI than the civilian's",
             ));
         }
-        let kind = class.map_or(-1, crate::unit_ai::civilian_kind);
-        let found = if kind == -1 && hunt.target_class == Some(class::PREDATOR) {
-            None
-        } else if kind == -1 {
-            self.hunt_closest_object(c, class)?
-        } else {
-            let cap = if kind == 0 { 2 } else { -1 };
-            self.resource_search(c, kind as u8, cap)?
+        let kind = class.and_then(crate::unit_ai::civilian_kind);
+        let found = match kind {
+            None if hunt.target_class == Some(class::PREDATOR) => None,
+            None => self.hunt_closest_object(c, class)?,
+            Some(group) => {
+                let cap = if group == GatherGroup::WOOD { 2 } else { -1 };
+                self.resource_search(c, group, cap)?
+            }
         };
         Ok((found, kind))
     }
@@ -399,8 +403,12 @@ impl Unit {
     /// again (`set_state(11)`, its second target kept,
     /// [`crate::gathering::hunt::HuntAction::search_walk`]); one without would wait
     /// (`set_state(2)`), not modelled.
-    fn hunt_found_nothing(&mut self, c: &Step<'_>, kind: i8) -> Result<(), GenieError> {
-        if c.w.players.player(c.player)?.computer && kind != 0 {
+    fn hunt_found_nothing(
+        &mut self,
+        c: &Step<'_>,
+        kind: Option<GatherGroup>,
+    ) -> Result<(), GenieError> {
+        if c.w.players.player(c.player)?.computer && kind != Some(GatherGroup::WOOD) {
             return Err(GenieError::unsupported(
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
             ));

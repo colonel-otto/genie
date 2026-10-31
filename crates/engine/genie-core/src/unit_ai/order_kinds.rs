@@ -8,6 +8,7 @@ use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
@@ -375,15 +376,14 @@ impl UnitAi {
                     None => return Ok(0),
                 },
             };
-            let kind = self.resource_kind(class);
-            if kind == -1 {
+            let Some(kind) = self.resource_kind(class) else {
                 return Ok(0);
-            }
+            };
             // slot 0x88 (`FUN_140c4b0f0`): slot 0x80 from the order's shown point, without a
             // drop site, wood (0) for fewer than 2 workers, at any state
             let found = side.closest_resource(ResourceSearch {
-                kind: kind as u8,
-                cap: if kind == 0 { 2 } else { -1 },
+                kind,
+                cap: if kind == GatherGroup::WOOD { 2 } else { -1 },
                 site: None,
                 current: self.current_target,
                 point: o.shown,
@@ -417,17 +417,17 @@ impl UnitAi {
 
     /// Slot 0x1b0 by the unit AI's type: the kind of resource of a target class. The civilian's
     /// (`FUN_140c1c4f0`) and the building's (`FUN_140c1c460`, the same switch,
-    /// [`civilian_kind`]); the fishing ship's (`FUN_140c1c580`): 2 for classes 5, 31 and 33, 4 for
-    /// 63; the base's (`FUN_140c4cc00`) none. −1 for none (the byte 0xff).
-    pub(super) const fn resource_kind(&self, class: ClassId) -> i8 {
+    /// [`civilian_kind`]); the fishing ship's (`FUN_140c1c580`): fish for classes 5, 31 and 33,
+    /// gold for 63; the base's (`FUN_140c4cc00`) none. None for the byte 0xff.
+    pub(super) const fn resource_kind(&self, class: ClassId) -> Option<GatherGroup> {
         match self.ai_type {
             CIVILIAN | UnitAiType::BUILDING => civilian_kind(class),
             FISHING_AI => match class {
-                class::CLASS_5 | class::CLASS_31 | class::CLASS_33 => 2,
-                class::CLASS_63 => 4,
-                _ => -1,
+                class::CLASS_5 | class::CLASS_31 | class::CLASS_33 => Some(GatherGroup::FISH),
+                class::CLASS_63 => Some(GatherGroup::GOLD),
+                _ => None,
             },
-            _ => -1,
+            _ => None,
         }
     }
 

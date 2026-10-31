@@ -8,6 +8,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
+use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
@@ -53,7 +54,7 @@ pub(crate) fn closest_resource_of(
     unit: &Unit,
     c: &mut ResourceWorld<'_, '_>,
     others: OthersRef<'_>,
-    (kind, cap, site): (u8, i32, Option<ObjectId>),
+    (kind, cap, site): (GatherGroup, i32, Option<ObjectId>),
     (current, min_state, point): (Option<ObjectId>, u8, Point),
 ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
     use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
@@ -246,7 +247,7 @@ impl Unit {
     pub(crate) fn resource_search(
         &self,
         c: &mut Step<'_>,
-        kind: u8,
+        kind: GatherGroup,
         cap: i32,
     ) -> Result<Option<ObjectId>, GenieError> {
         self.resource_search_from(c, kind, cap, None)
@@ -259,7 +260,7 @@ impl Unit {
     pub(crate) fn resource_search_from(
         &self,
         c: &mut Step<'_>,
-        kind: u8,
+        kind: GatherGroup,
         cap: i32,
         site: Option<ObjectId>,
     ) -> Result<Option<ObjectId>, GenieError> {

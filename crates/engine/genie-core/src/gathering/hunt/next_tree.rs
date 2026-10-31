@@ -41,7 +41,9 @@ impl Unit {
             return Ok(false);
         }
         let site = hunt.carry_to;
-        let Some(found) = self.resource_search_from(c, 0, 2, site)? else {
+        let Some(found) =
+            self.resource_search_from(c, crate::objects::masters::GatherGroup::WOOD, 2, site)?
+        else {
             return Ok(false);
         };
         let (tp, t) =

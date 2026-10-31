@@ -89,11 +89,10 @@ impl Unit {
                 "slot 0x1b0 of another unit AI than the civilian's",
             ));
         }
-        let kind = class.map_or(-1, crate::unit_ai::civilian_kind);
-        if kind == -1 {
+        let Some(kind) = class.and_then(crate::unit_ai::civilian_kind) else {
             return Ok(None);
-        }
-        self.resource_search(c, kind as u8, -1)
+        };
+        self.resource_search(c, kind, -1)
     }
 
     /// Nothing found after the drop: a Gather with its point walks there to search again
