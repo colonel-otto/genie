@@ -378,7 +378,7 @@ fn the_unit_lists_keep_their_counted_ids() {
         Command::SetGatherState(SetGatherStateCommand {
             player: player_id(4),
             units: unit_list(object_ids([39, 40])),
-            state: 0xff,
+            state: Some(genie_core::commands::GatherPointState::KEPT),
         })
     );
     let stop = packets::Stop {

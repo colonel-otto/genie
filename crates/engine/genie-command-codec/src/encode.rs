@@ -146,7 +146,9 @@ fn listed(command: &Command) -> Result<Packet, GenieError> {
             commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
-            field_0x08: c.state,
+            field_0x08: c
+                .state
+                .map_or(0, genie_core::commands::GatherPointState::get),
             ids: ids(&c.units.ids, packets::SetGatherState::FIXED)?,
         }),
         Command::SeekShelter(c) => Packet::SeekShelter(packets::SeekShelter {

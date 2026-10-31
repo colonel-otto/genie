@@ -1,6 +1,7 @@
 //! The commands of a building: SET GATHER POINT, the command queue and RESEARCH.
 
 use crate::GenieError;
+use crate::commands::GatherPointState;
 use crate::commands::gather_point::GatherPointCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
@@ -45,7 +46,7 @@ impl World {
     /// SET GATHER POINT's handler ([`GatherPointCommand`], `FUN_140e7e9a0`).
     ///
     /// The point's x and y always take the packet's; its target and master do too unless the
-    /// state is [`GatherPoint::KEPT`] (a target of −1 at (−1, −1) clears the point, state 0; any
+    /// state is [`GatherPointState::KEPT`] (a target of −1 at (−1, −1) clears the point, state 0; any
     /// other point makes the state 1 unless it is kept). With `own` the object itself is the
     /// target (`FUN_1411c7ff0`: its position, its id and master unless kept, state 1 even when it
     /// was kept). The z stays what the point held, 0 for none.
@@ -73,7 +74,7 @@ impl World {
             }
             let unit = &self.players.live(player, i)?;
             let old = unit.gather_point;
-            let kept = old.is_some_and(|g| g.state == GatherPoint::KEPT);
+            let kept = old.is_some_and(|g| g.state == GatherPointState::KEPT);
             let z = old.map_or(0.0, |g| g.point.z());
             let gather = if own {
                 let (target, target_master) = match old {
@@ -81,7 +82,7 @@ impl World {
                     _ => (Some(unit.id), Some(unit.life.master_id)),
                 };
                 Some(GatherPoint {
-                    state: 1,
+                    state: GatherPointState::POINT,
                     point: unit.position().with_z(z),
                     target,
                     target_master,
@@ -94,7 +95,11 @@ impl World {
                     _ => (target, target_master),
                 };
                 Some(GatherPoint {
-                    state: if kept { GatherPoint::KEPT } else { 1 },
+                    state: if kept {
+                        GatherPointState::KEPT
+                    } else {
+                        GatherPointState::POINT
+                    },
                     point: Position::new(x, y, z),
                     target,
                     target_master,
@@ -119,25 +124,26 @@ impl World {
     pub(crate) fn set_gather_state(
         &mut self,
         player: PlayerId,
-        state: u8,
+        state: Option<GatherPointState>,
         ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         for &id in ids {
             let Some(i) = self.position_of_id(player, id)? else {
                 continue;
             };
-            let gather = if state == 0 {
-                None
-            } else if self.takes_gather_point(player, i)? {
+            let gather = if let Some(state) = state {
+                if !self.takes_gather_point(player, i)? {
+                    continue;
+                }
                 let unit = &self.players.live(player, i)?;
                 Some(GatherPoint {
-                    state: i32::from(state),
+                    state,
                     point: unit.position(),
                     target: Some(unit.id),
                     target_master: Some(unit.life.master_id),
                 })
             } else {
-                continue;
+                None
             };
             self.players.live_mut(player, i)?.gather_point = gather;
         }

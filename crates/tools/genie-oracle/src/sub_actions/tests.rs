@@ -1,6 +1,6 @@
 use crate::fixtures::{action_list, building_mut, building_object, combat_object, static_mut};
 use crate::masters::{DefaultAction, MasterTable};
-use crate::sub_actions::{DefaultStart, default_task, production, saved_attack};
+use crate::sub_actions::{DefaultStart, default_task, gather_point, production, saved_attack};
 use crate::test_ids::object_id;
 use genie_core::combat::attack::AttackState;
 use genie_core::movement::move_to::MoveTo;
@@ -127,6 +127,23 @@ fn a_research_in_a_state_of_none_fails() {
         research,
     )]);
     assert!(production(&university).is_err());
+}
+
+/// A building's gather point takes its saved state: 0 is none, 1 and 0xff read as theirs, a
+/// value past a byte fails the read.
+#[test]
+fn a_gather_point_takes_its_saved_state() {
+    use genie_core::commands::GatherPointState;
+    let with = |state: i32| {
+        let mut barracks = building_object(11, 12);
+        building_mut(&mut barracks).gather_point_exists = state;
+        gather_point(&barracks).map(|g| g.map(|g| g.state))
+    };
+    assert_eq!(with(0), Ok(None));
+    assert_eq!(with(1), Ok(Some(GatherPointState::POINT)));
+    assert_eq!(with(0xff), Ok(Some(GatherPointState::KEPT)));
+    assert!(with(0x100).is_err());
+    assert_eq!(gather_point(&combat_object(5, 83)), Ok(None));
 }
 
 /// No building, or one without slots, action or local lists, has no production; its local

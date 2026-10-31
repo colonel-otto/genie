@@ -1,6 +1,7 @@
 //! SET GATHER STATE (0x82): the gather point of a player's buildings is the building itself.
 
 use crate::GenieError;
+use crate::commands::GatherPointState;
 use crate::commands::UnitList;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -15,8 +16,8 @@ pub struct SetGatherStateCommand {
     pub player: PlayerId,
     /// The objects of the packet.
     pub units: UnitList,
-    /// The state the objects' gather point takes (`+0xc30`); 0 clears it.
-    pub state: u8,
+    /// The state the objects' gather point takes (`+0xc30`); none (the packet's 0) clears it.
+    pub state: Option<GatherPointState>,
 }
 
 impl SetGatherStateCommand {

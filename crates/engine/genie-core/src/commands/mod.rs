@@ -24,6 +24,7 @@ pub mod form_formation;
 pub mod game;
 pub mod gate;
 pub mod gather_point;
+mod gather_point_state;
 pub mod go_back_to_work;
 mod ground;
 mod new_building;
@@ -60,6 +61,7 @@ pub use self::form_formation::FormFormationCommand;
 pub use self::game::GameCommand;
 pub use self::gate::GateCommand;
 pub use self::gather_point::GatherPointCommand;
+pub use self::gather_point_state::GatherPointState;
 pub use self::go_back_to_work::{GoBackToWork2Command, GoBackToWorkCommand};
 pub use self::order::{Order, OrderCommand};
 pub use self::patrol::{PatrolCommand, Waypoints};
@@ -89,21 +91,14 @@ mod tests;
 /// master; the save's `gather_point_*`). A state of 0 is no gather point ([`Option`] is `None`).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct GatherPoint {
-    /// `+0xc30`: 1 for a gather point, [`GatherPoint::KEPT`] (0xff) for the one SET GATHER STATE
-    /// makes, which SET GATHER POINT does not move to another target.
-    pub state: i32,
+    /// `+0xc30`: its state.
+    pub state: GatherPointState,
     /// The point its trained units walk to.
     pub point: Position,
     /// The object it is on, if any.
     pub target: Option<ObjectId>,
     /// The target's master, −1 without a target.
     pub target_master: Option<MasterId>,
-}
-
-impl GatherPoint {
-    /// The state SET GATHER STATE gives with a byte of 0xff: the target and its master stay
-    /// whatever SET GATHER POINT asks, and a unit let out of the building walks to the point.
-    pub const KEPT: i32 = 0xff;
 }
 
 /// A recorded command, run in the command phase of its tick: after the frame seed's `SeedAll`,

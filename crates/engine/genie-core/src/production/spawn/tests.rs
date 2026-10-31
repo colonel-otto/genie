@@ -1,5 +1,6 @@
 use super::*;
 use crate::commands::GatherPoint;
+use crate::commands::GatherPointState;
 use crate::map::GridSize;
 use crate::map::GroundOffset;
 use crate::map::Radii;
@@ -73,7 +74,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         crate::objects::masters::Masters::new([villager, tree]),
     ];
     let g = GatherPoint {
-        state: 1,
+        state: GatherPointState::POINT,
         point: Position::new(21.0, 21.0, 0.0),
         target: Some(object_id(5)),
         target_master: Some(master_id(349)),
@@ -584,8 +585,8 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
             .last()
             .and_then(|u| u.body.mover().map(|m| m.waiting))
     };
-    assert_eq!(waits(1), Some(1));
-    assert_eq!(waits(GatherPoint::KEPT), Some(0));
+    assert_eq!(waits(GatherPointState::POINT), Some(1));
+    assert_eq!(waits(GatherPointState::KEPT), Some(0));
 }
 
 /// Every candidate of `site`'s search for a unit of radius 0.5 (a step of 0.5, no gap), all

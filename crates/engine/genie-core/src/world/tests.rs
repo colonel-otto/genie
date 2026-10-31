@@ -1,6 +1,7 @@
 use super::*;
 use crate::GenieError;
 use crate::combat::attack::AttackState;
+use crate::commands::GatherPointState;
 use crate::commands::UnloadPick;
 use crate::commands::game::GameCommand;
 use crate::commands::{
@@ -10417,7 +10418,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             sprite_override: false,
         }),
         gather_point: Some(GatherPoint {
-            state: 1,
+            state: GatherPointState::POINT,
             point: Position::new(12.0, 12.0, 0.0),
             target: None,
             target_master: None,
@@ -11472,7 +11473,7 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
     assert_eq!(
         t.players[0].objects[0].gather_point,
         Some(GatherPoint {
-            state: 1,
+            state: GatherPointState::POINT,
             point: Position::new(107.2451, 46.075_863, 0.0),
             target: Some(object_id(9520)),
             target_master: Some(master_id(705)),
@@ -11522,13 +11523,19 @@ fn set_gather_state_makes_the_building_its_own_gather_point_or_clears_it() {
             target_master: Some(ids::TOWN_CENTRE),
         })
     };
-    t.tick_with(25, &[set(1)]);
+    t.tick_with(25, &[set(Some(GatherPointState::POINT))]);
     assert_eq!(t.players[0].unsupported, None);
-    assert_eq!(t.players[0].objects[0].gather_point, own(1));
+    assert_eq!(
+        t.players[0].objects[0].gather_point,
+        own(GatherPointState::POINT)
+    );
     // the state byte is the state, 0xff included
-    t.tick_with(25, &[set(255)]);
-    assert_eq!(t.players[0].objects[0].gather_point, own(0xff));
-    t.tick_with(25, &[set(0)]);
+    t.tick_with(25, &[set(Some(GatherPointState::KEPT))]);
+    assert_eq!(
+        t.players[0].objects[0].gather_point,
+        own(GatherPointState::KEPT)
+    );
+    t.tick_with(25, &[set(None)]);
     assert_eq!(t.players[0].objects[0].gather_point, None);
 }
 
@@ -11540,7 +11547,7 @@ fn set_gather_state_leaves_a_building_that_takes_no_gather_point_and_a_gone_obje
     let mut house = gathering_centre(10909, Position::new(20.0, 30.0, 0.0));
     house.life.master_id = ids::HOUSE;
     house.gather_point = Some(GatherPoint {
-        state: 1,
+        state: GatherPointState::POINT,
         point: Position::new(5.0, 6.0, 0.0),
         target: None,
         target_master: None,
@@ -11559,10 +11566,10 @@ fn set_gather_state_leaves_a_building_that_takes_no_gather_point_and_a_gone_obje
         })
     };
     let held = t.players[0].objects[0].gather_point;
-    t.tick_with(25, &[set(255)]);
+    t.tick_with(25, &[set(Some(GatherPointState::KEPT))]);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[0].objects[0].gather_point, held);
-    t.tick_with(25, &[set(0)]);
+    t.tick_with(25, &[set(None)]);
     assert_eq!(t.players[0].objects[0].gather_point, None);
 }
 
@@ -11573,7 +11580,7 @@ fn set_gather_state_leaves_a_building_that_takes_no_gather_point_and_a_gone_obje
 fn set_gather_point_keeps_the_target_of_a_kept_gather_point() {
     let mut tc = gathering_centre(9149, Position::new(104.0, 47.0, 0.5));
     tc.gather_point = Some(GatherPoint {
-        state: GatherPoint::KEPT,
+        state: GatherPointState::KEPT,
         point: Position::new(104.0, 47.0, 0.5),
         target: Some(object_id(9149)),
         target_master: Some(ids::TOWN_CENTRE),
@@ -11599,7 +11606,7 @@ fn set_gather_point_keeps_the_target_of_a_kept_gather_point() {
     assert_eq!(
         t.players[0].objects[0].gather_point,
         Some(GatherPoint {
-            state: GatherPoint::KEPT,
+            state: GatherPointState::KEPT,
             point: Position::new(107.25, 46.5, 0.5),
             target: Some(object_id(9149)),
             target_master: Some(ids::TOWN_CENTRE),
@@ -11614,7 +11621,7 @@ fn set_gather_point_keeps_the_target_of_a_kept_gather_point() {
     assert_eq!(
         t.players[0].objects[0].gather_point,
         Some(GatherPoint {
-            state: 1,
+            state: GatherPointState::POINT,
             point: Position::new(104.0, 47.0, 0.5),
             target: Some(object_id(9520)),
             target_master: Some(ids::TOWN_CENTRE),
@@ -11664,7 +11671,7 @@ fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
     assert_eq!(
         t.players[0].objects[0].gather_point,
         Some(GatherPoint {
-            state: 1,
+            state: GatherPointState::POINT,
             point: Position::new(20.5, 30.5, 0.0),
             target: None,
             target_master: None,
@@ -11689,7 +11696,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
         ..UnitAi::default()
     });
     tc.gather_point = Some(GatherPoint {
-        state: 1,
+        state: GatherPointState::POINT,
         point: Position::new(30.5, 40.5, 0.0),
         target: None,
         target_master: None,

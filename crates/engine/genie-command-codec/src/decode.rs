@@ -180,7 +180,7 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
         Packet::SetGatherState(c) => Command::SetGatherState(SetGatherStateCommand {
             player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            state: c.field_0x08,
+            state: genie_core::commands::GatherPointState::of_byte(c.field_0x08),
         }),
         Packet::SeekShelter(c) => Command::SeekShelter(SeekShelterCommand {
             player: PlayerId::from(c.commp_id),

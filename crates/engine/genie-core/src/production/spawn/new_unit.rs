@@ -2,6 +2,7 @@
 //! constructor.
 
 use crate::GenieError;
+use crate::commands::GatherPointState;
 use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
@@ -112,7 +113,7 @@ impl World {
             // FUN_140ace9c0 with a command queue: the building unit AI's slot 0x200 hands it to
             // the new unit (FUN_140c15e50), its gather point's work skipped
             self.hand_queue(p, new, &queue, position.z())?;
-        } else if let Some(gather) = gather.filter(|g| g.state == 1) {
+        } else if let Some(gather) = gather.filter(|g| g.state == GatherPointState::POINT) {
             // only a state of 1 sends it (`FUN_140ace9c0`'s `+0xc30 != 1` return)
             self.gather(p, new, gather, building_id, true, true)?;
         }

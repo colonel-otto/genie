@@ -362,20 +362,27 @@ pub(super) fn production(
     }))
 }
 
-/// A building's gather point, if it has one (`gather_point_exists`).
+/// A building's gather point, if it has one (`gather_point_exists`, its state; 0 is none).
+///
+/// # Errors
+///
+/// A saved state past a byte.
 pub(super) fn gather_point(
     object: &genie_save::Object,
-) -> Option<genie_core::commands::GatherPoint> {
-    let b = object
-        .tribe_building_object
-        .as_deref()
-        .filter(|b| b.gather_point_exists != 0)?;
-    Some(genie_core::commands::GatherPoint {
-        state: b.gather_point_exists,
+) -> Result<Option<genie_core::commands::GatherPoint>, GenieError> {
+    let Some(b) = object.tribe_building_object.as_deref() else {
+        return Ok(None);
+    };
+    let Some(state) = genie_core::commands::GatherPointState::of_saved(b.gather_point_exists)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(genie_core::commands::GatherPoint {
+        state,
         point: Position::new(b.gather_point_x, b.gather_point_y, b.gather_point_z),
         target: ObjectId::of_field(b.gather_point_target),
         target_master: MasterId::of_data(b.gather_point_target_master),
-    })
+    }))
 }
 
 /// A default task's action the slice models.

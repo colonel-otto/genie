@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::commands::GatherPoint;
+use crate::commands::GatherPointState;
 use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
 use crate::map::Point;
 use crate::map::Position;
@@ -346,18 +347,23 @@ pub(super) enum LetOutAim {
 }
 
 /// The aim of a let-out toward `point` ([`NO_POINT`] for none) from the building `building`
-/// with `gather`: a gather point of state 1 gives a unit without a point its target, one of
-/// state 0xff ([`GatherPoint::KEPT`]) its x and y whatever point was given, else the point.
+/// with `gather`: a gather point of state 1 ([`GatherPointState::POINT`]) gives a unit without a
+/// point its target, one of state 0xff ([`GatherPointState::KEPT`]) its x and y whatever point
+/// was given, else the point.
 pub(super) fn let_out_aim(
     gather: Option<GatherPoint>,
     point: Point,
     building: ObjectId,
 ) -> LetOutAim {
     match gather {
-        Some(g) if point.x() == NO_POINT && g.state == 1 && g.target != Some(building) => {
+        Some(g)
+            if point.x() == NO_POINT
+                && g.state == GatherPointState::POINT
+                && g.target != Some(building) =>
+        {
             LetOutAim::Target(g)
         }
-        Some(g) if g.state == GatherPoint::KEPT => LetOutAim::Point(g.point.ground()),
+        Some(g) if g.state == GatherPointState::KEPT => LetOutAim::Point(g.point.ground()),
         _ => LetOutAim::Point(point),
     }
 }

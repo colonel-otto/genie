@@ -66,6 +66,10 @@ pub(super) fn unit(
         Ok(lists) => (lists, Ok(())),
         Err(e) => (BuildingLists::default(), Err(e)),
     };
+    let (gather, gather_read) = match gather_point(object) {
+        Ok(gather) => (gather, Ok(())),
+        Err(e) => (None, Err(e)),
+    };
     let mut unit = Unit {
         id,
         life,
@@ -169,7 +173,7 @@ pub(super) fn unit(
         charge_hit: object
             .combat()
             .is_some_and(|c| c.rge_combat_object.hit_something_valid_for_charge_attack != 0),
-        gather_point: gather_point(object),
+        gather_point: gather,
         gate: saved_gate(object),
         attack_count: object
             .combat()
@@ -266,6 +270,7 @@ pub(super) fn unit(
     unit.unmodelled_action = life_read
         .and(ai_read)
         .and(lists_read)
+        .and(gather_read)
         .and(imported)
         .and(production)
         .and(moving)

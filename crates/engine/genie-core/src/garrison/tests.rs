@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::GatherPointState;
 use crate::commands::UnloadPick;
 use crate::commands::{GatherPoint, UnloadCommand};
 use crate::garrison::transport::TransportState;
@@ -1538,7 +1539,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
     let idx = t.players[1].objects.len() - 1;
     let state = t.players[1].objects[idx].life.state;
     let g = GatherPoint {
-        state: 1,
+        state: GatherPointState::POINT,
         point: Position::new(10.0, 10.0, 0.0),
         target: Some(object_id(100)),
         target_master: Some(TC),
@@ -3661,7 +3662,7 @@ fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
     assert_eq!(v.top_action(), None);
     let gather = |t: &mut World| {
         t.players[1].objects[0].gather_point = Some(GatherPoint {
-            state: 1,
+            state: GatherPointState::POINT,
             target: Some(object_id(101)),
             point: Position::new(16.0, 4.0, 0.0),
             target_master: Some(TC),
@@ -3691,7 +3692,7 @@ fn a_gather_point_of_state_0xff_replaces_the_point_of_a_let_out() {
     };
     let given = Point::new(4.5, 4.5);
     let none = Point::new(NO_POINT, NO_POINT);
-    let kept = at(GatherPoint::KEPT, Some(object_id(101)));
+    let kept = at(GatherPointState::KEPT, Some(object_id(101)));
     assert_eq!(
         let_out_aim(kept, given, object_id(100)),
         LetOutAim::Point(Point::new(16.0, 4.0))
@@ -3700,7 +3701,7 @@ fn a_gather_point_of_state_0xff_replaces_the_point_of_a_let_out() {
         let_out_aim(kept, none, object_id(100)),
         LetOutAim::Point(Point::new(16.0, 4.0))
     );
-    let one = at(1, Some(object_id(101)));
+    let one = at(GatherPointState::POINT, Some(object_id(101)));
     assert_eq!(
         let_out_aim(one, none, object_id(100)),
         LetOutAim::Target(one.unwrap())
@@ -3711,7 +3712,11 @@ fn a_gather_point_of_state_0xff_replaces_the_point_of_a_let_out() {
     );
     // on the building itself, or without a gather point, the point stays
     assert_eq!(
-        let_out_aim(at(1, Some(object_id(100))), none, object_id(100)),
+        let_out_aim(
+            at(GatherPointState::POINT, Some(object_id(100))),
+            none,
+            object_id(100)
+        ),
         LetOutAim::Point(none)
     );
     assert_eq!(
