@@ -10,6 +10,7 @@ use crate::map::TerrainMask;
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
+use crate::movement::PathState;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionClass;
@@ -511,7 +512,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
             walked.waypoint,
             walked.target
         ),
-        (1, 0, 3, 1, None)
+        (1, 0, PathState::Walking, 1, None)
     );
     assert_eq!(
         walked.points.last().map(|p| p.ground()),

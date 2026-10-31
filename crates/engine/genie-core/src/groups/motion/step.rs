@@ -8,6 +8,7 @@ use crate::groups::motion::{
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
 use crate::world::slots::CheckedIndex;
@@ -123,7 +124,7 @@ pub(super) fn pass(
         reached(motion, target.as_ref())?;
     }
     let state = motion.paths.checked(0)?.state;
-    if state == 4 || state == 5 {
+    if matches!(state, PathState::Arrived | PathState::Unplanned) {
         if motion.paths.len() < 2 {
             reset_level(&mut motion.paths)?;
             motion.stand();
@@ -138,7 +139,7 @@ pub(super) fn pass(
             let _ = motion.paths.remove(0);
             let patrols = lead.group.as_ref().is_some_and(LeadGroup::patrols);
             let parent = motion.paths.checked_mut(0)?;
-            parent.state = 2;
+            parent.state = PathState::WantsPath;
             if linked == 2 && parent.has_path {
                 if parent.path_flags & 1 != 0 {
                     let w = parent.waypoint;
@@ -147,7 +148,7 @@ pub(super) fn pass(
                 if patrols {
                     parent.waypoint += 1;
                     if parent.points.len() as i32 <= parent.waypoint {
-                        parent.state = 4;
+                        parent.state = PathState::Arrived;
                     }
                 }
             }
@@ -155,7 +156,7 @@ pub(super) fn pass(
         }
         // another link: the level walks on in its state
     }
-    if motion.paths.checked(0)?.state == 2
+    if motion.paths.checked(0)?.state == PathState::WantsPath
         && let Some(p) = request(motion, lead, world, budget, target.as_ref(), target_gap2)?
     {
         return Ok(p);
@@ -187,7 +188,7 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<()
     let left = level.waypoint - 1;
     if level.path_flags & 1 != 0 {
         level.waypoint = looping_next(level, left);
-        level.state = 2;
+        level.state = PathState::WantsPath;
         return Ok(());
     }
     let d = fmath::length(fmath::sub(at, point(level, left)));
@@ -210,16 +211,16 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<()
     let level = motion.paths.checked_mut(0)?;
     if level.waypoint < level.points.len() as i32 {
         if level.level != WaypointLevel::WALKED {
-            level.state = 2;
+            level.state = PathState::WantsPath;
         }
     } else if EPSILON <= beyond
         && (target.is_some() || CLOSE <= beyond || level.level == WaypointLevel::WALKED)
         && EPSILON <= d
     {
         level.waypoint -= 1;
-        level.state = 2;
+        level.state = PathState::WantsPath;
     } else {
-        level.state = 4;
+        level.state = PathState::Arrived;
     }
     Ok(())
 }

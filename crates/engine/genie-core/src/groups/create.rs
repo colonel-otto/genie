@@ -428,6 +428,7 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
     use crate::map::Position;
+    use crate::movement::PathState;
     use crate::objects::ObjectId;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
@@ -464,7 +465,7 @@ mod tests {
                 .cloned()
                 .unwrap_or(crate::movement::PathData::without_path()),
         ];
-        mover.paths[0].state = 3;
+        mover.paths[0].state = PathState::Walking;
         walking.body.put_mover(Some(mover));
         let player = Player {
             objects: vec![
@@ -652,7 +653,7 @@ mod tests {
         let u = &t.players[1].objects[1];
         assert_eq!(u.group.id, None);
         let m = u.body.mover().unwrap();
-        assert_eq!(m.paths[0].state, 0);
+        assert_eq!(m.paths[0].state, PathState::Idle);
         // not a member, or a group the world does not hold
         assert!(
             !t.remove_unit(group_id(1), object_id(11), None, false)
@@ -745,7 +746,7 @@ mod tests {
         );
         assert_eq!(
             t.players[1].objects[1].body.mover().unwrap().paths[0].state,
-            3
+            PathState::Walking
         );
         let mut t = three();
         let _ = t.players[1].objects.remove(2).unwrap();

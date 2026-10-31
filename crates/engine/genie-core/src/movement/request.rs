@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
@@ -115,7 +116,7 @@ impl Mover {
             level.range
         };
         if goal.target.is_some() && goal.gap <= reach {
-            level.state = 4;
+            level.state = PathState::Arrived;
             return Some(AfterRequest::Again);
         }
         let waypoint = level.point(level.waypoint);
@@ -185,11 +186,11 @@ impl Mover {
                 return Ok(Some(AfterRequest::Again));
             }
             self.reset_level();
-            self.paths[0].state = 6;
+            self.paths[0].state = PathState::GaveUp;
             self.stop()?;
             return Ok(Some(AfterRequest::GaveUp));
         }
-        level.state = 5;
+        level.state = PathState::Unplanned;
         Ok(Some(AfterRequest::Again))
     }
 

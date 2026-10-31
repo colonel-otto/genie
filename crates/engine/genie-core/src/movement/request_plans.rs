@@ -1,6 +1,7 @@
 //! The path request's planners for a unit with a footprint: the tile pathfinder's first plan,
 //! the short pather's tail, the long pather for a far waypoint and the tile pathfinder again.
 
+use crate::movement::PathState;
 use std::ops::ControlFlow;
 
 use crate::GenieError;
@@ -324,12 +325,12 @@ impl Mover {
             if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
                 self.stop()?;
                 self.reset_level();
-                self.paths[0].state = 6;
+                self.paths[0].state = PathState::GaveUp;
                 return Ok(AfterRequest::GaveUp);
             }
             level.flags |= 1;
         } else {
-            level.state = 4;
+            level.state = PathState::Arrived;
         }
         Ok(AfterRequest::Again)
     }

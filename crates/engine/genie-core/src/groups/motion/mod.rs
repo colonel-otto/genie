@@ -8,6 +8,7 @@ use crate::groups::Motion;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{self, BVector};
+use crate::movement::PathState;
 use crate::movement::Walker;
 use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
@@ -126,10 +127,14 @@ impl Motion {
         0.0 < fmath::sqrt(v.x() * v.x() + v.height() * v.height() + v.y() * v.y())
     }
 
-    /// `FUN_141046640`: the walked level waits for a path (its state 1 or 2); false without one.
+    /// `FUN_141046640`: the walked level wants a path; false without one. Its test,
+    /// `state - 1 < 2`, takes state 1 too, which no routine stores (`just field-writers stores
+    /// 0x28`), so a level never holds it.
     #[must_use]
     pub fn waits_to_move(&self) -> bool {
-        self.paths.first().is_some_and(|l| matches!(l.state, 1 | 2))
+        self.paths
+            .first()
+            .is_some_and(|l| l.state == PathState::WantsPath)
     }
 
     /// `FUN_1410481f0`: with a walked level below another, the levels below the first of level
@@ -146,7 +151,7 @@ impl Motion {
         let level = self.paths.checked_mut(0)?;
         if level.level == WaypointLevel::TOP {
             level.waypoint = 1;
-            level.state = 2;
+            level.state = PathState::WantsPath;
             level.continue_counter = 10;
         } else {
             reset_level(&mut self.paths)?;

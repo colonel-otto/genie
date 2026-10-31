@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, RecordId, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
+use crate::movement::PathState;
 use crate::movement::{
     ANNEX_GAP, AfterRequest, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion,
     MoveStats, Mover, Next, Planning, RANGE_FLOOR, Reach, footprint_gap, gate_gap, ground,
@@ -83,7 +84,7 @@ impl Mover {
                 // the walked level walks (state 3) and its pause is not above 0 (`COMISS`
                 // then `JA`: a NaN pause walks)
                 let walks = self.paths.first().is_some_and(|l| {
-                    l.state == 3 && fmath::at_most_or_unordered(l.pause_time, 0.0)
+                    l.state == PathState::Walking && fmath::at_most_or_unordered(l.pause_time, 0.0)
                 });
                 return if walks { speed } else { 0.0 };
             }
@@ -362,8 +363,8 @@ impl Mover {
         include: &[ObjectId],
     ) -> Result<Next, GenieError> {
         match self.paths[0].state {
-            4 | 5 => self.arrived(goal),
-            2 => {
+            PathState::Arrived | PathState::Unplanned => self.arrived(goal),
+            PathState::WantsPath => {
                 let plan = plan.ok_or(GenieError::unsupported(
                     "a path request without the world's planners",
                 ))?;
@@ -374,7 +375,7 @@ impl Mover {
                     AfterRequest::GaveUp => Next::Done(Motion::Done),
                 })
             }
-            _ => Ok(Next::Dispatch),
+            PathState::Idle | PathState::Walking | PathState::GaveUp => Ok(Next::Dispatch),
         }
     }
 
@@ -596,7 +597,11 @@ impl Mover {
     ) -> Result<Motion, GenieError> {
         let clipped = self.steer(heading, dt)?;
         self.control_speed(walked, clipped);
-        if self.paths.first().is_some_and(|l| l.state == 2) {
+        if self
+            .paths
+            .first()
+            .is_some_and(|l| l.state == PathState::WantsPath)
+        {
             self.stop()?;
         }
         Ok(Motion::Moving)

@@ -12,6 +12,7 @@ use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::movement::{
     LongWalker, PathData, TileAsk, long_path_for, short_path_for, tile_plan_for,
@@ -279,12 +280,12 @@ fn in_range(
         if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
             motion.stand();
             reset_level(&mut motion.paths)?;
-            motion.paths.checked_mut(0)?.state = 6;
+            motion.paths.checked_mut(0)?.state = PathState::GaveUp;
             return Ok(Pass::Done(true));
         }
         return Ok(Pass::Reached);
     }
-    motion.paths.checked_mut(0)?.state = 4;
+    motion.paths.checked_mut(0)?.state = PathState::Arrived;
     Ok(Pass::Next)
 }
 
@@ -396,7 +397,7 @@ pub(super) fn link(
                         .last()
                         .is_some_and(|t| t.has_path && t.waypoint < t.points.len() as i32 - 1);
                     if level.level < WaypointLevel::TOP && top_has_more {
-                        motion.paths.checked_mut(0)?.state = 5;
+                        motion.paths.checked_mut(0)?.state = PathState::Unplanned;
                         return Ok(Some(Pass::Next));
                     }
                     give_up(motion)?;
@@ -416,7 +417,7 @@ pub(super) fn link(
         return Ok(Some(Pass::Reached));
     }
     let level = motion.paths.checked_mut(0)?;
-    level.state = 0;
+    level.state = PathState::Idle;
     // A level's plans (`FUN_140f8f670`, `FUN_140f9b800`).
     // A new path's flags (`FUN_14152eea0`).
     level.continue_counter = CONTINUE;
@@ -430,7 +431,11 @@ pub(super) fn link(
         range,
         target,
         waypoint: 1,
-        state: if top && planned { 2 } else { 3 },
+        state: if top && planned {
+            PathState::WantsPath
+        } else {
+            PathState::Walking
+        },
         level: if top && planned {
             WaypointLevel::PLANNED
         } else {

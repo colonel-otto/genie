@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::RestrictionId;
 use crate::map::Tile;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -860,7 +861,7 @@ fn level(points: &[BVector], waypoint: i32, flags: u32) -> PathData {
         has_path: !points.is_empty(),
         path_flags: flags,
         waypoint,
-        state: 0,
+        state: PathState::Idle,
         range: 0.0,
         target: None,
         pause_time: 0.0,

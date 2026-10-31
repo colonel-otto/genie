@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::math::fmath::BVector;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::movement::{
     CLOSE, EPSILON, Goal, LOOK_AHEAD, Me, Motion, Mover, Next, PathData, RANGE_FLOOR,
@@ -47,7 +48,7 @@ impl Mover {
         if level.path_flags & 1 != 0 {
             let reached = level.waypoint - 1;
             level.waypoint = looping_next(level, reached);
-            level.state = 2;
+            level.state = PathState::WantsPath;
             return Ok(if level.waypoint == 0 {
                 Next::LoopEnd
             } else {
@@ -88,7 +89,7 @@ impl Mover {
         let level = &mut self.paths[0];
         if level.waypoint < level.points.len() as i32 {
             if level.level != WaypointLevel::WALKED {
-                level.state = 2;
+                level.state = PathState::WantsPath;
             }
             return Ok(Next::Dispatch);
         }
@@ -97,14 +98,14 @@ impl Mover {
         {
             if EPSILON <= back {
                 level.waypoint -= 1;
-                level.state = 2;
+                level.state = PathState::WantsPath;
                 return Ok(Next::Dispatch);
             }
             if level.level == WaypointLevel::TOP {
                 return self.level_2_short(me, world, goal);
             }
         }
-        level.state = 4;
+        level.state = PathState::Arrived;
         Ok(Next::Dispatch)
     }
 
@@ -188,7 +189,7 @@ impl Mover {
             self.stop()?;
             return Ok(Next::Done(Motion::Arrived));
         }
-        self.paths[0].state = 6;
+        self.paths[0].state = PathState::GaveUp;
         self.stop()?;
         Ok(Next::Done(Motion::Done))
     }
@@ -222,7 +223,7 @@ impl Mover {
         let _ = self.paths.remove(0);
         let parent = &mut self.paths[0];
         parent.waypoint = k;
-        parent.state = 2;
+        parent.state = PathState::WantsPath;
         Ok(true)
     }
 
@@ -332,7 +333,7 @@ impl Mover {
             2 => {
                 let _ = self.paths.remove(0);
                 let parent = &mut self.paths[0];
-                parent.state = 2;
+                parent.state = PathState::WantsPath;
                 // a looping parent path moves on (FUN_140f98bc0 with 1)
                 if parent.has_path && parent.path_flags & 1 != 0 {
                     parent.waypoint = looping_next(parent, parent.waypoint);
@@ -340,7 +341,7 @@ impl Mover {
             }
             3 => {
                 let _ = self.paths.remove(0);
-                self.paths[0].state = 2;
+                self.paths[0].state = PathState::WantsPath;
             }
             // the game's switch has no case: the level stays and the step goes on past the
             // request to the walk (`LAB_141153bd1`)

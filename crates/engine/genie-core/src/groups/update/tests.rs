@@ -6,6 +6,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
+use crate::movement::PathState;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
@@ -899,7 +900,7 @@ fn a_moving_group_s_move_waits_or_follows() {
     assert!(!t.move_update(group_id(1), &mut relayout).unwrap());
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.motion.number_wait_delays = 0;
-    g.motion.paths[0].state = 2;
+    g.motion.paths[0].state = PathState::WantsPath;
     assert!(!t.move_update(group_id(1), &mut relayout).unwrap());
     assert_eq!(t.groups.get(group_id(1)).unwrap().current_command, 1);
 }
@@ -1275,7 +1276,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
         u.body.put_mover(Some(m));
     }
     t.players[1].objects[0].body.mover_mut().unwrap().paths = vec![crate::movement::PathData {
-        state: 3,
+        state: PathState::Walking,
         pause_time: 0.5,
         ..crate::movement::PathData::without_path()
     }];

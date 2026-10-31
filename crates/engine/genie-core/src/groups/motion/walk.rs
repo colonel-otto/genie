@@ -11,6 +11,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
+use crate::movement::PathState;
 use crate::movement::{Planning, footprint_gap};
 use crate::objects::ObjectKey;
 use crate::world::World;
@@ -154,7 +155,7 @@ fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Result
             motion.stand();
             return Ok(Pass::Done(true));
         }
-        motion.paths.checked_mut(1)?.state = 2;
+        motion.paths.checked_mut(1)?.state = PathState::WantsPath;
         let _ = motion.paths.remove(0);
         let parent = motion.paths.checked(0)?;
         if !parent.has_path {

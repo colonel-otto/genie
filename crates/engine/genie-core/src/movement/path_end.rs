@@ -1,6 +1,7 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
 use crate::map::Tile;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::objects::{ObjectId, ObjectKey};
 
@@ -275,7 +276,11 @@ impl Mover {
             length,
             created: now,
             waypoint: 1,
-            state: if planned { 2 } else { 3 },
+            state: if planned {
+                PathState::WantsPath
+            } else {
+                PathState::Walking
+            },
             repath_time,
             ..PathData::without_path()
         }];
@@ -347,7 +352,7 @@ impl Mover {
             points: path.points,
             path_flags,
             waypoint: if ask.resume == -1 { 1 } else { ask.resume },
-            state: 2,
+            state: PathState::WantsPath,
             range,
             target,
             repath_time,

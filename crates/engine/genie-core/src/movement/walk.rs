@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::spatial::{RecordId, Spatial};
 use crate::math::fmath::BVector;
+use crate::movement::PathState;
 use crate::movement::{
     ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity,
 };
@@ -82,7 +83,7 @@ impl Mover {
             return Ok(Next::Done(Motion::Done));
         }
         let _ = self.paths.remove(0);
-        self.paths[0].state = 2;
+        self.paths[0].state = PathState::WantsPath;
         Ok(Next::Again)
     }
 

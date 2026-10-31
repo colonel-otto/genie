@@ -93,7 +93,8 @@ fn a_static_object_has_no_mover() {
 }
 
 /// What the slice cannot read is reported: future path data, a master the save or the table
-/// does not have, a sprite, turning or restriction the table does not have.
+/// does not have, a sprite, turning or restriction the table does not have, a path level's state
+/// that names none.
 #[test]
 fn what_the_mover_cannot_read_is_unsupported() {
     let objects = with_masters(vec![master()]);
@@ -116,4 +117,16 @@ fn what_the_mover_cannot_read_is_unsupported() {
         ..PathData::default()
     }];
     assert!(run(&lost_path, &objects, Some(&table())).is_err());
+    // a level's state 1, which no routine stores, is no state; 2 is one
+    let level = |state| {
+        let mut w = walker(11);
+        moving_mut(&mut w).temp_path_data = vec![PathData {
+            path_id: -1,
+            state,
+            ..PathData::default()
+        }];
+        w
+    };
+    assert!(run(&level(2), &objects, Some(&table())).is_ok());
+    assert!(run(&level(1), &objects, Some(&table())).is_err());
 }

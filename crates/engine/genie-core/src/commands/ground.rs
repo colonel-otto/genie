@@ -4,6 +4,7 @@
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::movement::PathState;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
@@ -73,7 +74,8 @@ impl World {
                 .map(|l| l.state);
             let stands = (owner == PlayerId::GAIA
                 && matches!(master.class, class::PREY | class::PREDATOR))
-                || (!walking && level.is_none_or(|s| matches!(s, 0 | 6)));
+                || (!walking
+                    && level.is_none_or(|s| matches!(s, PathState::Idle | PathState::GaveUp)));
             let busy = u.ai.as_ref().is_none_or(|ai| {
                 matches!(
                     ai.current_action,

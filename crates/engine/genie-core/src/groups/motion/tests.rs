@@ -4,6 +4,7 @@ use crate::map::Point;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::movement::NEW_PATH_FLAGS;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ObstructionClass;
@@ -63,7 +64,7 @@ use crate::map::spatial::Placed;
 use crate::math::rng::Well512;
 use crate::pathing::Pathing;
 
-fn level(level: u8, points: &[Point], waypoint: i32, state: i32) -> PathData {
+fn level(level: u8, points: &[Point], waypoint: i32, state: PathState) -> PathData {
     PathData {
         level: WaypointLevel::of_byte(level),
         points: points
@@ -86,9 +87,9 @@ fn a_motion_moves_with_a_velocity_and_waits_for_a_path() {
     assert!(!m.moving() && !m.waits_to_move());
     m.velocity = BVector::new(0.0, 0.0, -0.5);
     assert!(m.moving());
-    m.paths = vec![level(0, &[], 0, 2)];
+    m.paths = vec![level(0, &[], 0, PathState::WantsPath)];
     assert!(m.waits_to_move());
-    m.paths[0].state = 3;
+    m.paths[0].state = PathState::Walking;
     assert!(!m.waits_to_move());
 }
 
@@ -100,8 +101,13 @@ fn stopping_the_walk_stands_the_motion_and_resets_its_level() {
     m.velocity = BVector::new(1.0, 2.0, 3.0);
     m.acceleration = BVector::new(4.0, 5.0, 6.0);
     m.paths = vec![
-        level(0, &[Point::new(1.0, 1.0), Point::new(2.0, 2.0)], 1, 3),
-        level(1, &[Point::new(2.0, 2.0)], 1, 0),
+        level(
+            0,
+            &[Point::new(1.0, 1.0), Point::new(2.0, 2.0)],
+            1,
+            PathState::Walking,
+        ),
+        level(1, &[Point::new(2.0, 2.0)], 1, PathState::Idle),
     ];
     m.stop_walk().unwrap();
     assert_eq!(
@@ -124,12 +130,12 @@ fn the_walked_levels_below_the_high_level_go() {
             Point::new(9.0, 9.0),
         ],
         2,
-        4,
+        PathState::Arrived,
     );
     top.continue_counter = 3;
     m.paths = vec![
-        level(0, &[Point::new(1.0, 1.0)], 1, 3),
-        level(1, &[Point::new(2.0, 2.0)], 1, 0),
+        level(0, &[Point::new(1.0, 1.0)], 1, PathState::Walking),
+        level(1, &[Point::new(2.0, 2.0)], 1, PathState::Idle),
         top,
     ];
     m.drop_to_high_level().unwrap();
@@ -137,17 +143,17 @@ fn the_walked_levels_below_the_high_level_go() {
     let l = &m.paths[0];
     assert_eq!(
         (l.level.get(), l.waypoint, l.state, l.continue_counter),
-        (2, 1, 2, 10)
+        (2, 1, PathState::WantsPath, 10)
     );
     assert_eq!(l.points.len(), 3);
     m.paths = vec![
-        level(0, &[Point::new(1.0, 1.0)], 1, 3),
-        level(1, &[Point::new(2.0, 2.0)], 1, 0),
+        level(0, &[Point::new(1.0, 1.0)], 1, PathState::Walking),
+        level(1, &[Point::new(2.0, 2.0)], 1, PathState::Idle),
     ];
     m.paths[0].repath_time = 4.0;
     m.drop_to_high_level().unwrap();
     assert_eq!(m.paths, [PathData::without_path()]);
-    let lone = vec![level(0, &[Point::new(1.0, 1.0)], 1, 3)];
+    let lone = vec![level(0, &[Point::new(1.0, 1.0)], 1, PathState::Walking)];
     m.paths.clone_from(&lone);
     m.drop_to_high_level().unwrap();
     assert_eq!(m.paths, lone);
@@ -157,9 +163,9 @@ fn the_walked_levels_below_the_high_level_go() {
 #[test]
 fn a_levels_flag_and_its_parents_bit_2() {
     let mut paths = vec![
-        level(0, &[], 0, 3),
-        level(1, &[], 0, 0),
-        level(2, &[], 0, 0),
+        level(0, &[], 0, PathState::Walking),
+        level(1, &[], 0, PathState::Idle),
+        level(2, &[], 0, PathState::Idle),
     ];
     set_flag(&mut paths, 0, true);
     assert_eq!(paths[0].flags, 1);
@@ -173,7 +179,10 @@ fn a_levels_flag_and_its_parents_bit_2() {
 /// `FUN_140f98e80`: the walked level and its parents go; the level keeps its repath time.
 #[test]
 fn a_reset_level_drops_its_parents_and_keeps_its_repath_time() {
-    let mut paths = vec![level(0, &[Point::new(1.0, 1.0)], 1, 3), level(2, &[], 0, 0)];
+    let mut paths = vec![
+        level(0, &[Point::new(1.0, 1.0)], 1, PathState::Walking),
+        level(2, &[], 0, PathState::Idle),
+    ];
     paths[0].repath_time = 2.5;
     reset_level(&mut paths).unwrap();
     assert_eq!(paths.len(), 1);
@@ -197,7 +206,7 @@ fn a_looping_path_goes_round_or_back_and_forth() {
             Point::new(2.0, 0.0),
         ],
         0,
-        2,
+        PathState::WantsPath,
     );
     assert_eq!(looping_next(&mut l, 0), -1);
     l.path_flags = 1;
@@ -404,7 +413,7 @@ fn a_walked_level_turns_the_group_toward_its_waypoint() {
         0,
         &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
         1,
-        3,
+        PathState::Walking,
     )];
     let group = GroupView::default();
     assert!(fx.step(&mut m, &group, &lead()));
@@ -421,7 +430,12 @@ fn the_last_waypoint_of_the_top_level_ends_the_walk() {
     let mut m = Motion::new();
     m.position[0] = BVector::new(5.0, 0.0, 9.0);
     m.velocity = BVector::new(0.0, 0.0, 1.2);
-    let mut top = level(2, &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)], 1, 3);
+    let mut top = level(
+        2,
+        &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
+        1,
+        PathState::Walking,
+    );
     top.flags = 1;
     m.paths = vec![top];
     assert!(fx.step(&mut m, &GroupView::default(), &lead()));
@@ -436,17 +450,32 @@ fn an_arrived_level_hands_over_and_a_pause_waits() {
     let mut fx = Fixture::new();
     let mut m = Motion::new();
     m.position[0] = BVector::new(5.0, 0.0, 9.0);
-    let mut walked = level(0, &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)], 1, 4);
+    let mut walked = level(
+        0,
+        &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
+        1,
+        PathState::Arrived,
+    );
     walked.linked_type = 1;
-    let parent = level(2, &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)], 1, 0);
+    let parent = level(
+        2,
+        &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
+        1,
+        PathState::Idle,
+    );
     m.paths = vec![walked, parent];
     // the parent's reached last waypoint ends the walk in the same step
     assert!(fx.step(&mut m, &GroupView::default(), &lead()));
     assert_eq!(m.paths.len(), 1);
-    assert_eq!(m.paths[0].state, 0);
+    assert_eq!(m.paths[0].state, PathState::Idle);
     let mut m = Motion::new();
     m.velocity = BVector::new(0.0, 0.0, 1.0);
-    let mut paused = level(0, &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)], 1, 3);
+    let mut paused = level(
+        0,
+        &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
+        1,
+        PathState::Walking,
+    );
     paused.pause_time = 0.3;
     m.paths = vec![paused];
     assert!(!fx.step(&mut m, &GroupView::default(), &lead()));
@@ -485,7 +514,12 @@ impl Fixture {
 fn requesting(n: u8, y: f32) -> Motion {
     let mut m = Motion::new();
     m.position[0] = BVector::new(5.0, 0.0, 5.0);
-    m.paths = vec![level(n, &[Point::new(5.0, 5.0), Point::new(5.0, y)], 1, 2)];
+    m.paths = vec![level(
+        n,
+        &[Point::new(5.0, 5.0), Point::new(5.0, y)],
+        1,
+        PathState::WantsPath,
+    )];
     m
 }
 
@@ -579,14 +613,14 @@ fn a_top_level_without_a_planner_plans_the_straight_way() {
     let (new, top) = (&m.paths[0], &m.paths[1]);
     assert_eq!(
         (new.level.get(), new.state, new.linked_type, new.waypoint),
-        (1, 2, 1, 1)
+        (1, PathState::WantsPath, 1, 1)
     );
     assert_eq!(
         new.points,
         [BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 30.0)]
     );
     assert_eq!((new.length, new.created), (25.0, 100));
-    assert_eq!((top.state, top.continue_counter), (0, 10));
+    assert_eq!((top.state, top.continue_counter), (PathState::Idle, 10));
 }
 
 /// A near waypoint the short pather finds no way to: a group without a target counts it
@@ -611,7 +645,10 @@ fn a_near_waypoint_without_a_way_is_reached_or_arrived_at() {
         fx.request(&mut m, &lead, false, None, f32::MAX),
         Some(Pass::Done(true))
     ));
-    assert_eq!((m.paths[0].state, m.paths[0].has_path), (6, false));
+    assert_eq!(
+        (m.paths[0].state, m.paths[0].has_path),
+        (PathState::GaveUp, false)
+    );
     assert_eq!(m.velocity.y(), 0.0);
     let mut m = requesting(0, 6.0);
     let placed = target_at(6.0);
@@ -619,7 +656,7 @@ fn a_near_waypoint_without_a_way_is_reached_or_arrived_at() {
         fx.request(&mut m, &lead, false, Some(&placed), NEAR),
         Some(Pass::Next)
     ));
-    assert_eq!(m.paths[0].state, 4);
+    assert_eq!(m.paths[0].state, PathState::Arrived);
     let mut m = requesting(0, 6.0);
     assert!(matches!(
         fx.request(&mut m, &lead, false, Some(&placed), 0.2),
@@ -639,7 +676,10 @@ fn a_near_target_takes_the_straight_way() {
             .is_none()
     );
     let new = &m.paths[0];
-    assert_eq!((new.level.get(), new.state, new.linked_type), (0, 3, 1));
+    assert_eq!(
+        (new.level.get(), new.state, new.linked_type),
+        (0, PathState::Walking, 1)
+    );
     assert_eq!(
         new.points,
         [BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 30.0)]
@@ -666,10 +706,13 @@ fn a_near_waypoint_takes_the_short_pather_s_path() {
     lead.walker.radius = 0.6;
     assert!(fx.request(&mut m, &lead, false, None, f32::MAX).is_none());
     let new = &m.paths[0];
-    assert_eq!((new.level.get(), new.state, new.linked_type), (0, 3, 1));
+    assert_eq!(
+        (new.level.get(), new.state, new.linked_type),
+        (0, PathState::Walking, 1)
+    );
     assert_eq!(new.points.first(), Some(&BVector::new(5.0, 0.0, 5.0)));
     assert_eq!(new.points.last(), Some(&BVector::new(5.0, 0.0, 9.0)));
-    assert_eq!(m.paths[1].state, 0);
+    assert_eq!(m.paths[1].state, PathState::Idle);
 }
 
 /// A far waypoint without a near target takes the long pather's path through the tiles'
@@ -680,7 +723,10 @@ fn a_far_waypoint_takes_the_long_pather_s_path() {
     let mut m = requesting(0, 30.0);
     assert!(fx.request(&mut m, &lead(), false, None, f32::MAX).is_none());
     let new = &m.paths[0];
-    assert_eq!((new.level.get(), new.state, new.linked_type), (0, 3, 1));
+    assert_eq!(
+        (new.level.get(), new.state, new.linked_type),
+        (0, PathState::Walking, 1)
+    );
     assert_eq!(
         new.points,
         [BVector::new(5.5, 0.0, 5.5), BVector::new(5.5, 0.0, 30.5)]
@@ -700,7 +746,12 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
     let at = |n: u8, waypoints: &[Point], counter| {
         let mut m = Motion::new();
         m.velocity = BVector::new(0.0, 0.0, 1.0);
-        m.paths = vec![level(n, waypoints, waypoints.len() as i32 - 1, 2)];
+        m.paths = vec![level(
+            n,
+            waypoints,
+            waypoints.len() as i32 - 1,
+            PathState::WantsPath,
+        )];
         m.paths[0].continue_counter = counter;
         m
     };
@@ -730,10 +781,10 @@ fn a_request_without_a_path_pauses_waits_gives_up_or_counts_its_waypoint() {
             Point::new(9.0, 9.0),
         ],
         1,
-        0,
+        PathState::Idle,
     ));
     assert!(matches!(end(&mut m, &lead(), false), Some(Pass::Next)));
-    assert_eq!(m.paths[0].state, 5);
+    assert_eq!(m.paths[0].state, PathState::Unplanned);
     let mut m = at(2, &last, 2);
     assert!(matches!(
         end(&mut m, &lead(), false),
@@ -772,7 +823,7 @@ fn a_reached_waypoint_moves_the_level_on() {
         Point::new(9.0, 9.0),
     ];
     let mut m = Motion::new();
-    m.paths = vec![level(1, &three, 1, 3)];
+    m.paths = vec![level(1, &three, 1, PathState::Walking)];
     m.paths[0].flags = 3;
     reached(&mut m, None).unwrap();
     assert_eq!(
@@ -780,14 +831,23 @@ fn a_reached_waypoint_moves_the_level_on() {
         (BVector::new(5.0, 0.0, 9.0), BVector::new(5.0, 0.0, 9.0))
     );
     let l = &m.paths[0];
-    assert_eq!((l.flags & 3, l.waypoint, l.state), (0, 2, 2));
-    m.paths = vec![level(0, &three, 1, 3)];
+    assert_eq!(
+        (l.flags & 3, l.waypoint, l.state),
+        (0, 2, PathState::WantsPath)
+    );
+    m.paths = vec![level(0, &three, 1, PathState::Walking)];
     reached(&mut m, None).unwrap();
-    assert_eq!((m.paths[0].waypoint, m.paths[0].state), (2, 3));
-    m.paths = vec![level(1, &three, 2, 3)];
+    assert_eq!(
+        (m.paths[0].waypoint, m.paths[0].state),
+        (2, PathState::Walking)
+    );
+    m.paths = vec![level(1, &three, 2, PathState::Walking)];
     m.paths[0].path_flags = 1;
     reached(&mut m, None).unwrap();
-    assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
+    assert_eq!(
+        (m.paths[0].waypoint, m.paths[0].state),
+        (0, PathState::WantsPath)
+    );
 }
 
 /// Past the last waypoint of a path that does not loop: a group farther than the range plus
@@ -801,21 +861,42 @@ fn past_its_last_waypoint_a_level_steps_back_or_arrived() {
     let state = |n: u8, at: Point, target: Option<&Placed>, flags: u32| {
         let mut m = Motion::new();
         m.position[0] = BVector::new(at.x(), 0.0, at.y());
-        m.paths = vec![level(n, &two, 1, 3)];
+        m.paths = vec![level(n, &two, 1, PathState::Walking)];
         m.paths[0].flags = flags;
         reached(&mut m, target).unwrap();
         (m.paths[0].waypoint, m.paths[0].state, m.paths[0].flags & 4)
     };
-    assert_eq!(state(0, Point::new(5.0, 5.0), None, 0), (1, 2, 0));
-    assert_eq!(state(0, Point::new(5.0, 9.0), None, 0), (2, 4, 0));
+    assert_eq!(
+        state(0, Point::new(5.0, 5.0), None, 0),
+        (1, PathState::WantsPath, 0)
+    );
+    assert_eq!(
+        state(0, Point::new(5.0, 9.0), None, 0),
+        (2, PathState::Arrived, 0)
+    );
     // 0.6 short: beyond 0.5, below CLOSE: level 0 steps back, level 1 arrived
-    assert_eq!(state(0, Point::new(5.0, 8.4), None, 0), (1, 2, 0));
-    assert_eq!(state(1, Point::new(5.0, 8.4), None, 0), (2, 4, 0));
+    assert_eq!(
+        state(0, Point::new(5.0, 8.4), None, 0),
+        (1, PathState::WantsPath, 0)
+    );
+    assert_eq!(
+        state(1, Point::new(5.0, 8.4), None, 0),
+        (2, PathState::Arrived, 0)
+    );
     let target = target_at(12.0);
-    assert_eq!(state(1, Point::new(5.0, 8.0), Some(&target), 0), (1, 2, 0));
-    assert_eq!(state(1, Point::new(5.0, 8.0), Some(&target), 4), (2, 4, 0));
+    assert_eq!(
+        state(1, Point::new(5.0, 8.0), Some(&target), 0),
+        (1, PathState::WantsPath, 0)
+    );
+    assert_eq!(
+        state(1, Point::new(5.0, 8.0), Some(&target), 4),
+        (2, PathState::Arrived, 0)
+    );
     // on the waypoint it left the group arrived, its target however far
-    assert_eq!(state(1, Point::new(5.0, 9.0), Some(&target), 0), (2, 4, 0));
+    assert_eq!(
+        state(1, Point::new(5.0, 9.0), Some(&target), 0),
+        (2, PathState::Arrived, 0)
+    );
 }
 
 impl Fixture {
@@ -853,19 +934,33 @@ fn an_arrived_level_hands_over_by_its_link() {
     let mut fx = Fixture::new();
     let handed = |fx: &mut Fixture, linked, path_flags, lead: &Lead, waypoint| {
         let mut m = Motion::new();
-        let mut walked = level(0, &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)], 2, 4);
+        let mut walked = level(
+            0,
+            &[Point::new(5.0, 5.0), Point::new(5.0, 9.0)],
+            2,
+            PathState::Arrived,
+        );
         walked.linked_type = linked;
-        let mut parent = level(2, &three, waypoint, 0);
+        let mut parent = level(2, &three, waypoint, PathState::Idle);
         parent.path_flags = path_flags;
         m.paths = vec![walked, parent];
         assert!(matches!(fx.pass(&mut m, lead), Pass::Next));
         assert_eq!(m.paths.len(), 1);
         (m.paths[0].waypoint, m.paths[0].state)
     };
-    assert_eq!(handed(&mut fx, 2, 1, &lead(), 1), (2, 2));
-    assert_eq!(handed(&mut fx, 2, 0, &grouped(0x800), 1), (2, 2));
-    assert_eq!(handed(&mut fx, 2, 0, &grouped(0x800), 2), (3, 4));
-    assert_eq!(handed(&mut fx, 3, 1, &grouped(0x800), 1), (1, 2));
+    assert_eq!(handed(&mut fx, 2, 1, &lead(), 1), (2, PathState::WantsPath));
+    assert_eq!(
+        handed(&mut fx, 2, 0, &grouped(0x800), 1),
+        (2, PathState::WantsPath)
+    );
+    assert_eq!(
+        handed(&mut fx, 2, 0, &grouped(0x800), 2),
+        (3, PathState::Arrived)
+    );
+    assert_eq!(
+        handed(&mut fx, 3, 1, &grouped(0x800), 1),
+        (1, PathState::WantsPath)
+    );
     // bit 0: the waypoint counts reached (past the last, 0.5 from the target: back to it, state
     // 2), then the request (a lead the short pather does not serve, short of the target's
     // reach: the waypoint counts reached again)
@@ -878,7 +973,10 @@ fn an_arrived_level_hands_over_by_its_link() {
     m.paths[0].target = Some(object_id(7));
     fx.spatial.insert(object_id(7), target_at(6.0));
     assert!(matches!(fx.pass(&mut m, &lead), Pass::Reached));
-    assert_eq!((m.paths[0].waypoint, m.paths[0].state), (1, 2));
+    assert_eq!(
+        (m.paths[0].waypoint, m.paths[0].state),
+        (1, PathState::WantsPath)
+    );
 }
 
 /// A target of radius 0.2 at (`x`, `y`) with its obstruction record (a circle).
@@ -903,7 +1001,7 @@ fn what_stands_in_the_way_stops_the_walk() {
     let mut fx = open_fixture();
     let walking = |target| {
         let mut m = requesting(0, 9.0);
-        m.paths[0].state = 3;
+        m.paths[0].state = PathState::Walking;
         m.paths[0].target = target;
         m.paths[0].created = 50;
         m
@@ -927,12 +1025,12 @@ fn what_stands_in_the_way_stops_the_walk() {
         2,
         &[Point::new(5.0, 5.0), Point::new(9.0, 9.0)],
         1,
-        0,
+        PathState::Idle,
     ));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Next));
     assert_eq!(
         (m.paths.len(), m.paths[0].level.get(), m.paths[0].state),
-        (1, 2, 2)
+        (1, 2, PathState::WantsPath)
     );
     let mut m = walking(None);
     m.velocity = BVector::new(0.0, 0.0, 1.0);
@@ -946,7 +1044,10 @@ fn what_stands_in_the_way_stops_the_walk() {
     m.paths[0].created = 70;
     m.maximum_velocity_forward = 1.2;
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
-    assert_eq!((m.paths[0].state, m.velocity.y()), (3, 1.2));
+    assert_eq!(
+        (m.paths[0].state, m.velocity.y()),
+        (PathState::Walking, 1.2)
+    );
 }
 
 /// The walk's end in range: a group within the walked level's range of the top level's last
@@ -956,13 +1057,13 @@ fn what_stands_in_the_way_stops_the_walk() {
 fn a_walk_in_range_of_its_end_stops() {
     let mut fx = open_fixture();
     let mut m = requesting(0, 9.0);
-    m.paths[0].state = 3;
+    m.paths[0].state = PathState::Walking;
     m.paths[0].range = 1.0;
     m.paths.push(level(
         2,
         &[Point::new(5.0, 5.0), Point::new(5.0, 5.5)],
         1,
-        0,
+        PathState::Idle,
     ));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
     assert_eq!(m.paths, vec![PathData::without_path()]);
@@ -974,7 +1075,7 @@ fn a_walk_in_range_of_its_end_stops() {
         },
     );
     let mut m = requesting(0, 9.0);
-    m.paths[0].state = 3;
+    m.paths[0].state = PathState::Walking;
     (m.paths[0].range, m.paths[0].target) = (1.5, Some(object_id(7)));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Reached));
 }
@@ -987,7 +1088,7 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
     let mut fx = open_fixture();
     let walk = |fx: &mut Fixture, members: Vec<Option<(Option<ObjectId>, BVector)>>| {
         let mut m = requesting(0, 9.0);
-        m.paths[0].state = 3;
+        m.paths[0].state = PathState::Walking;
         m.new_position[0] = BVector::new(5.0, 0.0, 5.0);
         let group = GroupView {
             computer: false,

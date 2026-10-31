@@ -41,6 +41,8 @@ pub mod move_to;
 mod new_path;
 mod path_end;
 mod path_points;
+mod path_state;
+pub use self::path_state::PathState;
 mod request;
 mod request_plans;
 mod step;
@@ -131,8 +133,8 @@ pub struct PathData {
     pub path_flags: u32,
     /// `+0x24`: the index of the waypoint the unit walks to.
     pub waypoint: i32,
-    /// `+0x28`: 2 wants a path, 3 walks, 4 and 5 arrived.
-    pub state: i32,
+    /// `+0x28`: its state.
+    pub state: PathState,
     /// `+0x2c`: how near the target counts as there.
     pub range: f32,
     /// `+0x30`: the target object's id, none for a point.
@@ -415,7 +417,7 @@ impl PathData {
             has_path: true,
             path_flags: 6,
             waypoint: 0,
-            state: 0,
+            state: PathState::Idle,
             range: 0.0,
             target: None,
             pause_time: 0.0,
@@ -440,7 +442,7 @@ impl PathData {
             has_path: false,
             path_flags: 0,
             waypoint: 0,
-            state: 0,
+            state: PathState::Idle,
             range: 0.0,
             target: None,
             pause_time: 0.0,

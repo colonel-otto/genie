@@ -121,7 +121,7 @@ pub(super) fn path_level(
         has_path: path.is_some(),
         path_flags: path.map_or(0, |p| p.flags_m_bits),
         waypoint: d.waypoint,
-        state: d.state,
+        state: genie_core::movement::PathState::of_int(d.state)?,
         range: d.range,
         target: ObjectId::of_field(d.target_id),
         pause_time: f32::from_bits(d.pause_time),

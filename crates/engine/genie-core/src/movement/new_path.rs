@@ -4,6 +4,7 @@
 use crate::map::Point;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, RecordId, Spatial};
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::movement::{
     AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, ReachAsk,
@@ -57,7 +58,7 @@ impl Mover {
                         "a level without a path stops the unit",
                     ));
                 }
-                level.state = 5;
+                level.state = PathState::Unplanned;
                 return Ok(AfterRequest::Again);
             }
         } else if level.path_flags & 1 == 0 {
@@ -84,7 +85,7 @@ impl Mover {
         solid: bool,
     ) -> AfterRequest {
         let level = &mut self.paths[0];
-        level.state = 0;
+        level.state = PathState::Idle;
         level.continue_counter = CONTINUE;
         new.range = level.range;
         new.target = level.target;
@@ -92,7 +93,7 @@ impl Mover {
         if level.level == WaypointLevel::TOP && planned {
             new.length = path.length;
             new.points = path.points;
-            new.state = 2;
+            new.state = PathState::WantsPath;
             new.level = WaypointLevel::PLANNED;
             new.linked_type = if found { 1 } else { 2 };
             self.paths.insert(0, new);
@@ -114,7 +115,7 @@ impl Mover {
         }
         new.length = path.length;
         new.points = path.points;
-        new.state = 3;
+        new.state = PathState::Walking;
         new.level = WaypointLevel::WALKED;
         new.linked_type = if !found || partial { 2 } else { 1 };
         if !solid {

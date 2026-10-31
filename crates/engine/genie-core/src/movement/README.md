@@ -57,6 +57,7 @@ If the object's action walks, the action runs the motion step. The planners that
 | [`new_path.rs`](new_path.rs) | A new level's path: no path, its link under the walked level, the short pather's ignore list and a blocked start. |
 | [`path_end.rs`](path_end.rs) | The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses. |
 | [`path_points.rs`](path_points.rs) | Path points, the gaps between footprints and the position setter's tests. |
+| [`path_state.rs`](path_state.rs) | A path level's state: whether it asks for a path, walks it or is done with it. |
 | [`request.rs`](request.rs) | The motion step's path request: the long pather's plan, the walled-off stretches and the goal's reach. |
 | [`request_plans.rs`](request_plans.rs) | The path request's planners for a unit with a footprint: the tile pathfinder's first plan, the short pather's tail, the long pather for a far waypoint and the tile pathfinder again. |
 | [`step.rs`](step.rs) | The velocity step, a new object's setup, the position setter and the motion step's loop. |

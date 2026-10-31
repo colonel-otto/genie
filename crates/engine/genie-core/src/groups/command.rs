@@ -13,6 +13,7 @@ use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
+use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::master_type::COMBAT;
@@ -621,7 +622,7 @@ fn move_level(
         level.range = range;
         level.target = target;
         level.waypoint = 1;
-        level.state = 2;
+        level.state = PathState::WantsPath;
         level.continue_counter = CONTINUE;
     }
     level.level = WaypointLevel::TOP;
