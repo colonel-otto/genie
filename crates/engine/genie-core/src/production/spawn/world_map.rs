@@ -52,11 +52,14 @@ impl PlaceMap for WorldMap<'_> {
 
     fn explored(&self, player: PlayerId, x: i32, y: i32) -> bool {
         // without the sight the spawn stops before (World::spawn)
-        self.turns.spatial.explored(player, x, y).unwrap_or(false)
+        self.turns
+            .spatial
+            .explored(player, Tile::new(x, y))
+            .unwrap_or(false)
     }
 
     fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool {
-        self.turns.spatial.visible(player, x, y)
+        self.turns.spatial.visible(player, Tile::new(x, y))
     }
 
     fn vision(&self, player: PlayerId) -> [u64; 2] {

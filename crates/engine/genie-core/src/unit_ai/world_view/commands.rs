@@ -297,7 +297,7 @@ pub(crate) fn town_centre_unit(units: OthersRef<'_>) -> Result<Option<&Unit>, Ge
 
 impl crate::players::ai_module::SearchArea for ScoutArea<'_> {
     fn visible_now(&self, x: i32, y: i32) -> bool {
-        self.spatial.scout_sight(self.player, x, y) == Some(0xf)
+        self.spatial.scout_sight(self.player, Tile::new(x, y)) == Some(0xf)
     }
 }
 
@@ -327,7 +327,7 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
                 .map(|v| v == 1)
                 .ok_or(GenieError::unsupported("a tile off the player's scout map"));
         }
-        self.spatial.explored(self.player, x, y)
+        self.spatial.explored(self.player, Tile::new(x, y))
     }
 
     fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId {

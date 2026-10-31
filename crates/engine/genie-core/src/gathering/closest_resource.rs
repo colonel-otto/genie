@@ -170,7 +170,7 @@ pub(crate) fn closest_resource_of(
         ResourceWorld {
             map: c.spatial.map,
             world: c.spatial,
-            explored: &|spatial, x, y| spatial.explored(player, x, y),
+            explored: &|spatial, x, y| spatial.explored(player, Tile::new(x, y)),
             passable: &|spatial, x, y| {
                 spatial
                     .tiles()

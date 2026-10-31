@@ -1247,7 +1247,7 @@ fn revealing_the_map_sets_the_mask_in_every_word() {
         s.vision[1],
         crate::vision::own_masks(PlayerId::new(1), true)
     );
-    assert_eq!(s.tile_sight(PlayerId::new(1), 0, 0), Some(0));
+    assert_eq!(s.tile_sight(PlayerId::new(1), Tile::new(0, 0)), Some(0));
 }
 
 #[test]
@@ -1305,20 +1305,30 @@ fn a_player_s_tile_test_answers_seen_explored_or_neither_and_reads_the_revealed_
         NO_TILE,
         NO_TILE | explored,
     ]);
-    let answers = |p: PlayerId| (0..7).map(|x| s.tile_sight(p, x, 0)).collect::<Vec<_>>();
+    let answers = |p: PlayerId| {
+        (0..7)
+            .map(|x| s.tile_sight(p, Tile::new(x, 0)))
+            .collect::<Vec<_>>()
+    };
     let some = |v: [u8; 7]| v.map(Some).to_vec();
     assert_eq!(
         answers(PlayerId::new(1)),
         some([0xf, 0x80, 0x80, 0xf, 0, 0xf, 0])
     );
     assert_eq!(answers(PlayerId::new(0)), some([0, 0, 0x80, 0xf, 0, 0, 0]));
-    assert_eq!(s.tile_sight(PlayerId::new(1), -1, 0), Some(0));
-    assert_eq!(s.tile_sight(PlayerId::new(1), 0, 1), Some(0));
-    assert_eq!(Spatial::default().tile_sight(PlayerId::new(1), 0, 0), None);
+    assert_eq!(s.tile_sight(PlayerId::new(1), Tile::new(-1, 0)), Some(0));
+    assert_eq!(s.tile_sight(PlayerId::new(1), Tile::new(0, 1)), Some(0));
+    assert_eq!(
+        Spatial::default().tile_sight(PlayerId::new(1), Tile::new(0, 0)),
+        None
+    );
     // sees_tile is its 0xf, explored any answer
-    assert!(s.sees_tile(PlayerId::new(0), 3, 0) && !s.sees_tile(PlayerId::new(0), 2, 0));
-    assert_eq!(s.explored(PlayerId::new(0), 2, 0), Ok(true));
-    assert_eq!(s.explored(PlayerId::new(0), 4, 0), Ok(false));
+    assert!(
+        s.sees_tile(PlayerId::new(0), Tile::new(3, 0))
+            && !s.sees_tile(PlayerId::new(0), Tile::new(2, 0))
+    );
+    assert_eq!(s.explored(PlayerId::new(0), Tile::new(2, 0)), Ok(true));
+    assert_eq!(s.explored(PlayerId::new(0), Tile::new(4, 0)), Ok(false));
 }
 
 /// `FUN_141285350` and `FUN_140c68a00`: the word under the registry's mask only, so the
@@ -1329,16 +1339,25 @@ fn the_visible_map_s_tile_test_reads_only_the_players_bits() {
     let (seen, explored) = (1 << 1, 1 << 33);
     let s = sighted(vec![seen, explored, NO_TILE | NO_TILE_EXPLORED, 0]);
     let scout = (0..5)
-        .map(|x| s.scout_sight(PlayerId::new(1), x, 0))
+        .map(|x| s.scout_sight(PlayerId::new(1), Tile::new(x, 0)))
         .collect::<Vec<_>>();
     assert_eq!(scout, [0xf, 0x80, 0, 0, 0].map(Some).to_vec());
     let seen_now = (0..4)
-        .map(|x| s.visibility(PlayerId::new(1), x, 0))
+        .map(|x| s.visibility(PlayerId::new(1), Tile::new(x, 0)))
         .collect::<Vec<_>>();
     assert_eq!(seen_now, [0xf, 0x80, 0, 0].map(Some).to_vec());
-    assert!(s.visible(PlayerId::new(1), 0, 0) && !s.visible(PlayerId::new(1), 1, 0));
-    assert_eq!(Spatial::default().scout_sight(PlayerId::new(1), 0, 0), None);
-    assert_eq!(Spatial::default().visibility(PlayerId::new(1), 0, 0), None);
+    assert!(
+        s.visible(PlayerId::new(1), Tile::new(0, 0))
+            && !s.visible(PlayerId::new(1), Tile::new(1, 0))
+    );
+    assert_eq!(
+        Spatial::default().scout_sight(PlayerId::new(1), Tile::new(0, 0)),
+        None
+    );
+    assert_eq!(
+        Spatial::default().visibility(PlayerId::new(1), Tile::new(0, 0)),
+        None
+    );
 }
 
 #[test]

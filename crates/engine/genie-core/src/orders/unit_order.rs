@@ -129,7 +129,7 @@ impl World {
         let (y0, y1) = ((y - 3).max(0), if y + 3 < h { y + 3 } else { h - 1 });
         for tx in x0..=x1 {
             for ty in y0..=y1 {
-                if !self.spatial.sees_tile(p, tx, ty) {
+                if !self.spatial.sees_tile(p, Tile::new(tx, ty)) {
                     continue;
                 }
                 let ids = self.spatial.tiles().list(Tile::new(tx, ty)).to_vec();

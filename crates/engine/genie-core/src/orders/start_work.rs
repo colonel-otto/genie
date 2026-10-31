@@ -287,7 +287,7 @@ impl World {
             ResourceWorld {
                 map: self.spatial.map,
                 world: &mut self.spatial,
-                explored: &|spatial, x, y| spatial.explored(p, x, y),
+                explored: &|spatial, x, y| spatial.explored(p, Tile::new(x, y)),
                 passable: &|spatial, x, y| {
                     spatial
                         .tiles()

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
@@ -230,15 +231,15 @@ impl Spatial {
         }
     }
 
-    /// The unified map's word (`+0x5e30`) at tile (`x`, `y`), none off the map.
-    pub(super) fn unified_word(v: &Visibility, x: i32, y: i32) -> Option<u64> {
-        if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return None;
-        }
-        Some(*v.unified.get((y * v.width + x) as usize)?)
+    /// The unified map's word (`+0x5e30`) at `tile`, none off the map.
+    pub(super) fn unified_word(v: &Visibility, tile: Tile) -> Option<u64> {
+        Some(
+            *v.unified
+                .get(GridSize::new(v.width, v.height).index(tile)?)?,
+        )
     }
 
-    /// `FUN_141663500`, the player's tile test: what player `player` knows of tile (`x`, `y`).
+    /// `FUN_141663500`, the player's tile test: what player `player` knows of `tile`.
     /// 0xf when it sees the tile (its visible mask `+0x2a8` meets the unified map's word under
     /// [`crate::vision::registry::MASK`]), or when the word is revealed to all (bit 29,
     /// [`crate::vision::NO_TILE`]) and the player explored it (its explored mask `+0x2a0` meets
@@ -246,10 +247,10 @@ impl Spatial {
     /// explored it or the word is explored by all; else 0, also off the map. None without the
     /// players' sight.
     #[must_use]
-    pub fn tile_sight(&self, player: PlayerId, x: i32, y: i32) -> Option<u8> {
+    pub fn tile_sight(&self, player: PlayerId, tile: Tile) -> Option<u8> {
         use crate::vision::registry::MASK;
         use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
-        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, tile) else {
             return Some(0);
         };
         let [seen, explored] = self.vision(player);
@@ -271,12 +272,10 @@ impl Spatial {
     /// then (0xf), which the world does not hold. Without the players' sight: 0.
     #[must_use]
     pub fn building_sight(&self, id: ObjectId, position: Position, player: PlayerId) -> Option<u8> {
-        use crate::math::conversions::cvttss2si;
         let Some(v) = self.sight.as_ref() else {
             return Some(0);
         };
-        let (x, y) = (cvttss2si(position.x()), cvttss2si(position.y()));
-        if self.tile_sight(player, x, y) == Some(0xf) {
+        if self.tile_sight(player, position.ground().tile()) == Some(0xf) {
             return Some(0xf);
         }
         let umv = v.seer(id).is_some_and(|s| s.umv != 0);
@@ -293,13 +292,13 @@ impl Spatial {
     }
 
     /// `FUN_141285350`, the visible map's tile test (`InfluenceMap` and the scout map read it):
-    /// 0xf when player `player`'s visible mask (`+0x2a8`) meets the unified map's word at tile
-    /// (`x`, `y`) under [`crate::vision::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)
+    /// 0xf when player `player`'s visible mask (`+0x2a8`) meets the unified map's word at `tile`
+    /// under [`crate::vision::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)
     /// does, else 0, also off the map (the visible map's own size, `+0x20`, `+0x24`, the map's).
     /// The revealed bits 29 and 61 lie outside the mask. None without the players' sight.
     #[must_use]
-    pub fn scout_sight(&self, player: PlayerId, x: i32, y: i32) -> Option<u8> {
-        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+    pub fn scout_sight(&self, player: PlayerId, tile: Tile) -> Option<u8> {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, tile) else {
             return Some(0);
         };
         let word = word & crate::vision::registry::MASK;
@@ -315,14 +314,14 @@ impl Spatial {
 
     /// `FUN_140c68a00`, a unit's tile test (`FUN_141285280` reads the unified map's word, its
     /// player the unit's `+0x138`): 0xf when player `player`'s visible mask (`+0x2a8`) meets the
-    /// word at tile (`x`, `y`) under [`crate::vision::registry::MASK`], else 0x80 when its explored mask
+    /// word at `tile` under [`crate::vision::registry::MASK`], else 0x80 when its explored mask
     /// (`+0x2a0`) does, else 0. The game reads the word unchecked; its three callers
     /// (`FUN_140ab79e0`, `FUN_140c567c0`, `FUN_140c26f60`) pass an object's tile, which the
     /// position setter holds on the map, so off the map is 0 here. None without the players'
     /// sight.
     #[must_use]
-    pub fn visibility(&self, player: PlayerId, x: i32, y: i32) -> Option<u8> {
-        let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
+    pub fn visibility(&self, player: PlayerId, tile: Tile) -> Option<u8> {
+        let Some(word) = Self::unified_word(self.sight.as_ref()?, tile) else {
             return Some(0);
         };
         let word = word & crate::vision::registry::MASK;
@@ -347,29 +346,29 @@ impl Spatial {
         }
     }
 
-    /// Whether player `player` sees tile (`x`, `y`): [`Spatial::tile_sight`] is 0xf. False
-    /// without the players' sight.
+    /// Whether player `player` sees `tile`: [`Spatial::tile_sight`] is 0xf. False without the
+    /// players' sight.
     #[must_use]
-    pub fn sees_tile(&self, player: PlayerId, x: i32, y: i32) -> bool {
-        self.tile_sight(player, x, y) == Some(0xf)
+    pub fn sees_tile(&self, player: PlayerId, tile: Tile) -> bool {
+        self.tile_sight(player, tile) == Some(0xf)
     }
 
-    /// [`Spatial::tile_sight`] is not 0: player `player` sees tile (`x`, `y`) or explored it.
-    /// Unknown without the players' sight.
-    pub fn explored(&self, player: PlayerId, x: i32, y: i32) -> Result<bool, GenieError> {
+    /// [`Spatial::tile_sight`] is not 0: player `player` sees `tile` or explored it. Unknown
+    /// without the players' sight.
+    pub fn explored(&self, player: PlayerId, tile: Tile) -> Result<bool, GenieError> {
         let answer = self
-            .tile_sight(player, x, y)
+            .tile_sight(player, tile)
             .ok_or(GenieError::unsupported(
                 "a test of explored tiles without the players' sight",
             ))?;
         Ok(answer != 0)
     }
 
-    /// [`Spatial::visibility`] is 0xf: player `player` sees tile (`x`, `y`) now. False without
-    /// the players' sight.
+    /// [`Spatial::visibility`] is 0xf: player `player` sees `tile` now. False without the
+    /// players' sight.
     #[must_use]
-    pub fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool {
-        self.visibility(player, x, y) == Some(0xf)
+    pub fn visible(&self, player: PlayerId, tile: Tile) -> bool {
+        self.visibility(player, tile) == Some(0xf)
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its

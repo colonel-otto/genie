@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::gathering::hunt::HuntRetarget;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -113,8 +114,8 @@ impl World {
             .get_known(target)?
             .ok_or(crate::world::TARGET_UNPLACED)?;
         let (tx, ty) = (t_at.position.x() as i32, t_at.position.y() as i32);
-        let visible = self.spatial.sees_tile(player, tx, ty)
-            || (aim.fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
+        let visible = self.spatial.sees_tile(player, Tile::new(tx, ty))
+            || (aim.fog_visibility != 0 && self.spatial.explored(player, Tile::new(tx, ty))?);
         let ready = self.attack_ready(player, idx, target, (master, world_time))?;
         let speed = self
             .players

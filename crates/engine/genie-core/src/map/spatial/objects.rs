@@ -200,18 +200,18 @@ impl Spatial {
         std::mem::take(&mut self.changed)
     }
 
-    /// Player `player`'s masks both meet the unified map's bits of tile (`x`, `y`): what it sees
+    /// Player `player`'s masks both meet the unified map's bits of `tile`: what it sees
     /// (`+0x2a8`) and what it explored (`+0x2a0`). False off the map and without the players'
     /// sight.
     #[must_use]
-    pub fn sees_and_explored(&self, player: PlayerId, x: i32, y: i32) -> bool {
+    pub fn sees_and_explored(&self, player: PlayerId, tile: Tile) -> bool {
         let Some(v) = self.sight.as_ref() else {
             return false;
         };
-        if x < 0 || y < 0 || v.width <= x || v.height <= y {
-            return false;
-        }
-        let Some(&unified) = v.unified.get((y * v.width + x) as usize) else {
+        let Some(&unified) = GridSize::new(v.width, v.height)
+            .index(tile)
+            .and_then(|i| v.unified.get(i))
+        else {
             return false;
         };
         let word = unified & crate::vision::registry::MASK;

@@ -8,6 +8,7 @@ use crate::combat::attack::{
     SHORT_RANGE_GAP, TARGET_GONE, face_target, move_reads,
 };
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
@@ -235,6 +236,6 @@ pub(super) fn in_range(near: f32, range: f32, min_range: f32) -> bool {
 pub(super) fn target_unseen(world: &Spatial, f: &Fight, t: &Placed) -> Result<bool, GenieError> {
     let (tx, ty) = (t.position.x() as i32, t.position.y() as i32);
     Ok(t.player != PlayerId::GAIA
-        && !world.sees_tile(f.own.player, tx, ty)
-        && !(f.victim.fog_visibility != 0 && world.explored(f.own.player, tx, ty)?))
+        && !world.sees_tile(f.own.player, Tile::new(tx, ty))
+        && !(f.victim.fog_visibility != 0 && world.explored(f.own.player, Tile::new(tx, ty))?))
 }

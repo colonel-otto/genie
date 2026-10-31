@@ -83,7 +83,7 @@ impl World {
         let (tx, ty) = (x as i32, y as i32);
         let mut explored = Vec::new();
         for q in PlayerId::each(self.players.len()) {
-            explored.push(self.spatial.explored(q, tx, ty)?);
+            explored.push(self.spatial.explored(q, Tile::new(tx, ty))?);
         }
         if let Some(v) = self.spatial.sight.as_mut() {
             for (q, _) in explored.iter().enumerate().filter(|&(_, &e)| e) {

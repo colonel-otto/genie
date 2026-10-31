@@ -143,7 +143,7 @@ impl World {
                     let desolid = u.construction.is_some_and(|c| c.desolid);
                     if kind != BUILDING
                         || !desolid
-                        || !self.spatial.sees_and_explored(owner, tx, ty)
+                        || !self.spatial.sees_and_explored(owner, Tile::new(tx, ty))
                     {
                         continue;
                     }

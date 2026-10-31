@@ -221,7 +221,7 @@ pub(crate) fn scan_livestock(
     let (w, h) = (c.w.spatial.map.width(), c.w.spatial.map.height());
     for x in (tx - 3).max(0)..=(tx + 3).min(w - 1) {
         for y in (ty - 3).max(0)..=(ty + 3).min(h - 1) {
-            if !c.w.spatial.sees_tile(new, x, y) {
+            if !c.w.spatial.sees_tile(new, Tile::new(x, y)) {
                 continue;
             }
             match livestock_on(c, Tile::new(x, y), taken)?[..] {

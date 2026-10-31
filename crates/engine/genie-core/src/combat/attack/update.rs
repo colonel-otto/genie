@@ -9,6 +9,7 @@ use crate::combat::attack::{
     set_walker_anim,
 };
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap};
@@ -457,8 +458,8 @@ pub(super) fn sees(
     at: Position,
 ) -> Result<bool, GenieError> {
     let (tx, ty) = (at.x() as i32, at.y() as i32);
-    Ok(map.sees_tile(f.own.player, tx, ty)
-        || (f.victim.fog_visibility != 0 && map.explored(f.own.player, tx, ty)?))
+    Ok(map.sees_tile(f.own.player, Tile::new(tx, ty))
+        || (f.victim.fog_visibility != 0 && map.explored(f.own.player, Tile::new(tx, ty))?))
 }
 
 /// A unit's own Attack lets its target go (slot 0x68 with none: its slot 0x180) at once

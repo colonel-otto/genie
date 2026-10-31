@@ -9,6 +9,7 @@ use crate::groups::update::{
     RELIC_PICKUP_ACTION, Shown, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
+use crate::map::Tile;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -370,9 +371,9 @@ impl World {
             crate::math::conversions::cvttss2si(y),
         );
         if master.fog_visibility == 0 {
-            Ok(self.spatial.sees_tile(player, x, y))
+            Ok(self.spatial.sees_tile(player, Tile::new(x, y)))
         } else {
-            self.spatial.explored(player, x, y)
+            self.spatial.explored(player, Tile::new(x, y))
         }
     }
 

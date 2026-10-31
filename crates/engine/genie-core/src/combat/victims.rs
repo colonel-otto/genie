@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
@@ -101,14 +102,16 @@ impl World {
             class: master.class,
             position: u.position(),
             radius: master.radius,
-            visible: self.spatial.visible(viewer, x as i32, y as i32),
+            visible: self.spatial.visible(viewer, Tile::new(x as i32, y as i32)),
             flags: master.object_flags,
             sight: self
                 .spatial
                 .tile_sight(
                     viewer,
-                    crate::math::conversions::cvttss2si(x),
-                    crate::math::conversions::cvttss2si(y),
+                    Tile::new(
+                        crate::math::conversions::cvttss2si(x),
+                        crate::math::conversions::cvttss2si(y),
+                    ),
                 )
                 .unwrap_or(0),
         })

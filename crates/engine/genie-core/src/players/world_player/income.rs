@@ -2,6 +2,7 @@
 //! update's tail.
 
 use crate::GenieError;
+use crate::map::Tile;
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
@@ -201,7 +202,7 @@ impl World {
         };
         for pair in tiles {
             let (x, y) = (pair.x(), pair.y());
-            let seen = self.spatial.scout_sight(p, x, y) == Some(0xf);
+            let seen = self.spatial.scout_sight(p, Tile::new(x, y)) == Some(0xf);
             if (self.world_time < EARLY_SCOUTING_MS && seen) || EARLY_SCOUTING_MS <= self.world_time
             {
                 self.spatial.scout(p, x, y);

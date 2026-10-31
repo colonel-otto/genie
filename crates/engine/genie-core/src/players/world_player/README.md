@@ -33,5 +33,5 @@ its mills' food. After the objects, the player's scout map takes the tiles that 
 ## How it connects
 
 <!-- uses -->
-- Uses: [`math`](../../math/), [`objects`](../../objects/), [`technology`](../../technology/), [`world`](../../world/).
+- Uses: [`map`](../../map/), [`math`](../../math/), [`objects`](../../objects/), [`technology`](../../technology/), [`world`](../../world/).
 <!-- /uses -->

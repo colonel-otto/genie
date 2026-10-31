@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
+use crate::map::Tile;
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
@@ -339,8 +340,9 @@ impl UnitView<'_, '_> {
         t_master: &crate::objects::masters::Master,
     ) -> Result<bool, GenieError> {
         let (tx, ty) = (t.position.x() as i32, t.position.y() as i32);
-        Ok(self.c.w.spatial.sees_tile(self.player, tx, ty)
-            || (t_master.fog_visibility != 0 && self.c.w.spatial.explored(self.player, tx, ty)?))
+        Ok(self.c.w.spatial.sees_tile(self.player, Tile::new(tx, ty))
+            || (t_master.fog_visibility != 0
+                && self.c.w.spatial.explored(self.player, Tile::new(tx, ty))?))
     }
 
     /// The attack command's villager swap: a villager (class 4) switches to its player's villager
