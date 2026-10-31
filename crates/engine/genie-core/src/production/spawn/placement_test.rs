@@ -143,7 +143,7 @@ pub trait PlaceMap {
     /// The map's size in tiles.
     fn size(&self) -> GridSize;
     /// A tile's terrain (the map tile's `+0x9`).
-    fn terrain(&self, x: i32, y: i32) -> Result<u8, GenieError>;
+    fn terrain(&self, tile: Tile) -> Result<u8, GenieError>;
     /// Terrain `t`'s flags (the `.dat`'s `is_water` byte, the map's terrain record `+2`), None
     /// beyond the terrains.
     fn terrain_flags(&self, _t: usize) -> Option<u8> {
@@ -154,22 +154,22 @@ pub trait PlaceMap {
         0
     }
     /// `FUN_141663500` is not 0: the player sees or saw the tile.
-    fn explored(&self, player: PlayerId, x: i32, y: i32) -> bool;
+    fn explored(&self, player: PlayerId, tile: Tile) -> bool;
     /// The player sees the tile now (its mask `+0x2a8` meets the tile's visible bits).
-    fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool;
+    fn visible(&self, player: PlayerId, tile: Tile) -> bool;
     /// The player's masks: what it sees (`+0x2a8`) and what it explored (`+0x2a0`).
     fn vision(&self, player: PlayerId) -> [u64; 2];
     /// A tile's elevation (`+0x14`), when the map holds it.
-    fn elevation(&self, x: i32, y: i32) -> Option<u8>;
+    fn elevation(&self, tile: Tile) -> Option<u8>;
     /// A tile's shape (`+0x8`, [`crate::map::terrain::Terrain::set_elevations`]), when the map holds
     /// it.
-    fn shape(&self, x: i32, y: i32) -> Option<u8>;
+    fn shape(&self, tile: Tile) -> Option<u8>;
     /// Player `a` counts player `b` as an ally (`FUN_141663dc0`): itself; never Gaia; relation 0,
     /// or with `with_4` relation 4 too (the zone mode's relation 1 is not modelled).
     fn allied(&self, a: PlayerId, b: PlayerId, with_4: bool) -> bool;
-    /// The objects on tile (`x`, `y`) (their centre there), in the tile list's order; `Err` where
-    /// it cannot tell.
-    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError>;
+    /// The objects on `tile` (their centre there), in the tile list's order; `Err` where it
+    /// cannot tell.
+    fn objects(&self, tile: Tile) -> Result<Vec<Near>, GenieError>;
 }
 
 /// The tiles within `REACH` of a point, clamped to the map (`(int)` of each bound, then the map's
@@ -196,7 +196,7 @@ pub(super) fn overlapping(
 ) -> Result<Vec<Found>, GenieError> {
     let mut out = Vec::new();
     for t in reach(map.size(), p) {
-        for o in map.objects(t.x(), t.y())? {
+        for o in map.objects(t)? {
             let Some(tall) = counts(&o) else { continue };
             if !(0.0 < o.radius.x() && 0.0 < o.radius.y() && tall) {
                 continue;
@@ -246,8 +246,9 @@ pub fn build_placement(
     let player = site.player;
     for ty in y0..=y1 {
         for tx in x0..=x1 {
-            let sight = (map.explored(player, tx, ty), map.visible(player, tx, ty));
-            for o in map.objects(tx, ty)? {
+            let tile = Tile::new(tx, ty);
+            let sight = (map.explored(player, tile), map.visible(player, tile));
+            for o in map.objects(tile)? {
                 if site.own.contains(&o.id) {
                     continue;
                 }
@@ -329,15 +330,19 @@ pub(super) fn build_static_test(
     }
     // hill mode 3 measures the box's edge against the elevation of its first column's last row
     let base = if site.hill_mode == 3 {
-        Some(map.elevation(x0, y1).ok_or(GenieError::unsupported(
-            "a hill mode where the elevations are not known",
-        ))?)
+        Some(
+            map.elevation(Tile::new(x0, y1))
+                .ok_or(GenieError::unsupported(
+                    "a hill mode where the elevations are not known",
+                ))?,
+        )
     } else {
         None
     };
     for tx in x0..=x1 {
         for ty in y0..=y1 {
-            let t = map.terrain(tx, ty)?;
+            let tile = Tile::new(tx, ty);
+            let t = map.terrain(tile)?;
             let value = site
                 .restriction
                 .get(usize::from(t))
@@ -347,14 +352,8 @@ pub(super) fn build_static_test(
             if *value <= PASSABLE {
                 return Ok(Some(2));
             }
-            explored = explored || (site.human && map.explored(site.player, tx, ty));
-            if hill_fails(
-                site.hill_mode,
-                map,
-                Tile::new(tx, ty),
-                Tile::new(x0, y1),
-                base,
-            )? {
+            explored = explored || (site.human && map.explored(site.player, tile));
+            if hill_fails(site.hill_mode, map, tile, Tile::new(x0, y1), base)? {
                 return Ok(Some(3));
             }
         }
@@ -527,7 +526,8 @@ pub fn placement(
         let mut seen = false;
         'tiles: for tx in x0..=x1 {
             for ty in y0..=y1 {
-                let t = map.terrain(tx, ty)?;
+                let tile = Tile::new(tx, ty);
+                let t = map.terrain(tile)?;
                 let value = me
                     .restriction
                     .get(usize::from(t))
@@ -538,7 +538,7 @@ pub fn placement(
                     passable = false;
                     break 'tiles;
                 }
-                seen = seen || map.explored(me.player, tx, ty);
+                seen = seen || map.explored(me.player, tile);
                 if me.hill_mode != 0 {
                     return Err(GenieError::unsupported("a placement test of a hill mode"));
                 }

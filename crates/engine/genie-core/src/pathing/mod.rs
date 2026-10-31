@@ -281,11 +281,7 @@ impl Pathing {
         restriction: crate::map::RestrictionId,
         tiles: &Tiles,
     ) -> Option<&mut Planner> {
-        let blocked = |x: i32, y: i32| {
-            tiles
-                .word(Tile::new(x, y))
-                .is_some_and(|w| w & BLOCKED != 0)
-        };
+        let blocked = |tile: Tile| tiles.word(tile).is_some_and(|w| w & BLOCKED != 0);
         for rect in self.pending.drain(..) {
             for p in self.planners.values_mut() {
                 p.update(rect, &blocked);

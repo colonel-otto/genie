@@ -55,18 +55,16 @@ pub(super) fn hill_fails(
     corner: Tile,
     base: Option<u8>,
 ) -> Result<bool, GenieError> {
-    let (tx, ty) = (tile.x(), tile.y());
-    let (x0, y1) = (corner.x(), corner.y());
     let shape = || {
-        map.shape(tx, ty).ok_or(GenieError::unsupported(
+        map.shape(tile).ok_or(GenieError::unsupported(
             "a hill mode where the tiles' shapes are not known",
         ))
     };
     Ok(match mode {
         1 => !matches!(shape()?, 0 | 5..=8),
         2 => shape()? != 0,
-        3 if tx == x0 || ty == y1 => {
-            let e = i32::from(map.elevation(tx, ty).ok_or(GenieError::unsupported(
+        3 if tile.x() == corner.x() || tile.y() == corner.y() => {
+            let e = i32::from(map.elevation(tile).ok_or(GenieError::unsupported(
                 "a hill mode where the elevations are not known",
             ))?);
             let b = i32::from(base.unwrap_or(0));
@@ -98,18 +96,18 @@ pub fn placement_terrains(
     let [side1, side2, t1, t2] = placement;
     let mut b = b;
     if 0 <= t1 || 0 <= t2 {
-        let (x, y) = (p.x() as i32, p.y() as i32);
-        if !point_terrain_allows(map, [t1, t2], x, y)? {
+        let at = Tile::new(p.x() as i32, p.y() as i32);
+        if !point_terrain_allows(map, [t1, t2], at)? {
             return Ok(false);
         }
-        b = TileRect::of(Tile::new(x, y));
+        b = TileRect::of(at);
     }
     if side1 < 0 && side2 < 0 {
         return Ok(true);
     }
     let sides = side_terrains(map, [side1, side2])?;
     for t in tiles_beside(b, map.size()) {
-        if sides.contains(&i16::from(map.terrain(t.x(), t.y())?)) {
+        if sides.contains(&i16::from(map.terrain(t)?)) {
             return Ok(true);
         }
     }
@@ -130,7 +128,7 @@ pub(super) fn placement_flags(map: &dyn PlaceMap, t: i16) -> Result<u8, GenieErr
         ))
 }
 
-/// [`placement_terrains`]'s test of the point's tile (`x`, `y`) against the master's terrains
+/// [`placement_terrains`]'s test of the point's tile `at` against the master's terrains
 /// `terrains`: of one of the two, or sharing the flag 4 or 8 with them.
 ///
 /// # Errors
@@ -139,10 +137,9 @@ pub(super) fn placement_flags(map: &dyn PlaceMap, t: i16) -> Result<u8, GenieErr
 pub(super) fn point_terrain_allows(
     map: &dyn PlaceMap,
     [t1, t2]: [i16; 2],
-    x: i32,
-    y: i32,
+    at: Tile,
 ) -> Result<bool, GenieError> {
-    let tile = i16::from(map.terrain(x, y)?);
+    let tile = i16::from(map.terrain(at)?);
     if tile == t1 || tile == t2 {
         return Ok(true);
     }

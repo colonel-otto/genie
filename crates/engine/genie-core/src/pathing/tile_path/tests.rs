@@ -1,11 +1,12 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::Tile;
 
 #[test]
 fn a_search_leaves_the_grid_as_it_was() {
     let terrain = vec![0u8; 64];
-    let open = |_: i32, _: i32| false;
+    let open = |_: Tile| false;
     let built = Planner::new(GridSize::new(8, 8), terrain.clone(), vec![1.0], &open);
     let mut searched = built.clone();
     searched.goal = [3, 4];
@@ -15,7 +16,7 @@ fn a_search_leaves_the_grid_as_it_was() {
     assert!(!other.same_grid(&built));
 }
 
-fn open_map(_: i32, _: i32) -> bool {
+fn open_map(_: Tile) -> bool {
     false
 }
 
@@ -116,7 +117,7 @@ fn the_tile_search_reaches_a_goal_on_an_open_map() {
 /// on the start's side.
 #[test]
 fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
-    let wall = |x: i32, _: i32| x == 3;
+    let wall = |t: Tile| t.x() == 3;
     let mut p = Planner::new(GridSize::new(8, 8), vec![0; 64], vec![1.0], &wall);
     let req = Request {
         from: Point::new(1.5, 2.5),
@@ -180,7 +181,7 @@ fn padding_tiles_of_a_map_that_is_not_a_multiple_of_eight_lie_off_the_map() {
 #[test]
 fn a_wall_splits_its_level_three_cell_into_its_children() {
     // a blocked column at x = 3 cuts the first 8 × 8 cell in two
-    let wall = |x: i32, _: i32| x == 3;
+    let wall = |t: Tile| t.x() == 3;
     let p = Planner::new(GridSize::new(8, 8), vec![0; 64], vec![1.0], &wall);
     assert_eq!(p.level(3)[0][1] & (NODE | MIXED), MIXED);
     assert_eq!(p.level(0)[3], [0, 0]);
@@ -318,7 +319,7 @@ fn an_appended_path_takes_the_source_s_length_or_measures_a_short_or_nan_one() {
 fn a_closed_rectangle_closes_the_node_cells_under_it() {
     // tile (0, 0) has no passable neighbour: its level-3, 2 and 1 cells are mixed, and the
     // four tiles of the level-1 cell are nodes
-    let walls = |x: i32, y: i32| (x, y) == (1, 0) || (x, y) == (0, 1);
+    let walls = |t: Tile| t == Tile::new(1, 0) || t == Tile::new(0, 1);
     let mut p = Planner::new(GridSize::new(16, 8), vec![0; 128], vec![1.0], &walls);
     let open = p.clone();
     assert_eq!(p.level(1)[0][1] & (NODE | MIXED), MIXED);

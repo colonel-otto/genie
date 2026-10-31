@@ -106,28 +106,28 @@ impl PlaceMap for Hill {
     fn size(&self) -> GridSize {
         GridSize::new(10, 10)
     }
-    fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
+    fn terrain(&self, _: Tile) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: Tile) -> bool {
         true
     }
-    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: Tile) -> bool {
         true
     }
     fn vision(&self, _: PlayerId) -> [u64; 2] {
         [0; 2]
     }
-    fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+    fn elevation(&self, _: Tile) -> Option<u8> {
         Some(self.1)
     }
-    fn shape(&self, _: i32, _: i32) -> Option<u8> {
+    fn shape(&self, _: Tile) -> Option<u8> {
         Some(self.0)
     }
     fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
-    fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, GenieError> {
+    fn objects(&self, _: Tile) -> Result<Vec<Near>, GenieError> {
         Ok(Vec::new())
     }
 }
@@ -257,32 +257,32 @@ impl PlaceMap for Fogged {
     fn size(&self) -> GridSize {
         GridSize::new(120, 120)
     }
-    fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
+    fn terrain(&self, _: Tile) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: Tile) -> bool {
         true
     }
-    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: Tile) -> bool {
         false
     }
     fn vision(&self, _: PlayerId) -> [u64; 2] {
         self.1
     }
-    fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+    fn elevation(&self, _: Tile) -> Option<u8> {
         Some(0)
     }
-    fn shape(&self, _: i32, _: i32) -> Option<u8> {
+    fn shape(&self, _: Tile) -> Option<u8> {
         Some(0)
     }
     fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
-    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
+    fn objects(&self, tile: Tile) -> Result<Vec<Near>, GenieError> {
         Ok(self
             .0
             .iter()
-            .filter(|o| o.position.x() as i32 == x && o.position.y() as i32 == y)
+            .filter(|o| o.position.tile() == tile)
             .copied()
             .collect())
     }
@@ -351,32 +351,32 @@ impl PlaceMap for Flat {
     fn size(&self) -> GridSize {
         GridSize::new(120, 120)
     }
-    fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
+    fn terrain(&self, _: Tile) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: Tile) -> bool {
         true
     }
-    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: Tile) -> bool {
         true
     }
     fn vision(&self, _: PlayerId) -> [u64; 2] {
         [0; 2]
     }
-    fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+    fn elevation(&self, _: Tile) -> Option<u8> {
         Some(0)
     }
-    fn shape(&self, _: i32, _: i32) -> Option<u8> {
+    fn shape(&self, _: Tile) -> Option<u8> {
         Some(0)
     }
     fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
-    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
+    fn objects(&self, tile: Tile) -> Result<Vec<Near>, GenieError> {
         Ok(self
             .0
             .iter()
-            .filter(|o| o.position.x() as i32 == x && o.position.y() as i32 == y)
+            .filter(|o| o.position.tile() == tile)
             .copied()
             .collect())
     }
@@ -947,28 +947,28 @@ impl PlaceMap for Dark {
     fn size(&self) -> GridSize {
         GridSize::new(120, 120)
     }
-    fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
+    fn terrain(&self, _: Tile) -> Result<u8, GenieError> {
         Ok(0)
     }
-    fn explored(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn explored(&self, _: PlayerId, _: Tile) -> bool {
         false
     }
-    fn visible(&self, _: PlayerId, _: i32, _: i32) -> bool {
+    fn visible(&self, _: PlayerId, _: Tile) -> bool {
         false
     }
     fn vision(&self, _: PlayerId) -> [u64; 2] {
         [0; 2]
     }
-    fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+    fn elevation(&self, _: Tile) -> Option<u8> {
         Some(0)
     }
-    fn shape(&self, _: i32, _: i32) -> Option<u8> {
+    fn shape(&self, _: Tile) -> Option<u8> {
         Some(0)
     }
     fn allied(&self, a: PlayerId, b: PlayerId, _: bool) -> bool {
         a == b
     }
-    fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, GenieError> {
+    fn objects(&self, _: Tile) -> Result<Vec<Near>, GenieError> {
         Ok(Vec::new())
     }
 }

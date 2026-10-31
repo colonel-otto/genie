@@ -138,11 +138,7 @@ pub fn planner_from_save(
         .collect();
     let spatial = spatial(&header, terrain).map_err(Error::Unmodelled)?;
     let tiles = spatial.tiles();
-    let blocked = |x: i32, y: i32| {
-        tiles
-            .word(Tile::new(x, y))
-            .is_some_and(|w| w & BLOCKED != 0)
-    };
+    let blocked = |tile: Tile| tiles.word(tile).is_some_and(|w| w & BLOCKED != 0);
     Ok(genie_core::pathing::tile_path::Planner::new(
         GridSize::new(map.map_width, map.map_height),
         terrain_ids,

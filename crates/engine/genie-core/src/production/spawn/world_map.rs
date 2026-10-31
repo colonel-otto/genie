@@ -36,7 +36,7 @@ impl PlaceMap for WorldMap<'_> {
         self.turns.spatial.map
     }
 
-    fn terrain(&self, x: i32, y: i32) -> Result<u8, GenieError> {
+    fn terrain(&self, tile: Tile) -> Result<u8, GenieError> {
         let t = self
             .turns
             .spatial
@@ -45,47 +45,34 @@ impl PlaceMap for WorldMap<'_> {
             .ok_or(GenieError::unsupported(
                 "a placement test without the map's terrain",
             ))?;
-        t.kind(Tile::new(x, y)).ok_or(GenieError::unsupported(
+        t.kind(tile).ok_or(GenieError::unsupported(
             "a placement test off the map's tiles",
         ))
     }
 
-    fn explored(&self, player: PlayerId, x: i32, y: i32) -> bool {
+    fn explored(&self, player: PlayerId, tile: Tile) -> bool {
         // without the sight the spawn stops before (World::spawn)
-        self.turns
-            .spatial
-            .explored(player, Tile::new(x, y))
-            .unwrap_or(false)
+        self.turns.spatial.explored(player, tile).unwrap_or(false)
     }
 
-    fn visible(&self, player: PlayerId, x: i32, y: i32) -> bool {
-        self.turns.spatial.visible(player, Tile::new(x, y))
+    fn visible(&self, player: PlayerId, tile: Tile) -> bool {
+        self.turns.spatial.visible(player, tile)
     }
 
     fn vision(&self, player: PlayerId) -> [u64; 2] {
         self.turns.spatial.vision(player)
     }
 
-    fn elevation(&self, x: i32, y: i32) -> Option<u8> {
+    fn elevation(&self, tile: Tile) -> Option<u8> {
         let t = self.turns.spatial.terrain.as_ref()?;
-        let (w, h) = (
-            self.turns.spatial.map.width(),
-            self.turns.spatial.map.height(),
-        );
-        (0 <= x && 0 <= y && x < w && y < h)
-            .then(|| t.elevations.get((y * w + x) as usize).copied())
-            .flatten()
+        let i = self.turns.spatial.map.index(tile)?;
+        t.elevations.get(i).copied()
     }
 
-    fn shape(&self, x: i32, y: i32) -> Option<u8> {
+    fn shape(&self, tile: Tile) -> Option<u8> {
         let t = self.turns.spatial.terrain.as_ref()?;
-        let (w, h) = (
-            self.turns.spatial.map.width(),
-            self.turns.spatial.map.height(),
-        );
-        (0 <= x && 0 <= y && x < w && y < h)
-            .then(|| t.shapes.get((y * w + x) as usize).copied())
-            .flatten()
+        let i = self.turns.spatial.map.index(tile)?;
+        t.shapes.get(i).copied()
     }
 
     fn allied(&self, a: PlayerId, b: PlayerId, with_4: bool) -> bool {
@@ -97,10 +84,10 @@ impl PlaceMap for WorldMap<'_> {
         crate::unit_ai::task_finder::allied(relations, a, b, with_4)
     }
 
-    fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {
+    fn objects(&self, tile: Tile) -> Result<Vec<Near>, GenieError> {
         let t = self.turns;
         t.spatial
-            .objects_on(Tile::new(x, y))
+            .objects_on(tile)
             .map(|(id, placed)| {
                 let (owner, unit) = t.object(id).ok_or(GenieError::unsupported(
                     "an object near a spawn point the slice does not update",

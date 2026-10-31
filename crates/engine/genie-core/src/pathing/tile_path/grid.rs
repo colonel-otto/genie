@@ -2,6 +2,7 @@
 //! rebuilt over a changed rectangle.
 
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::pathing::tile_path::{E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, S, W};
 
@@ -39,13 +40,13 @@ pub struct Planner {
 /// What the grid reads of the map: whether the obstruction manager marks a tile blocked
 /// (`DAT_143f0a088 + 0x98`, bit `0x4000`).
 pub trait Blocked {
-    /// Tile (`x`, `y`) is blocked.
-    fn blocked(&self, x: i32, y: i32) -> bool;
+    /// `tile` is blocked.
+    fn blocked(&self, tile: Tile) -> bool;
 }
 
-impl<F: Fn(i32, i32) -> bool> Blocked for F {
-    fn blocked(&self, x: i32, y: i32) -> bool {
-        self(x, y)
+impl<F: Fn(Tile) -> bool> Blocked for F {
+    fn blocked(&self, tile: Tile) -> bool {
+        self(tile)
     }
 }
 
@@ -159,26 +160,28 @@ impl Planner {
 
     /// `FUN_140f799b0` (through the passability lambda, `0x140f7b110`): 1 when the tile is
     /// blocked, else a bit per passable neighbour (2 left, 4 right, 8 above, 0x10 below).
-    pub(super) fn adjacency(&self, x: i32, y: i32, map: &impl Blocked) -> u32 {
+    pub(super) fn adjacency(&self, tile: Tile, map: &impl Blocked) -> u32 {
         let (w, h) = (i32::from(self.size[0]), i32::from(self.size[1]));
-        let passes = |x: i32, y: i32| {
-            let t = self.terrain[(y * w + x) as usize];
-            0.0 < self.passable[usize::from(t)] && !map.blocked(x, y)
+        let passes = |t: Tile| {
+            let kind = self.terrain[(t.y() * w + t.x()) as usize];
+            0.0 < self.passable[usize::from(kind)] && !map.blocked(t)
         };
-        if !passes(x, y) {
+        if !passes(tile) {
             return 1;
         }
+        let (x, y) = (tile.x(), tile.y());
+        let [left, right, up, down] = tile.beside();
         let mut bits = 0;
-        if 0 < x && passes(x - 1, y) {
+        if 0 < x && passes(left) {
             bits = 2;
         }
-        if x < w - 1 && passes(x + 1, y) {
+        if x < w - 1 && passes(right) {
             bits |= 4;
         }
-        if 0 < y && passes(x, y - 1) {
+        if 0 < y && passes(up) {
             bits |= 8;
         }
-        if y < h - 1 && passes(x, y + 1) {
+        if y < h - 1 && passes(down) {
             bits |= 0x10;
         }
         bits
@@ -222,7 +225,7 @@ impl Planner {
             }
             let [rx0, ry0, rx1, ry1] = self.region;
             if rx0 <= x && ry0 <= y && x <= rx1 && y <= ry1 {
-                let a = self.adjacency(i32::from(x), i32::from(y), map);
+                let a = self.adjacency(Tile::new(i32::from(x), i32::from(y)), map);
                 self.cells[i][0] = 0;
                 if a & 1 == 0 {
                     let mut b = 0;
