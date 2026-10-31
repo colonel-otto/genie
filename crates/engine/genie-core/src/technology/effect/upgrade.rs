@@ -8,7 +8,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
-use crate::objects::masters::{ClassId, Master, master_type, player_master};
+use crate::objects::masters::{ClassId, CostSlot, Master, master_type, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::technology::EffectCommand;
@@ -326,12 +326,11 @@ impl World {
     }
 
     /// `FUN_1415c1f70` (a multiply of a cost by a negative amount) of player `p`: the cost
-    /// attribute (103 to 106) names the resource (food, wood, gold 3, stone 2); `how` −2 removes
-    /// its first cost entry from master `unit` (`FUN_141612df0`), −1 adds one of it, amount −1
-    /// and paid, in the first empty entry (`FUN_14160c450`); a `unit` of 900 and up names class
-    /// `unit − 900`, every master of it by id. Only a master from type 70 on has costs. The game
-    /// scans four entries, the fourth past the three (not modelled); the slice holds the entries
-    /// of a resource only, so an added one goes after them.
+    /// attribute (103 to 106) names the resource (food, wood, gold 3, stone 2); `how` −2 empties
+    /// its first cost slot of master `unit` in its place (`FUN_141612df0`: −1, 0, unpaid), −1
+    /// fills the first empty slot with it, amount −1 and paid (`FUN_14160c450`); a `unit` of 900
+    /// and up names class `unit − 900`, every master of it by id. Only a master from type 70 on
+    /// has costs. The game scans four slots, the fourth past the three (not modelled).
     pub(super) fn cost_entries(
         &mut self,
         p: PlayerId,
@@ -357,12 +356,13 @@ impl World {
             if !named || m.kind < master_type::COMBAT {
                 continue;
             }
-            if how == -2 {
-                if let Some(i) = m.cost.iter().position(|c| c.0 == resource) {
-                    let _ = m.cost.remove(i);
-                }
-            } else if m.cost.len() < 3 {
-                m.cost.push((resource, -1, true));
+            let wanted = if how == -2 { Some(resource) } else { None };
+            if let Some(slot) = m.cost.iter_mut().find(|c| c.attribute == wanted) {
+                *slot = if how == -2 {
+                    CostSlot::default()
+                } else {
+                    CostSlot::new(resource, -1, true)
+                };
             }
         }
     }

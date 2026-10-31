@@ -22,7 +22,7 @@ pub fn refund(
     if master.kind < COMBAT {
         return Ok(());
     }
-    for &(attribute, _, paid) in master.cost.iter().take(3) {
+    for (attribute, _, paid) in crate::objects::masters::cost_entries(&master.cost) {
         if !paid {
             continue;
         }
@@ -66,7 +66,7 @@ pub fn refund_master(
     if master.kind < COMBAT {
         return Ok(());
     }
-    for &(attribute, amount, paid) in master.cost.iter().take(3) {
+    for (attribute, amount, paid) in crate::objects::masters::cost_entries(&master.cost) {
         if !paid {
             continue;
         }
@@ -119,7 +119,7 @@ const ONE: f32 = 1.0;
 
 /// A master's cost entry `j` `(attribute, amount, paid)`, none for an entry it lacks.
 fn cost_entry(master: &Master, j: usize) -> Option<(AttributeId, i16, bool)> {
-    master.cost.get(j).copied()
+    master.cost.get(j).and_then(|slot| slot.entry())
 }
 
 /// The master whose costs the cost tests read for player's master `m` (`FUN_141618db0`,

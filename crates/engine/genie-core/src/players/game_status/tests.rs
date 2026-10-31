@@ -16,6 +16,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_ids;
@@ -108,7 +109,7 @@ fn game() -> World {
             id: ids::VILLAGER_MALE,
             class: class::VILLAGER,
             kind: master_type::COMBAT,
-            cost: vec![(attribute::FOOD, 46, true), (attribute::HEADROOM, 1, false)],
+            cost: costs(&[(attribute::FOOD, 46, true), (attribute::HEADROOM, 1, false)]),
             storage: vec![
                 (Some(attribute::HEADROOM), -1.0, 2),
                 (Some(attribute::POPULATION), 1.0, 2),
@@ -549,11 +550,11 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     *ms = Masters::new(ms.iter().cloned().chain([Master {
         id: master_id(4),
         kind: master_type::COMBAT,
-        cost: vec![
+        cost: costs(&[
             (attribute::WOOD, 25, true),
             (attribute::GOLD, 45, true),
             (attribute::HEADROOM, 1, false),
-        ],
+        ]),
         storage: vec![(Some(attribute::HEADROOM), -1.0, 2)],
         ..Master::default()
     }]));

@@ -44,9 +44,6 @@ pub struct Entry {
     pub tech: Option<TechId>,
     /// `+0x8`, `mCosts`: what each of its units or researches paid, three (attribute, amount)
     /// pairs (`FUN_1411c3190`), which a cancel gives back.
-    #[diff(
-        gap = "the masters' costs are compacted (genie-oracle's build_cost); the game keeps each entry in its slot"
-    )]
     pub costs: [(Option<AttributeId>, f32); 3],
     /// `+0x20`: the building's serial (`+0xcd8`) when the entry came; not saved (a load numbers
     /// the slots it reads from 0).
@@ -461,11 +458,13 @@ pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::CostSlot;
     use crate::objects::masters::Masters;
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
     use crate::players::attribute;
     use crate::players::attribute::AttributeId;
+    use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
     use crate::test_ids::tech_id;
@@ -764,11 +763,11 @@ mod tests {
     fn a_refund_gives_back_what_the_entry_paid() {
         let m = Master {
             kind: COMBAT,
-            cost: vec![
+            cost: costs(&[
                 (attribute::FOOD, 60, true),
                 (attribute::GOLD, 20, true),
                 (attribute::HEADROOM, 1, false),
-            ],
+            ]),
             ..Master::default()
         };
         let mut held = Held(vec![1.0; 5]);
@@ -809,11 +808,11 @@ mod tests {
         assert_eq!((held.0[0], held.0[3], held.0[4]), (107.5, 171.0, 1.0));
     }
 
-    fn villager(cost: Vec<(AttributeId, i16, bool)>) -> Master {
+    fn villager(cost: &[(AttributeId, i16, bool)]) -> Master {
         Master {
             id: ids::VILLAGER_MALE,
             kind: COMBAT,
-            cost,
+            cost: costs(cost),
             ..Master::default()
         }
     }
@@ -825,12 +824,34 @@ mod tests {
         Held(a)
     }
 
+    /// The game's villager costs food, an empty slot and the population (the `.dat`'s
+    /// `resource_costs`): a queue entry's costs keep the empty slot in its place
+    /// (MarvinBlue/426048731's 9149 at update 25: (0, 50), (−1, 0), (4, 1)).
+    #[test]
+    fn a_queue_entry_keeps_the_empty_cost_slot_in_its_place() {
+        let mut m = villager(&[]);
+        m.cost = [
+            CostSlot::new(attribute::FOOD, 50, true),
+            CostSlot::default(),
+            CostSlot::new(attribute::HEADROOM, 1, false),
+        ];
+        let ms = Masters::new([m]);
+        assert_eq!(
+            master_costs(&ms, ids::VILLAGER_MALE, &held()).unwrap(),
+            [
+                (Some(attribute::FOOD), 50),
+                (None, 0),
+                (Some(attribute::HEADROOM), 1)
+            ]
+        );
+    }
+
     /// `FUN_141618db0`: two villagers' 100 food are held, three's are not; the population's
     /// entry asks the queued units plus the population plus the need to stay within the cap
     /// or the headroom's sum, the smaller, only with `param_5` 0.
     #[test]
     fn the_cost_test_reads_each_entry_and_the_population_only_when_asked() {
-        let ms = Masters::new([villager(vec![
+        let ms = Masters::new([villager(&[
             (attribute::FOOD, 50, true),
             (attribute::HEADROOM, 1, false),
         ])]);
@@ -852,7 +873,7 @@ mod tests {
         assert!(!cost_test(&ms, ids::MARKET, 1.0, false, &h).unwrap());
         let low = Masters::new([Master {
             kind: master_type::MISSILE,
-            ..villager(vec![])
+            ..villager(&[])
         }]);
         assert!(!cost_test(&low, ids::VILLAGER_MALE, 1.0, false, &h).unwrap());
     }
@@ -860,7 +881,7 @@ mod tests {
     /// `FUN_14162fb60` pays the paid entries times the count in one subtraction.
     #[test]
     fn a_payment_takes_the_paid_entries_times_the_count() {
-        let ms = Masters::new([villager(vec![
+        let ms = Masters::new([villager(&[
             (attribute::FOOD, 50, true),
             (attribute::HEADROOM, 1, false),
             (attribute::WOOD, 7, true),
@@ -880,10 +901,10 @@ mod tests {
     #[test]
     fn listed_costs_move_what_the_player_lacks_to_gold() {
         use crate::objects::masters::BuildingMaster;
-        let building = |id: i16, head: i16, stack: i16, cost| Master {
+        let building = |id: i16, head: i16, stack: i16, cost: &[(AttributeId, i16, bool)]| Master {
             id: master_id(id),
             kind: master_type::BUILDING,
-            cost,
+            cost: costs(cost),
             building: Some(BuildingMaster {
                 head_unit: opt_master(head),
                 stack_unit: opt_master(stack),
@@ -896,14 +917,14 @@ mod tests {
                 2,
                 3,
                 -1,
-                vec![(attribute::FOOD, 50, false), (attribute::STONE, 30, false)],
+                &[(attribute::FOOD, 50, false), (attribute::STONE, 30, false)],
             ),
-            building(3, -1, 4, vec![]),
+            building(3, -1, 4, &[]),
             building(
                 4,
                 -1,
                 -1,
-                vec![(attribute::WOOD, 10, true), (attribute::FOOD, 500, false)],
+                &[(attribute::WOOD, 10, true), (attribute::FOOD, 500, false)],
             ),
         ]);
         let mut h = held();
@@ -926,14 +947,14 @@ mod tests {
                 2,
                 3,
                 -1,
-                vec![
+                &[
                     (attribute::GOLD, 50, false),
                     (attribute::FOOD, 30, false),
                     (attribute::WOOD, 0, false),
                 ],
             ),
-            building(3, -1, 4, vec![]),
-            building(4, -1, -1, vec![(attribute::WOOD, 10, true)]),
+            building(3, -1, 4, &[]),
+            building(4, -1, -1, &[(attribute::WOOD, 10, true)]),
         ]);
         (h.0[3], h.0[0]) = (20.0, 10.0);
         assert_eq!(
@@ -945,7 +966,7 @@ mod tests {
             ]
         );
         // a unit the player cannot pay for one more of moves nothing
-        let ms = Masters::new([villager(vec![(attribute::GOLD, 50, true)])]);
+        let ms = Masters::new([villager(&[(attribute::GOLD, 50, true)])]);
         assert_eq!(
             master_costs(&ms, ids::VILLAGER_MALE, &h).unwrap(),
             [(Some(attribute::GOLD), 50), (None, 0), (None, 0)]

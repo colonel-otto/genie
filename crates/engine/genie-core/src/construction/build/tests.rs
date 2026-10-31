@@ -13,6 +13,7 @@ use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute::{self, AttributeId};
+use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::{Player, World};
@@ -651,12 +652,12 @@ fn foundation_at(id: i32, at: Position, life: Lifecycle, construction: Construct
 
 /// A building master `id` of class 3 without a stack unit, a foundation terrain or a
 /// technology, costing `cost`.
-fn built_master(id: MasterId, cost: Vec<(AttributeId, i16, bool)>) -> Master {
+fn built_master(id: MasterId, cost: &[(AttributeId, i16, bool)]) -> Master {
     Master {
         id,
         kind: master_type::BUILDING,
         class: class::BUILDING,
-        cost,
+        cost: costs(cost),
         building: Some(crate::objects::masters::BuildingMaster {
             adjacent_mode: 0,
             disappears_when_built: false,
@@ -732,7 +733,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     ));
     let mut master = built_master(
         ids::HOUSE,
-        vec![(attribute::WOOD, 25, true), (attribute::HEADROOM, 5, false)],
+        &[(attribute::WOOD, 25, true), (attribute::HEADROOM, 5, false)],
     );
     // a house's cost: 25 wood paid; the unpaid entry does not count
     master.clearance = Footprint::new(1.0, 1.0);
@@ -787,7 +788,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
     /// The attributes the completion of master `id` gave, by index, and its history events.
     fn complete(
         id: MasterId,
-        cost: Vec<(AttributeId, i16, bool)>,
+        cost: &[(AttributeId, i16, bool)],
         main: bool,
     ) -> (Vec<(usize, f32)>, Vec<u8>) {
         let mut world = small_map();
@@ -850,14 +851,14 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
     };
     for main in [false, true] {
         assert_eq!(
-            complete(ids::CASTLE, castle(), main),
+            complete(ids::CASTLE, &castle(), main),
             (
                 vec![(134, 1.0), (173, 1.0), (184, 650.0)],
                 vec![CASTLE_BUILT]
             )
         );
         assert_eq!(
-            complete(ids::WONDER, wonder(), main),
+            complete(ids::WONDER, &wonder(), main),
             (
                 vec![(42, 1.0), (174, 1.0), (184, 2000.0)],
                 vec![WONDER_BUILT]
@@ -865,11 +866,11 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
         );
     }
     assert_eq!(
-        complete(ids::MONASTERY, vec![(attribute::WOOD, 175, true)], false),
+        complete(ids::MONASTERY, &[(attribute::WOOD, 175, true)], false),
         (vec![(52, 1.0), (98, 175.0), (165, 175.0)], vec![])
     );
     assert_eq!(
-        complete(ids::MONASTERY, vec![(attribute::WOOD, 175, true)], true),
+        complete(ids::MONASTERY, &[(attribute::WOOD, 175, true)], true),
         (vec![(52, 1.0)], vec![])
     );
 }
@@ -904,7 +905,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     let site = foundation_at(10028, house().position, life, c);
     let mut t = site_world(
         world,
-        vec![built_master(ids::HOUSE, Vec::new())],
+        vec![built_master(ids::HOUSE, &Vec::new())],
         vec![site],
     );
     let rate = 1.0f32 * 1.0 * 0.021;
@@ -970,11 +971,11 @@ fn the_work_starts_the_desolid_annexes_first() {
         u.annex_of = (master == master_id(1192)).then_some(object_id(10028));
         u
     };
-    let mut post = built_master(master_id(1192), Vec::new());
+    let mut post = built_master(master_id(1192), &Vec::new());
     post.volley_fire = 2.0;
     let mut t = site_world(
         world,
-        vec![built_master(master_id(665), Vec::new()), post],
+        vec![built_master(master_id(665), &Vec::new()), post],
         vec![
             unit(10028, 30.0, master_id(665), true),
             unit(10029, 28.5, master_id(1192), true),
@@ -1100,8 +1101,8 @@ fn an_annex_s_work_goes_to_its_main_building() {
             main,
         );
         let masters = vec![
-            built_master(master_id(665), Vec::new()),
-            built_master(master_id(1192), Vec::new()),
+            built_master(master_id(665), &Vec::new()),
+            built_master(master_id(1192), &Vec::new()),
         ];
         let mut t = site_world(world, masters, vec![gate, post]);
         let going = t.work_building(object_id(10029), amount);

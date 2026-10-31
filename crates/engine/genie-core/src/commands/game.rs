@@ -328,6 +328,7 @@ mod tests {
     use crate::objects::masters::ids::CASTLE;
     use crate::objects::masters::ids::FISH_TRAP;
     use crate::players::attribute;
+    use crate::test_ids::costs;
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
     use crate::world::Player;
@@ -410,7 +411,7 @@ mod tests {
         let costing = |id, wood| Master {
             id,
             kind: master_type::COMBAT,
-            cost: vec![(attribute::WOOD, wood, true)],
+            cost: costs(&[(attribute::WOOD, wood, true)]),
             ..Master::default()
         };
         let mut t = world();

@@ -1,9 +1,9 @@
 //! The terrain look tasks (action type 159) and the removal reward tasks (161).
 
 use crate::combat::abilities::{Look, ONE, Reward};
+use crate::objects::masters::CostSlot;
 use crate::objects::masters::Task;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
 use crate::world::World;
 
 /// A terrain look task's terrain mask (`0x141207501`, a `std::bitset<8>`): a terrain below 0
@@ -52,12 +52,7 @@ pub fn look(task: &Task, mask: u8, flags: u8, exists: impl Fn(i32) -> bool) -> O
 /// resource times the rate (`CVTDQ2PS`, `MULSS`), 0 without one. The amount is truncated
 /// (`CVTTSS2SI`).
 #[must_use]
-pub fn reward(
-    task: &Task,
-    player: PlayerId,
-    multiplier: Option<f32>,
-    cost: &[(AttributeId, i16, bool)],
-) -> Reward {
+pub fn reward(task: &Task, player: PlayerId, multiplier: Option<f32>, cost: &[CostSlot]) -> Reward {
     let out = task.attribute_type3;
     let mut rate = task.work_val1;
     if task.attribute_type2.is_some()
@@ -68,7 +63,7 @@ pub fn reward(
     let mut amount = rate;
     if task.combat_level_flag != 0 {
         amount = 0.0;
-        for &(resource, count, paid) in cost {
+        for (resource, count, paid) in crate::objects::masters::cost_entries(cost) {
             if Some(resource) == out && paid {
                 amount = f32::from(count) * rate;
             }

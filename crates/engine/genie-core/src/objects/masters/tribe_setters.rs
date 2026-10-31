@@ -11,8 +11,8 @@ use crate::players::attribute as players_attribute;
 
 impl Master {
     /// The cost entries a cost attribute (100, 103 to 106) changes (`FUN_1412661d0`): those of
-    /// its resource, or for 100 the paid ones. The slice holds the entries of a resource (the
-    /// game's of −1, which nothing reads, are not held).
+    /// its resource, or for 100 the paid ones. The empty slots (−1), which nothing reads, keep
+    /// their amounts.
     pub(super) fn costs_of(
         &mut self,
         attribute: MasterAttribute,
@@ -20,8 +20,10 @@ impl Master {
         let resource = cost_resource(attribute);
         self.cost
             .iter_mut()
-            .filter(move |c| (c.2 && resource.is_none()) || Some(c.0) == resource)
-            .map(|c| &mut c.1)
+            .filter(move |c| {
+                c.attribute.is_some() && ((c.paid && resource.is_none()) || c.attribute == resource)
+            })
+            .map(|c| &mut c.amount)
     }
 
     /// `FUN_1412661d0`, the combat master's slot 0x18.
@@ -66,8 +68,12 @@ impl Master {
                 // the unpaid entries take the negated amount; the storage of population (4) the
                 // amount, of resources 11 and 19 its negation
                 let negated = -v;
-                for c in self.cost.iter_mut().filter(|c| !c.2) {
-                    c.1 = low16(negated);
+                for c in self
+                    .cost
+                    .iter_mut()
+                    .filter(|c| c.attribute.is_some() && !c.paid)
+                {
+                    c.amount = low16(negated);
                 }
                 for s in &mut self.storage {
                     match s.0 {

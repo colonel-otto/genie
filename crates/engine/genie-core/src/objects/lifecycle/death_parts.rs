@@ -117,7 +117,7 @@ pub(crate) fn combat_dies(
 #[must_use]
 pub(crate) fn refund_of(master: &Master, main: Option<ObjectId>) -> Vec<(AttributeId, f32)> {
     let mut cost = 0.0f32;
-    for &(_, amount, paid) in &master.cost {
+    for (_, amount, paid) in crate::objects::masters::cost_entries(&master.cost) {
         if paid {
             cost += f32::from(amount);
         }

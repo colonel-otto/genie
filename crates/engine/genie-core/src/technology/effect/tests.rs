@@ -7,11 +7,12 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
-use crate::objects::masters::{Master, Masters};
+use crate::objects::masters::{CostSlot, Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::costs;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -1215,7 +1216,8 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
 
 /// Kind 7 (`FUN_1416136f0`) makes objects at the built buildings of a master, which this file
 /// leaves to the spawning; with none built it does nothing. Kind 5 on a cost by a negative
-/// amount removes (−2) or adds (−1) a cost entry (`FUN_1415c1f70`).
+/// amount empties (−2) a cost slot in its place or fills (−1) the first empty one
+/// (`FUN_1415c1f70`): the slots after an emptied one keep their places.
 #[test]
 fn spawns_and_cost_entries() {
     let mut centre = unit_of(1, ids::TOWN_CENTRE, 2400.0);
@@ -1228,7 +1230,7 @@ fn spawns_and_cost_entries() {
     let mut tc = combat(ids::TOWN_CENTRE, ClassId::of_master(80), 2400);
     tc.kind = master_type::BUILDING;
     let mut serjeant = combat(master_id(1658), class::CLASS_6, 60);
-    serjeant.cost = vec![(attribute::FOOD, 60, true), (attribute::STONE, 35, true)];
+    serjeant.cost = costs(&[(attribute::FOOD, 60, true), (attribute::STONE, 35, true)]);
     t.masters = vec![Masters::new([tc, serjeant])];
     t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
         .unwrap();
@@ -1237,17 +1239,23 @@ fn spawns_and_cost_entries() {
         t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
             .is_err()
     );
-    t.do_effect(PlayerId::new(0), &[attribute(5, 1658, -1, 106, -2.0)], None)
+    // the food's slot (103) empties; the stone stays second
+    t.do_effect(PlayerId::new(0), &[attribute(5, 1658, -1, 103, -2.0)], None)
         .unwrap();
     assert_eq!(
         t.masters[0].get(master_id(1658)).unwrap().cost,
-        [(attribute::FOOD, 60, true)]
+        [
+            CostSlot::default(),
+            CostSlot::new(attribute::STONE, 35, true),
+            CostSlot::default()
+        ]
     );
+    // the gold (105) fills the first empty slot, before the stone
     t.do_effect(PlayerId::new(0), &[attribute(5, 1658, -1, 105, -1.0)], None)
         .unwrap();
     assert_eq!(
         t.masters[0].get(master_id(1658)).unwrap().cost,
-        [(attribute::FOOD, 60, true), (attribute::GOLD, -1, true)]
+        costs(&[(attribute::GOLD, -1, true), (attribute::STONE, 35, true)])
     );
 }
 

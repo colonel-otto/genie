@@ -4,6 +4,7 @@ use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::players::attribute as player_attribute;
 use crate::test_ids::carrying;
+use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
@@ -28,7 +29,7 @@ fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
         obstruction_type: 0,
         buildable_on: 0,
         tasks,
-        cost: vec![],
+        cost: costs(&[]),
         obstruction_class: 0,
         object_flags: 0,
         combat_level: 0,
@@ -50,7 +51,7 @@ fn house() -> Master {
         obstruction_type: 0,
         buildable_on: 0,
         tasks: vec![],
-        cost: vec![(player_attribute::WOOD, 25, true)],
+        cost: costs(&[(player_attribute::WOOD, 25, true)]),
         obstruction_class: 2,
         object_flags: 0,
         combat_level: 0,
@@ -125,7 +126,7 @@ fn stocked(kind: MasterKind) -> Master {
             (Some(player_attribute::WOOD), 1.0, 1),
             (Some(player_attribute::STONE), 1.0, 1),
         ],
-        cost: vec![(player_attribute::FOOD, 1, true)],
+        cost: costs(&[(player_attribute::FOOD, 1, true)]),
         damage_graphics: vec![DamageGraphic::default(); 2],
         damage_graphic_entry: 1,
         train_locations: vec![TrainLocation::default(); 2],
@@ -495,7 +496,11 @@ fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
             |m| f32::from(m.garrison_sprite),
             [3.0, 5.0, 5.0],
         ),
-        (a::FOOD_COSTS, |m| f32::from(m.cost[0].1), [3.0, 5.0, 10.0]),
+        (
+            a::FOOD_COSTS,
+            |m| f32::from(m.cost[0].amount),
+            [3.0, 5.0, 10.0],
+        ),
         (
             a::TRAIN_TIME,
             |m| f32::from(m.train_locations[1].time),
@@ -762,10 +767,10 @@ fn a_missile_s_smart_mode_multiply_sets_it() {
 #[test]
 fn the_cost_attributes_change_their_resource_s_entries() {
     let mut m = of_type(master_type::BUILDING);
-    m.cost = vec![
+    m.cost = costs(&[
         (player_attribute::WOOD, 25, true),
         (player_attribute::HEADROOM, 1, false),
-    ];
+    ]);
     m.storage = vec![
         (Some(player_attribute::HEADROOM), 5.0, 4),
         (Some(player_attribute::POPULATION), -1.0, 4),
@@ -774,29 +779,29 @@ fn the_cost_attributes_change_their_resource_s_entries() {
     m.add_attribute(attribute::WOOD_COSTS, -5.0, &world(false));
     assert_eq!(
         m.cost,
-        vec![
+        costs(&[
             (player_attribute::WOOD, 20, true),
             (player_attribute::HEADROOM, 1, false)
-        ]
+        ])
     );
     m.multiply_attribute(attribute::RESOURCE_COSTS, 0.85, &world(false));
     // 20 × 0.85 + 0.5 = 17.5
     assert_eq!(
         m.cost,
-        vec![
+        costs(&[
             (player_attribute::WOOD, 17, true),
             (player_attribute::HEADROOM, 1, false)
-        ]
+        ])
     );
     m.set_attribute(attribute::GOLD_COSTS, 50.0, &world(false));
-    assert_eq!(m.cost[0], (player_attribute::WOOD, 17, true));
+    assert_eq!(m.cost[0].entry(), Some((player_attribute::WOOD, 17, true)));
     m.set_attribute(attribute::POPULATION, 2.0, &world(false));
     assert_eq!(
         m.cost,
-        vec![
+        costs(&[
             (player_attribute::WOOD, 17, true),
             (player_attribute::HEADROOM, -2, false)
-        ]
+        ])
     );
     assert_eq!(
         m.storage[..2],

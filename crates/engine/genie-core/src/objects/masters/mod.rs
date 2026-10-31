@@ -16,6 +16,7 @@ use crate::unit_ai::UnitAiType;
 use genie_diff::Diff;
 
 mod combat_setters;
+mod cost_slot;
 mod derived;
 mod dispatch;
 mod lookup;
@@ -24,6 +25,7 @@ mod task_id;
 mod tribe_setters;
 mod values;
 
+pub use self::cost_slot::{COST_SLOTS, CostSlot, entries as cost_entries};
 pub use self::lookup::player_master;
 pub use self::task_id::TaskId;
 pub use self::values::AttributeWorld;
@@ -248,8 +250,8 @@ pub struct Master {
     /// `+0x790`, `default_task`: the id of the task its object's empty action list starts in
     /// state 2 (`RGE_Action_Object::update`, slot 0x7f0); None for the game's −1.
     pub default_task: Option<i16>,
-    /// The build cost `(resource, amount, paid)`.
-    pub cost: Vec<(AttributeId, i16, bool)>,
+    /// `+0x880`, the cost slots in their places (an empty one among them).
+    pub cost: [CostSlot; COST_SLOTS],
     /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.
     pub work_rate: f32,
     /// `search_radius` (`+0x794`, the object's slot 0x2c8).

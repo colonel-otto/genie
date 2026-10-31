@@ -409,16 +409,17 @@ mod tests {
     use crate::objects::masters::{Master, Masters, master_type};
     use crate::players::attribute;
     use crate::players::attribute::AttributeId;
+    use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
     use crate::world::Player;
 
     /// A master of type 70 costing `cost` (attribute, amount, paid).
-    fn master(id: MasterId, cost: Vec<(AttributeId, i16, bool)>) -> Master {
+    fn master(id: MasterId, cost: &[(AttributeId, i16, bool)]) -> Master {
         Master {
             id,
             kind: master_type::COMBAT,
-            cost,
+            cost: costs(cost),
             ..Master::default()
         }
     }
@@ -439,12 +440,12 @@ mod tests {
             vec![Player::default(), player],
         );
         let masters = Masters::new([
-            master(FARM, vec![(attribute::WOOD, 60, true)]),
+            master(FARM, &[(attribute::WOOD, 60, true)]),
             master(
                 PASTURE,
-                vec![(attribute::WOOD, 100, true), (attribute::FOOD, 50, false)],
+                &[(attribute::WOOD, 100, true), (attribute::FOOD, 50, false)],
             ),
-            master(FISH_TRAP, vec![(attribute::WOOD, 100, true)]),
+            master(FISH_TRAP, &[(attribute::WOOD, 100, true)]),
         ]);
         t.masters = vec![Masters::new([]), masters];
         t

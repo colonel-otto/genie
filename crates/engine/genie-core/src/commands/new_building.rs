@@ -41,9 +41,9 @@ impl World {
     ) -> Result<(ObjectId, Position), GenieError> {
         let unit_ai = self.master(player, master)?.unit_ai_type(master);
         let made = self.make_building(player, master, Ok(unit_ai), position)?;
-        let cost = self.master(player, master)?.cost.clone();
+        let cost = self.master(player, master)?.cost;
         let owner = self.players.player_mut(player)?;
-        for &(resource, amount, paid) in &cost {
+        for (resource, amount, paid) in crate::objects::masters::cost_entries(&cost) {
             let slot = owner
                 .resources
                 .get_mut(resource.index())
@@ -73,11 +73,9 @@ impl World {
         if let Some(m) = player_master(&self.masters, player, master)
             .filter(|m| m.kind == BUILDING && !m.trained_at.is_empty())
         {
-            let paid: i32 = m
-                .cost
-                .iter()
-                .filter(|&&(_, _, paid)| paid)
-                .map(|&(_, amount, _)| i32::from(amount))
+            let paid: i32 = crate::objects::masters::cost_entries(&m.cost)
+                .filter(|&(_, _, paid)| paid)
+                .map(|(_, amount, _)| i32::from(amount))
                 .sum();
             self.players
                 .player_mut(player)?

@@ -12,6 +12,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::costs;
 use crate::test_ids::object_id;
 
 const TASK: RepairTask = RepairTask {
@@ -118,7 +119,7 @@ fn masters() -> crate::objects::masters::Masters {
             kind: master_type::BUILDING,
             class: class::BUILDING,
             hit_points: 550,
-            cost: vec![(attribute::WOOD, 25, true)],
+            cost: costs(&[(attribute::WOOD, 25, true)]),
             ..crate::objects::masters::Master::default()
         },
         crate::objects::masters::Master {
@@ -126,7 +127,7 @@ fn masters() -> crate::objects::masters::Masters {
             kind: master_type::COMBAT,
             class: class::SIEGE,
             hit_points: 175,
-            cost: vec![(attribute::WOOD, 160, true), (attribute::GOLD, 75, true)],
+            cost: costs(&[(attribute::WOOD, 160, true), (attribute::GOLD, 75, true)]),
             ..crate::objects::masters::Master::default()
         },
     ])

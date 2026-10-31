@@ -40,7 +40,7 @@ impl World {
             "BUILD of a master the player does not have",
         ))?;
         let mut listed = [0i16; 4];
-        for &(resource, amount, _) in &site.cost {
+        for (resource, amount, _) in crate::objects::masters::cost_entries(&site.cost) {
             if let Some(r) = resource.is_resource().then(|| resource.index()) {
                 listed[r] = listed[r].wrapping_add(amount);
             }
@@ -208,7 +208,7 @@ impl World {
     pub(crate) fn affords(&self, player: PlayerId, master: MasterId) -> Result<bool, GenieError> {
         let site = self.master(player, master)?;
         let owner = self.players.player(player)?;
-        for &(resource, amount, _) in &site.cost {
+        for (resource, amount, _) in crate::objects::masters::cost_entries(&site.cost) {
             let r = resource.index();
             if r == 4 {
                 return Err(GenieError::unsupported(

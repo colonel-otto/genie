@@ -103,7 +103,7 @@ impl World {
             }
             let (costed, annex) = crate::production::costed(masters, unit);
             let short = |count: i32| -> Result<bool, GenieError> {
-                for &(attribute, each, paid) in costed.cost.iter().take(3) {
+                for (attribute, each, paid) in crate::objects::masters::cost_entries(&costed.cost) {
                     if (annex && !paid) || attribute == attribute::HEADROOM {
                         continue;
                     }

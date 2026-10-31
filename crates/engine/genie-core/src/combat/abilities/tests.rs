@@ -11,6 +11,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
@@ -465,20 +466,20 @@ fn a_removal_reward_with_its_flag_pays_the_last_paid_cost_of_its_resource_times_
         combat_level_flag: 1,
         ..bounty()
     };
-    let cost = [
+    let cost = costs(&[
         (attribute::GOLD, 20, true),
         (attribute::FOOD, 50, true),
         (attribute::GOLD, 30, false),
-    ];
+    ]);
     assert_eq!(reward(&t, PlayerId::new(1), Some(0.5), &cost).amount, 100);
-    let cost = [(attribute::GOLD, 20, true), (attribute::GOLD, 30, true)];
+    let cost = costs(&[(attribute::GOLD, 20, true), (attribute::GOLD, 30, true)]);
     assert_eq!(reward(&t, PlayerId::new(1), Some(1.0), &cost).amount, 300);
     assert_eq!(
         reward(
             &t,
             PlayerId::new(1),
             Some(1.0),
-            &[(attribute::FOOD, 50, true)]
+            &costs(&[(attribute::FOOD, 50, true)])
         )
         .amount,
         0

@@ -7,6 +7,7 @@ use genie_core::GenieError;
 use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
+use genie_core::objects::masters::{COST_SLOTS, CostSlot};
 use genie_core::objects::masters::{ClassId, MasterId};
 use genie_core::players::attribute::AttributeId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
@@ -377,13 +378,18 @@ pub(super) fn moving_stats(
     })
 }
 
-/// A combat master's `build_inventory` entries `(resource, amount, flag)`, three shorts each; the
-/// flag set means paid. Entries of resource -1 are empty.
-pub(super) fn build_cost(inventory: &[[u8; 6]]) -> Vec<(AttributeId, i16, bool)> {
-    build_entries(inventory)
-        .into_iter()
-        .filter_map(|(kind, amount, paid)| Some((AttributeId::of_data(kind)?, amount, paid)))
-        .collect()
+/// A combat master's cost slots from its `build_inventory` entries `(resource, amount, flag)`,
+/// three shorts each, in their places; the flag set means paid, resource −1 an empty slot.
+pub(super) fn build_cost(inventory: &[[u8; 6]]) -> [CostSlot; COST_SLOTS] {
+    let mut slots = [CostSlot::default(); COST_SLOTS];
+    for (slot, (kind, amount, paid)) in slots.iter_mut().zip(build_entries(inventory)) {
+        *slot = CostSlot {
+            attribute: AttributeId::of_data(kind),
+            amount,
+            paid,
+        };
+    }
+    slots
 }
 
 /// A combat master's `build_inventory` entries `(resource, amount, paid)`, the empty ones

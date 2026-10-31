@@ -216,7 +216,7 @@ impl World {
             "a removed building the slice does not hold",
         ))?;
         let master = unit.master(&self.masters, owner)?;
-        let cost = master.cost.clone();
+        let cost = master.cost;
         let (state, hp) = (unit.life.state, unit.life.hp);
         let site = unit.construction;
         let desolid = site.is_some_and(|c| c.desolid);
@@ -233,7 +233,7 @@ impl World {
             share = 1.0;
         }
         if 0.0 < share {
-            for (resource, amount, paid) in cost {
+            for (resource, amount, paid) in crate::objects::masters::cost_entries(&cost) {
                 if paid {
                     self.players
                         .player_mut(owner)?
@@ -581,6 +581,7 @@ mod tests {
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
     use crate::players::attribute;
+    use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
@@ -661,7 +662,7 @@ mod tests {
                 id: ids::HOUSE,
                 class: class::BUILDING,
                 kind: BUILDING,
-                cost: vec![(attribute::WOOD, 25, true), (attribute::HEADROOM, 1, false)],
+                cost: costs(&[(attribute::WOOD, 25, true), (attribute::HEADROOM, 1, false)]),
                 ..Master::default()
             },
             Master {
@@ -764,6 +765,7 @@ mod clearing_tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::attribute::{self, AttributeId};
+    use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::Player;
@@ -1039,11 +1041,11 @@ mod clearing_tests {
     fn a_death_refunds_its_paid_cost_by_its_type() {
         let unit = Master {
             kind: COMBAT,
-            cost: vec![
+            cost: costs(&[
                 (attribute::FOOD, 50, true),
                 (attribute::GOLD, 20, true),
                 (attribute::WOOD, 5, false),
-            ],
+            ]),
             ..Master::default()
         };
         assert_eq!(

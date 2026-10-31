@@ -129,8 +129,9 @@ pub(super) fn completion_counts(
     let paid: i32 = master
         .cost
         .iter()
-        .filter(|&&(_, _, paid)| paid)
-        .map(|&(_, amount, _)| i32::from(amount))
+        .filter_map(|slot| slot.entry())
+        .filter(|&(_, _, paid)| paid)
+        .map(|(_, amount, _)| i32::from(amount))
         .sum();
     if matches!(master.id, CASTLE | WONDER) {
         attributes.push((CASTLE_WONDER_COST, paid as f32));

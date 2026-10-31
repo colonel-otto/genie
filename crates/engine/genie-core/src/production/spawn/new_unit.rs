@@ -355,8 +355,9 @@ impl World {
         let cost: i32 = made
             .cost
             .iter()
-            .filter(|&&(_, _, paid)| paid)
-            .map(|&(_, amount, _)| i32::from(amount))
+            .filter_map(|slot| slot.entry())
+            .filter(|&(_, _, paid)| paid)
+            .map(|(_, amount, _)| i32::from(amount))
             .sum();
         owner.add_attribute(attribute::TOTAL_VALUE, cost as f32)?;
         owner.add_attribute(attribute::UNITS_VALUE, cost as f32)?;

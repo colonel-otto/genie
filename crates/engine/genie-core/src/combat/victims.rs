@@ -558,7 +558,7 @@ pub(crate) fn is_trebuchet(master: &Master) -> bool {
 /// floats in its order, as the kill counts read it (`FUN_1412005b0`, `FUN_1411cea90`).
 pub(crate) fn paid_cost(master: &Master) -> f32 {
     let mut cost = 0.0f32;
-    for &(_, amount, paid) in &master.cost {
+    for (_, amount, paid) in crate::objects::masters::cost_entries(&master.cost) {
         if paid {
             cost += f32::from(amount);
         }

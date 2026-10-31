@@ -50,6 +50,7 @@ use crate::ownership::change::change_hands;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
+use crate::test_ids::costs;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -375,7 +376,7 @@ pub(crate) fn builder_masters() -> Masters {
         obstruction_type: 0,
         buildable_on: 0,
         tasks,
-        cost: vec![],
+        cost: costs(&[]),
         obstruction_class: 0,
         object_flags: 0,
         combat_level: 0,
@@ -423,7 +424,7 @@ pub(crate) fn builder_masters() -> Masters {
             obstruction_type: 0,
             buildable_on: 0,
             tasks: vec![],
-            cost: vec![(attribute::WOOD, 25, true)],
+            cost: costs(&[(attribute::WOOD, 25, true)]),
             obstruction_class: 2,
             object_flags: 0,
             combat_level: 0,
@@ -7563,7 +7564,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
     };
     let villager = |id| Master {
         class: class::VILLAGER,
-        cost: vec![(attribute::FOOD, 46, true), (attribute::HEADROOM, 1, false)],
+        cost: costs(&[(attribute::FOOD, 46, true), (attribute::HEADROOM, 1, false)]),
         storage: vec![
             (Some(attribute::HEADROOM), -1.0, 2),
             (Some(attribute::POPULATION), 1.0, 2),
@@ -10933,7 +10934,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         id: ids::CASTLE,
         kind: BUILDING,
         class: class::BUILDING,
-        cost: vec![(attribute::STONE, 650, true), (attribute::FOOD, 10, false)],
+        cost: costs(&[(attribute::STONE, 650, true), (attribute::FOOD, 10, false)]),
         weapons: vec![(3, 11)],
         ..Master::default()
     };
@@ -11097,11 +11098,11 @@ fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
     )));
     assert!(!is_trebuchet(&m(BUILDING, class::BUILDING, vec![(3, 11)])));
     let paid = Master {
-        cost: vec![
+        cost: costs(&[
             (attribute::WOOD, 200, true),
             (attribute::GOLD, 200, true),
             (attribute::STONE, 7, false),
-        ],
+        ]),
         ..Master::default()
     };
     assert_eq!(paid_cost(&paid), 400.0);
@@ -13488,7 +13489,7 @@ fn farm_masters() -> Masters {
         radius: Footprint::new(1.5, 1.5),
         clearance: Footprint::new(1.5, 1.5),
         tall: false,
-        cost: vec![(attribute::WOOD, 60, true)],
+        cost: costs(&[(attribute::WOOD, 60, true)]),
         hit_points: 480,
         build_time: 15,
         ..builders.get(ids::HOUSE).unwrap().clone()
@@ -16262,7 +16263,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
         let castle = Master {
             id: ids::CASTLE,
             hit_points: 4800,
-            cost: vec![(attribute::STONE, 650, true)],
+            cost: costs(&[(attribute::STONE, 650, true)]),
             ..house
         };
         *masters = Masters::new(masters.iter().cloned().chain([castle]));
@@ -16927,7 +16928,7 @@ fn a_built_building_s_death_reaches_its_owner_within_its_update() {
             let mut castle = Master {
                 id: ids::CASTLE,
                 death_sprite: -1,
-                cost: vec![(attribute::STONE, 650, true)],
+                cost: costs(&[(attribute::STONE, 650, true)]),
                 ..masters.get(ids::HOUSE).unwrap().clone()
             };
             let b = castle.building.as_mut().unwrap();
