@@ -7,6 +7,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ClassMask;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -192,15 +193,14 @@ pub fn type_attacks_neutral(ai_type: UnitAiType, attack_priority: u8, class: Cla
 
 /// The classes the priest never attacks as neutral objects (`FUN_140c1adc0`'s mask
 /// `0x200800838001c` below class 50: 2, 3, 4, 19, 20, 21, 27, 39, 49).
-pub(super) const PRIEST_NEUTRAL_SPARED: u64 = 0x2_0080_0838_001c;
+pub(super) const PRIEST_NEUTRAL_SPARED: ClassMask = ClassMask::new(0x2_0080_0838_001c, 0x32);
 
 /// Slot 0xa8 of the priest's unit AI (`FUN_140c1adc0`): never a class below 50 of
 /// [`PRIEST_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
 /// [`PRIORITY_3_CLASSES`].
 #[must_use]
 pub fn priest_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
-    let class_bits = i32::from(class.get()) as u32;
-    if class_bits < 0x32 && PRIEST_NEUTRAL_SPARED >> class_bits & 1 != 0 {
+    if PRIEST_NEUTRAL_SPARED.contains(class) {
         return false;
     }
     attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
@@ -208,7 +208,7 @@ pub fn priest_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
 
 /// The classes slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`) passes among neutral objects:
 /// those of the mask `0x200200800838001c` (2, 3, 4, 19, 20, 21, 27, 39, 49, 61) never.
-pub(super) const NEUTRAL_SPARED: u64 = 0x2002_0080_0838_001c;
+pub(super) const NEUTRAL_SPARED: ClassMask = ClassMask::new(0x2002_0080_0838_001c, 0x3e);
 
 /// Slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`), whether it attacks a neutral object of
 /// `class` (taken as unsigned, so a class outside `0..0x3e` passes the mask): never one of
@@ -216,8 +216,7 @@ pub(super) const NEUTRAL_SPARED: u64 = 0x2002_0080_0838_001c;
 /// (`FUN_141202220`) only [`PRIORITY_3_CLASSES`] (`FUN_140fddf10`).
 #[must_use]
 pub fn soldier_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
-    let class_bits = i32::from(class.get()) as u32;
-    if class_bits < 0x3e && NEUTRAL_SPARED >> class_bits & 1 != 0 {
+    if NEUTRAL_SPARED.contains(class) {
         return false;
     }
     attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
@@ -249,15 +248,14 @@ pub(super) const fn defend_patrol_range() -> Result<(), GenieError> {
 
 /// The classes the siege unit never attacks as neutral objects (`FUN_140c1ae10`'s mask
 /// `0x200200800830001c`: 2, 3, 4, 20, 21, 27, 39, 49, 61; the soldier's but class 19).
-pub(super) const SIEGE_NEUTRAL_SPARED: u64 = 0x2002_0080_0830_001c;
+pub(super) const SIEGE_NEUTRAL_SPARED: ClassMask = ClassMask::new(0x2002_0080_0830_001c, 0x3e);
 
 /// Slot 0xa8 of the siege unit's AI (`FUN_140c1ae10`): never a class of
 /// [`SIEGE_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
 /// [`PRIORITY_3_CLASSES`].
 #[must_use]
 pub fn siege_attacks_neutral(attack_priority: u8, class: ClassId) -> bool {
-    let class_bits = i32::from(class.get()) as u32;
-    if class_bits < 0x3e && SIEGE_NEUTRAL_SPARED >> class_bits & 1 != 0 {
+    if SIEGE_NEUTRAL_SPARED.contains(class) {
         return false;
     }
     attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)

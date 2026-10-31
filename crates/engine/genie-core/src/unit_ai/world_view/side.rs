@@ -17,6 +17,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ClassMask;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
@@ -81,7 +82,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
 
     fn call_for_help(&mut self, attacker: ObjectId) -> Result<(), GenieError> {
         /// The classes that never help: 1 to 3, 18 to 21, 27 and 39.
-        const NO_HELP_CLASSES: u64 = 0x0080_083c_000e;
+        const NO_HELP_CLASSES: ClassMask = ClassMask::new(0x0080_083c_000e, 0x28);
         /// The siege tower master (`FUN_141194f10`'s 0x451).
         const SIEGE_TOWER: MasterId = MasterId::named(0x451);
         /// `AskForHelp`'s reach (`DAT_142ecccc4`): the squared footprint gap of 3 tiles.
@@ -108,8 +109,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
                 continue;
             }
             let m = u.master(&self.c.w.masters, owner)?;
-            let class = i64::from(m.class.get());
-            let no_help = (0..=0x27).contains(&class) && (NO_HELP_CLASSES >> class) & 1 != 0;
+            let no_help = NO_HELP_CLASSES.contains(m.class);
             if no_help || m.id == SIEGE_TOWER {
                 continue;
             }

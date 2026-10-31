@@ -36,6 +36,7 @@
 //! [`World::world_player_tail`]: crate::world::World::world_player_tail
 
 use crate::math::fmath::below_or_unordered;
+use crate::objects::masters::ClassMask;
 use crate::players::attribute::AttributeId;
 
 mod counts;
@@ -65,18 +66,10 @@ const KING: i32 = crate::objects::masters::ids::KING.index() as i32;
 /// The town centres' masters (`FUN_141658970`'s and `FUN_141658a30`'s keys 0x6d and 0x1bc).
 const TOWN_CENTRES: [i32; 2] = [109, 444];
 /// The classes that never keep their player (`0x48000800`: other 11, walls 27, flags 30).
-const UNKEPT_LOW: u32 = 0x4800_0800;
+const UNKEPT_LOW: ClassMask = ClassMask::new(0x4800_0800, 31);
 /// The classes that never keep their player (`0x140204a000384006`: 1, 2, 14, 19, 20, 21, 37,
 /// 39, 42, 49, 58, 60).
-const UNKEPT_HIGH: u64 = 0x1402_04a0_0038_4006;
-/// The buildings' class (3).
-const BUILDING_CLASS: u32 = 3;
-/// The towers' class (52).
-const TOWER_CLASS: u32 = 52;
-/// The packed siege's class (51).
-const PACKED_CLASS: u32 = 51;
-/// The unpacked siege's class (54).
-const UNPACKED_CLASS: u32 = 54;
+const UNKEPT_HIGH: ClassMask = ClassMask::new(0x1402_04a0_0038_4006, 61);
 /// The ages' technologies (Feudal, Castle, Imperial: `0x3284`, `0x3304`, `0x3384` in the
 /// player's technologies), whose state −1 puts their units out of the player's tree.
 const AGES: [i32; 3] = [101, 102, 103];

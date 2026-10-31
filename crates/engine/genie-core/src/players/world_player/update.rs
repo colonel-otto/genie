@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::players::PlayerId;
 use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::players::world_player::{
-    ALIVE_STORE_MODE, BUILDING_CLASS, KING, PACKED_CLASS, PERCENT, POPULATION_STORAGE, SECOND,
-    TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS, get, set,
+    ALIVE_STORE_MODE, KING, PERCENT, POPULATION_STORAGE, SECOND, UNKEPT_HIGH, UNKEPT_LOW, get, set,
 };
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -183,10 +183,9 @@ impl World {
         {
             return Ok(true);
         }
-        let class = i32::from(master.class.get()) as u32;
-        let none = class <= 30 && (UNKEPT_LOW >> class) & 1 != 0;
-        let builds = class == TOWER_CLASS || class == BUILDING_CLASS;
-        let never = class <= 60 && (UNKEPT_HIGH >> class) & 1 != 0;
+        let none = UNKEPT_LOW.contains(master.class);
+        let builds = matches!(master.class, class::TOWER | class::BUILDING);
+        let never = UNKEPT_HIGH.contains(master.class);
         let other = !(none || builds || never);
         if other && state == 2 {
             return Ok(true);
@@ -199,7 +198,10 @@ impl World {
                 return Ok(true);
             }
         }
-        if (builds || other) && (class == PACKED_CLASS || class == UNPACKED_CLASS) && state == 0 {
+        if (builds || other)
+            && matches!(master.class, class::CLASS_51 | class::CLASS_54)
+            && state == 0
+        {
             return Ok(true);
         }
         Ok(master.id == WONDER

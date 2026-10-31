@@ -3,6 +3,7 @@
 
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ClassMask;
 use crate::unit_ai::best_target::ORDER_WINDOW;
 use crate::unit_ai::best_target::{AttackCategory, ByCategory};
 use crate::world::slots::CheckedIndex;
@@ -26,7 +27,7 @@ pub(super) const PER_CENT: f32 = crate::math::image::best_target::PER_CENT;
 pub(super) const TIER: f32 = crate::math::image::best_target::TIER;
 /// The classes whose objects stand fixed for the rank (`FUN_140c66590`'s mask
 /// `0x12000000000008`: 3, 49, 52).
-pub(super) const FIXED_CLASSES: u64 = 0x0012_0000_0000_0008;
+pub(super) const FIXED_CLASSES: ClassMask = ClassMask::new(0x0012_0000_0000_0008, 0x35);
 
 /// An object in the statistics (0x2c bytes at `DAT_143e74538`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -210,8 +211,7 @@ impl Statistics {
             }
             self.moving += 1;
         }
-        let class = i32::from(c.class.get()) as u32;
-        e.fixed = class <= 0x34 && FIXED_CLASSES >> class & 1 != 0;
+        e.fixed = FIXED_CLASSES.contains(c.class);
         if c.armed {
             self.armed += 1;
         }
