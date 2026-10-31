@@ -11,7 +11,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
-use crate::players::attribute::{self, AttributeId};
+use crate::players::attribute;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
 use crate::world::World;
@@ -404,7 +404,7 @@ impl World {
             for &(p, attribute, amount) in &r.adds {
                 self.players
                     .player_mut(p)?
-                    .add_attribute(AttributeId::try_from(attribute)?, amount)?;
+                    .add_attribute(attribute, amount)?;
             }
         }
         Ok(())
@@ -532,16 +532,16 @@ impl World {
                 .player_mut(q)?
                 .add_attribute(attribute::KILLS_OTHER, 1.0)?;
         }
-        self.players[ap].add_attribute(AttributeId::try_from(q.index() as i16 + 300)?, 1.0)?;
+        self.players[ap].add_attribute(attribute::KILLS_OF.offset(q.index())?, 1.0)?;
         self.players
             .player_mut(q)?
-            .add_attribute(AttributeId::try_from(ap as i16 + 325)?, 1.0)?;
+            .add_attribute(attribute::KILLED_BY.offset(ap)?, 1.0)?;
         let cost = paid_cost(master);
         self.players[ap].add_attribute(attribute::KILLS_VALUE, cost)?;
         self.players
             .player_mut(q)?
             .add_attribute(attribute::KILLS_VALUE_OTHER, cost)?;
-        self.players[ap].add_attribute(AttributeId::try_from(q.index() as i16 + 400)?, cost)?;
+        self.players[ap].add_attribute(attribute::KILLS_VALUE_OF.offset(q.index())?, cost)?;
         Ok(())
     }
 }
@@ -558,8 +558,8 @@ pub(crate) fn is_trebuchet(master: &Master) -> bool {
 /// floats in its order, as the kill counts read it (`FUN_1412005b0`, `FUN_1411cea90`).
 pub(crate) fn paid_cost(master: &Master) -> f32 {
     let mut cost = 0.0f32;
-    for &(resource, amount, paid) in &master.cost {
-        if resource >= 0 && paid {
+    for &(_, amount, paid) in &master.cost {
+        if paid {
             cost += f32::from(amount);
         }
     }

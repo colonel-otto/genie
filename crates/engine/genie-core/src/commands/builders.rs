@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::action_type;
@@ -173,7 +174,7 @@ impl World {
             master: site,
             player: fp,
             state: 0,
-            held: (-1, 0.0),
+            held: Held::default(),
             hp: 1.0,
             max_hp: f32::from(site.hit_points),
             attackable: true,
@@ -201,7 +202,7 @@ impl World {
             id,
             master: unit.master_in(Some(masters))?,
             player: q,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
@@ -401,7 +402,7 @@ impl World {
             id: unit.id,
             master: unit.master_in(Some(masters))?,
             player,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };

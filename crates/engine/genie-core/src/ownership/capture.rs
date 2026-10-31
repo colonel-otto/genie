@@ -102,7 +102,7 @@ impl Unit {
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION
             && crate::math::fmath::below_or_unordered(0.0, self.life.amount)
-            && self.life.attribute_type != -1;
+            && self.life.attribute_type.is_some();
         if class != class::LIVESTOCK
             && !trading
             && self

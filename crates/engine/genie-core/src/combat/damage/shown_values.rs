@@ -8,6 +8,7 @@ use crate::math::conversions::cvttss2si;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
+use crate::players::attribute::AttributeId;
 use crate::{GenieError, math::fmath};
 
 /// The action type of a bonus damage task (`FUN_14107ce60`).
@@ -89,7 +90,8 @@ pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
         } else {
             target
         };
-        let share = whose.hp_share(t.attribute_type4 != 0);
+        // the task's `+0x26` read as a flag: other than 0 (none, −1, is other too)
+        let share = whose.hp_share(AttributeId::field(t.attribute_type4) != 0);
         if fmath::at_most_or_unordered(t.work_val2, 0.0)
             || fmath::at_most_or_unordered(target.shown_hp(), 0.0)
         {

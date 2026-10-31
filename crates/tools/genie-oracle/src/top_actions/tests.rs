@@ -14,6 +14,7 @@ use genie_core::objects::masters::{Task, class};
 use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
+use genie_core::players::attribute;
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByType, RgeActionEnter,
     RgeActionGather, RgeActionMake, RgeActionMissile, RgeActionMoveTo, RgeMissileObject, RgeObject,
@@ -33,16 +34,16 @@ fn task(id: i16, range: f32) -> Task {
         terrain: -1,
         owner_type: 0,
         holding_attr: 0,
-        attribute_type: 1,
-        attribute_type2: 2,
-        attribute_type3: 3,
-        attribute_type4: 4,
+        attribute_type: Some(attribute::WOOD),
+        attribute_type2: Some(attribute::STONE),
+        attribute_type3: Some(attribute::GOLD),
+        attribute_type4: Some(attribute::HEADROOM),
         wait_time: 0.0,
         work_val1: 0.5,
         work_val2: 0.0,
         work_range: range,
         work_flag: 0,
-        enablement: 0,
+        enablement: Some(attribute::FOOD),
         sprites: [-1; 4],
         sound_events: [-1; 2],
     }
@@ -137,7 +138,7 @@ fn import_drawn(
                 range: 1.0,
                 work_value: 0.5,
                 work_rate: 2.0,
-                resource: -1,
+                resource: None,
                 id: TaskId::of_task(7),
                 moving: Some(9),
             })

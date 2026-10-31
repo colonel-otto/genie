@@ -20,6 +20,8 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::{DONE, FAILED};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
+use crate::test_ids::carrying;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -1622,9 +1624,9 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
 /// centre (task 0x88) are not modelled, nor is the Enter's state 11 for a full centre.
 #[test]
 fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
-    let carrying = |t: &mut World| {
+    let with_food = |t: &mut World| {
         let v = t.players[1].objects.last_mut().unwrap();
-        (v.life.attribute_type, v.life.amount) = (17, 6.0);
+        (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
     };
     let drop_site = |t: &mut World| {
         t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
@@ -1634,22 +1636,22 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
                 class: class::CLASS_7,
                 workers: -1,
                 state: -1,
-                attribute: 17,
+                attribute: Some(AttributeId::numbered(17)),
             }],
             ..crate::unit_ai::task_finder::DropSite::default()
         }];
     };
     let (r, t) = enters_the_centre(|t| {
-        carrying(t);
+        with_food(t);
         drop_site(t);
     });
     assert_eq!(r, Ok(()));
     let v = t.object(object_id(400)).unwrap().1;
     assert_eq!(v.life.inside, Some(object_id(100)));
-    assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
+    assert_eq!(v.life.held(), carrying(None, 0.0));
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[166]), (6.0, 6.0));
-    let (r, t) = enters_the_centre(carrying);
+    let (r, t) = enters_the_centre(with_food);
     assert_eq!(r, Ok(()));
     let v = t.object(object_id(400)).unwrap().1;
     assert_eq!((v.life.inside, v.life.amount), (Some(object_id(100)), 6.0));

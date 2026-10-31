@@ -128,7 +128,10 @@ impl PlaceMap for WorldMap<'_> {
                         })
                     }),
                     holds: 0.0 < unit.life.amount
-                        && matches!(unit.life.attribute_type, 0..=3 | 15..=17),
+                        && unit
+                            .life
+                            .attribute_type
+                            .is_some_and(|k| k.is_resource() || k.is_food_load()),
                     hp: unit.life.hp,
                     outline: master.outline.with_height(master.outline_height),
                     forest_tile: t.spatial.terrain.as_ref().is_some_and(|ter| {

@@ -13,6 +13,8 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
@@ -155,8 +157,8 @@ pub struct Attacker {
     pub computer: bool,
     /// The unit's state.
     pub state: u8,
-    /// The kind it holds (`attribute_type_held`, `+0x308`).
-    pub held: i16,
+    /// The kind it holds (`attribute_type_held`, `+0x308`), none for −1.
+    pub held: Option<AttributeId>,
     /// Its top action's type, if any.
     pub top_action: Option<i32>,
     /// Its master's id.
@@ -387,8 +389,6 @@ pub(super) const SOLDIER_NEVER: MasterId = MasterId::named(444);
 /// `0x6109`; class 54).
 pub(super) const PACKED_MASTER: MasterId = MasterId::named(109);
 pub(super) const PACKED_CLASS: ClassId = class::CLASS_54;
-/// What a unit carrying it never attacks with (`+0x308`).
-pub(super) const HELD_NO_ATTACK: i16 = 57;
 /// The soldier's range against a target grows by this for its stance checks
 /// (`DAT_142e7f384`).
 pub(super) const STANCE_RANGE_GROWTH: f32 = crate::math::image::unit_ai::STANCE_RANGE_GROWTH;
@@ -457,7 +457,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if never_attacks(me) {
         return Ok(false);
     }
-    if me.held == HELD_NO_ATTACK
+    if me.held == Some(attribute::RELIC)
         || matches!(t.class, class::ARTIFACT | class::RELIC | class::CLASS_60)
     {
         return Ok(false);

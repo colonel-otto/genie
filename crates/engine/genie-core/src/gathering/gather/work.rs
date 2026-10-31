@@ -8,20 +8,15 @@ use crate::gathering::gather::{
     SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
 use crate::gathering::hunt::Dropped;
-use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
 use crate::objects::unit::Unit;
+use crate::players::attribute;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
-
-/// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
-pub(super) const fn food(kind: i16) -> bool {
-    kind == 0 || (15 <= kind && kind <= 17)
-}
 
 impl GatherAction {
     /// `set_state(6)` (case 6) on a target: a farm, masters 357 and 1188 and a target not yet
@@ -87,7 +82,7 @@ impl GatherAction {
         }
         let kind = self.task.resource;
         let held = unit.life.attribute_type;
-        if held != kind && !(food(kind) && food(held)) {
+        if held != kind && !crate::gathering::both_food(kind, held) {
             unit.life.attribute_type = kind;
             unit.life.amount = 0.0;
         }
@@ -143,10 +138,10 @@ impl GatherAction {
         if 0.0 < r.food_sold
             && target.class == class::FARM
             // The food kind a farm holds (`+0x308` 16): the food sold at once.
-            && unit.life.attribute_type == FARM_FOOD_KIND
+            && unit.life.attribute_type == Some(attribute::FARM_FOOD)
         {
             let sold = std::mem::take(&mut unit.life.amount);
-            c.give_load(0, sold)?;
+            c.give_load(attribute::FOOD, sold)?;
             return Ok(Next::Stay);
         }
         let empty = target.amount <= 0.0 && !REGATHERED.contains(&target.master_id);
@@ -212,7 +207,7 @@ impl GatherAction {
         let attributes = c.w.players.player(c.player)?.attributes.len();
         let kind = crate::gathering::hunt::resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
-        unit.life.attribute_type = -1;
+        unit.life.attribute_type = None;
         unit.life.amount = 0.0;
         Ok(Dropped::Load(kind, amount))
     }

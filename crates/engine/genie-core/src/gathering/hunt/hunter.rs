@@ -179,7 +179,7 @@ impl Unit {
                     id: self.id,
                     master,
                     player: c.player,
-                    held: (self.life.attribute_type, self.life.amount),
+                    held: self.life.held(),
                     attribute_95: c
                         .w
                         .players

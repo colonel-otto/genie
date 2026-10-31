@@ -283,7 +283,7 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
         range: 0.1,
         work_value: 1.0,
         work_rate: 1.0,
-        resource: -1,
+        resource: None,
         id: TaskId::of_task(-1),
         moving: None,
     };
@@ -350,7 +350,7 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
             range: 0.1,
             work_value: 1.0,
             work_rate: 1.0,
-            resource: -1,
+            resource: None,
             id: TaskId::of_task(-1),
             moving: None,
         },

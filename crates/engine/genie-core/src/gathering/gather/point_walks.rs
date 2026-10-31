@@ -13,6 +13,7 @@ use crate::math::rng::Well512;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -276,15 +277,15 @@ impl GatherAction {
 
     /// The sprite the gatherer stands with (`FUN_140a8b6b0`): the task's carrying sprite while
     /// it carries at least 1 of the task's resource, else its master's standing sprite.
-    pub(super) const fn stand_sprite(
+    pub(super) fn stand_sprite(
         &self,
         unit: &Unit,
         r: &GatherReads,
     ) -> Option<crate::objects::sprite::Graphic> {
         let resource = self.task.resource;
-        let (kind, held) = (unit.life.attribute_type, unit.life.amount);
+        let Held { kind, amount } = unit.life.held();
         match r.sprites.carrying {
-            Some(c) if resource != -1 && kind == resource && 1 <= held as i32 => Some(c),
+            Some(c) if resource.is_some() && kind == resource && 1 <= amount as i32 => Some(c),
             _ => r.sprites.standing,
         }
     }

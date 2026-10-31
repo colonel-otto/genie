@@ -299,7 +299,7 @@ impl World {
         let def = self.techs.get(tech).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
-        let get = |i: i16| crate::technology::Attributes::get(owner, AttributeId::try_from(i)?);
+        let get = |i: AttributeId| crate::technology::Attributes::get(owner, i);
         let factors = crate::technology::factors(tech_id, &get)?;
         let listed = owner.techs[tech].listed_costs(def, factors)?;
         debit_listed(self.players.player_mut(player)?, listed);
@@ -404,13 +404,10 @@ impl World {
 
 /// A research's listed costs go to the pending debit: each attribute 0 to 3 sums its amounts (in
 /// 16 bits) and the player's debit of it falls by the sum.
-fn debit_listed(owner: &mut crate::world::player::Player, listed: [(i16, i16); 3]) {
+fn debit_listed(owner: &mut crate::world::player::Player, listed: [(Option<AttributeId>, i16); 3]) {
     let mut sums = [0i16; 4];
     for (attribute, amount) in listed {
-        if let Some(sum) = usize::try_from(attribute)
-            .ok()
-            .and_then(|k| sums.get_mut(k))
-        {
+        if let Some(sum) = attribute.and_then(|k| sums.get_mut(k.index())) {
             *sum = sum.wrapping_add(amount);
         }
     }

@@ -12,6 +12,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute;
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
 use crate::technology::RESEARCHED;
@@ -219,12 +220,14 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     let mut t = world();
     t.players[1].kind = COMPUTER_TYPE;
     t.players[1].escrow_percentage = [0.5, 0.0, 0.0, 0.0];
-    t.add_resource(PlayerId::new(1), 0, 10.0, 1, true).unwrap();
+    t.add_resource(PlayerId::new(1), attribute::FOOD, 10.0, 1, true)
+        .unwrap();
     assert_eq!(
         (t.players[1].resources[0], t.players[1].escrow[0]),
         (10.0, 5.0)
     );
-    t.add_resource(PlayerId::new(1), 0, -20.0, 1, true).unwrap();
+    t.add_resource(PlayerId::new(1), attribute::FOOD, -20.0, 1, true)
+        .unwrap();
     assert_eq!(t.players[1].escrow[0], 0.0);
     // sharing: 1 and 2 count each other, 3 counts 1 but not the other way round
     let mut t = world();
@@ -232,7 +235,8 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     t.players[1].relations = vec![1, 0, 0, 3];
     t.players[2].relations = vec![1, 0, 0, 3];
     t.players[3].relations = vec![1, 0, 3, 0];
-    t.add_resource(PlayerId::new(1), 1, 4.0, 1, true).unwrap();
+    t.add_resource(PlayerId::new(1), attribute::WOOD, 4.0, 1, true)
+        .unwrap();
     assert_eq!(
         [1, 2, 3].map(|p| (t.players[p].resources[1], t.players[p].attributes[167])),
         [(4.0, 4.0), (4.0, 4.0), (0.0, 0.0)]
@@ -260,7 +264,11 @@ fn a_player_without_an_object_that_keeps_it_loses() {
         master(ids::ID_331, master_type::COMBAT, class::CLASS_51),
         master(ids::WONDER, master_type::BUILDING, class::BUILDING),
         Master {
-            storage: vec![(11, 1.0, 0x20), (-1, 0.0, 0), (-1, 0.0, 0)],
+            storage: vec![
+                (Some(attribute::POPULATION), 1.0, 0x20),
+                (None, 0.0, 0),
+                (None, 0.0, 0),
+            ],
             ..master(master_id(900), master_type::COMBAT, class::CLASS_11)
         },
         Master {

@@ -10,7 +10,6 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
-use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -42,7 +41,7 @@ impl Unit {
         if let Some(kind) = death.building.count {
             c.w.players
                 .player_mut(c.player)?
-                .take_at_least_zero(AttributeId::try_from(kind)?, 1.0)?;
+                .take_at_least_zero(kind, 1.0)?;
         }
         Ok(death.building.tech)
     }
@@ -98,7 +97,7 @@ impl Unit {
             // 165), each at least 0 (slots 0xf8, then 0xf0 with 0)
             let owner = c.w.players.player_mut(c.player)?;
             for (kind, cost) in refund_of(master, self.annex_of) {
-                owner.take_at_least_zero(AttributeId::try_from(kind)?, cost)?;
+                owner.take_at_least_zero(kind, cost)?;
             }
         }
         if let Some((m, t)) = tech {

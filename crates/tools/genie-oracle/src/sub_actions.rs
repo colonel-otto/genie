@@ -11,6 +11,7 @@ use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ACTION_FACTORY_TYPES;
 use genie_core::objects::masters::MasterId;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
+use genie_core::players::attribute::AttributeId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
 /// A saved unit's reload (the Strike's): its `mReloadStinger` plus its master's
@@ -247,30 +248,36 @@ pub(super) fn production(
     let Some(building) = object.tribe_building_object.as_deref() else {
         return Ok(None);
     };
-    let slots: Vec<Entry> = building
+    let slots = building
         .production_queue
         .iter()
         .enumerate()
         .map(|(k, e)| {
             let c = &e.production_queue_costs;
             let word = |k: usize| [c[k], c[k + 1], c[k + 2], c[k + 3]];
-            let cost = |j: usize| {
-                (
-                    i32::from_le_bytes(word(8 * j)),
+            // an entry's attribute (an `int`, −1 for none) and amount
+            let cost = |j: usize| -> Result<(Option<AttributeId>, f32), GenieError> {
+                let kind = i32::from_le_bytes(word(8 * j));
+                let kind = i16::try_from(kind).map_err(|_| {
+                    GenieError::invalid_input("a queue cost's attribute past the attributes")
+                        .with("attribute", kind)
+                })?;
+                Ok((
+                    AttributeId::of_field(kind)?,
                     f32::from_le_bytes(word(8 * j + 4)),
-                )
+                ))
             };
-            Entry {
+            Ok(Entry {
                 master: MasterId::of_data(e.production_queue_master_unit_id),
                 count: e.production_queue_unit_count,
                 tech: genie_core::technology::TechId::of_data(e.production_queue_tech_id),
-                costs: [cost(0), cost(1), cost(2)],
+                costs: [cost(0)?, cost(1)?, cost(2)?],
                 serial: k as i64,
                 button: e.production_queue_button_location_id,
                 train_time: e.production_queue_train_time,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<Entry>, GenieError>>()?;
     let action = match building.production_queue_actions.entries().next() {
         None => None,
         Some((102, action)) => {

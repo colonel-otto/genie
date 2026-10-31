@@ -7,12 +7,15 @@ use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::attribute;
+use crate::test_ids::carrying;
 use crate::test_ids::object_id;
 
 use crate::combat::attack::tests::Rig;
@@ -43,7 +46,7 @@ static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections:
 
 /// What the `MoveTo` constructors read of a hunter that carries `held`: no sprites, a unit in
 /// state 2.
-pub(crate) fn walks(held: (i16, f32)) -> Walks<'static> {
+pub(crate) fn walks(held: Held) -> Walks<'static> {
     Walks {
         reads: MoveToReads {
             sprites: SpriteReads {
@@ -72,7 +75,7 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
             gap: 0.0,
             state: Some(state),
         };
-        h.move_to_object(to, 1.0, &mover, &walks((-1, 0.0)))
+        h.move_to_object(to, 1.0, &mover, &walks(Held::default()))
             .unwrap()
             .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
@@ -122,10 +125,22 @@ const fn me(state: u8) -> Me {
 /// 0x21c.
 #[test]
 fn a_load_of_another_resource_asks_no_drop_off() {
-    assert!(asked_drop_off(0, 15, 300));
-    assert!(asked_drop_off(-1, 1, 300));
-    assert!(!asked_drop_off(0, 1, 300));
-    assert!(!asked_drop_off(2, 3, 300));
+    assert!(asked_drop_off(
+        Some(attribute::FOOD),
+        Some(attribute::MEAT),
+        300
+    ));
+    assert!(asked_drop_off(None, Some(attribute::WOOD), 300));
+    assert!(!asked_drop_off(
+        Some(attribute::FOOD),
+        Some(attribute::WOOD),
+        300
+    ));
+    assert!(!asked_drop_off(
+        Some(attribute::STONE),
+        Some(attribute::GOLD),
+        300
+    ));
 }
 
 /// A Hunt gathering `target` with the chopping task.
@@ -157,7 +172,7 @@ fn a_decay_task_stops_its_target_s_decay_once() {
     let mut v = decaying();
     assert!(!hunt.stops_decay_of(true, &mut v));
     assert_eq!(v.decay, 0.25);
-    hunt.task.kind4 = DECAY_TASK;
+    hunt.task.kind4 = Some(DECAY_TASK);
     assert!(!hunt.stops_decay_of(false, &mut v));
     assert_eq!(v.decay, 0.25);
     assert!(hunt.stops_decay_of(true, &mut v));
@@ -179,7 +194,7 @@ fn a_stopped_decay_goes_back_to_the_world_at_once() {
         ..Victim::default()
     };
     let mut hunt = hunting(10028);
-    hunt.task.kind4 = DECAY_TASK;
+    hunt.task.kind4 = Some(DECAY_TASK);
     let mut rig = Rig::on_the_path(decaying.clone());
     rig.run(100, |c, u, f, _| hunt.decay_check(c, u, true, f))
         .unwrap();
@@ -294,17 +309,17 @@ const ARMS: Arms = Arms {
 const CHOP: HuntTask = HuntTask {
     id: TaskId::test(0),
     range: 0.0,
-    resource: 15,
+    resource: Some(attribute::MEAT),
     sprites: [-1, 1239, 1961, 1960],
     work_value: 1.0,
-    productivity: -1,
-    kind4: -1,
+    productivity: None,
+    kind4: None,
 };
 
 #[test]
 fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
     let mut mover = walker();
-    let mut held = (-1, 0.0);
+    let mut held = Held::default();
     let (hunt, _) = HuntAction::start(
         HuntStart {
             task: CHOP,
@@ -313,7 +328,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
             computer: false,
             carry_rule: false,
             held: &mut held,
-            walks: walks((-1, 0.0)),
+            walks: walks(Held::default()),
         },
         &engagement(),
         ARMS,
@@ -333,7 +348,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
         (0.0, 0.0, 0)
     );
     // nothing carried, a human player and settings that keep it: the held kind stays
-    assert_eq!(held, (-1, 0.0));
+    assert_eq!(held, carrying(None, 0.0));
     // the constructor's lead: the animal's start at (-1, -1)
     assert_eq!(hunt.lead, Lead::NEW);
     assert_eq!(hunt.lead.start, Point::new(-1.0, -1.0));
@@ -345,7 +360,7 @@ fn a_villager_sent_to_a_tree_attacks_it_first_and_walks_there() {
 #[test]
 fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
     let mut mover = walker();
-    let mut held = (-1, 0.0);
+    let mut held = Held::default();
     let (mut hunt, _) = HuntAction::start(
         HuntStart {
             task: CHOP,
@@ -354,7 +369,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
             computer: false,
             carry_rule: false,
             held: &mut held,
-            walks: walks((-1, 0.0)),
+            walks: walks(Held::default()),
         },
         &engagement(),
         ARMS,
@@ -366,7 +381,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
             HuntRetarget {
                 target: q,
                 player: PlayerId::new(2),
-                walks: walks((-1, 0.0)),
+                walks: walks(Held::default()),
                 drops_here: false,
             },
             e,
@@ -410,7 +425,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
 #[test]
 fn a_hunt_s_new_target_clears_its_lead() {
     let mut mover = walker();
-    let mut held = (-1, 0.0);
+    let mut held = Held::default();
     let (mut hunt, _) = HuntAction::start(
         HuntStart {
             task: CHOP,
@@ -419,7 +434,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
             computer: false,
             carry_rule: false,
             held: &mut held,
-            walks: walks((-1, 0.0)),
+            walks: walks(Held::default()),
         },
         &engagement(),
         ARMS,
@@ -443,7 +458,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
             HuntRetarget {
                 target: &tree(),
                 player: PlayerId::new(2),
-                walks: walks((-1, 0.0)),
+                walks: walks(Held::default()),
                 drops_here: false,
             },
             &engagement(),
@@ -457,7 +472,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
             HuntRetarget {
                 target: &other,
                 player: PlayerId::new(2),
-                walks: walks((-1, 0.0)),
+                walks: walks(Held::default()),
                 drops_here: false,
             },
             &engagement(),
@@ -470,7 +485,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
 
 #[test]
 fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
-    let start = |held: (i16, f32), carry_rule: bool| {
+    let start = |held: Held, carry_rule: bool| {
         let mut held = held;
         let _ = HuntAction::start(
             HuntStart {
@@ -480,7 +495,7 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
                 computer: false,
                 carry_rule,
                 held: &mut held,
-                walks: walks((-1, 0.0)),
+                walks: walks(Held::default()),
             },
             &engagement(),
             ARMS,
@@ -489,9 +504,18 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
         .unwrap();
         held
     };
-    assert_eq!(start((0, 7.0), false), (15, 7.0));
-    assert_eq!(start((2, 7.0), false), (2, 7.0));
-    assert_eq!(start((2, 7.0), true), (15, 0.0));
+    assert_eq!(
+        start(carrying(Some(attribute::FOOD), 7.0), false),
+        carrying(Some(attribute::MEAT), 7.0)
+    );
+    assert_eq!(
+        start(carrying(Some(attribute::STONE), 7.0), false),
+        carrying(Some(attribute::STONE), 7.0)
+    );
+    assert_eq!(
+        start(carrying(Some(attribute::STONE), 7.0), true),
+        carrying(Some(attribute::MEAT), 0.0)
+    );
 }
 
 fn victim(amount: f32) -> Victim {
@@ -515,7 +539,7 @@ fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full
         target_class: Some(class::TREE),
         task: HuntTask {
             work_value: 0.39,
-            resource: 1,
+            resource: Some(attribute::WOOD),
             ..CHOP
         },
         attack: None,
@@ -527,7 +551,7 @@ fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full
     };
     let r = hunt_reads();
     let mut unit = Unit::default();
-    unit.life.attribute_type = 1;
+    unit.life.attribute_type = Some(attribute::WOOD);
     let mut tree = victim(100.0);
     assert_eq!(hunt.gather(0.02, &mut unit, &mut tree, &r), Ok(false));
     let w = (1.0f32 * 0.39) * 0.02;
@@ -579,7 +603,7 @@ fn a_hunt_on_a_live_ally_fails() {
         allied: true,
         ..tree()
     };
-    let mut held = (-1, 0.0);
+    let mut held = Held::default();
     let (hunt, _) = HuntAction::start(
         HuntStart {
             task: CHOP,
@@ -588,7 +612,7 @@ fn a_hunt_on_a_live_ally_fails() {
             computer: false,
             carry_rule: false,
             held: &mut held,
-            walks: walks((-1, 0.0)),
+            walks: walks(Held::default()),
         },
         &engagement(),
         ARMS,
@@ -613,7 +637,7 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
         ..tree()
     };
     for (q, range) in [(dead, CHOP.range), (sheep, 1.5)] {
-        let mut held = (-1, 0.0);
+        let mut held = Held::default();
         let (hunt, _) = HuntAction::start(
             HuntStart {
                 task: CHOP,
@@ -622,7 +646,7 @@ fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
                 computer: false,
                 carry_rule: false,
                 held: &mut held,
-                walks: walks((-1, 0.0)),
+                walks: walks(Held::default()),
             },
             &engagement(),
             ARMS,
@@ -863,7 +887,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         (
             rig.unit_mut().life.attribute_type,
             rig.unit_mut().life.amount,
-        ) = (1, 3.0);
+        ) = (Some(attribute::WOOD), 3.0);
         rig.run(100, |c, u, _, _| h.update_drop(c, u, me(DROP), None, who))
     };
     let dropping = |move_to: Option<MoveToAction>| HuntAction {
@@ -1008,7 +1032,7 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
             &mut players[1].objects[0].body,
             victim,
             PlayerId::new(1),
-            &walks((-1, 0.0)),
+            &walks(Held::default()),
         )
     };
     let walk = |h: &HuntAction| h.move_to.map(|m| (m.state, m.range, m.point));
@@ -1172,7 +1196,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
         (
             rig.unit_mut().life.attribute_type,
             rig.unit_mut().life.amount,
-        ) = (0, held);
+        ) = (Some(attribute::FOOD), held);
         let mut r = hunt_reads();
         r.attack.computer = computer;
         let me = me(h.state);
@@ -1475,32 +1499,52 @@ fn a_drop_off_gives_the_load_to_the_player() {
         villager: true,
         stance: 0,
     };
-    let drop = |rig: &mut Rig, hunt: &mut HuntAction, held: (i16, f32), site| {
+    let drop = |rig: &mut Rig, hunt: &mut HuntAction, held: Held, site| {
         (
             rig.unit_mut().life.attribute_type,
             rig.unit_mut().life.amount,
-        ) = held;
+        ) = (held.kind, held.amount);
         rig.run(28, |c, u, _, _| {
             hunt.update_drop(c, u, me(DROP), Some(site), who)
         })
     };
-    let got = drop(&mut rig, &mut hunt, (1, 7.057_053_6), site).unwrap();
-    assert_eq!(got, Dropped::Load(1, 7.057_053_6));
+    let got = drop(
+        &mut rig,
+        &mut hunt,
+        carrying(Some(attribute::WOOD), 7.057_053_6),
+        site,
+    )
+    .unwrap();
+    assert_eq!(got, Dropped::Load(attribute::WOOD, 7.057_053_6));
     let life = &rig.unit().life;
     assert_eq!(
         (life.attribute_type, life.amount, hunt.move_to),
-        (-1, 0.0, None)
+        (None, 0.0, None)
     );
     // carried food of a carcass (15) goes as food; a site that does not take it stops
     hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
-    let got = drop(&mut rig, &mut hunt, (15, 2.0), site).unwrap();
-    assert_eq!(got, Dropped::Load(0, 2.0));
+    let got = drop(
+        &mut rig,
+        &mut hunt,
+        carrying(Some(attribute::MEAT), 2.0),
+        site,
+    )
+    .unwrap();
+    assert_eq!(got, Dropped::Load(attribute::FOOD, 2.0));
     hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
     let refused = DropOff {
         takes: false,
         ..site
     };
-    assert!(drop(&mut rig, &mut hunt, (15, 2.0), refused).is_err());
+    assert!(
+        drop(
+            &mut rig,
+            &mut hunt,
+            carrying(Some(attribute::MEAT), 2.0),
+            refused
+        )
+        .is_err()
+    );
     // a site out of a tile's reach: the hunt waits 3 seconds, the unit's animation stopped;
     // at the wait's end it tries again
     hunt.move_to = Some(MoveToAction::sub_in(MoveTo::Arrived));
@@ -1510,7 +1554,12 @@ fn a_drop_off_gives_the_load_to_the_player() {
     };
     rig.unit_mut().body.set_anim_speed(1.0);
     assert_eq!(
-        drop(&mut rig, &mut hunt, (15, 2.0), far),
+        drop(
+            &mut rig,
+            &mut hunt,
+            carrying(Some(attribute::MEAT), 2.0),
+            far
+        ),
         Ok(Dropped::Going)
     );
     assert_eq!(
@@ -1519,7 +1568,12 @@ fn a_drop_off_gives_the_load_to_the_player() {
     );
     hunt.timer = -0.01;
     assert_eq!(
-        drop(&mut rig, &mut hunt, (15, 2.0), far),
+        drop(
+            &mut rig,
+            &mut hunt,
+            carrying(Some(attribute::MEAT), 2.0),
+            far
+        ),
         Ok(Dropped::Again)
     );
     assert_eq!(hunt.timer, 0.0);
@@ -1674,11 +1728,11 @@ fn a_dying_hunter_makes_no_move_to() {
     let mut mover = walker();
     let mut h = hunting(-1);
     h.point = Position::new(5.0, 6.0, 0.0);
-    let mut dying = walks((-1, 0.0));
+    let mut dying = walks(Held::default());
     dying.reads.state = 3;
     h.set_point_walk(WALK_SEARCH, &mut mover, &dying).unwrap();
     assert_eq!((h.state, h.move_to), (WALK_SEARCH, None));
-    h.set_point_walk(WALK_SEARCH, &mut mover, &walks((-1, 0.0)))
+    h.set_point_walk(WALK_SEARCH, &mut mover, &walks(Held::default()))
         .unwrap();
     assert_eq!(h.move_to.map(|m| m.state), Some(MoveTo::Start));
 }

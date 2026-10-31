@@ -8,7 +8,7 @@ use crate::objects::masters::ids::VILLAGER_MALE;
 use crate::objects::masters::player_master;
 use crate::players::PlayerId;
 use crate::players::attribute;
-use crate::players::attribute::AttributeId;
+use crate::players::attribute::QUEUED;
 use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::players::tracker::Key;
 use crate::production::{Making, refund, refund_research};
@@ -63,7 +63,7 @@ impl World {
         e: &crate::production::Entry,
         count: i16,
     ) -> Result<(), GenieError> {
-        use crate::production::{QUEUED, population};
+        use crate::production::population;
         let class = e.master.map_or(Key::NONE, |m| self.tracker_key(p, m)).class;
         let master = e
             .master
@@ -78,7 +78,7 @@ impl World {
             owner.tracker.unplace(e.master, class);
         }
         let pop = master.as_ref().map_or(0.0, |m| population(&m.storage));
-        owner.add_attribute(AttributeId::try_from(QUEUED)?, -pop * f32::from(count))
+        owner.add_attribute(QUEUED, -pop * f32::from(count))
     }
 
     /// `count` researches of a research entry `e` at the building at `idx` of player `p`
@@ -108,11 +108,11 @@ impl World {
         let building = owner.objects.checked_mut(idx)?;
         if let Some(def) = self.techs.get(t) {
             for c in def.costs.iter().filter(|c| c.paid == 2) {
-                match building.store.iter_mut().find(|s| s.0 == c.attribute) {
+                // a cost entry of the building's own store names an attribute
+                let attribute = c.attribute.ok_or(crate::world::NO_ATTRIBUTE)?;
+                match building.store.iter_mut().find(|s| s.0 == attribute) {
                     Some(s) => s.1 += f32::from(c.amount),
-                    None => building
-                        .store
-                        .push((c.attribute, f32::from(c.amount) + 0.0)),
+                    None => building.store.push((attribute, f32::from(c.amount) + 0.0)),
                 }
             }
         }
@@ -219,7 +219,7 @@ impl World {
         let pop = master
             .as_ref()
             .map_or(0.0, |m| crate::production::population(&m.storage));
-        owner.add_attribute(AttributeId::try_from(crate::production::QUEUED)?, -pop)
+        owner.add_attribute(QUEUED, -pop)
     }
 
     /// `FUN_1411d66b0`'s cancel of up to five of a kind, from the unit entry `e` of the

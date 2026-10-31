@@ -104,9 +104,7 @@ impl Unit {
         let walks = self.move_walks(&c.w.masters, c.player, &c.w.graphics)?;
         let hunt = self.actions.hunt_mut().expect("the caller's");
         let old = hunt.target;
-        let moving = hunt
-            .task
-            .walk_sprite_id(self.life.attribute_type, self.life.amount);
+        let moving = hunt.task.walk_sprite_id(self.life.held());
         let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         if let Some(arrived) = hunt.retarget(

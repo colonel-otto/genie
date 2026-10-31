@@ -3,6 +3,7 @@
 use crate::combat::abilities::{Look, ONE, Reward};
 use crate::objects::masters::Task;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 
 /// A terrain look task's terrain mask (`0x141207501`, a `std::bitset<8>`): a terrain below 0
@@ -55,11 +56,11 @@ pub fn reward(
     task: &Task,
     player: PlayerId,
     multiplier: Option<f32>,
-    cost: &[(i16, i16, bool)],
+    cost: &[(AttributeId, i16, bool)],
 ) -> Reward {
     let out = task.attribute_type3;
     let mut rate = task.work_val1;
-    if 0 <= task.attribute_type2
+    if task.attribute_type2.is_some()
         && let Some(m) = multiplier
     {
         rate *= m;
@@ -68,7 +69,7 @@ pub fn reward(
     if task.combat_level_flag != 0 {
         amount = 0.0;
         for &(resource, count, paid) in cost {
-            if resource == out && paid {
+            if Some(resource) == out && paid {
                 amount = f32::from(count) * rate;
             }
         }

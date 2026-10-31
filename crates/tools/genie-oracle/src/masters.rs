@@ -7,6 +7,7 @@ use genie_core::map::{Footprint, GroundOffset, Radii};
 use genie_core::objects::lifecycle::MasterData;
 use genie_core::objects::masters as work;
 use genie_core::objects::masters::MasterId;
+use genie_core::players::attribute::AttributeId;
 use genie_dat::de::DatFile;
 use std::collections::HashMap;
 
@@ -97,16 +98,16 @@ fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::T
         terrain: t.terrain_id,
         owner_type: t.target_diplomacy,
         holding_attr: t.carry_check,
-        attribute_type: t.resource_in,
-        attribute_type2: t.resource_multiplier,
-        attribute_type3: t.resource_out,
-        attribute_type4: t.unused_resource,
+        attribute_type: AttributeId::of_data(t.resource_in),
+        attribute_type2: AttributeId::of_data(t.resource_multiplier),
+        attribute_type3: AttributeId::of_data(t.resource_out),
+        attribute_type4: AttributeId::of_data(t.unused_resource),
         wait_time: t.search_wait_time,
         work_val1: t.work_value1,
         work_val2: t.work_value2,
         work_range: t.work_range,
         work_flag: t.gather_type,
-        enablement: t.enabled.unwrap_or(-1),
+        enablement: t.enabled.and_then(AttributeId::of_data),
         sprites: [
             t.moving_graphic_id,
             t.proceeding_graphic_id,
@@ -147,8 +148,7 @@ fn dat_work(
     let cost = unit.creatable.as_ref().map_or_else(Vec::new, |c| {
         c.resource_costs
             .iter()
-            .filter(|r| r.kind >= 0)
-            .map(|r| (r.kind, r.amount, r.flag != 0))
+            .filter_map(|r| Some((AttributeId::of_data(r.kind)?, r.amount, r.flag != 0)))
             .collect()
     });
     work::Master {
@@ -439,7 +439,7 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::technology::T
             .resource_costs
             .each_ref()
             .map(|c| genie_core::technology::Cost {
-                attribute: c.kind,
+                attribute: AttributeId::of_data(c.kind),
                 amount: c.amount,
                 paid: c.flag,
             }),

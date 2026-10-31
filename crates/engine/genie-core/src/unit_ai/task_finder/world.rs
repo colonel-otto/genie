@@ -113,7 +113,7 @@ pub(crate) fn task_target_with<'a>(
         master,
         player,
         state: u.life.state,
-        held: (u.life.attribute_type, u.life.amount),
+        held: u.life.held(),
         hp: u.life.hp + u.hp_powerup.room(),
         max_hp: f32::from(master.hit_points) + u.hp_powerup.max,
         attackable: u.attackable,

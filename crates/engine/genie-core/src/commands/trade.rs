@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::World;
 
 /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b), `do_command`'s cases: the player trades
@@ -33,6 +34,7 @@ impl TradeCommand {
         if 2 < commodity {
             return Ok(());
         }
+        let commodity = AttributeId::numbered(i16::from(commodity));
         if self.buy {
             w.buy(self.player, commodity, self.times)?;
         } else {

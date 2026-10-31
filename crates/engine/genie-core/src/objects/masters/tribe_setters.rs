@@ -7,6 +7,7 @@ use crate::objects::masters::{
     AttributeWorld, Master, ROUND, add_sprite, attribute, cost_resource, id_of,
     insert_train_location, low8, low16, resize_train_locations, select_entry, set_sprite,
 };
+use crate::players::attribute as players_attribute;
 
 impl Master {
     /// The cost entries a cost attribute (100, 103 to 106) changes (`FUN_1412661d0`): those of
@@ -19,7 +20,7 @@ impl Master {
         let resource = cost_resource(attribute);
         self.cost
             .iter_mut()
-            .filter(move |c| (c.2 && resource == -1) || c.0 == resource)
+            .filter(move |c| (c.2 && resource.is_none()) || Some(c.0) == resource)
             .map(|c| &mut c.1)
     }
 
@@ -70,8 +71,10 @@ impl Master {
                 }
                 for s in &mut self.storage {
                     match s.0 {
-                        4 => s.1 = v,
-                        11 | 19 => s.1 = negated,
+                        Some(players_attribute::HEADROOM) => s.1 = v,
+                        Some(players_attribute::POPULATION | players_attribute::UNITS_OWNED) => {
+                            s.1 = negated;
+                        }
                         _ => {}
                     }
                 }

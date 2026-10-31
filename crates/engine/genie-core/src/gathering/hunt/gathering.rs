@@ -6,7 +6,7 @@ use crate::combat::damage::Victim;
 use crate::gathering::gather::Walks;
 use crate::gathering::hunt::{
     FACE, GAP, GATHER, HERD_FAR, HERD_REACH, HuntAction, HuntNext, HuntReads, LAST_BIT,
-    OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
+    OWN_LIVESTOCK_RANGE, REMAINDER, WALK,
 };
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
@@ -17,6 +17,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute;
 use crate::world::step::Step;
 
 impl HuntAction {
@@ -149,7 +150,7 @@ impl HuntAction {
         self.move_to = None;
         self.state = FACE;
         self.timer = 0.0;
-        let carrying = self.task.resource != -1
+        let carrying = self.task.resource.is_some()
             && unit.life.attribute_type == self.task.resource
             && 1 <= unit.life.amount as i32;
         let g = match (carrying, r.sprites.carrying) {
@@ -173,7 +174,7 @@ impl HuntAction {
     pub(super) fn set_gather(&mut self, unit: &mut Unit, sprite_rng: &mut Well512, r: &HuntReads) {
         self.state = GATHER;
         let kind = self.task.resource;
-        let keeps = food(kind) && food(unit.life.attribute_type);
+        let keeps = crate::gathering::both_food(kind, unit.life.attribute_type);
         if unit.life.attribute_type != kind {
             unit.life.amount = if keeps { unit.life.amount } else { 0.0 };
             unit.life.attribute_type = kind;
@@ -227,8 +228,8 @@ impl HuntAction {
             *held += over;
         }
         if matches!(victim.class, class::PREY | class::PREDATOR)
-            && unit.life.attribute_type == 3
-            && self.task.resource == 3
+            && unit.life.attribute_type == Some(attribute::GOLD)
+            && self.task.resource == Some(attribute::GOLD)
         {
             return Err(GenieError::unsupported(
                 "a gold load of class 9 or 10 (its player's attribute 3)",

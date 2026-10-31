@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -18,6 +19,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::attribute;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::slots::PlayerSlots;
@@ -171,10 +173,15 @@ impl BuildAction {
             let target = self.target.take();
             crate::world::lets::release(c, builder, target, reads.by)?;
         }
-        let (kind, amount) = (builder.life.attribute_type, builder.life.amount);
+        let Held { kind, amount } = builder.life.held();
         let attributes = c.w.players.player(c.player)?.attributes.len();
-        if usize::try_from(kind).is_ok_and(|k| k < attributes) {
-            let kind = if matches!(kind, 15..=17) { 0 } else { kind };
+        if let Some(kind) = kind.filter(|k| k.index() < attributes) {
+            // the foods a unit carries (15 to 17) as food
+            let kind = if kind.is_food_load() {
+                attribute::FOOD
+            } else {
+                kind
+            };
             Self::drop_load(c, builder, kind, amount)?;
         }
         self.end(c, builder, DONE)?;

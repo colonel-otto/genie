@@ -1,9 +1,11 @@
 use crate::task_finder::{FinderObject, FinderWorld, finder_objects};
 use crate::test_ids::object_id;
 use genie_core::objects::ObjectId;
+use genie_core::objects::lifecycle::Held;
 use genie_core::objects::masters::ids;
 use genie_core::objects::masters::{Master, Masters};
 use genie_core::players::PlayerId;
+use genie_core::players::attribute;
 use genie_core::unit_ai::task_finder::Diplomacy;
 
 /// An object of player 1, master 83, at the main building `annex_of` if it is an annex.
@@ -12,7 +14,10 @@ fn object(annex_of: Option<ObjectId>) -> FinderObject {
         player: PlayerId::new(1),
         master: ids::VILLAGER_MALE,
         state: 2,
-        held: (0, 5.0),
+        held: Held {
+            kind: Some(attribute::FOOD),
+            amount: 5.0,
+        },
         hp: 25.0,
         max_hp: 30.0,
         attackable: true,

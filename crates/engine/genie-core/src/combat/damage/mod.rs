@@ -52,6 +52,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 
 /// Elevation: a higher attacker hits at 1.25 (`DAT_142eb56a8`), a lower one at 0.75
 /// (`DAT_142e7f388`), each plus its player's and the target's player's attributes (211/272,
@@ -247,7 +248,7 @@ pub struct Razed {
     /// ([`crate::players::history::CASTLE_DESTROYED`], [`crate::players::history::WONDER_DESTROYED`]).
     pub event: Option<u8>,
     /// The attribute adds: (player, attribute, amount).
-    pub adds: Vec<(PlayerId, i16, f32)>,
+    pub adds: Vec<(PlayerId, AttributeId, f32)>,
 }
 
 /// What a killing hit leaves for the caller after the update

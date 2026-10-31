@@ -10,6 +10,7 @@ use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Offset;
 use crate::movement::MoveStats;
+use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::unit_ai::UnitAiType;
 use genie_diff::Diff;
@@ -26,11 +27,11 @@ mod values;
 pub use self::lookup::player_master;
 pub use self::task_id::TaskId;
 pub use self::values::AttributeWorld;
+pub(crate) use self::values::cost_resource;
 use self::values::{
     MISSILE_SPEED_CAP, PERCENT, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short, add_sprite,
-    class_amount, cost_resource, handicapped, id_of, insert_damage_graphic, insert_train_location,
-    low8, low16, multiply_short, resize_damage_graphics, resize_train_locations, select_entry,
-    set_sprite,
+    class_amount, handicapped, id_of, insert_damage_graphic, insert_train_location, low8, low16,
+    multiply_short, resize_damage_graphics, resize_train_locations, select_entry, set_sprite,
 };
 #[cfg(test)]
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
@@ -62,13 +63,13 @@ pub struct Task {
     /// `+0x20` to `+0x26`, `attribute_type` to `attribute_type4` (`resource_in`,
     /// `resource_multiplier`: the attribute that scales the gathering, `resource_out`,
     /// `unused_resource`).
-    pub attribute_type: i16,
+    pub attribute_type: Option<AttributeId>,
     /// `+0x22`, `attribute_type2` (`resource_multiplier`): the attribute that scales the gathering.
-    pub attribute_type2: i16,
+    pub attribute_type2: Option<AttributeId>,
     /// `+0x24`, `attribute_type3` (`resource_out`).
-    pub attribute_type3: i16,
+    pub attribute_type3: Option<AttributeId>,
     /// `+0x26`, `attribute_type4` (`unused_resource`).
-    pub attribute_type4: i16,
+    pub attribute_type4: Option<AttributeId>,
     /// `+0x1c`, `search_wait_time`: a Fly task's rest between flights.
     pub wait_time: f32,
     /// `+0x28`, the save's `work_val1`; `+0x2c`, `work_val2`.
@@ -81,7 +82,7 @@ pub struct Task {
     /// not to its object's holding ([`crate::gathering::make`]).
     pub work_flag: i16,
     /// `+0x38`, `enablement_resource_id` (`enabled`): the resource that enables the task, -1 none.
-    pub enablement: i16,
+    pub enablement: Option<AttributeId>,
     /// `+0x40`..`+0x58`: the moving, proceeding, working and carrying sprites (graphic ids, -1 for
     /// none).
     pub sprites: [i16; 4],
@@ -104,16 +105,16 @@ impl Default for Task {
             terrain: -1,
             owner_type: 0,
             holding_attr: 0,
-            attribute_type: -1,
-            attribute_type2: -1,
-            attribute_type3: -1,
-            attribute_type4: -1,
+            attribute_type: None,
+            attribute_type2: None,
+            attribute_type3: None,
+            attribute_type4: None,
             wait_time: 0.0,
             work_val1: 0.0,
             work_val2: 0.0,
             work_range: 0.0,
             work_flag: 0,
-            enablement: -1,
+            enablement: None,
             sprites: [-1; 4],
             sound_events: [0; 2],
         }
@@ -248,7 +249,7 @@ pub struct Master {
     /// state 2 (`RGE_Action_Object::update`, slot 0x7f0); None for the game's −1.
     pub default_task: Option<i16>,
     /// The build cost `(resource, amount, paid)`.
-    pub cost: Vec<(i16, i16, bool)>,
+    pub cost: Vec<(AttributeId, i16, bool)>,
     /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.
     pub work_rate: f32,
     /// `search_radius` (`+0x794`, the object's slot 0x2c8).
@@ -300,7 +301,7 @@ pub struct Master {
     /// The resource storage (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`:
     /// `+0x60a`, `+0x610`, `+0x628`): what an object of this master adds to its player's
     /// attributes, by its flag.
-    pub storage: Vec<(i16, f32, u8)>,
+    pub storage: Vec<(Option<AttributeId>, f32, u8)>,
     /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
     /// (`FUN_1411859a0`).
     pub damage_sprites: bool,

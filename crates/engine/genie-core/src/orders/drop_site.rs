@@ -15,6 +15,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -53,7 +54,7 @@ impl World {
         if kind < COMBAT {
             return Ok(());
         }
-        let filter = if HUNTED_LOADS.contains(&held) {
+        let filter = if held.is_some_and(|h| HUNTED_LOADS.contains(&h)) {
             HUNT
         } else {
             crate::gathering::gather::GATHER
@@ -134,7 +135,7 @@ impl World {
         &self,
         p: PlayerId,
         at: Point,
-        held: i16,
+        held: Option<AttributeId>,
         class: ClassId,
     ) -> Result<Option<ObjectId>, GenieError> {
         let player = self.players.player(p)?;

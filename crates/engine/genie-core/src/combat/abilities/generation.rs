@@ -79,24 +79,21 @@ pub fn generated(dt: f32, task: &Task, multiplier: f32) -> f32 {
 }
 
 /// The player's store of what its generation tasks made (`player+0x658`): `amount` above 0 (not
-/// a NaN) joins the store of attribute `out` when that is not negative (`ADDSS`: the amount plus
-/// the store); the store, or the amount alone when it did not join, once at least 1
-/// (`COMISS`/`JC`: a NaN is below) goes to the player (returned, the caller's slot 0xf8) and the
-/// store starts again at 0. A store the player does not have (an attribute past its count, which
-/// no `.dat` task names) takes nothing.
-pub fn store(amount: f32, out: i16, stores: &mut [f32]) -> Option<f32> {
-    let slot = usize::try_from(out).ok();
+/// a NaN) joins the store of attribute `out` (`ADDSS`: the amount plus the store); the store, or
+/// the amount alone when it did not join, once at least 1 (`COMISS`/`JC`: a NaN is below) goes to
+/// the player (returned, the caller's slot 0xf8) and the store starts again at 0. A store the
+/// player does not have (an attribute past its count, which no `.dat` task names) takes nothing;
+/// a task without an attribute (−1) has no store, which the caller passes over.
+pub fn store(amount: f32, out: AttributeId, stores: &mut [f32]) -> Option<f32> {
+    let s = stores.get_mut(out.index())?;
     let mut amount = amount;
-    if 0.0 < amount
-        && let Some(s) = slot.and_then(|i| stores.get_mut(i))
-    {
+    if 0.0 < amount {
         *s += amount;
         amount = *s;
     }
     if fmath::below_or_unordered(amount, ONE) {
         return None;
     }
-    let s = slot.and_then(|i| stores.get_mut(i))?;
     *s = 0.0;
     Some(amount)
 }
@@ -161,11 +158,15 @@ impl World {
             return Ok(());
         }
         let player = self.players.player_mut(owner)?;
-        let multiplier = AttributeId::of_data(task.attribute_type2)
+        let multiplier = (task.attribute_type2)
             .and_then(|a| player.attribute(a))
             .unwrap_or(0.0);
         let amount = generated(self.dt_seconds, task, multiplier);
-        let Some(give) = store(amount, task.attribute_type3, &mut player.generated) else {
+        // no store without the task's attribute: nothing reaches the player
+        let Some(out) = task.attribute_type3 else {
+            return Ok(());
+        };
+        let Some(give) = store(amount, out, &mut player.generated) else {
             return Ok(());
         };
         let sharing = player.sharing;
@@ -174,13 +175,13 @@ impl World {
             (&self.spatial.relations, sharing),
             owner,
             &mut adds,
-            task.attribute_type3,
+            out,
             give,
         )?;
         for (kind, amount) in adds {
             self.players
                 .player_mut(owner)?
-                .add_attribute(AttributeId::try_from(kind)?, amount)?;
+                .add_attribute(kind, amount)?;
         }
         Ok(())
     }

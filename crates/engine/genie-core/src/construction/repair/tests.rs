@@ -10,6 +10,7 @@ use crate::objects::masters::master_type;
 use crate::objects::teardown::HeadCode;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
+use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::object_id;
 
@@ -117,7 +118,7 @@ fn masters() -> crate::objects::masters::Masters {
             kind: master_type::BUILDING,
             class: class::BUILDING,
             hit_points: 550,
-            cost: vec![(1, 25, true)],
+            cost: vec![(attribute::WOOD, 25, true)],
             ..crate::objects::masters::Master::default()
         },
         crate::objects::masters::Master {
@@ -125,7 +126,7 @@ fn masters() -> crate::objects::masters::Masters {
             kind: master_type::COMBAT,
             class: class::SIEGE,
             hit_points: 175,
-            cost: vec![(1, 160, true), (3, 75, true)],
+            cost: vec![(attribute::WOOD, 160, true), (attribute::GOLD, 75, true)],
             ..crate::objects::masters::Master::default()
         },
     ])

@@ -123,7 +123,7 @@ impl World {
             id: unit.id,
             master: unit.master(&self.masters, player)?,
             player,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         })
@@ -172,7 +172,6 @@ impl World {
         idx: usize,
         task: &crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
-        let food = |k: i16| k == 0 || (15..=17).contains(&k);
         let class = self
             .players
             .live(player, idx)?
@@ -181,7 +180,7 @@ impl World {
         let unit = self.players.live_mut(player, idx)?;
         if matches!(task.action_type, GATHER | HUNT) {
             let (kind, held) = (task.attribute_type, unit.life.attribute_type);
-            if held != kind && !(food(kind) && food(held)) {
+            if held != kind && !crate::gathering::both_food(kind, held) {
                 unit.life.attribute_type = kind;
                 unit.life.amount = 0.0;
             }
@@ -284,7 +283,7 @@ impl World {
             id: unit.id,
             master: unit.master(&self.masters, player)?,
             player,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
@@ -616,7 +615,7 @@ impl World {
             id: unit.id,
             master: own,
             player,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };

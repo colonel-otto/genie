@@ -128,8 +128,8 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
         }
     }
     if let Some(k) = task
-        && let Ok(i) = usize::try_from(k.attribute_type4)
-        && let Some(&a) = p.attributes.get(i)
+        && let Some(i) = k.attribute_type4
+        && let Some(&a) = p.attributes.get(i.index())
         && crate::math::fmath::at_most_or_unordered(a, 0.0)
     {
         return false;

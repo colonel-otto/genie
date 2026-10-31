@@ -20,7 +20,6 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::orders::Place;
 use crate::orders::object_gone;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
 use crate::players::game_status::LOST;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -235,11 +234,10 @@ impl World {
         }
         if 0.0 < share {
             for (resource, amount, paid) in cost {
-                if 0 <= resource && paid {
-                    self.players.player_mut(owner)?.add_attribute(
-                        AttributeId::required(resource)?,
-                        f32::from(amount) * share,
-                    )?;
+                if paid {
+                    self.players
+                        .player_mut(owner)?
+                        .add_attribute(resource, f32::from(amount) * share)?;
                 }
             }
         }
@@ -437,10 +435,7 @@ impl World {
         if new == 3 && state == 2 {
             for (kind, amount) in crate::objects::lifecycle::death_parts::refund_of(master, main) {
                 let player = self.players.player_mut(owner)?;
-                player.add_attribute(AttributeId::try_from(kind)?, -amount)?;
-                if player.attributes[kind as usize] < 0.0 {
-                    player.attributes[kind as usize] = 0.0;
-                }
+                player.take_at_least_zero(kind, amount)?;
             }
         }
         self.base_set_state(owner, id, new, master)
@@ -506,10 +501,12 @@ impl World {
         leaves: impl Fn(u8) -> bool,
     ) -> Result<(), GenieError> {
         for &(kind, amount, flag) in &master.storage {
-            if 0 <= kind && leaves(flag) {
+            if let Some(kind) = kind
+                && leaves(flag)
+            {
                 self.players
                     .player_mut(owner)?
-                    .add_attribute(AttributeId::required(kind)?, -amount)?;
+                    .add_attribute(kind, -amount)?;
             }
         }
         Ok(())
@@ -532,7 +529,7 @@ impl World {
         for &(kind, amount) in &death.adds {
             self.players
                 .player_mut(owner)?
-                .add_attribute(AttributeId::try_from(kind)?, amount)?;
+                .add_attribute(kind, amount)?;
         }
         self.unwatch(owner, id)?;
         if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
@@ -540,11 +537,9 @@ impl World {
         }
         self.combat_set_state(owner, id, 3, master)?;
         if let Some(kind) = death.building.count {
-            let player = self.players.player_mut(owner)?;
-            player.add_attribute(AttributeId::try_from(kind)?, -1.0)?;
-            if player.attributes[kind as usize] < 0.0 {
-                player.attributes[kind as usize] = 0.0;
-            }
+            self.players
+                .player_mut(owner)?
+                .take_at_least_zero(kind, 1.0)?;
         }
         if let Some((m, tech)) = death.building.tech {
             self.withdraw_tech(owner, m, tech)?;
@@ -585,6 +580,7 @@ mod tests {
     use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::players::attribute;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::player_id;
@@ -665,7 +661,7 @@ mod tests {
                 id: ids::HOUSE,
                 class: class::BUILDING,
                 kind: BUILDING,
-                cost: vec![(1, 25, true), (4, 1, false)],
+                cost: vec![(attribute::WOOD, 25, true), (attribute::HEADROOM, 1, false)],
                 ..Master::default()
             },
             Master {
@@ -767,6 +763,7 @@ mod clearing_tests {
     use crate::objects::masters::{Master, Masters};
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
+    use crate::players::attribute::{self, AttributeId};
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::Player;
@@ -832,7 +829,7 @@ mod clearing_tests {
                 class: class::CLASS_11,
                 radius: Footprint::new(0.2, 0.2),
                 buildable_on: 1,
-                storage: vec![(7, 1.0, 32)],
+                storage: vec![(Some(attribute::RELICS_HELD), 1.0, 32)],
                 ..Master::default()
             },
             Master {
@@ -1000,8 +997,12 @@ mod clearing_tests {
             vec![],
         );
         for m in [1351, 1358] {
-            t.masters[0].get_mut(master_id(m)).unwrap().storage =
-                vec![(4, 2.0, 2), (5, 3.0, 16), (7, 1.0, 32), (-1, 9.0, 2)];
+            t.masters[0].get_mut(master_id(m)).unwrap().storage = vec![
+                (Some(attribute::HEADROOM), 2.0, 2),
+                (Some(AttributeId::numbered(5)), 3.0, 16),
+                (Some(attribute::RELICS_HELD), 1.0, 32),
+                (None, 9.0, 2),
+            ];
         }
         let at = |t: &World| [4, 5, 7].map(|i| t.players[0].attributes[i]);
         t.players[0].attributes[4..8].copy_from_slice(&[10.0, 10.0, 10.0, 10.0]);
@@ -1038,12 +1039,19 @@ mod clearing_tests {
     fn a_death_refunds_its_paid_cost_by_its_type() {
         let unit = Master {
             kind: COMBAT,
-            cost: vec![(0, 50, true), (3, 20, true), (1, 5, false)],
+            cost: vec![
+                (attribute::FOOD, 50, true),
+                (attribute::GOLD, 20, true),
+                (attribute::WOOD, 5, false),
+            ],
             ..Master::default()
         };
         assert_eq!(
             crate::objects::lifecycle::death_parts::refund_of(&unit, None),
-            [(98, 70.0), (164, 70.0)]
+            [
+                (attribute::TOTAL_VALUE, 70.0),
+                (attribute::UNITS_VALUE, 70.0)
+            ]
         );
         let house = Master {
             id: ids::HOUSE,
@@ -1052,7 +1060,10 @@ mod clearing_tests {
         };
         assert_eq!(
             crate::objects::lifecycle::death_parts::refund_of(&house, None),
-            [(98, 70.0), (165, 70.0)]
+            [
+                (attribute::TOTAL_VALUE, 70.0),
+                (attribute::BUILDINGS_VALUE, 70.0)
+            ]
         );
         assert_eq!(
             crate::objects::lifecycle::death_parts::refund_of(&house, Some(object_id(9))),
@@ -1064,7 +1075,7 @@ mod clearing_tests {
         };
         assert_eq!(
             crate::objects::lifecycle::death_parts::refund_of(&castle, None),
-            [(98, 70.0)]
+            [(attribute::TOTAL_VALUE, 70.0)]
         );
     }
 }

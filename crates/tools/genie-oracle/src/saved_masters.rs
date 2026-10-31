@@ -8,6 +8,7 @@ use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
 use genie_core::objects::masters::{ClassId, MasterId};
+use genie_core::players::attribute::AttributeId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
 /// The facets every sprite a live object of a saved master shows ([`genie_core::objects::facing::SpriteFacets`]):
@@ -119,16 +120,16 @@ pub(super) fn core_task(
         terrain: t.terrain_id,
         owner_type: t.owner_type,
         holding_attr: t.holding_attr,
-        attribute_type: t.attribute_type,
-        attribute_type2: t.attribute_type2,
-        attribute_type3: t.attribute_type3,
-        attribute_type4: t.attribute_type4,
+        attribute_type: AttributeId::of_data(t.attribute_type),
+        attribute_type2: AttributeId::of_data(t.attribute_type2),
+        attribute_type3: AttributeId::of_data(t.attribute_type3),
+        attribute_type4: AttributeId::of_data(t.attribute_type4),
         wait_time: t.search_wait_time,
         work_val1: t.work_val1,
         work_val2: t.work_val2,
         work_range: t.work_range,
         work_flag: t.work_flag,
-        enablement: t.enablement_resource_id,
+        enablement: AttributeId::of_data(t.enablement_resource_id),
         sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
         sound_events: [
             t.gather_sound_event_event_id.cast_signed(),
@@ -244,7 +245,7 @@ pub(super) fn work_masters(
             .iter()
             .map(|e| {
                 (
-                    e.attribute_type_held,
+                    AttributeId::of_data(e.attribute_type_held),
                     e.attribute_amount_held,
                     e.attribute_flag,
                 )
@@ -378,10 +379,10 @@ pub(super) fn moving_stats(
 
 /// A combat master's `build_inventory` entries `(resource, amount, flag)`, three shorts each; the
 /// flag set means paid. Entries of resource -1 are empty.
-pub(super) fn build_cost(inventory: &[[u8; 6]]) -> Vec<(i16, i16, bool)> {
+pub(super) fn build_cost(inventory: &[[u8; 6]]) -> Vec<(AttributeId, i16, bool)> {
     build_entries(inventory)
         .into_iter()
-        .filter(|&(kind, ..)| kind >= 0)
+        .filter_map(|(kind, amount, paid)| Some((AttributeId::of_data(kind)?, amount, paid)))
         .collect()
 }
 

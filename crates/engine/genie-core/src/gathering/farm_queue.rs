@@ -374,8 +374,7 @@ impl World {
         let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
             standing,
-            unit.life.attribute_type,
-            unit.life.amount,
+            unit.life.held(),
             &self.graphics,
         );
         let released = gather.after_reseed(
@@ -408,12 +407,14 @@ mod tests {
     use crate::objects::masters::ClassId;
     use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters, master_type};
+    use crate::players::attribute;
+    use crate::players::attribute::AttributeId;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
     use crate::world::Player;
 
     /// A master of type 70 costing `cost` (attribute, amount, paid).
-    fn master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
+    fn master(id: MasterId, cost: Vec<(AttributeId, i16, bool)>) -> Master {
         Master {
             id,
             kind: master_type::COMBAT,
@@ -438,9 +439,12 @@ mod tests {
             vec![Player::default(), player],
         );
         let masters = Masters::new([
-            master(FARM, vec![(1, 60, true)]),
-            master(PASTURE, vec![(1, 100, true), (0, 50, false)]),
-            master(FISH_TRAP, vec![(1, 100, true)]),
+            master(FARM, vec![(attribute::WOOD, 60, true)]),
+            master(
+                PASTURE,
+                vec![(attribute::WOOD, 100, true), (attribute::FOOD, 50, false)],
+            ),
+            master(FISH_TRAP, vec![(attribute::WOOD, 100, true)]),
         ]);
         t.masters = vec![Masters::new([]), masters];
         t

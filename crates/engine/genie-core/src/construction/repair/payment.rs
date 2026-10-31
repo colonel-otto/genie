@@ -174,7 +174,7 @@ pub fn repair_unit(
 /// subtraction, so the player's value comes out as the repair saw it).
 pub(crate) struct PaidAttributes {
     pub(super) values: Vec<f32>,
-    pub(crate) adds: Vec<(i16, f32)>,
+    pub(crate) adds: Vec<(AttributeId, f32)>,
 }
 
 impl PaidAttributes {
@@ -212,7 +212,7 @@ impl crate::technology::Attributes for PaidAttributes {
             .get_mut(i.index())
             .ok_or(crate::world::NO_ATTRIBUTE)?;
         *v -= amount;
-        self.adds.push((i.get(), -amount));
+        self.adds.push((i, -amount));
         Ok(())
     }
 }

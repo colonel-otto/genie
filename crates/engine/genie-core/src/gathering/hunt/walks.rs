@@ -48,7 +48,7 @@ impl HuntAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        let given = sprite_id(self.task.walk_sprite_id(walks.held));
         walks
             .live(mover)
             .to_object(to, range, given, TargetMoved::AsksAgain)
@@ -67,7 +67,7 @@ impl HuntAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        let given = sprite_id(self.task.walk_sprite_id(walks.held));
         let walk = walks
             .live(mover)
             .to_point(self.point, self.task.range, given)?;

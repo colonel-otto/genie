@@ -135,7 +135,7 @@ impl HuntAction {
     /// [`HuntAction::decay_check`]'s test and its sign change on the target's copy: true when it
     /// stopped the decay.
     pub(super) fn stops_decay_of(&self, stops_decay: bool, victim: &mut Victim) -> bool {
-        let stops = self.task.kind4 == DECAY_TASK && stops_decay && 0.0 < victim.decay;
+        let stops = self.task.kind4 == Some(DECAY_TASK) && stops_decay && 0.0 < victim.decay;
         if stops {
             victim.decay = f32::from_bits(victim.decay.to_bits() ^ 0x8000_0000);
         }

@@ -16,6 +16,8 @@ use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::{ActionKind, OrderKind};
 use crate::world::SEARCH_NEEDED;
 use crate::world::slots::PlayerSlots;
@@ -107,11 +109,11 @@ impl BuildAction {
     pub(super) fn drop_load(
         c: &mut Step<'_>,
         builder: &mut Unit,
-        kind: i16,
+        kind: AttributeId,
         amount: f32,
     ) -> Result<(), GenieError> {
         c.give_load(kind, amount)?;
-        builder.life.attribute_type = -1;
+        builder.life.attribute_type = None;
         builder.life.amount = 0.0;
         Ok(())
     }
@@ -132,10 +134,15 @@ impl BuildAction {
         self.leave(c, builder)?;
         self.state = FINISHED;
         let (amount, kind) = (builder.life.amount, builder.life.attribute_type);
-        if !(reads.drop_site && 0.0 < amount && 0 <= kind) {
+        let Some(kind) = kind.filter(|_| reads.drop_site && 0.0 < amount) else {
             return Ok(());
-        }
-        let kind = if matches!(kind, 15..=17) { 0 } else { kind };
+        };
+        // the foods a unit carries (15 to 17) as food
+        let kind = if kind.is_food_load() {
+            attribute::FOOD
+        } else {
+            kind
+        };
         Self::drop_load(c, builder, kind, amount)
     }
 

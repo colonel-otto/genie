@@ -11,6 +11,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
+use crate::objects::lifecycle::static_storage;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -23,35 +24,11 @@ use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
 use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
-
-/// A new missile's storage (its master's `storage`): the entries of flags 1, 2 and 32 with an
-/// attribute go to its `owner` at once; the last of flag 0 with one is what it holds (else
-/// none, −1).
-///
-/// # Errors
-///
-/// An attribute the owner does not have.
-fn missile_storage(
-    owner: &mut crate::world::player::Player,
-    storage: &[(i16, f32, u8)],
-) -> Result<(i16, f32), GenieError> {
-    let mut held = (-1, 0.0);
-    for &(kind, amount, flag) in storage {
-        if kind >= 0 && matches!(flag, 1 | 2 | 32) {
-            owner.add_attribute(AttributeId::try_from(kind)?, amount)?;
-        }
-        if kind != -1 && flag == 0 {
-            held = (kind, amount);
-        }
-    }
-    Ok(held)
-}
 
 impl Unit {
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left
@@ -471,7 +448,7 @@ impl Unit {
             );
             let _ = v.sight_on(id, position, made.radius, false, false)?;
         }
-        let held = missile_storage(c.w.players.player_mut(c.player)?, &made.storage)?;
+        let held = static_storage(c.w.players.player_mut(c.player)?, &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start
         let mut action = crate::combat::missile::MissileAction {
             state: 0,
@@ -522,8 +499,8 @@ impl Unit {
                 class: Class::Animated,
                 state: 2,
                 hp: f32::from(made.hit_points),
-                attribute_type: held.0,
-                amount: held.1,
+                attribute_type: held.kind,
+                amount: held.amount,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
                 death_spawn: made.death_spawns[0].is_some(),
                 remains,
@@ -630,40 +607,4 @@ pub(crate) struct Shot {
     pub(crate) shooter: bool,
     pub(crate) aimer: crate::combat::missile::Aimer,
     pub(crate) attack_count: i32,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A new missile's storage: flags 1, 2 and 32 with an attribute go to the owner (resources
-    /// and attributes alike), one without an attribute (−1) does not; the last of flag 0 is
-    /// what the missile holds.
-    #[test]
-    fn a_missile_s_storage_gives_its_owner_flags_1_2_and_32_and_holds_flag_0() {
-        let mut owner = crate::world::player::Player {
-            attributes: vec![0.0; 20],
-            ..crate::world::player::Player::default()
-        };
-        let storage = [
-            (1, 2.0, 1),
-            (11, 5.0, 2),
-            (9, 2.0, 0),
-            (-1, 1.0, 32),
-            (12, 3.0, 32),
-            (7, 1.5, 0),
-            (13, 4.0, 4),
-        ];
-        assert_eq!(missile_storage(&mut owner, &storage), Ok((7, 1.5)));
-        assert_eq!(owner.resources, [0.0, 2.0, 0.0, 0.0]);
-        let gained: Vec<(usize, f32)> = owner
-            .attributes
-            .iter()
-            .copied()
-            .enumerate()
-            .filter(|&(_, v)| v != 0.0)
-            .collect();
-        assert_eq!(gained, [(11, 5.0), (12, 3.0)]);
-        assert_eq!(missile_storage(&mut owner, &[]), Ok((-1, 0.0)));
-    }
 }

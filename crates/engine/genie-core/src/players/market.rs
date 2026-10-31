@@ -9,18 +9,10 @@ use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
 use crate::players::PlayerId;
-use crate::players::attribute;
+use crate::players::attribute::{self, AttributeId};
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
-/// The commodities are the player's attribute indices: food, wood and stone (the commands' only
-/// ones) and the ore (attribute 0x38), which only the price reads know.
-const FOOD: u8 = attribute::FOOD.index() as u8;
-const WOOD: u8 = attribute::WOOD.index() as u8;
-const STONE: u8 = attribute::STONE.index() as u8;
-const ORE: u8 = 0x38;
-/// The player's attribute 78, the share of a trade's worth the market keeps.
-const FEE: usize = 78;
 /// A commodity's price after its net trades came back to 0 (`DAT_142f03164`, `DAT_14330eb8c`,
 /// `DAT_142f0703c`).
 const FOOD_START: f32 = crate::math::image::market::FOOD_START;
@@ -70,38 +62,38 @@ pub struct Market {
 }
 
 impl Market {
-    /// The commodity of attribute `attribute` with its starting price, none for another.
-    const fn commodity(&mut self, attribute: u8) -> Option<(&mut Commodity, f32)> {
-        match attribute {
-            FOOD => Some((&mut self.food, FOOD_START)),
-            WOOD => Some((&mut self.wood, WOOD_START)),
-            STONE => Some((&mut self.stone, STONE_START)),
-            ORE => Some((&mut self.ore, ORE_START)),
+    /// The commodity of attribute `commodity` with its starting price, none for another.
+    const fn commodity(&mut self, commodity: AttributeId) -> Option<(&mut Commodity, f32)> {
+        match commodity {
+            attribute::FOOD => Some((&mut self.food, FOOD_START)),
+            attribute::WOOD => Some((&mut self.wood, WOOD_START)),
+            attribute::STONE => Some((&mut self.stone, STONE_START)),
+            attribute::ORE => Some((&mut self.ore, ORE_START)),
             _ => None,
         }
     }
 
-    /// `FUN_1415cd3c0`: the price of attribute `attribute`'s commodity, −1 for another.
+    /// `FUN_1415cd3c0`: the price of attribute `commodity`'s commodity, −1 for another.
     #[must_use]
-    pub const fn price(&self, attribute: u8) -> f32 {
-        match attribute {
-            FOOD => self.food.price,
-            WOOD => self.wood.price,
-            STONE => self.stone.price,
-            ORE => self.ore.price,
+    pub const fn price(&self, commodity: AttributeId) -> f32 {
+        match commodity {
+            attribute::FOOD => self.food.price,
+            attribute::WOOD => self.wood.price,
+            attribute::STONE => self.stone.price,
+            attribute::ORE => self.ore.price,
             _ => UNKNOWN_PRICE,
         }
     }
 
-    /// One trade of attribute `attribute`'s commodity, a purchase (`FUN_1415cd6a0`) or a sale
+    /// One trade of attribute `commodity`'s commodity, a purchase (`FUN_1415cd6a0`) or a sale
     /// (`FUN_1415caf80`); another attribute changes nothing. The net trades move by one; at 0
     /// the swing is 0 and the price its start. Else the swing grows by 2, and its growth (made
     /// positive: `COMISS`, `JBE`, a NaN stays; truncated by `CVTTSS2SI`) in hundredths raises the
     /// price to at most the maximum, or lowers it to at least the minimum (`COMISS`, `JBE`: a NaN
     /// price stays). The game's event 0x80 on a changed price is the interface's.
-    pub fn trade(&mut self, attribute: u8, buy: bool) {
+    pub fn trade(&mut self, commodity: AttributeId, buy: bool) {
         let (min, max) = (self.min_price, self.max_price);
-        let Some((c, start)) = self.commodity(attribute) else {
+        let Some((c, start)) = self.commodity(commodity) else {
             return;
         };
         c.trades = if buy {
@@ -143,7 +135,7 @@ impl World {
     fn fee(&self, p: PlayerId) -> f32 {
         self.players
             .get(p.index())
-            .and_then(|pl| pl.attributes.get(FEE).copied())
+            .and_then(|pl| pl.attributes.get(attribute::MARKET_FEE.index()).copied())
             .unwrap_or(0.0)
     }
 
@@ -158,31 +150,27 @@ impl World {
     pub(crate) fn sell(
         &mut self,
         p: PlayerId,
-        attribute: u8,
+        commodity: AttributeId,
         times: u16,
     ) -> Result<(), GenieError> {
         for _ in 0..times {
             let volume = self.players.player(p)?.commodity_volume;
-            let held = self
-                .players
-                .player(p)?
-                .attribute_of(i16::from(attribute))
-                .unwrap_or(0.0);
+            let held = self.players.player(p)?.attribute(commodity).unwrap_or(0.0);
             if below_or_unordered(held, volume as f32) {
                 return Ok(());
             }
-            let price = self.market.price(attribute);
+            let price = self.market.price(commodity);
             if at_most_or_unordered(price, 0.0) {
                 return Ok(());
             }
-            self.market.trade(attribute, false);
+            self.market.trade(commodity, false);
             let worth = volume as f32 * price;
             let fee = self.fee(p) * worth;
             let gold = cvttss2si(worth - fee + ROUND) as f32;
             // The gold a sale gives and a purchase costs.
-            self.add_resource(p, attribute::GOLD.index(), gold, 1, true)?;
+            self.add_resource(p, attribute::GOLD, gold, 1, true)?;
             let lot = volume.wrapping_neg() as f32;
-            self.add_resource(p, usize::from(attribute), lot, 0, true)?;
+            self.add_resource(p, commodity, lot, 0, true)?;
         }
         Ok(())
     }
@@ -194,7 +182,12 @@ impl World {
     /// 0xf8 with 0 and 1), then the price rises ([`Market::trade`]) and the lot comes in. Not
     /// held: the statistics (`FUN_141778560`) and the local player's telemetry
     /// (`FUN_14097daf0`).
-    pub(crate) fn buy(&mut self, p: PlayerId, attribute: u8, times: u16) -> Result<(), GenieError> {
+    pub(crate) fn buy(
+        &mut self,
+        p: PlayerId,
+        commodity: AttributeId,
+        times: u16,
+    ) -> Result<(), GenieError> {
         for _ in 0..times {
             let volume = self.players.player(p)?.commodity_volume;
             if volume < 1 {
@@ -205,7 +198,7 @@ impl World {
                 .player(p)?
                 .attribute(attribute::GOLD)
                 .unwrap_or(0.0);
-            let price = self.market.price(attribute);
+            let price = self.market.price(commodity);
             if at_most_or_unordered(price, 0.0) {
                 return Ok(());
             }
@@ -216,9 +209,9 @@ impl World {
                 return Ok(());
             }
             let paid = cvttss2si(cost) as f32;
-            self.add_resource(p, attribute::GOLD.index(), -paid, 0, true)?;
-            self.market.trade(attribute, true);
-            self.add_resource(p, usize::from(attribute), lot, 0, true)?;
+            self.add_resource(p, attribute::GOLD, -paid, 0, true)?;
+            self.market.trade(commodity, true);
+            self.add_resource(p, commodity, lot, 0, true)?;
         }
         Ok(())
     }
@@ -252,7 +245,7 @@ mod tests {
     #[test]
     fn a_trade_moves_the_price_a_step_and_back_at_no_net_trades_it_resets() {
         let mut m = market();
-        m.trade(WOOD, true);
+        m.trade(attribute::WOOD, true);
         assert_eq!(
             m.wood,
             Commodity {
@@ -261,17 +254,17 @@ mod tests {
                 swing: 2.0,
             }
         );
-        m.trade(WOOD, true);
+        m.trade(attribute::WOOD, true);
         assert_eq!(
             (m.wood.price, m.wood.trades, m.wood.swing),
             (0.02 + (1.0 + 0.02), 2, 4.0)
         );
-        m.trade(WOOD, false);
+        m.trade(attribute::WOOD, false);
         assert_eq!(
             (m.wood.price, m.wood.trades, m.wood.swing),
             (0.02 + (1.0 + 0.02) - 0.02, 1, 6.0)
         );
-        m.trade(WOOD, false);
+        m.trade(attribute::WOOD, false);
         assert_eq!(
             m.wood,
             Commodity {
@@ -282,23 +275,23 @@ mod tests {
         );
         // the stone's start, the bounds, another attribute
         m.stone.price = 9.98;
-        m.trade(STONE, true);
-        m.trade(STONE, true);
+        m.trade(attribute::STONE, true);
+        m.trade(attribute::STONE, true);
         assert_eq!(m.stone.price, 9.99);
-        m.trade(STONE, false);
-        m.trade(STONE, false);
+        m.trade(attribute::STONE, false);
+        m.trade(attribute::STONE, false);
         assert_eq!(m.stone.price, 1.3);
         m.food.price = 0.21;
-        m.trade(FOOD, false);
-        m.trade(FOOD, false);
+        m.trade(attribute::FOOD, false);
+        m.trade(attribute::FOOD, false);
         assert_eq!(m.food.price, 0.2);
         let before = m;
-        m.trade(4, true);
-        assert_eq!((m, m.price(4)), (before, -1.0));
+        m.trade(attribute::HEADROOM, true);
+        assert_eq!((m, m.price(attribute::HEADROOM)), (before, -1.0));
         // a swing so large that 2 more does not change it: no step
         m.ore.swing = 1.0e8;
         m.ore.trades = 5;
-        m.trade(ORE, true);
+        m.trade(attribute::ORE, true);
         assert_eq!((m.ore.price, m.ore.swing), (1.0, 1.0e8));
     }
 
@@ -306,7 +299,7 @@ mod tests {
     /// market above.
     fn trading() -> World {
         let mut attributes = vec![0.0; 250];
-        attributes[FEE] = 0.3;
+        attributes[attribute::MARKET_FEE.index()] = 0.3;
         let player = Player {
             resources: [100.0; 4],
             attributes,
@@ -330,7 +323,7 @@ mod tests {
     #[test]
     fn a_sale_gives_the_lot_s_worth_less_the_fee_at_the_old_price() {
         let mut t = trading();
-        t.sell(player_id(1), WOOD, 2).unwrap();
+        t.sell(player_id(1), attribute::WOOD, 2).unwrap();
         let p = &t.players[1];
         assert_eq!(p.resources, [100.0, 0.0, 100.0, 170.0]);
         assert_eq!((p.attributes[49], p.attributes[169]), (70.0, 70.0));
@@ -347,7 +340,7 @@ mod tests {
     fn a_purchase_costs_the_lot_s_worth_and_the_fee_at_least_21() {
         let mut t = trading();
         t.players[1].resources[attribute::GOLD.index()] = 170.0;
-        t.buy(player_id(1), FOOD, 2).unwrap();
+        t.buy(player_id(1), attribute::FOOD, 2).unwrap();
         let p = &t.players[1];
         assert_eq!(p.resources, [200.0, 100.0, 100.0, 21.0]);
         assert_eq!((p.attributes[49], p.attributes[169]), (0.0, 0.0));
@@ -357,14 +350,14 @@ mod tests {
         );
         let mut t = trading();
         t.players[1].commodity_volume = 10;
-        t.buy(player_id(1), WOOD, 1).unwrap();
+        t.buy(player_id(1), attribute::WOOD, 1).unwrap();
         assert_eq!(
             t.players[1].resources[attribute::GOLD.index()],
             100.0 - 21.0
         );
         // no volume, no purchase
         t.players[1].commodity_volume = 0;
-        t.buy(player_id(1), WOOD, 1).unwrap();
+        t.buy(player_id(1), attribute::WOOD, 1).unwrap();
         assert_eq!(t.players[1].resources[attribute::GOLD.index()], 79.0);
     }
 }

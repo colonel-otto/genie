@@ -69,14 +69,14 @@ impl World {
         };
         let player = self.players.player_mut(p)?;
         if let Some(e) = explored {
-            set(&mut player.attributes, attribute::EXPLORED.index(), e);
+            set(&mut player.attributes, attribute::EXPLORED, e);
         }
         let a = &player.attributes;
-        let ratio = get(a, attribute::KILLS.index())
-            - (get(a, attribute::UNITS_OWNED.index()) - get(a, attribute::POPULATION.index()));
-        set(&mut player.attributes, attribute::KILL_RATIO.index(), ratio);
-        if !at_most_or_unordered(0.0, get(&player.attributes, attribute::KILL_RATIO.index())) {
-            set(&mut player.attributes, attribute::KILL_RATIO.index(), 0.0);
+        let ratio = get(a, attribute::KILLS)
+            - (get(a, attribute::UNITS_OWNED) - get(a, attribute::POPULATION));
+        set(&mut player.attributes, attribute::KILL_RATIO, ratio);
+        if !at_most_or_unordered(0.0, get(&player.attributes, attribute::KILL_RATIO)) {
+            set(&mut player.attributes, attribute::KILL_RATIO, 0.0);
         }
         if !matches!(player.kind, HUMAN_TYPE | COMPUTER_TYPE) {
             return Ok(());
@@ -144,7 +144,7 @@ impl World {
             self.set_status(p, crate::players::game_status::LOST)?;
             set(
                 &mut self.players.player_mut(p)?.attributes,
-                attribute::SURVIVAL.index(),
+                attribute::SURVIVAL,
                 0.0,
             );
         }
@@ -177,10 +177,9 @@ impl World {
         let master = unit.master(&self.masters, p)?;
         let state = unit.life.state;
         if (1..=4).contains(&state)
-            && master
-                .storage
-                .iter()
-                .any(|&(kind, _, mode)| kind == POPULATION_STORAGE && mode == ALIVE_STORE_MODE)
+            && master.storage.iter().any(|&(kind, _, mode)| {
+                kind == Some(POPULATION_STORAGE) && mode == ALIVE_STORE_MODE
+            })
         {
             return Ok(true);
         }

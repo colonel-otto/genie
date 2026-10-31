@@ -12,6 +12,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute::{self, AttributeId};
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::{Player, World};
@@ -352,7 +353,7 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
     );
     assert_eq!(
         part([45.0, 0.0, 2.0], &built).unwrap().attributes,
-        [(0, 45.0)]
+        [(attribute::FOOD, 45.0)]
     );
     assert_eq!(
         part([45.0, 0.0, 68.0], &built),
@@ -397,7 +398,7 @@ pub(super) const TASK: BuildTask = BuildTask {
     range: 0.1,
     work_value: 1.0,
     work_rate: 1.0,
-    resource: -1,
+    resource: None,
     id: TaskId::of_task(-1),
     moving: None,
 };
@@ -650,7 +651,7 @@ fn foundation_at(id: i32, at: Position, life: Lifecycle, construction: Construct
 
 /// A building master `id` of class 3 without a stack unit, a foundation terrain or a
 /// technology, costing `cost`.
-fn built_master(id: MasterId, cost: Vec<(i16, i16, bool)>) -> Master {
+fn built_master(id: MasterId, cost: Vec<(AttributeId, i16, bool)>) -> Master {
     Master {
         id,
         kind: master_type::BUILDING,
@@ -729,11 +730,18 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         kinds,
         vec![vec![0.0; 40]; 5],
     ));
-    let mut master = built_master(ids::HOUSE, vec![(1, 25, true), (4, 5, false)]);
+    let mut master = built_master(
+        ids::HOUSE,
+        vec![(attribute::WOOD, 25, true), (attribute::HEADROOM, 5, false)],
+    );
     // a house's cost: 25 wood paid; the unpaid entry does not count
     master.clearance = Footprint::new(1.0, 1.0);
     master.terrain_bonus = 4;
-    master.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
+    master.storage = vec![
+        (Some(attribute::HEADROOM), 5.0, 4),
+        (None, 0.0, 0),
+        (None, 0.0, 0),
+    ];
     if let Some(b) = master.building.as_mut() {
         b.foundation_terrain = 27;
     }
@@ -779,7 +787,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
     /// The attributes the completion of master `id` gave, by index, and its history events.
     fn complete(
         id: MasterId,
-        cost: Vec<(i16, i16, bool)>,
+        cost: Vec<(AttributeId, i16, bool)>,
         main: bool,
     ) -> (Vec<(usize, f32)>, Vec<u8>) {
         let mut world = small_map();
@@ -832,8 +840,14 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
         let events = t.players[1].history.events.iter().map(|e| e.kind).collect();
         (gained, events)
     }
-    let castle = || vec![(2, 650, true)];
-    let wonder = || vec![(0, 1000, true), (1, 1000, true), (2, 1000, false)];
+    let castle = || vec![(attribute::STONE, 650, true)];
+    let wonder = || {
+        vec![
+            (attribute::FOOD, 1000, true),
+            (attribute::WOOD, 1000, true),
+            (attribute::STONE, 1000, false),
+        ]
+    };
     for main in [false, true] {
         assert_eq!(
             complete(ids::CASTLE, castle(), main),
@@ -851,11 +865,11 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
         );
     }
     assert_eq!(
-        complete(ids::MONASTERY, vec![(1, 175, true)], false),
+        complete(ids::MONASTERY, vec![(attribute::WOOD, 175, true)], false),
         (vec![(52, 1.0), (98, 175.0), (165, 175.0)], vec![])
     );
     assert_eq!(
-        complete(ids::MONASTERY, vec![(1, 175, true)], true),
+        complete(ids::MONASTERY, vec![(attribute::WOOD, 175, true)], true),
         (vec![(52, 1.0)], vec![])
     );
 }

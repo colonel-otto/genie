@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::gathering::gather::{
     DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_STOPS, GatherAction, GatherReads, IDLE, MOVED, Resource,
-    SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, Walks, food,
+    SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, Walks,
 };
 use crate::gathering::hunt::HuntTask;
 use crate::map::Footprint;
@@ -14,12 +14,14 @@ use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{TargetMoved, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::world::step::Step;
 
 /// What a gather's start takes besides its mover and stream ([`GatherAction::start`]'s
@@ -35,7 +37,7 @@ pub struct GatherStart<'a> {
     /// The game settings' test `FUN_141302150`.
     pub carry_rule: bool,
     /// What the gatherer carries, its resource kind and amount.
-    pub held: &'a mut (i16, f32),
+    pub held: &'a mut Held,
     /// What its `MoveTo`s' constructors read of the gatherer; its load is `held`'s.
     pub walks: Walks<'a>,
 }
@@ -99,15 +101,11 @@ pub struct MoveTarget {
 /// The productivity the time per stop reads (the constructor's and the update's): the player's
 /// attribute the task's `attribute_type2` names, as it is, or 1.0 for none (`DAT_14330eb8c`).
 #[must_use]
-pub fn productivity_of(attribute_type2: i16, attributes: &[f32]) -> f32 {
-    if attribute_type2 == -1 {
+pub fn productivity_of(attribute_type2: Option<AttributeId>, attributes: &[f32]) -> f32 {
+    let Some(attribute) = attribute_type2 else {
         return DEFAULT_PRODUCTIVITY;
-    }
-    usize::try_from(attribute_type2)
-        .ok()
-        .and_then(|i| attributes.get(i))
-        .copied()
-        .unwrap_or(0.0)
+    };
+    attributes.get(attribute.index()).copied().unwrap_or(0.0)
 }
 
 /// `set_state(4)`'s point of a farm's next stop (`0x140a8cd40` case 4): a tile of the farm's
@@ -211,14 +209,14 @@ impl GatherAction {
             walks,
         } = start;
         let kind = self.task.resource;
-        let both_food = food(kind) && food(held.0);
-        let drops = computer && held.1 == 0.0;
-        if (!carry_rule && !drops) || held.0 == kind || both_food {
-            if held.0 != kind && both_food {
-                held.0 = kind;
+        let both_food = crate::gathering::both_food(kind, held.kind);
+        let drops = computer && held.amount == 0.0;
+        if (!carry_rule && !drops) || held.kind == kind || both_food {
+            if held.kind != kind && both_food {
+                held.kind = kind;
             }
         } else {
-            *held = (kind, 0.0);
+            *held = Held { kind, amount: 0.0 };
         }
         let walks = Walks {
             held: *held,
@@ -237,7 +235,7 @@ impl GatherAction {
             self.target = None;
             return Ok(());
         }
-        if target.player == player && target.drop_site && 0.0 < held.1 {
+        if target.player == player && target.drop_site && 0.0 < held.amount {
             self.target = None;
             self.point = Position::from([-1.0; 3]);
             self.carry_to = Some(target.id);
@@ -279,7 +277,7 @@ impl GatherAction {
             farm_stops,
             rate,
         } = retarget;
-        let held = walks.held.1;
+        let held = walks.held.amount;
         self.worked = false;
         if Some(target.id) == self.target {
             match self.state {
@@ -425,7 +423,7 @@ impl GatherAction {
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
-        let held = walks.held.1;
+        let held = walks.held.amount;
         match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
             Some(t) if Some(t.id) == self.carry_to && self.state == DROP => Ok(()),
             Some(t) => {

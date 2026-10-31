@@ -9,6 +9,7 @@ use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::UnitAi;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -196,7 +197,7 @@ impl Step<'_> {
     /// # Errors
     ///
     /// [`give_load`]'s, or an attribute the owner does not have.
-    pub(crate) fn give_load(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
+    pub(crate) fn give_load(&mut self, kind: AttributeId, amount: f32) -> Result<(), GenieError> {
         let mut adds = Vec::new();
         crate::gathering::gather::unit::give_load(
             (

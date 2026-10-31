@@ -98,7 +98,7 @@ impl World {
         // JNC at 0x14108c11e: a NaN load counts) keeps the unit AI going
         let trading = unit.top_action_kind() == Some(action_type::TRADE)
             && crate::math::fmath::below_or_unordered(0.0, unit.life.amount)
-            && unit.life.attribute_type != -1;
+            && unit.life.attribute_type.is_some();
         let Some(ai) = unit.ai.as_ref() else {
             return Ok(());
         };
@@ -156,8 +156,7 @@ impl World {
         let sprite = crate::gathering::hunt::stand_sprite(
             &hunt.task,
             standing,
-            unit.life.attribute_type,
-            unit.life.amount,
+            unit.life.held(),
             &self.graphics,
         );
         // the target, then the second target
@@ -242,8 +241,7 @@ impl World {
         let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
             standing,
-            unit.life.attribute_type,
-            unit.life.amount,
+            unit.life.held(),
             &self.graphics,
         );
         let released = gather.halt(

@@ -35,8 +35,6 @@ use crate::world::World;
 const OBJECT_GONE: crate::GenieError =
     crate::GenieError::unreachable("an object a tech effect changes gone from its list");
 
-const TECHS_RESEARCHED: i16 = 0x15;
-const RESEARCH_SPENT: i16 = 0x63;
 /// The attribute the dependents' update sets to 1 when none of them is left (`+0x138`).
 const ATTRIBUTE_39: usize = 39;
 /// The master whose enabling first asks the game's mode (`0x26d`, `FUN_1416665b0`), and the
@@ -74,9 +72,6 @@ mod kind {
 /// The cost attributes a multiply by a negative amount turns into a cost entry's removal or
 /// addition (`FUN_1415c1f70`): 103 to 106.
 const COST_ATTRIBUTES: std::ops::RangeInclusive<i16> = 103..=106;
-/// The resource whose change (kind 1) grows the food the player's farms hold after the effect
-/// (`0x24`, `FUN_141615270`).
-const FARM_FOOD: i16 = 0x24;
 
 /// How slot 0x148 changes an attribute (its second argument): set (0, slot 0x150), add (1, slot
 /// 0x158) or multiply (2, slot 0x160); the masters' slots 0x18, 0x20, 0x28 and the objects' slots

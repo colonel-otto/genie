@@ -11,6 +11,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::attribute::AttributeId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::player_id;
@@ -345,7 +346,7 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
         crate::objects::masters::Task {
             action_type: 0x68,
             object_group: 3,
-            attribute_type4: 28,
+            attribute_type4: Some(AttributeId::numbered(28)),
             ..crate::objects::masters::Task::default()
         },
     ];
@@ -6265,7 +6266,7 @@ const TC: Attacker = Attacker {
     player: PlayerId::new(2),
     computer: false,
     state: 2,
-    held: -1,
+    held: None,
     top_action: None,
     master: ids::TOWN_CENTRE,
     kind: BUILDING,

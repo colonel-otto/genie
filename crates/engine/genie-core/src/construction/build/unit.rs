@@ -113,7 +113,7 @@ impl Unit {
         let master = self.master(&c.w.masters, c.player);
         // FUN_140aadc50 drops only a kind the player has (FUN_140efe5b0)
         let attributes = c.w.players.player(c.player)?.attributes.len();
-        let has_kind = usize::try_from(self.life.attribute_type).is_ok_and(|k| k < attributes);
+        let has_kind = (self.life.attribute_type).is_some_and(|k| k.index() < attributes);
         Ok(BuildReads {
             site,
             built,
@@ -148,7 +148,7 @@ impl Unit {
             id: self.id,
             master,
             player: c.player,
-            held: (self.life.attribute_type, self.life.amount),
+            held: self.life.held(),
             attribute_95: c
                 .w
                 .players

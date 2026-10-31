@@ -11,6 +11,7 @@ use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::players::attribute::AttributeId;
 use genie_diff::Diff;
 
 pub(crate) mod death_parts;
@@ -36,6 +37,46 @@ pub enum Class {
     Animated,
 }
 
+/// What an object holds (`+0x308` and `+0x310`), as a reader of the object takes it: the
+/// attribute (none for −1) and the amount.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Held {
+    /// The attribute, none for −1.
+    pub kind: Option<AttributeId>,
+    /// The amount.
+    pub amount: f32,
+}
+
+/// The static init's storage (`FUN_1411a45a0`) of a new object of a master with storage
+/// `storage`: the entries of flags 1, 2 and 32 with an attribute go to its `owner` at once
+/// (`FUN_141193860`); the last entry of flag 0 with one is what the object holds
+/// (`FUN_141193710`; none without one).
+///
+/// # Errors
+///
+/// An attribute the owner does not have.
+pub(crate) fn static_storage(
+    owner: &mut crate::world::player::Player,
+    storage: &[(Option<AttributeId>, f32, u8)],
+) -> Result<Held, GenieError> {
+    let mut held = Held::default();
+    for &(kind, amount, flag) in storage {
+        let Some(kind) = kind else {
+            continue;
+        };
+        if matches!(flag, 1 | 2 | 32) {
+            owner.add_attribute(kind, amount)?;
+        }
+        if flag == 0 {
+            held = Held {
+                kind: Some(kind),
+                amount,
+            };
+        }
+    }
+    Ok(held)
+}
+
 /// The fields the dead-object steps read and write, with their offsets in 158041.
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Lifecycle {
@@ -45,9 +86,9 @@ pub struct Lifecycle {
     pub state: u8,
     /// The masked hit points (`+0x278`).
     pub hp: f32,
-    /// `+0x308`, −1 for none.
-    pub attribute_type: i16,
-    /// `+0x310`.
+    /// `+0x308`: the attribute of what the object holds, none for −1.
+    pub attribute_type: Option<AttributeId>,
+    /// `+0x310`: how much it holds.
     pub amount: f32,
     /// The master's death sprite (`+0x480`, the slot 0x7a0's): an animated object with one plays
     /// it in state 4.
@@ -80,7 +121,7 @@ impl Default for Lifecycle {
             class: Class::Static,
             state: 2,
             hp: 1.0,
-            attribute_type: -1,
+            attribute_type: None,
             amount: 0.0,
             dying_sprite: None,
             death_spawn: false,
@@ -101,6 +142,15 @@ pub fn seconds(dt: u32) -> f32 {
 }
 
 impl Lifecycle {
+    /// What the object holds.
+    #[must_use]
+    pub const fn held(&self) -> Held {
+        Held {
+            kind: self.attribute_type,
+            amount: self.amount,
+        }
+    }
+
     /// Whether the unit AI still runs: slot 4 (`0x140c66b10`) returns at once above state 2.
     #[must_use]
     pub const fn is_alive(&self) -> bool {
@@ -192,7 +242,7 @@ impl Lifecycle {
         let master = self
             .master
             .ok_or(GenieError::unsupported("no master data for a dead object"))?;
-        if self.attribute_type == -1 || self.amount <= 0.0 {
+        if self.attribute_type.is_none() || self.amount <= 0.0 {
             if master.undead {
                 return Err(GenieError::unsupported("an undead object (state 6)"));
             }
@@ -211,6 +261,8 @@ impl Lifecycle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::players::attribute;
+    use crate::players::attribute::AttributeId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
 
@@ -249,7 +301,7 @@ mod tests {
         // FLARE3 (MarvinBlue/426048731 object 10025): 1.0 of attribute 12, decay 1.0 per second;
         // the game's states after updates 1 to 13, then it is gone in update 14
         let flare = Lifecycle {
-            attribute_type: 12,
+            attribute_type: Some(AttributeId::numbered(12)),
             amount: 1.0,
             master: Some(MasterData {
                 decay: 1.0,
@@ -274,7 +326,7 @@ mod tests {
     fn the_decayed_amount_never_drops_below_zero() {
         let mut life = Lifecycle {
             state: 3,
-            attribute_type: 12,
+            attribute_type: Some(AttributeId::numbered(12)),
             amount: 0.05,
             master: Some(MasterData {
                 decay: 1.0,
@@ -294,7 +346,7 @@ mod tests {
     fn an_animated_object_in_state_3_goes_on_to_4_or_5() {
         let held = |class, dying_sprite| Lifecycle {
             state: 3,
-            attribute_type: 15,
+            attribute_type: Some(attribute::MEAT),
             amount: 100.0,
             dying_sprite,
             ..dead(class)
@@ -379,7 +431,7 @@ mod tests {
         // MarvinBlue/426048731's Gaia objects 0, 1, 43, 44 and 47 in the header's state 7
         let mut life = Lifecycle {
             state: 7,
-            attribute_type: 0,
+            attribute_type: Some(attribute::FOOD),
             ..dead(Class::Animated)
         };
         let mut object = Well512::default();
@@ -393,7 +445,7 @@ mod tests {
         // MarvinBlue/426048731's tree 9357 in update 1128: its second hit left 0 hit points; it
         // dies (state 3) and its falling sprite takes a random facet from the Object stream
         let mut tree = Lifecycle {
-            attribute_type: 1,
+            attribute_type: Some(attribute::WOOD),
             amount: 100.0,
             death_spawn: true,
             death_facets: Some(8),
@@ -414,5 +466,42 @@ mod tests {
         assert!(life.is_alive());
         let _ = life.update(0.104, &mut Well512::default(), false).unwrap();
         assert!(!life.is_alive());
+    }
+
+    /// The static init's storage (a new missile's too): flags 1, 2 and 32 with an attribute
+    /// go to the owner (resources and attributes alike), one without an attribute (−1) does
+    /// not; the last of flag 0 is what the object holds.
+    #[test]
+    fn a_new_object_s_storage_gives_its_owner_flags_1_2_and_32_and_holds_flag_0() {
+        let mut owner = crate::world::player::Player {
+            attributes: vec![0.0; 20],
+            ..crate::world::player::Player::default()
+        };
+        let storage = [
+            (Some(attribute::WOOD), 2.0, 1),
+            (Some(attribute::POPULATION), 5.0, 2),
+            (Some(AttributeId::numbered(9)), 2.0, 0),
+            (None, 1.0, 32),
+            (Some(AttributeId::numbered(12)), 3.0, 32),
+            (Some(attribute::RELICS_HELD), 1.5, 0),
+            (Some(AttributeId::numbered(13)), 4.0, 4),
+        ];
+        assert_eq!(
+            static_storage(&mut owner, &storage),
+            Ok(Held {
+                kind: Some(attribute::RELICS_HELD),
+                amount: 1.5
+            })
+        );
+        assert_eq!(owner.resources, [0.0, 2.0, 0.0, 0.0]);
+        let gained: Vec<(usize, f32)> = owner
+            .attributes
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|&(_, v)| v != 0.0)
+            .collect();
+        assert_eq!(gained, [(11, 5.0), (12, 3.0)]);
+        assert_eq!(static_storage(&mut owner, &[]), Ok(Held::default()));
     }
 }

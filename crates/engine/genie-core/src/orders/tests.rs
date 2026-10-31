@@ -7,6 +7,7 @@ use crate::math::fmath::BVector;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -15,6 +16,9 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
+use crate::test_ids::carrying;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -121,7 +125,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         crate::unit_ai::task_finder::DropSite {
             building: ids::PASTURE,
             worker_class: Some(class::LIVESTOCK),
-            resource_types: vec![0],
+            resource_types: vec![attribute::FOOD],
             ..crate::unit_ai::task_finder::DropSite::default()
         },
     ];
@@ -144,7 +148,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
             ..Master::default()
         },
     ]);
-    t.players[0].objects[0].life.attribute_type = 0;
+    t.players[0].objects[0].life.attribute_type = Some(attribute::FOOD);
     t.players[0].objects[0].place_for_test(Position::new(10.0, 10.0, 0.0));
     for (id, x, state) in [
         (500, 30.0, 2),
@@ -165,7 +169,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         t.table_drop_site(
             PlayerId::new(0),
             Point::new(10.0, 10.0),
-            0,
+            Some(attribute::FOOD),
             class::LIVESTOCK
         )
         .unwrap(),
@@ -175,7 +179,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         t.table_drop_site(
             PlayerId::new(0),
             Point::new(10.0, 10.0),
-            1,
+            Some(attribute::WOOD),
             class::LIVESTOCK
         )
         .unwrap(),
@@ -212,7 +216,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::VILLAGER_MALE,
             state: 2,
-            attribute_type: 1,
+            attribute_type: Some(attribute::WOOD),
             amount: 5.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
@@ -232,7 +236,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                     range: 0.1,
                     work_value: 1.0,
                     work_rate: 1.0,
-                    resource: -1,
+                    resource: None,
                     id: TaskId::of_task(-1),
                     moving: None,
                 },
@@ -341,7 +345,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: master_id(68),
         worker_class: Some(class::VILLAGER),
-        resource_types: vec![1],
+        resource_types: vec![attribute::WOOD],
         ..crate::unit_ai::task_finder::DropSite::default()
     }];
     t.unit_order(player_id(0), &object_ids([10]), 8).unwrap();
@@ -400,7 +404,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: master_id(68),
         worker_class: Some(class::VILLAGER),
-        resource_types: vec![1],
+        resource_types: vec![attribute::WOOD],
         ..crate::unit_ai::task_finder::DropSite::default()
     }];
     t.unit_order(player_id(0), &object_ids([10]), 7).unwrap();
@@ -1598,7 +1602,7 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
         attribute_type,
         ..crate::objects::masters::Task::default()
     };
-    let run = |master: MasterId, held: (i16, f32), task: crate::objects::masters::Task| {
+    let run = |master: MasterId, held: Held, task: crate::objects::masters::Task| {
         let mut t = soldiers(&[(11, master.get(), Point::new(20.0, 20.0))], &[]);
         for (id, class) in [(83, class::VILLAGER), (4, class::CLASS_6)] {
             if let Some(m) = t.masters[1].get_mut(master_id(id)) {
@@ -1606,7 +1610,7 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
             }
         }
         let unit = &mut t.players[1].objects[0];
-        (unit.life.attribute_type, unit.life.amount) = held;
+        (unit.life.attribute_type, unit.life.amount) = (held.kind, held.amount);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
         t.carried_resource_test(PlayerId::new(1), 0, &task).unwrap();
         let unit = &t.players[1].objects[0];
@@ -1620,33 +1624,41 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
     assert_eq!(
         run(
             ids::VILLAGER_MALE,
-            (1, 10.0),
-            task(crate::gathering::gather::GATHER, 3)
+            carrying(Some(attribute::WOOD), 10.0),
+            task(crate::gathering::gather::GATHER, Some(attribute::GOLD))
         ),
-        (3, 0.0, 0)
+        (Some(attribute::GOLD), 0.0, 0)
     );
     // meat (17) held, a hunt of food (0): both food, kept
     assert_eq!(
-        run(ids::VILLAGER_MALE, (17, 10.0), task(HUNT, 0)),
-        (17, 10.0, 0)
+        run(
+            ids::VILLAGER_MALE,
+            carrying(Some(AttributeId::numbered(17)), 10.0),
+            task(HUNT, Some(attribute::FOOD))
+        ),
+        (Some(AttributeId::numbered(17)), 10.0, 0)
     );
     // the same resource: kept
     assert_eq!(
         run(
             ids::VILLAGER_MALE,
-            (3, 4.0),
-            task(crate::gathering::gather::GATHER, 3)
+            carrying(Some(attribute::GOLD), 4.0),
+            task(crate::gathering::gather::GATHER, Some(attribute::GOLD))
         ),
-        (3, 4.0, 0)
+        (Some(attribute::GOLD), 4.0, 0)
     );
     // an attack task: a soldier's retargeting goes off, a villager's stays on
     assert_eq!(
-        run(master_id(4), (-1, 0.0), task(ATTACK_TASK, -1)),
-        (-1, 0.0, 1)
+        run(master_id(4), carrying(None, 0.0), task(ATTACK_TASK, None)),
+        (None, 0.0, 1)
     );
     assert_eq!(
-        run(ids::VILLAGER_MALE, (-1, 0.0), task(ATTACK_TASK, -1)),
-        (-1, 0.0, 0)
+        run(
+            ids::VILLAGER_MALE,
+            carrying(None, 0.0),
+            task(ATTACK_TASK, None)
+        ),
+        (None, 0.0, 0)
     );
 }
 
@@ -1963,11 +1975,11 @@ fn switch_masters() -> (Master, Master) {
         radius: Footprint::new(0.2, 0.2),
         standing_sprite: 10,
         storage: vec![
-            (4, 1.0, 2),
-            (11, 1.0, 16),
-            (12, 2.0, 32),
-            (13, 3.0, 1),
-            (-1, 1.0, 2),
+            (Some(attribute::HEADROOM), 1.0, 2),
+            (Some(attribute::POPULATION), 1.0, 16),
+            (Some(AttributeId::numbered(12)), 2.0, 32),
+            (Some(AttributeId::numbered(13)), 3.0, 1),
+            (None, 1.0, 2),
         ],
         ..Master::default()
     };
@@ -1978,7 +1990,10 @@ fn switch_masters() -> (Master, Master) {
         hit_points: 60,
         radius: Footprint::new(0.3, 0.3),
         standing_sprite: 11,
-        storage: vec![(4, 1.0, 2), (14, 1.0, 16)],
+        storage: vec![
+            (Some(attribute::HEADROOM), 1.0, 2),
+            (Some(AttributeId::numbered(14)), 1.0, 16),
+        ],
         volley_fire: 3.0,
         obstruction_type: 3,
         obstruction_class: 1,
@@ -2023,8 +2038,15 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
         ..unit(20.0, 2)
     };
     let (switched, u, record) = switched_in_the_open(showing, &old, &next, &[10, 11]).unwrap();
-    assert_eq!(switched.leaving, [(4, -1.0), (11, -1.0), (12, -2.0)]);
-    assert_eq!(switched.coming, [(4, 1.0)]);
+    assert_eq!(
+        switched.leaving,
+        [
+            (attribute::HEADROOM, -1.0),
+            (attribute::POPULATION, -1.0),
+            (AttributeId::numbered(12), -2.0)
+        ]
+    );
+    assert_eq!(switched.coming, [(attribute::HEADROOM, 1.0)]);
     assert!(switched.promoted);
     assert_eq!(
         (u.life.master_id, u.life.hp, u.firepower),
@@ -2584,7 +2606,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
                 range: 0.1,
                 work_value: 1.0,
                 work_rate: 1.0,
-                resource: -1,
+                resource: None,
                 id: TaskId::of_task(-1),
                 moving: None,
             },
@@ -3947,7 +3969,7 @@ fn foraging() -> World {
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
     t.players[1].attributes = vec![0.0; 10];
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
     t
 }
 
@@ -3968,7 +3990,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         t.drop_off_ask(PlayerId::new(1), 0, (false, true)).unwrap(),
         None
     );
-    t.players[1].objects[0].life.attribute_type = 1;
+    t.players[1].objects[0].life.attribute_type = Some(attribute::WOOD);
     assert_eq!(
         t.drop_off_ask(PlayerId::new(1), 0, (true, false)).unwrap(),
         ask(DropOffBy::Gather, false, false)
@@ -3985,7 +4007,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
     );
     // a Hunt and a Build of a wood task, aimed
     let mut hunt = crate::gathering::hunt::tests::hunting(600);
-    hunt.task.resource = 1;
+    hunt.task.resource = Some(attribute::WOOD);
     let v = &mut t.players[1].objects[0];
     v.actions.set_gather(None);
     v.actions.set_hunt(Some(hunt));
@@ -3997,7 +4019,7 @@ fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
         range: 0.1,
         work_value: 1.0,
         work_rate: 1.0,
-        resource: 1,
+        resource: Some(attribute::WOOD),
         id: TaskId::of_task(-1),
         moving: None,
     };
@@ -4038,7 +4060,7 @@ fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
     assert_eq!((g.carry_to, g.state), (Some(object_id(700)), 8));
     assert_eq!(t.players[1].objects[2].workers, 1);
     let mut t = foraging();
-    t.players[1].objects[0].life.attribute_type = 1;
+    t.players[1].objects[0].life.attribute_type = Some(attribute::WOOD);
     let before = t.players[1].objects[0].actions.gather().copied();
     t.unit_order(player_id(1), &object_ids([9175]), 7).unwrap();
     let v = &t.players[1].objects[0];
@@ -4071,7 +4093,7 @@ fn a_drop_off_order_takes_a_hunt_to_its_site() {
     let v = &mut t.players[1].objects[0];
     v.actions.set_gather(None);
     let mut hunt = crate::gathering::hunt::tests::hunting(600);
-    hunt.task.resource = 17;
+    hunt.task.resource = Some(AttributeId::numbered(17));
     // the sprites' table of the world holds none
     hunt.task.sprites = [-1; 4];
     v.actions.set_hunt(Some(hunt));
@@ -4358,7 +4380,7 @@ fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
         range: 0.1,
         work_value: 1.0,
         work_rate: 1.0,
-        resource: -1,
+        resource: None,
         id: TaskId::test(3),
         moving: None,
     };

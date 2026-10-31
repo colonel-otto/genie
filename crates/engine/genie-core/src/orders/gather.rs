@@ -7,6 +7,7 @@ use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE;
@@ -82,7 +83,7 @@ impl World {
         let by = self.releaser(player, idx)?;
         // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
         // capacity and the task's productivity attribute (none: 1.0)
-        let productivity = unit.actions.gather().map_or(-1, |g| g.task.productivity);
+        let productivity = unit.actions.gather().and_then(|g| g.task.productivity);
         let rate = crate::gathering::gather::StopRate {
             work_rate: unit.work_rate_powerup + me.work_rate,
             capacity: f32::from(me.capacity),
@@ -379,7 +380,7 @@ impl World {
             .body
             .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
-        let mut held = (unit.life.attribute_type, unit.life.amount);
+        let mut held = unit.life.held();
         let rng = self.streams.get(Stream::Action);
         gather.start(
             GatherStart {
@@ -393,7 +394,10 @@ impl World {
             mover,
             rng,
         )?;
-        (unit.life.attribute_type, unit.life.amount) = held;
+        Held {
+            kind: unit.life.attribute_type,
+            amount: unit.life.amount,
+        } = held;
         let drops = gather.target.is_none() && gather.carry_to == Some(target);
         // a farm another farmer works: the start let it go (set_state 11, then slot 0x68)
         let waits = gather.target.is_none() && gather.carry_to != Some(target);
@@ -418,7 +422,7 @@ impl World {
     ) -> Result<Arms, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
-        let moving = task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
+        let moving = task.walk_sprite_id(unit.life.held());
         Ok(crate::combat::attack::arms(
             master,
             &self.graphics,
@@ -552,7 +556,7 @@ impl World {
         let unit = self.players.live_mut(player, idx)?;
         let walks = unit.move_walks(&self.masters, player, &self.graphics)?;
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-        let mut held = (unit.life.attribute_type, unit.life.amount);
+        let mut held = unit.life.held();
         let (hunt, arrived) = HuntAction::start(
             HuntStart {
                 task,
@@ -567,7 +571,10 @@ impl World {
             arms,
             mover,
         )?;
-        (unit.life.attribute_type, unit.life.amount) = held;
+        Held {
+            kind: unit.life.attribute_type,
+            amount: unit.life.amount,
+        } = held;
         // an Attack whose MoveTo started arrived: the unit shows the idle sprite (slot 0x68) and
         // its `+0x7b8` clears (`Attack::arrived_sprite`)
         if arrived {

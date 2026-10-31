@@ -9,6 +9,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
+use crate::players::attribute;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::player_id;
@@ -446,7 +447,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
             },
         );
         let p = &mut t.players[1];
-        p.attributes[crate::production::IN_PRODUCTION.index()] = 3.0;
+        p.attributes[attribute::IN_PRODUCTION.index()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
             ai_type: UnitAiType::PREDATOR,
             current_order: None,
@@ -464,7 +465,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     assert_eq!(p.objects.len(), before + 1);
     let made = p.objects.last().unwrap();
     assert_eq!(made.life.master_id, ids::VILLAGER_MALE);
-    assert_eq!(p.attributes[crate::production::IN_PRODUCTION.index()], 2.0);
+    assert_eq!(p.attributes[attribute::IN_PRODUCTION.index()], 2.0);
     let completed = p.objects[2]
         .ai
         .as_ref()
@@ -553,7 +554,7 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
             },
         );
         let p = &mut t.players[1];
-        p.attributes[crate::production::IN_PRODUCTION.index()] = 3.0;
+        p.attributes[attribute::IN_PRODUCTION.index()] = 3.0;
         p.objects[2].ai = Some(UnitAi {
             ai_type: UnitAiType::PREDATOR,
             current_order: None,
@@ -817,7 +818,10 @@ fn remains_world() -> World {
         kind: master_type::STATIC,
         death_sprite: 20,
         standing_sprite: -1,
-        storage: vec![(4, 1.0, 2), (11, 5.0, 0)],
+        storage: vec![
+            (Some(attribute::HEADROOM), 1.0, 2),
+            (Some(attribute::POPULATION), 5.0, 0),
+        ],
         ..Master::default()
     };
     let moving_remains = Master {
@@ -861,7 +865,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
     let u = &t.players[1].objects[i];
     assert_eq!(
         (u.life.class, u.life.attribute_type, u.life.amount),
-        (Class::Static, 11, 5.0)
+        (Class::Static, Some(attribute::POPULATION), 5.0)
     );
     assert_eq!((u.life.death_facets, u.sprite), (Some(8), None));
     assert_eq!(t.players[1].attributes[4], food + 1.0);

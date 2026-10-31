@@ -13,6 +13,8 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -30,7 +32,11 @@ fn villager(master: Option<MasterId>, count: i16, food: f32) -> Entry {
         master,
         count,
         tech: None,
-        costs: [(0, food), (-1, 0.0), (4, 1.0)],
+        costs: [
+            (Some(attribute::FOOD), food),
+            (None, 0.0),
+            (Some(attribute::HEADROOM), 1.0),
+        ],
         serial: 0,
         button: -1,
         train_time: 25,
@@ -102,8 +108,11 @@ fn game() -> World {
             id: ids::VILLAGER_MALE,
             class: class::VILLAGER,
             kind: master_type::COMBAT,
-            cost: vec![(0, 46, true), (4, 1, false)],
-            storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
+            cost: vec![(attribute::FOOD, 46, true), (attribute::HEADROOM, 1, false)],
+            storage: vec![
+                (Some(attribute::HEADROOM), -1.0, 2),
+                (Some(attribute::POPULATION), 1.0, 2),
+            ],
             ..Master::default()
         },
     ]);
@@ -168,11 +177,11 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let task = crate::gathering::hunt::HuntTask {
         id: TaskId::test(0),
         range: 0.25,
-        resource: 17,
+        resource: Some(AttributeId::numbered(17)),
         sprites: [-1; 4],
         work_value: 1.0,
-        productivity: -1,
-        kind4: -1,
+        productivity: None,
+        kind4: None,
     };
     let bush = crate::gathering::gather::Resource {
         id: ObjectId::NOBODY,
@@ -202,7 +211,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         range: 0.0,
         work_value: 1.0,
         work_rate: 1.0,
-        resource: -1,
+        resource: None,
         id: TaskId::of_task(-1),
         moving: None,
     };
@@ -329,11 +338,11 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             task: HuntTask {
                 id: TaskId::test(0),
                 range: 0.0,
-                resource: -1,
+                resource: None,
                 sprites: [-1; 4],
                 work_value: 0.0,
-                productivity: -1,
-                kind4: -1,
+                productivity: None,
+                kind4: None,
             },
             attack: None,
             move_to: None,
@@ -528,7 +537,11 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
 fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let archer = |count| Entry {
         master: Some(master_id(4)),
-        costs: [(1, 25.0), (3, 45.0), (4, 1.0)],
+        costs: [
+            (Some(attribute::WOOD), 25.0),
+            (Some(attribute::GOLD), 45.0),
+            (Some(attribute::HEADROOM), 1.0),
+        ],
         ..villager(Some(master_id(4)), count, 0.0)
     };
     let mut t = game();
@@ -536,8 +549,12 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     *ms = Masters::new(ms.iter().cloned().chain([Master {
         id: master_id(4),
         kind: master_type::COMBAT,
-        cost: vec![(1, 25, true), (3, 45, true), (4, 1, false)],
-        storage: vec![(4, -1.0, 2)],
+        cost: vec![
+            (attribute::WOOD, 25, true),
+            (attribute::GOLD, 45, true),
+            (attribute::HEADROOM, 1, false),
+        ],
+        storage: vec![(Some(attribute::HEADROOM), -1.0, 2)],
         ..Master::default()
     }]));
     t.players[1].attributes[80] = 4.0;
@@ -553,7 +570,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
     let research = Entry {
         master: None,
         tech: Some(tech_id(22)),
-        costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
+        costs: [(Some(attribute::GOLD), 50.0), (None, 0.0), (None, 0.0)],
         ..villager(None, 1, 0.0)
     };
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
@@ -576,7 +593,7 @@ fn researching(progress: f32) -> World {
     let entry = Entry {
         master: None,
         tech: Some(tech_id(22)),
-        costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
+        costs: [(Some(attribute::GOLD), 50.0), (None, 0.0), (None, 0.0)],
         ..villager(None, 3, 0.0)
     };
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
@@ -596,7 +613,7 @@ fn researching(progress: f32) -> World {
         pending: 3,
         research_done: progress,
         research_cap: -1,
-        overrides: [(-1, -1, -2); 3],
+        overrides: [(-1, None, -2); 3],
         locations: vec![Location {
             building: Some(ids::TOWN_CENTRE),
             time: 25,
@@ -613,7 +630,11 @@ fn researching(progress: f32) -> World {
         paid,
     };
     defs[22] = TechDef {
-        costs: [cost(3, 50, 1), cost(1, 20, 2), cost(-1, 0, 0)],
+        costs: [
+            cost(Some(attribute::GOLD), 50, 1),
+            cost(Some(attribute::WOOD), 20, 2),
+            cost(None, 0, 0),
+        ],
         locations: vec![(109, 25)],
         ..TechDef::default()
     };
@@ -636,7 +657,7 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
     let s = &p.techs[22];
     assert_eq!((s.state, s.pending, s.research_done), (1, 0, 0.0));
     let tc = &p.objects[0];
-    assert_eq!(tc.store, [(1, 20.0)]);
+    assert_eq!(tc.store, [(attribute::WOOD, 20.0)]);
     let production = tc.production.as_ref().unwrap();
     assert_eq!(production.disabled_techs, [tech_id(5)]);
     assert_eq!((production.queue.count, production.queue.total), (0, 0));

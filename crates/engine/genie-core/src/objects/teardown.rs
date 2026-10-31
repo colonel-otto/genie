@@ -241,7 +241,7 @@ mod tests {
             range: 0.0,
             work_value: 1.0,
             work_rate: 1.0,
-            resource: -1,
+            resource: None,
             id: TaskId::of_task(-1),
             moving: None,
         };

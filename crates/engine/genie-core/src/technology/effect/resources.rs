@@ -15,17 +15,17 @@ use crate::world::slots::{CheckedIndex, PlayerSlots};
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
 /// 0x78, [`World::rebuild_vision`]) and the player's map files every tile its masks reach as new
 /// ([`World::refill_tiles`], `FUN_141285cb0`).
-pub(super) const ALLIED_VISION: i16 = 0x32;
+pub(super) const ALLIED_VISION: AttributeId = AttributeId::numbered(0x32);
 /// The attribute that shares every player's sight (0xb7): the masks are rebuilt.
-pub(super) const SHARED_VISION: i16 = 0xb7;
+pub(super) const SHARED_VISION: AttributeId = AttributeId::numbered(0xb7);
 /// The attribute of the town centres' flare reveal across the players (0xc4, Spies' "Treason"):
 /// a player with it above 0 changes nothing; else each other player with it at most 0 takes the
 /// amount too.
-pub(super) const SPREAD_ATTRIBUTE: i16 = 0xc4;
+pub(super) const SPREAD_ATTRIBUTE: AttributeId = AttributeId::numbered(0xc4);
 /// The attribute whose set above 0 calls the scripts' `EffectFunction<n>` (0x21, `FUN_14162d610`).
-pub(super) const EFFECT_FUNCTION: i16 = 0x21;
+pub(super) const EFFECT_FUNCTION: AttributeId = AttributeId::numbered(0x21);
 /// The attribute giving the exponent the farms' food grows by (31, `FUN_141615270`).
-pub(super) const FARM_EXPONENT: i16 = 31;
+pub(super) const FARM_EXPONENT: AttributeId = AttributeId::numbered(31);
 /// The masters whose objects' food a farm-food change grows (`DAT_142f925d0`'s keys: 50, 1187,
 /// 1897, 1893), in that order.
 pub(super) const FARMS: [MasterId; 4] = [
@@ -46,7 +46,7 @@ impl World {
     pub(super) fn modify_resource(
         &mut self,
         p: PlayerId,
-        attribute: i16,
+        attribute: AttributeId,
         amount: f32,
         mode: u8,
     ) -> Result<(), GenieError> {
@@ -64,7 +64,7 @@ impl World {
     pub(super) fn multiply_resource(
         &mut self,
         p: PlayerId,
-        attribute: i16,
+        attribute: AttributeId,
         v: f32,
     ) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
@@ -106,16 +106,14 @@ impl World {
     pub(super) fn store_attribute(
         &mut self,
         p: PlayerId,
-        attribute: i16,
+        attribute: AttributeId,
         v: f32,
     ) -> Result<(), GenieError> {
         let player = self.players.player_mut(p)?;
-        let Some(i) = usize::try_from(attribute)
-            .ok()
-            .filter(|&i| i < player.attributes.len())
-        else {
+        let i = attribute.index();
+        if player.attributes.len() <= i {
             return Ok(());
-        };
+        }
         if i < 4 {
             *player.resources.checked_mut(i)? = v;
         } else {
@@ -132,7 +130,7 @@ impl World {
     pub(crate) fn set_player_attribute(
         &mut self,
         p: PlayerId,
-        attribute: i16,
+        attribute: AttributeId,
         v: f32,
     ) -> Result<(), GenieError> {
         match attribute {
@@ -170,7 +168,7 @@ impl World {
     pub(crate) fn add_player_attribute(
         &mut self,
         p: PlayerId,
-        attribute: i16,
+        attribute: AttributeId,
         v: f32,
     ) -> Result<(), GenieError> {
         match attribute {
@@ -188,10 +186,7 @@ impl World {
                 }
             }
             _ => {
-                return self
-                    .players
-                    .player_mut(p)?
-                    .add_attribute(AttributeId::try_from(attribute)?, v);
+                return self.players.player_mut(p)?.add_attribute(attribute, v);
             }
         }
         // FUN_14165d040's store of the sum

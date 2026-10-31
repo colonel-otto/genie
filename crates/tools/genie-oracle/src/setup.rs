@@ -10,6 +10,7 @@ use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
 use genie_core::players::PlayerId;
+use genie_core::players::attribute::AttributeId;
 use genie_core::world::{Player, World};
 use genie_save::{Header, PlayerSection};
 
@@ -18,10 +19,10 @@ pub(super) fn tech_state(
     t: &genie_save::generated::world::TechPlayerTree,
 ) -> genie_core::technology::TechState {
     let o = |j: usize| {
-        t.cost_override.get(j).map_or((-1, -1, -2), |e| {
+        t.cost_override.get(j).map_or((-1, None, -2), |e| {
             (
                 e.tech_player_tree_cost_amount_override as i16,
-                e.tech_player_tree_cost_attribute_type_override as i16,
+                AttributeId::of_data(e.tech_player_tree_cost_attribute_type_override as i16),
                 e.tech_player_tree_cost_attribute_used_override as i16,
             )
         })

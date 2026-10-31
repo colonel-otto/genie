@@ -3,6 +3,7 @@ use crate::masters::{DefaultAction, MasterTable};
 use crate::sub_actions::{DefaultStart, default_task, production, saved_attack};
 use crate::test_ids::object_id;
 use genie_core::movement::move_to::MoveTo;
+use genie_core::players::attribute;
 use genie_core::production::Making;
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByType, RgeActionMoveTo, RgeObject,
@@ -49,7 +50,7 @@ fn a_building_s_production_holds_its_slots_and_make_action() {
     let p = production(&town_centre).unwrap().unwrap();
     assert_eq!(p.queue.slots.len(), 2);
     assert_eq!(p.queue.slots[1].serial, 1);
-    assert_eq!(p.queue.slots[0].costs[0], (0, 50.0));
+    assert_eq!(p.queue.slots[0].costs[0], (Some(attribute::FOOD), 50.0));
     assert_eq!((p.queue.count, p.queue.next_serial), (1, 2));
     assert!(p.queue.enabled);
     let Some(Making::Unit(made)) = p.action else {

@@ -2,6 +2,7 @@
 //! it and its repair.
 
 use crate::GenieError;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -85,10 +86,13 @@ pub(super) fn drop_off_finding<'m>(
     filter: i16,
     dip: &impl Diplomacy,
 ) -> Finding<'m> {
-    let (held_kind, held_amount) = actor.held;
+    let Held {
+        kind: held_kind,
+        amount: held_amount,
+    } = actor.held;
     // dropping off what the unit carries at its player's finished drop site: the tasks of
     // gathering (5, 110, 111) for what it carries
-    if held_kind != -1
+    if held_kind.is_some()
         && 0.0 < held_amount
         && t.state == 2
         && t.player == actor.player

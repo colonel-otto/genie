@@ -36,6 +36,7 @@
 //! [`World::world_player_tail`]: crate::world::World::world_player_tail
 
 use crate::math::fmath::below_or_unordered;
+use crate::players::attribute::AttributeId;
 
 mod counts;
 mod income;
@@ -95,7 +96,7 @@ const fn full_tree_civ(mode_680: i32) -> i32 {
     }
 }
 /// The resource storage that keeps its player (`0x14163b86b`): attribute 11 …
-const POPULATION_STORAGE: i16 = 11;
+const POPULATION_STORAGE: AttributeId = crate::players::attribute::POPULATION;
 /// … with the store mode 0x20 (`0x14163b89d`).
 const ALIVE_STORE_MODE: u8 = 0x20;
 
@@ -136,13 +137,13 @@ impl VictoryTimes {
 }
 
 /// Attribute `k` of `attributes`, 0 past them (the game's array holds them all).
-fn get(attributes: &[f32], k: usize) -> f32 {
-    attributes.get(k).copied().unwrap_or(0.0)
+fn get(attributes: &[f32], k: AttributeId) -> f32 {
+    attributes.get(k.index()).copied().unwrap_or(0.0)
 }
 
 /// Attribute `k` of `attributes` takes `v`; none past them (the game's array holds them all).
-fn set(attributes: &mut [f32], k: usize, v: f32) {
-    if let Some(a) = attributes.get_mut(k) {
+fn set(attributes: &mut [f32], k: AttributeId, v: f32) {
+    if let Some(a) = attributes.get_mut(k.index()) {
         *a = v;
     }
 }

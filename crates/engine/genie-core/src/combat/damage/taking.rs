@@ -18,6 +18,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::players::PlayerId;
+use crate::players::attribute::{self, AttributeId};
 
 /// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
 /// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
@@ -48,6 +49,50 @@ pub fn take(
             Ok(())
         }
     }
+}
+
+/// A razing's counts for the attacker's player `ap` and the owner `q` (16-bit adds of the
+/// players' ids, `ADD DX, word ptr [.. + 0x718]`): the razings (43), the kill values (170, 152),
+/// the razings of the other (155) and the per-player tables (350, 375, 425).
+///
+/// # Errors
+///
+/// A per-player table past the attributes.
+fn razing_counts(
+    (ap, q): (PlayerId, PlayerId),
+    cost: f32,
+) -> Result<[(PlayerId, AttributeId, f32); 7], GenieError> {
+    Ok([
+        (ap, attribute::RAZINGS, ONE),
+        (ap, attribute::KILLS_VALUE, cost),
+        (q, attribute::KILLS_VALUE_OTHER, cost),
+        (q, attribute::RAZINGS_OTHER, ONE),
+        (ap, attribute::RAZINGS_OF.offset(q.index())?, ONE),
+        (q, attribute::RAZED_BY.offset(ap.index())?, ONE),
+        (ap, attribute::RAZINGS_VALUE_OF.offset(q.index())?, cost),
+    ])
+}
+
+/// A trebuchet's kill counts (its damage did not count the kill) for the attacker's player `ap`
+/// and the owner `q`: the kills (20), the kill values (170, 152), the kills of the other (154)
+/// and the per-player tables (300, 325, 400).
+///
+/// # Errors
+///
+/// A per-player table past the attributes.
+fn kill_counts(
+    (ap, q): (PlayerId, PlayerId),
+    cost: f32,
+) -> Result<[(PlayerId, AttributeId, f32); 7], GenieError> {
+    Ok([
+        (ap, attribute::KILLS, ONE),
+        (ap, attribute::KILLS_VALUE, cost),
+        (q, attribute::KILLS_OTHER, ONE),
+        (q, attribute::KILLS_VALUE_OTHER, cost),
+        (ap, attribute::KILLS_OF.offset(q.index())?, ONE),
+        (q, attribute::KILLED_BY.offset(ap.index())?, ONE),
+        (ap, attribute::KILLS_VALUE_OF.offset(q.index())?, cost),
+    ])
 }
 
 /// A building's slot 0xe8 (`FUN_1411cea90`), `forward` the flag every caller sets (clear for
@@ -129,31 +174,16 @@ pub(super) fn take_building(
         let mut adds = Vec::new();
         if b.main.is_none() && t.class != class::WALL {
             let cost = b.cost;
-            // 16-bit adds of the players' ids (`ADD DX, word ptr [.. + 0x718]`)
-            let (qa, apa) = (q.index() as i16, ap.index() as i16);
             if !b.trebuchet {
-                adds.extend([
-                    (ap, 43, ONE),
-                    (ap, 170, cost),
-                    (q, 152, cost),
-                    (q, 155, ONE),
-                    (ap, 350 + qa, ONE),
-                    (q, 375 + apa, ONE),
-                    (ap, 425 + qa, cost),
-                ]);
+                adds.extend(razing_counts((ap, q), cost)?);
             } else if !counted {
-                adds.extend([
-                    (ap, 20, ONE),
-                    (ap, 170, cost),
-                    (q, 154, ONE),
-                    (q, 152, cost),
-                    (ap, 300 + qa, ONE),
-                    (q, 325 + apa, ONE),
-                    (ap, 400 + qa, cost),
-                ]);
+                adds.extend(kill_counts((ap, q), cost)?);
             }
             kill_bonus(&src.source)?;
-            adds.extend([(ap, 172, cost), (q, 153, cost)]);
+            adds.extend([
+                (ap, attribute::RAZINGS_VALUE, cost),
+                (q, attribute::RAZINGS_VALUE_OTHER, cost),
+            ]);
         }
         b.razed.push(Razed {
             attacker_player: ap.index(),

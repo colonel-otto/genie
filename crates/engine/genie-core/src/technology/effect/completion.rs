@@ -7,12 +7,13 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::players::attribute::RESEARCH_SPENT;
+use crate::players::attribute::TECHS_RESEARCHED;
 use crate::technology::EffectCommand;
 use crate::technology::RESEARCHED;
 use crate::technology::TechId;
 use crate::technology::effect::{
-    ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,
-    TECH_DISABLE, TECHS_RESEARCHED, kind,
+    ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, TECH_DISABLE, kind,
 };
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -47,7 +48,7 @@ impl World {
         if !(0..=2).contains(&state.state) {
             return Ok(false);
         }
-        if def.costs[0].attribute == 7 {
+        if def.costs[0].attribute == Some(crate::players::attribute::RELICS_HELD) {
             return Err(GenieError::unsupported(
                 "a research paid in relics (FUN_1413d0e70)",
             ));
@@ -60,13 +61,13 @@ impl World {
         let state = owner.techs.checked(t)?;
         let location = building.map_or_else(|| state.locations.first(), |b| state.location(b));
         if location.is_some_and(|l| l.building.is_some() && l.button != 0) {
-            let get = |k: i16| owner.get(AttributeId::try_from(k)?);
+            let get = |k: AttributeId| owner.get(k);
             let factors = crate::technology::factors(tech, &get)?;
             let listed = state.listed_costs(&def, factors)?;
             let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
             let owner = self.players.player_mut(p)?;
-            owner.add_attribute(AttributeId::try_from(TECHS_RESEARCHED)?, 1.0)?;
-            owner.add_attribute(AttributeId::try_from(RESEARCH_SPENT)?, spent)?;
+            owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
+            owner.add_attribute(RESEARCH_SPENT, spent)?;
         }
         let age = match t {
             101 => Some(crate::players::history::FEUDAL_AGE),
@@ -313,7 +314,7 @@ impl World {
         &mut self,
         p: PlayerId,
         tech: i16,
-        resource: i16,
+        resource: Option<AttributeId>,
         amount: f32,
         mode: u8,
     ) -> Result<(), GenieError> {
@@ -324,7 +325,7 @@ impl World {
         let costs = self.techs.checked(t)?.costs;
         let adjustments = &mut self.players.player_mut(p)?.techs.checked_mut(t)?.cost_adj;
         for (cost, adj) in costs.iter().zip(adjustments.iter_mut()) {
-            if cost.paid == 0 || (cost.attribute != resource && resource != -1) {
+            if cost.paid == 0 || resource.is_some_and(|r| cost.attribute != Some(r)) {
                 continue;
             }
             *adj = match mode {
@@ -337,7 +338,7 @@ impl World {
                 0 => (crate::math::conversions::cvttss2si(amount) as i16).wrapping_sub(cost.amount),
                 _ => adj.wrapping_add(crate::math::conversions::cvttss2si(amount) as i16),
             };
-            if resource != -1 {
+            if resource.is_some() {
                 return Ok(());
             }
         }

@@ -12,7 +12,6 @@ use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
 use crate::technology::Attributes;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -20,15 +19,6 @@ use crate::world::slots::PlayerSlots;
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`
 /// fills): the Argali and the Ibex (Pasture).
 pub const LIVESTOCK: [MasterId; 2] = [MasterId::named(1899), MasterId::named(1900)];
-
-/// The owner's attribute of a pasture's food, which its livestock share.
-pub const PASTURE_FOOD: i16 = 288;
-
-/// The owner's attribute of the livestock a pasture holds.
-pub const PASTURE_LIVESTOCK: i16 = 289;
-
-/// The owner's attribute of the workers a pasture's livestock take ([`World::pasture_pick`]).
-pub const PASTURE_WORKERS: i16 = 290;
 
 /// The edges lie this far inside the pasture's ground radius (`DAT_142e7f384`).
 const INSET: f32 = crate::math::image::pasture::INSET;
@@ -106,9 +96,9 @@ impl World {
         let owner = self.players.player(p)?;
         let count = cvttss2si(Attributes::get(
             owner,
-            AttributeId::try_from(PASTURE_LIVESTOCK)?,
+            crate::players::attribute::PASTURE_LIVESTOCK,
         )?);
-        let food = Attributes::get(owner, AttributeId::try_from(PASTURE_FOOD)?)? / count as f32;
+        let food = Attributes::get(owner, crate::players::attribute::PASTURE_FOOD)? / count as f32;
         let map = self.spatial.map;
         let mut made = 0;
         while made < count && !points.is_empty() {
@@ -213,7 +203,7 @@ impl World {
         crate::math::msvc::sort(&mut tended, &|a, b| a.2 < b.2);
         let room = Attributes::get(
             self.players.player(q)?,
-            AttributeId::try_from(PASTURE_WORKERS)?,
+            crate::players::attribute::PASTURE_WORKERS,
         )?;
         let mut pick = None;
         for (id, workers, _) in tended {

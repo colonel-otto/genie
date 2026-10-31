@@ -38,6 +38,8 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
@@ -264,7 +266,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
             object_group,
             object_id,
             work_range: range,
-            attribute_type4: lacking,
+            attribute_type4: AttributeId::of_data(lacking),
             work_val1: 2.0,
             work_val2: 0.25,
             ..crate::objects::masters::Task::default()
@@ -345,7 +347,7 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     // the bonus against its attack's target
     v.bonus_tasks = vec![crate::objects::masters::Task {
         action_type: BONUS_DAMAGE,
-        attribute_type4: 0,
+        attribute_type4: Some(attribute::FOOD),
         work_val1: 1.5,
         work_val2: 0.5,
         ..crate::objects::masters::Task::default()
@@ -886,15 +888,15 @@ fn a_player_s_building_below_one_hit_point_is_razed() {
             owner: PlayerId::new(2),
             event: Some(crate::players::history::CASTLE_DESTROYED),
             adds: vec![
-                (PlayerId::new(1), 43, 1.0),
-                (PlayerId::new(1), 170, 25.0),
-                (PlayerId::new(2), 152, 25.0),
-                (PlayerId::new(2), 155, 1.0),
-                (PlayerId::new(1), 352, 1.0),
-                (PlayerId::new(2), 376, 1.0),
-                (PlayerId::new(1), 427, 25.0),
-                (PlayerId::new(1), 172, 25.0),
-                (PlayerId::new(2), 153, 25.0),
+                (PlayerId::new(1), attribute::RAZINGS, 1.0),
+                (PlayerId::new(1), attribute::KILLS_VALUE, 25.0),
+                (PlayerId::new(2), attribute::KILLS_VALUE_OTHER, 25.0),
+                (PlayerId::new(2), attribute::RAZINGS_OTHER, 1.0),
+                (PlayerId::new(1), AttributeId::numbered(352), 1.0),
+                (PlayerId::new(2), AttributeId::numbered(376), 1.0),
+                (PlayerId::new(1), AttributeId::numbered(427), 25.0),
+                (PlayerId::new(1), attribute::RAZINGS_VALUE, 25.0),
+                (PlayerId::new(2), attribute::RAZINGS_VALUE_OTHER, 25.0),
             ],
         }]
     );
@@ -945,15 +947,15 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     assert_eq!(
         t.building.as_ref().unwrap().razed[0].adds,
         vec![
-            (PlayerId::new(1), 20, 1.0),
-            (PlayerId::new(1), 170, 400.0),
-            (PlayerId::new(2), 154, 1.0),
-            (PlayerId::new(2), 152, 400.0),
-            (PlayerId::new(1), 302, 1.0),
-            (PlayerId::new(2), 326, 1.0),
-            (PlayerId::new(1), 402, 400.0),
-            (PlayerId::new(1), 172, 400.0),
-            (PlayerId::new(2), 153, 400.0),
+            (PlayerId::new(1), attribute::KILLS, 1.0),
+            (PlayerId::new(1), attribute::KILLS_VALUE, 400.0),
+            (PlayerId::new(2), attribute::KILLS_OTHER, 1.0),
+            (PlayerId::new(2), attribute::KILLS_VALUE_OTHER, 400.0),
+            (PlayerId::new(1), AttributeId::numbered(302), 1.0),
+            (PlayerId::new(2), AttributeId::numbered(326), 1.0),
+            (PlayerId::new(1), AttributeId::numbered(402), 400.0),
+            (PlayerId::new(1), attribute::RAZINGS_VALUE, 400.0),
+            (PlayerId::new(2), attribute::RAZINGS_VALUE_OTHER, 400.0),
         ]
     );
     let mut t = trebuchet(2.0);
@@ -962,8 +964,8 @@ fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
     assert_eq!(
         t.building.as_ref().unwrap().razed[0].adds,
         vec![
-            (PlayerId::new(1), 172, 400.0),
-            (PlayerId::new(2), 153, 400.0)
+            (PlayerId::new(1), attribute::RAZINGS_VALUE, 400.0),
+            (PlayerId::new(2), attribute::RAZINGS_VALUE_OTHER, 400.0)
         ]
     );
 }

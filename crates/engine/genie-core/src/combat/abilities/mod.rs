@@ -139,8 +139,8 @@ pub struct Look {
 pub struct Reward {
     /// The player the command is for (`player+0x718`).
     pub player: PlayerId,
-    /// The task's `attribute_type3` (`+0x24`).
-    pub attribute: i16,
+    /// The task's `attribute_type3` (`+0x24`), none for −1.
+    pub attribute: Option<AttributeId>,
     /// The amount, truncated (`CVTTSS2SI`).
     pub amount: i32,
 }
@@ -225,8 +225,7 @@ impl World {
             for task in &tasks {
                 if task.action_type == REMOVAL_REWARD && task.work_range < EPSILON {
                     let held = self.players.player(owner)?;
-                    let multiplier =
-                        AttributeId::of_data(task.attribute_type2).and_then(|a| held.attribute(a));
+                    let multiplier = (task.attribute_type2).and_then(|a| held.attribute(a));
                     let cost = player_master(&self.masters, owner, own.id)
                         .map_or(&[][..], |m| &m.cost[..]);
                     rewards.push(reward(task, owner, multiplier, cost));

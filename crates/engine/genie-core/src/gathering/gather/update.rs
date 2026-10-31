@@ -18,6 +18,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::players::attribute::AttributeId;
 use crate::world::step::Step;
 
 /// A gatherer without movement state, which the Gather's walks and turns need.
@@ -45,7 +46,7 @@ impl GatherAction {
     /// task's resource): true when the unit's load asks for `set_state(8)`; false for a load of
     /// another resource (the unit AI takes notify 0x21c, the caller's).
     #[must_use]
-    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> bool {
+    pub fn drop_off_asked(&self, held_kind: Option<AttributeId>, attributes: usize) -> bool {
         crate::gathering::hunt::asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
@@ -66,17 +67,12 @@ impl GatherAction {
 
     /// The sprite the walks show (`FUN_140a8b660`, slot 0x68 with it): the task's carrying sprite
     /// while the unit carries at least 1 of the task's resource, else its moving one.
-    pub(super) const fn walk_sprite(
+    pub(super) fn walk_sprite(
         &self,
         unit: &Unit,
         r: &GatherReads,
     ) -> Option<crate::objects::sprite::Graphic> {
-        walk_sprite(
-            self.task.resource,
-            unit.life.attribute_type,
-            unit.life.amount,
-            &r.sprites,
-        )
+        walk_sprite(self.task.resource, unit.life.held(), &r.sprites)
     }
 
     /// One update (slot 6, `0x140a8e1d0`) of `unit`'s Gather in states other than 8, `target`

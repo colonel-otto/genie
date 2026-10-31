@@ -1,17 +1,19 @@
 use super::*;
-use crate::gathering::make::FARM_FOOD_KIND;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{
     MoveDefaults, MoveTo, MoveToAction, MoveToReads, MoveWait, SpriteReads, TargetMoved, WalkTo,
 };
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
+use crate::players::attribute::{self, AttributeId};
+use crate::test_ids::carrying;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::world::step::Step;
@@ -40,7 +42,7 @@ fn reads() -> GatherReads {
 static NO_GRAPHICS: std::collections::BTreeMap<i16, Graphic> = std::collections::BTreeMap::new();
 
 /// What the `MoveTo` constructors read of a villager that carries `held`: no sprites.
-fn walks(held: (i16, f32)) -> Walks<'static> {
+fn walks(held: Held) -> Walks<'static> {
     Walks {
         reads: MoveToReads {
             sprites: SpriteReads {
@@ -106,7 +108,7 @@ impl Rig {
         rig.mover_mut().animated.speed = 1.0;
         let unit = rig.unit_mut();
         unit.life.master_id = ids::VILLAGER_MALE;
-        (unit.life.attribute_type, unit.life.amount) = (17, 3.0);
+        (unit.life.attribute_type, unit.life.amount) = (Some(AttributeId::numbered(17)), 3.0);
         rig
     }
 
@@ -146,12 +148,12 @@ impl Rig {
     }
 
     /// What it carries: the resource and how much.
-    fn load(&self) -> (i16, f32) {
-        (self.unit().life.attribute_type, self.unit().life.amount)
+    fn load(&self) -> Held {
+        self.unit().life.held()
     }
 
     /// It carries `held` of resource `kind`.
-    fn set_load(&mut self, kind: i16, held: f32) {
+    fn set_load(&mut self, kind: Option<AttributeId>, held: f32) {
         let life = &mut self.unit_mut().life;
         (life.attribute_type, life.amount) = (kind, held);
     }
@@ -173,11 +175,11 @@ fn task() -> HuntTask {
     HuntTask {
         id: TaskId::test(2),
         range: 0.25,
-        resource: 17,
+        resource: Some(AttributeId::numbered(17)),
         sprites: [-1; 4],
         work_value: 1.0,
-        productivity: -1,
-        kind4: -1,
+        productivity: None,
+        kind4: None,
     }
 }
 
@@ -339,7 +341,7 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
         state: Some(state),
     };
     let walk = |state| {
-        g.move_to_object(to(state), &mover, &walks((-1, 0.0)))
+        g.move_to_object(to(state), &mover, &walks(Held::default()))
             .unwrap()
             .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
@@ -369,7 +371,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
         Point::ORIGIN,
         &mut rng.clone(),
     );
-    let walks = walks((-1, 0.0));
+    let walks = walks(Held::default());
     let to = WalkTo {
         id: g.target,
         at: Position::new(112.5, 173.5, 3.0),
@@ -394,7 +396,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
     };
     let mut rig = Rig::with_attributes(250);
-    rig.set_load(FARM_FOOD_KIND, 0.0);
+    rig.set_load(Some(attribute::FARM_FOOD), 0.0);
     let mut field = Victim {
         class: class::FARM,
         master_id: ids::FARM,
@@ -413,7 +415,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
         (
             owner.resources[0],
             owner.attributes[166],
-            rig.load().1,
+            rig.load().amount,
             field.amount
         ),
         (0.25, 0.25, 0.0, 14.75)
@@ -429,7 +431,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     };
     // a move to a point (or an object that is no drop site): state 15 to the point
     let mut g = gatherer();
-    let loaded = walks((17, 5.0));
+    let loaded = walks(carrying(Some(AttributeId::numbered(17)), 5.0));
     g.take_move(
         None,
         Position::new(30.0, 40.0, 0.0),
@@ -494,7 +496,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
         Position::from([1.0; 3]),
         PlayerId::new(7),
         &mut mover,
-        &walks((17, 0.0)),
+        &walks(carrying(Some(AttributeId::numbered(17)), 0.0)),
     )
     .unwrap();
     assert_eq!((g.state, g.carry_to), (MOVED, None));
@@ -528,7 +530,7 @@ fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
     // the 4v4's forager 31237 at update 10820: its bush went while it walked there
     let run = |master: MasterId, g: &mut GatherAction, dt: u32| {
         let mut rig = Rig::on_the_path();
-        rig.set_load(-1, 0.0);
+        rig.set_load(None, 0.0);
         let r = GatherReads { master, ..reads() };
         rig.run(g.state, dt, |c, u, me| g.update(c, u, me, None, &r))
     };
@@ -564,7 +566,7 @@ fn farm_update(
     computer: bool,
 ) -> Result<Next, GenieError> {
     let mut rig = Rig::on_the_path();
-    rig.set_load(-1, 0.0);
+    rig.set_load(None, 0.0);
     let r = GatherReads {
         master: master_id(259),
         computer,
@@ -592,7 +594,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     let before = mover.angle;
     let mut rig = Rig::on_the_path();
     rig.t.world_time = 5000;
-    rig.set_load(-1, 0.0);
+    rig.set_load(None, 0.0);
     rig.unit_mut().body =
         crate::objects::layers::Body::new(Position::new(30.0, 40.0, 0.0), None, Some(mover));
     let r = GatherReads {
@@ -669,11 +671,11 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
     assert_eq!(
         drop(&mut g, &mut rig, site(true, 0.0)),
         Ok(Dropped::Load(
-            crate::gathering::hunt::resource_kind(17, 4),
+            crate::gathering::hunt::resource_kind(Some(AttributeId::numbered(17)), 4),
             3.0
         ))
     );
-    assert_eq!(rig.load(), (-1, 0.0));
+    assert_eq!(rig.load(), Held::default());
     // an empty list answers 1 ("There is no list."): the drop site is looked for again
     let mut g = dropping(None, 0.0);
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Again));
@@ -853,7 +855,7 @@ fn a_walk_to_a_point_ends_on_its_target_let_go_as_on_its_arrival() {
     };
     let run = |g: &mut GatherAction, computer: bool| {
         let mut rig = Rig::on_the_path().with_house(7);
-        rig.set_load(-1, 0.0);
+        rig.set_load(None, 0.0);
         let r = GatherReads {
             computer,
             ..reads()
@@ -901,7 +903,7 @@ fn a_gatherer_facing_its_target_works_it() {
     };
     let mut rig = Rig::on_the_path();
     rig.mover_mut().stats.turn_time = 0.0;
-    rig.set_load(2, 4.0);
+    rig.set_load(Some(attribute::STONE), 4.0);
     let mut g = GatherAction {
         state: FACE,
         target: Some(object_id(10028)),
@@ -922,7 +924,7 @@ fn a_gatherer_facing_its_target_works_it() {
         (g.state, g.worked, g.gather_at, g.time_at_stop),
         (WORK, true, Point::new(28.0, 89.0), 0.0)
     );
-    assert_eq!(rig.load(), (17, 0.0));
+    assert_eq!(rig.load(), carrying(Some(AttributeId::numbered(17)), 0.0));
     assert_eq!(rig.unit().sprite.map(|s| s.graphic.id), Some(7));
 }
 
@@ -1090,7 +1092,7 @@ fn a_forager_walks_to_its_bush() {
         (g.stops, g.gather_at, g.target_type),
         (1, Point::from([-1.0; 2]), 7)
     );
-    let mut held = (2, 0.0);
+    let mut held = carrying(Some(attribute::STONE), 0.0);
     let carried = walks(held);
     g.start(
         GatherStart {
@@ -1113,10 +1115,13 @@ fn a_forager_walks_to_its_bush() {
         on_target_moved: TargetMoved::AsksAgain,
         ..MoveToAction::sub_in(MoveTo::Start)
     };
-    assert_eq!((g.state, g.move_to, held), (WALK, Some(to_bush), (2, 0.0)));
+    assert_eq!(
+        (g.state, g.move_to, held),
+        (WALK, Some(to_bush), carrying(Some(attribute::STONE), 0.0))
+    );
     // a load of another food becomes the task's kind
     let mut g = GatherAction::new(task(), &bush(), true, rate()).unwrap();
-    let mut held = (15, 3.0);
+    let mut held = carrying(Some(attribute::MEAT), 3.0);
     let carried = walks(held);
     g.start(
         GatherStart {
@@ -1131,7 +1136,7 @@ fn a_forager_walks_to_its_bush() {
         &mut Well512::default(),
     )
     .unwrap();
-    assert_eq!(held, (17, 3.0));
+    assert_eq!(held, carrying(Some(AttributeId::numbered(17)), 3.0));
 }
 
 /// Slot 0x48 on the work command's target: the 4v4's forager 31156 walking to bush 28222 (state
@@ -1154,7 +1159,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
                 target: &bush(),
                 player: PlayerId::new(7),
                 computer: false,
-                walks: walks((17, 0.0)),
+                walks: walks(carrying(Some(AttributeId::numbered(17)), 0.0)),
                 farm_stops: true,
                 rate: rate()
             },
@@ -1198,7 +1203,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
                     target: &bush(),
                     player: PlayerId::new(7),
                     computer,
-                    walks: walks((17, 0.0)),
+                    walks: walks(carrying(Some(AttributeId::numbered(17)), 0.0)),
                     farm_stops: true,
                     rate: rate()
                 },
@@ -1225,7 +1230,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
                 target: &mill,
                 player: PlayerId::new(7),
                 computer: false,
-                walks: walks((17, 3.0)),
+                walks: walks(carrying(Some(AttributeId::numbered(17)), 3.0)),
                 farm_stops: true,
                 rate: rate()
             },
@@ -1250,7 +1255,7 @@ fn a_forager_gathers_until_its_load_is_full() {
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
     };
     let mut rig = Rig::on_the_path();
-    rig.set_load(17, 0.0);
+    rig.set_load(Some(AttributeId::numbered(17)), 0.0);
     let r = GatherReads {
         farm_stops: true,
         ..reads()
@@ -1259,14 +1264,17 @@ fn a_forager_gathers_until_its_load_is_full() {
         |rig: &mut Rig, bush: &mut Victim| rig.run(WORK, 500, |c, u, _| g.gather(c, u, bush, &r));
     let mut bush = target(100.0);
     assert_eq!(gather(&mut rig, &mut bush), Ok(Next::Stay));
-    assert_eq!((rig.load().1, bush.amount), (0.155, 100.0 - 0.155));
+    assert_eq!((rig.load().amount, bush.amount), (0.155, 100.0 - 0.155));
     // 0.2 less the work leaves a last bit below 0.1: it goes with the storage's thousandth
     let mut bush = target(0.2);
     let last = 0.2f32 - 0.155;
     assert_eq!(gather(&mut rig, &mut bush), Ok(Next::Drop));
     assert_eq!(bush.amount, 0.0);
-    assert_eq!(rig.load().1, 0.155 + (0.155 + (125.0 * LAST_BIT + last)));
-    rig.set_load(17, 9.9);
+    assert_eq!(
+        rig.load().amount,
+        0.155 + (0.155 + (125.0 * LAST_BIT + last))
+    );
+    rig.set_load(Some(AttributeId::numbered(17)), 9.9);
     assert_eq!(gather(&mut rig, &mut target(100.0)), Ok(Next::Drop));
-    assert_eq!(rig.load().1, 9.9);
+    assert_eq!(rig.load().amount, 9.9);
 }

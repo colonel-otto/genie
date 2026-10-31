@@ -17,6 +17,7 @@ use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
 use crate::objects::sprite::Graphic;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use genie_diff::Diff;
 
 /// A hunter's update without its Hunt: the caller's test.
@@ -98,7 +99,7 @@ const REMAINDER: f32 = crate::math::image::hunt::REMAINDER;
 const LAST_BIT: f32 = crate::math::image::hunt::LAST_BIT;
 /// A task whose `attribute_type4` is this (`0x124`) stops its target's decay under player
 /// attribute 292 (`FUN_140ac44b0`).
-const DECAY_TASK: i16 = 0x124;
+const DECAY_TASK: AttributeId = AttributeId::numbered(0x124);
 
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
 const OWN_LIVESTOCK_RANGE: f32 = crate::math::image::hunt::OWN_LIVESTOCK_RANGE;
@@ -194,16 +195,16 @@ pub struct HuntTask {
     pub id: TaskId,
     /// The work range (`+0x30`).
     pub range: f32,
-    /// The resource it gathers (`attribute_type`, `+0x20`).
-    pub resource: i16,
+    /// The resource it gathers (`attribute_type`, `+0x20`), none for −1.
+    pub resource: Option<AttributeId>,
     /// Its moving, proceeding, working and carrying sprites (`+0x40`..`+0x58`).
     pub sprites: [i16; 4],
     /// `+0x28`, `work_val1`: what one work gathers per second and work rate.
     pub work_value: f32,
     /// `+0x22`, `attribute_type2`: the player's attribute that scales the gathering, -1 none.
-    pub productivity: i16,
+    pub productivity: Option<AttributeId>,
     /// `+0x26`, `attribute_type4`.
-    pub kind4: i16,
+    pub kind4: Option<AttributeId>,
 }
 
 /// What the hunt's update reads of its unit, its master, its player and the game besides its
@@ -281,12 +282,6 @@ pub struct Quarry {
     /// The hunter's master has its master (a building annex's main building's, `+0xbb8`) among
     /// its drop sites (`FUN_14109d4f0`), which the start reads of its own player's object.
     pub drop_site: bool,
-}
-
-/// Food and the food kinds of carcasses and fish (0, 15 to 17): a hunter keeps what it carries
-/// of one for another.
-fn food(kind: i16) -> bool {
-    kind == 0 || (15..18).contains(&kind)
 }
 
 #[cfg(test)]

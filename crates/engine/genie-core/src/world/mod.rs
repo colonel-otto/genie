@@ -42,6 +42,7 @@ use crate::objects::masters::master_type;
 use crate::objects::sprite::Graphic;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 use crate::unit_ai::task_finder::DropSite;
 pub(crate) use crate::world::player::NO_ATTRIBUTE;
@@ -141,16 +142,10 @@ pub(crate) const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
 pub(crate) const STATIC_TYPES_END: MasterKind = master_type::ACTION;
-/// The buildings' paid costs (attribute 247), which the combat setup adds for a building with a
-/// train location (`FUN_14121df60`).
-pub(crate) const BUILDING_COST: i16 = 247;
 /// The masters whose restrictions the world's load gives planners (`World::load_world`'s two
 /// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
 const PLANNED_MASTERS: [MasterId; 2] = [MasterId::named(83), MasterId::named(535)];
 
-pub(crate) const MONASTERIES: i16 = 52;
-pub(crate) const WONDERS: i16 = 42;
-pub(crate) const CASTLES: i16 = 134;
 /// The foundation terrain a building's death covers with terrain 1 (`FUN_1411dbb70`: `0x1c`).
 pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 
@@ -161,7 +156,7 @@ pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 /// [`Unit::building_died`]: crate::objects::unit::Unit::building_died
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuildingDeath {
-    pub(crate) count: Option<i16>,
+    pub(crate) count: Option<AttributeId>,
     pub(crate) tech: Option<(MasterId, TechId)>,
 }
 

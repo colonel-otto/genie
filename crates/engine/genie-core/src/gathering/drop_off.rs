@@ -172,7 +172,7 @@ impl Unit {
             .flatten();
         Ok(match carrying {
             Some(g)
-                if gather.task.resource != -1
+                if gather.task.resource.is_some()
                     && self.life.attribute_type == gather.task.resource
                     && 1 <= self.life.amount as i32 =>
             {
@@ -203,7 +203,7 @@ impl Unit {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
             productivity: crate::gathering::gather::productivity_of(
-                self.actions.gather().map_or(-1, |g| g.task.productivity),
+                self.actions.gather().and_then(|g| g.task.productivity),
                 &c.w.players.player(c.player)?.attributes,
             ),
         };

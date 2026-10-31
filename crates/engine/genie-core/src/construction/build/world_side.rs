@@ -13,7 +13,6 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, player_master};
 use crate::orders::Place;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
 use crate::world::slots::PlayerSlots;
 
 impl crate::world::World {
@@ -33,7 +32,7 @@ impl crate::world::World {
         for (kind, amount) in crate::objects::lifecycle::death_parts::storage_leaves(u, master) {
             self.players
                 .player_mut(owner)?
-                .add_attribute(AttributeId::try_from(kind)?, amount)?;
+                .add_attribute(kind, amount)?;
         }
         Ok(())
     }
@@ -69,7 +68,7 @@ impl crate::world::World {
         for (kind, amount) in part.attributes {
             self.players
                 .player_mut(owner)?
-                .add_attribute(AttributeId::try_from(kind)?, amount)?;
+                .add_attribute(kind, amount)?;
         }
         if part.pasture {
             self.setup_pasture(owner, id)?;

@@ -7,7 +7,6 @@ use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::{Outcome, Unit};
-use crate::players::attribute::AttributeId;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -56,10 +55,12 @@ impl Unit {
         }
         let m = self.master(&c.w.masters, c.player)?;
         for &(attribute, amount, kind) in &m.storage {
-            if matches!(kind, 2 | 16) && 0 <= attribute {
+            if let Some(attribute) = attribute
+                && matches!(kind, 2 | 16)
+            {
                 c.w.players
                     .player_mut(c.player)?
-                    .add_attribute(AttributeId::required(attribute)?, -amount)?;
+                    .add_attribute(attribute, -amount)?;
             }
         }
         Ok(())

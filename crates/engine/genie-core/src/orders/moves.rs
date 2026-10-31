@@ -14,7 +14,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{MoveOrder, Place, TOO_CLOSE, Work, ignore_unit, packs, readiness, work_reach};
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
+use crate::players::attribute::PASTURE_WORKERS;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
@@ -401,7 +401,6 @@ impl World {
         idx: usize,
         order: &Work,
     ) -> Result<PastureAfter, GenieError> {
-        use crate::gathering::pasture::PASTURE_WORKERS;
         use crate::technology::Attributes;
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
@@ -415,10 +414,7 @@ impl World {
         if !pasture {
             return Ok(PastureAfter::Tends(None));
         }
-        let room = Attributes::get(
-            self.players.player(player)?,
-            AttributeId::try_from(PASTURE_WORKERS)?,
-        )?;
+        let room = Attributes::get(self.players.player(player)?, PASTURE_WORKERS)?;
         let workers = self.livestock_workers(on) as f32;
         // COMISS room with the workers, JBE: a NaN is full
         if room > workers {

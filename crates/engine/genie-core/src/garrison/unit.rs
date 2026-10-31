@@ -21,6 +21,7 @@ use crate::objects::unit::object_master;
 use crate::orders::action_state::DONE;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
+use crate::players::attribute;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::vision::registry::UnitUpdate;
@@ -315,7 +316,7 @@ impl Unit {
             id: self.id,
             master: &me,
             player: c.player,
-            held: (self.life.attribute_type, self.life.amount),
+            held: self.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
@@ -323,12 +324,15 @@ impl Unit {
             && 0.0 < self.life.amount
             && bm.kind == BUILDING
         {
-            let kind = self.life.attribute_type;
-            let resource = match kind {
-                15..=17 => Some(0),
-                0..=3 | 56 => Some(kind),
-                _ => None,
-            };
+            // the building takes food for the foods a unit carries (15 to 17), the four resources
+            // and the ore themselves, nothing else
+            let resource = self.life.attribute_type.and_then(|kind| {
+                if kind != attribute::FOOD && kind.is_food_load() {
+                    Some(attribute::FOOD)
+                } else {
+                    (kind.is_resource() || kind == attribute::ORE).then_some(kind)
+                }
+            });
             if let Some(resource) = resource {
                 // the building takes the load: the owner's attributes gain it at once
                 let mut adds = Vec::new();
@@ -340,7 +344,7 @@ impl Unit {
                     self.life.amount,
                 )?;
                 c.w.players.player_mut(c.player)?.add_attributes(adds)?;
-                self.life.attribute_type = -1;
+                self.life.attribute_type = None;
                 self.life.amount = 0.0;
             }
         }

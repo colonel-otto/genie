@@ -19,6 +19,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::{MasterId, ids};
+use crate::players::attribute::AttributeId;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -109,9 +110,9 @@ pub struct BuildTask {
     /// The builder's work rate: its master's `work_rate` (`+0x798`) plus its `mWorkRatePowerup`
     /// (`+0xa30`).
     pub work_rate: f32,
-    /// The task's resource (`attribute_type`, `+0x20`, −1 for any): `UNIT_ORDER`'s drop-off
+    /// The task's resource (`attribute_type`, `+0x20`, none for any): `UNIT_ORDER`'s drop-off
     /// (slot 0x78) asks a builder carrying another one to its unit AI instead.
-    pub resource: i16,
+    pub resource: Option<AttributeId>,
     /// The task's id in its master's list (`+0xa`), which a master's upgrade finds the new
     /// master's task by (−1 for none).
     pub id: TaskId,
@@ -182,7 +183,7 @@ pub struct Completion<'a> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FirstPart {
     /// The attributes its owner gains, in order.
-    pub attributes: Vec<(i16, f32)>,
+    pub attributes: Vec<(AttributeId, f32)>,
     /// The building's master has a task of action type 0x99 and the building a unit AI: its
     /// search for resources follows ([`crate::world::World::cart_search`]).
     pub cart: bool,
@@ -238,7 +239,11 @@ impl Completion<'_> {
                         "a farm's bonus near a master (FUN_1411d3cd0)",
                     ));
                 }
-                part.attributes.push((resource as i16, amount));
+                let attribute = i16::try_from(resource)
+                    .ok()
+                    .and_then(AttributeId::of_data)
+                    .ok_or(crate::world::NO_ATTRIBUTE)?;
+                part.attributes.push((attribute, amount));
             }
             // the game mode is not the editor's (4) in a game
             part.pasture = matches!(master.id, ids::PASTURE_MANGROVE | ids::PASTURE);
@@ -370,12 +375,6 @@ const EXTRA_BUILDER: f32 = crate::math::image::build::EXTRA_BUILDER;
 /// The progress a started foundation holds before its first work (`0x2edbe6ff`, about 1e-10).
 const STARTED: u32 = 0x2edb_e6ff;
 const WONDER_RATE: f32 = crate::math::image::build::WONDER_RATE;
-/// The castles and the wonders their owner built (attributes 173 and 174: their completion adds
-/// 1, their death takes nothing), and the attribute their paid cost goes to rather than 98 and
-/// 165 (184), all `FUN_1411dbb70`.
-const CASTLES_BUILT: i16 = 173;
-const WONDERS_BUILT: i16 = 174;
-const CASTLE_WONDER_COST: i16 = 184;
 
 /// The Build action's states the slice models.
 const MOVE: u8 = 4;
@@ -418,6 +417,7 @@ mod stack_tests {
     use crate::objects::masters::master_type;
     use crate::objects::masters::{BuildingMaster, Masters};
     use crate::objects::unit::Unit;
+    use crate::players::attribute::{self, AttributeId};
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
@@ -488,7 +488,11 @@ mod stack_tests {
                 (890, GroundOffset::new(-1.0, 1.0)),
             ],
         );
-        tc.storage = vec![(4, 5.0, 4), (506, 1.0, 16), (-1, 0.0, 0)];
+        tc.storage = vec![
+            (Some(attribute::HEADROOM), 5.0, 4),
+            (Some(AttributeId::numbered(506)), 1.0, 16),
+            (None, 0.0, 0),
+        ];
         tc.volley_missile = Some(master_id(54));
         let mut empty = building(890, (0.0, 4.0, 5), (-10, -1), 109, &[]);
         empty.class = class::WALL;
@@ -694,7 +698,7 @@ mod stack_tests {
                 unit(object_id(8768)).life.hp,
                 unit(object_id(8768)).store.clone()
             ),
-            (2400.0 - lacked, vec![(506, 1.0)])
+            (2400.0 - lacked, vec![(AttributeId::numbered(506), 1.0)])
         );
         let attributes = &t.players[1].attributes;
         assert_eq!(

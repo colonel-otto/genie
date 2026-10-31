@@ -107,7 +107,7 @@ impl UnitView<'_, '_> {
             id: unit.id,
             master: own,
             player,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: self
                 .c
                 .w

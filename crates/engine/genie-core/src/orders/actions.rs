@@ -298,7 +298,7 @@ impl World {
         let switched = switch_master(unit, &old, &next, world)?;
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.leaving {
-            owner.add_attribute(AttributeId::try_from(kind)?, amount)?;
+            owner.add_attribute(kind, amount)?;
         }
         if switched.promoted {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
@@ -308,7 +308,7 @@ impl World {
         }
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.coming {
-            owner.add_attribute(AttributeId::try_from(kind)?, amount)?;
+            owner.add_attribute(kind, amount)?;
         }
         Ok(())
     }
@@ -328,9 +328,9 @@ pub(crate) struct SwitchWorld<'a> {
 /// storage coming in.
 #[derive(Debug, Default)]
 pub(crate) struct Switched {
-    pub(crate) leaving: Vec<(i16, f32)>,
+    pub(crate) leaving: Vec<(AttributeId, f32)>,
     pub(crate) promoted: bool,
-    pub(crate) coming: Vec<(i16, f32)>,
+    pub(crate) coming: Vec<(AttributeId, f32)>,
 }
 
 /// Slot 0x90's unit part (`FUN_141225b70` with 0) of a master change from `old` to `next`, its
@@ -358,7 +358,9 @@ pub(crate) fn switch_master(
     let new = next.id;
     if unit.life.state < 3 {
         for &(kind, amount, flag) in &old.storage {
-            if kind >= 0 && matches!(flag, 2 | 16 | 32) {
+            if let Some(kind) = kind
+                && matches!(flag, 2 | 16 | 32)
+            {
                 switched.leaving.push((kind, -amount));
             }
         }
@@ -451,7 +453,9 @@ pub(crate) fn switch_master(
         }
         switched.promoted = true;
         for &(kind, amount, flag) in &next.storage {
-            if kind >= 0 && flag == 2 {
+            if let Some(kind) = kind
+                && flag == 2
+            {
                 switched.coming.push((kind, amount));
             }
         }

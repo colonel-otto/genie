@@ -4,9 +4,11 @@ use crate::GenieError;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::players::attribute::RESEARCH_SPENT;
+use crate::players::attribute::TECHS_RESEARCHED;
 use crate::technology::RESEARCHED;
 use crate::technology::TechId;
-use crate::technology::effect::{ONE, RESEARCH_SPENT, ROUND, TECHS_RESEARCHED};
+use crate::technology::effect::{ONE, ROUND};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -17,12 +19,12 @@ const BAD_LOCATION: GenieError =
 /// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the
 /// resource and the cost modifier's mode (`DAT_142ed71b0`'s map: 0 to 3 set food, wood, stone,
 /// gold; 0x4000 to 0x4003 add to them; 0xd to 0x10 multiply them, 0x11 every one).
-pub(super) const fn tech_cost_mode(mode: i16) -> Option<(i16, u8)> {
+pub(super) const fn tech_cost_mode(mode: i16) -> Option<(Option<AttributeId>, u8)> {
     match mode {
-        0..=3 => Some((mode, 0)),
-        0x4000..=0x4003 => Some((mode - 0x4000, 1)),
-        0xd..=0x10 => Some((mode - 0xd, 2)),
-        0x11 => Some((-1, 2)),
+        0..=3 => Some((Some(AttributeId::numbered(mode)), 0)),
+        0x4000..=0x4003 => Some((Some(AttributeId::numbered(mode - 0x4000)), 1)),
+        0xd..=0x10 => Some((Some(AttributeId::numbered(mode - 0xd)), 2)),
+        0x11 => Some((None, 2)),
         _ => None,
     }
 }
@@ -223,13 +225,13 @@ impl World {
         self.research_effect_known(p, tech)?;
         self.do_effect(p, &def.effect, None)?;
         let owner = self.players.player(p)?;
-        let get = |k: i16| crate::technology::Attributes::get(owner, AttributeId::try_from(k)?);
+        let get = |k: AttributeId| crate::technology::Attributes::get(owner, k);
         let factors = crate::technology::factors(tech, &get)?;
         let listed = owner.techs.checked(t)?.listed_costs(&def, factors)?;
         let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
         let owner = self.players.player_mut(p)?;
-        owner.add_attribute(AttributeId::try_from(TECHS_RESEARCHED)?, 1.0)?;
-        owner.add_attribute(AttributeId::try_from(RESEARCH_SPENT)?, spent)?;
+        owner.add_attribute(TECHS_RESEARCHED, 1.0)?;
+        owner.add_attribute(RESEARCH_SPENT, spent)?;
         Ok(true)
     }
 

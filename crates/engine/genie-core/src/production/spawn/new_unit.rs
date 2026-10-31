@@ -16,7 +16,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
-use crate::production::IN_PRODUCTION;
+use crate::players::attribute::IN_PRODUCTION;
 use crate::world::slots::PlayerSlots;
 
 use crate::unit_ai::ActionKind;
@@ -346,17 +346,19 @@ impl World {
         }
         let owner = self.players.player_mut(p)?;
         for &(kind, amount, flag) in &made.storage {
-            if kind >= 0 && matches!(flag, 1 | 2 | 32) {
-                owner.add_attribute(AttributeId::required(kind)?, amount)?;
+            if let Some(kind) = kind
+                && matches!(flag, 1 | 2 | 32)
+            {
+                owner.add_attribute(kind, amount)?;
             }
         }
         let cost: i32 = made
             .cost
             .iter()
-            .filter(|&&(resource, _, paid)| resource >= 0 && paid)
+            .filter(|&&(_, _, paid)| paid)
             .map(|&(_, amount, _)| i32::from(amount))
             .sum();
-        owner.add_attribute(AttributeId::numbered(98), cost as f32)?;
+        owner.add_attribute(attribute::TOTAL_VALUE, cost as f32)?;
         owner.add_attribute(attribute::UNITS_VALUE, cost as f32)?;
         owner.add_attribute(AttributeId::numbered(246), cost as f32)?;
         if made.class == class::VILLAGER {
@@ -370,7 +372,7 @@ impl World {
                 class: Class::Animated,
                 state: 2,
                 hp: f32::from(made.hit_points),
-                attribute_type: -1,
+                attribute_type: None,
                 amount: 0.0,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
                 death_spawn: made.death_spawns[0].is_some(),

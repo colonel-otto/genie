@@ -1,11 +1,13 @@
 //! The tests' newtypes: an object id, a unit group, a player or a master of a value the test knows is one,
-//! and a list of ids, through the types' checked constructors.
+//! a list of ids and an object's load, through the types' checked constructors.
 
 use crate::commands::UnitList;
 use crate::groups::GroupId;
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
 use crate::technology::TechId;
 
 /// The object id `value` (not −1); const, so a test's constants name objects too.
@@ -57,4 +59,9 @@ pub(crate) fn tech_id(value: i16) -> TechId {
 /// The unit list of `ids`, its count theirs (fewer than `0xffff`).
 pub(crate) fn unit_list(ids: Vec<Option<ObjectId>>) -> UnitList {
     UnitList::try_from(ids).expect("a test's unit list is shorter than 0xffff ids")
+}
+
+/// An object's load: `amount` of attribute `kind` (none for an object that carries nothing).
+pub(crate) const fn carrying(kind: Option<AttributeId>, amount: f32) -> Held {
+    Held { kind, amount }
 }

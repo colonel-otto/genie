@@ -15,6 +15,8 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::task_finder::DropSite;
 
 /// What the searches read of an object in a map tile's list.
@@ -38,8 +40,8 @@ pub struct Candidate {
     pub pasture: Option<ObjectId>,
     /// `+0x689` is 0 ([`crate::objects::unit::Unit::untargetable`]).
     pub untargetable: bool,
-    /// `+0x308`, `attribute_type_held`.
-    pub attribute: i16,
+    /// `+0x308`, `attribute_type_held`, none for −1.
+    pub attribute: Option<AttributeId>,
     /// `+0x310`, `attribute_amount_held`.
     pub amount: f32,
     /// Its master's `enable_auto_gather` (`+0x681`).
@@ -148,10 +150,10 @@ pub fn more_work(
                     continue;
                 };
                 let g = match resource {
-                    3 => 0,
-                    2 => 1,
-                    0 | 15..=17 => 2,
-                    1 => 3,
+                    attribute::GOLD => 0,
+                    attribute::STONE => 1,
+                    food if food.is_food_load() => 2,
+                    attribute::WOOD => 3,
                     _ => continue,
                 };
                 let dx = o.position.x() - builder.position.x();
@@ -631,17 +633,12 @@ fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, 
 /// the Build's search for more work lets an object of it have (`0x140ab0c57`): food (0, 15 to 17)
 /// 1 and 6, wood 0 and 2, stone 3 and 3, gold 4 and 3, the rest 2 and 2.
 #[must_use]
-pub const fn gather_group(attribute: i16) -> (u8, i32) {
-    let resource = match attribute {
-        0..=3 | 9 | 0x38 => attribute,
-        15..=17 => 0,
-        _ => -1,
-    };
-    let kind = match resource {
-        0 => 1,
-        1 => 0,
-        2 => 3,
-        3 => 4,
+pub fn gather_group(attribute: Option<AttributeId>) -> (u8, i32) {
+    let kind = match attribute.and_then(AttributeId::load_resource) {
+        Some(attribute::FOOD) => 1,
+        Some(attribute::WOOD) => 0,
+        Some(attribute::STONE) => 3,
+        Some(attribute::GOLD) => 4,
         _ => 2,
     };
     let workers = match kind {
@@ -655,6 +652,7 @@ pub const fn gather_group(attribute: i16) -> (u8, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::players::attribute;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::unit_ai::task_finder::DropTarget;
@@ -670,7 +668,7 @@ mod tests {
             position: Position::new(x, y, 0.0),
             pasture: None,
             untargetable: false,
-            attribute: 1,
+            attribute: Some(attribute::WOOD),
             amount: 100.0,
             auto_gather: true,
             gather_group: 0,
@@ -688,10 +686,10 @@ mod tests {
                 class: class::TREE,
                 workers: -1,
                 state: -1,
-                attribute: 1,
+                attribute: Some(attribute::WOOD),
             }],
             livestock: false,
-            resource_types: vec![1],
+            resource_types: vec![attribute::WOOD],
         }
     }
 
@@ -748,7 +746,7 @@ mod tests {
             class: class::CLASS_32,
             workers: -1,
             state: -1,
-            attribute: 3,
+            attribute: Some(attribute::GOLD),
         });
         let b = Builder {
             position: Position::new(10.5, 10.5, 0.0),
@@ -1067,10 +1065,10 @@ mod tests {
 
     #[test]
     fn a_held_resource_names_its_gather_group_and_the_workers_the_build_lets_it_have() {
-        assert_eq!(gather_group(1), (0, 2));
-        assert_eq!(gather_group(16), (1, 6));
-        assert_eq!(gather_group(2), (3, 3));
-        assert_eq!(gather_group(3), (4, 3));
-        assert_eq!(gather_group(-1), (2, 2));
+        assert_eq!(gather_group(Some(attribute::WOOD)), (0, 2));
+        assert_eq!(gather_group(Some(attribute::FARM_FOOD)), (1, 6));
+        assert_eq!(gather_group(Some(attribute::STONE)), (3, 3));
+        assert_eq!(gather_group(Some(attribute::GOLD)), (4, 3));
+        assert_eq!(gather_group(None), (2, 2));
     }
 }

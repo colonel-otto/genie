@@ -15,7 +15,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
+use crate::players::attribute;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -25,8 +25,6 @@ const NO_HIT_POINTS: f32 = f32::EPSILON;
 const WHOLE: f32 = crate::math::image::upgrade::WHOLE;
 /// A sprite the data file does not have.
 const NO_SPRITE: GenieError = GenieError::unsupported("a sprite the data file does not have");
-/// The food kinds a villager's load gives as food (15, 16 and 17).
-const FOODS: [i16; 3] = [15, 16, 17];
 /// The resource classes whose damage share is the share of their storage left from state 3 on
 /// (`FUN_141193590`), and those whose share is it once dead (state above 2).
 const RESOURCE_CLASSES: [ClassId; 11] = [
@@ -382,12 +380,13 @@ impl World {
             // The villager class (4), whose load an upgrade without its master kept goes to its player.
             && old.class == class::VILLAGER
             && 0.0 < u.life.amount
-            && 0 <= u.life.attribute_type
+            && let Some(kind) = u.life.attribute_type
         {
-            let kind = if FOODS.contains(&u.life.attribute_type) {
-                0
+            // the foods a unit carries (15 to 17) as food
+            let kind = if kind.is_food_load() {
+                attribute::FOOD
             } else {
-                u.life.attribute_type
+                kind
             };
             let amount = u.life.amount;
             let mut adds = Vec::new();
@@ -399,12 +398,10 @@ impl World {
                 amount,
             )?;
             for (k, v) in adds {
-                self.players
-                    .player_mut(p)?
-                    .add_attribute(AttributeId::try_from(k)?, v)?;
+                self.players.player_mut(p)?.add_attribute(k, v)?;
             }
             let u = self.object_at_mut(place)?;
-            u.life.attribute_type = -1;
+            u.life.attribute_type = None;
             u.life.amount = 0.0;
         }
         Ok(())
@@ -680,9 +677,13 @@ mod tests {
     use crate::map::GridSize;
     use crate::map::Position;
     use crate::objects::ObjectId;
+    use crate::objects::lifecycle::Held;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
     use crate::objects::masters::{MasterId, ids};
+    use crate::players::attribute;
+    use crate::players::attribute::AttributeId;
+    use crate::test_ids::carrying;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::test_ids::opt_master;
@@ -836,7 +837,7 @@ mod tests {
         let tree = Master {
             class: class::TREE,
             hit_points: 20,
-            storage: vec![(1, 100.0, 0)],
+            storage: vec![(Some(attribute::WOOD), 100.0, 0)],
             damage_graphics: vec![DamageGraphic {
                 sprite: -1,
                 percent: 50,
@@ -845,9 +846,9 @@ mod tests {
             ..Master::default()
         };
         let mut u = object(1, master_id(1), 3, 20.0);
-        (u.life.attribute_type, u.life.amount) = (1, 25.0);
+        (u.life.attribute_type, u.life.amount) = (Some(attribute::WOOD), 25.0);
         assert_eq!(share_of(&u, &tree), Some((75, 20.0)));
-        u.life.attribute_type = 2;
+        u.life.attribute_type = Some(attribute::STONE);
         assert_eq!(share_of(&u, &tree), Some((0, 20.0)));
         u.life.state = 2;
         u.life.hp = 5.0;
@@ -990,7 +991,7 @@ mod tests {
             ..Master::default()
         };
         let mut v = object(10, ids::VILLAGER_MALE, 2, 25.0);
-        (v.life.attribute_type, v.life.amount) = (17, 10.0);
+        (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 10.0);
         v.firepower = 1.0;
         let player = crate::world::Player {
             objects: vec![v].into(),
@@ -1007,7 +1008,7 @@ mod tests {
             (v.life.master_id, v.life.hp, v.firepower),
             (master_id(6), 50.0, 3.0)
         );
-        assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
+        assert_eq!(v.life.held(), carrying(None, 0.0));
         let a = &t.players[0].attributes;
         assert_eq!((a[37], a[40]), (0.0, 1.0));
         assert_eq!(t.players[0].resources[0], 10.0);
@@ -1032,7 +1033,7 @@ mod tests {
             object_group,
             work_range,
             work_val1: work_range * 2.0,
-            attribute_type: 17,
+            attribute_type: Some(AttributeId::numbered(17)),
             ..Task::default()
         };
         let mut t = crate::world::tests::forage_world();
@@ -1061,7 +1062,7 @@ mod tests {
             range: 0.25,
             work_value: 0.5,
             work_rate: 1.0,
-            resource: 17,
+            resource: Some(AttributeId::numbered(17)),
             id: TaskId::test(3),
             moving: None,
         };
@@ -1097,7 +1098,7 @@ mod tests {
                 range: 1.5,
                 work_value: 3.0,
                 work_rate: 1.0,
-                resource: 17,
+                resource: Some(AttributeId::numbered(17)),
                 id: TaskId::test(7),
                 moving: Some(12),
             }
@@ -1318,16 +1319,31 @@ mod tests {
                 .unwrap();
             let v = &t.players[0].objects[0];
             (
-                (v.life.attribute_type, v.life.amount),
+                v.life.held(),
                 [t.players[0].resources[0], t.players[0].resources[1]],
                 t.players[0].attributes[37],
             )
         };
-        assert_eq!(load(&villager, 17, 10.0), ((-1, 0.0), [10.0, 0.0], 0.0));
-        assert_eq!(load(&villager, 1, 6.0), ((-1, 0.0), [0.0, 6.0], 0.0));
-        assert_eq!(load(&villager, 1, 0.0), ((1, 0.0), [0.0, 0.0], 0.0));
-        assert_eq!(load(&villager, -1, 6.0), ((-1, 6.0), [0.0, 0.0], 0.0));
-        assert_eq!(load(&soldier, 1, 6.0).0, (1, 6.0));
+        assert_eq!(
+            load(&villager, Some(AttributeId::numbered(17)), 10.0),
+            (Held::default(), [10.0, 0.0], 0.0)
+        );
+        assert_eq!(
+            load(&villager, Some(attribute::WOOD), 6.0),
+            (Held::default(), [0.0, 6.0], 0.0)
+        );
+        assert_eq!(
+            load(&villager, Some(attribute::WOOD), 0.0),
+            (carrying(Some(attribute::WOOD), 0.0), [0.0, 0.0], 0.0)
+        );
+        assert_eq!(
+            load(&villager, None, 6.0),
+            (carrying(None, 6.0), [0.0, 0.0], 0.0)
+        );
+        assert_eq!(
+            load(&soldier, Some(attribute::WOOD), 6.0).0,
+            carrying(Some(attribute::WOOD), 6.0)
+        );
     }
 
     /// The upgrade's sight: an object in state 2 on the map takes its sight again with its line

@@ -2,6 +2,8 @@ use super::*;
 use crate::map::Radii;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::players::attribute as player_attribute;
+use crate::test_ids::carrying;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
@@ -48,7 +50,7 @@ fn house() -> Master {
         obstruction_type: 0,
         buildable_on: 0,
         tasks: vec![],
-        cost: vec![(1, 25, true)],
+        cost: vec![(player_attribute::WOOD, 25, true)],
         obstruction_class: 2,
         object_flags: 0,
         combat_level: 0,
@@ -118,8 +120,12 @@ fn stocked(kind: MasterKind) -> Master {
     Master {
         kind,
         hit_points: 10,
-        storage: vec![(0, 1.0, 1), (1, 1.0, 1), (2, 1.0, 1)],
-        cost: vec![(0, 1, true)],
+        storage: vec![
+            (Some(player_attribute::FOOD), 1.0, 1),
+            (Some(player_attribute::WOOD), 1.0, 1),
+            (Some(player_attribute::STONE), 1.0, 1),
+        ],
+        cost: vec![(player_attribute::FOOD, 1, true)],
         damage_graphics: vec![DamageGraphic::default(); 2],
         damage_graphic_entry: 1,
         train_locations: vec![TrainLocation::default(); 2],
@@ -604,7 +610,11 @@ fn the_hit_points_add_and_multiply_up_to_their_cap_when_capped() {
 #[test]
 fn the_static_setters_truncate_as_the_game_does() {
     let mut m = of_type(master_type::TREE);
-    m.storage = vec![(15, 100.0, 1), (-1, 0.0, 0), (-1, 0.0, 0)];
+    m.storage = vec![
+        (Some(player_attribute::MEAT), 100.0, 1),
+        (None, 0.0, 0),
+        (None, 0.0, 0),
+    ];
     m.set_attribute(attribute::STORAGE_1, 70000.5, &world(false));
     assert_eq!(m.storage[0].1, 4464.0);
     m.add_attribute(attribute::STORAGE_1, 5.9, &world(false));
@@ -752,18 +762,49 @@ fn a_missile_s_smart_mode_multiply_sets_it() {
 #[test]
 fn the_cost_attributes_change_their_resource_s_entries() {
     let mut m = of_type(master_type::BUILDING);
-    m.cost = vec![(1, 25, true), (4, 1, false)];
-    m.storage = vec![(4, 5.0, 4), (11, -1.0, 4), (-1, 0.0, 0)];
+    m.cost = vec![
+        (player_attribute::WOOD, 25, true),
+        (player_attribute::HEADROOM, 1, false),
+    ];
+    m.storage = vec![
+        (Some(player_attribute::HEADROOM), 5.0, 4),
+        (Some(player_attribute::POPULATION), -1.0, 4),
+        (None, 0.0, 0),
+    ];
     m.add_attribute(attribute::WOOD_COSTS, -5.0, &world(false));
-    assert_eq!(m.cost, vec![(1, 20, true), (4, 1, false)]);
+    assert_eq!(
+        m.cost,
+        vec![
+            (player_attribute::WOOD, 20, true),
+            (player_attribute::HEADROOM, 1, false)
+        ]
+    );
     m.multiply_attribute(attribute::RESOURCE_COSTS, 0.85, &world(false));
     // 20 × 0.85 + 0.5 = 17.5
-    assert_eq!(m.cost, vec![(1, 17, true), (4, 1, false)]);
+    assert_eq!(
+        m.cost,
+        vec![
+            (player_attribute::WOOD, 17, true),
+            (player_attribute::HEADROOM, 1, false)
+        ]
+    );
     m.set_attribute(attribute::GOLD_COSTS, 50.0, &world(false));
-    assert_eq!(m.cost[0], (1, 17, true));
+    assert_eq!(m.cost[0], (player_attribute::WOOD, 17, true));
     m.set_attribute(attribute::POPULATION, 2.0, &world(false));
-    assert_eq!(m.cost, vec![(1, 17, true), (4, -2, false)]);
-    assert_eq!(m.storage[..2], [(4, 2.0, 4), (11, -2.0, 4)]);
+    assert_eq!(
+        m.cost,
+        vec![
+            (player_attribute::WOOD, 17, true),
+            (player_attribute::HEADROOM, -2, false)
+        ]
+    );
+    assert_eq!(
+        m.storage[..2],
+        [
+            (Some(player_attribute::HEADROOM), 2.0, 4),
+            (Some(player_attribute::POPULATION), -2.0, 4)
+        ]
+    );
 }
 
 /// The train locations: the selected entry (`+0x940`) takes the train time; a resize copies
@@ -1107,7 +1148,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             master: m.get(ids::FARM).unwrap(),
             player: PlayerId::new(2),
             state: 2,
-            held: (-1, 0.0),
+            held: carrying(None, 0.0),
             hp: 1.0,
             max_hp: 480.0,
             attackable: true,
@@ -1118,7 +1159,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             id: object_id(9181),
             master: own,
             player: PlayerId::new(2),
-            held: (-1, 0.0),
+            held: carrying(None, 0.0),
             attribute_95: 0.0,
             civ: 1,
         };
@@ -1158,7 +1199,7 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
         master: m.get(ids::HOUSE).unwrap(),
         player: PlayerId::new(2),
         state: 0,
-        held: (-1, 0.0),
+        held: carrying(None, 0.0),
         hp: 1.0,
         max_hp: 550.0,
         attackable: true,
@@ -1170,7 +1211,7 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
             id: object_id(9181),
             master: m.get(own).unwrap(),
             player: PlayerId::new(2),
-            held: (-1, 0.0),
+            held: carrying(None, 0.0),
             attribute_95: 0.0,
             civ: 1,
         };

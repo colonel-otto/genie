@@ -6,6 +6,7 @@ use crate::gathering::gather::{GatherAction, GatherReads};
 use crate::map::Position;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveToAction, MoveToReads, SpriteReads, TargetMoved, WalkTo};
+use crate::objects::lifecycle::Held;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 
@@ -17,7 +18,7 @@ pub struct Walks<'a> {
     /// What every new sub-action `MoveTo` reads of the unit.
     pub reads: MoveToReads<'a>,
     /// What the unit carries: its resource kind (`+0x308`) and amount (`+0x310`).
-    pub held: (i16, f32),
+    pub held: Held,
 }
 
 impl<'a> Walks<'a> {
@@ -25,7 +26,7 @@ impl<'a> Walks<'a> {
     pub(crate) fn of(sprites: SpriteReads<'a>, unit: &Unit) -> Self {
         Self {
             reads: MoveToReads::with_sprites(sprites, unit),
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
         }
     }
 
@@ -78,7 +79,7 @@ impl GatherAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        let given = sprite_id(self.task.walk_sprite_id(walks.held));
         walks
             .live(mover)
             .to_object(to, self.task.range, given, TargetMoved::AsksAgain)
@@ -101,7 +102,7 @@ impl GatherAction {
         mover: &Mover,
         walks: &Walks<'_>,
     ) -> Result<Option<MoveToAction>, GenieError> {
-        let given = sprite_id(self.task.walk_sprite_id(walks.held.0, walks.held.1));
+        let given = sprite_id(self.task.walk_sprite_id(walks.held));
         let walk = walks.live(mover).to_point(point, range, given)?;
         Ok(walk.map(|m| MoveToAction {
             on_target_moved,

@@ -4,6 +4,7 @@
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{DamageGraphic, TrainLocation, attribute};
+use crate::players::attribute::{self as players_attribute, AttributeId};
 
 /// 32767.0 (`DAT_142eb69cc`): a capped add or multiply holds hit points and carry capacity
 /// below it.
@@ -128,15 +129,15 @@ pub(super) fn handicapped(handicap: Option<f32>, class: i16) -> Option<f32> {
     raised.then_some(f)
 }
 
-/// The resource a cost attribute names (`FUN_1412661d0`'s 100, 103 to 106): −1 every paid one,
-/// then food, wood, gold (3) and stone (2).
-pub(super) const fn cost_resource(attribute: MasterAttribute) -> i16 {
+/// The resource a cost attribute names (`FUN_1412661d0`'s 100, 103 to 106): none (−1) every
+/// paid one, then food, wood, gold (3) and stone (2).
+pub(crate) const fn cost_resource(attribute: MasterAttribute) -> Option<AttributeId> {
     match attribute {
-        attribute::FOOD_COSTS => 0,
-        attribute::WOOD_COSTS => 1,
-        attribute::GOLD_COSTS => 3,
-        attribute::STONE_COSTS => 2,
-        _ => -1,
+        attribute::FOOD_COSTS => Some(players_attribute::FOOD),
+        attribute::WOOD_COSTS => Some(players_attribute::WOOD),
+        attribute::GOLD_COSTS => Some(players_attribute::GOLD),
+        attribute::STONE_COSTS => Some(players_attribute::STONE),
+        _ => None,
     }
 }
 

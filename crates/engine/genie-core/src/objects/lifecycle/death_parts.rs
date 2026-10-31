@@ -16,7 +16,12 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::world::{BuildingDeath, CASTLES, MONASTERIES, RESTORED_FOUNDATION, WONDERS};
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
+use crate::players::attribute::CASTLES;
+use crate::players::attribute::MONASTERIES;
+use crate::players::attribute::WONDERS;
+use crate::world::{BuildingDeath, RESTORED_FOUNDATION};
 
 /// The owner's attributes 237, 238 and 239: a built farm's bonus ([`Completion::farm_bonus`]);
 /// −1 for those the player has not got.
@@ -110,15 +115,18 @@ pub(crate) fn combat_dies(
 /// for the castle, 82, and the wonder, 276), nothing for an annex (`+0xbb8`). Each attribute is
 /// held at 0 or more after (slot 0xf0 with 0), the caller's.
 #[must_use]
-pub(crate) fn refund_of(master: &Master, main: Option<ObjectId>) -> Vec<(i16, f32)> {
+pub(crate) fn refund_of(master: &Master, main: Option<ObjectId>) -> Vec<(AttributeId, f32)> {
     let mut cost = 0.0f32;
-    for &(resource, amount, paid) in &master.cost {
-        if 0 <= resource && paid {
+    for &(_, amount, paid) in &master.cost {
+        if paid {
             cost += f32::from(amount);
         }
     }
     if master.kind != BUILDING {
-        return vec![(98, cost), (164, cost)];
+        return vec![
+            (attribute::TOTAL_VALUE, cost),
+            (attribute::UNITS_VALUE, cost),
+        ];
     }
     if main.is_some() {
         return Vec::new();
@@ -127,9 +135,12 @@ pub(crate) fn refund_of(master: &Master, main: Option<ObjectId>) -> Vec<(i16, f3
     // `0x61b0`, `0x60ee`): the monastery's ([`MONASTERY`]) in attribute 52, the wonder's in 42,
     // the castle's in 134.
     if matches!(master.id, CASTLE | WONDER) {
-        return vec![(98, cost)];
+        return vec![(attribute::TOTAL_VALUE, cost)];
     }
-    vec![(98, cost), (165, cost)]
+    vec![
+        (attribute::TOTAL_VALUE, cost),
+        (attribute::BUILDINGS_VALUE, cost),
+    ]
 }
 
 /// What a built building's death (`FUN_1411dbb70` to state 3 from 2) does before the combat
@@ -139,7 +150,7 @@ pub(crate) fn refund_of(master: &Master, main: Option<ObjectId>) -> Vec<(i16, f3
 /// owner's watched list lets it go (`FUN_141091310`, the caller's).
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BuiltDeath {
-    pub(crate) adds: Vec<(i16, f32)>,
+    pub(crate) adds: Vec<(AttributeId, f32)>,
     pub(crate) unlink: Option<Position>,
     pub(crate) building: BuildingDeath,
 }
@@ -197,21 +208,24 @@ pub(crate) fn built_death(
 /// negated), then the population it holds itself (`+0x308` 4: the amount leaves, and it holds
 /// nothing after, `FUN_14119d310` with −1 and 0); then each entry of mode 16 leaves its own store
 /// ([`Unit::store`]) when the store holds its attribute.
-pub(crate) fn storage_leaves(u: &mut Unit, master: &Master) -> Vec<(i16, f32)> {
+pub(crate) fn storage_leaves(u: &mut Unit, master: &Master) -> Vec<(AttributeId, f32)> {
     let mut adds = Vec::new();
     for &(kind, amount, flag) in &master.storage {
-        if 0 <= kind && 0.0 < amount && flag == 4 {
+        if let Some(kind) = kind
+            && 0.0 < amount
+            && flag == 4
+        {
             adds.push((kind, -amount));
         }
     }
-    if u.life.attribute_type == 4 {
-        adds.push((4, -u.life.amount));
-        u.life.attribute_type = -1;
+    if u.life.attribute_type == Some(attribute::HEADROOM) {
+        adds.push((attribute::HEADROOM, -u.life.amount));
+        u.life.attribute_type = None;
         u.life.amount = 0.0;
     }
     // FUN_1411e6580: each entry of mode 16 leaves its own store, when the store holds it
     for &(kind, amount, flag) in &master.storage {
-        if 0 <= kind
+        if let Some(kind) = kind
             && 0.0 < amount
             && flag & 0x10 != 0
             && let Some(e) = u.store.iter_mut().find(|e| e.0 == kind)

@@ -9,6 +9,7 @@ use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::static_storage;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -268,15 +269,7 @@ impl World {
             return Err(e);
         }
         let owner = self.players.player_mut(p)?;
-        let mut held = (-1, 0.0);
-        for &(kind, amount, flag) in &made.storage {
-            if kind >= 0 && matches!(flag, 1 | 2 | 32) {
-                owner.add_data_attribute(kind, amount)?;
-            }
-            if kind != -1 && flag == 0 {
-                held = (kind, amount);
-            }
-        }
+        let held = static_storage(owner, &made.storage)?;
         // a static object (type 10) dies on its sprite after its death (the dying one, else its
         // standing one), which may start on a random facet
         let death_facets = if made.kind == STATIC {
@@ -302,8 +295,8 @@ impl World {
                 },
                 state: 2,
                 hp: f32::from(made.hit_points),
-                attribute_type: held.0,
-                amount: held.1,
+                attribute_type: held.kind,
+                amount: held.amount,
                 dying_sprite: (0 <= made.death_sprite).then_some(made.death_sprite),
                 death_spawn: made.death_spawns[0].is_some(),
                 remains: made.death_spawns[1],

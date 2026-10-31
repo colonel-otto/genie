@@ -1,6 +1,8 @@
 //! The game's own tables beside the `.dat`: the linked technologies, the unit lines and the
 //! drop sites.
 
+use genie_core::players::attribute::AttributeId;
+
 /// The game's linked technologies (`resources/_common/dat/linkedTechs.json`): each group's
 /// technologies with the group's kind. A technology of a kind the game does not know, or out of
 /// the ids' range, is left out.
@@ -110,6 +112,8 @@ pub enum DropSitesError {
     Class(usize, &'static str),
     /// A `building_id` that is no master: the entry's index.
     Building(usize),
+    /// An attribute value that is no attribute: the entry's index and the key.
+    Attribute(usize, &'static str),
 }
 
 impl std::fmt::Display for DropSitesError {
@@ -118,6 +122,7 @@ impl std::fmt::Display for DropSitesError {
             Self::Json(e) => write!(f, "{e}"),
             Self::Class(i, key) => write!(f, "drop_site_list[{i}]: {key} is no master class"),
             Self::Building(i) => write!(f, "drop_site_list[{i}]: building_id is no master"),
+            Self::Attribute(i, key) => write!(f, "drop_site_list[{i}]: {key} is no attribute"),
         }
     }
 }
@@ -170,7 +175,8 @@ pub fn drop_sites(
                         class: class(i, "object_group", field("object_group"))?,
                         workers: field("worker_num") as i32,
                         state: field("object_state") as i32,
-                        attribute: field("attribute_type") as i16,
+                        attribute: AttributeId::of_field(field("attribute_type") as i16)
+                            .map_err(|_| DropSitesError::Attribute(i, "attribute_type"))?,
                     })
                 })
                 .collect::<Result<Vec<_>, DropSitesError>>()?;
@@ -189,14 +195,15 @@ pub fn drop_sites(
                 auto_work: e.get("auto_work").and_then(serde_json::Value::as_bool) != Some(false),
                 targets,
                 livestock: e.get("accepts_livestock").is_some(),
-                resource_types: e["update_ai_resource_types"].as_array().map_or_else(
-                    Vec::new,
-                    |ts| {
-                        ts.iter()
-                            .map(|t| t.get("resource_type").map_or(-1, num) as i32)
-                            .collect()
-                    },
-                ),
+                resource_types: e["update_ai_resource_types"]
+                    .as_array()
+                    .map_or_else(Vec::new, Vec::clone)
+                    .iter()
+                    .map(|t| {
+                        AttributeId::try_from(t.get("resource_type").map_or(-1, num) as i16)
+                            .map_err(|_| DropSitesError::Attribute(i, "resource_type"))
+                    })
+                    .collect::<Result<Vec<_>, DropSitesError>>()?,
             })
         })
         .collect()

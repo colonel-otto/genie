@@ -7,13 +7,14 @@ use crate::gathering::gather::Walks;
 use crate::gathering::hunt::walks::QUIET_CODE;
 use crate::gathering::hunt::{
     ATTACK, DROP, HuntAction, HuntTask, IDLE, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH,
-    WALK_POINT, WALK_SEARCH, food,
+    WALK_POINT, WALK_SEARCH,
 };
 use crate::map::Position;
 use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
+use crate::objects::lifecycle::Held;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -65,7 +66,7 @@ pub struct HuntStart<'a> {
     /// The game settings' test `FUN_141302150`.
     pub carry_rule: bool,
     /// What the hunter carries, its resource kind and amount.
-    pub held: &'a mut (i16, f32),
+    pub held: &'a mut Held,
     /// What its `MoveTo`s' constructors read of the hunter; its load is `held`'s.
     pub walks: Walks<'a>,
 }
@@ -142,13 +143,13 @@ impl HuntAction {
         };
         if 0.0 < target.amount {
             let kind = task.resource;
-            let both_food = food(kind) && food(held.0);
-            let drops = computer && held.1 == 0.0;
-            if held.0 != kind {
+            let both_food = crate::gathering::both_food(kind, held.kind);
+            let drops = computer && held.amount == 0.0;
+            if held.kind != kind {
                 if both_food {
-                    held.0 = kind;
+                    held.kind = kind;
                 } else if drops || carry_rule {
-                    *held = (kind, 0.0);
+                    *held = Held { kind, amount: 0.0 };
                 }
             }
         }
@@ -161,7 +162,7 @@ impl HuntAction {
         // becomes the second target (FUN_140a7a190), the target goes (slot 0x68 with none; the
         // caller takes and releases it), the point and `+0x68` clear, `set_state(8)`; a hunter
         // carrying nothing does not get there
-        if target.player == player && target.drop_site && 0.0 < held.1 {
+        if target.player == player && target.drop_site && 0.0 < held.amount {
             hunt.set_target(None);
             hunt.point = Position::from([-1.0; 3]);
             hunt.target_class = None;
@@ -246,7 +247,7 @@ impl HuntAction {
             walks,
             drops_here,
         } = retarget;
-        let held = walks.held.1;
+        let held = walks.held.amount;
         // A building's master type (`'P'`).
         // A building whose top action is an Unpack takes a hunt sent to it to `set_state` 15.
         if target.kind == BUILDING && target.top_action == Some(action_type::UNPACK) {
@@ -293,7 +294,7 @@ impl HuntAction {
             my_pasture,
             gap,
         } = take;
-        let held = walks.held.1;
+        let held = walks.held.amount;
         if target.is_none() && self.task.range != 0.0 {
             return Ok(false);
         }

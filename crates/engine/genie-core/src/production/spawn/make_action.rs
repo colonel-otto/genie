@@ -5,7 +5,9 @@ use crate::objects::masters::player_master;
 use crate::orders::NO_QUEUE;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
-use crate::production::{IN_PRODUCTION, MakeObj, MakeTech, Making, QUEUED, housed, population};
+use crate::players::attribute::IN_PRODUCTION;
+use crate::players::attribute::QUEUED;
+use crate::production::{MakeObj, MakeTech, Making, housed, population};
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
@@ -23,11 +25,6 @@ const NO_MAKE_ACTION: GenieError =
 pub(super) const MAKE_OBJ: i16 = 0x66;
 /// The research action's type (0x67, `TRIBE_Action_Make_Tech`).
 pub(super) const MAKE_TECH: i16 = 0x67;
-
-/// The attribute that scales research times above 0 (`+0x2b0`: 86).
-pub(super) const RESEARCH_TIME_MODIFIER: i16 = 86;
-/// The attribute naming the world's effect a player gets after each research (`+0x868`: 269).
-pub(super) const WORLD_EFFECT: i16 = 269;
 
 impl World {
     /// `TRIBE_Building_Object::update`'s part after its combat update (`0x1411ca3e2`) for the
@@ -121,9 +118,7 @@ impl World {
                 .master
                 .and_then(|m| player_master(&self.masters, p, m))
                 .map_or(0.0, |m| population(&m.storage));
-            self.players
-                .player_mut(p)?
-                .add_attribute(AttributeId::try_from(QUEUED)?, -pop)?;
+            self.players.player_mut(p)?.add_attribute(QUEUED, -pop)?;
         }
         if let Some(production) = self.players.live_mut(p, i)?.production.as_mut() {
             production.queue.release_first();
@@ -237,7 +232,7 @@ impl World {
         use crate::technology::Attributes;
         let (t, def) = self.research_tech(p, r.tech)?;
         let owner = self.players.player(p)?;
-        let get = |k: i16| owner.get(AttributeId::try_from(k)?);
+        let get = |k: AttributeId| owner.get(k);
         let factors = crate::technology::factors(r.tech, &get)?;
         let paid = owner.objects[i]
             .production

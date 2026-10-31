@@ -128,7 +128,7 @@ impl World {
             id: unit.id,
             master: own,
             player,
-            held: (unit.life.attribute_type, unit.life.amount),
+            held: unit.life.held(),
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };

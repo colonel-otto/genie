@@ -3,7 +3,9 @@
 use crate::masters::MasterTable;
 use crate::{Error, work_masters};
 use genie_core::objects::ObjectId;
+use genie_core::objects::lifecycle::Held;
 use genie_core::players::PlayerId;
+use genie_core::players::attribute::AttributeId;
 use genie_rec::de;
 
 /// What the task finder (`genie_core::unit_ai::task_finder`) reads of a save: every player's masters as the work
@@ -35,7 +37,7 @@ pub struct FinderObject {
     /// Its state.
     pub state: u8,
     /// What it holds: the attribute and the amount.
-    pub held: (i16, f32),
+    pub held: Held,
     /// Its hit points.
     pub hp: f32,
     /// Its most hit points.
@@ -215,7 +217,10 @@ fn finder_object(
         player,
         master: genie_core::objects::masters::MasterId::try_from(s.master_obj)?,
         state: s.object_state,
-        held: (s.attribute_type_held, s.attribute_amount_held),
+        held: Held {
+            kind: AttributeId::of_field(s.attribute_type_held)?,
+            amount: s.attribute_amount_held,
+        },
         hp: s.hp + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
         max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),
         attackable: s.unit_attackable_flag != 0,

@@ -31,7 +31,7 @@ use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
-use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
+use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -47,6 +47,9 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::change::change_hands;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
+use crate::test_ids::carrying;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -420,7 +423,7 @@ pub(crate) fn builder_masters() -> Masters {
             obstruction_type: 0,
             buildable_on: 0,
             tasks: vec![],
-            cost: vec![(1, 25, true)],
+            cost: vec![(attribute::WOOD, 25, true)],
             obstruction_class: 2,
             object_flags: 0,
             combat_level: 0,
@@ -649,7 +652,7 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
         id: master_id(112),
         kind: master_type::ANIMATED,
         standing_sprite: -1,
-        storage: vec![(12, 1.0, 0)],
+        storage: vec![(Some(AttributeId::numbered(12)), 1.0, 0)],
         ..Master::default()
     };
     t.masters = (0..3).map(|_| Masters::new([flare.clone()])).collect();
@@ -706,7 +709,7 @@ fn pasture_game(at: Position, livestock: f32, livestock_masters: &[MasterId]) ->
         hit_points: 1,
         radius: Footprint::new(0.2, 0.2),
         standing_sprite,
-        storage: vec![(0, 100.0, 0)],
+        storage: vec![(Some(attribute::FOOD), 100.0, 0)],
         moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
@@ -781,7 +784,7 @@ fn a_completed_pasture_puts_its_livestock_on_its_edges() {
                 u.life.attribute_type,
                 u.untargetable
             ),
-            (Some(object_id(50)), 100.0, 0, true)
+            (Some(object_id(50)), 100.0, Some(attribute::FOOD), true)
         );
         assert_eq!(u.life.state, 2);
         assert!(u.sprite.is_some() && u.body.mover().is_some());
@@ -1259,7 +1262,7 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
             class,
             state,
             master_id: master,
-            attribute_type: -1,
+            attribute_type: None,
             master: Some(MasterData {
                 decay: 0.0,
                 undead: false,
@@ -1905,7 +1908,7 @@ fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_grou
             id: object_id(9175),
             master: own,
             player: PlayerId::new(1),
-            held: (-1, 0.0),
+            held: carrying(None, 0.0),
             attribute_95: 0.0,
             civ: 0,
         };
@@ -2281,7 +2284,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
             range: 0.0,
             work_value: 0.0,
             work_rate: 1.0,
-            resource: -1,
+            resource: None,
             id: TaskId::test(0),
             moving: None,
         }
@@ -2593,7 +2596,7 @@ pub(crate) fn forage_world() -> World {
                 id: TaskId::test(2),
                 action_type: crate::gathering::gather::GATHER,
                 object_group: 7,
-                attribute_type: 17,
+                attribute_type: Some(AttributeId::numbered(17)),
                 work_range: 0.25,
                 work_val1: 0.31,
                 ..crate::objects::masters::Task::default()
@@ -2623,7 +2626,7 @@ pub(crate) fn forage_world() -> World {
             state: 2,
             hp: 1.0,
             master_id: master_id(59),
-            attribute_type: 17,
+            attribute_type: Some(AttributeId::numbered(17)),
             amount: 125.0,
             ..Lifecycle::default()
         },
@@ -2718,7 +2721,7 @@ pub(crate) fn forage_world() -> World {
             class: class::CLASS_7,
             workers: -1,
             state: -1,
-            attribute: 17,
+            attribute: Some(AttributeId::numbered(17)),
         }],
         ..DropSite::default()
     }];
@@ -2858,7 +2861,7 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
     let loaded = || {
         let mut t = forage_world();
         let v = &mut t.players[1].objects[0];
-        (v.life.attribute_type, v.life.amount) = (17, 6.0);
+        (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
         t
     };
     let carries = |t: &World| {
@@ -2866,24 +2869,24 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
         let g = v.actions.gather().copied().unwrap();
         (
             (g.target, g.carry_to, g.state, g.point),
-            (v.life.attribute_type, v.life.amount),
+            v.life.held(),
             t.players[1].objects[2].workers,
         )
     };
-    let carrying = (
+    let loaded_to_700 = (
         (None, Some(object_id(700)), 8, Position::from([-1.0; 3])),
-        (17, 6.0),
+        carrying(Some(AttributeId::numbered(17)), 6.0),
         1,
     );
     let mut t = loaded();
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
-    assert_eq!(carries(&t), carrying);
+    assert_eq!(carries(&t), loaded_to_700);
     let mut t = loaded();
     t.gather_command(PlayerId::new(1), 0, object_id(600))
         .unwrap();
     t.players[1].objects[0].actions.gather_mut().unwrap().state = 7;
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
-    assert_eq!(carries(&t), carrying);
+    assert_eq!(carries(&t), loaded_to_700);
     assert_eq!(t.players[0].objects[0].workers, 0);
 }
 
@@ -2974,7 +2977,7 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         (0, 0)
     );
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
     assert_eq!(
         t.move_to_object_with(
             PlayerId::new(1),
@@ -3023,7 +3026,7 @@ fn a_drop_off_order_takes_a_forager_to_its_nearest_drop_site() {
     };
     t.players[1].objects.push(far);
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
     let world = t.clone();
     t.unit_order(player_id(1), &object_ids([9175]), 6).unwrap();
     let v = &t.players[1].objects[0];
@@ -3074,7 +3077,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
                 id: TaskId::test(3),
                 action_type: crate::gathering::gather::GATHER,
                 object_group: 49,
-                attribute_type: 0,
+                attribute_type: Some(attribute::FOOD),
                 work_range: 0.25,
                 ..crate::objects::masters::Task::default()
             });
@@ -3099,7 +3102,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             state: 2,
             hp: 480.0,
             master_id: ids::FARM,
-            attribute_type: 0,
+            attribute_type: Some(attribute::FOOD),
             amount: 175.0,
             ..Lifecycle::default()
         },
@@ -3764,7 +3767,7 @@ fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
         class: class::BUILDING,
         radius: Footprint::new(2.0, 2.0),
         hit_points: 4800,
-        storage: vec![(4, 20.0, 4)],
+        storage: vec![(Some(attribute::HEADROOM), 20.0, 4)],
         building: Some(crate::objects::masters::BuildingMaster {
             tech: None,
             foundation_terrain: -1,
@@ -4101,7 +4104,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         (0, 0)
     );
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (15, 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), 6.0);
     assert_eq!(
         t.move_to_object_with(
             PlayerId::new(1),
@@ -4199,7 +4202,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     assert_eq!((h.state, h.carry_to), (DROP, Some(object_id(700))));
     assert!((h.timer + 0.45).abs() < 1e-6);
     let mut t = wait(-0.01);
-    t.players[1].objects[0].life.attribute_type = 15;
+    t.players[1].objects[0].life.attribute_type = Some(attribute::MEAT);
     t.players[1].objects[0].life.amount = 5.0;
     t.players[1].objects[2].workers = 1;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
@@ -4232,7 +4235,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
             h.attack = None;
         });
         let v = &mut t.players[1].objects[0];
-        (v.life.attribute_type, v.life.amount) = (15, 5.0);
+        (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), 5.0);
         v.place_for_test(Position::new(22.3, 89.5, 0.0));
         t.spatial
             .set_position(object_id(9175), Position::new(22.3, 89.5, 0.0))
@@ -4244,7 +4247,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
                 class: class::PREY,
                 workers: -1,
                 state: -1,
-                attribute: 15,
+                attribute: Some(attribute::MEAT),
             }],
             ..DropSite::default()
         }];
@@ -4419,7 +4422,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
     let gathering = |held: f32| {
         let mut t = hunter_in(|h| {
             (h.state, h.attack, h.move_to) = (GATHER, None, None);
-            (h.task.work_value, h.task.resource) = (1.0, 15);
+            (h.task.work_value, h.task.resource) = (1.0, Some(attribute::MEAT));
         });
         for masters in &mut t.masters {
             let hunter = masters.get_mut(master_id(122)).unwrap();
@@ -4427,9 +4430,9 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         }
         let deer = &mut t.players[0].objects[0];
         (deer.life.state, deer.life.hp) = (3, 0.0);
-        (deer.life.attribute_type, deer.life.amount) = (15, 100.0);
+        (deer.life.attribute_type, deer.life.amount) = (Some(attribute::MEAT), 100.0);
         let v = &mut t.players[1].objects[0];
-        (v.life.attribute_type, v.life.amount) = (15, held);
+        (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), held);
         v.place_for_test(Position::new(31.9, 89.5, 0.0));
         t.spatial
             .set_position(object_id(9175), Position::new(31.9, 89.5, 0.0))
@@ -4462,7 +4465,7 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
     use crate::gathering::hunt::GATHER;
     let mut t = hunter_in(|h| {
         (h.state, h.attack, h.move_to) = (GATHER, None, None);
-        (h.task.work_value, h.task.resource) = (1.0, 15);
+        (h.task.work_value, h.task.resource) = (1.0, Some(attribute::MEAT));
     });
     for masters in &mut t.masters {
         let hunter = masters.get_mut(master_id(122)).unwrap();
@@ -4470,9 +4473,9 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
     }
     let deer = &mut t.players[0].objects[0];
     (deer.life.state, deer.life.hp) = (3, 0.0);
-    (deer.life.attribute_type, deer.life.amount) = (15, 100.0);
+    (deer.life.attribute_type, deer.life.amount) = (Some(attribute::MEAT), 100.0);
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (15, 5.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::MEAT), 5.0);
     v.place_for_test(Position::new(31.9, 89.5, 0.0));
     t.spatial
         .set_position(object_id(9175), Position::new(31.9, 89.5, 0.0))
@@ -4557,7 +4560,7 @@ fn shepherd_world(x: f32) -> World {
             state: 2,
             hp: 7.0,
             master_id: master_id(594),
-            attribute_type: 15,
+            attribute_type: Some(attribute::MEAT),
             amount: 100.0,
             ..Lifecycle::default()
         },
@@ -4684,7 +4687,7 @@ fn lumber_world(near: f32) -> World {
             state: 2,
             hp: 20.0,
             master_id: master_id(349),
-            attribute_type: 1,
+            attribute_type: Some(attribute::WOOD),
             amount: 100.0,
             ..Lifecycle::default()
         },
@@ -6123,7 +6126,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
 fn a_unit_order_drop_off_takes_any_player_s_unit() {
     let mut t = sent_off_world(vec![]);
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (1, 5.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::WOOD), 5.0);
     let before = t.players[1].objects[0].clone();
     t.unit_order(player_id(1), &object_ids([9175]), 8).unwrap();
     t.unit_order(player_id(0), &object_ids([9175]), 8).unwrap();
@@ -6449,8 +6452,8 @@ fn farm_master() -> Master {
         default_task: Some(0),
         tasks: vec![crate::objects::masters::Task {
             action_type: crate::gathering::make::MAKE,
-            attribute_type: crate::gathering::make::FARM_FOOD_KIND,
-            attribute_type2: 0,
+            attribute_type: Some(attribute::FARM_FOOD),
+            attribute_type2: Some(attribute::FOOD),
             work_val1: 1.0,
             ..crate::objects::masters::Task::default()
         }],
@@ -6581,7 +6584,12 @@ fn a_dying_object_gives_back_its_storage_of_kinds_2_and_16() {
     let storage = |hp: f32| {
         life_part(
             |m, v| {
-                m.storage = vec![(4, 1.0, 2), (11, 5.0, 16), (9, 1.0, 1), (-1, 1.0, 2)];
+                m.storage = vec![
+                    (Some(attribute::HEADROOM), 1.0, 2),
+                    (Some(attribute::POPULATION), 5.0, 16),
+                    (Some(AttributeId::numbered(9)), 1.0, 1),
+                    (None, 1.0, 2),
+                ];
                 (v.life.state, v.life.hp) = (2, hp);
             },
             |u, c| u.dying_storage_leaves(c),
@@ -6710,7 +6718,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
         id: object_id(40),
         life: Lifecycle {
             master_id: ids::FARM,
-            attribute_type: 0,
+            attribute_type: Some(attribute::FOOD),
             amount: 15.0,
             ..Lifecycle::default()
         },
@@ -6718,7 +6726,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
         ..Unit::default()
     };
     let mut attributes = vec![0.0; 100];
-    attributes[crate::gathering::make::FARM_FOOD] = 175.0;
+    attributes[attribute::FARM_FOOD_AMOUNT.index()] = 175.0;
     let mut t = World::new(
         0,
         1,
@@ -6735,7 +6743,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     let f = &t.players[0].objects[0];
     let make = f.actions.make().copied().unwrap();
     assert_eq!((make.state, make.remaining, make.total), (6, 175.0, 175.0));
-    assert_eq!((f.life.attribute_type, f.life.amount), (16, 0.0));
+    assert_eq!(f.life.held(), carrying(Some(attribute::FARM_FOOD), 0.0));
     assert_eq!(
         f.top_action(),
         Some(TopAction {
@@ -6922,9 +6930,25 @@ fn a_load_goes_to_its_player_alone_unless_the_player_shares() {
     // records/425906646's update 818: player 6, with allies, does not share (+0x1426 0)
     let relations = vec![vec![0, 3, 3], vec![3, 0, 0], vec![3, 0, 0]];
     let mut adds = Vec::new();
-    give_load((&relations, false), PlayerId::new(1), &mut adds, 0, 10.0).unwrap();
-    assert_eq!(adds, [(0, 10.0), (166, 10.0)]);
-    assert!(give_load((&relations, true), PlayerId::new(1), &mut adds, 3, 10.0).is_err());
+    give_load(
+        (&relations, false),
+        PlayerId::new(1),
+        &mut adds,
+        attribute::FOOD,
+        10.0,
+    )
+    .unwrap();
+    assert_eq!(adds, [(attribute::FOOD, 10.0), (attribute::GATHERED, 10.0)]);
+    assert!(
+        give_load(
+            (&relations, true),
+            PlayerId::new(1),
+            &mut adds,
+            attribute::GOLD,
+            10.0
+        )
+        .is_err()
+    );
 }
 
 /// A gate's slot 0x678 (`FUN_1411d4a30`): a standing, unlocked object of class 39 whose
@@ -7539,8 +7563,11 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
     };
     let villager = |id| Master {
         class: class::VILLAGER,
-        cost: vec![(0, 46, true), (4, 1, false), (-1, 0, false)],
-        storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
+        cost: vec![(attribute::FOOD, 46, true), (attribute::HEADROOM, 1, false)],
+        storage: vec![
+            (Some(attribute::HEADROOM), -1.0, 2),
+            (Some(attribute::POPULATION), 1.0, 2),
+        ],
         ..trained(id, 25)
     };
     let centre = Master {
@@ -7550,7 +7577,10 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
         ..Master::default()
     };
     let quick = Master {
-        storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
+        storage: vec![
+            (Some(attribute::HEADROOM), -1.0, 2),
+            (Some(attribute::POPULATION), 1.0, 2),
+        ],
         ..trained(master_id(97), 2)
     };
     t.masters = vec![Masters::new([
@@ -7582,7 +7612,7 @@ fn a_queue_pays_its_cost_and_the_building_starts_making() {
     let q = &production.queue;
     assert_eq!(
         (q.count, q.total, q.slots[0].train_time, q.slots[0].costs[0]),
-        (1, 1, 25, (0, 46.0))
+        (1, 1, 25, (Some(attribute::FOOD), 46.0))
     );
     assert!(p.unsupported.is_none());
 }
@@ -7959,7 +7989,7 @@ fn research_world() -> World {
     t.players[0].objects[0].ai = Some(UnitAi::default());
     t.techs = vec![TechDef::default(); 6];
     t.techs[5].costs[0] = Cost {
-        attribute: 0,
+        attribute: Some(attribute::FOOD),
         amount: 50,
         paid: 1,
     };
@@ -7968,7 +7998,7 @@ fn research_world() -> World {
         state: 1,
         research_cap: -1,
         building_master: None,
-        overrides: [(0, -1, -2), (0, -1, 0), (0, -1, 0)],
+        overrides: [(0, None, -2), (0, None, 0), (0, None, 0)],
         locations: vec![Location {
             building: Some(ids::TOWN_CENTRE),
             time: 30,
@@ -8266,7 +8296,11 @@ fn hands_masters() -> Vec<Masters> {
             fog_visibility: p,
             hit_points: 30 + 5 * i16::from(p),
             death_spawns: [Some(master_id(3)), None],
-            storage: vec![(4, 1.0, 2), (11, 0.0, 0), (-1, 0.0, 0)],
+            storage: vec![
+                (Some(attribute::HEADROOM), 1.0, 2),
+                (Some(attribute::POPULATION), 0.0, 0),
+                (None, 0.0, 0),
+            ],
             ..Master::default()
         };
         let dead = Master {
@@ -8286,7 +8320,7 @@ fn hands_masters() -> Vec<Masters> {
             class: class::LIVESTOCK,
             line_of_sight: 2.0 + f32::from(p),
             fog_visibility: p,
-            storage: vec![(16, 100.0, 1)],
+            storage: vec![(Some(attribute::FARM_FOOD), 100.0, 1)],
             ..Master::default()
         };
         if p == 2 {
@@ -9068,7 +9102,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             range: 0.0,
             work_value: 0.0,
             work_rate: 1.0,
-            resource: -1,
+            resource: None,
             id: TaskId::of_task(-1),
             moving: None,
         },
@@ -9092,30 +9126,48 @@ fn a_built_building_s_storage_leaves_its_owner_and_its_store() {
         id: ids::TOWN_CENTRE,
         kind: BUILDING,
         storage: vec![
-            (4, 5.0, 4),
-            (-1, 5.0, 4),
-            (7, 0.0, 4),
-            (11, 2.0, 16),
-            (12, 3.0, 0x30),
-            (13, 1.0, 16),
+            (Some(attribute::HEADROOM), 5.0, 4),
+            (None, 5.0, 4),
+            (Some(attribute::RELICS_HELD), 0.0, 4),
+            (Some(attribute::POPULATION), 2.0, 16),
+            (Some(AttributeId::numbered(12)), 3.0, 0x30),
+            (Some(AttributeId::numbered(13)), 1.0, 16),
         ],
         ..Master::default()
     };
     let mut u = Unit {
         id: object_id(1),
-        store: vec![(11, 6.0), (12, 4.0)],
+        store: vec![
+            (attribute::POPULATION, 6.0),
+            (AttributeId::numbered(12), 4.0),
+        ],
         ..Unit::default()
     };
-    u.life.attribute_type = 4;
+    u.life.attribute_type = Some(attribute::HEADROOM);
     u.life.amount = 3.0;
     let adds = storage_leaves(&mut u, &master);
-    assert_eq!(adds, [(4, -5.0), (4, -3.0)]);
-    assert_eq!((u.life.attribute_type, u.life.amount), (-1, 0.0));
-    assert_eq!(u.store, [(11, 4.0), (12, 1.0)]);
+    assert_eq!(
+        adds,
+        [(attribute::HEADROOM, -5.0), (attribute::HEADROOM, -3.0)]
+    );
+    assert_eq!(u.life.held(), carrying(None, 0.0));
+    assert_eq!(
+        u.store,
+        [
+            (attribute::POPULATION, 4.0),
+            (AttributeId::numbered(12), 1.0)
+        ]
+    );
     // holding no population: the master's entries alone
     let adds = storage_leaves(&mut u, &master);
-    assert_eq!(adds, [(4, -5.0)]);
-    assert_eq!(u.store, [(11, 2.0), (12, -2.0)]);
+    assert_eq!(adds, [(attribute::HEADROOM, -5.0)]);
+    assert_eq!(
+        u.store,
+        [
+            (attribute::POPULATION, 2.0),
+            (AttributeId::numbered(12), -2.0)
+        ]
+    );
 }
 
 /// A world for the deaths: Gaia holds the tree 50 (master 349, type 15, one worker) and the boar
@@ -9179,7 +9231,7 @@ fn deaths_world() -> World {
             range: 0.0,
             work_value: 1.0,
             work_rate: 1.0,
-            resource: -1,
+            resource: None,
             id: TaskId::of_task(-1),
             moving: None,
         },
@@ -9575,7 +9627,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         actions: ActionList::default().with_hunt(Some(crate::gathering::hunt::tests::hunting(-1))),
         life: Lifecycle {
             master_id: VILLAGER_MALE,
-            attribute_type: 0,
+            attribute_type: Some(attribute::FOOD),
             amount: 10.0,
             ..Lifecycle::default()
         },
@@ -10019,7 +10071,11 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     let workshop = Master {
         kind: BUILDING,
         build_time: 10,
-        storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
+        storage: vec![
+            (Some(attribute::HEADROOM), 5.0, 4),
+            (None, 0.0, 0),
+            (None, 0.0, 0),
+        ],
         obstruction_type: 2,
         obstruction_class: 2,
         building: Some(crate::objects::masters::BuildingMaster {
@@ -10605,7 +10661,7 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
     let master = Master {
         id: master_id(705),
         class: class::LIVESTOCK,
-        storage: vec![(16, 100.0, 1)],
+        storage: vec![(Some(attribute::FARM_FOOD), 100.0, 1)],
         ..Master::default()
     };
     t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
@@ -10877,7 +10933,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         id: ids::CASTLE,
         kind: BUILDING,
         class: class::BUILDING,
-        cost: vec![(2, 650, true), (0, 10, false)],
+        cost: vec![(attribute::STONE, 650, true), (attribute::FOOD, 10, false)],
         weapons: vec![(3, 11)],
         ..Master::default()
     };
@@ -10915,9 +10971,9 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         owner: PlayerId::new(2),
         event: Some(crate::players::history::CASTLE_DESTROYED),
         adds: vec![
-            (PlayerId::new(1), 43, 1.0),
-            (PlayerId::new(2), 155, 1.0),
-            (PlayerId::new(1), 170, 650.0),
+            (PlayerId::new(1), attribute::RAZINGS, 1.0),
+            (PlayerId::new(2), attribute::RAZINGS_OTHER, 1.0),
+            (PlayerId::new(1), attribute::KILLS_VALUE, 650.0),
         ],
     });
     write_hit(&mut t, (PlayerId::new(1), 0), v);
@@ -11041,7 +11097,11 @@ fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
     )));
     assert!(!is_trebuchet(&m(BUILDING, class::BUILDING, vec![(3, 11)])));
     let paid = Master {
-        cost: vec![(1, 200, true), (3, 200, true), (-1, 5, true), (2, 7, false)],
+        cost: vec![
+            (attribute::WOOD, 200, true),
+            (attribute::GOLD, 200, true),
+            (attribute::STONE, 7, false),
+        ],
         ..Master::default()
     };
     assert_eq!(paid_cost(&paid), 400.0);
@@ -12307,11 +12367,11 @@ fn an_ai_move_hands_the_point_to_the_gather() {
     let task = crate::gathering::hunt::HuntTask {
         id: TaskId::test(2),
         range: 0.25,
-        resource: 17,
+        resource: Some(AttributeId::numbered(17)),
         sprites: [-1; 4],
         work_value: 1.0,
-        productivity: -1,
-        kind4: -1,
+        productivity: None,
+        kind4: None,
     };
     let bush = crate::gathering::gather::Resource {
         id: object_id(28222),
@@ -12589,7 +12649,7 @@ fn on_side<R>(
                 player: PlayerId::new(1),
                 computer: false,
                 state: 2,
-                held: -1,
+                held: None,
                 top_action: None,
                 master: ids::ID_448,
                 kind: master_type::COMBAT,
@@ -12891,8 +12951,11 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
         ..Master::default()
     };
     let (unit, attacked, housed, tracker) = attack_by(
-        villager(ids::BUILDER, vec![(4, 1.0, 2)]),
-        vec![villager(VILLAGER_MALE, vec![(4, 3.0, 2)])],
+        villager(ids::BUILDER, vec![(Some(attribute::HEADROOM), 1.0, 2)]),
+        vec![villager(
+            VILLAGER_MALE,
+            vec![(Some(attribute::HEADROOM), 3.0, 2)],
+        )],
     );
     assert_eq!(unit.life.master_id, VILLAGER_MALE);
     assert!(attacked.attacks);
@@ -13425,7 +13488,7 @@ fn farm_masters() -> Masters {
         radius: Footprint::new(1.5, 1.5),
         clearance: Footprint::new(1.5, 1.5),
         tall: false,
-        cost: vec![(1, 60, true)],
+        cost: vec![(attribute::WOOD, 60, true)],
         hit_points: 480,
         build_time: 15,
         ..builders.get(ids::HOUSE).unwrap().clone()
@@ -13439,11 +13502,11 @@ fn reseed_world() -> World {
     let task = crate::gathering::hunt::HuntTask {
         id: TaskId::test(2),
         range: 0.25,
-        resource: 15,
+        resource: Some(attribute::MEAT),
         sprites: [-1; 4],
         work_value: 1.0,
-        productivity: -1,
-        kind4: -1,
+        productivity: None,
+        kind4: None,
     };
     let farm = crate::gathering::gather::Resource {
         id: object_id(12557),
@@ -14170,7 +14233,7 @@ fn a_hit_s_flare_is_made_where_the_volley_runs() {
         id: master_id(112),
         kind: master_type::ANIMATED,
         standing_sprite: -1,
-        storage: vec![(12, 1.0, 0)],
+        storage: vec![(Some(AttributeId::numbered(12)), 1.0, 0)],
         ..Master::default()
     };
     t.masters[1] = Masters::new(t.masters[1].iter().cloned().chain([flare]));
@@ -14623,7 +14686,10 @@ fn a_forager_fills_up_carries_its_berries_home_and_comes_back() {
         if states.last() != Some(&g.state) {
             states.push(g.state);
             if g.state == crate::gathering::gather::DROP {
-                assert_eq!((v.life.attribute_type, v.life.amount), (17, 10.0));
+                assert_eq!(
+                    v.life.held(),
+                    carrying(Some(AttributeId::numbered(17)), 10.0)
+                );
                 assert_eq!(
                     (g.target, g.carry_to),
                     (Some(object_id(600)), Some(object_id(700)))
@@ -14930,7 +14996,7 @@ fn house_builder() -> World {
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, ids::TOWN_CENTRE);
     t.players[1].tracker.add(object_id(700), k);
     t.players[1].tracker.complete(object_id(700), k);
-    t.drop_sites[0].resource_types = vec![0, 1, 2, 3];
+    t.drop_sites[0].resource_types = attribute::RESOURCES.to_vec();
     t
 }
 
@@ -14938,10 +15004,10 @@ fn house_builder() -> World {
 /// villager building foundation 10028 while it carries `held`, its town centre a done drop site
 /// of the table (resources 0 to 3 and berries): Ok with the Build's state, its site and range,
 /// the centre's workers and what the unit AI heard.
-fn drop_again_with(held: (i16, f32)) -> (u8, Option<ObjectId>, f32, i32, Vec<i32>) {
+fn drop_again_with(held: Held) -> (u8, Option<ObjectId>, f32, i32, Vec<i32>) {
     let mut t = house_builder();
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = held;
+    (v.life.attribute_type, v.life.amount) = (held.kind, held.amount);
     in_update(&mut t, (PlayerId::new(1), 0), 50, |unit, c| {
         let mut b = *unit.actions.build().unwrap();
         let by = unit.releaser(c)?;
@@ -14976,16 +15042,19 @@ fn drop_again_with(held: (i16, f32)) -> (u8, Option<ObjectId>, f32, i32, Vec<i32
 fn a_loaded_builder_s_drop_off_finds_its_town_centre() {
     use crate::construction::build::DROP;
     assert_eq!(
-        drop_again_with((17, 6.0)),
+        drop_again_with(carrying(Some(AttributeId::numbered(17)), 6.0)),
         (DROP, Some(object_id(700)), 0.25, 1, vec![])
     );
     assert_eq!(
-        drop_again_with((2, 6.0)),
+        drop_again_with(carrying(Some(attribute::STONE), 6.0)),
         (DROP, Some(object_id(700)), 0.0, 1, vec![])
     );
-    assert_eq!(drop_again_with((-1, 0.0)), (4, None, 0.0, 0, vec![]));
     assert_eq!(
-        drop_again_with((5, 6.0)),
+        drop_again_with(carrying(None, 0.0)),
+        (4, None, 0.0, 0, vec![])
+    );
+    assert_eq!(
+        drop_again_with(carrying(Some(AttributeId::numbered(5)), 6.0)),
         (4, None, 0.0, 0, vec![crate::unit_ai::NO_DROP_SITE])
     );
 }
@@ -15678,7 +15747,7 @@ fn worked(t: &mut World, site: i32, dt: u32) -> Result<(), GenieError> {
         range: 0.1,
         work_value: 1.0,
         work_rate: 1.0,
-        resource: -1,
+        resource: None,
         id: TaskId::of_task(-1),
         moving: None,
     };
@@ -16193,7 +16262,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
         let castle = Master {
             id: ids::CASTLE,
             hit_points: 4800,
-            cost: vec![(2, 650, true)],
+            cost: vec![(attribute::STONE, 650, true)],
             ..house
         };
         *masters = Masters::new(masters.iter().cloned().chain([castle]));
@@ -16464,7 +16533,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
     );
     t.build_mesh().unwrap();
     let v = &mut t.players[1].objects[0];
-    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 6.0);
     let here = v.position();
     let m = v.body.mover_mut().unwrap();
     m.moved_at = here;
@@ -16507,7 +16576,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
         ]
     );
     assert_eq!(t.players[1].resources[0], 6.0);
-    assert_eq!(t.players[1].objects[0].life.attribute_type, -1);
+    assert_eq!(t.players[1].objects[0].life.attribute_type, None);
 }
 
 /// Object `i` of player `p`'s step (dt 50, outside a turn) whose only part is `step`: what it
@@ -16696,7 +16765,7 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
 
 /// The updating unit's own kill with what a razing hit counted: player 1's attribute 98 by
 /// each of `adds` (attribute, amount).
-fn own_razing(adds: &[(i16, f32)]) -> crate::combat::victims::KillLeft {
+fn own_razing(adds: &[(AttributeId, f32)]) -> crate::combat::victims::KillLeft {
     crate::combat::victims::KillLeft {
         id: object_id(9175),
         kill: None,
@@ -16714,12 +16783,12 @@ fn own_razing(adds: &[(i16, f32)]) -> crate::combat::victims::KillLeft {
 
 /// The updating unit's own razings count where the hit runs, within its update
 /// ([`crate::combat::victims::file_kill`] on the unit out of its slot): the attribute adds in
-/// their order, and the first that fails stops the ones after it (a count of a negative
-/// attribute stops the next one).
+/// their order, and the first that fails stops the ones after it (a count of an attribute the
+/// player does not have stops the next one).
 #[test]
 fn the_own_razings_count_where_the_hit_runs() {
     use crate::combat::victims::file_kill;
-    let razed = |adds: &[(i16, f32)]| {
+    let razed = |adds: &[(AttributeId, f32)]| {
         let mut t = house_builder();
         t.players[1].attributes[98] = 10.0;
         let r = in_update(&mut t, (PlayerId::new(1), 0), 0, |u, c| {
@@ -16731,9 +16800,15 @@ fn the_own_razings_count_where_the_hit_runs() {
             t.players[1].attributes[98],
         )
     };
-    assert_eq!(razed(&[(98, -5.0)]), (Ok(5.0), 5.0));
-    let negative = Err("a negative attribute".to_owned());
-    assert_eq!(razed(&[(-1, 5.0), (98, -5.0)]), (negative, 10.0));
+    assert_eq!(razed(&[(attribute::TOTAL_VALUE, -5.0)]), (Ok(5.0), 5.0));
+    let missing = Err("an attribute the player does not have".to_owned());
+    assert_eq!(
+        razed(&[
+            (AttributeId::numbered(9999), 5.0),
+            (attribute::TOTAL_VALUE, -5.0)
+        ]),
+        (missing, 10.0)
+    );
 }
 
 /// A step that fails stops what follows it: the tiles whose marks it changed are not handed to
@@ -16852,7 +16927,7 @@ fn a_built_building_s_death_reaches_its_owner_within_its_update() {
             let mut castle = Master {
                 id: ids::CASTLE,
                 death_sprite: -1,
-                cost: vec![(2, 650, true)],
+                cost: vec![(attribute::STONE, 650, true)],
                 ..masters.get(ids::HOUSE).unwrap().clone()
             };
             let b = castle.building.as_mut().unwrap();
@@ -17182,7 +17257,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
             }),
             PlayerId::new(1),
             |w| {
-                w.buy(player_id(1), 1, 1).unwrap();
+                w.buy(player_id(1), attribute::WOOD, 1).unwrap();
                 Ok(())
             },
         ),
@@ -17197,7 +17272,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
             }),
             PlayerId::new(1),
             |w| {
-                w.sell(player_id(1), 1, 1).unwrap();
+                w.sell(player_id(1), attribute::WOOD, 1).unwrap();
                 Ok(())
             },
         ),

@@ -111,7 +111,7 @@ impl BuildAction {
                     id: builder.id,
                     master: own,
                     player,
-                    held: (builder.life.attribute_type, builder.life.amount),
+                    held: builder.life.held(),
                     attribute_95: c
                         .w
                         .players

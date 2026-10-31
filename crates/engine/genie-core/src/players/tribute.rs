@@ -6,20 +6,13 @@ use crate::GenieError;
 use crate::math::fmath::maxss;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
+use crate::players::attribute;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
 /// of the market, 84, or of 1647 above 0).
 const MARKETS: [MasterId; 2] = [MasterId::named(84), MasterId::named(1647)];
-/// The giver's tribute paid (53), with the fee (175), and to each player (450 + the receiver's
-/// id); the receiver's tribute received (171) and from each player (475 + the giver's id).
-const TRIBUTE_GIVEN: i16 = 53;
-const TRIBUTE_PAID: i16 = 175;
-const TRIBUTE_TO: i16 = 450;
-const TRIBUTE_RECEIVED: i16 = 171;
-const TRIBUTE_FROM: i16 = 475;
 
 /// One of a tribute's four entries: the attribute (`+0x24`..), its amount (`+0x04`..) and the
 /// fee (`+0x14`..), a share of the amount.
@@ -95,35 +88,20 @@ impl World {
             return Ok(());
         }
         for &gift in gifts {
-            if 3 < gift.attribute {
+            let Some(&kind) = attribute::RESOURCES.get(usize::from(gift.attribute)) else {
                 continue;
-            }
-            let kind = gift.attribute as i16;
-            let have = *self
-                .players
-                .player(from)?
-                .resources
-                .checked(usize::from(gift.attribute))?;
+            };
+            let have = *self.players.player(from)?.resources.checked(kind.index())?;
             let (given, paid) = settle(have, gift);
-            self.players
-                .player_mut(to)?
-                .add_attribute(AttributeId::try_from(kind)?, given)?;
-            self.players
-                .player_mut(from)?
-                .add_attribute(AttributeId::try_from(kind)?, -paid)?;
+            self.players.player_mut(to)?.add_attribute(kind, given)?;
+            self.players.player_mut(from)?.add_attribute(kind, -paid)?;
             let giver = self.players.player_mut(from)?;
-            giver.add_attribute(AttributeId::try_from(TRIBUTE_GIVEN)?, given)?;
-            giver.add_attribute(AttributeId::try_from(TRIBUTE_PAID)?, paid)?;
-            giver.add_attribute(
-                AttributeId::try_from(TRIBUTE_TO + i16::from(to.index() as u8))?,
-                given,
-            )?;
+            giver.add_attribute(attribute::TRIBUTE_GIVEN, given)?;
+            giver.add_attribute(attribute::TRIBUTE_PAID, paid)?;
+            giver.add_attribute(attribute::TRIBUTE_TO.offset(to.index())?, given)?;
             let receiver = self.players.player_mut(to)?;
-            receiver.add_attribute(AttributeId::try_from(TRIBUTE_RECEIVED)?, given)?;
-            receiver.add_attribute(
-                AttributeId::try_from(TRIBUTE_FROM + i16::from(from.index() as u8))?,
-                given,
-            )?;
+            receiver.add_attribute(attribute::TRIBUTE_RECEIVED, given)?;
+            receiver.add_attribute(attribute::TRIBUTE_FROM.offset(from.index())?, given)?;
             if receiver.computer {
                 return Err(GenieError::unsupported(
                     "a computer player's AI told of a tribute (0x20a, slot 0x3c8)",

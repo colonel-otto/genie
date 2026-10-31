@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
-use crate::players::attribute;
+use crate::players::attribute::{self, AttributeId, RESOURCES};
 use crate::players::world_player::{
     COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
 };
@@ -17,10 +17,10 @@ impl World {
     /// `JBE` skips a NaN) adds its sixtieth to food, wood, stone and gold in turn, through the
     /// attribute add with its statistic and its sharing ([`World::add_resource`] with 1 and 1).
     pub fn trickles(&mut self, p: PlayerId) -> Result<(), GenieError> {
-        for kind in 0..4 {
+        for kind in RESOURCES {
             let rate = get(
                 &self.players.player(p)?.attributes,
-                attribute::TRICKLES.offset(kind)?.index(),
+                attribute::TRICKLES.offset(kind.index())?,
             );
             if at_most_or_unordered(rate, 0.0) {
                 continue;
@@ -51,11 +51,8 @@ impl World {
             }
         }
         let grows = crate::math::fmath::log(sum / LIVESTOCK_SCALE + SECOND);
-        let rate = get(
-            &self.players.player(p)?.attributes,
-            attribute::MILL_FOOD.index(),
-        ) / MINUTE;
-        self.add_resource(p, attribute::FOOD.index(), rate * (time * grows), 1, true)?;
+        let rate = get(&self.players.player(p)?.attributes, attribute::MILL_FOOD) / MINUTE;
+        self.add_resource(p, attribute::FOOD, rate * (time * grows), 1, true)?;
         Ok(())
     }
 
@@ -69,24 +66,24 @@ impl World {
     pub fn add_resource(
         &mut self,
         p: PlayerId,
-        kind: usize,
+        kind: AttributeId,
         amount: f32,
         stat: u8,
         share: bool,
     ) -> Result<(), GenieError> {
-        if kind == attribute::GOLD.index() {
+        if kind == attribute::GOLD {
             if stat != 0 {
                 let a = &mut self.players.player_mut(p)?.attributes;
-                let counter = get(a, attribute::GOLD_COUNTER.index());
-                set(a, attribute::GOLD_COUNTER.index(), amount + counter);
+                let counter = get(a, attribute::GOLD_COUNTER);
+                set(a, attribute::GOLD_COUNTER, amount + counter);
                 if stat == 1 {
-                    self.add_attribute_base(p, attribute::GOLD_GATHERED.index(), amount, 1, share)?;
+                    self.add_attribute_base(p, attribute::GOLD_GATHERED, amount, 1, share)?;
                 }
             }
         } else if stat == 1 {
             self.add_attribute_base(
                 p,
-                attribute::GATHERED.offset(kind)?.index(),
+                attribute::GATHERED.offset(kind.index())?,
                 amount,
                 1,
                 share,
@@ -109,36 +106,37 @@ impl World {
     pub(super) fn add_attribute_base(
         &mut self,
         p: PlayerId,
-        kind: usize,
+        kind: AttributeId,
         amount: f32,
         stat: u8,
         share: bool,
     ) -> Result<(), GenieError> {
         let player = self.players.player_mut(p)?;
-        if player.attributes.len() <= kind {
+        let k = kind.index();
+        if player.attributes.len() <= k {
             return Ok(());
         }
-        let value = if kind < 4 {
-            player.resources.checked_mut(kind)?
+        let value = if kind.is_resource() {
+            player.resources.checked_mut(k)?
         } else {
-            player.attributes.checked_mut(kind)?
+            player.attributes.checked_mut(k)?
         };
         *value += amount;
-        if player.kind == COMPUTER_TYPE && kind < 4 {
-            let pct = *player.escrow_percentage.checked(kind)?;
+        if player.kind == COMPUTER_TYPE && kind.is_resource() {
+            let pct = *player.escrow_percentage.checked(k)?;
             if !at_most_or_unordered(amount, 0.0) && !at_most_or_unordered(pct, 0.0) {
-                *player.escrow.checked_mut(kind)? += pct * amount;
+                *player.escrow.checked_mut(k)? += pct * amount;
             }
-            let held = *player.resources.checked(kind)?;
-            if !at_most_or_unordered(*player.escrow.checked(kind)?, held) {
-                *player.escrow.checked_mut(kind)? = if at_most_or_unordered(0.0, held) {
+            let held = *player.resources.checked(k)?;
+            if !at_most_or_unordered(*player.escrow.checked(k)?, held) {
+                *player.escrow.checked_mut(k)? = if at_most_or_unordered(0.0, held) {
                     held
                 } else {
                     0.0
                 };
             }
         }
-        if share && player.sharing && kind < 4 {
+        if share && player.sharing && kind.is_resource() {
             for q in PlayerId::each(self.players.len()) {
                 if q != p && self.shares_with(p, q) {
                     self.add_resource(q, kind, amount, stat, false)?;

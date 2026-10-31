@@ -7,9 +7,11 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::players::attribute::AttributeId;
+use crate::players::attribute::FARM_FOOD_AMOUNT;
 use crate::technology::EffectCommand;
 use crate::technology::effect::{
-    COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
+    COST_ATTRIBUTES, Change, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
 };
 use crate::world::World;
 
@@ -88,7 +90,7 @@ impl World {
             // the technology commands read the third argument's low byte as the mode
             let mode = (c.c & 0xff) as u8;
             match c.kind {
-                TECH_COST => self.tech_cost(p, c.a, c.b, c.d, mode)?,
+                TECH_COST => self.tech_cost(p, c.a, AttributeId::of_field(c.b)?, c.d, mode)?,
                 TECH_DISABLE => {
                     let tech = crate::math::conversions::cvttss2si(c.d);
                     if tech != -1 {
@@ -165,7 +167,7 @@ impl World {
         for q in self.party(p, party) {
             if cost {
                 let unit = if c.b < 0 { c.a } else { c.b };
-                self.cost_entries(q, unit, c.c, crate::math::conversions::cvttss2si(c.d));
+                self.cost_entries(q, unit, attribute, crate::math::conversions::cvttss2si(c.d));
             } else {
                 self.modify_attribute(
                     q,
@@ -192,23 +194,25 @@ impl World {
         farms: &mut Option<(f32, f32)>,
     ) -> Result<(), GenieError> {
         if c.kind % 10 == kind::RESOURCE_MULTIPLY {
-            if 0 <= c.a {
+            if let Some(attribute) = AttributeId::of_data(c.a) {
                 for q in self.party(p, party) {
-                    self.multiply_resource(q, c.a, c.d)?;
+                    self.multiply_resource(q, attribute, c.d)?;
                 }
             }
             return Ok(());
         }
         // the effect's player's attribute `c` scales the amount
         let amount = self.scaled_amount(p, c);
-        if party == Party::Own && c.a == FARM_FOOD {
-            *farms = Some((self.attribute_of(p, FARM_FOOD), amount));
-        } else if c.a < 0 {
+        // a negative attribute is none: nothing changes
+        let Some(attribute) = AttributeId::of_data(c.a) else {
             return Ok(());
+        };
+        if party == Party::Own && attribute == FARM_FOOD_AMOUNT {
+            *farms = Some((self.attribute_of(p, FARM_FOOD_AMOUNT), amount));
         }
         let mode = (c.b & 0xff) as u8;
         for q in self.party(p, party) {
-            self.modify_resource(q, c.a, amount, mode)?;
+            self.modify_resource(q, attribute, amount, mode)?;
         }
         Ok(())
     }
@@ -266,29 +270,17 @@ impl World {
     /// A resource command's amount (`FUN_140ec2ac0`'s kinds 1, 11, ...): its value times the
     /// effect's player's attribute named by its third argument, when the player has it.
     pub(super) fn scaled_amount(&self, p: PlayerId, c: &EffectCommand) -> f32 {
-        usize::try_from(c.c)
-            .ok()
-            .and_then(|i| self.attribute_value(p, i))
+        AttributeId::of_data(c.c)
+            .and_then(|a| self.players.get(p.index())?.attribute(a))
             .map_or(c.d, |scale| c.d * scale)
     }
 
-    /// Player `p`'s attribute `i` (the resources are [`crate::world::Player::resources`]), None
-    /// past its count (`+0x90`, the saved attributes').
-    pub(super) fn attribute_value(&self, p: PlayerId, i: usize) -> Option<f32> {
-        let player = self.players.get(p.index())?;
-        let value = player.attributes.get(i).copied()?;
-        Some(if i < 4 {
-            *player.resources.get(i)?
-        } else {
-            value
-        })
-    }
-
-    /// Player `p`'s attribute `i`, 0 past its count.
-    pub(super) fn attribute_of(&self, p: PlayerId, i: i16) -> f32 {
-        usize::try_from(i)
-            .ok()
-            .and_then(|i| self.attribute_value(p, i))
+    /// Player `p`'s attribute `attribute` (the resources are
+    /// [`crate::world::Player::resources`]), 0 past its count (`+0x90`, the saved attributes').
+    pub(super) fn attribute_of(&self, p: PlayerId, attribute: AttributeId) -> f32 {
+        self.players
+            .get(p.index())
+            .and_then(|player| player.attribute(attribute))
             .unwrap_or(0.0)
     }
 }

@@ -14,6 +14,7 @@ use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
+use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::{ActionKind, UnitAi};
 use genie_save::generated::world::{Path, PlayerObjects, RgeStaticObject};
 
@@ -187,7 +188,12 @@ pub(super) fn unit(
             .map(|c| {
                 c.local_resource_store
                     .iter()
-                    .map(|e| (e.attribute_idx as i16, e.value))
+                    .filter_map(|e| {
+                        Some((
+                            AttributeId::of_index(usize::from(e.attribute_idx))?,
+                            e.value,
+                        ))
+                    })
                     .collect()
             })
             .unwrap_or_default(),

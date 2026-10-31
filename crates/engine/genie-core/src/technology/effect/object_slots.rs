@@ -16,7 +16,7 @@ use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
 pub(crate) const POPULATION: AttributeId = attribute::POPULATION;
-pub(super) const RESOURCE_19: AttributeId = AttributeId::numbered(19);
+pub(super) const RESOURCE_19: AttributeId = attribute::UNITS_OWNED;
 /// A storage flag of `'@'` (64): the object's storage stays with it (`FUN_141195a50`).
 pub(super) const KEPT_STORAGE: u8 = 64;
 /// A hit point total a capped multiply holds an object's below (`FUN_1411962e0`: `0x46fffe00`).
@@ -188,13 +188,12 @@ impl World {
                     a::STORAGE_2 => 1,
                     _ => 2,
                 };
-                if let Some(&(kind, amount, flag)) = master.storage.get(j)
+                if let Some(&(Some(kind), amount, flag)) = master.storage.get(j)
                     && flag != KEPT_STORAGE
-                    && 0 <= kind
                 {
                     let owner = self.players.player_mut(p)?;
-                    owner.add_attribute(AttributeId::required(kind)?, -amount)?;
-                    owner.add_attribute(AttributeId::required(kind)?, v)?;
+                    owner.add_attribute(kind, -amount)?;
+                    owner.add_attribute(kind, v)?;
                 }
             }
             _ => {}
@@ -271,7 +270,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let owner = self.players.player_mut(p)?;
         for &(kind, amount, _) in master.storage.iter().take(3) {
-            match AttributeId::of_data(kind) {
+            match kind {
                 // The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
                 // headroom (4), and current population (11) and 19, which hold its magnitude.
                 Some(attribute::HEADROOM) => {

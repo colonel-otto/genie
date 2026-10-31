@@ -9,7 +9,9 @@ use crate::movement::Mover;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
+use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::death_parts::count_class;
+use crate::objects::lifecycle::static_storage;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -20,11 +22,11 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
-use crate::players::attribute::AttributeId;
+use crate::players::attribute::BUILDING_COST;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
 use crate::world::slots::PlayerSlots;
-use crate::world::{BUILDING_COST, Gate, World};
+use crate::world::{Gate, World};
 
 impl World {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
@@ -42,9 +44,9 @@ impl World {
         let cost = self.master(player, master)?.cost.clone();
         let owner = self.players.player_mut(player)?;
         for &(resource, amount, paid) in &cost {
-            let slot = usize::try_from(resource)
-                .ok()
-                .and_then(|r| owner.resources.get_mut(r))
+            let slot = owner
+                .resources
+                .get_mut(resource.index())
                 .ok_or(GenieError::unsupported(
                     "a cost in a resource other than the four",
                 ))?;
@@ -74,12 +76,12 @@ impl World {
             let paid: i32 = m
                 .cost
                 .iter()
-                .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+                .filter(|&&(_, _, paid)| paid)
                 .map(|&(_, amount, _)| i32::from(amount))
                 .sum();
             self.players
                 .player_mut(player)?
-                .add_attribute(AttributeId::try_from(BUILDING_COST)?, paid as f32)?;
+                .add_attribute(BUILDING_COST, paid as f32)?;
         }
         Ok(())
     }
@@ -91,21 +93,11 @@ impl World {
         &mut self,
         player: PlayerId,
         master: MasterId,
-    ) -> Result<(i16, f32), GenieError> {
+    ) -> Result<Held, GenieError> {
         let storage = player_master(&self.masters, player, master)
             .map(|m| m.storage.clone())
             .unwrap_or_default();
-        let mut held = (-1, 0.0);
-        let owner = self.players.player_mut(player)?;
-        for &(kind, amount, flag) in &storage {
-            if flag == 0 && kind != -1 {
-                held = (kind, amount);
-            }
-            if 0 <= kind && matches!(flag, 1 | 2 | 32) {
-                owner.add_attribute(AttributeId::required(kind)?, amount)?;
-            }
-        }
-        Ok(held)
+        static_storage(self.players.player_mut(player)?, &storage)
     }
 
     /// A new building (the master's slot 0x40 or 0x108, `FUN_1411ac5c0` / `FUN_1411aca00` with
@@ -258,8 +250,8 @@ impl World {
                 state: 0,
                 hp,
                 master_id: master,
-                attribute_type: held.0,
-                amount: held.1,
+                attribute_type: held.kind,
+                amount: held.amount,
                 dying_sprite: death.0,
                 death_spawn: death.1,
                 remains: death.2,

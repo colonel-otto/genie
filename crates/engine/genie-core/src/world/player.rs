@@ -240,29 +240,13 @@ impl Player {
         self.stopped = true;
     }
 
-    /// Attribute `i` (`player+0x100`, decoded; the first four are [`Player::resources`]), None
-    /// past its count (`+0x90`, the saved attributes').
-    #[must_use]
-    pub fn attribute_of(&self, attribute: i16) -> Option<f32> {
-        AttributeId::of_data(attribute).and_then(|a| self.attribute(a))
-    }
-
-    /// [`Player::attribute_of`] for an [`AttributeId`].
+    /// Attribute `attribute` (`player+0x100`, decoded; the first four are
+    /// [`Player::resources`]), None past its count (`+0x90`, the saved attributes').
     #[must_use]
     pub fn attribute(&self, attribute: AttributeId) -> Option<f32> {
         let i = attribute.index();
         let value = self.attributes.get(i).copied()?;
         Some(self.resources.get(i).copied().unwrap_or(value))
-    }
-
-    /// [`Player::add_attribute`] for an attribute number a data field holds (a storage or cost
-    /// entry): a negative number is a gap, as [`AttributeId::required`].
-    ///
-    /// # Errors
-    ///
-    /// A negative number, or the errors of [`Player::add_attribute`].
-    pub fn add_data_attribute(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
-        self.add_attribute(AttributeId::required(kind)?, amount)
     }
 
     /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows
@@ -318,10 +302,10 @@ impl Player {
     /// The first add [`Player::add_attribute`] fails on; the adds before it hold.
     pub fn add_attributes(
         &mut self,
-        adds: impl IntoIterator<Item = (i16, f32)>,
+        adds: impl IntoIterator<Item = (AttributeId, f32)>,
     ) -> Result<(), GenieError> {
         for (kind, amount) in adds {
-            self.add_attribute(AttributeId::try_from(kind)?, amount)?;
+            self.add_attribute(kind, amount)?;
         }
         Ok(())
     }

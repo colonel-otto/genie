@@ -17,6 +17,8 @@ use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
 use crate::players::PlayerId;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -140,9 +142,8 @@ impl Unit {
         Ok(crate::gathering::gather::GatherReads {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
-            productivity: usize::try_from(task.productivity)
-                .ok()
-                .and_then(|i| attributes.get(i))
+            productivity: (task.productivity)
+                .and_then(|i| attributes.get(i.index()))
                 .copied()
                 .filter(|&v| 0.0 < v)
                 .unwrap_or(1.0),
@@ -223,7 +224,7 @@ impl Unit {
             id: self.id,
             master,
             player: c.player,
-            held: (self.life.attribute_type, self.life.amount),
+            held: self.life.held(),
             attribute_95: c
                 .w
                 .players
@@ -249,7 +250,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         by: Releaser,
-        (kind, amount): (i16, f32),
+        (kind, amount): (AttributeId, f32),
         radius: Footprint,
     ) -> Result<HeadCode, GenieError> {
         c.give_load(kind, amount)?;
@@ -398,8 +399,8 @@ impl Unit {
 pub(crate) fn give_load(
     (relations, sharing): (&[Vec<u8>], bool),
     player: PlayerId,
-    adds: &mut Vec<(i16, f32)>,
-    kind: i16,
+    adds: &mut Vec<(AttributeId, f32)>,
+    kind: AttributeId,
     amount: f32,
 ) -> Result<(), GenieError> {
     let own = relations.get(player.index()).map_or(&[][..], |r| &r[..]);
@@ -412,13 +413,12 @@ pub(crate) fn give_load(
         ));
     }
     adds.push((kind, amount));
-    match kind {
-        0..=2 => adds.push((166 + kind, amount)),
-        3 => {
-            adds.push((49, amount));
-            adds.push((169, amount));
-        }
-        _ => {}
+    if kind == attribute::GOLD {
+        adds.push((attribute::GOLD_COUNTER, amount));
+        adds.push((attribute::GOLD_GATHERED, amount));
+    } else if kind.is_resource() {
+        // food, wood and stone gathered: 166 and on
+        adds.push((attribute::GATHERED.offset(kind.index())?, amount));
     }
     Ok(())
 }

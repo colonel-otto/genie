@@ -2,6 +2,10 @@
 //! World fixtures: the state of the builder, its foundation and the world after each update.
 
 use crate::map::GridSize;
+use crate::objects::lifecycle::Held;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
+use crate::test_ids::carrying;
 
 use super::tests::{MOVING_TASK, TASK, started};
 use super::*;
@@ -127,7 +131,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
             state: 2,
             hp: 25.0,
             master_id: ids::VILLAGER_MALE,
-            attribute_type: -1,
+            attribute_type: None,
             ..Lifecycle::default()
         },
         ai: Some(UnitAi {
@@ -351,7 +355,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
 /// nothing); food kinds become food; at a house it keeps its load, as one carrying nothing.
 #[test]
 fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
-    let finish = |held: (i16, f32), site: MasterId| {
+    let finish = |held: Held, site: MasterId| {
         let b = BuildAction {
             state: PLACE,
             move_to: None,
@@ -359,7 +363,7 @@ fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
         };
         let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), b);
         let v = own(&mut t, BUILDER);
-        (v.life.attribute_type, v.life.amount) = held;
+        (v.life.attribute_type, v.life.amount) = (held.kind, held.amount);
         own(&mut t, HOUSE).life.master_id = site;
         let state = on_build(&mut t, |b, c, u, reads| {
             b.finish(c, u, reads)?;
@@ -372,19 +376,25 @@ fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
             .map(|k| (k, t.players[1].resources[k]))
             .filter(|&(_, a)| a != 0.0)
             .collect();
-        (gained, (v.life.attribute_type, v.life.amount))
+        (gained, v.life.held())
     };
     let wood = 6.881_128;
     assert_eq!(
-        finish((1, wood), master_id(562)),
-        (vec![(1, wood)], (-1, 0.0))
+        finish(carrying(Some(attribute::WOOD), wood), master_id(562)),
+        (vec![(1, wood)], Held::default())
     );
     assert_eq!(
-        finish((16, wood), master_id(562)),
-        (vec![(0, wood)], (-1, 0.0))
+        finish(carrying(Some(attribute::FARM_FOOD), wood), master_id(562)),
+        (vec![(0, wood)], Held::default())
     );
-    assert_eq!(finish((1, wood), ids::HOUSE), (vec![], (1, wood)));
-    assert_eq!(finish((-1, 0.0), master_id(562)), (vec![], (-1, 0.0)));
+    assert_eq!(
+        finish(carrying(Some(attribute::WOOD), wood), ids::HOUSE),
+        (vec![], carrying(Some(attribute::WOOD), wood))
+    );
+    assert_eq!(
+        finish(carrying(None, 0.0), master_id(562)),
+        (vec![], Held::default())
+    );
 }
 
 /// 428326873's builders 8774 and 8775 (player 6) walking to the foundation 10913 that its
@@ -964,7 +974,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     });
     h.stack_made = Some(object_id(10031));
     let v = own(&mut t, BUILDER);
-    (v.life.attribute_type, v.life.amount) = (17, 7.0);
+    (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 7.0);
     let ai = v.ai.as_mut().unwrap();
     (ai.current_order, ai.current_action) = (Some(OrderKind::Build), Some(ActionKind::Build));
     assert_eq!(code(&mut t, 20), HeadCode::Deletes);
@@ -979,7 +989,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     assert_eq!((ai.current_order, ai.current_action), (None, None));
     assert_eq!((house(&t).0, house(&t).1), (0, 0));
     assert_eq!(t.players[1].resources[0], 7.0);
-    assert_eq!(builder(&t).life.attribute_type, -1);
+    assert_eq!(builder(&t).life.attribute_type, None);
     assert!(stands(&t));
 }
 
@@ -1152,9 +1162,9 @@ fn with_mill(t: &mut World) {
             class: class::TREE,
             workers: -1,
             state: -1,
-            attribute: 1,
+            attribute: Some(attribute::WOOD),
         }],
-        resource_types: vec![1],
+        resource_types: vec![attribute::WOOD],
         ..crate::unit_ai::task_finder::DropSite::default()
     }];
 }
@@ -1277,7 +1287,7 @@ fn drop_world(at: Position, b: BuildAction) -> World {
     let mut t = site_world(class::VILLAGER, at, b);
     with_mill(&mut t);
     let v = own(&mut t, BUILDER);
-    (v.life.attribute_type, v.life.amount) = (1, 10.0);
+    (v.life.attribute_type, v.life.amount) = (Some(attribute::WOOD), 10.0);
     t
 }
 
@@ -1326,7 +1336,7 @@ fn a_builder_at_its_drop_site_gives_its_load_and_walks_back() {
     );
     let mut refused = drop_world(Position::new(14.0, 10.5, 0.0), at_the_mill(MoveTo::Arrived));
     own(&mut refused, object_id(300)).workers = 1;
-    refused.drop_sites[0].targets[0].attribute = 2;
+    refused.drop_sites[0].targets[0].attribute = Some(attribute::STONE);
     let _ = code(&mut refused, 250);
     let b = build(&refused);
     assert_eq!((b.state, b.target, b.site), (HALTED, None, None));

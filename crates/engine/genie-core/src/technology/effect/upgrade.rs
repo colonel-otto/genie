@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
 use crate::objects::masters::{ClassId, Master, master_type, player_master};
@@ -331,13 +332,15 @@ impl World {
     /// `unit − 900`, every master of it by id. Only a master from type 70 on has costs. The game
     /// scans four entries, the fourth past the three (not modelled); the slice holds the entries
     /// of a resource only, so an added one goes after them.
-    pub(super) fn cost_entries(&mut self, p: PlayerId, unit: i16, attribute: i16, how: i32) {
-        let resource = match attribute {
-            103 => 0,
-            104 => 1,
-            105 => 3,
-            106 => 2,
-            _ => return,
+    pub(super) fn cost_entries(
+        &mut self,
+        p: PlayerId,
+        unit: i16,
+        attribute: MasterAttribute,
+        how: i32,
+    ) {
+        let Some(resource) = crate::objects::masters::cost_resource(attribute) else {
+            return;
         };
         if how != -2 && how != -1 {
             return;

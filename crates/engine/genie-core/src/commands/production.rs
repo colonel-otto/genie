@@ -18,6 +18,7 @@ use crate::orders::Place;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::attribute::QUEUED;
 use crate::production::Production;
 use crate::technology::TechId;
 use crate::world::slots::PlayerSlots;
@@ -103,13 +104,10 @@ impl World {
             let (costed, annex) = crate::production::costed(masters, unit);
             let short = |count: i32| -> Result<bool, GenieError> {
                 for &(attribute, each, paid) in costed.cost.iter().take(3) {
-                    if attribute < 0 || (annex && !paid) || attribute == attribute::HEADROOM.get() {
+                    if (annex && !paid) || attribute == attribute::HEADROOM {
                         continue;
                     }
-                    let held = crate::technology::Attributes::get(
-                        owner,
-                        AttributeId::required(attribute)?,
-                    )?;
+                    let held = crate::technology::Attributes::get(owner, attribute)?;
                     if held < f32::from(each) * count as f32 {
                         return Ok(true);
                     }
@@ -368,7 +366,7 @@ impl World {
         count: i16,
         button: i32,
     ) -> Result<bool, GenieError> {
-        use crate::production::{QUEUED, as_entry_costs, master_costs, pay, population};
+        use crate::production::{as_entry_costs, master_costs, pay, population};
         let empty = Masters::default();
         let mut n = count;
         loop {
@@ -391,7 +389,7 @@ impl World {
         let made = masters.get(master);
         let pop = made.map_or(0.0, |m| population(&m.storage));
         let owner = self.players.player_mut(player)?;
-        owner.add_attribute(AttributeId::try_from(QUEUED)?, pop * f32::from(n))?;
+        owner.add_attribute(QUEUED, pop * f32::from(n))?;
         let costs = as_entry_costs(master_costs(masters, master, &*owner)?);
         owner.tracker.count_queued(n);
         for _ in 0..n {
@@ -457,8 +455,7 @@ impl World {
         let building = owner.objects[i].life.master_id;
         let mut paid = 0i16;
         while paid < n {
-            let get =
-                |k: i16| crate::technology::Attributes::get(&*owner, AttributeId::try_from(k)?);
+            let get = |k: AttributeId| crate::technology::Attributes::get(&*owner, k);
             let factors = crate::technology::factors(tech, &get)?;
             let mut state = std::mem::take(&mut owner.techs[t]);
             let ok = state.pay(def, factors, repeat, building, owner);
@@ -472,7 +469,7 @@ impl World {
         if n <= 0 {
             return Ok(false);
         }
-        let get = |k: i16| crate::technology::Attributes::get(&*owner, AttributeId::try_from(k)?);
+        let get = |k: AttributeId| crate::technology::Attributes::get(&*owner, k);
         let listed = owner.techs[t].listed_costs(def, crate::technology::factors(tech, &get)?)?;
         let costs = crate::production::as_entry_costs(listed);
         let production = owner.objects[i]
@@ -560,7 +557,7 @@ impl World {
         player: PlayerId,
         tech: Option<TechId>,
         master: Option<MasterId>,
-    ) -> Result<[(i32, f32); 3], GenieError> {
+    ) -> Result<[(Option<AttributeId>, f32); 3], GenieError> {
         use crate::production::{NO_COSTS, as_entry_costs, master_costs};
         let owner = self.players.player(player)?;
         if let Some(master) = master {
@@ -577,7 +574,7 @@ impl World {
         let Some(def) = self.techs.get(t) else {
             return Ok(NO_COSTS);
         };
-        let get = |k: i16| crate::technology::Attributes::get(owner, AttributeId::try_from(k)?);
+        let get = |k: AttributeId| crate::technology::Attributes::get(owner, k);
         owner.techs[t].entry_costs(def, crate::technology::factors(tech, &get)?)
     }
 }

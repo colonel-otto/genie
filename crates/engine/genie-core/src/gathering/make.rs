@@ -20,7 +20,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
 use crate::orders::action_state::DONE;
-use crate::players::attribute::AttributeId;
+use crate::players::attribute;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -30,18 +30,6 @@ pub const MAKE: i16 = 21;
 
 /// `+0x18`: the state its update runs in (`set_state(6)`, `first_in_stack`'s).
 pub const MAKING: u8 = 6;
-
-/// The task's resource for which `set_state(6)` reads the farm food (`FUN_140a99d60`'s
-/// `task+0x20 == 0x10`): the farms' and the pastures' food kind.
-pub const FARM_FOOD_KIND: i16 = 16;
-
-/// The player's attribute `set_state(6)` reads for a task of [`FARM_FOOD_KIND`]
-/// (`player+0x100` at `+0x120`): Farm Food Amount.
-pub const FARM_FOOD: usize = 36;
-
-/// The player's attribute `set_state(6)` reads for any other task (`player+0x100` at `+0x2c0`):
-/// Fish Trap Food Amount.
-pub const FISH_TRAP_FOOD: usize = 88;
 
 /// The masters whose exhaustion the update does not check (`FUN_140a99e30`: the master id, not
 /// 0x765 and not 0x769): the pastures.
@@ -83,7 +71,7 @@ impl MakeAction {
             task,
         };
         make.set_state(MAKING, attributes);
-        if 0 <= task.attribute_type && life.attribute_type != task.attribute_type {
+        if task.attribute_type.is_some() && life.attribute_type != task.attribute_type {
             life.attribute_type = task.attribute_type;
             life.amount = 0.0;
         }
@@ -91,16 +79,17 @@ impl MakeAction {
     }
 
     /// `set_state` (`FUN_140a99d60`): state 6 takes the player's food to make (attribute 36 for
-    /// a task of the farm food kind, else 88) as both what is left and what is made in all.
+    /// a task of the farm food kind, `task+0x20 == 0x10`, else 88) as both what is left and what
+    /// is made in all.
     pub fn set_state(&mut self, state: u8, attributes: &[f32]) {
         self.state = state;
         if state == MAKING {
-            let kind = if self.task.attribute_type == FARM_FOOD_KIND {
-                FARM_FOOD
+            let kind = if self.task.attribute_type == Some(attribute::FARM_FOOD) {
+                attribute::FARM_FOOD_AMOUNT
             } else {
-                FISH_TRAP_FOOD
+                attribute::FISH_TRAP_FOOD
             };
-            self.remaining = attributes.get(kind).copied().unwrap_or(0.0);
+            self.remaining = attributes.get(kind.index()).copied().unwrap_or(0.0);
             self.total = self.remaining;
         }
     }
@@ -148,9 +137,10 @@ impl MakeAction {
                         farm.life.amount = capacity;
                     }
                 } else {
+                    let attribute = self.task.attribute_type.ok_or(crate::world::NO_ATTRIBUTE)?;
                     c.w.players
                         .player_mut(c.player)?
-                        .add_attribute(AttributeId::try_from(self.task.attribute_type)?, rate)?;
+                        .add_attribute(attribute, rate)?;
                 }
                 self.remaining -= farm.life.amount - before;
             }
@@ -190,6 +180,8 @@ mod tests {
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::players::PlayerId;
+    use crate::players::attribute;
+    use crate::players::attribute::AttributeId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
     use crate::world::{Player, World};
@@ -198,8 +190,8 @@ mod tests {
     fn farm_task() -> Task {
         Task {
             action_type: MAKE,
-            attribute_type: FARM_FOOD_KIND,
-            attribute_type2: 0,
+            attribute_type: Some(attribute::FARM_FOOD),
+            attribute_type2: Some(attribute::FOOD),
             work_val1: 1.0,
             ..Task::default()
         }
@@ -219,7 +211,10 @@ mod tests {
 
     fn attributes() -> Vec<f32> {
         let mut a = vec![0.0; 100];
-        (a[FARM_FOOD], a[FISH_TRAP_FOOD]) = (175.0, 225.0);
+        (
+            a[attribute::FARM_FOOD_AMOUNT.index()],
+            a[attribute::FISH_TRAP_FOOD.index()],
+        ) = (175.0, 225.0);
         a
     }
 
@@ -232,7 +227,7 @@ mod tests {
                 state: 2,
                 hp: 480.0,
                 master_id: master,
-                attribute_type: FARM_FOOD_KIND,
+                attribute_type: Some(attribute::FARM_FOOD),
                 amount,
                 ..Lifecycle::default()
             },
@@ -286,7 +281,7 @@ mod tests {
     #[test]
     fn the_start_takes_the_farm_food_and_holds_the_task_s_resource_from_nothing() {
         let mut life = Lifecycle {
-            attribute_type: 0,
+            attribute_type: Some(attribute::FOOD),
             amount: 15.0,
             ..Lifecycle::default()
         };
@@ -295,24 +290,27 @@ mod tests {
             (make.state, make.remaining, make.total),
             (MAKING, 175.0, 175.0)
         );
-        assert_eq!((life.attribute_type, life.amount), (FARM_FOOD_KIND, 0.0));
+        assert_eq!(
+            (life.attribute_type, life.amount),
+            (Some(attribute::FARM_FOOD), 0.0)
+        );
     }
 
     #[test]
     fn a_fish_trap_takes_the_fish_trap_food_and_keeps_a_holding_of_its_kind() {
         let task = Task {
-            attribute_type: 17,
+            attribute_type: Some(AttributeId::numbered(17)),
             ..farm_task()
         };
         let mut life = Lifecycle {
-            attribute_type: 17,
+            attribute_type: Some(AttributeId::numbered(17)),
             amount: 15.0,
             ..Lifecycle::default()
         };
         let make = MakeAction::start(task, &attributes(), &mut life);
         assert_eq!(
             (make.remaining, life.attribute_type, life.amount),
-            (225.0, 17, 15.0)
+            (225.0, Some(AttributeId::numbered(17)), 15.0)
         );
     }
 
@@ -365,7 +363,7 @@ mod tests {
         };
         let mut t = farm_world(making(5.0, 5.0, task), ids::FARM, 0.0);
         let (_, make, amount, _) = made(&mut t);
-        let food = t.players[1].attributes[usize::from(FARM_FOOD_KIND as u8)];
+        let food = t.players[1].attributes[attribute::FARM_FOOD.index()];
         assert_eq!(food, 0.4 * 0.104);
         assert_eq!((amount, make.remaining), (0.0, 5.0));
     }

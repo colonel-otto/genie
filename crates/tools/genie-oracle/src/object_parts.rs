@@ -9,6 +9,7 @@ use genie_core::math::game_vector::GameVector;
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::objects::masters::MasterId;
+use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{
     PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
@@ -75,7 +76,7 @@ pub(super) fn lifecycle(
         },
         state: s.object_state,
         hp: s.hp,
-        attribute_type: s.attribute_type_held,
+        attribute_type: AttributeId::of_data(s.attribute_type_held),
         amount: s.attribute_amount_held,
         dying_sprite,
         death_spawn: death_spawn >= 0,

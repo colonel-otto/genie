@@ -11,6 +11,7 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -139,22 +140,22 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
     let master = Master {
         id: ids::HOUSE,
         storage: vec![
-            (attribute::HEADROOM.get(), -5.0, 0),
-            (POPULATION.get(), 3.0, 0),
-            (7, 1.0, 0),
-            (RESOURCE_19.get(), 2.0, 0),
+            (Some(attribute::HEADROOM), -5.0, 0),
+            (Some(POPULATION), 3.0, 0),
+            (Some(attribute::RELICS_HELD), 1.0, 0),
+            (Some(RESOURCE_19), 2.0, 0),
         ],
         ..Master::default()
     };
     t.population_storage(PlayerId::new(0), &master, -8.0)
         .unwrap();
-    let at = |i: i16| t.players[0].attributes[usize::try_from(i).unwrap()];
+    let at = |a: AttributeId| t.players[0].attributes[a.index()];
     assert_eq!(
         [
-            at(attribute::HEADROOM.get()),
-            at(POPULATION.get()),
-            at(7),
-            at(RESOURCE_19.get())
+            at(attribute::HEADROOM),
+            at(POPULATION),
+            at(attribute::RELICS_HELD),
+            at(RESOURCE_19)
         ],
         [-3.0, 5.0, 0.0, 0.0]
     );
@@ -583,7 +584,11 @@ fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut house = combat(ids::HOUSE, class::BUILDING, 550);
-    house.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
+    house.storage = vec![
+        (Some(attribute::HEADROOM), 5.0, 4),
+        (None, 0.0, 0),
+        (None, 0.0, 0),
+    ];
     t.masters = vec![Masters::new([house])];
     t.players[0].attributes[4] = 10.0;
     // the load files the objects in the players' trackers
@@ -619,7 +624,11 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             class: class::CLASS_11,
             hit_points: 10,
             line_of_sight: 2.0,
-            storage: vec![(-1, 0.0, 0), (4, 5.0, 0), (-1, 0.0, 0)],
+            storage: vec![
+                (None, 0.0, 0),
+                (Some(attribute::HEADROOM), 5.0, 0),
+                (None, 0.0, 0),
+            ],
             ..Master::default()
         };
         t.masters = vec![Masters::new([stone])];
@@ -1073,7 +1082,7 @@ fn a_technology_change_reaches_its_costs_locations_and_state() {
     use crate::technology::Cost;
     let mut t = barracks_tech();
     t.techs[0].costs[0] = Cost {
-        attribute: 2,
+        attribute: Some(attribute::STONE),
         amount: 100,
         paid: 1,
     };
@@ -1219,7 +1228,7 @@ fn spawns_and_cost_entries() {
     let mut tc = combat(ids::TOWN_CENTRE, ClassId::of_master(80), 2400);
     tc.kind = master_type::BUILDING;
     let mut serjeant = combat(master_id(1658), class::CLASS_6, 60);
-    serjeant.cost = vec![(0, 60, true), (2, 35, true)];
+    serjeant.cost = vec![(attribute::FOOD, 60, true), (attribute::STONE, 35, true)];
     t.masters = vec![Masters::new([tc, serjeant])];
     t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
         .unwrap();
@@ -1232,13 +1241,13 @@ fn spawns_and_cost_entries() {
         .unwrap();
     assert_eq!(
         t.masters[0].get(master_id(1658)).unwrap().cost,
-        [(0, 60, true)]
+        [(attribute::FOOD, 60, true)]
     );
     t.do_effect(PlayerId::new(0), &[attribute(5, 1658, -1, 105, -1.0)], None)
         .unwrap();
     assert_eq!(
         t.masters[0].get(master_id(1658)).unwrap().cost,
-        [(0, 60, true), (3, -1, true)]
+        [(attribute::FOOD, 60, true), (attribute::GOLD, -1, true)]
     );
 }
 
@@ -1481,12 +1490,12 @@ fn the_technology_commands_disable_and_adjust_costs() {
         kind: k,
         costs: [
             Cost {
-                attribute: 0,
+                attribute: Some(attribute::FOOD),
                 amount: 150,
                 paid: 1,
             },
             Cost {
-                attribute: 3,
+                attribute: Some(attribute::GOLD),
                 amount: 50,
                 paid: 1,
             },
@@ -1572,7 +1581,7 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
     t.techs = vec![TechDef {
         costs: [
             Cost {
-                attribute: 0,
+                attribute: Some(attribute::FOOD),
                 amount: 150,
                 paid: 1,
             },

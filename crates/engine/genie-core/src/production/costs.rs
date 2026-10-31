@@ -8,7 +8,6 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
-use crate::production::{POPULATION_CAP, QUEUED};
 use crate::technology::TechId;
 
 /// `FUN_141630530`: a queued unit's refund. For a master of type 70 and up each of its cost
@@ -17,23 +16,23 @@ use crate::technology::TechId;
 /// player's attribute (no side effects).
 pub fn refund(
     master: &Master,
-    costs: &[(i32, f32); 3],
+    costs: &[(Option<AttributeId>, f32); 3],
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
     if master.kind < COMBAT {
         return Ok(());
     }
     for &(attribute, _, paid) in master.cost.iter().take(3) {
-        if attribute < 0 || !paid {
+        if !paid {
             continue;
         }
         let back = costs
             .iter()
             .rev()
-            .find(|c| c.0 != -1 && c.0 == i32::from(attribute))
+            .find(|c| c.0 == Some(attribute))
             .map_or(0.0, |c| c.1);
-        let held = attributes.get(AttributeId::required(attribute)?)?;
-        attributes.set(AttributeId::required(attribute)?, held + back)?;
+        let held = attributes.get(attribute)?;
+        attributes.set(attribute, held + back)?;
     }
     Ok(())
 }
@@ -42,23 +41,16 @@ pub fn refund(
 /// pair with an attribute gives back the count times its amount, straight into the player's
 /// attribute. (Its technology's state 1 and work done 0 are the caller's.)
 pub fn refund_research(
-    costs: &[(i32, f32); 3],
+    costs: &[(Option<AttributeId>, f32); 3],
     count: i16,
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
     for &(attribute, amount) in costs {
-        // the entry's attributes are the costs' i16 attributes (FUN_1411c3190, the load)
-        let Ok(attribute) = i16::try_from(attribute) else {
+        let Some(attribute) = attribute else {
             continue;
         };
-        if attribute < 0 {
-            continue;
-        }
-        let held = attributes.get(AttributeId::try_from(attribute)?)?;
-        attributes.set(
-            AttributeId::try_from(attribute)?,
-            held + f32::from(count) * amount,
-        )?;
+        let held = attributes.get(attribute)?;
+        attributes.set(attribute, held + f32::from(count) * amount)?;
     }
     Ok(())
 }
@@ -75,14 +67,11 @@ pub fn refund_master(
         return Ok(());
     }
     for &(attribute, amount, paid) in master.cost.iter().take(3) {
-        if attribute < 0 || !paid {
+        if !paid {
             continue;
         }
-        let held = attributes.get(AttributeId::required(attribute)?)?;
-        attributes.set(
-            AttributeId::required(attribute)?,
-            (i32::from(amount) * n) as f32 + held,
-        )?;
+        let held = attributes.get(attribute)?;
+        attributes.set(attribute, (i32::from(amount) * n) as f32 + held)?;
     }
     Ok(())
 }
@@ -110,15 +99,15 @@ pub fn refund_tech(
         attributes.get(attribute::RESEARCH_COST_MODIFIER)?
     };
     for (j, c) in def.costs.iter().enumerate() {
-        if c.attribute < 0 || c.paid == 0 {
+        let Some(attribute) = c.attribute.filter(|_| c.paid != 0) else {
             continue;
-        }
+        };
         let mut v = (i32::from(state.cost_adj[j]) + i32::from(c.amount)) as f32;
         if 0.0 < modifier {
             v = f32::from(cvttss2si(v * modifier) as i16);
         }
-        let held = attributes.get(AttributeId::try_from(c.attribute)?)?;
-        attributes.set(AttributeId::try_from(c.attribute)?, held + v)?;
+        let held = attributes.get(attribute)?;
+        attributes.set(attribute, held + v)?;
     }
     state.state = 1;
     state.research_done = 0.0;
@@ -128,9 +117,9 @@ pub fn refund_tech(
 /// The cost multiplier `FUN_14162ef60`'s callers pass (`DAT_14330eb8c`, 1.0).
 const ONE: f32 = 1.0;
 
-/// A master's three cost entries `(attribute, amount, paid)`, −1 for an entry it lacks.
-fn cost_entry(master: &Master, j: usize) -> (i16, i16, bool) {
-    master.cost.get(j).copied().unwrap_or((-1, 0, false))
+/// A master's cost entry `j` `(attribute, amount, paid)`, none for an entry it lacks.
+fn cost_entry(master: &Master, j: usize) -> Option<(AttributeId, i16, bool)> {
+    master.cost.get(j).copied()
 }
 
 /// The master whose costs the cost tests read for player's master `m` (`FUN_141618db0`,
@@ -178,17 +167,19 @@ pub fn cost_test(
     };
     let (m, annex) = costed(masters, m);
     for j in 0..3 {
-        let (attribute, amount, paid) = cost_entry(m, j);
-        if attribute < 0 || (annex && !paid) {
+        let Some((attribute, amount, paid)) = cost_entry(m, j) else {
+            continue;
+        };
+        if annex && !paid {
             continue;
         }
         let need = f32::from(amount) * count;
-        if attribute == attribute::HEADROOM.get() {
+        if attribute == attribute::HEADROOM {
             if !population {
                 continue;
             }
             let pop = attributes.get(attribute::POPULATION)?;
-            let cap = attributes.get(AttributeId::try_from(POPULATION_CAP as i16)?)?;
+            let cap = attributes.get(attribute::POPULATION_CAP)?;
             if cap <= pop {
                 return Ok(false);
             }
@@ -199,10 +190,10 @@ pub fn cost_test(
             } else {
                 room
             };
-            if limit < attributes.get(AttributeId::try_from(QUEUED)?)? + pop + need {
+            if limit < attributes.get(attribute::QUEUED)? + pop + need {
                 return Ok(false);
             }
-        } else if attributes.get(AttributeId::try_from(attribute)?)? < need {
+        } else if attributes.get(attribute)? < need {
             return Ok(false);
         }
     }
@@ -227,11 +218,10 @@ pub fn pay(
         return Ok(false);
     };
     for j in 0..3 {
-        let (attribute, amount, paid) = cost_entry(m, j);
-        if attribute < 0 || !paid {
+        let Some((attribute, amount, true)) = cost_entry(m, j) else {
             continue;
-        }
-        attributes.subtract(AttributeId::try_from(attribute)?, f32::from(amount) * count)?;
+        };
+        attributes.subtract(attribute, f32::from(amount) * count)?;
     }
     Ok(true)
 }
@@ -247,22 +237,21 @@ pub fn master_costs(
     masters: &Masters,
     master: MasterId,
     attributes: &dyn crate::technology::Attributes,
-) -> Result<[(i16, i16); 3], GenieError> {
+) -> Result<[(Option<AttributeId>, i16); 3], GenieError> {
     use crate::math::conversions::cvttss2si;
-    let mut out = [(-1i16, 0i16); 3];
+    let mut out = [(None, 0i16); 3];
     let can = cost_test(masters, master, ONE, true, attributes)?;
     let Some(m) = masters.get(master).filter(|m| COMBAT <= m.kind) else {
         return Ok(out);
     };
     let mut extra = 0i16;
     for (j, slot) in out.iter_mut().enumerate() {
-        let (attribute, amount, _) = cost_entry(m, j);
-        slot.0 = attribute;
-        if attribute < 0 {
+        let Some((attribute, amount, _)) = cost_entry(m, j) else {
             continue;
-        }
+        };
+        slot.0 = Some(attribute);
         slot.1 = cvttss2si(f32::from(amount) * ONE) as i16;
-        let held = attributes.get(AttributeId::try_from(attribute)?)?;
+        let held = attributes.get(attribute)?;
         if held < f32::from(slot.1) && can {
             let have = cvttss2si(held) as i16;
             extra = extra.wrapping_add(slot.1.wrapping_sub(have));
@@ -270,18 +259,18 @@ pub fn master_costs(
         }
     }
     if 0 < extra {
-        let gold = |a: i16| matches!(a, -1 | 3);
+        let gold = |a: Option<AttributeId>| matches!(a, None | Some(attribute::GOLD));
         if gold(out[0].0) {
-            out[0] = (3, out[0].1.wrapping_add(extra));
+            out[0] = (Some(attribute::GOLD), out[0].1.wrapping_add(extra));
         } else if gold(out[1].0) {
-            out[1] = (3, out[1].1.wrapping_add(extra));
+            out[1] = (Some(attribute::GOLD), out[1].1.wrapping_add(extra));
         } else if gold(out[2].0) {
-            out[2] = (3, extra);
+            out[2] = (Some(attribute::GOLD), extra);
         }
     }
     for slot in &mut out {
         if slot.1 < 1 {
-            slot.0 = -1;
+            slot.0 = None;
         }
     }
     Ok(out)
@@ -290,6 +279,6 @@ pub fn master_costs(
 /// The costs a queue entry records from listed ones (`FUN_1411c3190`, `FUN_1411c81a0`): each
 /// pair's attribute and its amount as a float, added to the slot's cleared 0.
 #[must_use]
-pub fn as_entry_costs(listed: [(i16, i16); 3]) -> [(i32, f32); 3] {
-    listed.map(|(a, n)| (i32::from(a), f32::from(n) + 0.0))
+pub fn as_entry_costs(listed: [(Option<AttributeId>, i16); 3]) -> [(Option<AttributeId>, f32); 3] {
+    listed.map(|(a, n)| (a, f32::from(n) + 0.0))
 }

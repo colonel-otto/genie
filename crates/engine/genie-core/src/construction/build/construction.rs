@@ -3,9 +3,7 @@
 //! ([`crate::world::World::complete_building`]).
 
 use crate::GenieError;
-use crate::construction::build::{
-    CASTLE_WONDER_COST, CASTLES_BUILT, Construction, SITE_GONE, STARTED, WONDERS_BUILT,
-};
+use crate::construction::build::{Construction, SITE_GONE, STARTED};
 use crate::map::spatial::Spatial;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
@@ -15,29 +13,36 @@ use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::ids::PASTURE_MANGROVE;
 use crate::objects::masters::ids::WONDER;
 use crate::pathing::Pathing;
-use crate::world::{CASTLES, MONASTERIES, WONDERS};
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
+use crate::players::attribute::CASTLE_WONDER_COST;
+use crate::players::attribute::CASTLES;
+use crate::players::attribute::CASTLES_BUILT;
+use crate::players::attribute::MONASTERIES;
+use crate::players::attribute::WONDERS;
+use crate::players::attribute::WONDERS_BUILT;
 
 /// The completion's storage ([`crate::world::World::complete_building`]): its master's entries of modes 4, 8 and 64 go to its
 /// owner (slot 0xf8, into `attributes`), those of mode 16 to its own `store` (`FUN_1411abad0`: an
 /// entry from 0); an entry of no resource or no amount gives nothing.
 pub(super) fn hand_storage(
     master: &Master,
-    attributes: &mut Vec<(i16, f32)>,
-    mut store: Option<&mut Vec<(i16, f32)>>,
+    attributes: &mut Vec<(AttributeId, f32)>,
+    mut store: Option<&mut Vec<(AttributeId, f32)>>,
 ) {
     for &(kind, amount, flag) in &master.storage {
-        if kind < 0 || amount <= 0.0 {
+        let Some(kind) = kind.filter(|_| 0.0 < amount) else {
             continue;
-        }
+        };
         if matches!(flag, 4 | 8 | 64) {
             attributes.push((kind, amount));
         }
     }
     // the entries of mode 16 go to its own store (FUN_1411abad0: an entry from 0)
     for &(kind, amount, flag) in &master.storage {
-        if kind < 0 || amount <= 0.0 || flag & 0x10 == 0 {
+        let Some(kind) = kind.filter(|_| 0.0 < amount && flag & 0x10 != 0) else {
             continue;
-        }
+        };
         if let Some(store) = store.as_deref_mut() {
             match store.iter_mut().find(|e| e.0 == kind) {
                 Some(e) => e.1 += amount,
@@ -102,7 +107,7 @@ pub(super) fn completion_counts(
     master: &Master,
     building: &crate::objects::masters::BuildingMaster,
     main: bool,
-    attributes: &mut Vec<(i16, f32)>,
+    attributes: &mut Vec<(AttributeId, f32)>,
 ) -> Option<u8> {
     // the castle's and the wonder's history event (0x1411dd094), the counts (slot 0xf8 with
     // 1.0, 0x14330eb8c)
@@ -124,14 +129,14 @@ pub(super) fn completion_counts(
     let paid: i32 = master
         .cost
         .iter()
-        .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+        .filter(|&&(_, _, paid)| paid)
         .map(|&(_, amount, _)| i32::from(amount))
         .sum();
     if matches!(master.id, CASTLE | WONDER) {
         attributes.push((CASTLE_WONDER_COST, paid as f32));
     } else if !main && building.stack_unit.is_none() {
-        attributes.push((98, paid as f32));
-        attributes.push((165, paid as f32));
+        attributes.push((attribute::TOTAL_VALUE, paid as f32));
+        attributes.push((attribute::BUILDINGS_VALUE, paid as f32));
     }
     history
 }

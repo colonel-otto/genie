@@ -15,6 +15,7 @@ use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
+use crate::players::attribute::AttributeId;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -25,7 +26,7 @@ pub enum Dropped {
     /// It walks or waits.
     Going,
     /// The load went to the player: its resource and amount, which the caller adds.
-    Load(i16, f32),
+    Load(AttributeId, f32),
     /// Its wait ended: it tries again (`set_state(8)`, the caller's).
     Again,
     /// The drop site does not take the load: the action idles (`set_state(2)`; the caller lets
@@ -134,7 +135,7 @@ impl HuntAction {
         let attributes = c.w.players.player(c.player)?.attributes.len();
         let kind = resource_kind(unit.life.attribute_type, attributes);
         let amount = unit.life.amount;
-        unit.life.attribute_type = -1;
+        unit.life.attribute_type = None;
         unit.life.amount = 0.0;
         Ok(Dropped::Load(kind, amount))
     }
@@ -143,7 +144,7 @@ impl HuntAction {
     /// some of `held_kind` (`+0x310` above 0, which the caller checked): [`asked_drop_off`] on the
     /// task's resource.
     #[must_use]
-    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> bool {
+    pub fn drop_off_asked(&self, held_kind: Option<AttributeId>, attributes: usize) -> bool {
         asked_drop_off(self.task.resource, held_kind, attributes)
     }
 

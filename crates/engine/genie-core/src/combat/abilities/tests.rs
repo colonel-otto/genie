@@ -9,6 +9,8 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
@@ -23,8 +25,8 @@ fn task(action_type: i16) -> Task {
 fn feitoria_food() -> Task {
     Task {
         object_group: -1,
-        attribute_type2: 205,
-        attribute_type3: 0,
+        attribute_type2: Some(AttributeId::numbered(205)),
+        attribute_type3: Some(attribute::FOOD),
         work_val1: 1.6,
         combat_level_flag: 1,
         ..task(GENERATE)
@@ -35,8 +37,8 @@ fn feitoria_food() -> Task {
 fn keshik_gold() -> Task {
     Task {
         object_group: 0,
-        attribute_type2: 213,
-        attribute_type3: 3,
+        attribute_type2: Some(AttributeId::numbered(213)),
+        attribute_type3: Some(attribute::GOLD),
         work_val1: 0.01,
         combat_level_flag: 1,
         ..task(GENERATE)
@@ -166,23 +168,23 @@ fn the_amount_is_dt_times_the_rate_times_the_attribute_in_that_order() {
 #[test]
 fn the_store_gives_what_reached_1_and_starts_again() {
     let mut stores = vec![0.0_f32; 4];
-    assert_eq!(store(0.6, 0, &mut stores), None);
+    assert_eq!(store(0.6, attribute::FOOD, &mut stores), None);
     assert_eq!(stores[0], 0.6);
     // ADDSS: the amount plus the store
     let sum = 0.5_f32 + 0.6;
-    assert_eq!(store(0.5, 0, &mut stores), Some(sum));
+    assert_eq!(store(0.5, attribute::FOOD, &mut stores), Some(sum));
     assert_eq!(stores[0], 0.0);
     // nothing above 0 joins: the store stays, and nothing is given
     stores[1] = 0.9;
-    assert_eq!(store(0.0, 1, &mut stores), None);
-    assert_eq!(store(f32::NAN, 1, &mut stores), None);
-    assert_eq!(store(-2.0, 1, &mut stores), None);
+    assert_eq!(store(0.0, attribute::WOOD, &mut stores), None);
+    assert_eq!(store(f32::NAN, attribute::WOOD, &mut stores), None);
+    assert_eq!(store(-2.0, attribute::WOOD, &mut stores), None);
     assert_eq!(stores[1], 0.9);
     // a NaN store gives nothing (JC)
     stores[2] = f32::NAN;
-    assert_eq!(store(0.5, 2, &mut stores), None);
-    // a negative resource: no store and no give, however large
-    assert_eq!(store(5.0, -1, &mut stores), None);
+    assert_eq!(store(0.5, attribute::STONE, &mut stores), None);
+    // a store the player does not have: no store and no give, however large
+    assert_eq!(store(5.0, AttributeId::numbered(9), &mut stores), None);
 }
 
 #[test]
@@ -423,8 +425,8 @@ fn a_terrain_look_gives_the_task_s_sprites_on_its_terrains() {
 /// A removal reward task: 10 gold (3) a removal, by attribute 7's rate.
 fn bounty() -> Task {
     Task {
-        attribute_type2: 7,
-        attribute_type3: 3,
+        attribute_type2: Some(attribute::RELICS_HELD),
+        attribute_type3: Some(attribute::GOLD),
         work_val1: 10.0,
         ..task(REMOVAL_REWARD)
     }
@@ -437,7 +439,7 @@ fn a_removal_reward_pays_the_rate_times_the_attribute() {
         reward(&t, PlayerId::new(2), Some(1.5), &[]),
         Reward {
             player: PlayerId::new(2),
-            attribute: 3,
+            attribute: Some(attribute::GOLD),
             amount: 15
         }
     );
@@ -446,7 +448,7 @@ fn a_removal_reward_pays_the_rate_times_the_attribute() {
     // the player lacks the attribute, or the task names none
     assert_eq!(reward(&t, PlayerId::new(2), None, &[]).amount, 10);
     let none = Task {
-        attribute_type2: -1,
+        attribute_type2: None,
         ..bounty()
     };
     assert_eq!(reward(&none, PlayerId::new(2), Some(3.0), &[]).amount, 10);
@@ -463,12 +465,22 @@ fn a_removal_reward_with_its_flag_pays_the_last_paid_cost_of_its_resource_times_
         combat_level_flag: 1,
         ..bounty()
     };
-    let cost = [(3, 20, true), (0, 50, true), (3, 30, false)];
+    let cost = [
+        (attribute::GOLD, 20, true),
+        (attribute::FOOD, 50, true),
+        (attribute::GOLD, 30, false),
+    ];
     assert_eq!(reward(&t, PlayerId::new(1), Some(0.5), &cost).amount, 100);
-    let cost = [(3, 20, true), (3, 30, true)];
+    let cost = [(attribute::GOLD, 20, true), (attribute::GOLD, 30, true)];
     assert_eq!(reward(&t, PlayerId::new(1), Some(1.0), &cost).amount, 300);
     assert_eq!(
-        reward(&t, PlayerId::new(1), Some(1.0), &[(0, 50, true)]).amount,
+        reward(
+            &t,
+            PlayerId::new(1),
+            Some(1.0),
+            &[(attribute::FOOD, 50, true)]
+        )
+        .amount,
         0
     );
 }
@@ -923,7 +935,7 @@ fn a_dead_object_that_leaves_issues_its_removal_rewards() {
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, false), Vec::new());
     let r = Reward {
         player: PlayerId::new(1),
-        attribute: 3,
+        attribute: Some(attribute::GOLD),
         amount: 20,
     };
     assert_eq!(rewards(&mut t, PlayerId::new(1), 80, true), vec![r, r]);
@@ -962,7 +974,7 @@ fn a_player_s_attribute_reads_the_resources_first() {
         attributes: vec![9.0; 6],
         ..Player::default()
     };
-    assert_eq!(p.attribute(AttributeId::numbered(2)), Some(3.0));
+    assert_eq!(p.attribute(attribute::STONE), Some(3.0));
     assert_eq!(p.attribute(AttributeId::numbered(5)), Some(9.0));
-    assert_eq!(p.attribute(AttributeId::numbered(6)), None);
+    assert_eq!(p.attribute(attribute::CURRENT_AGE), None);
 }

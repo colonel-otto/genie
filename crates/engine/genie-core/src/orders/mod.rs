@@ -21,6 +21,8 @@ use crate::objects::masters::class;
 use crate::objects::masters::{Master, player_master};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::attribute;
+use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::TaskTarget;
@@ -212,7 +214,7 @@ type SplitPath<'a> =
 const TABLE_DROP_FAR: f32 = crate::math::image::order::TABLE_DROP_FAR;
 /// The loads whose drop-off works with the hunt's task filter (`FUN_14161e370`'s list: meat 15,
 /// wood 1, food 0).
-const HUNTED_LOADS: [i16; 3] = [15, 1, 0];
+const HUNTED_LOADS: [AttributeId; 3] = [attribute::MEAT, attribute::WOOD, attribute::FOOD];
 /// The action's point on neither axis (`DAT_14330ec20`).
 const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 
@@ -414,7 +416,7 @@ impl World {
             master,
             player,
             state: u.life.state,
-            held: (u.life.attribute_type, u.life.amount),
+            held: u.life.held(),
             hp: u.life.hp + u.hp_powerup.room(),
             max_hp: f32::from(master.hit_points) + u.hp_powerup.max,
             attackable: u.attackable,
@@ -633,7 +635,7 @@ pub(crate) fn nearest_table_site(
         u8,
         &crate::players::tracker::Tracker,
     ),
-    (at, held, class): (Point, i16, ClassId),
+    (at, held, class): (Point, Option<AttributeId>, ClassId),
     look: impl Fn(ObjectId) -> Option<(u8, Position)>,
 ) -> Option<ObjectId> {
     let buildings =

@@ -19,7 +19,6 @@ mod search;
 mod terrains;
 mod world_map;
 
-use self::make_action::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 pub(crate) use self::placement_test::NOT_MOVING;
 pub use self::placement_test::{Near, PlaceMap, Placing, build_placement, placement};
 use self::search::corner_tiles;

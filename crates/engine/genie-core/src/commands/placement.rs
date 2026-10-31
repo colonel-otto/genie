@@ -41,7 +41,7 @@ impl World {
         ))?;
         let mut listed = [0i16; 4];
         for &(resource, amount, _) in &site.cost {
-            if let Some(r) = usize::try_from(resource).ok().filter(|&r| r < 4) {
+            if let Some(r) = resource.is_resource().then(|| resource.index()) {
                 listed[r] = listed[r].wrapping_add(amount);
             }
         }
@@ -209,9 +209,7 @@ impl World {
         let site = self.master(player, master)?;
         let owner = self.players.player(player)?;
         for &(resource, amount, _) in &site.cost {
-            let Ok(r) = usize::try_from(resource) else {
-                continue;
-            };
+            let r = resource.index();
             if r == 4 {
                 return Err(GenieError::unsupported(
                     "a BUILD whose cost lists the population",

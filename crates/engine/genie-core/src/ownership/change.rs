@@ -400,15 +400,19 @@ impl World {
             return Ok(());
         };
         for &(kind, amount, flag) in &m.storage {
-            if 0 <= kind && matches!(flag, 2 | 16 | 32) {
-                self.players[old].add_attribute(AttributeId::required(kind)?, -amount)?;
+            if let Some(kind) = kind
+                && matches!(flag, 2 | 16 | 32)
+            {
+                self.players[old].add_attribute(kind, -amount)?;
             }
         }
         count_class(&mut self.players[old].attributes, m, -1.0);
         count_class(&mut self.players[new].attributes, m, 1.0);
         for &(kind, amount, flag) in &m.storage {
-            if 0 <= kind && matches!(flag, 1 | 2 | 32) {
-                self.players[new].add_attribute(AttributeId::required(kind)?, amount)?;
+            if let Some(kind) = kind
+                && matches!(flag, 1 | 2 | 32)
+            {
+                self.players[new].add_attribute(kind, amount)?;
             }
         }
         Ok(())
@@ -503,16 +507,18 @@ pub(crate) fn change_hands(
 pub(crate) fn lose_built_storage(
     p: &mut Player,
     master: &Master,
-    held: i16,
+    held: Option<AttributeId>,
     amount: f32,
 ) -> Result<(), GenieError> {
     for &(kind, amount, flag) in &master.storage {
-        if flag == STORAGE_WHILE_BUILT && 0 <= kind {
-            p.add_attribute(AttributeId::required(kind)?, -amount)?;
+        if let Some(kind) = kind
+            && flag == STORAGE_WHILE_BUILT
+        {
+            p.add_attribute(kind, -amount)?;
         }
     }
     // The population headroom attribute, which a building's held amount gives (`+0x308` 4).
-    if held == attribute::HEADROOM.get() {
+    if held == Some(attribute::HEADROOM) {
         p.add_attribute(attribute::HEADROOM, -amount)?;
     }
     Ok(())
@@ -527,15 +533,17 @@ pub(crate) fn lose_built_storage(
 pub(crate) fn gain_built_storage(
     p: &mut Player,
     master: &Master,
-    held: i16,
+    held: Option<AttributeId>,
     amount: f32,
 ) -> Result<(), GenieError> {
     for &(kind, amount, flag) in &master.storage {
-        if matches!(flag, STORAGE_WHILE_BUILT | STORAGE_8) && 0 <= kind {
-            p.add_attribute(AttributeId::required(kind)?, amount)?;
+        if let Some(kind) = kind
+            && matches!(flag, STORAGE_WHILE_BUILT | STORAGE_8)
+        {
+            p.add_attribute(kind, amount)?;
         }
     }
-    if held == attribute::HEADROOM.get() {
+    if held == Some(attribute::HEADROOM) {
         p.add_attribute(attribute::HEADROOM, amount)?;
     }
     Ok(())

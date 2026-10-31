@@ -87,9 +87,8 @@ impl Unit {
         tree_lost: bool,
     ) -> Result<HuntReads, GenieError> {
         let owner = c.w.players.player(c.player)?;
-        let productivity = usize::try_from(hunt.task.productivity)
-            .ok()
-            .and_then(|i| owner.attributes.get(i))
+        let productivity = (hunt.task.productivity)
+            .and_then(|i| owner.attributes.get(i.index()))
             .copied()
             .filter(|&v| 0.0 < v)
             .unwrap_or(1.0);
@@ -179,9 +178,7 @@ impl Unit {
             them,
             c.w.world_time,
         )?;
-        let moving = action
-            .task
-            .walk_sprite_id(self.life.attribute_type, self.life.amount);
+        let moving = action.task.walk_sprite_id(self.life.held());
         let arms = crate::combat::attack::arms(master, &c.w.graphics, action.task.sprites, moving);
         let own = them.player == c.player;
         let drop_site = if !own {

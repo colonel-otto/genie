@@ -73,8 +73,7 @@ impl Unit {
         let stand = crate::gathering::hunt::stand_sprite(
             task,
             master.standing_sprite,
-            self.life.attribute_type,
-            self.life.amount,
+            self.life.held(),
             &c.w.graphics,
         );
         if let Some(s) = stand {
@@ -227,9 +226,7 @@ impl Unit {
             them,
             c.w.world_time,
         )?;
-        let moving = hunt
-            .task
-            .walk_sprite_id(self.life.attribute_type, self.life.amount);
+        let moving = hunt.task.walk_sprite_id(self.life.held());
         let arms = crate::combat::attack::arms(master, &c.w.graphics, hunt.task.sprites, moving);
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let site = hunt.carry_to.take();
@@ -485,9 +482,7 @@ impl Unit {
             c.w.world_time,
         )?;
         let (sprites, moving) = self.actions.hunt().map_or(([-1; 4], -1), |h| {
-            let moving = h
-                .task
-                .walk_sprite_id(self.life.attribute_type, self.life.amount);
+            let moving = h.task.walk_sprite_id(self.life.held());
             (h.task.sprites, moving)
         });
         let arms = crate::combat::attack::arms(master, &c.w.graphics, sprites, moving);
