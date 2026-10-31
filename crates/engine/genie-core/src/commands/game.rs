@@ -337,7 +337,7 @@ mod tests {
     fn world() -> World {
         let player = || Player {
             attributes: vec![0.0; 300],
-            diplomacy: vec![0; 9],
+            diplomacy: vec![crate::players::Stance::NONE; 9],
             ..Player::default()
         };
         World::new(
@@ -372,7 +372,7 @@ mod tests {
         t.game(&game(1, sub::ALLIED_VICTORY, 1, 1, 0)).unwrap();
         assert_eq!(
             (t.players[1].diplomacy[2], t.players[1].allied_victory),
-            (0, 0)
+            (crate::players::Stance::NONE, 0)
         );
         t.alliance_locked = 0;
         // relation 0: the ally's stance (4)
@@ -380,7 +380,7 @@ mod tests {
         t.game(&game(1, sub::ALLIED_VICTORY, 1, 1, 0)).unwrap();
         assert_eq!(
             (t.players[1].diplomacy[2], t.players[1].allied_victory),
-            (4, 1)
+            (crate::players::Stance::ALLY, 1)
         );
         // no castle: no treason
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();

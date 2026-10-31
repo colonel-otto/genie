@@ -21,6 +21,7 @@ use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type;
 use crate::players::PlayerId;
 use crate::players::Relation;
+use crate::players::Stance;
 use crate::players::UnitRelation;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -32,28 +33,11 @@ pub(crate) const REVEAL_UNITS: GenieError =
 
 /// The attribute naming the units a player reveals to the others (204, `+0x660`).
 const REVEAL_UNIT: usize = 204;
-/// The stances an ally (4) and a neutral (3) take, and an enemy's (2).
-const ALLY_STANCE: u8 = 4;
-const NEUTRAL_STANCE: u8 = 3;
-const ENEMY_STANCE: u8 = 2;
 /// The teams a world has at most past the lone one (2 to 5, `FUN_1415e23f0`).
 const LAST_TEAM: i32 = 5;
 /// The bits of the unified map a player's masks name players by (`FUN_141285cb0`'s
 /// `0x1ffffff01ffffff`).
 const PLAYER_BITS: u64 = 0x01ff_ffff_01ff_ffff;
-
-/// `FUN_1416397d0`'s relation for a stance: 1 and 2 an enemy's (3; 4 with the world's
-/// `+0x820` object in its state 1, `FUN_1415e8e10`, which the slice does not hold, as the task
-/// finder's [`crate::unit_ai::task_finder::allied`]), 3 a neutral's, 4 and 5 an ally's; another none.
-#[must_use]
-pub const fn relation_of_stance(stance: u8) -> Option<Relation> {
-    match stance {
-        1 | 2 => Some(Relation::ENEMY),
-        3 => Some(Relation::NEUTRAL),
-        4 | 5 => Some(Relation::ALLY),
-        _ => None,
-    }
-}
 
 /// `FUN_141676b80`'s kind of player `q`'s objects for player `p` of relation `relation` toward
 /// it: Gaia's 0, its own 1, relations 0 and 4 an ally's (2), 1 a neutral's (3), any other an
@@ -100,9 +84,9 @@ impl World {
         relation: u32,
     ) -> Result<(), GenieError> {
         let stance = match relation {
-            0 => ALLY_STANCE,
-            1 => NEUTRAL_STANCE,
-            3 | 4 => ENEMY_STANCE,
+            0 => Stance::ALLY,
+            1 => Stance::NEUTRAL,
+            3 | 4 => Stance::ENEMY,
             _ => return Ok(()),
         };
         let Some(q) = u8::try_from(other)
@@ -118,7 +102,7 @@ impl World {
             .diplomacy
             .get(q.index())
             .copied()
-            .unwrap_or(0)
+            .unwrap_or(Stance::NONE)
             != stance
         {
             self.set_stance(p, q, stance)?;
@@ -135,15 +119,17 @@ impl World {
     }
 
     /// `FUN_1416397d0`: player `p`'s stance toward `q` takes `stance`; one that makes a relation
-    /// ([`relation_of_stance`]) sets it ([`World::set_relation`]).
+    /// ([`Stance::relation`]) sets it ([`World::set_relation`]).
     pub(crate) fn set_stance(
         &mut self,
         p: PlayerId,
         q: PlayerId,
-        stance: u8,
+        stance: Stance,
     ) -> Result<(), GenieError> {
         set_lane(&mut self.players.player_mut(p)?.diplomacy, q, stance);
-        relation_of_stance(stance).map_or(Ok(()), |relation| self.set_relation(p, q, relation))
+        stance
+            .relation()
+            .map_or(Ok(()), |relation| self.set_relation(p, q, relation))
     }
 
     /// `FUN_141676b80`: player `p`'s relation toward `q` (`+0x260`, which the walk's and the
@@ -418,7 +404,7 @@ mod tests {
         let player = |p: usize| Player {
             attributes: vec![0.0; 300],
             relations: crate::players::relation_row((0..4).map(|q| if q == p { 0 } else { 3 })),
-            diplomacy: vec![0; 9],
+            diplomacy: vec![Stance::NONE; 9],
             ..Player::default()
         };
         let mut t = World::new(
@@ -479,18 +465,6 @@ mod tests {
         );
     }
 
-    /// `FUN_1416397d0`'s relations: 1, 2 an enemy's, 3 a neutral's, 4, 5 an ally's, others none.
-    #[test]
-    fn a_stance_makes_its_relation() {
-        assert_eq!(relation_of_stance(0), None);
-        assert_eq!(relation_of_stance(1), Some(Relation::ENEMY));
-        assert_eq!(relation_of_stance(2), Some(Relation::ENEMY));
-        assert_eq!(relation_of_stance(3), Some(Relation::NEUTRAL));
-        assert_eq!(relation_of_stance(4), Some(Relation::ALLY));
-        assert_eq!(relation_of_stance(5), Some(Relation::ALLY));
-        assert_eq!(relation_of_stance(6), None);
-    }
-
     /// Slot 0x30: relation 0 makes player 1 an ally of 2 one way, in its stance, its relation
     /// and the walk's and queries' copies; 4 makes it an enemy again; 2 and a player outside
     /// the world change nothing.
@@ -498,16 +472,16 @@ mod tests {
     fn a_diplomacy_change_sets_the_stance_and_the_relation() {
         let mut t = world();
         t.set_diplomacy(PlayerId::new(1), 2, 0).unwrap();
-        assert_eq!(t.players[1].diplomacy[2], ALLY_STANCE);
+        assert_eq!(t.players[1].diplomacy[2], Stance::ALLY);
         assert_eq!(t.players[1].relations[2], Relation::ALLY);
         assert_eq!(t.players[2].relations[1], Relation::ENEMY);
         assert_eq!(t.spatial.relations[1][2], Relation::ALLY);
         assert_eq!(t.spatial.unit_diplomacy[1][2], Some(UnitRelation::ALLY));
         t.set_diplomacy(PlayerId::new(1), 2, 1).unwrap();
-        assert_eq!(t.players[1].diplomacy[2], NEUTRAL_STANCE);
+        assert_eq!(t.players[1].diplomacy[2], Stance::NEUTRAL);
         assert_eq!(t.spatial.unit_diplomacy[1][2], Some(UnitRelation::NEUTRAL));
         t.set_diplomacy(PlayerId::new(1), 2, 4).unwrap();
-        assert_eq!(t.players[1].diplomacy[2], ENEMY_STANCE);
+        assert_eq!(t.players[1].diplomacy[2], Stance::ENEMY);
         assert_eq!(t.players[1].relations[2], Relation::ENEMY);
         assert_eq!(t.spatial.unit_diplomacy[1][2], Some(UnitRelation::ENEMY));
         let before = t.players.clone();

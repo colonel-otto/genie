@@ -11,6 +11,7 @@ pub mod market;
 mod player_id;
 mod player_type;
 mod relation;
+mod stance;
 pub mod tracker;
 pub mod treason;
 pub mod tribute;
@@ -22,6 +23,7 @@ pub use self::player_type::PlayerType;
 pub use self::relation::Relation;
 #[cfg(test)]
 pub(crate) use self::relation::relation_row;
+pub use self::stance::Stance;
 #[cfg(test)]
 pub(crate) use self::unit_relation::relations;
 pub use self::unit_relation::{ByRelation, UnitRelation};

@@ -134,7 +134,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                     .world_player()
                     .per_player
                     .iter()
-                    .map(|e| e.diplomacy)
+                    .map(|e| genie_core::players::Stance::from(e.diplomacy))
                     .collect(),
                 ai_settings: ai_settings(&p.world_player().base),
                 formations: genie_core::world::Formations {

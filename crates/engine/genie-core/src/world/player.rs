@@ -108,7 +108,7 @@ pub struct Player {
     pub production_queue_on: u8,
     /// `diplomacy[i]` (`+0xe12`, saved, 9 entries): the stance toward player i a diplomacy change
     /// set (1 or 2 enemy, 3 neutral, 4 or 5 ally; [`crate::players::diplomacy`]).
-    pub diplomacy: Vec<u8>,
+    pub diplomacy: Vec<crate::players::Stance>,
     /// The settings a computer player's GAME 0xb sets (`+0x608`..`+0x670`, saved).
     pub ai_settings: AiSettings,
     /// The order splitter's settings (`+0x6c0` `mAutoFormations`, `+0x6c4`
