@@ -15,7 +15,7 @@ use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
-fn task(action_type: i16) -> Task {
+fn task(action_type: ActionType) -> Task {
     Task {
         action_type,
         ..Task::default()
@@ -92,7 +92,12 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         })
     };
     // the Attack (9), type 7, the Gather (5) and the Hunt (0x6e), in state 7
-    for kind in [9, 7, 5, 0x6e] {
+    for kind in [
+        crate::combat::attack::ATTACK,
+        crate::objects::masters::action_type::COMBAT,
+        crate::gathering::gather::GATHER,
+        crate::gathering::hunt::HUNT,
+    ] {
         assert!(generates(
             &t,
             COMBAT,
@@ -105,17 +110,23 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         &t,
         COMBAT,
         COMBAT,
-        top(1, 7, Some(target)),
+        top(crate::movement::move_to::MOVE_TO, 7, Some(target)),
         false
     ));
     assert!(!generates(
         &t,
         COMBAT,
         COMBAT,
-        top(9, 6, Some(target)),
+        top(crate::combat::attack::ATTACK, 6, Some(target)),
         false
     ));
-    assert!(!generates(&t, COMBAT, COMBAT, top(9, 7, None), false));
+    assert!(!generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(crate::combat::attack::ATTACK, 7, None),
+        false
+    ));
     assert!(!generates(&t, COMBAT, COMBAT, None, false));
     // another class
     let other = WorkTarget {
@@ -126,7 +137,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         &t,
         COMBAT,
         COMBAT,
-        top(9, 7, Some(other)),
+        top(crate::combat::attack::ATTACK, 7, Some(other)),
         false
     ));
     // a dead target counts while its master stores some, never with a NaN
@@ -135,7 +146,13 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         storage: 1.0,
         ..target
     };
-    assert!(generates(&t, COMBAT, COMBAT, top(9, 7, Some(dead)), false));
+    assert!(generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(crate::combat::attack::ATTACK, 7, Some(dead)),
+        false
+    ));
     let empty = WorkTarget {
         hp: 0.0,
         storage: 0.0,
@@ -145,7 +162,7 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         &t,
         COMBAT,
         COMBAT,
-        top(9, 7, Some(empty)),
+        top(crate::combat::attack::ATTACK, 7, Some(empty)),
         false
     ));
     let nan = WorkTarget {
@@ -153,7 +170,13 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
         storage: f32::NAN,
         ..target
     };
-    assert!(!generates(&t, COMBAT, COMBAT, top(9, 7, Some(nan)), false));
+    assert!(!generates(
+        &t,
+        COMBAT,
+        COMBAT,
+        top(crate::combat::attack::ATTACK, 7, Some(nan)),
+        false
+    ));
 }
 
 #[test]
@@ -622,7 +645,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
         master_id(1021),
         BUILDING,
         class::BUILDING,
-        vec![task(6), feitoria_food()],
+        vec![task(ActionType::named(6)), feitoria_food()],
     );
     put(
         &mut t,

@@ -3,6 +3,7 @@
 
 use crate::map::GridSize;
 use crate::objects::lifecycle::Held;
+use crate::objects::masters::ActionType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
@@ -205,7 +206,7 @@ fn plan(t: &mut World) {
 }
 
 /// The builder's top action right after its update: its type and target.
-type Top = (Option<i16>, Option<ObjectId>);
+type Top = (Option<ActionType>, Option<ObjectId>);
 
 /// One update of the builder's Build of `dt` ms (its part of the unit's update,
 /// [`Unit::build_part`]), its code and the builder's top action right after it (the work it

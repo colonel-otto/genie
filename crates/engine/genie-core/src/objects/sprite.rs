@@ -683,7 +683,7 @@ mod tests {
     #[test]
     fn a_loaded_trade_cart_shows_its_trade_task_s_carrying_sprite() {
         let trade = crate::objects::masters::Task {
-            action_type: 0x6f,
+            action_type: action_type::TRADE,
             object_id: Some(master_id(0x54)),
             sprites: [1, 2, 3, 4],
             ..crate::objects::masters::Task::default()

@@ -20,6 +20,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveDefaults, MoveToAction, TargetMoved};
 use crate::objects::ObjectId;
 use crate::objects::layers::Body;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -63,7 +64,7 @@ use crate::movement::Mover;
 use crate::objects::sprite::ActiveSprite;
 
 /// The Attack action's type, which word 9 adds.
-pub const ATTACK: i16 = 9;
+pub const ATTACK: ActionType = ActionType::named(9);
 
 /// An Attack whose target the map does not hold (none, or one gone).
 pub(super) const TARGET_GONE: GenieError =

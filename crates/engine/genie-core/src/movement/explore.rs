@@ -16,6 +16,7 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, sprite_id};
@@ -29,7 +30,7 @@ use genie_diff::Diff;
 use std::collections::BTreeMap;
 
 /// The Explore action's type.
-pub const EXPLORE: i16 = 4;
+pub const EXPLORE: ActionType = ActionType::named(4);
 
 /// State 2: stopped.
 pub const STOPPED: u8 = 2;

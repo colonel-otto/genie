@@ -317,7 +317,10 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         objects[artifact].actions.artifact().map(|a| a.state),
         Some(6)
     );
-    assert!(t.halt_other(PlayerId::new(1), gather, 99).is_err());
+    assert!(
+        t.halt_other(PlayerId::new(1), gather, ActionType::named(99))
+            .is_err()
+    );
 }
 
 #[test]

@@ -148,8 +148,6 @@ use self::top_actions::saved_actions;
 use genie_core::objects::unit::Unit;
 #[cfg(test)]
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
-#[cfg(test)]
-use genie_core::world::checkpoint::TopAction;
 /// The fields a comparison covers ([`object_field_differences_in`]).
 pub use genie_diff::Scope;
 

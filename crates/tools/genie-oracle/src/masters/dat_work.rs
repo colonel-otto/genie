@@ -1,8 +1,10 @@
 //! A `.dat` master's work-command values (genie-core's [`work::Master`]): its tasks with their
 //! sound events, its costs in their slots and the rest the work command reads.
 
+use genie_core::GenieError;
 use genie_core::map::{Footprint, GroundOffset, Radii};
 use genie_core::objects::masters as work;
+use genie_core::objects::masters::ActionType;
 use genie_core::objects::masters::MasterId;
 use genie_core::objects::masters::{COST_SLOTS, CostSlot};
 use genie_core::players::attribute::AttributeId;
@@ -29,10 +31,28 @@ pub(super) fn sound_event(event: u32, sound: i16, sounds: &[genie_dat::de::Sound
 
 /// A `.dat` task as the task finder reads it (`genie_core::objects::masters::Task`), with the world's
 /// sound table its sound events read ([`sound_event`]).
-fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::Task {
-    work::Task {
+///
+/// # Errors
+///
+/// A negative action type, or an attribute below −1.
+fn dat_task(
+    t: &genie_dat::de::Task,
+    sounds: &[genie_dat::de::Sound],
+) -> Result<work::Task, GenieError> {
+    let [
+        attribute_type,
+        attribute_type2,
+        attribute_type3,
+        attribute_type4,
+    ] = attributes([
+        t.resource_in,
+        t.resource_multiplier,
+        t.resource_out,
+        t.unused_resource,
+    ])?;
+    Ok(work::Task {
         id: genie_core::objects::masters::TaskId::of_task(t.id),
-        action_type: t.action_type,
+        action_type: ActionType::try_from(t.action_type)?,
         object_group: t.class_id,
         object_id: MasterId::of_data(t.unit_id),
         combat_level: t.enable_targeting,
@@ -40,16 +60,16 @@ fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::T
         terrain: t.terrain_id,
         owner_type: t.target_diplomacy,
         holding_attr: t.carry_check,
-        attribute_type: AttributeId::of_data(t.resource_in),
-        attribute_type2: AttributeId::of_data(t.resource_multiplier),
-        attribute_type3: AttributeId::of_data(t.resource_out),
-        attribute_type4: AttributeId::of_data(t.unused_resource),
+        attribute_type,
+        attribute_type2,
+        attribute_type3,
+        attribute_type4,
         wait_time: t.search_wait_time,
         work_val1: t.work_value1,
         work_val2: t.work_value2,
         work_range: t.work_range,
         work_flag: t.gather_type,
-        enablement: t.enabled.and_then(AttributeId::of_data),
+        enablement: t.enabled.map(AttributeId::of_field).transpose()?.flatten(),
         sprites: [
             t.moving_graphic_id,
             t.proceeding_graphic_id,
@@ -68,7 +88,7 @@ fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::T
                 sounds,
             ),
         ],
-    }
+    })
 }
 
 /// The master load's remap of a base id (`FUN_1411319f0` at `0x141132363`..`0x14113249c`):
@@ -82,22 +102,16 @@ const fn base_id(id: i16) -> i16 {
 }
 
 /// The work-command values of a `.dat` unit, with the world's sound table its tasks read.
+///
+/// # Errors
+///
+/// A task or a cost slot that holds no type or attribute ([`dat_task`]).
 pub(super) fn dat_work(
     id: MasterId,
     unit: &genie_dat::de::Unit,
     sounds: &[genie_dat::de::Sound],
-) -> work::Master {
-    let mut cost = [CostSlot::default(); COST_SLOTS];
-    if let Some(c) = unit.creatable.as_ref() {
-        for (slot, r) in cost.iter_mut().zip(&c.resource_costs) {
-            *slot = CostSlot {
-                attribute: AttributeId::of_data(r.kind),
-                amount: r.amount,
-                paid: r.flag != 0,
-            };
-        }
-    }
-    work::Master {
+) -> Result<work::Master, GenieError> {
+    Ok(work::Master {
         id,
         kind: genie_core::objects::masters::MasterKind::of_data(unit.unit_type),
         copy_id: MasterId::of_data(unit.copy_id),
@@ -113,15 +127,13 @@ pub(super) fn dat_work(
         obstruction_class: unit.obstruction_class,
         object_flags: 0,
         combat_level: unit.combat_level,
-        tasks: unit.bird.as_ref().map_or_else(Vec::new, |b| {
-            b.tasks.iter().map(|t| dat_task(t, sounds)).collect()
-        }),
+        tasks: dat_tasks(unit, sounds)?,
         default_task: unit
             .bird
             .as_ref()
             .map(|b| b.default_task_id)
             .filter(|&t| 0 <= t),
-        cost,
+        cost: dat_cost(unit)?,
         work_rate: unit.bird.as_ref().map_or(0.0, |b| b.work_rate),
         drop_sites: unit.bird.as_ref().map_or_else(Vec::new, |b| {
             b.drop_sites
@@ -241,5 +253,56 @@ pub(super) fn dat_work(
             .and_then(|id| i16::try_from(id).ok())
             .and_then(MasterId::of_data),
         ..work::Master::default()
+    })
+}
+
+/// The tasks of a `.dat` unit's action part ([`dat_task`]), none without one.
+///
+/// # Errors
+///
+/// A task that holds no type or attribute.
+fn dat_tasks(
+    unit: &genie_dat::de::Unit,
+    sounds: &[genie_dat::de::Sound],
+) -> Result<Vec<work::Task>, GenieError> {
+    unit.bird.as_ref().map_or_else(
+        || Ok(Vec::new()),
+        |b| b.tasks.iter().map(|t| dat_task(t, sounds)).collect(),
+    )
+}
+
+/// A `.dat` unit's cost slots (`resource_costs`) in their places, empty without a creatable
+/// part.
+///
+/// # Errors
+///
+/// A slot whose attribute is below −1.
+fn dat_cost(unit: &genie_dat::de::Unit) -> Result<[CostSlot; COST_SLOTS], GenieError> {
+    let mut cost = [CostSlot::default(); COST_SLOTS];
+    if let Some(c) = unit.creatable.as_ref() {
+        for (slot, r) in cost.iter_mut().zip(&c.resource_costs) {
+            *slot = CostSlot {
+                attribute: AttributeId::of_field(r.kind)?,
+                amount: r.amount,
+                paid: r.flag != 0,
+            };
+        }
     }
+    Ok(cost)
+}
+
+/// The attributes of fields that hold −1 for none, in their order (a task's four, its
+/// enablement).
+///
+/// # Errors
+///
+/// A value below −1, which no attribute is.
+pub(crate) fn attributes<const N: usize>(
+    values: [i16; N],
+) -> Result<[Option<AttributeId>; N], GenieError> {
+    let mut out = [None; N];
+    for (slot, value) in out.iter_mut().zip(values) {
+        *slot = AttributeId::of_field(value)?;
+    }
+    Ok(out)
 }

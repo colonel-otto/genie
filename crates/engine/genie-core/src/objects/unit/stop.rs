@@ -206,7 +206,7 @@ impl Unit {
                     target: Some(target),
                     point,
                     carry_test: true,
-                    filter: -1,
+                    filter: None,
                     notified: false,
                 };
                 c.lend_at(self, |w, p, i| w.order_work(p, i, &work))

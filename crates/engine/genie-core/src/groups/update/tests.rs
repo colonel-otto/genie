@@ -325,7 +325,10 @@ fn relic_carriers_keep_their_command_pending() {
         a.current_target = ObjectId::of_field(target);
     };
     t.groups.get_mut(group_id(1)).unwrap().current_command = 0x84;
-    set_masters(&mut t, vec![task(0x84)]);
+    set_masters(
+        &mut t,
+        vec![task(crate::objects::masters::action_type::PICK_UP)],
+    );
     ai(&mut t, Some(OrderKind::OnTarget), None, 40);
     assert!(t.target_pending(group_id(1)).unwrap());
     ai(&mut t, None, Some(ActionKind::OnTarget), 40);
@@ -334,18 +337,27 @@ fn relic_carriers_keep_their_command_pending() {
     assert!(!t.target_pending(group_id(1)).unwrap());
     ai(&mut t, Some(OrderKind::OnTarget), None, -1);
     assert!(!t.target_pending(group_id(1)).unwrap());
-    set_masters(&mut t, vec![task(0x88)]);
+    set_masters(
+        &mut t,
+        vec![task(crate::objects::masters::action_type::DEPOSIT)],
+    );
     assert!(t.target_pending(group_id(1)).unwrap());
     ai(&mut t, Some(OrderKind::OnTarget), None, 41);
     assert!(!t.target_pending(group_id(1)).unwrap());
     // the delivery: on the monastery, with either task
     t.groups.get_mut(group_id(1)).unwrap().current_command = 0x88;
     assert!(t.target_pending(group_id(1)).unwrap());
-    set_masters(&mut t, vec![task(0x84)]);
+    set_masters(
+        &mut t,
+        vec![task(crate::objects::masters::action_type::PICK_UP)],
+    );
     assert!(t.target_pending(group_id(1)).unwrap());
-    set_masters(&mut t, vec![task(5)]);
+    set_masters(&mut t, vec![task(crate::gathering::gather::GATHER)]);
     assert!(!t.target_pending(group_id(1)).unwrap());
-    set_masters(&mut t, vec![task(0x88)]);
+    set_masters(
+        &mut t,
+        vec![task(crate::objects::masters::action_type::DEPOSIT)],
+    );
     ai(&mut t, Some(OrderKind::OnTarget), None, 40);
     assert!(!t.target_pending(group_id(1)).unwrap());
 }

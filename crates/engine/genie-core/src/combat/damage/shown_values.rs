@@ -5,6 +5,7 @@ use crate::combat::damage::{
     EPSILON, ONE, Victim, charge_hit, charged, master_melee_armor, melee_armor, range_charge_hit,
 };
 use crate::math::conversions::cvttss2si;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -12,7 +13,7 @@ use crate::players::attribute::AttributeId;
 use crate::{GenieError, math::fmath};
 
 /// The action type of a bonus damage task (`FUN_14107ce60`).
-pub const BONUS_DAMAGE: i16 = 0xa0;
+pub const BONUS_DAMAGE: ActionType = ActionType::named(0xa0);
 
 impl Victim {
     /// A combat unit or building (types 70 and 80, `TRIBE_Combat_Object` and

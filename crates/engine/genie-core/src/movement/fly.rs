@@ -14,6 +14,7 @@ use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::move_to::{MoveToAction, graphic_of};
 use crate::movement::{Me, Mover};
 use crate::objects::lifecycle::seconds;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
@@ -22,7 +23,7 @@ use crate::world::step::Step;
 use genie_diff::Diff;
 
 /// The Fly action's type, which word 9 adds.
-pub const FLY: i16 = 10;
+pub const FLY: ActionType = ActionType::named(10);
 
 const RESTING: u8 = 2;
 const CHOOSING: u8 = 3;

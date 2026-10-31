@@ -253,7 +253,7 @@ fn repair_at(at: Position, set: impl FnOnce(&mut RepairAction)) -> crate::world:
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();

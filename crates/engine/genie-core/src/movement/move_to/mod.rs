@@ -15,6 +15,7 @@ use crate::movement::{Me, Motion, Planning, footprint_gap, footprint_gap_squared
 use crate::movement::{MoveStats, PathAsk};
 use crate::objects::ObjectId;
 use crate::objects::layers::Body;
+use crate::objects::masters::ActionType;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite};
 use genie_diff::Diff;
 
@@ -34,7 +35,7 @@ pub(crate) use crate::movement::move_to::list::update_sub_actions;
 pub use crate::movement::move_to::sub_action::{GiveUp, NO_TARGET_GAP};
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
-pub const MOVE_TO: i16 = 1;
+pub const MOVE_TO: ActionType = ActionType::named(1);
 
 /// The `MoveTo`'s state (`+0x18`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]

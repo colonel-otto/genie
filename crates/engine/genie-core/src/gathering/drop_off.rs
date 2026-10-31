@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::SpriteReads;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::action_type;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
@@ -423,7 +424,7 @@ impl Unit {
                     sites,
                     self.position(),
                     None,
-                    (true, action_type::UNPACK),
+                    (true, Some(action_type::UNPACK)),
                 )?,
             };
         }
@@ -453,7 +454,12 @@ impl Unit {
         outside: bool,
     ) -> Result<Option<ObjectId>, GenieError> {
         let by_path = !c.computer;
-        self.drop_site_with(c, others, state, (outside, by_path, action_type::UNPACK))
+        self.drop_site_with(
+            c,
+            others,
+            state,
+            (outside, by_path, Some(action_type::UNPACK)),
+        )
     }
 
     /// [`Unit::drop_site_from`] with the search's arguments 10, 9 and 8: `outside`, `by_path`
@@ -463,7 +469,7 @@ impl Unit {
         c: &mut DropWorld<'_>,
         others: OthersRef<'_>,
         state: u8,
-        (outside, by_path, at_work): (bool, bool, i16),
+        (outside, by_path, at_work): (bool, bool, Option<ActionType>),
     ) -> Result<Option<ObjectId>, GenieError> {
         let masters = c.masters.ok_or(GenieError::unsupported(
             "a drop-off of a player without masters",

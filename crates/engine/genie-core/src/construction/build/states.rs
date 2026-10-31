@@ -227,7 +227,7 @@ impl BuildAction {
             target: self.target,
             point,
             carry_test: false,
-            filter: -1,
+            filter: None,
             notified: true,
         };
         self.lend(c, builder, |w, p, i| w.order_work(p, i, &work))

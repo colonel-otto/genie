@@ -189,7 +189,7 @@ impl World {
             target,
             point,
             carry_test: false,
-            filter: -1,
+            filter: None,
             notified: true,
         };
         self.order_work(p, idx, &work)

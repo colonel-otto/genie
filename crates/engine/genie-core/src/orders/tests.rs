@@ -472,11 +472,18 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
         .unwrap();
     t.world_time = 3500;
     assert_eq!(
-        t.keep_attack(PlayerId::new(1), 0, Some(object_id(50)), 3, at, true),
+        t.keep_attack(
+            PlayerId::new(1),
+            0,
+            Some(object_id(50)),
+            Some(crate::garrison::ENTER),
+            at,
+            true
+        ),
         Ok(false)
     );
     assert_eq!(
-        t.keep_attack(PlayerId::new(1), 0, Some(object_id(51)), -1, at, true),
+        t.keep_attack(PlayerId::new(1), 0, Some(object_id(51)), None, at, true),
         Ok(false)
     );
     let ai = |t: &World| {
@@ -487,7 +494,14 @@ fn a_work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
     };
     assert_ne!(ai(&t), Some(3500));
     assert_eq!(
-        t.keep_attack(PlayerId::new(1), 0, Some(object_id(50)), 9, at, true),
+        t.keep_attack(
+            PlayerId::new(1),
+            0,
+            Some(object_id(50)),
+            Some(crate::combat::attack::ATTACK),
+            at,
+            true
+        ),
         Ok(true)
     );
     assert_eq!(ai(&t), Some(3500));
@@ -1162,7 +1176,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
         queued: true,
         direct: false,
         human: false,
-        filter: -1,
+        filter: None,
     };
     t.interact(PlayerId::new(2), &object_ids([11]), &interact)
         .unwrap();
@@ -1232,7 +1246,7 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
         queued: false,
         direct: false,
         human: false,
-        filter: -1,
+        filter: None,
     };
     let mut t = two();
     for u in &mut t.players[1].objects {
@@ -1395,7 +1409,7 @@ fn a_queued_interact_to_an_object_that_does_not_move_also_queues_it() {
         queued,
         direct: false,
         human: false,
-        filter: -1,
+        filter: None,
     };
     let run = |queued| {
         let mut t = soldiers(&[(11, 83, Point::new(20.0, 20.0))], &[]);
@@ -1446,7 +1460,7 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
         queued: false,
         direct: false,
         human: false,
-        filter: -1,
+        filter: None,
     };
     t.interact(PlayerId::new(1), &object_ids([11]), &interact)
         .unwrap();
@@ -1473,7 +1487,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
         queued: true,
         direct: false,
         human: false,
-        filter: -1,
+        filter: None,
     };
     let mover = || {
         let mut t = soldiers(&[(11, 83, Point::new(20.0, 20.0))], &[]);
@@ -2726,8 +2740,11 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
         ..Master::default()
     };
     t.masters[1] = crate::objects::masters::Masters::new([
-        villager(ids::VILLAGER_MALE, vec![task(5, Some(master_id(53)))]),
-        villager(ids::BUILDER, vec![task(101, None)]),
+        villager(
+            ids::VILLAGER_MALE,
+            vec![task(crate::gathering::gather::GATHER, Some(master_id(53)))],
+        ),
+        villager(ids::BUILDER, vec![task(action_type::BUILD, None)]),
         Master {
             id: ids::HOUSE,
             kind: BUILDING,
@@ -2748,18 +2765,18 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
         ..Unit::default()
     });
     let found = t
-        .find_work_task(PlayerId::new(1), 0, object_id(60), GARRISON, false)
+        .find_work_task(PlayerId::new(1), 0, object_id(60), Some(GARRISON), false)
         .unwrap();
-    assert_eq!(found.map(|t| t.action_type), Some(101));
+    assert_eq!(found.map(|t| t.action_type), Some(action_type::BUILD));
     assert_eq!(t.players[1].objects[0].life.master_id, ids::VILLAGER_MALE);
     let found = t
-        .find_work_task(PlayerId::new(1), 0, object_id(60), -1, true)
+        .find_work_task(PlayerId::new(1), 0, object_id(60), None, true)
         .unwrap();
-    assert_eq!(found.map(|t| t.action_type), Some(101));
+    assert_eq!(found.map(|t| t.action_type), Some(action_type::BUILD));
     assert_eq!(t.players[1].objects[0].life.master_id, ids::BUILDER);
     // 118's own task: no change
     assert!(
-        t.find_work_task(PlayerId::new(1), 0, object_id(60), -1, true)
+        t.find_work_task(PlayerId::new(1), 0, object_id(60), None, true)
             .unwrap()
             .is_some()
     );
@@ -2985,7 +3002,7 @@ fn an_order_on_an_enemy_below_the_least_range_notifies_the_unit_ai() {
         target: Some(object_id(20)),
         point: Position::new(11.0, 10.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -3963,7 +3980,7 @@ fn foraging() -> World {
         target: Some(object_id(600)),
         point: Position::new(32.5, 89.5, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -4183,7 +4200,7 @@ fn an_attack_task_s_start_ends_where_the_start_does() {
 fn a_work_command_finds_its_master_and_task_on_a_target() {
     let t = crate::world::tests::forage_world();
     assert_eq!(
-        t.work_task(PlayerId::new(1), 0, (None, Position::from([1.0; 3])), -1)
+        t.work_task(PlayerId::new(1), 0, (None, Position::from([1.0; 3])), None)
             .unwrap(),
         None
     );
@@ -4192,7 +4209,7 @@ fn a_work_command_finds_its_master_and_task_on_a_target() {
             PlayerId::new(1),
             0,
             (Some(object_id(600)), Position::from([1.0; 3])),
-            -1,
+            None,
         )
         .unwrap()
         .expect("the Gather task");
@@ -4209,7 +4226,7 @@ fn a_work_command_finds_its_master_and_task_on_a_target() {
             PlayerId::new(1),
             0,
             (Some(object_id(700)), Position::from([1.0; 3])),
-            -1
+            None
         )
         .unwrap(),
         None
@@ -4432,7 +4449,7 @@ fn a_work_command_s_factory_starts_the_task_s_action() {
         Some((Some(object_id(600)), 4))
     );
     let unknown = Task {
-        action_type: 0x55,
+        action_type: ActionType::named(0x55),
         ..task
     };
     assert_eq!(
@@ -4486,7 +4503,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
     };
     let soldier = Master {
         tasks: vec![crate::objects::masters::Task {
-            action_type: 7,
+            action_type: action_type::COMBAT,
             owner_type: 2,
             object_group: class::BUILDING.get(),
             ..crate::objects::masters::Task::default()
@@ -4506,7 +4523,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         queued: false,
         direct: true,
         human: true,
-        filter: -1,
+        filter: None,
     };
     t.interact(PlayerId::new(1), &object_ids([11, 12, 13]), &order)
         .unwrap();

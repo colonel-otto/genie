@@ -44,8 +44,8 @@ use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
 pub struct Task {
     /// `+0xa`.
     pub id: TaskId,
-    /// `+0xe`.
-    pub action_type: i16,
+    /// `+0xe`: the action the task makes the unit do.
+    pub action_type: ActionType,
     /// `+0x10`: the target class the task is for, -1 for any.
     pub object_group: i16,
     /// `+0x12`: the target master, -1 for any.
@@ -99,7 +99,7 @@ impl Default for Task {
     fn default() -> Self {
         Self {
             id: TaskId::default(),
-            action_type: 0,
+            action_type: ActionType::default(),
             object_group: -1,
             object_id: None,
             combat_level: 0,
@@ -126,10 +126,10 @@ impl Default for Task {
 /// The task types the action list's factory makes an action of: the TRIBE factory's
 /// (`FUN_140aca4b0`) and the RGE factory's it falls back on (`FUN_140a97e00`). A default task of
 /// any other type starts nothing (wild animals' Explore, type 6).
-pub const ACTION_FACTORY_TYPES: [i16; 28] = [
+pub const ACTION_FACTORY_TYPES: [ActionType; 28] = action_type::types([
     3, 0xc, 0xe, 0x65, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6e, 0x6f, 0x78, 0x79, 0x7a, 0x7b, 0x7d,
     0x83, 0x84, 0x87, 0x88, 0x95, 0x9a, 4, 5, 7, 10, 0xd, 0x15,
-];
+]);
 
 impl Master {
     /// Its default task (`FUN_14109e0c0`: the task list's entry at the default task's index,
@@ -582,6 +582,7 @@ mod master_id;
 mod master_kind;
 pub mod master_type;
 
+pub use self::action_type::ActionType;
 pub use self::attribute::MasterAttribute;
 pub use self::class_id::ClassId;
 pub use self::master_id::MasterId;

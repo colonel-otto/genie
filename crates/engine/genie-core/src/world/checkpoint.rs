@@ -7,6 +7,7 @@
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 
 /// What the block reads from one object of a player's live list.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -21,8 +22,8 @@ pub struct ObjectState {
     pub amount_held: f32,
     /// Its place.
     pub position: Position,
-    /// Its top action.
-    pub top_action: Option<TopAction>,
+    /// What word 9 reads of its actions, none without an action.
+    pub top_action: Option<ActionTerm>,
     /// Its unit AI's retarget timer, None without a unit AI.
     pub retarget_timer: Option<i32>,
 }
@@ -31,9 +32,29 @@ pub struct ObjectState {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TopAction {
     /// The type (virtual slot 166).
-    pub kind: i16,
+    pub kind: ActionType,
     /// The state (virtual slot 86).
     pub state: u8,
+}
+
+/// What word 9 reads of an object's actions: its top action's type (virtual slot 166), none
+/// for −1 (a building that makes without a top action), and a state (virtual slot 86, a
+/// building's production action's first).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ActionTerm {
+    /// The type, none for −1.
+    pub kind: Option<ActionType>,
+    /// The state.
+    pub state: u8,
+}
+
+impl From<TopAction> for ActionTerm {
+    fn from(top: TopAction) -> Self {
+        Self {
+            kind: Some(top.kind),
+            state: top.state,
+        }
+    }
 }
 
 /// What the block reads from a player.
@@ -77,7 +98,9 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
 /// Word 9's term for one object: action type + action state byte + unit-AI retarget timer. An
 /// object without an action list reports type -1 and state 0.
 fn action_checksum(o: &ObjectState) -> u32 {
-    let TopAction { kind, state } = o.top_action.unwrap_or(TopAction { kind: -1, state: 0 });
+    let (kind, state) = o
+        .top_action
+        .map_or((-1, 0), |t| (ActionType::field(t.kind), t.state));
     (i32::from(kind) as u32)
         .wrapping_add(u32::from(state))
         .wrapping_add(o.retarget_timer.unwrap_or(0) as u32)
@@ -159,7 +182,10 @@ mod tests {
     #[test]
     fn word_9_adds_action_type_state_byte_and_retarget_timer() {
         let o = ObjectState {
-            top_action: Some(TopAction { kind: 5, state: 3 }),
+            top_action: Some(ActionTerm {
+                kind: Some(crate::gathering::gather::GATHER),
+                state: 3,
+            }),
             retarget_timer: Some(100),
             ..object()
         };

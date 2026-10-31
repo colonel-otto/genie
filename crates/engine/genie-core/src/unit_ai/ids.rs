@@ -312,7 +312,7 @@ impl NewObject {
                 .tasks
                 .iter()
                 .rev()
-                .find(|t| t.action_type == HUNT_RANGE_TASK)
+                .find(|t| t.action_type == crate::objects::masters::action_type::HUNT_RANGE)
                 .map_or(0.0, |t| t.work_range),
             computer: false,
             posture: 0,
@@ -321,9 +321,6 @@ impl NewObject {
     }
 }
 
-/// The action type of the task whose work range a new object keeps at `+0xb74`
-/// (`FUN_141206d50`).
-pub(super) const HUNT_RANGE_TASK: i16 = 6;
 /// The hunted animal's idle timeout (`FUN_140c11920`'s `FUN_140c41bc0` with 4000).
 pub(super) const HUNTED_IDLE_TIMEOUT: u32 = 4000;
 /// The priest's idle timeout (`FUN_140c11e30`'s `FUN_140c41bc0` with 500).

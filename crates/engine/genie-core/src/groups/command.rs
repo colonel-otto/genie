@@ -12,6 +12,7 @@ use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::Place;
@@ -470,7 +471,7 @@ impl World {
                     queued: false,
                     direct: true,
                     disable_retargeting: false,
-                    filter: -1,
+                    filter: None,
                 };
                 let _ = self.general_command(group, (c, target), at.ground(), node.range, order)?;
                 Ok(true)
@@ -479,7 +480,7 @@ impl World {
                 let target = held_id(node.target_id)?;
                 let order = AttackOrder {
                     disable_retargeting: node.disable_retargeting != 0,
-                    filter: node.approved_2 as i16,
+                    filter: ActionType::of_data(node.approved_2.cast_signed()),
                 };
                 let _ = self.command_attack(group, target, order)?;
                 Ok(true)

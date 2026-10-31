@@ -402,7 +402,7 @@ impl World {
                 target: Some(building),
                 point,
                 carry_test: false,
-                filter: GARRISON,
+                filter: Some(GARRISON),
                 notified: true,
             };
             self.order_work(p, idx, &work)?;

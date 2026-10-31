@@ -288,7 +288,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
         task(3, Some(ids::ID_0), 0.0, 0),
         task(-1, Some(master_id(9)), 0.0, 0),
         crate::objects::masters::Task {
-            action_type: 0xa1,
+            action_type: crate::combat::abilities::REMOVAL_REWARD,
             ..task(-1, None, 0.0, 0)
         },
     ];

@@ -8,8 +8,8 @@ use genie_core::map::{Offset, Position};
 use genie_core::movement::fly::{FLY, Fly};
 use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction, TargetMoved};
 use genie_core::objects::ObjectId;
-use genie_core::objects::masters::Task;
 use genie_core::objects::masters::action_type::BUILD;
+use genie_core::objects::masters::{ActionType, Task};
 use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
@@ -48,6 +48,7 @@ pub(super) fn saved_actions(
         .map(genie_save::generated::world::ActionList::entries)
         .ok_or(NO_ACTIONS)?;
     let (kind, action) = entries.next().ok_or(NO_ACTIONS)?;
+    let kind = ActionType::try_from(kind)?;
     if let Some((below, _)) = entries.next() {
         return Err(not_imported().with("below the head", below));
     }
@@ -95,9 +96,24 @@ const fn not_imported() -> GenieError {
     GenieError::unsupported("a saved action the slice does not import")
 }
 
+/// The first action of a saved action list with its type (the save's `action_type`, parsed),
+/// none for an empty list.
+///
+/// # Errors
+///
+/// A negative action type.
+pub(crate) fn first_action(
+    list: &genie_save::generated::world::ActionList,
+) -> Result<Option<(ActionType, &Action)>, GenieError> {
+    list.entries()
+        .next()
+        .map(|(kind, action)| Ok((ActionType::try_from(kind)?, action)))
+        .transpose()
+}
+
 /// The second target (+0x34): only the Hunt, the Gather and the Build (their drop site), the
 /// missile (its shooter) and the Attack hold one in the slice.
-const fn holds_second_target(kind: i16) -> bool {
+const fn holds_second_target(kind: ActionType) -> bool {
     matches!(
         kind,
         genie_core::gathering::hunt::HUNT
@@ -128,7 +144,7 @@ impl Saved<'_> {
     /// The action's first sub-action when it is a `MoveTo`, none without one; `other` for any
     /// other.
     fn move_to_sub(&self, other: GenieError) -> Result<Option<&Action>, GenieError> {
-        match self.base.sub_actions.entries().next() {
+        match first_action(&self.base.sub_actions)? {
             None => Ok(None),
             Some((MOVE_TO, sub)) => Ok(Some(sub)),
             Some(_) => Err(other),

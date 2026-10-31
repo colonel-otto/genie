@@ -10,6 +10,7 @@ use crate::groups::task::TargetTask;
 use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::world::World;
 
 /// The tasks `BUnitGroup::command` runs through the general command (`FUN_14100fc50`): the cases
@@ -28,7 +29,7 @@ pub struct CommandArgs {
     /// `param_7`.
     pub disable_retargeting: bool,
     /// `param_8`.
-    pub filter: i16,
+    pub filter: Option<ActionType>,
 }
 
 impl World {
@@ -72,7 +73,7 @@ impl World {
         g.replaces_queue = u8::from(!order.queued);
         let command = task.map(|t| t.command);
         let mut moved = false;
-        if command.is_none_or(|c| i32::from(c) == MOVE_COMMAND) {
+        if command.is_none_or(|c| i32::from(c.get()) == MOVE_COMMAND) {
             moved = self.command_move_to(
                 group,
                 target,
@@ -86,12 +87,12 @@ impl World {
             )?;
         }
         if let (Some(task), Some(held)) = (task, target) {
-            if ATTACK_COMMANDS.contains(&i32::from(task.command)) {
+            if ATTACK_COMMANDS.contains(&i32::from(task.command.get())) {
                 moved = self.attack_command(group, held, point, (task, order), moved)?;
-            } else if GENERAL_COMMANDS.contains(&i32::from(task.command)) {
+            } else if GENERAL_COMMANDS.contains(&i32::from(task.command.get())) {
                 moved = self.general_command(
                     group,
-                    (i32::from(task.command), held),
+                    (i32::from(task.command.get()), held),
                     point,
                     task.range.unwrap_or(0.0),
                     order,
@@ -185,7 +186,7 @@ impl World {
             range,
             target_radius: radius,
             disable_retargeting: 0,
-            certain_action: -1,
+            certain_action: None,
         };
         g.current_command = command;
         Ok(true)
@@ -207,13 +208,13 @@ impl World {
     ) -> Result<bool, GenieError> {
         let g = self.groups.held_mut(group)?;
         let entry = |approved: u8| GroupCommand {
-            command: i32::from(task.command),
+            command: i32::from(task.command.get()),
             target_id: Some(target),
             range: task.range.unwrap_or(0.0),
             point: BVector::new(point.x(), 0.0, point.y()),
             approved,
             disable_retargeting: u8::from(order.disable_retargeting),
-            approved_2: order.filter as u16,
+            approved_2: ActionType::field(order.filter).cast_unsigned(),
         };
         if order.queued {
             g.queue_command(entry(u8::from(order.direct)));

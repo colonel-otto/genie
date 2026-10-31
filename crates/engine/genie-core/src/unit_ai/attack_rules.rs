@@ -118,7 +118,11 @@ pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool 
         return false;
     }
     let mut task = None;
-    for k in p.tasks.iter().filter(|k| k.action_type == 0x68) {
+    for k in p
+        .tasks
+        .iter()
+        .filter(|k| k.action_type == crate::objects::masters::action_type::CONVERT)
+    {
         if k.object_group == -1 && k.object_id.is_none() {
             task = Some(k);
         }
@@ -391,7 +395,13 @@ pub fn siege_can_attack(
     if !me.computer && !any && me.class == Some(PACKED_UNIT_CLASS) {
         return Ok(false);
     }
-    if matches!(me.top_action, Some(124 | 125)) {
+    if matches!(
+        me.top_action,
+        Some(
+            crate::objects::masters::action_type::PACK
+                | crate::objects::masters::action_type::UNPACK
+        )
+    ) {
         return Ok(false);
     }
     Ok(any || siege_chooses(me, s, t))

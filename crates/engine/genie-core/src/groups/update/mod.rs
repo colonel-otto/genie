@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::UnitGroup;
+use crate::objects::masters::ActionType;
 
 mod attack;
 mod awake;
@@ -19,15 +20,15 @@ pub use self::awake::IDLE_SPAN;
 const NO_COMMAND: i32 = -1;
 /// The group commands the update tells apart: an attack, a build, a repair, a relic's pick-up
 /// and its delivery.
-const ATTACK: i32 = crate::combat::attack::ATTACK as i32;
-const BUILD: i32 = crate::objects::masters::action_type::BUILD as i32;
-const REPAIR: i32 = crate::construction::repair::REPAIR as i32;
+const ATTACK: i32 = crate::combat::attack::ATTACK.get() as i32;
+const BUILD: i32 = crate::objects::masters::action_type::BUILD.get() as i32;
+const REPAIR: i32 = crate::construction::repair::REPAIR.get() as i32;
 const PICK_UP_RELIC: i32 = 0x84;
 const DELIVER_RELIC: i32 = 0x88;
 /// The action types of the tasks that pick up and deliver relics (`FUN_1415c60b0`'s third
 /// argument, as the commands).
-const RELIC_PICKUP_ACTION: i16 = 0x84;
-const RELIC_DELIVERY_ACTION: i16 = 0x88;
+const RELIC_PICKUP_ACTION: ActionType = ActionType::named(0x84);
+const RELIC_DELIVERY_ACTION: ActionType = ActionType::named(0x88);
 /// The nearest member's target starts this far (`FUN_141007ca0`, `DAT_14330ebf4`).
 const FARTHEST: f32 = crate::math::image::group::FARTHEST;
 /// A follow (`mCurrentCommand` 2).

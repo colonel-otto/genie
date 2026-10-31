@@ -2,6 +2,7 @@ use super::*;
 use crate::test_ids::object_id;
 use genie_core::objects::actions::ActionList;
 use genie_core::objects::masters::{MasterId, ids};
+use genie_core::world::checkpoint::ActionTerm;
 
 /// Word 9 reads a building's production action's state over its top action's (records
 /// MarvinBlue/426048706's town centre 7150 after update 7499: its Attack in state 7 and its
@@ -38,19 +39,34 @@ fn a_building_s_production_state_comes_before_its_top_action_s() {
         production: Some(making.clone()),
         ..Unit::default()
     };
-    assert_eq!(checkpoint_action(&both), Some(TopAction { kind, state: 6 }));
+    assert_eq!(
+        checkpoint_action(&both),
+        Some(ActionTerm {
+            kind: Some(kind),
+            state: 6
+        })
+    );
     let top = Unit {
         actions: ActionList::default().with_artifact(Some(artifact)),
         ..Unit::default()
     };
-    assert_eq!(checkpoint_action(&top), Some(TopAction { kind, state: 10 }));
+    assert_eq!(
+        checkpoint_action(&top),
+        Some(ActionTerm {
+            kind: Some(kind),
+            state: 10
+        })
+    );
     let training = Unit {
         production: Some(making),
         ..Unit::default()
     };
     assert_eq!(
         checkpoint_action(&training),
-        Some(TopAction { kind: -1, state: 6 })
+        Some(ActionTerm {
+            kind: None,
+            state: 6
+        })
     );
     assert_eq!(checkpoint_action(&Unit::default()), None);
 }

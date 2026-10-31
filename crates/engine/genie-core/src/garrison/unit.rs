@@ -358,7 +358,7 @@ impl Unit {
         if me
             .tasks
             .iter()
-            .find(|t| t.action_type == 0x88)
+            .find(|t| t.action_type == crate::objects::masters::action_type::DEPOSIT)
             .is_some_and(|t| t.object_id == Some(bm.id))
         {
             return Err(GenieError::unsupported(

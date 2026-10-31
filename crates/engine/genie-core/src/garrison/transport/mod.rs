@@ -19,6 +19,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
+use crate::objects::masters::ActionType;
 use crate::objects::sprite::Graphic;
 use genie_diff::Diff;
 
@@ -34,7 +35,7 @@ pub(crate) use self::shore::{DropDraws, in_zone, retry_point};
 use crate::math::rng::Well512;
 
 /// The Transport action's type, which word 9 adds.
-pub const TRANSPORT: i16 = 12;
+pub const TRANSPORT: ActionType = ActionType::named(12);
 /// A Transport's update without its action in the unit's list.
 pub(crate) const NO_TRANSPORT: GenieError =
     GenieError::unreachable("a Transport's update without its action");

@@ -228,7 +228,11 @@ impl World {
             target: Some(target),
             point: at,
             carry_test: false,
-            filter: if garrison { 3 } else { -1 },
+            filter: if garrison {
+                Some(crate::garrison::ENTER)
+            } else {
+                None
+            },
             notified: garrison || notified,
         };
         self.order_work(p, new, &work)

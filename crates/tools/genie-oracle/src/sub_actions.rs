@@ -2,14 +2,14 @@
 //! and gather point, and the default task an object's first update starts.
 
 use crate::masters::{DefaultAction, MasterTable};
-use crate::top_actions::saved_move_to;
+use crate::top_actions::{first_action, saved_move_to};
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::movement::move_to::TargetMoved;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ACTION_FACTORY_TYPES;
-use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::{ActionType, MasterId, action_type};
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_core::players::attribute::AttributeId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
@@ -103,7 +103,7 @@ pub(super) fn saved_attack(
         (0 <= id).then(|| graphics.get(&id).copied()).flatten()
     };
     // every MoveTo of the Attack is quiet (`FUN_140a7a170` with 1)
-    let move_to = match b.sub_actions.entries().next() {
+    let move_to = match first_action(&b.sub_actions)? {
         None => None,
         Some((MOVE_TO, s2)) => Some(saved_move_to(s2, Some(graphics), true)?),
         Some(_) => {
@@ -182,14 +182,14 @@ pub(super) fn fly_task(
         .and_then(|r| r.rge_master_action_object.as_deref())
         .and_then(|a| a.tasks.as_deref());
     if let Some(tasks) = saved {
-        return tasks
+        let entry = tasks
             .list
             .iter()
-            .find(|e| e.task.action_type == fly)
-            .map(|e| core_task(&e.task))
+            .find(|e| ActionType::of_data(e.task.action_type) == Some(fly))
             .ok_or(GenieError::unsupported(
                 "a bird whose master has no Fly task",
-            ));
+            ))?;
+        return core_task(&entry.task);
     }
     masters
         .and_then(|t| t.work(civ, objects.dat_master(master)))
@@ -214,16 +214,16 @@ pub(super) fn master_build_task(
             .tasks
             .as_deref()
     });
-    let build = genie_core::objects::masters::action_type::BUILD;
+    let build = action_type::BUILD;
     if let Some(tasks) = saved {
-        return tasks
+        let entry = tasks
             .list
             .iter()
-            .find(|e| e.task.action_type == build)
-            .map(|e| core_task(&e.task))
+            .find(|e| ActionType::of_data(e.task.action_type) == Some(build))
             .ok_or(GenieError::unsupported(
                 "a builder whose master has no Build task",
-            ));
+            ))?;
+        return core_task(&entry.task);
     }
     masters
         .and_then(|t| t.work(civ, objects.dat_master(master)))
@@ -278,9 +278,9 @@ pub(super) fn production(
             })
         })
         .collect::<Result<Vec<Entry>, GenieError>>()?;
-    let action = match building.production_queue_actions.entries().next() {
+    let action = match first_action(&building.production_queue_actions)? {
         None => None,
-        Some((102, action)) => {
+        Some((action_type::MAKE_OBJECT, action)) => {
             let make = action
                 .tribe_action_make_obj
                 .as_deref()
@@ -300,7 +300,7 @@ pub(super) fn production(
                 train_time: make.train_time,
             }))
         }
-        Some((103, action)) => {
+        Some((action_type::MAKE_TECH, action)) => {
             let tech = action
                 .tribe_action_make_tech
                 .as_deref()

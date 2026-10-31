@@ -2,7 +2,10 @@
 //! it and its repair.
 
 use crate::GenieError;
+use crate::gathering::gather::GATHER;
+use crate::gathering::hunt::HUNT;
 use crate::objects::lifecycle::Held;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -24,7 +27,7 @@ pub(super) fn on_target<'m>(
     list: &'m Master,
     actor: &Actor<'_>,
     t: &TaskTarget<'_>,
-    filter: i16,
+    filter: Option<ActionType>,
     dip: &impl Diplomacy,
 ) -> Result<Finding<'m>, GenieError> {
     if let Finding::Answer(task) = drop_off_finding(list, actor, t, filter, dip) {
@@ -60,7 +63,11 @@ pub(super) fn on_target<'m>(
 /// The trade task (0x6f) on a dock (45) or market (84) in a state below 3 (`LAB_1412796b4`'s
 /// last loop): the first task of type 0x6f for the target's master or its class that the
 /// filter takes; none goes on to the finder's tail.
-fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&'m Task> {
+fn trade_task<'m>(
+    list: &'m Master,
+    t: &TaskTarget<'_>,
+    filter: Option<ActionType>,
+) -> Option<&'m Task> {
     let trades = t.state < 3 && (t.master.id == ids::ID_45 || t.master.id == ids::MARKET);
     trades
         .then(|| {
@@ -83,7 +90,7 @@ pub(super) fn drop_off_finding<'m>(
     list: &'m Master,
     actor: &Actor<'_>,
     t: &TaskTarget<'_>,
-    filter: i16,
+    filter: Option<ActionType>,
     dip: &impl Diplomacy,
 ) -> Finding<'m> {
     let Held {
@@ -98,17 +105,19 @@ pub(super) fn drop_off_finding<'m>(
         && t.player == actor.player
         && dip.drops_at(t.master.id, actor)
     {
-        let farm_at_work = t.master.kind == BUILDING && t.top_action == Some(0x7d);
+        let farm_at_work = t.master.kind == BUILDING && t.top_action == Some(action_type::UNPACK);
         if let Some(task) = first(list, |task| {
-            let gathers = matches!(task.action_type, 5 | 0x6e);
+            let gathers = matches!(task.action_type, GATHER | HUNT);
             !(farm_at_work && gathers)
                 && task.attribute_type == held_kind
-                && matches!(task.action_type, 5 | 0x6e | 0x6f)
+                && matches!(task.action_type, GATHER | HUNT | action_type::TRADE)
                 && wanted(filter, task)
         }) {
             return Finding::Answer(Some(task));
         }
-        if filter == -1 && (t.master.kind != BUILDING || t.top_action.is_some_and(|a| a != 0x7d)) {
+        if filter.is_none()
+            && (t.master.kind != BUILDING || t.top_action.is_some_and(|a| a != action_type::UNPACK))
+        {
             return Finding::Answer(None);
         }
     }
@@ -123,7 +132,7 @@ pub(super) fn garrison_into<'m>(
     list: &'m Master,
     actor: &Actor<'_>,
     t: &TaskTarget<'_>,
-    filter: i16,
+    filter: Option<ActionType>,
     dip: &impl Diplomacy,
 ) -> (Finding<'m>, bool) {
     let own = actor.master;
@@ -138,7 +147,9 @@ pub(super) fn garrison_into<'m>(
     if own_or_allied
         && t.state < 3
         && t.master.object_flags & 1 != 0
-        && (t.master.class == class::TRANSPORT || own.class != class::VILLAGER || filter == 3)
+        && (t.master.class == class::TRANSPORT
+            || own.class != class::VILLAGER
+            || filter == Some(crate::garrison::ENTER))
     {
         if let Some(task) = first(list, |task| {
             task.action_type == crate::orders::GARRISON
@@ -147,10 +158,10 @@ pub(super) fn garrison_into<'m>(
         }) {
             return (Finding::Answer(Some(task)), false);
         }
-        if filter == 3 {
+        if filter == Some(crate::garrison::ENTER) {
             return (Finding::Answer(None), false);
         }
-        return (Finding::Next, filter == -1);
+        return (Finding::Next, filter.is_none());
     }
     (Finding::Next, false)
 }
@@ -163,7 +174,7 @@ pub(super) fn repair_finding<'m>(
     list: &'m Master,
     actor: &Actor<'_>,
     t: &TaskTarget<'_>,
-    filter: i16,
+    filter: Option<ActionType>,
     dip: &impl Diplomacy,
 ) -> Finding<'m> {
     let repairable = t.player == actor.player
@@ -207,7 +218,7 @@ pub(super) fn repair_finding<'m>(
             Some(task) if 0.0 < task.work_val1 => return Finding::Answer(Some(task)),
             _ => {}
         }
-        if filter == crate::construction::repair::REPAIR {
+        if filter == Some(crate::construction::repair::REPAIR) {
             return Finding::Answer(None);
         }
     }
@@ -218,12 +229,16 @@ pub(super) fn repair_finding<'m>(
 /// foundation without actions): of the Build tasks (101) the filter takes, the one for the
 /// foundation's master, else the last for its class, each only with a work value, else the last
 /// for any target.
-fn build_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&'m Task> {
+fn build_task<'m>(
+    list: &'m Master,
+    t: &TaskTarget<'_>,
+    filter: Option<ActionType>,
+) -> Option<&'m Task> {
     let (mut by_class, mut generic) = (None, None);
     for task in list
         .tasks
         .iter()
-        .filter(|t| t.action_type == 0x65 && wanted(filter, t))
+        .filter(|t| t.action_type == action_type::BUILD && wanted(filter, t))
     {
         if task.object_id == Some(t.master.id) {
             return (0.0 < task.work_val1).then_some(task);

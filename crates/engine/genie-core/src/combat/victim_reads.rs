@@ -3,6 +3,7 @@
 use crate::combat::damage::{ElevationBonus, Victim};
 use crate::combat::victims::{is_trebuchet, paid_cost};
 use crate::map::spatial::Spatial;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::master_type::{BUILDING, RGE_COMBAT};
 use crate::objects::unit::Unit;
@@ -65,7 +66,7 @@ pub(crate) fn victim_of(
             )
         })
     };
-    let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
+    let tasks = |kind: ActionType| master.tasks.iter().any(|t| t.action_type == kind);
     Victim {
         id: u.id,
         // the caller's, which holds the tile lists
@@ -115,7 +116,7 @@ pub(crate) fn victim_of(
             attack_powerup: u.attack_powerup,
             mode_680,
             player: p,
-            kill_bonus_tasks: tasks(0x9a),
+            kill_bonus_tasks: tasks(crate::objects::masters::action_type::LOOT),
             fired_from: u.missile.as_ref().and_then(|m| m.fired_from),
         },
         weapons: master.weapons.clone(),
@@ -142,10 +143,9 @@ pub(crate) fn victim_of(
             armor_powerups: u.armor_powerups,
             armor_removed: u.armor_removed,
             hp_powerup: u.hp_powerup,
-            kill_tasks: master
-                .tasks
-                .iter()
-                .any(|t| t.action_type == 0xa1 && 1e-7 < t.work_val1),
+            kill_tasks: master.tasks.iter().any(|t| {
+                t.action_type == crate::combat::abilities::REMOVAL_REWARD && 1e-7 < t.work_val1
+            }),
             busy: u.top_action_kind().is_some() || u.unmodelled_action.is_some(),
             unit_ai: u.ai.is_some(),
             alert_idle: None,

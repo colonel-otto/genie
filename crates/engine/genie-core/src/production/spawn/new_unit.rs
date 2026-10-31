@@ -119,7 +119,7 @@ impl World {
             .master(p, now)?
             .tasks
             .iter()
-            .any(|t| t.action_type == 0x9c)
+            .any(|t| t.action_type == crate::objects::masters::action_type::ACTION_156)
         {
             return Err(GenieError::unsupported(
                 "a new unit's task that spawns more units",

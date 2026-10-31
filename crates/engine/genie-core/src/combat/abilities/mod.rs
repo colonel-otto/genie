@@ -36,6 +36,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::math::fmath;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -58,17 +59,22 @@ pub use self::looks_and_rewards::{look, reward, terrain_mask};
 pub use self::movement_damage::{Bystander, Hitter, finish, movement_damage_due, reach, struck};
 
 /// The action type of a generation task (151): the Feitoria's trickle and the like.
-pub const GENERATE: i16 = 0x97;
+pub const GENERATE: ActionType = ActionType::named(0x97);
 /// The action type of a movement damage task (152).
-pub const MOVEMENT_DAMAGE: i16 = 0x98;
+pub const MOVEMENT_DAMAGE: ActionType = ActionType::named(0x98);
 /// The action type of a terrain look task (159).
-pub const TERRAIN_LOOK: i16 = 0x9f;
+pub const TERRAIN_LOOK: ActionType = ActionType::named(0x9f);
 /// The action type of a removal reward task (161).
-pub const REMOVAL_REWARD: i16 = 0xa1;
+pub const REMOVAL_REWARD: ActionType = ActionType::named(0xa1);
 
 /// The top action types a generation task's test passes (`FUN_140a7be70`): the Attack (9),
 /// type 7, the Gather (5) and the Hunt (0x6e).
-const WORKING_ACTIONS: [i16; 4] = [9, 7, 5, 0x6e];
+const WORKING_ACTIONS: [ActionType; 4] = [
+    crate::combat::attack::ATTACK,
+    crate::objects::masters::action_type::COMBAT,
+    crate::gathering::gather::GATHER,
+    crate::gathering::hunt::HUNT,
+];
 /// The action state of an action at work (`+0x18`).
 const WORKING: u8 = 7;
 
@@ -153,7 +159,7 @@ pub fn alive(hp: f32) -> bool {
 }
 
 /// The action types the routine acts on.
-pub const ACTIONS: [i16; 4] = [GENERATE, MOVEMENT_DAMAGE, TERRAIN_LOOK, REMOVAL_REWARD];
+pub const ACTIONS: [ActionType; 4] = [GENERATE, MOVEMENT_DAMAGE, TERRAIN_LOOK, REMOVAL_REWARD];
 
 /// What the routine reads of the object's master (`+0xa0`: its own one, else its player's).
 #[derive(Clone, Copy, Debug, PartialEq)]

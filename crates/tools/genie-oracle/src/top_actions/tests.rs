@@ -2,12 +2,14 @@
 
 use crate::OTHER_SUB_ACTION;
 use crate::fixtures::{action_list, combat_master, combat_mut, combat_object, with_masters};
+use crate::test_ids::action_type;
 use crate::test_ids::object_id;
 use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
 use genie_core::map::Position;
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
+use genie_core::objects::masters::ActionType;
 use genie_core::objects::masters::TaskId;
 use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::masters::{Task, class};
@@ -26,7 +28,7 @@ use genie_save::generated::world::{
 fn task(id: i16, range: f32) -> Task {
     Task {
         id: TaskId::of_task(id),
-        action_type: 0,
+        action_type: action_type(0),
         object_group: 3,
         object_id: None,
         combat_level: 0,
@@ -96,13 +98,13 @@ fn move_to(state: u8, range: f32) -> Action {
 }
 
 /// `b` with the sub-action `sub` of type `kind`.
-fn with_sub(mut b: RgeAction, kind: i16, sub: Action) -> RgeAction {
+fn with_sub(mut b: RgeAction, kind: ActionType, sub: Action) -> RgeAction {
     b.sub_actions = action_list(vec![(kind, sub)]);
     b
 }
 
 /// Unit 5 (master 83) acting `action` of type `kind`.
-fn acting(kind: i16, action: Action) -> genie_save::Object {
+fn acting(kind: ActionType, action: Action) -> genie_save::Object {
     let mut object = combat_object(5, 83);
     combat_mut(&mut object)
         .rge_combat_object
@@ -152,7 +154,7 @@ fn import_drawn(
 }
 
 /// Unit 5's top action `action` of type `kind` imported, its player without masters.
-fn imported(kind: i16, action: Action) -> Result<Unit, GenieError> {
+fn imported(kind: ActionType, action: Action) -> Result<Unit, GenieError> {
     import(
         &acting(kind, action),
         &PlayerObjects::default(),
@@ -167,7 +169,7 @@ fn bits3(v: Position) -> [u32; 3] {
 #[test]
 fn an_action_without_its_base_is_unsupported() {
     assert_eq!(
-        imported(4, Action::default()).unwrap_err(),
+        imported(genie_core::movement::explore::EXPLORE, Action::default()).unwrap_err(),
         GenieError::unsupported("a saved action without its base")
     );
 }
@@ -183,7 +185,7 @@ fn a_second_target_or_an_unknown_action_is_unsupported() {
         GenieError::unsupported("a saved action with a second target")
     );
     assert_eq!(
-        imported(99, explore(base(0))).unwrap_err(),
+        imported(action_type(99), explore(base(0))).unwrap_err(),
         GenieError::unsupported("a saved action the slice does not import")
     );
 }
@@ -412,7 +414,15 @@ fn an_artifact_waits_or_walks_to_its_target() {
         GenieError::unsupported("a saved MoveTo without its range")
     );
     assert_eq!(
-        imported(ARTIFACT_TYPE, artifact(with_sub(b, 4, explore(base(3))))).unwrap_err(),
+        imported(
+            ARTIFACT_TYPE,
+            artifact(with_sub(
+                b,
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         GenieError::unsupported("a saved Artifact action with another sub-action")
     );
 }
@@ -567,7 +577,15 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         (None, bits3(Position::new(1.0, 2.0, 0.0)))
     );
     assert_eq!(
-        imported(FLY, bird(with_sub(base(3), 4, explore(base(3))))).unwrap_err(),
+        imported(
+            FLY,
+            bird(with_sub(
+                base(3),
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         GenieError::unsupported("a saved Fly action with another sub-action")
     );
 }
@@ -665,7 +683,15 @@ fn a_build_takes_its_task_move_to_and_site() {
     // without a MoveTo, the task's moving sprite for the next
     assert_eq!(a.task.moving, Some(9));
     assert_eq!(
-        imported(BUILD, build(with_sub(b, 4, explore(base(3))))).unwrap_err(),
+        imported(
+            BUILD,
+            build(with_sub(
+                b,
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         OTHER_SUB_ACTION
     );
 }
@@ -715,7 +741,15 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
         .unwrap();
     assert_eq!(r.move_to, None);
     assert_eq!(
-        imported(REPAIR, repair(with_sub(b, 4, explore(base(3))))).unwrap_err(),
+        imported(
+            REPAIR,
+            repair(with_sub(
+                b,
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         OTHER_SUB_ACTION
     );
     assert_eq!(
@@ -799,7 +833,15 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         GenieError::unsupported("a saved Attack without the sprites' table")
     );
     assert_eq!(
-        imported(HUNT, hunt(with_sub(base(WALK), 4, explore(base(3))))).unwrap_err(),
+        imported(
+            HUNT,
+            hunt(with_sub(
+                base(WALK),
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         GenieError::unsupported("a saved Hunt with another sub-action")
     );
     assert_eq!(
@@ -861,7 +903,15 @@ fn a_gather_takes_its_stops_and_move_to() {
         (0.75_f32.to_bits(), 2)
     );
     assert_eq!(
-        imported(GATHER, gather(with_sub(base(WALK), 4, explore(base(3))))).unwrap_err(),
+        imported(
+            GATHER,
+            gather(with_sub(
+                base(WALK),
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         GenieError::unsupported("a saved Gather with another sub-action")
     );
     assert_eq!(
@@ -904,7 +954,15 @@ fn an_enter_takes_its_task_and_retry() {
     assert!(e.retry);
     assert_eq!((e.range.to_bits(), m.wait.state), (2.0_f32.to_bits(), 2));
     assert_eq!(
-        imported(ENTER, enter(with_sub(b, 4, explore(base(3))))).unwrap_err(),
+        imported(
+            ENTER,
+            enter(with_sub(
+                b,
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         GenieError::unsupported("a saved Enter with another sub-action")
     );
     assert_eq!(
@@ -940,7 +998,15 @@ fn a_transport_takes_its_base_alone() {
     );
     assert!(!t.retarget);
     assert_eq!(
-        imported(TRANSPORT, transport(with_sub(base(2), 4, explore(base(3))))).unwrap_err(),
+        imported(
+            TRANSPORT,
+            transport(with_sub(
+                base(2),
+                genie_core::movement::explore::EXPLORE,
+                explore(base(3))
+            ))
+        )
+        .unwrap_err(),
         GenieError::unreachable("a saved Transport with another sub-action")
     );
 }
@@ -968,7 +1034,11 @@ fn an_explore_takes_its_quiet_move_to_with_its_wait() {
     let m = e.move_to.unwrap();
     assert_eq!((m.state, m.quiet, m.wait.state), (MoveTo::Moving, true, 2));
     assert_eq!(
-        imported(EXPLORE, explore(with_sub(base(WALK), 4, explore(base(3))))).unwrap_err(),
+        imported(
+            EXPLORE,
+            explore(with_sub(base(WALK), EXPLORE, explore(base(3))))
+        )
+        .unwrap_err(),
         GenieError::unsupported("a saved Explore with another sub-action")
     );
     assert_eq!(

@@ -42,7 +42,7 @@ impl World {
         let (_, t) = self.object(target).ok_or(HUNT_TARGET_GONE)?;
         let point = t.position();
         let task = self
-            .find_work_task(player, idx, target, -1, true)?
+            .find_work_task(player, idx, target, None, true)?
             .ok_or(NO_HUNT_TASK)?;
         self.start_hunt(HuntOrder {
             player,
@@ -85,7 +85,7 @@ impl World {
             ));
         }
         let task = self
-            .find_work_task(player, idx, target, -1, true)?
+            .find_work_task(player, idx, target, None, true)?
             .ok_or(GenieError::unsupported("a gather command without a task"))?;
         let unit = &self.players.live(player, idx)?;
         if unit.top_action_kind() == Some(crate::gathering::gather::GATHER)

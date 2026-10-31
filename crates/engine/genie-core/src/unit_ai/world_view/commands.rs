@@ -100,7 +100,7 @@ impl UnitView<'_, '_> {
             &t,
             &general,
             terrain,
-            crate::construction::repair::REPAIR,
+            Some(crate::construction::repair::REPAIR),
             &dip,
         )?;
         if switch.is_none() && found.is_none() {
@@ -190,7 +190,7 @@ impl UnitView<'_, '_> {
             &t,
             &general,
             terrain,
-            crate::orders::GARRISON,
+            Some(crate::orders::GARRISON),
             &dip,
         )?
         else {

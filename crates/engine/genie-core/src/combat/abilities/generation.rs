@@ -2,6 +2,7 @@
 
 use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
@@ -19,7 +20,7 @@ use crate::{GenieError, math::fmath};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TopWork {
     /// The action's type.
-    pub kind: i16,
+    pub kind: ActionType,
     /// The action's state.
     pub state: u8,
     /// Its target.

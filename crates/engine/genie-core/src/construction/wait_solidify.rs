@@ -14,6 +14,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Task;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
@@ -23,7 +24,7 @@ use crate::world::slots::PlayerSlots;
 use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x9a).
-pub const WAIT_SOLIDIFY: i16 = 0x9a;
+pub const WAIT_SOLIDIFY: ActionType = ActionType::named(0x9a);
 
 /// `+0x18`: the state the constructor gives it; only its `set_state` (slot 0x80) changes it.
 pub const WAITING: u8 = 10;
@@ -128,7 +129,7 @@ impl UnitView<'_, '_> {
         // slot 0x820's point: the target's place
         let at = find(target).map_or(Position::ORIGIN, |(_, u)| u.position());
         let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), at);
-        let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?
+        let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, None, &dip)?
         else {
             return Ok(false);
         };
@@ -152,7 +153,7 @@ mod tests {
     fn task() -> Task {
         Task {
             id: TaskId::test(3),
-            action_type: 101,
+            action_type: crate::objects::masters::action_type::BUILD,
             ..Task::default()
         }
     }
@@ -165,7 +166,7 @@ mod tests {
             (WAITING, task(), object_id(8123))
         );
         assert_eq!(WAITING, 10);
-        assert_eq!(WAIT_SOLIDIFY, 0x9a);
+        assert_eq!(WAIT_SOLIDIFY, WAIT_SOLIDIFY);
     }
 
     #[test]

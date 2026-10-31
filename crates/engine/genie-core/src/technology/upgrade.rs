@@ -1043,7 +1043,12 @@ mod tests {
         old.tasks
             .push(task(TaskId::test(3), action_type::BUILD, 3, 0.25));
         let make = task(TaskId::test(4), crate::gathering::make::MAKE, -1, 0.0);
-        let waiting = task(TaskId::test(9), 0x9a, 3, 0.0);
+        let waiting = task(
+            TaskId::test(9),
+            crate::construction::wait_solidify::WAIT_SOLIDIFY,
+            3,
+            0.0,
+        );
         let new = Master {
             id: master_id(121),
             tasks: vec![

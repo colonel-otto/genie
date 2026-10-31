@@ -80,7 +80,7 @@ impl World {
         if !forced && top == Some(ENTER) && unit.top_target() == Some(target) {
             return Ok(true);
         }
-        let Some(task) = self.find_work_task(player, idx, target, GARRISON, true)? else {
+        let Some(task) = self.find_work_task(player, idx, target, Some(GARRISON), true)? else {
             return Ok(false);
         };
         let under_artifact = top == Some(crate::ownership::artifact::ARTIFACT_TYPE);

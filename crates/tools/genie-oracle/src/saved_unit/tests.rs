@@ -79,7 +79,7 @@ fn a_saved_action_the_slice_does_not_model_is_reported() {
     combat_mut(&mut scout)
         .rge_combat_object
         .rge_action_object
-        .actions = action_list(vec![(4, explore)]);
+        .actions = action_list(vec![(genie_core::movement::explore::EXPLORE, explore)]);
     let u = unit(&scout, &PlayerObjects::default(), &[], 0, None, PLAYERS);
     assert!(u.unmodelled_action.is_some());
     assert!(u.default_fly.is_none());

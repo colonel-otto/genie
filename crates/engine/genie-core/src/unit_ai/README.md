@@ -38,6 +38,7 @@ show in checkpoint word 9.
 | [`ai_type.rs`](ai_type.rs) | A unit AI's factory type as one type: which `Tribe…UnitAIModule` a master's unit AI is (`Master::unit_ai_type`), the value the module's constructor takes. |
 | [`attack_orders.rs`](attack_orders.rs) | The orders a unit AI takes at once and its attack commands. |
 | [`attack_pick.rs`](attack_pick.rs) | Which object a unit may attack: the attack search, its picks and each type's rules. |
+| [`attack_picker.rs`](attack_picker.rs) | What the attack search asks of the world while a unit AI runs (`AttackPicker`), and the picker of searches that pick no attack (`NoAttack`). |
 | [`attack_rules.rs`](attack_rules.rs) | Conversion, neutral targets, patrol reaches and siege: the attack rules of the unit-AI types. |
 | [`attacked.rs`](attacked.rs) | A unit's answers to damage and attackers, to a unit in its way and to being sent off; the explorers' search. |
 | [`attackers.rs`](attackers.rs) | A unit AI's attackers: the sorted set of the objects whose damage it took. |

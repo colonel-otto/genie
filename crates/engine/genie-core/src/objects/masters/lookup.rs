@@ -1,6 +1,8 @@
 //! A player's masters by id ([`Masters`]) and the work command's choice of master and task.
 
 use crate::GenieError;
+use crate::objects::masters::ActionType;
+use crate::objects::masters::action_type;
 use crate::objects::masters::ids;
 use crate::objects::masters::{Master, MasterId, Masters, Task};
 use crate::players::PlayerId;
@@ -65,7 +67,7 @@ impl Masters {
         &'m self,
         actor: &Actor<'_>,
         on: &TaskOn<'_, '_>,
-        filter: i16,
+        filter: Option<ActionType>,
         dip: &impl Diplomacy,
     ) -> Result<Option<(MasterId, &'m Task)>, GenieError> {
         let own = actor.master;
@@ -75,7 +77,7 @@ impl Masters {
         let own_task = find_task(
             own_list, actor, on.target, on.general, on.terrain, filter, dip,
         )?;
-        if own_task.is_none_or(|t| t.action_type == 7) && own.task_by_group != 0 {
+        if own_task.is_none_or(|t| t.action_type == action_type::COMBAT) && own.task_by_group != 0 {
             let (mut by_class, mut generic) = (None, None);
             for candidate in self.by_id.iter().flatten() {
                 if candidate.class != own.class
@@ -107,8 +109,8 @@ impl Masters {
                     )
                 });
                 let Some(target) = listed.filter(|t| {
-                    task.action_type == 0x6a
-                        && (filter == -1 || filter == 0x6a)
+                    task.action_type == crate::construction::repair::REPAIR
+                        && (filter.is_none() || filter == Some(crate::construction::repair::REPAIR))
                         && task.object_id != Some(t.master.id)
                 }) else {
                     return Ok(Some((candidate.id, task)));

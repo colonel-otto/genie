@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -80,17 +81,17 @@ pub fn garrison_type_takes(garrison_type: u8, class: ClassId, id: MasterId, with
 /// `FUN_1415c9240`: the master's task list holds a task of action type `action` on objects of
 /// class `class`, both bytes the game widens to compare with the task's ushorts (`+0xe`,
 /// `+0x10`). A building's test asks for 3 on its own class (a transport) or on buildings (3).
-pub(super) fn has_garrison_task(tasks: &[Task], action: i16, class: ClassId) -> bool {
+pub(super) fn has_garrison_task(tasks: &[Task], action: ActionType, class: ClassId) -> bool {
     let byte = |v: i16| u16::from(v.to_le_bytes()[0]);
     tasks.iter().any(|t| {
-        t.action_type.cast_unsigned() == byte(action)
+        t.action_type.get().cast_unsigned() == byte(action.get())
             && t.object_group.cast_unsigned() == byte(class.get())
     })
 }
 
 /// A garrison task (action type 3) on buildings (class 3).
 #[must_use]
-pub const fn is_garrison_task(task: &Task) -> bool {
+pub fn is_garrison_task(task: &Task) -> bool {
     task.action_type == GARRISON && task.object_group == class::BUILDING.get()
 }
 

@@ -15,6 +15,7 @@
 use self::update::drop_done_orders;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
@@ -255,7 +256,7 @@ impl Completion<'_> {
 
 /// The action type of the mule cart's tasks (its moves to resources, `0x99`): the action
 /// factory makes no action of it.
-pub const CART_TASK: i16 = 0x99;
+pub const CART_TASK: ActionType = ActionType::named(0x99);
 
 /// A completed building's stack unit (`FUN_1411dbb70`'s block for `+0x986`): the master its
 /// owner's slot 0x1c0 makes (`FUN_14162ce00` with its flag set), the place, and the hit points

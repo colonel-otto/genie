@@ -17,6 +17,7 @@ use crate::math::fmath::BVector;
 use crate::movement::PathData;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
+use crate::objects::masters::ActionType;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
 
@@ -294,8 +295,8 @@ pub struct TargetData {
     pub target_radius: f32,
     /// `mDisableRetargeting`.
     pub disable_retargeting: u8,
-    /// `mCertainAction`.
-    pub certain_action: i16,
+    /// `mCertainAction`: the action type the attack asks of its units, none for −1 (any).
+    pub certain_action: Option<ActionType>,
 }
 
 /// An order of the group's queue (`newOrder`).

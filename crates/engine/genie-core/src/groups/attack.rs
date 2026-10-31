@@ -11,6 +11,7 @@ use crate::groups::{GroupTarget, TargetData, UnitGroup, WorldObject};
 use crate::math::fmath;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -58,7 +59,7 @@ const CATEGORY_LIST_CLASSES: [ClassId; 12] = [
     class::CLASS_61,
 ];
 /// The task whose range adds the player's attribute 280 (`FUN_1415cd0d0` with the filter `0x68`).
-const CONVERSION_TASK: i16 = 0x68;
+const CONVERSION_TASK: ActionType = ActionType::named(0x68);
 /// The player attribute a [`CONVERSION_TASK`]'s range adds (`+0x8c0` of the attribute table).
 const CONVERSION_RANGE_ATTRIBUTE: usize = 280;
 /// What a task range is before a task gives one (`DAT_14330ec20`).
@@ -75,7 +76,7 @@ pub(crate) struct AttackOrder {
     pub(crate) disable_retargeting: bool,
     /// The order's task filter (`+0x16`), `-1` for any, which the group keeps in its target
     /// (`+0x3de`).
-    pub(crate) filter: i16,
+    pub(crate) filter: Option<ActionType>,
 }
 
 impl UnitGroup {
@@ -279,11 +280,11 @@ impl World {
         &self,
         player: PlayerId,
         master: MasterId,
-        filter: i16,
+        filter: Option<ActionType>,
     ) -> Result<f32, GenieError> {
-        if filter < 0 {
+        let Some(filter) = filter else {
             return Ok(NO_RANGE);
-        }
+        };
         let Some(master) = self.masters.get(player.index()).and_then(|m| m.get(master)) else {
             return Ok(0.0);
         };

@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{ClassId, class};
@@ -322,7 +323,7 @@ fn building_master() -> crate::objects::masters::Master {
     }
 }
 
-fn plain_task(action_type: i16, range: f32) -> crate::objects::masters::Task {
+fn plain_task(action_type: ActionType, range: f32) -> crate::objects::masters::Task {
     crate::objects::masters::Task {
         action_type,
         work_range: range,
@@ -335,7 +336,7 @@ fn query_on(target: i32) -> task::TaskQuery {
     task::TaskQuery {
         target: ObjectId::try_from(target).unwrap(),
         point: Point::new(20.0, 20.0),
-        filter: -1,
+        filter: None,
         queued: false,
         direct: true,
     }
@@ -350,7 +351,10 @@ fn member_11() -> ObjectId {
 fn a_member_s_own_task_is_the_command_with_the_task_s_range() {
     let t = tasked_world(
         vec![
-            task_master(ids::VILLAGER_MALE, vec![plain_task(101, 2.5)]),
+            task_master(
+                ids::VILLAGER_MALE,
+                vec![plain_task(crate::objects::masters::action_type::BUILD, 2.5)],
+            ),
             building_master(),
         ],
         9.0,
@@ -359,7 +363,7 @@ fn a_member_s_own_task_is_the_command_with_the_task_s_range() {
     assert_eq!(
         got,
         Some(task::TargetTask {
-            command: 101,
+            command: crate::objects::masters::action_type::BUILD,
             range: Some(2.5)
         })
     );
@@ -370,7 +374,10 @@ fn a_member_s_own_task_is_the_command_with_the_task_s_range() {
 fn a_member_has_no_task_on_itself() {
     let t = tasked_world(
         vec![
-            task_master(ids::VILLAGER_MALE, vec![plain_task(101, 2.5)]),
+            task_master(
+                ids::VILLAGER_MALE,
+                vec![plain_task(crate::objects::masters::action_type::BUILD, 2.5)],
+            ),
             building_master(),
         ],
         9.0,
@@ -392,9 +399,18 @@ fn the_ranges_of_tasks_0x69_and_0x68_do_not_come_from_the_task() {
         t.task_range(&plain_task(action, 2.5), &target)
             .map(|g| (g.command, g.range))
     };
-    assert_eq!(range(0x69).unwrap(), (0x69, Some(9.0)));
-    assert_eq!(range(0x68).unwrap(), (0x68, None));
-    assert_eq!(range(5).unwrap(), (5, Some(2.5)));
+    assert_eq!(
+        range(crate::objects::masters::action_type::HEAL).unwrap(),
+        (crate::objects::masters::action_type::HEAL, Some(9.0))
+    );
+    assert_eq!(
+        range(crate::objects::masters::action_type::CONVERT).unwrap(),
+        (crate::objects::masters::action_type::CONVERT, None)
+    );
+    assert_eq!(
+        range(crate::gathering::gather::GATHER).unwrap(),
+        (crate::gathering::gather::GATHER, Some(2.5))
+    );
 }
 
 /// A master without a task for the target takes the first master of its class, type and swap
@@ -404,14 +420,23 @@ fn a_member_without_a_task_takes_the_swap_group_s_first_with_one() {
     let t = tasked_world(
         vec![
             task_master(ids::VILLAGER_MALE, vec![]),
-            task_master(ids::BUILDER, vec![plain_task(101, 1.5)]),
-            task_master(master_id(119), vec![plain_task(101, 1.0)]),
+            task_master(
+                ids::BUILDER,
+                vec![plain_task(crate::objects::masters::action_type::BUILD, 1.5)],
+            ),
+            task_master(
+                master_id(119),
+                vec![plain_task(crate::objects::masters::action_type::BUILD, 1.0)],
+            ),
             building_master(),
         ],
         9.0,
     );
     let got = t.member_task(member_11(), &query_on(60)).unwrap();
-    assert_eq!(got.map(|g| (g.command, g.range)), Some((101, Some(1.5))));
+    assert_eq!(
+        got.map(|g| (g.command, g.range)),
+        Some((crate::objects::masters::action_type::BUILD, Some(1.5)))
+    );
 }
 
 /// A master of a swap group 0 does not search the others; none found is none.
@@ -422,7 +447,10 @@ fn a_master_without_a_swap_group_has_no_other_to_try() {
     let t = tasked_world(
         vec![
             own,
-            task_master(ids::BUILDER, vec![plain_task(101, 1.5)]),
+            task_master(
+                ids::BUILDER,
+                vec![plain_task(crate::objects::masters::action_type::BUILD, 1.5)],
+            ),
             building_master(),
         ],
         9.0,
@@ -434,7 +462,13 @@ fn a_master_without_a_swap_group_has_no_other_to_try() {
 /// when it finds no task, which is not modelled; a type below does not.
 #[test]
 fn a_master_with_a_board_task_and_no_task_found_is_not_modelled() {
-    let mut own = task_master(ids::VILLAGER_MALE, vec![plain_task(0x84, 1.0)]);
+    let mut own = task_master(
+        ids::VILLAGER_MALE,
+        vec![plain_task(
+            crate::objects::masters::action_type::PICK_UP,
+            1.0,
+        )],
+    );
     own.task_by_group = 0;
     // its own list finds the board task for any target, so give it one for another object
     own.tasks[0].object_id = Some(master_id(999));
@@ -569,7 +603,7 @@ fn register(t: &mut World) {
     }
 }
 
-fn attack_on(filter: i16) -> attack::AttackOrder {
+fn attack_on(filter: Option<ActionType>) -> attack::AttackOrder {
     attack::AttackOrder {
         disable_retargeting: false,
         filter,
@@ -588,8 +622,12 @@ fn building_60() -> ObjectId {
 fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0), (8, 4, 11.0, 10.0)]);
     assert!(
-        t.command_attack(group_id(1), building_60(), attack_on(0x1234))
-            .unwrap()
+        t.command_attack(
+            group_id(1),
+            building_60(),
+            attack_on(Some(crate::objects::masters::ActionType::named(0x1234)))
+        )
+        .unwrap()
     );
     let g = t.groups.get(group_id(1)).unwrap();
     let radius = crate::math::fmath::sqrt(8.0);
@@ -601,7 +639,7 @@ fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
             range: 4.0,
             target_radius: radius,
             disable_retargeting: 0,
-            certain_action: 0x1234,
+            certain_action: Some(crate::objects::masters::ActionType::named(0x1234)),
         }
     );
     assert_eq!(g.current_command, 9);
@@ -619,12 +657,12 @@ fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
 fn a_group_already_on_its_target_only_notes_the_place() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     assert!(
-        t.command_attack(group_id(1), building_60(), attack_on(-1))
+        t.command_attack(group_id(1), building_60(), attack_on(None))
             .unwrap()
     );
     t.players[2].objects[0].body = crate::objects::layers::Body::at(Position::new(41.0, 45.0, 0.0));
     assert!(
-        !t.command_attack(group_id(1), building_60(), attack_on(-1))
+        !t.command_attack(group_id(1), building_60(), attack_on(None))
             .unwrap()
     );
     assert_eq!(
@@ -637,7 +675,7 @@ fn a_group_already_on_its_target_only_notes_the_place() {
     );
     t.groups.get_mut(group_id(1)).unwrap().flags |= 0x2_0000;
     assert!(
-        t.command_attack(group_id(1), building_60(), attack_on(-1))
+        t.command_attack(group_id(1), building_60(), attack_on(None))
             .unwrap()
     );
 }
@@ -650,7 +688,7 @@ fn a_group_with_two_queued_commands_takes_its_smallest_unit_range() {
     t.groups.get_mut(group_id(1)).unwrap().command_queue =
         vec![GroupCommand::default(), GroupCommand::default()];
     assert!(
-        t.command_attack(group_id(1), building_60(), attack_on(-1))
+        t.command_attack(group_id(1), building_60(), attack_on(None))
             .unwrap()
     );
     assert_eq!(t.groups.get(group_id(1)).unwrap().current_target.range, 2.5);
@@ -673,7 +711,7 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
     let mut reference = t.streams.clone();
     let draw = reference.get(crate::math::rng::Stream::Ai).rand15();
     let mut range = -1.0;
-    t.reach_pass(group_id(1), object_id(60), attack_on(-1), &mut range)
+    t.reach_pass(group_id(1), object_id(60), attack_on(None), &mut range)
         .unwrap();
     assert_eq!(range, 4.0);
     // member 8 touches the target (a gap 0, so the timer's span is the least, 1000); 7 is far
@@ -685,7 +723,7 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
     assert_eq!(timers, [7, 750 + draw % 500]);
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     let mut range = -1.0;
-    t.reach_pass(group_id(1), object_id(60), attack_on(-1), &mut range)
+    t.reach_pass(group_id(1), object_id(60), attack_on(None), &mut range)
         .unwrap();
     assert_eq!(range, 4.0);
 }
@@ -697,34 +735,62 @@ fn the_reach_pass_raises_the_range_and_sends_a_member_in_reach() {
 fn a_filter_takes_the_range_of_the_members_task_of_that_type() {
     let mut t = attack_world(&[(7, 4, 10.0, 10.0)]);
     for master in t.masters.iter_mut().filter_map(|m| m.get_mut(master_id(4))) {
-        master.tasks = vec![plain_task(5, 6.0), plain_task(0x68, 1.5)];
+        master.tasks = vec![
+            plain_task(crate::gathering::gather::GATHER, 6.0),
+            plain_task(crate::objects::masters::action_type::CONVERT, 1.5),
+        ];
     }
     t.players[1].attributes = vec![0.0; 300];
     t.players[1].attributes[280] = 2.0;
     assert_eq!(
-        t.task_reach(PlayerId::new(1), master_id(4), -1).unwrap(),
+        t.task_reach(PlayerId::new(1), master_id(4), None).unwrap(),
         -1.0
     );
     assert_eq!(
-        t.task_reach(PlayerId::new(1), master_id(4), 5).unwrap(),
+        t.task_reach(
+            PlayerId::new(1),
+            master_id(4),
+            Some(crate::gathering::gather::GATHER)
+        )
+        .unwrap(),
         6.0
     );
     assert_eq!(
-        t.task_reach(PlayerId::new(1), master_id(4), 0x68).unwrap(),
+        t.task_reach(
+            PlayerId::new(1),
+            master_id(4),
+            Some(crate::objects::masters::action_type::CONVERT)
+        )
+        .unwrap(),
         3.5
     );
     assert_eq!(
-        t.task_reach(PlayerId::new(1), master_id(4), 9).unwrap(),
+        t.task_reach(
+            PlayerId::new(1),
+            master_id(4),
+            Some(crate::combat::attack::ATTACK)
+        )
+        .unwrap(),
         -1.0
     );
     assert_eq!(
-        t.task_reach(PlayerId::new(1), master_id(99), 5).unwrap(),
+        t.task_reach(
+            PlayerId::new(1),
+            master_id(99),
+            Some(crate::gathering::gather::GATHER)
+        )
+        .unwrap(),
         0.0
     );
     // the range is the task's with the filter: the pass raises the group's range to it
     let mut range = -1.0;
-    t.reach_pass(group_id(1), object_id(60), attack_on(5), &mut range)
-        .unwrap();
+    t.reach_pass(
+        group_id(1),
+        object_id(60),
+        attack_on(Some(crate::gathering::gather::GATHER)),
+        &mut range,
+    )
+    .unwrap();
     assert_eq!(range, 6.0);
 }
 
@@ -733,7 +799,7 @@ fn general(queued: bool, direct: bool) -> CommandArgs {
         queued,
         direct,
         disable_retargeting: false,
-        filter: -1,
+        filter: None,
     }
 }
 
@@ -764,7 +830,7 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
             range: 3.0,
             target_radius: crate::math::fmath::sqrt(8.0),
             disable_retargeting: 0,
-            certain_action: -1,
+            certain_action: None,
         }
     );
     assert!(
@@ -917,7 +983,7 @@ fn the_categories_attack_ranges_rise_to_their_members_ranges() {
 /// An attack task for a building of another player (task 7, owner type 2, class 3).
 fn attack_task() -> crate::objects::masters::Task {
     crate::objects::masters::Task {
-        action_type: 7,
+        action_type: crate::objects::masters::action_type::COMBAT,
         owner_type: 2,
         object_group: 3,
         work_range: 1.5,
@@ -939,7 +1005,7 @@ fn command_args(queued: bool, direct: bool) -> CommandArgs {
         queued,
         direct,
         disable_retargeting: false,
-        filter: -1,
+        filter: None,
     }
 }
 
@@ -972,7 +1038,7 @@ fn a_group_ordered_with_a_general_task_runs_the_general_command() {
     let mut t = attack_world_with_task(&[(7, 4, 10.0, 10.0)]);
     for master in t.masters.iter_mut().filter_map(|m| m.get_mut(master_id(4))) {
         master.tasks = vec![crate::objects::masters::Task {
-            action_type: 5,
+            action_type: crate::gathering::gather::GATHER,
             work_range: 6.0,
             ..attack_task()
         }];
@@ -1024,7 +1090,7 @@ fn a_queued_attack_joins_the_command_queue() {
         queued: true,
         direct: true,
         disable_retargeting: true,
-        filter: -1,
+        filter: None,
     };
     assert!(
         !t.group_command(
@@ -1110,7 +1176,7 @@ fn a_queued_attack_on_a_held_target_ends_the_run_with_the_attack() {
             g.current_target.disable_retargeting,
             g.current_target.certain_action
         ),
-        (1, 0x0102)
+        (1, ActionType::of_data(0x0102))
     );
 }
 

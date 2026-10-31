@@ -99,7 +99,7 @@ fn an_interact_keeps_its_order_and_units() {
         queued: false,
         direct: true,
         human: true,
-        filter: 3,
+        filter: Some(genie_core::garrison::ENTER),
     };
     assert_eq!(
         round_trip(&interact(2, 1, vec![10, 11, 12])),
@@ -130,7 +130,7 @@ fn an_interact_keeps_its_order_and_units() {
         field_0x13: 1,
         field_0x14: 0,
         field_0x15: 0,
-        field_0x16: 0,
+        field_0x16: u16::MAX,
         ids: vec![20],
     }
     .encode()
@@ -170,7 +170,7 @@ fn an_interact_keeps_its_order_and_units() {
             units: unit_list(object_ids([7])),
             order: Order::Retreat(Interact {
                 target: Some(object_id(0)),
-                filter: -1,
+                filter: None,
                 ..Interact::default()
             }),
         })

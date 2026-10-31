@@ -63,7 +63,7 @@ impl World {
             target: Some(site),
             point: Position::from([NO_POINT; 3]),
             carry_test: false,
-            filter,
+            filter: Some(filter),
             notified: false,
         };
         self.order_work(p, idx, &work)?;
@@ -101,7 +101,7 @@ impl World {
                 &master.drop_sites,
                 unit.position(),
                 None,
-                (false, -1),
+                (false, None),
             );
         }
         let state = unit.top_action().map_or(0, |a| a.state);
@@ -120,7 +120,7 @@ impl World {
         let others = crate::world::others::OthersRef::of(&self.players, p)?;
         player
             .live(idx)?
-            .drop_site_with(&mut world, others, state, (false, false, -1))
+            .drop_site_with(&mut world, others, state, (false, false, None))
     }
 
     /// `FUN_141658e20` for player `p` at `at`: of the buildings the drop-site table gives for the
@@ -177,7 +177,7 @@ impl World {
             match self.table_drop_site(p, at, held, class)? {
                 None => DropSearch::Nothing,
                 Some(id) => {
-                    let found = self.find_work_task(p, idx, id, -1, false)?;
+                    let found = self.find_work_task(p, idx, id, None, false)?;
                     let range = found.map_or(task_range, |t| t.work_range);
                     let sprite =
                         found.and_then(|t| crate::objects::sprite::sprite_id(t.sprites[3]));
@@ -249,7 +249,7 @@ impl World {
             target: Some(site),
             point,
             carry_test: true,
-            filter: -1,
+            filter: None,
             notified: false,
         };
         self.order_work(p, idx, &work)?;

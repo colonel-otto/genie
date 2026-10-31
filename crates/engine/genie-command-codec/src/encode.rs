@@ -8,7 +8,7 @@ use genie_core::commands::{
 };
 use genie_core::map::Axis;
 use genie_core::objects::ObjectId;
-use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::{ActionType, MasterId};
 use genie_rec::de::command::{self as packets, Command as Packet};
 
 /// The bytes the client writes at `BUILDING_COMMAND_QUEUE`'s `+0x12..+0x18`, which no code
@@ -228,7 +228,7 @@ macro_rules! interact_packet {
             field_0x13: u8::from($o.queued),
             field_0x14: u8::from($o.direct),
             field_0x15: u8::from($o.human),
-            field_0x16: $o.filter.cast_unsigned(),
+            field_0x16: ActionType::field($o.filter).cast_unsigned(),
             ids: ids(&$units.ids, packets::$kind::FIXED)?,
         })
     };

@@ -3,6 +3,7 @@ use crate::fixtures::{
 };
 use crate::masters::MasterTable;
 use crate::setup::{slice, wonder_time};
+use crate::test_ids::action_type;
 use crate::test_ids::object_id;
 use genie_core::players::PlayerId;
 use genie_save::generated::world::{Action, Object, RgeAction, TribeActionWonder};
@@ -25,7 +26,7 @@ fn wonder(id: i32, state: u8, timer: f32) -> Object {
         .tribe_combat_object
         .rge_combat_object
         .rge_action_object
-        .actions = action_list(vec![(120, action)]);
+        .actions = action_list(vec![(action_type(120), action)]);
     wonder
 }
 

@@ -11,6 +11,7 @@ use crate::{
 };
 use genie_core::commands::Command;
 use genie_core::objects::ObjectId;
+use genie_core::objects::masters::action_type;
 use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::Header;
@@ -382,7 +383,12 @@ pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
             };
             let leash = masters
                 .and_then(|m| m.get(unit.life.master_id))
-                .and_then(|m| m.tasks.iter().rev().find(|t| t.action_type == 6))
+                .and_then(|m| {
+                    m.tasks
+                        .iter()
+                        .rev()
+                        .find(|t| t.action_type == action_type::HUNT_RANGE)
+                })
                 .map_or(0.0, |t| t.work_range);
             ai.hunted = Some(genie_core::unit_ai::Hunted { origin, leash });
         }

@@ -89,7 +89,11 @@ impl World {
                 .iter()
                 .map(|m| {
                     m.iter()
-                        .filter(|m| m.tasks.iter().any(|t| t.action_type == 0x99))
+                        .filter(|m| {
+                            m.tasks
+                                .iter()
+                                .any(|t| t.action_type == crate::construction::build::CART_TASK)
+                        })
                         .map(|m| m.id)
                         .collect()
                 })

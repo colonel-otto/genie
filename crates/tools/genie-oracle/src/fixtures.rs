@@ -1,6 +1,7 @@
 //! Save parts for the tests, built from the generated layouts' defaults: genie holds no game
 //! saves (FD-044), so a test builds the few fields its routine reads and leaves the rest zero.
 
+use genie_core::objects::masters::ActionType;
 use genie_save::Header;
 use genie_save::Positioned;
 use genie_save::generated::world::{
@@ -280,14 +281,14 @@ pub(crate) fn building_mut(
 
 /// An action list of `actions` (type, action), its end after them.
 pub(crate) fn action_list(
-    actions: Vec<(i16, genie_save::generated::world::Action)>,
+    actions: Vec<(ActionType, genie_save::generated::world::Action)>,
 ) -> genie_save::generated::world::ActionList {
     genie_save::generated::world::ActionList {
         action_type_list: actions
             .into_iter()
             .map(
                 |(action_type, action)| genie_save::generated::world::ActionListEntry1 {
-                    action_type,
+                    action_type: action_type.get(),
                     action: Some(Box::new(action)),
                 },
             )

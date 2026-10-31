@@ -21,6 +21,7 @@ pub mod ai_kinds;
 mod ai_type;
 mod attack_orders;
 mod attack_pick;
+mod attack_picker;
 mod attack_rules;
 mod attacked;
 mod attackers;
@@ -51,10 +52,11 @@ pub use self::action_kind::ActionKind;
 pub use self::ai_type::UnitAiType;
 pub(crate) use self::attack_pick::spares_friends;
 pub use self::attack_pick::{
-    AttackAsk, AttackPicker, Attacker, Memory, NoAttack, Pick, Search, Seeker, Target, can_attack,
-    soldier_can_attack, tower_can_attack,
+    AttackAsk, Attacker, Memory, Pick, Search, Seeker, Target, can_attack, soldier_can_attack,
+    tower_can_attack,
 };
 use self::attack_pick::{DEFEND_GROWTH, PRIORITY_3_CLASSES, point_gap_squared};
+pub use self::attack_picker::{AttackPicker, NoAttack};
 pub(crate) use self::attack_rules::patrol_distance;
 pub use self::attack_rules::{
     Attacked, Convertee, Converter, attack_sight, attacks_neutral, can_convert,

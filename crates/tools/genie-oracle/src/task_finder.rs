@@ -4,6 +4,7 @@ use crate::masters::MasterTable;
 use crate::{Error, work_masters};
 use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::Held;
+use genie_core::objects::masters::ActionType;
 use genie_core::players::PlayerId;
 use genie_core::players::attribute::AttributeId;
 use genie_rec::de;
@@ -49,7 +50,7 @@ pub struct FinderObject {
     /// The main building of an annex (`+0xbb8`), if it is one.
     pub annex_of: Option<ObjectId>,
     /// Its top action's type, if it has one.
-    pub top_action: Option<i16>,
+    pub top_action: Option<ActionType>,
     /// Its place.
     pub position: [f32; 3],
 }
@@ -152,7 +153,7 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
     let masters = sections
         .iter()
         .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
-        .collect();
+        .collect::<Result<_, _>>()?;
     let objects = finder_objects(&sections)?;
     Ok(FinderWorld {
         masters,
@@ -232,7 +233,8 @@ fn finder_object(
         top_action: o
             .actions()
             .and_then(|a| a.entries().next())
-            .map(|(kind, _)| kind),
+            .map(|(kind, _)| ActionType::try_from(kind))
+            .transpose()?,
         position: [s.t_x, s.t_y, s.t_z],
     })
 }

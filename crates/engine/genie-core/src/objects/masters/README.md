@@ -28,7 +28,7 @@ file for what the save does not hold.
 <!-- files -->
 | File | What it holds |
 | --- | --- |
-| [`action_type.rs`](action_type.rs) | The task action types (`Task::action_type`, `i16`) that more than one routine names: the action a task makes a unit do. |
+| [`action_type.rs`](action_type.rs) | The action types (`TRIBE_Action_*`'s `+0x8`, a task's `action_type`): the action a task makes a unit do, and the type of an action a unit runs. |
 | [`attribute.rs`](attribute.rs) | The attributes an effect changes on a master and on its objects (the game's attribute list: string 12200 plus the number names each). |
 | [`class.rs`](class.rs) | The master classes (`+0x18`, an `i16`): the one definition of the class values. |
 | [`class_id.rs`](class_id.rs) | A master's class as one type: the group of masters the game treats alike (villagers, siege weapons, gates, farms), the value the `.dat` names `unit_class`. |
@@ -52,5 +52,5 @@ file for what the save does not hold.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`combat`](../../combat/), [`gathering`](../../gathering/), [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`players`](../../players/), [`technology`](../../technology/), [`unit_ai`](../../unit_ai/).
+- Uses: [`combat`](../../combat/), [`construction`](../../construction/), [`gathering`](../../gathering/), [`map`](../../map/), [`math`](../../math/), [`movement`](../../movement/), [`players`](../../players/), [`technology`](../../technology/), [`unit_ai`](../../unit_ai/).
 <!-- /uses -->

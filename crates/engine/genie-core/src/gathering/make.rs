@@ -11,6 +11,7 @@
 
 use crate::GenieError;
 use crate::objects::lifecycle::{Lifecycle, seconds};
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
@@ -26,7 +27,7 @@ use crate::world::step::Step;
 use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x15).
-pub const MAKE: i16 = 21;
+pub const MAKE: ActionType = ActionType::named(21);
 
 /// `+0x18`: the state its update runs in (`set_state(6)`, `first_in_stack`'s).
 pub const MAKING: u8 = 6;

@@ -23,6 +23,7 @@ use crate::movement::explore::ExploreAction;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::action_type;
 use crate::ownership::artifact::Artifact;
 use genie_diff::Diff;
@@ -122,7 +123,7 @@ action_kinds! {
 impl Action {
     /// The action's type (`+0x8`, `FUN_140a7be70`), as word 9 of a checkpoint adds it.
     #[must_use]
-    pub const fn kind(&self) -> i16 {
+    pub const fn kind(&self) -> ActionType {
         match self {
             Self::Artifact(_) => crate::ownership::artifact::ARTIFACT_TYPE,
             Self::Build(_) => action_type::BUILD,
@@ -229,13 +230,13 @@ impl ActionList {
 
     /// `get_action` (`FUN_140a986a0`): the first action of type `kind`, if the list holds one.
     #[must_use]
-    pub fn of_kind(&self, kind: i16) -> Option<&Action> {
+    pub fn of_kind(&self, kind: ActionType) -> Option<&Action> {
         self.0.iter().find(|a| a.kind() == kind)
     }
 
     /// `have_action` (`FUN_140a98740`): whether the list holds an action of type `kind`.
     #[must_use]
-    pub fn holds(&self, kind: i16) -> bool {
+    pub fn holds(&self, kind: ActionType) -> bool {
         self.of_kind(kind).is_some()
     }
 
@@ -320,8 +321,11 @@ mod tests {
             (crate::ownership::artifact::ARTIFACT_TYPE, 6)
         );
         let list = ActionList::default().with_artifact(Some(artifact(6)));
-        assert_eq!(list.of_kind(107), Some(&a));
-        assert!(list.holds(107));
+        assert_eq!(
+            list.of_kind(crate::ownership::artifact::ARTIFACT_TYPE),
+            Some(&a)
+        );
+        assert!(list.holds(crate::ownership::artifact::ARTIFACT_TYPE));
         assert_eq!(list.of_kind(crate::combat::attack::ATTACK), None);
         assert!(!list.holds(crate::combat::attack::ATTACK));
     }

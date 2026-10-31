@@ -7,7 +7,7 @@ use genie_core::GenieError;
 use genie_core::commands::Command;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
-use genie_core::world::checkpoint::{ObjectState, TopAction, player_block};
+use genie_core::world::checkpoint::{ActionTerm, ObjectState, TopAction, player_block};
 use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::{Header, PlayerSection};
@@ -161,16 +161,19 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
 /// action's state (slot 86), but a building's (`TRIBE_Building_Object::actionState`,
 /// `0x1411cb7e0`) prefers the state of its production list's action (`+0xbf8`): a town centre
 /// that attacks while it trains counts its Attack's type with its make action's state.
-pub(super) fn checkpoint_action(unit: &Unit) -> Option<TopAction> {
+pub(super) fn checkpoint_action(unit: &Unit) -> Option<ActionTerm> {
     let making = unit
         .production
         .as_ref()
         .and_then(|p| p.action)
         .map(|a| a.state());
     match (top_action(unit), making) {
-        (Some(top), Some(state)) => Some(TopAction { state, ..top }),
-        (top, None) => top,
-        (None, Some(state)) => Some(TopAction { kind: -1, state }),
+        (Some(top), Some(state)) => Some(ActionTerm {
+            kind: Some(top.kind),
+            state,
+        }),
+        (top, None) => top.map(ActionTerm::from),
+        (None, Some(state)) => Some(ActionTerm { kind: None, state }),
     }
 }
 
@@ -221,7 +224,7 @@ pub fn word9_terms(
             action: unit
                 .actions
                 .artifact()
-                .map_or(-1, |_| i32::from(ARTIFACT_TYPE)),
+                .map_or(-1, |_| i32::from(ARTIFACT_TYPE.get())),
             state: unit.actions.artifact().map_or(0, |a| a.state),
             retarget: unit.ai.as_ref().map_or(0, |ai| ai.retarget_timer as i32),
         })

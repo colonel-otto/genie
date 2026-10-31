@@ -92,7 +92,7 @@ impl UnitView<'_, '_> {
         };
         // slot 0x820's point: the foundation's place
         let terrain = point_terrain(self.c.w.spatial.terrain.as_ref(), f.position());
-        Ok(task_search(masters, &actor, &t, &general, terrain, -1, &dip)?.is_some())
+        Ok(task_search(masters, &actor, &t, &general, terrain, None, &dip)?.is_some())
     }
 
     /// `FUN_140c1c7c0`: the flood ([`crate::unit_ai::flood_search`]) from the unit's tile over the

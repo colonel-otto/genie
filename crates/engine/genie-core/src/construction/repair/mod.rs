@@ -15,6 +15,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
@@ -35,7 +36,7 @@ pub use self::payment::{
 pub(crate) use self::unit::repair_target;
 
 /// The Repair action's type, which word 9 adds, and its tasks' action type.
-pub const REPAIR: i16 = 0x6a;
+pub const REPAIR: ActionType = ActionType::named(0x6a);
 
 /// The gap within which a repairer reaches its target (`DAT_142eb5690`).
 pub const REACH: f32 = crate::math::image::repair::REACH;

@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -340,11 +341,11 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
     };
     let tasks = [
         crate::objects::masters::Task {
-            action_type: 0x68,
+            action_type: crate::objects::masters::action_type::CONVERT,
             ..crate::objects::masters::Task::default()
         },
         crate::objects::masters::Task {
-            action_type: 0x68,
+            action_type: crate::objects::masters::action_type::CONVERT,
             object_group: 3,
             attribute_type4: Some(AttributeId::numbered(28)),
             ..crate::objects::masters::Task::default()
@@ -4777,7 +4778,12 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
         class: class::PREY,
         object_flags: 0x30,
         hero_flag: 4,
-        tasks: vec![task(6, 2.0), task(7, 9.0), task(6, 3.5), task(5, 1.0)],
+        tasks: vec![
+            task(ActionType::named(6), 2.0),
+            task(crate::objects::masters::action_type::COMBAT, 9.0),
+            task(ActionType::named(6), 3.5),
+            task(crate::gathering::gather::GATHER, 1.0),
+        ],
         ..crate::objects::masters::Master::default()
     };
     let new = NewObject::of(Position::new(1.0, 2.0, 3.0), master_id(1239), &made);
@@ -6323,15 +6329,16 @@ const IDLE: Seeker = Seeker {
 /// 42; the priest's is not modelled.
 #[test]
 fn each_unit_ai_type_has_its_own_attack_check() {
-    let check = |ai_type: UnitAiType, top_action: Option<i32>, priority: u8, class: ClassId| {
-        let me = Attacker {
-            ai_type,
-            top_action,
-            attack_priority: priority,
-            ..TC
+    let check =
+        |ai_type: UnitAiType, top_action: Option<ActionType>, priority: u8, class: ClassId| {
+            let me = Attacker {
+                ai_type,
+                top_action,
+                attack_priority: priority,
+                ..TC
+            };
+            can_attack(&me, &IDLE, &Target { class, ..BOAR })
         };
-        can_attack(&me, &IDLE, &Target { class, ..BOAR })
-    };
     for t in [
         BOAR_AI,
         UnitAiType::RANGED_6,
@@ -6351,11 +6358,21 @@ fn each_unit_ai_type_has_its_own_attack_check() {
         Ok(false)
     );
     assert_eq!(
-        check(UnitAiType::HUNTED, Some(9), 0, class::VILLAGER),
+        check(
+            UnitAiType::HUNTED,
+            Some(crate::combat::attack::ATTACK),
+            0,
+            class::VILLAGER
+        ),
         Ok(true)
     );
     assert_eq!(
-        check(UnitAiType::HUNTED, Some(7), 0, class::VILLAGER),
+        check(
+            UnitAiType::HUNTED,
+            Some(crate::objects::masters::action_type::COMBAT),
+            0,
+            class::VILLAGER
+        ),
         Ok(true)
     );
     // the predator's list and the lion's: 4 (villagers) yes, 10 no
@@ -9883,7 +9900,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         Ok(true)
     );
     let packing = Attacker {
-        top_action: Some(124),
+        top_action: Some(crate::objects::masters::action_type::PACK),
         ..MANGONEL
     };
     assert_eq!(check(&packing, &seeker(0), &villager(30.0)), Ok(false));

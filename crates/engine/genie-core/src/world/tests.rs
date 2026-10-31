@@ -407,8 +407,18 @@ pub(crate) fn builder_masters() -> Masters {
         run_sprite: -1,
         ..Master::default()
     };
-    let base = || vec![task(7, -1), task(3, 3)];
-    let builder = || vec![task(101, -1), task(3, 3)];
+    let base = || {
+        vec![
+            task(action_type::COMBAT, -1),
+            task(crate::garrison::ENTER, 3),
+        ]
+    };
+    let builder = || {
+        vec![
+            task(action_type::BUILD, -1),
+            task(crate::garrison::ENTER, 3),
+        ]
+    };
     Masters::new([
         villager(VILLAGER_MALE, 1, base()),
         villager(ids::BUILDER, 1, builder()),
@@ -1062,7 +1072,7 @@ fn a_villager_ordered_on_a_pasture_works_its_livestock() {
         target,
         point: Position::new(20.0, 20.0, 0.0),
         carry_test: true,
-        filter: -1,
+        filter: None,
         notified: false,
     };
     let mut t = tended_pasture(Position::new(18.0, 18.0, 0.0), 2.0);
@@ -1098,7 +1108,7 @@ fn a_unit_past_state_2_ignores_a_work_order() {
         target: Some(object_id(50)),
         point: Position::new(20.0, 20.0, 0.0),
         carry_test: true,
-        filter: -1,
+        filter: None,
         notified: false,
     };
     let mut t = tended_pasture(Position::new(18.0, 18.0, 0.0), 2.0);
@@ -1118,7 +1128,7 @@ fn a_villager_ordered_on_a_pasture_without_livestock_tends_on() {
         target: Some(object_id(50)),
         point: Position::new(20.0, 20.0, 0.0),
         carry_test: true,
-        filter: -1,
+        filter: None,
         notified: false,
     };
     let mut t = tended_pasture(Position::new(18.0, 18.0, 0.0), 2.0);
@@ -1881,7 +1891,7 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
     t
 }
 
-fn task(action_type: i16) -> crate::objects::masters::Task {
+fn task(action_type: ActionType) -> crate::objects::masters::Task {
     crate::objects::masters::Task {
         action_type,
         object_group: -1,
@@ -1913,23 +1923,23 @@ fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_grou
             attribute_95: 0.0,
             civ: 0,
         };
-        task_search(masters, &actor, &site, &site, None, -1, &world)
+        task_search(masters, &actor, &site, &site, None, None, &world)
             .unwrap()
             .map(|(task, switch)| (task.action_type, switch.map(|m| m.id.get())))
     };
     // a villager of master 83 builds as the builder 118, the first of its group with a task
     assert_eq!(
         search(masters.get(VILLAGER_MALE).unwrap()),
-        Some((101, Some(118)))
+        Some((action_type::BUILD, Some(118)))
     );
     // the builders find it in their own lists
     assert_eq!(
         search(masters.get(ids::BUILDER).unwrap()),
-        Some((101, None))
+        Some((action_type::BUILD, None))
     );
     assert_eq!(
         search(masters.get(master_id(212)).unwrap()),
-        Some((101, None))
+        Some((action_type::BUILD, None))
     );
     // without a swap group there is no other list to try
     let alone = Master {
@@ -1969,7 +1979,7 @@ fn a_wait_for_a_foundation_switches_the_villager_and_holds_the_task() {
     let mut t = sent_off_world(vec![]);
     let wait = Wait {
         target: object_id(10028),
-        task: task(101),
+        task: task(action_type::BUILD),
         switch: Some(ids::BUILDER),
     };
     t.wait_for_foundation(PlayerId::new(1), 0, wait).unwrap();
@@ -1978,14 +1988,14 @@ fn a_wait_for_a_foundation_switches_the_villager_and_holds_the_task() {
     assert_eq!(
         v.actions.wait_solidify().copied(),
         Some(crate::construction::wait_solidify::WaitSolidify::new(
-            task(101),
+            task(action_type::BUILD),
             object_id(10028)
         ))
     );
     assert_eq!(
         v.top_action(),
         Some(TopAction {
-            kind: 0x9a,
+            kind: crate::construction::wait_solidify::WAIT_SOLIDIFY,
             state: 10
         })
     );
@@ -2156,7 +2166,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -2208,7 +2218,7 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
         target,
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work(Some(object_id(10028))))
@@ -2253,7 +2263,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -2358,7 +2368,7 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     let walking = Graphic {
@@ -2407,7 +2417,7 @@ fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() 
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -2467,7 +2477,7 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
         target,
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work(Some(object_id(10028))))
@@ -2741,7 +2751,7 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
         target,
         point: Position::new(32.5, 89.5, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work(Some(object_id(600))))
@@ -2856,7 +2866,7 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
         target: Some(object_id(700)),
         point: Position::new(20.0, 89.5, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     let loaded = || {
@@ -2901,7 +2911,7 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
         target,
         point: Position::new(20.0, 89.5, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     let mut t = forage_world();
@@ -3724,7 +3734,7 @@ fn the_units_on_a_new_foundation_are_sent_off_it() {
             target: Some(object_id(10028)),
             point: Position::new(30.0, 88.0, 0.0),
             carry_test: false,
-            filter: -1,
+            filter: None,
             notified: true,
         },
     )
@@ -3925,7 +3935,7 @@ pub(crate) fn hunt_world() -> World {
             id: master_id(122),
             drop_sites: vec![ids::TOWN_CENTRE],
             tasks: vec![crate::objects::masters::Task {
-                action_type: 110,
+                action_type: crate::gathering::hunt::HUNT,
                 object_group: 9,
                 work_range: 0.5,
                 ..crate::objects::masters::Task::default()
@@ -4047,7 +4057,7 @@ fn a_work_command_on_another_deer_moves_the_hunt_there() {
         target: Some(object_id(501)),
         point: Position::new(36.5, 89.5, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -4549,7 +4559,7 @@ fn shepherd_world(x: f32) -> World {
             .unwrap()
             .tasks
             .push(crate::objects::masters::Task {
-                action_type: 110,
+                action_type: crate::gathering::hunt::HUNT,
                 object_group: 58,
                 work_range: 0.5,
                 ..crate::objects::masters::Task::default()
@@ -4675,7 +4685,7 @@ fn lumber_world(near: f32) -> World {
         let hunter = masters.get_mut(master_id(122)).unwrap();
         hunter.line_of_sight = 4.0;
         hunter.tasks.push(crate::objects::masters::Task {
-            action_type: 110,
+            action_type: crate::gathering::hunt::HUNT,
             object_group: 15,
             work_range: 0.5,
             ..crate::objects::masters::Task::default()
@@ -5045,7 +5055,7 @@ fn a_unit_ai_s_stop_lets_its_target_go_within_the_update() {
         target: Some(object_id(600)),
         point: Position::new(32.5, 89.5, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -5822,7 +5832,10 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     let v = &t.players[1].objects[0];
     assert!(!v.stopped, "{:?}", t.players[1].objects[0]);
     assert_eq!(v.life.master_id, ids::BUILDER);
-    assert_eq!(v.top_action_kind(), Some(0x9a));
+    assert_eq!(
+        v.top_action_kind(),
+        Some(crate::construction::wait_solidify::WAIT_SOLIDIFY)
+    );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.last_action, ai.current_order),
@@ -5836,7 +5849,10 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     // player 0's update, then player 1's: the wait reads 0 build points and stays
     t.tick(50);
     t.tick(50);
-    assert_eq!(t.players[1].objects[0].top_action_kind(), Some(0x9a));
+    assert_eq!(
+        t.players[1].objects[0].top_action_kind(),
+        Some(crate::construction::wait_solidify::WAIT_SOLIDIFY)
+    );
     t.players[1].objects[1]
         .construction
         .as_mut()
@@ -5918,7 +5934,7 @@ fn a_build_command_without_its_foundation_or_a_task_does_nothing() {
     let without_build_tasks = |t: &mut World| {
         for id in [118, 212] {
             let m = t.masters[1].get_mut(master_id(id)).unwrap();
-            m.tasks.retain(|k| k.action_type != 101);
+            m.tasks.retain(|k| k.action_type != action_type::BUILD);
         }
     };
     let mut t = sent_off_world(vec![]);
@@ -6023,13 +6039,13 @@ fn the_unit_ai_s_view_answers_the_build_command_before_it_runs() {
     );
     for id in [83, 118, 212] {
         let m = t.masters[1].get_mut(master_id(id)).unwrap();
-        m.tasks.retain(|k| k.action_type != 101);
+        m.tasks.retain(|k| k.action_type != action_type::BUILD);
     }
     assert!(answers(&mut t, object_id(10028)));
     let mut t = sent_off_world(vec![]);
     for id in [118, 212] {
         let m = t.masters[1].get_mut(master_id(id)).unwrap();
-        m.tasks.retain(|k| k.action_type != 101);
+        m.tasks.retain(|k| k.action_type != action_type::BUILD);
     }
     assert!(!answers(&mut t, object_id(10028)));
 }
@@ -6178,7 +6194,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
         let hunter = Master {
             id: master_id(122),
             tasks: vec![crate::objects::masters::Task {
-                action_type: 110,
+                action_type: crate::gathering::hunt::HUNT,
                 object_group: 9,
                 work_range: 0.5,
                 ..crate::objects::masters::Task::default()
@@ -6769,7 +6785,7 @@ fn a_built_farm_s_master_starts_a_make_and_another_default_task_is_reported() {
     other.tasks[0].action_type = crate::movement::fly::FLY;
     assert!(other.default_start().1.is_some());
     // a type the factories make nothing of starts nothing (a wild animal's Explore, 6)
-    other.tasks[0].action_type = 6;
+    other.tasks[0].action_type = ActionType::named(6);
     assert_eq!(other.default_start(), (false, None));
     other.default_task = None;
     assert_eq!(other.default_start(), (false, None));
@@ -15066,7 +15082,7 @@ fn a_loaded_builder_s_drop_off_finds_its_town_centre() {
 /// world first.
 fn drop_site_sought(
     setup: impl FnOnce(&mut World),
-    args: (bool, bool, i16),
+    args: (bool, bool, Option<ActionType>),
 ) -> Result<Option<ObjectId>, GenieError> {
     let mut t = forage_world();
     let mut far = t.players[1].objects[2].clone();
@@ -15114,20 +15130,20 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
     use crate::gathering::make::{MAKE, MakeAction};
     let keep = |_: &mut World| ();
     assert_eq!(
-        drop_site_sought(keep, (false, true, -1)),
+        drop_site_sought(keep, (false, true, None)),
         Ok(Some(object_id(700)))
     );
     assert_eq!(
-        drop_site_sought(keep, (false, false, -1)),
+        drop_site_sought(keep, (false, false, None)),
         Ok(Some(object_id(700)))
     );
     let inside = |t: &mut World| t.players[1].objects[2].life.inside = Some(object_id(9175));
     assert_eq!(
-        drop_site_sought(inside, (true, true, -1)),
+        drop_site_sought(inside, (true, true, None)),
         Ok(Some(object_id(701)))
     );
     assert_eq!(
-        drop_site_sought(inside, (false, true, -1)),
+        drop_site_sought(inside, (false, true, None)),
         Ok(Some(object_id(700)))
     );
     let making = |t: &mut World| {
@@ -15139,11 +15155,11 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
         }));
     };
     assert_eq!(
-        drop_site_sought(making, (false, true, MAKE)),
+        drop_site_sought(making, (false, true, Some(MAKE))),
         Ok(Some(object_id(701)))
     );
     assert_eq!(
-        drop_site_sought(making, (false, true, -1)),
+        drop_site_sought(making, (false, true, None)),
         Ok(Some(object_id(700)))
     );
     let unknown = |t: &mut World| {
@@ -15154,7 +15170,7 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
         t.players[1].objects[2].life.master_id = master_id(999);
     };
     assert_eq!(
-        drop_site_sought(unknown, (false, true, -1))
+        drop_site_sought(unknown, (false, true, None))
             .unwrap_err()
             .reason(),
         OBJECT_MASTER.reason()
@@ -15697,7 +15713,7 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
 
 /// What [`built_the_centre`]'s search left within the update: the builder's top action (its
 /// type and target) and the notifies' kinds.
-type BuildSearched = Result<((Option<i16>, Option<ObjectId>), Vec<i32>), GenieError>;
+type BuildSearched = Result<((Option<ActionType>, Option<ObjectId>), Vec<i32>), GenieError>;
 
 /// The search for more work around the town centre a builder finished (`0x140ab0b43`,
 /// [`Unit::more_work`], within the Build's update): the table's entry for the centre (auto
@@ -16152,7 +16168,7 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     t.order_work(PlayerId::new(1), 0, &work).unwrap();
@@ -16406,7 +16422,7 @@ fn repaired_by(n: usize) -> [(f32, f32); 2] {
         target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     };
     for &i in &repairers {

@@ -351,13 +351,13 @@ impl World {
                 "a computer player's RESEARCH (FUN_1411d5520, player+0x7a8)",
             ));
         }
-        let top = building.top_action_kind().unwrap_or(0);
+        let top = building.top_action_kind();
         if building.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(
                 "RESEARCH at a building with an unmodelled action",
             ));
         }
-        if BLOCKS_RESEARCH.contains(&top) {
+        if top.is_some_and(|k| BLOCKS_RESEARCH.contains(&k)) {
             return Ok(());
         }
         if self.queue_research(

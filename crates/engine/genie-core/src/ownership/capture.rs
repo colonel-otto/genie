@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -99,8 +100,7 @@ impl Unit {
             self.tear_down_actions(&mut releases, &mut leaves, by)?;
             crate::world::lets::torn_down(c, self, (leaves, releases))?;
         }
-        let top = self.top_action_kind().map_or(-1, i32::from);
-        let trading = top == TRADE_ACTION
+        let trading = self.top_action_kind() == Some(TRADE_ACTION)
             && crate::math::fmath::below_or_unordered(0.0, self.life.amount)
             && self.life.attribute_type.is_some();
         if class != class::LIVESTOCK
@@ -205,7 +205,7 @@ pub(crate) const HANDS_LEFT: GenieError = GenieError::unsupported(
 
 /// The trade action's type (slot 0x438), whose load keeps a captured unit's unit AI going
 /// (`FUN_14108c050`).
-pub(crate) const TRADE_ACTION: i32 = 0x6f;
+pub(crate) const TRADE_ACTION: ActionType = crate::objects::masters::action_type::TRADE;
 
 /// `FUN_140aab570`'s scan after a livestock's capture: Gaia's livestock in state 2 whose tile
 /// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken

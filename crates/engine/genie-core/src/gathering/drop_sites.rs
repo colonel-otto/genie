@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
@@ -148,7 +149,7 @@ pub(crate) fn drop_site_search<'u>(
     sites: &[MasterId],
     at: Position,
     mut seeker: Option<Seeker<'_, '_>>,
-    (outside, at_work): (bool, i16),
+    (outside, at_work): (bool, Option<ActionType>),
 ) -> Result<Option<ObjectId>, GenieError> {
     let (mut x, mut y) = (at.x(), at.y());
     let pointless = x <= NO_POINT || y <= NO_POINT;
@@ -176,13 +177,14 @@ pub(crate) fn drop_site_search<'u>(
         {
             continue;
         }
-        let busy = at_work != -1
-            && ACTION <= master.kind
-            && o.top_action_kind().is_some_and(|k| {
-                // The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s argument 8
-                // `0x7d`, which takes `0x7c` with it).
-                k == at_work || (at_work == action_type::UNPACK && k == action_type::PACK)
-            });
+        let busy = at_work.is_some_and(|at_work| {
+            ACTION <= master.kind
+                && o.top_action_kind().is_some_and(|k| {
+                    // The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s
+                    // argument 8 `0x7d`, which takes `0x7c` with it).
+                    k == at_work || (at_work == action_type::UNPACK && k == action_type::PACK)
+                })
+        });
         if busy || (outside && o.life.inside.is_some()) {
             continue;
         }
@@ -386,7 +388,7 @@ mod tests {
             class,
             by_path: true,
         };
-        drop_site_search(units, &masters(), &SITES, at, Some(seeker), (false, -1))
+        drop_site_search(units, &masters(), &SITES, at, Some(seeker), (false, None))
     }
 
     /// `FUN_1411671e0`'s farm (slot 0x190 of a class-4 seeker on a class-49 object): a villager

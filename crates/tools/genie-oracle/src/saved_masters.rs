@@ -7,8 +7,8 @@ use genie_core::GenieError;
 use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
+use genie_core::objects::masters::{ActionType, ClassId, MasterId};
 use genie_core::objects::masters::{COST_SLOTS, CostSlot};
-use genie_core::objects::masters::{ClassId, MasterId};
 use genie_core::players::attribute::AttributeId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
@@ -91,13 +91,10 @@ pub(super) fn task_at(
         .and_then(action_part)
         .and_then(|a| a.tasks.as_deref());
     if let Some(tasks) = saved {
-        return tasks
-            .list
-            .get(i)
-            .map(|e| core_task(&e.task))
-            .ok_or(GenieError::unsupported(
-                "a saved action's task beyond its master's list",
-            ));
+        let entry = tasks.list.get(i).ok_or(GenieError::unsupported(
+            "a saved action's task beyond its master's list",
+        ))?;
+        return core_task(&entry.task);
     }
     masters
         .and_then(|t| t.work(civ, objects.dat_master(master)))
@@ -108,12 +105,30 @@ pub(super) fn task_at(
         ))
 }
 
+/// A saved task (`RGE_Task`) as genie-core's [`genie_core::objects::masters::Task`].
+///
+/// # Errors
+///
+/// A negative action type, or an attribute below −1.
 pub(super) fn core_task(
     t: &genie_save::generated::world::Task,
-) -> genie_core::objects::masters::Task {
-    genie_core::objects::masters::Task {
+) -> Result<genie_core::objects::masters::Task, GenieError> {
+    let [
+        attribute_type,
+        attribute_type2,
+        attribute_type3,
+        attribute_type4,
+        enablement,
+    ] = crate::masters::attributes([
+        t.attribute_type,
+        t.attribute_type2,
+        t.attribute_type3,
+        t.attribute_type4,
+        t.enablement_resource_id,
+    ])?;
+    Ok(genie_core::objects::masters::Task {
         id: genie_core::objects::masters::TaskId::of_task(t.id),
-        action_type: t.action_type,
+        action_type: ActionType::try_from(t.action_type)?,
         object_group: t.object_group,
         object_id: MasterId::of_data(t.object_id),
         combat_level: t.combat_level,
@@ -121,22 +136,22 @@ pub(super) fn core_task(
         terrain: t.terrain_id,
         owner_type: t.owner_type,
         holding_attr: t.holding_attr,
-        attribute_type: AttributeId::of_data(t.attribute_type),
-        attribute_type2: AttributeId::of_data(t.attribute_type2),
-        attribute_type3: AttributeId::of_data(t.attribute_type3),
-        attribute_type4: AttributeId::of_data(t.attribute_type4),
+        attribute_type,
+        attribute_type2,
+        attribute_type3,
+        attribute_type4,
         wait_time: t.search_wait_time,
         work_val1: t.work_val1,
         work_val2: t.work_val2,
         work_range: t.work_range,
         work_flag: t.work_flag,
-        enablement: AttributeId::of_data(t.enablement_resource_id),
+        enablement,
         sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
         sound_events: [
             t.gather_sound_event_event_id.cast_signed(),
             t.deposit_sound_event_event_id.cast_signed(),
         ],
-    }
+    })
 }
 
 /// A player's masters as the work command reads them: each master the save holds, with its saved
@@ -146,10 +161,10 @@ pub(super) fn work_masters(
     objects: &PlayerObjects,
     civ: u8,
     table: &MasterTable,
-) -> genie_core::objects::masters::Masters {
+) -> Result<genie_core::objects::masters::Masters, GenieError> {
     let task = core_task;
     let saved = objects.masters.iter().flatten().map(|m| &m.master);
-    genie_core::objects::masters::Masters::new(saved.filter_map(|m| {
+    let masters = saved.filter_map(|m| {
         let s = m.static_part()?;
         // the `.dat` values of the master it copies (an upgraded one's), under its own id
         let mut work = table.work(civ, s.copy_id())?.clone();
@@ -172,7 +187,10 @@ pub(super) fn work_masters(
             work.work_rate = a.work_rate;
             work.search_radius = a.search_radius;
             if let Some(tasks) = a.tasks.as_deref() {
-                work.tasks = tasks.list.iter().map(|e| task(&e.task)).collect();
+                work.tasks = match tasks.list.iter().map(|e| task(&e.task)).collect() {
+                    Ok(tasks) => tasks,
+                    Err(e) => return Some(Err(e)),
+                };
             }
         }
         let combat = m.tribe_master_combat_object.as_deref().or_else(|| {
@@ -334,8 +352,11 @@ pub(super) fn work_masters(
         work.terrain_restriction = s.terrain_restriction_mask_id;
         work.life = table.get(civ, s.copy_id());
         work.moving = moving_stats(m, s, civ, table);
-        Some(work)
-    }))
+        Some(Ok(work))
+    });
+    Ok(genie_core::objects::masters::Masters::new(
+        masters.collect::<Result<Vec<_>, GenieError>>()?,
+    ))
 }
 
 /// What a unit of a saved master moves with ([`genie_core::movement::MoveStats`]): the master's

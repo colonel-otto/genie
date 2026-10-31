@@ -1,6 +1,7 @@
 //! A building's production list and its make action (`TRIBE_Action_Make_Obj`).
 
 use crate::GenieError;
+use crate::objects::masters::action_type;
 use crate::objects::masters::player_master;
 use crate::orders::NO_QUEUE;
 use crate::players::PlayerId;
@@ -20,11 +21,6 @@ const EMPTY_QUEUE: GenieError =
 /// A building the make step runs for, whose action is no unit's Make.
 const NO_MAKE_ACTION: GenieError =
     GenieError::unreachable("a make step of a building without a make action");
-
-/// The make action's type (`+0x8`, 0x66, `TRIBE_Action_Make_Obj`).
-pub(super) const MAKE_OBJ: i16 = 0x66;
-/// The research action's type (0x67, `TRIBE_Action_Make_Tech`).
-pub(super) const MAKE_TECH: i16 = 0x67;
 
 impl World {
     /// `TRIBE_Building_Object::update`'s part after its combat update (`0x1411ca3e2`) for the
@@ -84,9 +80,16 @@ impl World {
             return Ok(());
         }
         let busy = !self.players.player(p)?.computer
-            && unit
-                .top_action_kind()
-                .is_some_and(|k| matches!(k, MAKE_OBJ | MAKE_TECH | 0x7b..=0x7d));
+            && unit.top_action_kind().is_some_and(|k| {
+                matches!(
+                    k,
+                    action_type::MAKE_OBJECT
+                        | action_type::MAKE_TECH
+                        | action_type::ACTION_123
+                        | action_type::PACK
+                        | action_type::UNPACK
+                )
+            });
         if let Some(production) = self.players.live_mut(p, i)?.production.as_mut() {
             production.queue.waiting = busy;
         }

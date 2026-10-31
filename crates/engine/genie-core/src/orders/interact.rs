@@ -5,6 +5,7 @@ use crate::groups::{CommandArgs, GroupId};
 use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::MOVING;
 use crate::orders::{
@@ -34,7 +35,7 @@ struct GroupsOrder {
 /// task filter, and the retargeting byte the handler makes of the unit AI's (`+0x1d6` is 0:
 /// MOVE passes it as is, INTERACT its opposite).
 struct FirstTarget {
-    filter: i16,
+    filter: Option<ActionType>,
     disable_retargeting: fn(bool) -> bool,
 }
 
@@ -186,7 +187,7 @@ impl World {
             target,
             point: point.with_height(0.0),
             carry_test: false,
-            filter: -1,
+            filter: None,
             notified: true,
         };
         self.order_work(player, idx, &work)
@@ -243,7 +244,7 @@ impl World {
                 target: order.target,
                 point,
                 carry_test: false,
-                filter: -1,
+                filter: None,
                 notified: false,
             };
             self.order_work(player, idx, &work)?;
@@ -346,10 +347,10 @@ impl World {
                 queued: order.queued,
                 direct: order.direct,
                 disable_retargeting: order.control,
-                filter: -1,
+                filter: None,
             },
             first: FirstTarget {
-                filter: -1,
+                filter: None,
                 disable_retargeting: |retargets| retargets,
             },
             lock_line: order.control,

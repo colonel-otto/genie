@@ -23,7 +23,7 @@ fn object(annex_of: Option<ObjectId>) -> FinderObject {
         attackable: true,
         pasture: None,
         annex_of,
-        top_action: Some(5),
+        top_action: Some(genie_core::gathering::gather::GATHER),
         position: [1.0, 2.0, 0.0],
     }
 }
@@ -83,7 +83,10 @@ fn an_annex_stands_for_its_main_building() {
         (target.player, target.state, target.hp),
         (PlayerId::new(1), 2, 25.0)
     );
-    assert_eq!((target.pasture, target.top_action), (None, Some(5)));
+    assert_eq!(
+        (target.pasture, target.top_action),
+        (None, Some(genie_core::gathering::gather::GATHER))
+    );
     assert!(w.target(object_id(99)).is_none());
     let mut lost = world(0);
     lost.masters.truncate(1);

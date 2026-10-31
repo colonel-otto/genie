@@ -103,7 +103,7 @@ impl Unit {
             computer,
             state: self.life.state,
             held: self.life.attribute_type,
-            top_action: self.top_action_kind().map(i32::from),
+            top_action: self.top_action_kind(),
             master: self.life.master_id,
             kind: master.map_or(MasterKind::of_data(0), |m| m.kind),
             class: master.map(|m| m.class),

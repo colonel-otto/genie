@@ -12,6 +12,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
@@ -49,7 +50,7 @@ use crate::movement::Mover;
 pub use crate::movement::move_to::Shown;
 
 /// The Hunt action's type, which word 9 adds.
-pub const HUNT: i16 = 110;
+pub const HUNT: ActionType = ActionType::named(110);
 
 /// The states the slice models: 4 walking to a dead target, 6 facing it, 7 gathering from it, 8
 /// taking the load to its drop site, 12 attacking it (`0xc`).
@@ -278,7 +279,7 @@ pub struct Quarry {
     /// the ally flag).
     pub allied: bool,
     /// Its top action's type (a building's `+0x880` list).
-    pub top_action: Option<i16>,
+    pub top_action: Option<ActionType>,
     /// The hunter's master has its master (a building annex's main building's, `+0xbb8`) among
     /// its drop sites (`FUN_14109d4f0`), which the start reads of its own player's object.
     pub drop_site: bool,

@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
@@ -139,11 +140,11 @@ pub(crate) fn task_search<'m>(
     t: &TaskTarget<'_>,
     general: &TaskTarget<'_>,
     terrain: Option<i16>,
-    filter: i16,
+    filter: Option<ActionType>,
     dip: &impl Diplomacy,
 ) -> Result<Option<(crate::objects::masters::Task, Option<&'m Master>)>, GenieError> {
     let own = actor.master;
-    let find = |list: &Master, filter: i16| {
+    let find = |list: &Master, filter: Option<ActionType>| {
         crate::unit_ai::task_finder::find_task(
             list,
             actor,
@@ -168,7 +169,7 @@ pub(crate) fn task_search<'m>(
         {
             continue;
         }
-        if let Some(task) = find(candidate, -1)? {
+        if let Some(task) = find(candidate, None)? {
             return Ok(Some((task, Some(candidate))));
         }
     }

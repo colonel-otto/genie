@@ -15,6 +15,7 @@ use genie_core::objects::ObjectId;
 use genie_save::generated::world as saved;
 
 use crate::{object_ids, path_level, vec3};
+use genie_core::objects::masters::ActionType;
 
 /// Four vectors of a saved 48-byte position (point, forward, up, right).
 fn frame(b: &[u8; 48]) -> [BVector; 4] {
@@ -188,7 +189,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             range: t.range,
             target_radius: t.target_radius,
             disable_retargeting: t.disable_retargeting,
-            certain_action: t.certain_action,
+            certain_action: ActionType::of_data(t.certain_action),
         },
         attack_plan_type: g.attack_plan_type,
         idle_timer: g.idle_timer,
@@ -395,7 +396,8 @@ flat_value!(
     genie_core::movement::PathData,
     ObjectId,
     GroupId,
-    GroupTarget
+    GroupTarget,
+    ActionType
 );
 
 impl<T: Flat, const N: usize> Flat for [T; N] {

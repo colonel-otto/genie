@@ -129,7 +129,7 @@ impl BuildAction {
                     drop_sites: &c.w.drop_sites,
                 };
                 // slot 0x820's point: x, y and z −1, no terrain
-                task_search(masters, &actor, &t, &general, None, -1, &dip)?
+                task_search(masters, &actor, &t, &general, None, None, &dip)?
             }
             _ => None,
         };

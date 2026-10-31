@@ -8,7 +8,7 @@ use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 
-fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> Task {
+fn task(action_type: ActionType, object_group: i16, object_id: i16, work_val1: f32) -> Task {
     Task {
         action_type,
         object_group,
@@ -67,14 +67,23 @@ fn house() -> Master {
 fn villagers() -> Masters {
     let base = || {
         vec![
-            task(7, -1, -1, 0.0),
-            task(3, 3, -1, 0.0),
-            task(110, -1, 126, 0.0),
+            task(action_type::COMBAT, -1, -1, 0.0),
+            task(crate::garrison::ENTER, 3, -1, 0.0),
+            task(crate::gathering::hunt::HUNT, -1, 126, 0.0),
         ]
     };
-    let builder = || vec![task(101, -1, -1, 1.0), task(3, 3, -1, 0.0)];
+    let builder = || {
+        vec![
+            task(action_type::BUILD, -1, -1, 1.0),
+            task(crate::garrison::ENTER, 3, -1, 0.0),
+        ]
+    };
     Masters::new([
-        master(master_id(56), 1, vec![task(5, -1, 53, 1.0)]),
+        master(
+            master_id(56),
+            1,
+            vec![task(crate::gathering::gather::GATHER, -1, 53, 1.0)],
+        ),
         master(ids::VILLAGER_MALE, 1, base()),
         master(ids::BUILDER, 1, builder()),
         master(master_id(212), 2, builder()),
@@ -1106,14 +1115,21 @@ fn the_missile_building_and_animated_setters() {
 /// availability, disabling and base id (`+0x260`).
 #[test]
 fn a_master_copy_keeps_its_id_class_and_flags() {
-    let mut militia = master(master_id(74), 1, vec![task(7, -1, -1, 0.0)]);
+    let mut militia = master(
+        master_id(74),
+        1,
+        vec![task(action_type::COMBAT, -1, -1, 0.0)],
+    );
     militia.class = class::CLASS_6;
     militia.available = true;
     militia.base_id = Some(master_id(74));
     let mut man = master(
         master_id(75),
         2,
-        vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)],
+        vec![
+            task(action_type::COMBAT, -1, -1, 0.0),
+            task(crate::garrison::ENTER, 3, -1, 0.0),
+        ],
     );
     man.class = class::CLASS_7;
     man.hit_points = 45;
@@ -1141,7 +1157,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
         class: class::FARM,
         ..Master::default()
     };
-    let gather = |group, id, work| task(0x6a, group, id, work);
+    let gather = |group, id, work| task(crate::construction::repair::REPAIR, group, id, work);
     let with = |own: Vec<Task>, others: Vec<Master>| {
         let mut all = vec![master(ids::VILLAGER_MALE, 1, own), farm.clone()];
         all.extend(others);
@@ -1173,7 +1189,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             general: Some(&site),
             terrain: None,
         };
-        m.work_master(&actor, &on, -1, &Alone)
+        m.work_master(&actor, &on, None, &Alone)
             .map(|w| w.map(|(id, t)| (id.get(), t.object_group, MasterId::field(t.object_id))))
     };
     let own = |m: &Masters| m.get(ids::VILLAGER_MALE).unwrap().clone();
@@ -1189,8 +1205,15 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
     let named = master(master_id(120), 1, vec![gather(-1, ids::FARM.get(), 0.0)]);
     let m = with(vec![], vec![named, by_class.clone()]);
     assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, 50))));
-    let attacker = master(master_id(120), 1, vec![task(7, -1, -1, 0.0)]);
-    let m = with(vec![task(7, -1, -1, 0.0)], vec![attacker, by_class]);
+    let attacker = master(
+        master_id(120),
+        1,
+        vec![task(action_type::COMBAT, -1, -1, 0.0)],
+    );
+    let m = with(
+        vec![task(action_type::COMBAT, -1, -1, 0.0)],
+        vec![attacker, by_class],
+    );
     assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
     let stranger = master(master_id(999), 1, vec![]);
     assert!(pick(&m, &stranger).is_err());
@@ -1225,12 +1248,18 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
             general: Some(&site),
             terrain: None,
         };
-        m.work_master(&actor, &on, -1, &Alone)
+        m.work_master(&actor, &on, None, &Alone)
             .map(|w| w.map(|(id, t)| (id.get(), t.action_type)))
     };
-    assert_eq!(pick(ids::VILLAGER_MALE), Ok(Some((118, 101))));
-    assert_eq!(pick(ids::VILLAGER_FEMALE), Ok(Some((212, 101))));
-    assert_eq!(pick(ids::BUILDER), Ok(Some((118, 101))));
+    assert_eq!(
+        pick(ids::VILLAGER_MALE),
+        Ok(Some((118, action_type::BUILD)))
+    );
+    assert_eq!(
+        pick(ids::VILLAGER_FEMALE),
+        Ok(Some((212, action_type::BUILD)))
+    );
+    assert_eq!(pick(ids::BUILDER), Ok(Some((118, action_type::BUILD))));
 }
 
 #[test]

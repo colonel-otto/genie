@@ -6,6 +6,7 @@ use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
@@ -37,7 +38,7 @@ const UNMODELLED_FACTORY: GenieError =
 /// Whether the unit's top action (`top`) is the Attack `a` on `target` (both none counts, as
 /// the game compares −1 with −1).
 fn attack_on(
-    top: Option<i16>,
+    top: Option<ActionType>,
     a: &crate::combat::attack::Attack,
     target: Option<ObjectId>,
 ) -> bool {
@@ -56,14 +57,16 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: Option<ObjectId>,
-        filter: i16,
+        filter: Option<ActionType>,
         point: Position,
         clears: bool,
     ) -> Result<bool, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let top = unit.top_action_kind();
         let attacking = unit.actions.attack().filter(|a| attack_on(top, a, target));
-        let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9)) else {
+        let Some(a) =
+            attacking.filter(|_| matches!(filter, None | Some(crate::combat::attack::ATTACK)))
+        else {
             return Ok(false);
         };
         if !a.keeps(target)? {
@@ -154,7 +157,7 @@ impl World {
             Some(&t),
             Some(&general),
             self.task_terrain(point),
-            3,
+            Some(crate::garrison::ENTER),
             &world,
         )?
         .is_some())
@@ -221,7 +224,7 @@ impl World {
         let clears = notified || unit.master(&self.masters, player)?.kind < COMBAT;
         let found = self.work_task(player, idx, (target, point), filter)?;
         let Some((with, task)) = found else {
-            if filter != -1 {
+            if filter.is_some() {
                 return Ok(());
             }
             // LAB_1410706a8 without a task: the top Attack on the target keeps it; else a unit
@@ -271,7 +274,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         (target, point): (Option<ObjectId>, Position),
-        filter: i16,
+        filter: Option<ActionType>,
     ) -> Result<Option<(MasterId, crate::objects::masters::Task)>, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let masters = self
@@ -605,7 +608,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: ObjectId,
-        filter: i16,
+        filter: Option<ActionType>,
         change: bool,
     ) -> Result<Option<crate::objects::masters::Task>, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -630,7 +633,7 @@ impl World {
             .object(target)
             .map_or(Position::ORIGIN, |(_, u)| u.position());
         let terrain = self.task_terrain(at);
-        let find = |list: &Master, filter: i16| {
+        let find = |list: &Master, filter: Option<ActionType>| {
             crate::unit_ai::task_finder::find_task(
                 list,
                 &actor,
@@ -657,7 +660,7 @@ impl World {
             {
                 continue;
             }
-            if let Some(task) = find(candidate, -1)? {
+            if let Some(task) = find(candidate, None)? {
                 found = Some((candidate.id, task));
                 break;
             }

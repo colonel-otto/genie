@@ -10,6 +10,7 @@ use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
@@ -50,7 +51,7 @@ pub(crate) const ARCHER: MasterId = MasterId::named(4);
 const SHIP: MasterId = MasterId::named(545);
 const GATE: MasterId = MasterId::named(88);
 
-fn task(action_type: i16, object_group: i16) -> Task {
+fn task(action_type: ActionType, object_group: i16) -> Task {
     Task {
         action_type,
         object_group,
@@ -90,7 +91,7 @@ fn garrison_masters() -> Masters {
             id: ARCHER,
             kind: master_type::COMBAT,
             class: class::CLASS_0,
-            tasks: vec![task(7, 3)],
+            tasks: vec![task(crate::objects::masters::action_type::COMBAT, 3)],
             ..Master::default()
         },
         Master {
@@ -1177,7 +1178,11 @@ fn a_garrison_task_compares_the_bytes_the_game_passes_widened() {
         GARRISON,
         class::NO_CLASS
     ));
-    assert!(!has_garrison_task(&[task(7, 3)], GARRISON, class::BUILDING));
+    assert!(!has_garrison_task(
+        &[task(crate::objects::masters::action_type::COMBAT, 3)],
+        GARRISON,
+        class::BUILDING
+    ));
 }
 
 #[test]
@@ -1666,7 +1671,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
             let v = m.get_mut(VILLAGER).unwrap();
             v.tasks.push(Task {
                 object_id: Some(TC),
-                ..task(0x88, -1)
+                ..task(crate::objects::masters::action_type::DEPOSIT, -1)
             });
         }
     };
@@ -2650,7 +2655,7 @@ fn work_at(target: i32, point: Position) -> crate::orders::Work {
         target: ObjectId::of_field(target),
         point,
         carry_test: false,
-        filter: -1,
+        filter: None,
         notified: true,
     }
 }

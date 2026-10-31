@@ -10,6 +10,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
@@ -449,7 +450,7 @@ impl World {
                     target: Some(target),
                     point: Position::new(x, y, 0.0),
                     carry_test: true,
-                    filter: -1,
+                    filter: None,
                     notified: false,
                 },
             )?,
@@ -470,7 +471,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         target: ObjectId,
-        filter: i16,
+        filter: Option<ActionType>,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
@@ -480,7 +481,7 @@ impl World {
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
         };
-        let takes = if filter == GARRISON {
+        let takes = if filter == Some(GARRISON) {
             let tm = t.master(&self.masters, tp)?;
             let world = TaskWorld {
                 players: &self.players,

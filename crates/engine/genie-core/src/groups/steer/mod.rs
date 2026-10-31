@@ -9,6 +9,7 @@ mod to_slots;
 
 #[cfg(test)]
 use crate::groups::SpecificMove;
+use crate::objects::masters::ActionType;
 #[cfg(test)]
 use crate::world::World;
 
@@ -35,7 +36,7 @@ const CATCH_UP: f32 = crate::math::image::group::CATCH_UP;
 const LINKED_RADIUS: f32 = crate::math::image::group::LINKED_RADIUS;
 /// The action types and states the stop of a member without a slot passes over: a `MoveTo`
 /// in the action list (slot 0x538 with 1), and a top action in state 4, 5 or 11 (slot 0x2b0).
-const MOVE_TO: i16 = crate::movement::move_to::MOVE_TO;
+const MOVE_TO: ActionType = crate::movement::move_to::MOVE_TO;
 const KEEPS_MOVING: [u8; 3] = [4, 5, 11];
 /// The way round a record (`FUN_141025fb0` from `0x14102683b`): the short pather's radius is the
 /// member's times this, and the position tests grow the records by as much (`DAT_142e7f384`).

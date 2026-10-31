@@ -14,6 +14,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -69,7 +70,7 @@ pub struct Interact {
     /// `+0x15`: each unit's last human order time is set (`FUN_140e5e780`).
     pub human: bool,
     /// `+0x16`: the work command's task filter, -1 for any.
-    pub filter: i16,
+    pub filter: Option<ActionType>,
 }
 
 /// MOVE's fields past its units (`+0x4`..`+0x15`).
@@ -101,7 +102,7 @@ pub(crate) struct Work {
     pub target: Option<ObjectId>,
     pub point: Position,
     pub carry_test: bool,
-    pub filter: i16,
+    pub filter: Option<ActionType>,
     pub notified: bool,
 }
 
@@ -127,11 +128,11 @@ const LISTED: usize = 60;
 /// The range of GUARD's defend order (`DAT_142eb3634`, [`World::guard`]).
 const GUARD_RANGE: f32 = crate::math::image::order::GUARD_RANGE;
 /// The task filter of garrisoning (3).
-pub(crate) const GARRISON: i16 = 3;
+pub(crate) const GARRISON: ActionType = ActionType::named(3);
 /// A master's object flag 0x20: a building a gather takes as its target as any other.
 const GATHERED_BUILDING: u32 = 0x20;
 /// A task's action type of attacking (7), whose factory makes an Attack (type 9).
-const ATTACK_TASK: i16 = 7;
+const ATTACK_TASK: ActionType = ActionType::named(7);
 
 /// Where an object is: its player and its index in the live or the sleeping list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

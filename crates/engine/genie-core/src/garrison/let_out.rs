@@ -236,7 +236,7 @@ impl World {
                 target: Some(target),
                 point: point.with_height(0.0),
                 carry_test: false,
-                filter: -1,
+                filter: None,
                 notified: false,
             };
             self.order_work(up, ui, &work)?;

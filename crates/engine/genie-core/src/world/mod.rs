@@ -33,6 +33,7 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Masters;
@@ -138,7 +139,11 @@ pub(crate) const GATE_COUNT_CAP: usize = 25;
 pub const HISTORY_PERIOD: i32 = 25;
 
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
-pub(crate) const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
+pub(crate) const BLOCKS_RESEARCH: [ActionType; 3] = [
+    crate::objects::masters::action_type::ACTION_123,
+    crate::objects::masters::action_type::PACK,
+    crate::objects::masters::action_type::UNPACK,
+];
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
 pub(crate) const STATIC_TYPES_END: MasterKind = master_type::ACTION;

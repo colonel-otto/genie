@@ -105,7 +105,7 @@ impl World {
                 target: Some(foundation),
                 point: Position::new(position.x(), position.y(), 0.0),
                 carry_test: false,
-                filter: -1,
+                filter: None,
                 notified: true,
             };
             self.order_work(q, idx, &work)?;
@@ -214,7 +214,7 @@ impl World {
         };
         let (with, task) =
             masters
-                .work_master(&actor, &on, -1, &world)?
+                .work_master(&actor, &on, None, &world)?
                 .ok_or(GenieError::unsupported(
                     "a builder with no task for its foundation",
                 ))?;
@@ -297,7 +297,7 @@ impl World {
         }
         // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its
         // flag cleared (FUN_1412067f0)
-        self.town_bell_order(player, idx, foundation, -1)?;
+        self.town_bell_order(player, idx, foundation, None)?;
         // the work command (FUN_14106ff70): the master changes (slot 0x90, its action list
         // cleared); the Build action takes its foundation (FUN_140a7a230, slot 0x178)
         if self.players.live(player, idx)?.life.master_id != with {
@@ -410,7 +410,8 @@ impl World {
         // (FUN_140aad4e0 on it), its type and its enablement unread
         // slot 0x820's point: the foundation's place
         let terrain = point_terrain(self.spatial.terrain.as_ref(), f_at);
-        let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &world)?
+        let Some((task, switch)) =
+            task_search(masters, &actor, &t, &general, terrain, None, &world)?
         else {
             return Ok(false);
         };

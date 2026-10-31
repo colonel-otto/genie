@@ -9,6 +9,7 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterKind;
+use crate::objects::masters::action_type;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
@@ -125,7 +126,11 @@ impl Unit {
             search_radius: master.map_or(0.0, |m| m.search_radius),
             weapon_range: master.map_or(0.0, |m| m.weapon_range),
             interruptible,
-            task_0x99: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x99)),
+            task_0x99: master.is_some_and(|m| {
+                m.tasks
+                    .iter()
+                    .any(|t| t.action_type == crate::construction::build::CART_TASK)
+            }),
             garrisoned: self.life.inside.is_some(),
             state: self.life.state,
             kind: master.map_or(MasterKind::of_data(0), |m| m.kind),
@@ -134,7 +139,8 @@ impl Unit {
             capture: self.capture_kind(c),
             master: self.life.master_id,
             scenario: scenario_mode(c.w.settings.game_mode),
-            task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
+            task_0x69: master
+                .is_some_and(|m| m.tasks.iter().any(|t| t.action_type == action_type::HEAL)),
             // a new owner sees the target with its own map
             target: self.ai_target(c, view.player)?,
             under_attack: self.under_attack,

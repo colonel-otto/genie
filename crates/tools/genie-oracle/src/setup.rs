@@ -337,11 +337,15 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
             .first()
             .map_or(0, |p| p.objects().master_object_num);
         turns.lines = genie_core::objects::lines::UnitLines::build(gaia_masters, &table.unit_lines);
-        turns.masters = header
+        let masters = header
             .players()
             .iter()
             .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
-            .collect();
+            .collect::<Result<_, _>>();
+        match masters {
+            Ok(m) => turns.masters = m,
+            Err(e) => stop_all(&mut turns, &e),
+        }
         // the players' unit masters (type 70), Gaia's left out
         let all = || {
             turns

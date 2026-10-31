@@ -14,7 +14,7 @@ use genie_core::commands::{
 };
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
-use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::{ActionType, MasterId};
 use genie_core::orders::{Interact, MoveOrder};
 use genie_core::players::PlayerId;
 use genie_core::players::tribute::Gift;
@@ -106,7 +106,7 @@ macro_rules! interact {
             queued: $c.field_0x13 != 0,
             direct: $c.field_0x14 != 0,
             human: $c.field_0x15 == 1,
-            filter: $c.field_0x16.cast_signed(),
+            filter: ActionType::of_data($c.field_0x16.cast_signed()),
         }
     };
 }

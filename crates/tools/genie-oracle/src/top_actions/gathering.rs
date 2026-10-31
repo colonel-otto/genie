@@ -1,7 +1,7 @@
 //! The gathering actions of a saved object's top action: the Hunt, the Gather and a farm's
 //! Make ([`crate::top_actions::saved_actions`]).
 
-use crate::top_actions::{Saved, TaskAt, saved_move_to};
+use crate::top_actions::{Saved, TaskAt, first_action, saved_move_to};
 use crate::{saved_attack, saved_reload, saved_sprite};
 use genie_core::GenieError;
 use genie_core::map::Point;
@@ -95,7 +95,7 @@ pub(super) fn import_hunt(
             ),
         },
     };
-    match base.sub_actions.entries().next() {
+    match first_action(&base.sub_actions)? {
         None => {}
         Some((genie_core::combat::attack::ATTACK, sub)) => {
             hunt.attack = Some(hunt_attack(saved, sub)?);

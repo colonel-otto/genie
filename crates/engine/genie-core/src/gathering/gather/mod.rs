@@ -20,6 +20,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
@@ -45,7 +46,7 @@ use crate::combat::damage::Victim;
 use crate::gathering::hunt::Dropped;
 
 /// The Gather action's type, which word 9 adds.
-pub const GATHER: i16 = 5;
+pub const GATHER: ActionType = ActionType::named(5);
 
 /// State 4: walking to the target.
 pub const WALK: u8 = 4;

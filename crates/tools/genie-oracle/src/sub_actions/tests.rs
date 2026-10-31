@@ -3,6 +3,7 @@ use crate::masters::{DefaultAction, MasterTable};
 use crate::sub_actions::{DefaultStart, default_task, production, saved_attack};
 use crate::test_ids::object_id;
 use genie_core::movement::move_to::MoveTo;
+use genie_core::objects::masters::ActionType;
 use genie_core::players::attribute;
 use genie_core::production::Making;
 use genie_save::generated::world::{
@@ -46,7 +47,10 @@ fn a_building_s_production_holds_its_slots_and_make_action() {
     b.production_queue = vec![slot(), slot()];
     b.production_queue_count = 1;
     b.production_queue_enabled = 1;
-    b.production_queue_actions = action_list(vec![(102, make())]);
+    b.production_queue_actions = action_list(vec![(
+        genie_core::objects::masters::action_type::MAKE_OBJECT,
+        make(),
+    )]);
     let p = production(&town_centre).unwrap().unwrap();
     assert_eq!(p.queue.slots.len(), 2);
     assert_eq!(p.queue.slots[1].serial, 1);
@@ -77,7 +81,10 @@ fn a_research_is_a_production_action_too() {
         })),
         ..Action::default()
     };
-    building_mut(&mut university).production_queue_actions = action_list(vec![(103, research)]);
+    building_mut(&mut university).production_queue_actions = action_list(vec![(
+        genie_core::objects::masters::action_type::MAKE_TECH,
+        research,
+    )]);
     let p = production(&university).unwrap().unwrap();
     assert!(
         matches!(p.action, Some(Making::Research(r)) if r.tech == genie_core::technology::TechId::try_from(22).unwrap() && !r.paid)
@@ -103,9 +110,15 @@ fn a_building_without_anything_to_make_has_no_production() {
 #[test]
 fn another_production_action_is_unsupported() {
     for (kind, action) in [
-        (102, Action::default()),
-        (103, Action::default()),
-        (4, make()),
+        (
+            genie_core::objects::masters::action_type::MAKE_OBJECT,
+            Action::default(),
+        ),
+        (
+            genie_core::objects::masters::action_type::MAKE_TECH,
+            Action::default(),
+        ),
+        (genie_core::movement::explore::EXPLORE, make()),
     ] {
         let mut building = building_object(13, 109);
         building_mut(&mut building).production_queue_actions = action_list(vec![(kind, action)]);
@@ -140,8 +153,13 @@ fn the_default_task_starts_what_the_table_names() {
         Ok(Some(DefaultStart::Make))
     ));
     assert!(matches!(start(&table(DefaultAction::None)), Ok(None)));
-    assert!(matches!(start(&table(DefaultAction::Type(6))), Ok(None)));
-    assert!(start(&table(DefaultAction::Type(3))).is_err());
+    assert!(matches!(
+        start(&table(DefaultAction::Type(
+            genie_core::objects::masters::action_type::HUNT_RANGE
+        ))),
+        Ok(None)
+    ));
+    assert!(start(&table(DefaultAction::Type(genie_core::garrison::ENTER))).is_err());
     assert!(start(&table(DefaultAction::NoSuchTask)).is_err());
     // a bird's Fly needs its task, which neither the save nor this table has
     let fly = genie_core::movement::fly::FLY;
@@ -172,7 +190,7 @@ fn a_static_object_has_no_default_task() {
 }
 
 /// An Attack (type 9) of range 5 in state `state`, its sub-actions `subs`.
-fn attack(state: u8, subs: Vec<(i16, Action)>) -> Action {
+fn attack(state: u8, subs: Vec<(ActionType, Action)>) -> Action {
     Action {
         rge_action_by_type: Some(Box::new(RgeActionByType {
             rge_action_attack: Some(Box::new(RgeActionAttack {
@@ -216,7 +234,11 @@ fn move_to() -> Action {
 #[test]
 fn a_saved_attack_reads_its_target_range_and_move_to() {
     let graphics = std::collections::BTreeMap::new();
-    let a = saved_attack(&attack(5, vec![(1, move_to())]), Some(&graphics)).unwrap();
+    let a = saved_attack(
+        &attack(5, vec![(genie_core::movement::move_to::MOVE_TO, move_to())]),
+        Some(&graphics),
+    )
+    .unwrap();
     assert_eq!((a.target, a.state), (Some(object_id(700)), 5));
     // the MoveTo is quiet and holds its own state, point and range
     let m = a.move_to.unwrap();
@@ -227,7 +249,16 @@ fn a_saved_attack_reads_its_target_range_and_move_to() {
     assert_eq!(a.range.to_bits(), 5.0_f32.to_bits());
     let plain = saved_attack(&attack(2, vec![]), Some(&graphics)).unwrap();
     assert_eq!(plain.state, 2);
-    assert!(saved_attack(&attack(2, vec![(9, attack(1, vec![]))]), Some(&graphics)).is_err());
+    assert!(
+        saved_attack(
+            &attack(
+                2,
+                vec![(genie_core::combat::attack::ATTACK, attack(1, vec![]))]
+            ),
+            Some(&graphics)
+        )
+        .is_err()
+    );
     assert!(saved_attack(&attack(2, vec![]), None).is_err());
     assert!(saved_attack(&move_to(), Some(&graphics)).is_err());
     assert!(saved_attack(&Action::default(), Some(&graphics)).is_err());

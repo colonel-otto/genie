@@ -3,15 +3,17 @@
 //! and the default task's action. They are game data, which patches and DLCs change, so they come
 //! from the `.dat` of the recording's game, never from constants.
 
+use genie_core::GenieError;
 use genie_core::objects::lifecycle::MasterData;
 use genie_core::objects::masters as work;
-use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::{ActionType, MasterId};
 use genie_core::players::attribute::AttributeId;
 use genie_dat::de::DatFile;
 use std::collections::HashMap;
 
 mod dat_work;
 
+pub(crate) use self::dat_work::attributes;
 use self::dat_work::dat_work;
 
 /// The action an action object's first update starts from its master's default task
@@ -21,7 +23,7 @@ pub enum DefaultAction {
     /// The master has no default task.
     None,
     /// The default task's action type (107 is the Artifact action).
-    Type(i16),
+    Type(ActionType),
     /// The default task id names no task in the master's list; what the game starts then is not
     /// read yet.
     NoSuchTask,
@@ -31,7 +33,7 @@ pub enum DefaultAction {
 /// are `(id, action type)` pairs (DE keeps the tasks in each unit's own list).
 pub fn default_action(
     default_task_id: i16,
-    mut tasks: impl Iterator<Item = (i16, i16)>,
+    mut tasks: impl Iterator<Item = (i16, ActionType)>,
 ) -> DefaultAction {
     if default_task_id < 0 {
         return DefaultAction::None;
@@ -41,6 +43,72 @@ pub fn default_action(
         .map_or(DefaultAction::NoSuchTask, |(_, action)| {
             DefaultAction::Type(action)
         })
+}
+
+/// A row under its civ and master id.
+type KeyedRow = ((u8, i16), Row);
+
+/// The rows of every unit every civ of `dat` has ([`dat_row`]), by civ and master id.
+///
+/// # Errors
+///
+/// A task or a cost slot that holds no type or attribute.
+fn dat_rows(dat: &DatFile) -> Result<Vec<KeyedRow>, GenieError> {
+    let units = dat.civs.iter().enumerate().flat_map(|(c, civ)| {
+        civ.units
+            .iter()
+            .enumerate()
+            .filter_map(move |(m, unit)| Some((c as u8, m as i16, unit.as_ref()?)))
+    });
+    units
+        .filter_map(|(c, m, unit)| {
+            dat_row(m, unit, &dat.sounds)
+                .transpose()
+                .map(|row| row.map(|r| ((c, m), r)))
+        })
+        .collect()
+}
+
+/// A `.dat` unit's row (`m`, its slot and master id): its dead-object values (decay, undead),
+/// its default action, its work-command values, turning and flight; none for a slot past the
+/// masters' ids.
+///
+/// # Errors
+///
+/// A task or a cost slot that holds no type or attribute.
+fn dat_row(
+    m: i16,
+    unit: &genie_dat::de::Unit,
+    sounds: &[genie_dat::de::Sound],
+) -> Result<Option<Row>, GenieError> {
+    let Some(id) = MasterId::of_data(m) else {
+        return Ok(None);
+    };
+    let default_action = match unit.bird.as_ref() {
+        None => DefaultAction::None,
+        Some(b) => {
+            let tasks = b
+                .tasks
+                .iter()
+                .map(|t| Ok((t.id, ActionType::try_from(t.action_type)?)))
+                .collect::<Result<Vec<_>, GenieError>>()?;
+            default_action(b.default_task_id, tasks.into_iter())
+        }
+    };
+    Ok(Some(Row {
+        data: MasterData {
+            decay: unit.resource_decay,
+            undead: unit.undead_mode != 0,
+        },
+        default_action,
+        work: Some(dat_work(id, unit, sounds)?),
+        turning: unit.dead_fish.as_ref().map(|d| Turning {
+            move_algorithm: d.old_move_algorithm,
+            min_collision_size_multiplier: d.min_collision_size_multiplier,
+        }),
+        projectile_type: unit.projectile.as_ref().map(|p| p.projectile_type),
+        fly_mode: unit.fly_mode,
+    }))
 }
 
 /// One master's row.
@@ -199,20 +267,25 @@ pub struct MasterTable {
 
 /// A technology of the `.dat` as the tech tree holds it: its costs, its type and its effect's
 /// commands.
-fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::technology::TechDef {
+fn tech_def(
+    dat: &DatFile,
+    t: &genie_dat::de::Tech,
+) -> Result<genie_core::technology::TechDef, GenieError> {
+    let [c0, c1, c2] = t.resource_costs.each_ref();
+    let cost = |j: usize| -> Result<genie_core::technology::Cost, GenieError> {
+        let c = [c0, c1, c2][j];
+        Ok(genie_core::technology::Cost {
+            attribute: AttributeId::of_field(c.kind)?,
+            amount: c.amount,
+            paid: c.flag,
+        })
+    };
     let effect = usize::try_from(t.effect_id)
         .ok()
         .and_then(|e| dat.effects.get(e))
         .map_or_else(Vec::new, effect_commands);
-    genie_core::technology::TechDef {
-        costs: t
-            .resource_costs
-            .each_ref()
-            .map(|c| genie_core::technology::Cost {
-                attribute: AttributeId::of_data(c.kind),
-                amount: c.amount,
-                paid: c.flag,
-            }),
+    Ok(genie_core::technology::TechDef {
+        costs: [cost(0)?, cost(1)?, cost(2)?],
         kind: t.kind,
         effect_id: t.effect_id,
         effect,
@@ -225,7 +298,7 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::technology::T
             .iter()
             .map(|l| (l.location_id, l.queue_time))
             .collect(),
-    }
+    })
 }
 
 /// An effect's commands as the engine's effect table holds them.
@@ -279,13 +352,13 @@ impl MasterTable {
     pub fn read(path: &std::path::Path) -> Result<Self, ReadError> {
         let file = std::fs::File::open(path).map_err(|e| {
             ReadError::Dat(
-                genie_core::GenieError::io("a data file that does not open")
+                GenieError::io("a data file that does not open")
                     .with("path", path.display())
                     .with_source(e),
             )
         })?;
         let dat = DatFile::read_from(file).map_err(ReadError::Dat)?;
-        let mut table = Self::from_dat(&dat);
+        let mut table = Self::from_dat(&dat).map_err(ReadError::Dat)?;
         table.read_tables_beside(path)?;
         Ok(table)
     }
@@ -308,50 +381,17 @@ impl MasterTable {
 
     /// The rows of every unit every civ of `dat` has: decay (`resource_decay`), the undead flag
     /// (`undead_mode`) and the default action (the action part's default task).
-    #[must_use]
-    pub fn from_dat(dat: &DatFile) -> Self {
-        let rows = dat.civs.iter().enumerate().flat_map(|(c, civ)| {
-            civ.units.iter().enumerate().filter_map(move |(m, unit)| {
-                let unit = unit.as_ref()?;
-                let data = MasterData {
-                    decay: unit.resource_decay,
-                    undead: unit.undead_mode != 0,
-                };
-                let action = unit.bird.as_ref().map_or(DefaultAction::None, |b| {
-                    default_action(
-                        b.default_task_id,
-                        b.tasks.iter().map(|t| (t.id, t.action_type)),
-                    )
-                });
-                let turning = unit.dead_fish.as_ref().map(|d| Turning {
-                    move_algorithm: d.old_move_algorithm,
-                    min_collision_size_multiplier: d.min_collision_size_multiplier,
-                });
-                let flight = (
-                    unit.projectile.as_ref().map(|p| p.projectile_type),
-                    unit.fly_mode,
-                );
-                Some((
-                    (c as u8, m as i16),
-                    data,
-                    action,
-                    dat_work(MasterId::of_data(m as i16)?, unit, &dat.sounds),
-                    turning,
-                    flight,
-                ))
-            })
-        });
-        let rows: Vec<_> = rows.collect();
-        let mut table = Self::from_rows(
-            rows.iter()
-                .map(|(key, data, action, _, _, _)| (*key, *data, *action)),
-        );
-        for (key, _, _, w, turning, (projectile_type, fly_mode)) in rows {
+    ///
+    /// # Errors
+    ///
+    /// A task or a cost slot that holds no type or attribute.
+    pub fn from_dat(dat: &DatFile) -> Result<Self, GenieError> {
+        let rows = dat_rows(dat)?;
+        let mut table =
+            Self::from_rows(rows.iter().map(|(key, r)| (*key, r.data, r.default_action)));
+        for (key, r) in rows {
             if let Some(row) = table.rows.get_mut(&key) {
-                row.work = Some(w);
-                row.turning = turning;
-                row.projectile_type = projectile_type;
-                row.fly_mode = fly_mode;
+                *row = r;
             }
         }
         table.terrain = TerrainTable::from_dat(dat);
@@ -381,10 +421,14 @@ impl MasterTable {
                 ))
             })
             .collect();
-        table.techs = dat.techs.iter().map(|t| tech_def(dat, t)).collect();
+        table.techs = dat
+            .techs
+            .iter()
+            .map(|t| tech_def(dat, t))
+            .collect::<Result<_, _>>()?;
         table.effects = dat.effects.iter().map(effect_commands).collect();
         table.time_slice = dat.time_slice;
-        table
+        Ok(table)
     }
 
     /// A table of the given `((civ, master), data, default action)` rows.
@@ -586,6 +630,22 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// The fields' −1 is no attribute and any other value 0 or more its attribute, in their
+    /// order; a value below −1 fails the parse.
+    #[test]
+    fn the_attribute_fields_parse_in_their_order() {
+        use genie_core::players::attribute::AttributeId;
+        assert_eq!(
+            attributes([-1, 0, 5]).unwrap(),
+            [
+                None,
+                Some(AttributeId::try_from(0).unwrap()),
+                Some(AttributeId::try_from(5).unwrap())
+            ]
+        );
+        assert!(attributes([0, -2]).is_err());
+    }
+
     fn sound(files: usize) -> genie_dat::de::Sound {
         let item = genie_dat::de::SoundItem {
             file_name: genie_dat::de::DebugString::default(),
@@ -622,11 +682,21 @@ mod tests {
     fn the_default_action_is_the_action_type_of_the_default_task() {
         // the cow: default task 0, whose action type is 107 (the Artifact action)
         assert_eq!(
-            default_action(0, [(0, 107), (1, 6)].into_iter()),
-            DefaultAction::Type(107)
+            default_action(
+                0,
+                [
+                    (0, genie_core::ownership::artifact::ARTIFACT_TYPE),
+                    (1, genie_core::objects::masters::action_type::HUNT_RANGE)
+                ]
+                .into_iter()
+            ),
+            DefaultAction::Type(genie_core::ownership::artifact::ARTIFACT_TYPE)
         );
         assert_eq!(
-            default_action(-1, [(0, 107)].into_iter()),
+            default_action(
+                -1,
+                [(0, genie_core::ownership::artifact::ARTIFACT_TYPE)].into_iter()
+            ),
             DefaultAction::None
         );
         // FARMDROP and two others name task 0 but list no task
@@ -653,11 +723,16 @@ mod tests {
                     decay: 0.25,
                     undead: false,
                 },
-                DefaultAction::Type(107),
+                DefaultAction::Type(genie_core::ownership::artifact::ARTIFACT_TYPE),
             ),
         ]);
         assert_eq!(t.get(1, 332).map(|d| d.decay), Some(1.0));
-        assert_eq!(t.default_action(2, 705), Some(DefaultAction::Type(107)));
+        assert_eq!(
+            t.default_action(2, 705),
+            Some(DefaultAction::Type(
+                genie_core::ownership::artifact::ARTIFACT_TYPE
+            ))
+        );
         assert_eq!((t.get(2, 332), t.default_action(1, 705)), (None, None));
     }
 

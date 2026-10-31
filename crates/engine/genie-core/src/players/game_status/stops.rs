@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
@@ -198,7 +199,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-        kind: i16,
+        kind: ActionType,
     ) -> Result<bool, GenieError> {
         let by = self.releaser(p, idx)?;
         let master_id = self.players.live(p, idx)?.life.master_id;

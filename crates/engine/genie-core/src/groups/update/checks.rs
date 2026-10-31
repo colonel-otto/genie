@@ -9,6 +9,7 @@ use crate::groups::update::{
     RELIC_PICKUP_ACTION, Shown, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -334,7 +335,7 @@ impl World {
         &self,
         player: PlayerId,
         master: MasterId,
-        action: i16,
+        action: ActionType,
     ) -> Result<bool, GenieError> {
         let Some(masters) = self.masters.get(player.index()) else {
             return self.master(player, master).map(|_| false);

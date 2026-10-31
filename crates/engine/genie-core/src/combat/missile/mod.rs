@@ -15,6 +15,7 @@ use crate::map::Radii;
 use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath;
 use crate::objects::ObjectId;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -24,7 +25,7 @@ use genie_diff::Diff;
 pub(crate) mod unit;
 
 /// The missile action's type, which word 9 adds when it is the top action.
-pub const MISSILE: i16 = 8;
+pub const MISSILE: ActionType = ActionType::named(8);
 
 /// A missile's states: 4 flies, 1 ends (`set_state` 1: the object's slot 0xd8, its hit points to 0).
 pub const FLYING: u8 = 4;

@@ -15,6 +15,7 @@ use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::ObjectId;
 use crate::objects::actions::Action;
+use crate::objects::masters::ActionType;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
@@ -97,7 +98,7 @@ pub struct Artifact {
 }
 
 /// The action type the checkpoint adds for an Artifact action.
-pub const ARTIFACT_TYPE: i16 = 107;
+pub const ARTIFACT_TYPE: ActionType = ActionType::named(107);
 
 /// The state that checks for a new owner (6).
 pub(crate) const CHECK: u8 = 6;

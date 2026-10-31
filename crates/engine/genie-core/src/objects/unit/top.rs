@@ -4,7 +4,9 @@ use crate::GenieError;
 use crate::math::game_vector::GameVector;
 use crate::objects::ObjectId;
 use crate::objects::actions::Action;
+use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
+use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::{TAKEN_OUT, Unit};
 
@@ -166,7 +168,7 @@ impl Unit {
 
     /// The type of its top action, if it has one.
     #[must_use]
-    pub fn top_action_kind(&self) -> Option<i16> {
+    pub fn top_action_kind(&self) -> Option<ActionType> {
         self.top_action().map(|a| a.kind)
     }
 
@@ -248,8 +250,10 @@ impl Unit {
             return Ok(true);
         };
         Ok(match (kind, state) {
-            (0x7e, _) => false,
-            (0x6f, 4) => return Err(GenieError::unsupported("slot 0x2d0 of a trade in state 4")),
+            (action_type::ACTION_126, _) => false,
+            (action_type::TRADE, 4) => {
+                return Err(GenieError::unsupported("slot 0x2d0 of a trade in state 4"));
+            }
             (_, 0 | 1 | 3 | 0xd | 0xe) => true,
             (_, 2) => kind != crate::combat::attack::ATTACK,
             (crate::ownership::artifact::ARTIFACT_TYPE, _) => self

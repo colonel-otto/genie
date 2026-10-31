@@ -138,7 +138,7 @@ impl Unit {
             target: Some(target),
             point,
             carry_test: false,
-            filter: -1,
+            filter: None,
             notified: true,
         }))
     }
