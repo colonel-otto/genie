@@ -26,6 +26,7 @@ use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Rect;
+use crate::map::TileRect;
 use crate::map::spatial::{RecordId, Spatial};
 use crate::math::fmath::sqrt;
 use crate::objects::ObjectId;
@@ -272,14 +273,18 @@ struct Within {
 /// default is the constructor's (`FUN_140f84e40`): the area -1, no hulls.
 #[derive(Clone, Debug, PartialEq)]
 pub struct KeptHulls {
-    area: [i32; 4],
+    area: TileRect,
     hulls: Vec<Hull>,
 }
+
+/// The constructor's area (`FUN_140f84e40`, `+0xe8`..`+0xf4` all −1): none yet, so a kept search
+/// makes its own (its x0 tells, [`HullPather::find_keeping`]).
+const NO_AREA: TileRect = TileRect::new(-1, -1, -1, -1);
 
 impl Default for KeptHulls {
     fn default() -> Self {
         Self {
-            area: [-1; 4],
+            area: NO_AREA,
             hulls: Vec::new(),
         }
     }
@@ -311,8 +316,8 @@ pub struct HullPather<'w> {
     nodes: Vec<Node>,
     /// The closed lists (`+0x90`, `+0xa0`).
     closed: [Vec<usize>; 2],
-    /// The area x0, y0, x1, y1 in tiles (`+0xe8`).
-    area: [i32; 4],
+    /// The area in tiles (`+0xe8`).
+    area: TileRect,
     start: Point,
     goal: Point,
     exits: Vec<Waypoints>,

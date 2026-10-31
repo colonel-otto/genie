@@ -3,9 +3,11 @@
 
 use crate::GenieError;
 use crate::map::Rect;
+use crate::map::TileRect;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
 use crate::objects::ObjectId;
+use crate::pathing::hull_path::NO_AREA;
 use crate::pathing::hull_path::rounds::Rounds;
 use crate::pathing::hull_path::{
     HALF, HullPather, HullQuery, NEAR_TARGET, Point, Target, Waypoints,
@@ -105,7 +107,7 @@ impl HullPather<'_> {
         let r = self.radius;
         let mut path = Waypoints::default();
         if !keep {
-            self.area = [-1, -1, -1, -1];
+            self.area = NO_AREA;
         }
         if self.off_map(from, to, target_id)? {
             return Ok((4, path, false));
@@ -135,7 +137,7 @@ impl HullPather<'_> {
         if q.target.is_none() {
             q.target = self.goal_record(to)?;
         }
-        let [ax0, ay0, ax1, ay1] = self.area;
+        let [ax0, ay0, ax1, ay1] = self.area.get();
         self.world.check_known_records(Rect::new(
             (ax0 - 5) as f32,
             (ay0 - 5) as f32,
@@ -261,7 +263,7 @@ impl HullPather<'_> {
     /// `MAXSS` of the start's and the goal's, `CVTTSS2SI`, 0x140f85f61..0x140f85ff5). Whether the
     /// search keeps its hulls: a new area builds them.
     fn set_area(&mut self, from: Point, to: Point, keep: bool) -> bool {
-        if keep && self.area[0] != -1 {
+        if keep && self.area.x0() != NO_AREA.x0() {
             return true;
         }
         let (w, h) = (self.world.map.width(), self.world.map.height());
@@ -270,12 +272,12 @@ impl HullPather<'_> {
         let y0 = tile(minss(from.y(), to.y()), -2);
         let x1 = tile(maxss(from.x(), to.x()), 2);
         let y1 = tile(maxss(from.y(), to.y()), 2);
-        self.area = [
+        self.area = TileRect::new(
             x0.max(0),
             y0.max(0),
             if w <= x1 { w - 1 } else { x1 },
             if h <= y1 { h - 1 } else { y1 },
-        ];
+        );
         false
     }
 

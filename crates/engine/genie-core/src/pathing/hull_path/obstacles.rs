@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Rect;
 use crate::map::Tile;
+use crate::map::TileRect;
 use crate::map::spatial::RecordId;
 use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
@@ -204,7 +205,7 @@ impl HullPather<'_> {
     pub(super) fn process_tile(
         &mut self,
         tile: Tile,
-        area: [i32; 4],
+        area: TileRect,
         hull: Option<HullIndex>,
     ) -> Result<(), GenieError> {
         if !self.world.map.holds(tile) {
@@ -238,10 +239,7 @@ impl HullPather<'_> {
         ))?;
         if sight.link(tile)?.0 & 0x60 != 0
             && let Some(anchor) = sight.anchor_of(tile)
-            && (anchor.x() < area[0]
-                || area[2] < anchor.x()
-                || anchor.y() < area[1]
-                || area[3] < anchor.y())
+            && !area.holds(anchor)
         {
             self.add_tile_objects(anchor, hull, self.player)?;
         }
@@ -255,16 +253,14 @@ impl HullPather<'_> {
     pub(super) fn build_hulls(&mut self) -> Result<(), GenieError> {
         self.hulls.clear();
         let (w, h) = (self.world.map.width(), self.world.map.height());
-        self.area[0] = self.area[0].max(0);
-        self.area[1] = self.area[1].max(0);
-        self.area[2] = self.area[2].min(w - 1);
-        self.area[3] = self.area[3].min(h - 1);
+        let [x0, y0, x1, y1] = self.area.get();
+        self.area = TileRect::new(x0.max(0), y0.max(0), x1.min(w - 1), y1.min(h - 1));
         let r = self.radius;
         let not_mask = self.mask.blocked();
-        for y in self.area[1]..=self.area[3] {
+        for y in self.area.y0()..=self.area.y1() {
             let mut run: Option<i32> = None;
-            let mut x = self.area[0];
-            while x <= self.area[2] {
+            let mut x = self.area.x0();
+            while x <= self.area.x1() {
                 let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
                 let open =
                     word & not_mask == 0 && ((word >> 14) & 1 == 0 || word & 0x3f00 == 0x500);
@@ -300,7 +296,7 @@ impl HullPather<'_> {
     /// record of class 6) within two tiles about the area.
     pub(super) fn process_cliffs(&mut self) -> Result<(), GenieError> {
         let (w, h) = (self.world.map.width(), self.world.map.height());
-        let [x0, y0, x1, y1] = self.area;
+        let [x0, y0, x1, y1] = self.area.get();
         let (ex0, ey0) = ((x0 - 2).max(0), (y0 - 2).max(0));
         let (ex1, ey1) = ((x1 + 2).min(w - 1), (y1 + 2).min(h - 1));
         for y in ey0..=ey1 {
@@ -338,7 +334,7 @@ impl HullPather<'_> {
     /// `COMISS`/`JA` (0x140f86a44, 0x140f8d942, 0x140f899d3): an unordered coordinate is inside.
     pub(super) fn in_area(&self, p: Point) -> bool {
         let r = self.radius;
-        let [x0, y0, x1, y1] = self.area;
+        let [x0, y0, x1, y1] = self.area.get();
         at_most_or_unordered(x0 as f32 + r, p.x())
             && at_most_or_unordered(p.x(), (x1 + 1) as f32 - r)
             && at_most_or_unordered(y0 as f32 + r, p.y())

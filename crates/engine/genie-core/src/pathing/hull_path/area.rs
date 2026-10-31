@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Rect;
 use crate::map::Tile;
+use crate::map::TileRect;
 use crate::map::spatial::RecordId;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::objects::ObjectId;
@@ -134,14 +135,14 @@ impl HullPather<'_> {
     /// cliffs about it); false when it would hold more than [`MOST_AREA`] tiles.
     pub(super) fn grow_area(&mut self) -> Result<bool, GenieError> {
         let (w, h) = (self.world.map.width(), self.world.map.height());
-        let x0 = (self.area[0] - 2).max(0);
-        let y0 = (self.area[1] - 2).max(0);
-        let x1 = (self.area[2] + 2).min(w - 1);
-        let y1 = (self.area[3] + 2).min(h - 1);
+        let x0 = (self.area.x0() - 2).max(0);
+        let y0 = (self.area.y0() - 2).max(0);
+        let x1 = (self.area.x1() + 2).min(w - 1);
+        let y1 = (self.area.y1() + 2).min(h - 1);
         if MOST_AREA < (x1 - x0) * (y1 - y0) {
             return Ok(false);
         }
-        let grown = [x0, y0, x1, y1];
+        let grown = TileRect::new(x0, y0, x1, y1);
         for x in x0..=x1 {
             for y in y0..=y1 {
                 self.process_tile(Tile::new(x, y), grown, None)?;

@@ -4,6 +4,7 @@ use crate::map::Footprint;
 use crate::map::Rect;
 use crate::map::Tile;
 use crate::objects::ObjectId;
+use crate::pathing::hull_path::NO_AREA;
 use std::collections::BTreeSet;
 
 use crate::GenieError;
@@ -146,7 +147,7 @@ impl<'w> HullPather<'w> {
             hulls: Vec::new(),
             nodes: vec![Node::head(), Node::head()],
             closed: [Vec::new(), Vec::new()],
-            area: [-1, -1, -1, -1],
+            area: NO_AREA,
             start: Point::new(0.0, 0.0),
             goal: Point::new(0.0, 0.0),
             exits: vec![Waypoints::default(); PATHS],

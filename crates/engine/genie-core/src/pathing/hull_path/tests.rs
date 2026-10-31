@@ -5,6 +5,7 @@ use crate::map::Radii;
 use crate::map::Rect;
 use crate::map::TerrainMask;
 use crate::map::Tile;
+use crate::map::TileRect;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionClass;
@@ -1058,7 +1059,7 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
         );
     }
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.area = [5, 5, 7, 7];
+    p.area = TileRect::new(5, 5, 7, 7);
     p.process_cliffs().unwrap();
     // (3, 3) and (9, 6) by the side rows, (6, 4) above, (6, 9) below; (8, 8) is a corner of
     // the frame's side rows, after (9, 6)'s row
@@ -1074,7 +1075,7 @@ fn the_cliffs_in_the_frame_about_the_area_go_into_the_hulls() {
     );
     // at the map's edge the frame stops at the last tile
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.area = [17, 17, 18, 18];
+    p.area = TileRect::new(17, 17, 18, 18);
     p.process_cliffs().unwrap();
     assert_eq!(hull_ids(&p), [vec![RecordId::from(object_id(8))]]);
 }
@@ -1107,13 +1108,14 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     w.insert(object_id(20), tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
     w.insert(object_id(21), tall(9.5, 9.5, 0.1, class::PREDATOR));
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.process_tile(Tile::new(-1, 9), [5, 5, 9, 9], None)
+    p.process_tile(Tile::new(-1, 9), TileRect::new(5, 5, 9, 9), None)
         .unwrap();
-    p.process_tile(Tile::new(20, 9), [5, 5, 9, 9], None)
+    p.process_tile(Tile::new(20, 9), TileRect::new(5, 5, 9, 9), None)
         .unwrap();
     assert_eq!(p.hulls, []);
     // the tile's box, its object, then the anchor's building, the anchor outside the area
-    p.process_tile(Tile::new(9, 9), [5, 5, 9, 9], None).unwrap();
+    p.process_tile(Tile::new(9, 9), TileRect::new(5, 5, 9, 9), None)
+        .unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![
@@ -1128,7 +1130,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     );
     // the anchor inside the area: its tile's own turn takes the building
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.process_tile(Tile::new(9, 9), [5, 5, 10, 10], None)
+    p.process_tile(Tile::new(9, 9), TileRect::new(5, 5, 10, 10), None)
         .unwrap();
     assert_eq!(
         hull_ids(&p),
@@ -1140,14 +1142,26 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     // into a given hull, once; an ignored tile's box stays out
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.hulls = vec![Hull::default()];
-    p.process_tile(Tile::new(3, 3), [0, 0, 5, 5], Some(HullIndex::new(0)))
-        .unwrap();
-    p.process_tile(Tile::new(3, 3), [0, 0, 5, 5], Some(HullIndex::new(0)))
-        .unwrap();
+    p.process_tile(
+        Tile::new(3, 3),
+        TileRect::new(0, 0, 5, 5),
+        Some(HullIndex::new(0)),
+    )
+    .unwrap();
+    p.process_tile(
+        Tile::new(3, 3),
+        TileRect::new(0, 0, 5, 5),
+        Some(HullIndex::new(0)),
+    )
+    .unwrap();
     assert_eq!(hull_ids(&p), [vec![tile_record_id(Tile::new(3, 3))]]);
     p.ignore.push(tile_record_id(Tile::new(9, 9)));
-    p.process_tile(Tile::new(9, 9), [5, 5, 10, 10], Some(HullIndex::new(0)))
-        .unwrap();
+    p.process_tile(
+        Tile::new(9, 9),
+        TileRect::new(5, 5, 10, 10),
+        Some(HullIndex::new(0)),
+    )
+    .unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![
@@ -1196,9 +1210,9 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     );
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.hulls = vec![Hull::default()];
-    p.area = [-1, 5, 9, 5];
+    p.area = TileRect::new(-1, 5, 9, 5);
     p.build_hulls().unwrap();
-    assert_eq!(p.area, [0, 5, 9, 5]);
+    assert_eq!(p.area, TileRect::new(0, 5, 9, 5));
     let t = |x: i32| tile_record_id(Tile::new(x, 5));
     // the run 8..10 (the area ends at 9) overlaps object 32's hull and joins it; its tile 8
     // is blocked by its static bit alone, which the tile's box test (the mask's byte) does
@@ -1222,7 +1236,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     );
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2)
         .including(&[object_id(33)]);
-    p.area = [0, 5, 2, 5];
+    p.area = TileRect::new(0, 5, 2, 5);
     p.build_hulls().unwrap();
     assert_eq!(
         hull_ids(&p),
@@ -1434,7 +1448,7 @@ fn a_new_pather_holds_the_constructor_s_state() {
         assert_eq!((head.parent, head.next, head.prev), (None, None, None));
     }
     assert_eq!(p.closed, [Vec::<usize>::new(), Vec::new()]);
-    assert_eq!((p.area, p.bounds), ([-1; 4], Rect::default()));
+    assert_eq!((p.area, p.bounds), (NO_AREA, Rect::default()));
     assert_eq!(p.exits, vec![Waypoints::default(); PATHS]);
     assert_eq!(p.entrances, vec![Waypoints::default(); PATHS]);
     assert_eq!(
@@ -1453,7 +1467,7 @@ fn a_new_pather_holds_the_constructor_s_state() {
 fn the_pather_s_float_tests_take_the_game_s_nan_paths() {
     let mut w = open_world();
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.area = [2, 2, 5, 5];
+    p.area = TileRect::new(2, 2, 5, 5);
     assert!(p.in_area(Point::new(f32::NAN, 3.0)));
     assert!(p.in_area(Point::new(2.2, 5.8)));
     assert!(!p.in_area(Point::new(2.1, 3.0)));
@@ -1592,7 +1606,7 @@ fn the_hull_search_goes_around_a_wall_to_the_target() {
             0.1,
         )
         .unwrap();
-    assert_eq!(p.area, [0, 3, 14, 7]);
+    assert_eq!(p.area, TileRect::new(0, 3, 14, 7));
     assert_eq!(
         p.hulls[0].points,
         [
@@ -1682,7 +1696,7 @@ fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
 fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
     let mut w = walled(8, Point::new(4.9, 5.5));
     let box_hull = |p: &mut HullPather<'_>| {
-        p.area = [0, 0, 19, 19];
+        p.area = TileRect::new(0, 0, 19, 19);
         let h = p
             .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
             .unwrap();
@@ -1768,7 +1782,7 @@ fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
             TerrainMask::of_bits(6),
             0.2,
         );
-        p.area = [0, 0, 19, 19];
+        p.area = TileRect::new(0, 0, 19, 19);
         let h = p
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
             .unwrap();
@@ -1840,7 +1854,7 @@ fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range(
             TerrainMask::of_bits(6),
             0.2,
         );
-        p.area = [0, 0, 19, 19];
+        p.area = TileRect::new(0, 0, 19, 19);
         let h = p
             .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
             .unwrap();
@@ -1886,7 +1900,7 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
         TerrainMask::of_bits(6),
         0.2,
     );
-    p.area = [0, 0, 19, 19];
+    p.area = TileRect::new(0, 0, 19, 19);
     let h = p
         .add_shape(Point::new(4.8, 4.8), Point::new(6.2, 6.2))
         .unwrap();
@@ -2006,7 +2020,7 @@ fn a_kept_search_reuses_the_last_area_and_hulls() {
             0.1,
         )
         .unwrap();
-    assert_eq!(p.area, [0, 3, 14, 7]);
+    assert_eq!(p.area, TileRect::new(0, 3, 14, 7));
     // one pather borrows the world at a time: the kept state goes on to the next
     let kept = p.kept();
     let mut fresh = HullPather::new(
@@ -2037,7 +2051,7 @@ fn a_kept_search_reuses_the_last_area_and_hulls() {
     .with_kept(kept);
     // the hulls gone: a kept search builds none and finds no way around the wall
     p.hulls.clear();
-    p.area = [0, 2, 14, 8];
+    p.area = TileRect::new(0, 2, 14, 8);
     let (result, _) = p
         .find_keeping(
             Point::new(2.0, 5.5),
@@ -2046,7 +2060,10 @@ fn a_kept_search_reuses_the_last_area_and_hulls() {
             0.1,
         )
         .unwrap();
-    assert_eq!((result, p.area, p.hulls.len()), (3, [0, 2, 14, 8], 0));
+    assert_eq!(
+        (result, p.area, p.hulls.len()),
+        (3, TileRect::new(0, 2, 14, 8), 0)
+    );
     // not kept: the area and the hulls anew
     let (result, _) = p
         .find(
@@ -2056,7 +2073,10 @@ fn a_kept_search_reuses_the_last_area_and_hulls() {
             0.1,
         )
         .unwrap();
-    assert_eq!((result, p.area, p.hulls.len()), (1, [0, 3, 14, 7], 2));
+    assert_eq!(
+        (result, p.area, p.hulls.len()),
+        (1, TileRect::new(0, 3, 14, 7), 2)
+    );
 }
 
 /// `FindShortPath`'s search meets a node beyond the area: the area grows by two tiles each
@@ -2105,7 +2125,7 @@ fn a_node_beyond_the_area_grows_it_once() {
         .unwrap();
     // the first area (3..=10, 3..=7) held the wall's rows 3..=7; the corner (5.8, 2.8) lies
     // beyond it: grown, the area took row 8 into the wall's hull
-    assert_eq!(p.area, [1, 1, 12, 9]);
+    assert_eq!(p.area, TileRect::new(1, 1, 12, 9));
     assert_eq!(
         (p.hulls[0].min, p.hulls[0].max),
         (Point::new(5.8, 2.8), Point::new(7.2, 9.2))
@@ -2371,7 +2391,10 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
         )
         .unwrap();
     let kept = first.kept();
-    assert_eq!((kept.area, kept.hulls.len()), ([0, 3, 14, 7], 2));
+    assert_eq!(
+        (kept.area, kept.hulls.len()),
+        (TileRect::new(0, 3, 14, 7), 2)
+    );
     // a kept search from another start reuses them as they are
     let mut next = HullPather::new(
         &mut w,
@@ -2406,7 +2429,7 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
             0.1
         )
     );
-    assert_eq!(next_area, [0, 3, 14, 7]);
+    assert_eq!(next_area, TileRect::new(0, 3, 14, 7));
     // the constructor's state: no area, no hulls
     let none = HullPather::new(
         &mut w,
@@ -2416,7 +2439,7 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
         0.2,
     )
     .kept();
-    assert_eq!((none.area, none.hulls.len()), ([-1; 4], 0));
+    assert_eq!((none.area, none.hulls.len()), (NO_AREA, 0));
     let mut fresh = HullPather::new(
         &mut w,
         object_id(9171),
