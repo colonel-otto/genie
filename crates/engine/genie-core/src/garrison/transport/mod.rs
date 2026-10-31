@@ -164,7 +164,7 @@ pub(crate) struct TransportReads {
     /// The master's radii (x, y).
     pub(crate) radius: Footprint,
     /// The master's terrain restriction (`+0x606`).
-    pub(crate) restriction: i16,
+    pub(crate) restriction: Option<crate::map::RestrictionId>,
     /// The sprites a `MoveTo` the update's `set_state` makes takes when its maker gives none.
     pub(crate) defaults: MoveDefaults,
     /// The sprite its maker gives it ([`Ship::given`]).

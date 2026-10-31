@@ -76,7 +76,7 @@ impl Master {
             a::ROTATION_SPEED => stats.turn_time = self.turn_speed,
             a::TERRAIN_RESTRICTION_ID => {
                 // a restriction below 0 has no mask; the stats keep theirs
-                if let Ok(r) = usize::try_from(self.terrain_restriction) {
+                if let Some(r) = self.terrain_restriction {
                     stats.restriction = r;
                     if let Some(t) = terrain {
                         stats.restriction_mask = t.restriction_mask(r);

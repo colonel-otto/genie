@@ -189,7 +189,7 @@ pub(crate) struct MapShore<'a> {
     pub(super) pathing: &'a mut crate::pathing::Pathing,
     pub(super) tiles: &'a crate::map::spatial::Tiles,
     pub(super) map: GridSize,
-    pub(super) restriction: Option<usize>,
+    pub(super) restriction: Option<crate::map::RestrictionId>,
     pub(super) tile: Tile,
 }
 
@@ -203,7 +203,7 @@ impl<'a> MapShore<'a> {
         spatial: &'a crate::map::spatial::Spatial,
         zones: &'a mut crate::pathing::zones::Zones,
         pathing: &'a mut crate::pathing::Pathing,
-        restriction: i16,
+        restriction: Option<crate::map::RestrictionId>,
         position: Position,
     ) -> Result<Self, GenieError> {
         let terrain = spatial
@@ -216,7 +216,7 @@ impl<'a> MapShore<'a> {
             pathing,
             tiles: spatial.tiles(),
             map: spatial.map,
-            restriction: usize::try_from(restriction).ok(),
+            restriction,
             tile: Tile::new(cvttss2si(position.x()), cvttss2si(position.y())),
         })
     }
@@ -230,8 +230,7 @@ impl<'a> MapShore<'a> {
         };
         let values = self
             .terrain
-            .restrictions
-            .get(r)
+            .restriction(r)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let (w, h) = (self.map.width(), self.map.height());
         Ok(Some(self.zones.of(w, h, &self.terrain.kinds, values)?))

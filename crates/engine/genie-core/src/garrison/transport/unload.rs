@@ -301,11 +301,10 @@ impl crate::world::World {
             .as_ref()
             .ok_or(crate::pathing::zones::NO_TERRAIN)?;
         let (w, h) = (self.spatial.map.width(), self.spatial.map.height());
-        let zone_map = match usize::try_from(restriction) {
-            Ok(r) if zone != u32::MAX => {
+        let zone_map = match restriction {
+            Some(r) if zone != u32::MAX => {
                 let values = terrain
-                    .restrictions
-                    .get(r)
+                    .restriction(r)
                     .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
                 Some(self.zones.find(w, h, &terrain.kinds, values, false))
             }
@@ -321,8 +320,7 @@ impl crate::world::World {
             .as_ref()
             .ok_or(crate::pathing::zones::NO_TERRAIN)?;
         let _ = terrain
-            .restrictions
-            .get(moving.restriction)
+            .restriction(moving.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let unit = self.object(id).map(|(_, u)| u);
         let (grow, mask) = unit.and_then(|u| u.body.mover()).map_or_else(
@@ -355,8 +353,7 @@ impl crate::world::World {
                     .as_ref()
                     .ok_or(crate::pathing::zones::NO_TERRAIN)?;
                 let values = terrain
-                    .restrictions
-                    .get(moving.restriction)
+                    .restriction(moving.restriction)
                     .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
                 let placing = crate::production::spawn::Placing {
                     player: p,

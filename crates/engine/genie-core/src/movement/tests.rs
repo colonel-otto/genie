@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::spatial::RecordId;
@@ -71,7 +72,7 @@ fn stats() -> MoveStats {
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 0.5),
-        restriction: 7,
+        restriction: RestrictionId::named(7),
         restriction_mask: TerrainMask::of_bits(6),
         turn_time: 0.0,
         move_algorithm: 0,
@@ -508,7 +509,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     let walker = Walker {
         id: object_id(9171),
         radius: 0.6,
-        restriction: 0,
+        restriction: RestrictionId::named(0),
         mask: TerrainMask::of_bits(6),
     };
     let mut out = Path::default();

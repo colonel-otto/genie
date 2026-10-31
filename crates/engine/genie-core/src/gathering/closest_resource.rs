@@ -87,8 +87,7 @@ pub(crate) fn closest_resource_of(
                     "the map's zones without its terrain",
                 ))?;
                 let values = terrain
-                    .restrictions
-                    .get(restriction)
+                    .restriction(restriction)
                     .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
                 let zones = c.zones.of(w, h, &terrain.kinds, values)?;
                 let zone = |p: Position| zones.zone(p.x() as i32, p.y() as i32);

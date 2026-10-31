@@ -6,6 +6,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
@@ -819,7 +820,7 @@ fn walled_map(
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 0.5),
-        restriction: 0,
+        restriction: RestrictionId::named(0),
         restriction_mask: TerrainMask::of_bits(1),
         turn_time: 0.0,
         move_algorithm: 0,
@@ -1406,7 +1407,7 @@ fn standing() -> crate::movement::MoveStats {
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 2.0),
-        restriction: 0,
+        restriction: RestrictionId::named(0),
         restriction_mask: TerrainMask::ALL,
         turn_time: 0.0,
         move_algorithm: 0,
@@ -2473,19 +2474,19 @@ fn coast_world(ship: Point) -> World {
         speed: 1.1,
         base: 1.1,
         radius: Radii::new(0.5, 0.5, 2.0),
-        restriction: 1,
+        restriction: RestrictionId::named(1),
         ..standing()
     };
     for m in &mut t.masters {
         if let Some(s) = m.get_mut(SHIP) {
-            s.terrain_restriction = 1;
+            s.terrain_restriction = Some(RestrictionId::named(1));
             s.radius = Footprint::new(0.5, 0.5);
             s.tall = true;
             s.garrison = 5;
             s.moving = Some(sails);
         }
         if let Some(v) = m.get_mut(VILLAGER) {
-            v.terrain_restriction = 0;
+            v.terrain_restriction = Some(RestrictionId::named(0));
         }
     }
     let tiles: Vec<(u8, u8, i16)> = (0..30 * 20)

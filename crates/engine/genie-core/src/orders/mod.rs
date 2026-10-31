@@ -167,7 +167,7 @@ struct Splittable {
     moved_at: Point,
     state: u8,
     radius: f32,
-    restriction: Option<usize>,
+    restriction: Option<crate::map::RestrictionId>,
 }
 
 /// What the order splitter makes of an order's units (`FUN_140fd76d0`'s result at

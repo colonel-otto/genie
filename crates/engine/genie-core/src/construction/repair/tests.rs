@@ -117,6 +117,7 @@ fn masters() -> crate::objects::masters::Masters {
     crate::objects::masters::Masters::new([
         crate::objects::masters::Master {
             id: ids::HOUSE,
+            terrain_restriction: Some(crate::map::RestrictionId::named(0)),
             kind: master_type::BUILDING,
             class: class::BUILDING,
             hit_points: 550,
@@ -125,6 +126,7 @@ fn masters() -> crate::objects::masters::Masters {
         },
         crate::objects::masters::Master {
             id: ids::ID_35,
+            terrain_restriction: Some(crate::map::RestrictionId::named(0)),
             kind: master_type::COMBAT,
             class: class::SIEGE,
             hit_points: 175,

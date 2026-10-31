@@ -361,9 +361,11 @@ impl World {
         master: MasterId,
     ) -> Result<crate::map::TerrainMask, GenieError> {
         let restriction =
-            usize::try_from(self.master(p, master)?.terrain_restriction).map_err(|_| {
-                GenieError::unsupported("a terrain mask of a master without a restriction")
-            })?;
+            self.master(p, master)?
+                .terrain_restriction
+                .ok_or(GenieError::unsupported(
+                    "a terrain mask of a master without a restriction",
+                ))?;
         Ok(self
             .spatial
             .terrain
@@ -395,6 +397,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
+    use crate::map::RestrictionId;
     use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
@@ -454,7 +457,7 @@ mod tests {
             crate::objects::masters::Master {
                 id: master_id(4),
                 radius: Footprint::new(0.4, 0.4),
-                terrain_restriction: 0,
+                terrain_restriction: Some(RestrictionId::named(0)),
                 ..crate::objects::masters::Master::default()
             },
         ])];

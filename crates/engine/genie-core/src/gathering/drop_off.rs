@@ -479,8 +479,7 @@ impl Unit {
             "the map's zones without its terrain",
         ))?;
         let values = terrain
-            .restrictions
-            .get(mover.stats.restriction)
+            .restriction(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let zones = c.zones.of(w, h, &terrain.kinds, values)?;
         let me = Me {

@@ -70,7 +70,7 @@ impl Unit {
                 .as_ref()
                 .map_or(UnitStance::AGGRESSIVE, |ai| ai.stance),
             standing: sprite_id(own.standing_sprite),
-            restriction: usize::try_from(own.terrain_restriction).ok(),
+            restriction: own.terrain_restriction,
         })
     }
 

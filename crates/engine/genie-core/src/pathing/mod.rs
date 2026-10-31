@@ -45,8 +45,8 @@ pub struct Pathing {
     pub game_type: u8,
     /// The restrictions the world's load gave planners (`FUN_140f7d310`, [`Pathing::register`]),
     /// in their order; None builds one for any restriction (a world made without a load).
-    planned: Option<Vec<usize>>,
-    planners: BTreeMap<usize, Planner>,
+    planned: Option<Vec<crate::map::RestrictionId>>,
+    planners: BTreeMap<crate::map::RestrictionId, Planner>,
     /// Tile rectangles (x0, y0, x1, y1) whose static marks changed since the planners last saw
     /// them.
     pending: Vec<[i16; 4]>,
@@ -236,9 +236,11 @@ impl Pathing {
 
     /// The world's load gives restriction `restriction` a planner (`FUN_140f7d310`), unless the
     /// lookup finds one ([`Pathing::planned_for`]).
-    pub fn register(&mut self, restriction: usize) {
+    pub fn register(&mut self, restriction: crate::map::RestrictionId) {
         let _ = self.planned.get_or_insert_with(Vec::new);
-        if self.restrictions.get(restriction).is_some() && self.planned_for(restriction).is_none() {
+        if self.restrictions.get(restriction.index()).is_some()
+            && self.planned_for(restriction).is_none()
+        {
             self.planned.get_or_insert_with(Vec::new).push(restriction);
         }
     }
@@ -248,10 +250,16 @@ impl Pathing {
     /// another length than the restriction's, or none, or each equal (`==`, so a NaN never) to
     /// its value. None when none is (`0`), for a restriction the data has not got, and without
     /// the load's planners.
-    fn planned_for(&self, restriction: usize) -> Option<usize> {
-        let values = self.restrictions.get(restriction)?;
+    fn planned_for(
+        &self,
+        restriction: crate::map::RestrictionId,
+    ) -> Option<crate::map::RestrictionId> {
+        let values = self.restrictions.get(restriction.index())?;
         self.planned.as_ref()?.iter().copied().find(|&r| {
-            let own = self.restrictions.get(r).map_or(&[][..], Vec::as_slice);
+            let own = self
+                .restrictions
+                .get(r.index())
+                .map_or(&[][..], Vec::as_slice);
             own.len() != values.len()
                 || own.is_empty()
                 || own.iter().zip(values).all(|(a, b)| a == b)
@@ -262,20 +270,24 @@ impl Pathing {
     /// the load's planners whose restriction has the same values, else none (the slice builds it
     /// from the map on first use, `FUN_140f74f90`); the planners built before see the tiles'
     /// changes first. None for a restriction the data has not got.
-    pub fn planner(&mut self, restriction: usize, tiles: &Tiles) -> Option<&mut Planner> {
+    pub fn planner(
+        &mut self,
+        restriction: crate::map::RestrictionId,
+        tiles: &Tiles,
+    ) -> Option<&mut Planner> {
         let blocked = |x: i32, y: i32| tiles.word(x, y).is_some_and(|w| w & BLOCKED != 0);
         for rect in self.pending.drain(..) {
             for p in self.planners.values_mut() {
                 p.update(rect, &blocked);
             }
         }
-        let _ = self.restrictions.get(restriction)?;
+        let _ = self.restrictions.get(restriction.index())?;
         let key = match self.planned.as_ref() {
             None => restriction,
             Some(_) => self.planned_for(restriction)?,
         };
         if !self.planners.contains_key(&key) {
-            let passable = self.restrictions.get(key)?.clone();
+            let passable = self.restrictions.get(key.index())?.clone();
             let planner = Planner::new(self.size, self.terrain.clone(), passable, &blocked);
             let _ = self.planners.insert(key, planner);
         }
@@ -392,6 +404,7 @@ impl Pathing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::RestrictionId;
     use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
@@ -448,25 +461,50 @@ mod tests {
             ],
             ..Pathing::default()
         };
-        p.register(2);
-        p.register(0);
-        p.register(1);
-        assert_eq!(p.planned, Some(vec![2, 0]));
-        assert_eq!(p.planned_for(1), Some(0));
-        assert_eq!(p.planned_for(0), Some(0));
+        p.register(RestrictionId::named(2));
+        p.register(RestrictionId::named(0));
+        p.register(RestrictionId::named(1));
+        assert_eq!(
+            p.planned,
+            Some(vec![RestrictionId::named(2), RestrictionId::named(0)])
+        );
+        assert_eq!(
+            p.planned_for(RestrictionId::named(1)),
+            Some(RestrictionId::named(0))
+        );
+        assert_eq!(
+            p.planned_for(RestrictionId::named(0)),
+            Some(RestrictionId::named(0))
+        );
         // another length or none: the first planner
-        assert_eq!(p.planned_for(3), Some(2));
-        assert_eq!(p.planned_for(4), Some(2));
-        p.register(3);
-        p.register(4);
-        assert_eq!(p.planned, Some(vec![2, 0]));
+        assert_eq!(
+            p.planned_for(RestrictionId::named(3)),
+            Some(RestrictionId::named(2))
+        );
+        assert_eq!(
+            p.planned_for(RestrictionId::named(4)),
+            Some(RestrictionId::named(2))
+        );
+        p.register(RestrictionId::named(3));
+        p.register(RestrictionId::named(4));
+        assert_eq!(
+            p.planned,
+            Some(vec![RestrictionId::named(2), RestrictionId::named(0)])
+        );
         // a NaN equals nothing: a planner of its own
-        assert_eq!(p.planned_for(5), None);
-        p.register(5);
-        assert_eq!(p.planned, Some(vec![2, 0, 5]));
-        assert_eq!(p.planned_for(5), None);
+        assert_eq!(p.planned_for(RestrictionId::named(5)), None);
+        p.register(RestrictionId::named(5));
+        assert_eq!(
+            p.planned,
+            Some(vec![
+                RestrictionId::named(2),
+                RestrictionId::named(0),
+                RestrictionId::named(5)
+            ])
+        );
+        assert_eq!(p.planned_for(RestrictionId::named(5)), None);
         // a restriction the data has not got
-        assert_eq!(p.planned_for(9), None);
+        assert_eq!(p.planned_for(RestrictionId::named(9)), None);
     }
 
     /// 425906646's villagers walking to player 6's town centre 27171 (annexes 27172, 27173,

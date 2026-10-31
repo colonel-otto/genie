@@ -71,7 +71,10 @@ mod unit_terrain {
     fn a_units_master_gives_its_radius_and_terrain_restriction() {
         let save = save();
         let (radius, restriction) = unit_terrain(&save, 7).unwrap().unwrap();
-        assert_eq!((radius.to_bits(), restriction), (0.4_f32.to_bits(), 7));
+        assert_eq!(
+            (radius.to_bits(), restriction),
+            (0.4_f32.to_bits(), genie_core::map::RestrictionId::named(7))
+        );
     }
 
     /// No answer for an object the save does not hold, one without its master or a master

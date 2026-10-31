@@ -191,12 +191,7 @@ impl World {
         self.spatial
             .terrain
             .as_ref()
-            .and_then(|t| {
-                usize::try_from(site.terrain_restriction)
-                    .ok()
-                    .and_then(|r| t.restrictions.get(r))
-            })
-            .map(Vec::as_slice)
+            .and_then(|t| site.terrain_restriction.and_then(|r| t.restriction(r)))
             .ok_or(GenieError::unsupported(
                 "a foundation's terrain restriction the data file does not have",
             ))

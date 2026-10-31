@@ -90,7 +90,10 @@ pub fn mesh_owners_from_dump(text: &str) -> Vec<(ObjectId, u32)> {
 
 /// What the tile pathfinder reads of object `id` in a save: its master's x radius and terrain
 /// restriction (master `+0x5d8`, `+0x606`). None for an object the save does not hold.
-pub fn unit_terrain(save: &[u8], id: i32) -> Result<Option<(f32, usize)>, Error> {
+pub fn unit_terrain(
+    save: &[u8],
+    id: i32,
+) -> Result<Option<(f32, genie_core::map::RestrictionId)>, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
     for section in header.players() {
@@ -105,9 +108,10 @@ pub fn unit_terrain(save: &[u8], id: i32) -> Result<Option<(f32, usize)>, Error>
             else {
                 return Ok(None);
             };
-            return Ok(usize::try_from(m.terrain_restriction_mask_id)
-                .ok()
-                .map(|r| (m.radius_x, r)));
+            return Ok(
+                genie_core::map::RestrictionId::of_data(m.terrain_restriction_mask_id)
+                    .map(|r| (m.radius_x, r)),
+            );
         }
     }
     Ok(None)

@@ -36,7 +36,9 @@ impl Master {
             a::OCCLUSION_MODE => self.occlusion = low8(v),
             a::SIZE_Z => self.height = v,
             a::CAN_BE_BUILT_ON | a::BLAST_DEFENSE_LEVEL => self.blast_defense = low8(v),
-            a::TERRAIN_RESTRICTION_ID => self.terrain_restriction = low16(v),
+            a::TERRAIN_RESTRICTION_ID => {
+                self.terrain_restriction = crate::map::RestrictionId::of_data(low16(v));
+            }
             // `CVTTSS2SI RAX`, the low 32 bits
             a::UNIT_TRAIT => self.object_flags = cvttss2si_64(v) as u32,
             a::TRAIT_PIECE => {

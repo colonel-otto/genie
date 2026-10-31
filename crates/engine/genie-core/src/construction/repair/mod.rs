@@ -181,7 +181,7 @@ pub(crate) struct RepairReads {
     /// The master's standing sprite (`+0x470`), which slot 0x68 shows for none.
     pub(crate) standing: Option<i16>,
     /// The master's terrain restriction, whose mask its quick path takes.
-    pub(crate) restriction: Option<usize>,
+    pub(crate) restriction: Option<crate::map::RestrictionId>,
 }
 
 #[cfg(test)]

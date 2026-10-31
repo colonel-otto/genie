@@ -59,7 +59,10 @@ fn a_walker_moves_by_its_master_and_sprites() {
     assert_eq!(m.stats.speed.to_bits(), 2.0_f32.to_bits());
     assert_eq!(
         (m.stats.restriction, m.stats.restriction_mask),
-        (1, genie_core::map::TerrainMask::of_bits(0b11))
+        (
+            genie_core::map::RestrictionId::named(1),
+            genie_core::map::TerrainMask::of_bits(0b11)
+        )
     );
     assert_eq!(m.angle.to_bits(), 0.25_f32.to_bits());
     assert!(m.velocity.is_none() && m.paths.is_empty());

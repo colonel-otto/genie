@@ -311,8 +311,7 @@ fn shore(
         .as_ref()
         .ok_or(crate::pathing::zones::NO_TERRAIN)?;
     let values = terrain
-        .restrictions
-        .get(stats.restriction)
+        .restriction(stats.restriction)
         .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
     let (w, h) = (spatial.map.width(), spatial.map.height());
     let map = zones.of(w, h, &terrain.kinds, values)?;

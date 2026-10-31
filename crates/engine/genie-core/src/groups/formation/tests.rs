@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::map::RestrictionId;
 use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
@@ -70,7 +71,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         id,
         kind: master_type::COMBAT,
         formation_category: category,
-        terrain_restriction: 0,
+        terrain_restriction: Some(RestrictionId::named(0)),
         radius: Footprint::new(0.2, 0.2),
         ..crate::objects::masters::Master::default()
     };
@@ -615,7 +616,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
             let ghost = crate::objects::masters::Master {
                 id: crate::vision::ghost::GHOST_MASTER,
                 kind: DOPPELGANGER,
-                terrain_restriction: 1,
+                terrain_restriction: Some(RestrictionId::named(1)),
                 ..crate::objects::masters::Master::default()
             };
             *masters =

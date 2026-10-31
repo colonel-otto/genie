@@ -196,13 +196,21 @@ pub const fn terrain_class(flags: u8) -> u8 {
 }
 
 impl Terrain {
+    /// Restriction `restriction`'s values, one a terrain; none for a restriction the table lacks.
+    #[must_use]
+    pub fn restriction(&self, restriction: crate::map::RestrictionId) -> Option<&[f32]> {
+        self.restrictions
+            .get(restriction.index())
+            .map(Vec::as_slice)
+    }
+
     /// The terrain classes restriction `restriction` lets an object stand on
     /// (`FUN_141054630`'s table): the class bits ([`terrain_class`]) of the terrains whose value
     /// in it is above 0; none for a restriction the table lacks.
     #[must_use]
-    pub fn restriction_mask(&self, restriction: usize) -> TerrainMask {
+    pub fn restriction_mask(&self, restriction: crate::map::RestrictionId) -> TerrainMask {
         self.restrictions
-            .get(restriction)
+            .get(restriction.index())
             .map_or(TerrainMask::NONE, |values| {
                 TerrainMask::of_bits(
                     values

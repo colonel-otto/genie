@@ -261,11 +261,10 @@ pub(super) fn mover(
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
             radius,
-            restriction: usize::try_from(restriction)
-                .map_err(|_| GenieError::unsupported("a negative terrain restriction"))?,
-            restriction_mask: usize::try_from(restriction)
-                .ok()
-                .and_then(|r| table.terrain.masks().get(r))
+            restriction: genie_core::map::RestrictionId::of_field(restriction)?
+                .ok_or(GenieError::unsupported("a negative terrain restriction"))?,
+            restriction_mask: genie_core::map::RestrictionId::of_data(restriction)
+                .and_then(|r| table.terrain.masks().get(r.index()))
                 .copied()
                 .ok_or(GenieError::unsupported(
                     "a terrain restriction the data file does not have",

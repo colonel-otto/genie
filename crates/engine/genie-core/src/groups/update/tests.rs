@@ -73,6 +73,7 @@ fn world() -> World {
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
     let master = Master {
         id: master_id(4),
+        terrain_restriction: Some(crate::map::RestrictionId::named(0)),
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         hit_points: 60,

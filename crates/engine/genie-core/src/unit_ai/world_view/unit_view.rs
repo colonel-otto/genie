@@ -29,7 +29,7 @@ impl UnitView<'_, '_> {
             others: owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
             every: &self.c.w.masters,
-            restriction: -1,
+            restriction: None,
             unit: &*self.unit,
             attributes: &self.c.w.players.player(self.player)?.attributes,
             relations: &self.c.w.players.player(self.player)?.relations,

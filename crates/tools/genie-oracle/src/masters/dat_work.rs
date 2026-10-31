@@ -120,7 +120,7 @@ pub(super) fn dat_work(
         copy_id: MasterId::of_data(unit.copy_id),
         base_id: MasterId::of_data(base_id(unit.base_id)),
         class: genie_core::objects::masters::ClassId::of_master(unit.class),
-        terrain_restriction: unit.terrain_restriction,
+        terrain_restriction: genie_core::map::RestrictionId::of_field(unit.terrain_restriction)?,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),
         radius: Radii::from(unit.collision_size).ground(),
         tall: 0.0 < Radii::from(unit.collision_size).z(),

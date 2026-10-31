@@ -52,7 +52,7 @@ pub(crate) struct WorldPicker<'a> {
     /// Every player's masters.
     pub(crate) every: &'a [Masters],
     /// The unit's master's terrain restriction (`+0x606`).
-    pub(crate) restriction: i16,
+    pub(crate) restriction: Option<crate::map::RestrictionId>,
     /// The unit itself.
     pub(crate) unit: &'a Unit,
     /// Its owner's attributes, diplomacy and AI settings.
@@ -481,8 +481,9 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             .terrain
             .as_ref()
             .ok_or(crate::pathing::hull_path::NO_TERRAIN)?;
-        let restriction = usize::try_from(self.restriction)
-            .map_err(|_| crate::pathing::hull_path::NO_RESTRICTION)?;
+        let restriction = self
+            .restriction
+            .ok_or(crate::pathing::hull_path::NO_RESTRICTION)?;
         let mask = terrain.restriction_mask(restriction);
         crate::pathing::hull_path::quick_reach(
             spatial,

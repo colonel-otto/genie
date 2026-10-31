@@ -270,7 +270,7 @@ pub(super) fn may_plan(
 pub(crate) struct Walker {
     pub(crate) id: ObjectId,
     pub(crate) radius: f32,
-    pub(crate) restriction: usize,
+    pub(crate) restriction: crate::map::RestrictionId,
     pub(crate) mask: crate::map::TerrainMask,
 }
 

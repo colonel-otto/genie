@@ -229,8 +229,7 @@ impl UnitView<'_, '_> {
                 "the map's zones without its terrain",
             ))?;
         let values = terrain
-            .restrictions
-            .get(mover.stats.restriction)
+            .restriction(mover.stats.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let zones = self
             .c

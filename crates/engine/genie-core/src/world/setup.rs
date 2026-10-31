@@ -86,7 +86,7 @@ impl World {
                 .masters
                 .first()
                 .and_then(|m| m.get(master))
-                .and_then(|m| usize::try_from(m.terrain_restriction).ok())
+                .and_then(|m| m.terrain_restriction)
             {
                 self.pathing.register(r);
             }

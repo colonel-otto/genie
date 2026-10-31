@@ -20,6 +20,7 @@ use crate::map::Offset;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::spatial::{Placed, Spatial};
@@ -386,6 +387,7 @@ pub(crate) fn builder_masters() -> Masters {
     };
     let villager = |id, group, tasks: Vec<Task>| Master {
         id,
+        terrain_restriction: Some(RestrictionId::named(0)),
         kind: master_type::COMBAT,
         class: class::VILLAGER,
         task_by_group: group,
@@ -410,7 +412,7 @@ pub(crate) fn builder_masters() -> Masters {
             turn_radius: 0.0,
             turn_radius_speed: f32::MAX,
             radius: Radii::new(0.2, 0.2, 0.5),
-            restriction: 7,
+            restriction: RestrictionId::named(7),
             restriction_mask: TerrainMask::of_bits(6),
             turn_time: 0.0,
             move_algorithm: 0,
@@ -444,6 +446,7 @@ pub(crate) fn builder_masters() -> Masters {
         villager(VILLAGER_FEMALE, 2, base()),
         Master {
             id: ids::HOUSE,
+            terrain_restriction: Some(RestrictionId::named(0)),
             kind: BUILDING,
             class: class::BUILDING,
             task_by_group: 0,
@@ -6509,6 +6512,7 @@ fn an_unmodelled_action_stops_its_player_unless_the_object_dies_first() {
 fn farm_master() -> Master {
     Master {
         id: ids::FARM,
+        terrain_restriction: Some(RestrictionId::named(0)),
         kind: BUILDING,
         class: class::FARM,
         work_rate: 0.4,
@@ -9762,7 +9766,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     );
     placeable(&mut t);
     let mut walker = crate::gathering::hunt::tests::walker();
-    walker.stats.restriction = 0;
+    walker.stats.restriction = RestrictionId::named(0);
     let mut hunter = Unit {
         id: object_id(40),
         body: crate::objects::layers::Body::new(Position::new(10.5, 10.5, 0.0), None, Some(walker)),
@@ -13487,7 +13491,7 @@ const fn house_moves() -> crate::movement::MoveStats {
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
         radius: Radii::new(1.0, 1.0, 1.0),
-        restriction: 7,
+        restriction: RestrictionId::named(7),
         restriction_mask: TerrainMask::of_bits(6),
         turn_time: 0.0,
         move_algorithm: 0,
@@ -13693,6 +13697,7 @@ fn farm_masters() -> Masters {
     };
     let farm = Master {
         id: ids::FARM,
+        terrain_restriction: Some(RestrictionId::named(0)),
         base_id: Some(ids::FARM),
         class: class::FARM,
         available: true,

@@ -72,7 +72,7 @@ impl World {
             .spatial
             .terrain
             .as_ref()
-            .and_then(|t| t.restrictions.get(moving.restriction))
+            .and_then(|t| t.restriction(moving.restriction))
             .ok_or(GenieError::unsupported(
                 "a unit's terrain restriction the data file does not have",
             ))?;

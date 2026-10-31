@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
+use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
@@ -636,14 +637,14 @@ fn rounder(at: BVector) -> detour::Rounder<'static> {
         walker: crate::movement::Walker {
             id: object_id(10),
             radius: 0.1,
-            restriction: 0,
+            restriction: RestrictionId::named(0),
             mask: TerrainMask::of_bits(2),
         },
         computer: false,
         at,
         here: at.position(),
         mask: TerrainMask::of_bits(2),
-        restriction: 0,
+        restriction: RestrictionId::named(0),
         grow: 0.1,
         radius: Footprint::new(0.2, 0.2),
         height: 0.5,

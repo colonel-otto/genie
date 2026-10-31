@@ -184,7 +184,7 @@ pub struct MoveStats {
     pub radius: Radii,
     /// The master's terrain restriction (`+0x606`) and the terrain classes it lets the unit stand
     /// on (its mask).
-    pub restriction: usize,
+    pub restriction: crate::map::RestrictionId,
     /// The terrain classes the restriction lets it stand on (its mask).
     pub restriction_mask: crate::map::TerrainMask,
     /// The master's turn time (`+0x758`, the `.dat`'s `rotation_speed`): the seconds between the

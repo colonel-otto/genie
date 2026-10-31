@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::Radii;
+use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -207,7 +208,7 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
         ),
         (
             a::TERRAIN_RESTRICTION_ID,
-            |m| f32::from(m.terrain_restriction),
+            |m| f32::from(RestrictionId::field(m.terrain_restriction)),
             [3.0, 3.0, 3.0],
         ),
         (a::UNIT_TRAIT, |m| m.object_flags as f32, [3.0, 5.0, 5.0]),
@@ -988,7 +989,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
         turn_radius: 0.0,
         turn_radius_speed: f32::MAX,
         radius: Radii::new(0.2, 0.2, 2.0),
-        restriction: 7,
+        restriction: RestrictionId::named(7),
         restriction_mask: TerrainMask::of_bits(1),
         turn_time: 0.0,
         move_algorithm: 0,

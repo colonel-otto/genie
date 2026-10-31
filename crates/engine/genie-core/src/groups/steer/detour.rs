@@ -400,7 +400,7 @@ impl World {
     /// record; its result, None without a planner.
     pub(super) fn round_plan(
         &mut self,
-        restriction: usize,
+        restriction: crate::map::RestrictionId,
         from: Point,
         to: BVector,
         record: &mut Path,
@@ -435,7 +435,7 @@ pub(super) struct Rounder<'d> {
     pub(super) at: BVector,
     pub(super) here: Position,
     pub(super) mask: crate::map::TerrainMask,
-    pub(super) restriction: usize,
+    pub(super) restriction: crate::map::RestrictionId,
     pub(super) grow: f32,
     pub(super) radius: Footprint,
     pub(super) height: f32,

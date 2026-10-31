@@ -4,6 +4,7 @@ use crate::groups::FormationKind;
 use crate::groups::GroupTarget;
 use crate::map::Footprint;
 use crate::map::GridSize;
+use crate::map::RestrictionId;
 use crate::math::fmath::BVector;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
@@ -866,6 +867,7 @@ fn soldiers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
     // no sprites: a MoveTo the masters make shows none
     let master = |id, formation_category| Master {
         id,
+        terrain_restriction: Some(RestrictionId::named(0)),
         kind: master_type::COMBAT,
         formation_category,
         move_sprite: -1,
@@ -3184,7 +3186,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
         moved_at: position.ground(),
         state: 2,
         radius: 0.2,
-        restriction: Some(1),
+        restriction: Some(RestrictionId::named(1)),
     };
     // no planner: the distance decides
     let mut none = |_: &Splittable, _: &Splittable| Ok(None);

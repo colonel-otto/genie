@@ -803,7 +803,7 @@ mod stack_tests {
                         turn_radius: 0.0,
                         turn_radius_speed: f32::MAX,
                         radius: Radii::new(2.0, 2.0, 0.0),
-                        restriction: 0,
+                        restriction: crate::map::RestrictionId::named(0),
                         restriction_mask: crate::map::TerrainMask::ALL,
                         turn_time: 0.0,
                         move_algorithm: 0,

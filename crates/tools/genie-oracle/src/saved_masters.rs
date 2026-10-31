@@ -352,7 +352,8 @@ pub(super) fn work_masters(
             MasterId::of_data(s.death_spawn_obj_id),
             MasterId::of_data(s.death_spawn_obj_id2),
         ];
-        work.terrain_restriction = s.terrain_restriction_mask_id;
+        work.terrain_restriction =
+            genie_core::map::RestrictionId::of_data(s.terrain_restriction_mask_id);
         work.life = table.get(civ, s.copy_id());
         work.moving = moving_stats(m, s, civ, table);
         Some(Ok(work))
@@ -381,7 +382,7 @@ pub(super) fn moving_stats(
     let base = moving.rge_master_animated_object.max_speed;
     let factor = table.sprite_speed(sprite).unwrap_or(0.0);
     let turning = table.turning(civ, s.copy_id())?;
-    let restriction = usize::try_from(s.terrain_restriction_mask_id).ok()?;
+    let restriction = genie_core::map::RestrictionId::of_data(s.terrain_restriction_mask_id)?;
     let facets = table.graphics.get(&moving.move_sprite_id).map(|g| g.facets);
     Some(genie_core::movement::MoveStats {
         fly_mode: table.fly_mode(civ, s.copy_id()).unwrap_or(0),
@@ -392,7 +393,7 @@ pub(super) fn moving_stats(
         turn_radius_speed: f32::MAX,
         radius: Radii::new(s.radius_x, s.radius_y, s.radius_z),
         restriction,
-        restriction_mask: *table.terrain.masks().get(restriction)?,
+        restriction_mask: *table.terrain.masks().get(restriction.index())?,
         turn_time: moving.turn_speed,
         move_algorithm: turning.move_algorithm,
         min_collision: turning.min_collision_size_multiplier,
