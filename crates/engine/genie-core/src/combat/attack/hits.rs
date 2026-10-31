@@ -9,6 +9,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
+use crate::world::Seconds;
 use crate::{GenieError, combat::damage};
 
 /// Where a hit comes from: the place it lands (`FUN_141084230`'s x, y, z: the attacker's for a
@@ -48,13 +49,13 @@ pub(super) enum AfterHit {
 /// (the sprite list's slot 8: the node's `+0x24`), compared as signed shorts.
 pub(super) fn after_hit(
     ranged: bool,
-    timer: f32,
+    timer: Seconds,
     target: bool,
     interrupt: i16,
     fire: i16,
     frame: i16,
 ) -> AfterHit {
-    if ranged && crate::math::fmath::at_most_or_unordered(timer, 0.0) {
+    if ranged && crate::math::fmath::at_most_or_unordered(timer.get(), 0.0) {
         if !target {
             return AfterHit::Done;
         }

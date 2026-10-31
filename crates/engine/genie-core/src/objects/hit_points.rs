@@ -9,6 +9,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use genie_diff::Diff;
 
 /// A hero's regeneration (`DAT_142ed06a8`, a minute's hit points).
@@ -152,7 +153,7 @@ impl Unit {
     /// come off (slot 0xb0, [`Unit::lose_hp`]) at most its hit points with its powerups' room
     /// (slot 0xc0). Then an object at its most (slot 0xc0 at least slot 200) has the armor its
     /// charge's hits took back (`+0x9e4` and `+0x9e6`, one dword, zeroed).
-    pub(crate) fn regenerate(&mut self, master: &Master, dt_seconds: f32) {
+    pub(crate) fn regenerate(&mut self, master: &Master, dt_seconds: Seconds) {
         use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
         let rate = regeneration_rate(master, self);
         if below_or_unordered(self.life.hp, REGENERATION_LEAST_HP)
@@ -166,13 +167,13 @@ impl Unit {
         let held = dt_seconds + self.regen_timer;
         let per = (REGENERATION_MINUTE / rate).abs();
         let points = if below_or_unordered(REGENERATION_EPSILON, per.abs()) {
-            held / per
+            held.get() / per
         } else {
             0.0
         };
         let fraction = points % REGENERATION_POINT;
         let whole = points - fraction;
-        self.regen_timer = fraction * per;
+        self.regen_timer = Seconds::new(fraction * per);
         if at_most_or_unordered(whole, 0.0) {
             return;
         }

@@ -16,6 +16,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
 use crate::objects::unit::Unit;
 use crate::players::attribute;
+use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -54,7 +55,7 @@ impl GatherAction {
                 "a gather's set_state 6 on master 1893 or 1897",
             ));
         }
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         Self::show(c, unit, self.walk_sprite(unit, r).or(r.sprites.standing));
         Ok(Next::Stay)
     }
@@ -76,7 +77,7 @@ impl GatherAction {
     pub(super) fn set_work(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
         self.state = GatherState::Work;
         self.worked = true;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         if !r.farm_stops {
             let at = unit.body.position();
             self.gather_at = at.ground();
@@ -175,12 +176,12 @@ impl GatherAction {
         r: &GatherReads,
         site: Option<crate::gathering::hunt::DropOff>,
     ) -> Result<Dropped, GenieError> {
-        if self.timer < 0.0 {
+        if self.timer < Seconds::ZERO {
             self.timer += c.dt.seconds();
-            if self.timer < 0.0 {
+            if self.timer < Seconds::ZERO {
                 return Ok(Dropped::Going);
             }
-            self.timer = 0.0;
+            self.timer = Seconds::ZERO;
             return Ok(Dropped::Again);
         }
         // the list's code: 0 walks or waits, 1 and 2 end it; 3 to 5 wait at random
@@ -216,7 +217,7 @@ impl GatherAction {
     /// `LAB_140a8ef80`: the timer takes a draw of the Action stream (`GetRandFloat0to1`) less a
     /// half, and the unit's animation stops at once (`FUN_141161850`: its `+0x7b8` 0).
     pub(super) fn random_wait(&mut self, c: &mut Step<'_>, unit: &mut Unit) {
-        self.timer = c.w.streams.get(Stream::Action).float01() - WAIT_SHIFT;
+        self.timer = Seconds::new(c.w.streams.get(Stream::Action).float01() - WAIT_SHIFT);
         unit.body.set_anim_speed(0.0);
     }
 }

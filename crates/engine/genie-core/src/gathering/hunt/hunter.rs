@@ -18,6 +18,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitStance;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
+use crate::world::Seconds;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -78,7 +79,7 @@ impl Unit {
     pub(crate) fn tree_lost(&self, c: &Step<'_>) -> bool {
         self.actions.hunt().is_some_and(|h| {
             h.state == HuntState::Walk
-                && 0.0 <= h.timer
+                && Seconds::ZERO <= h.timer
                 && h.move_to.is_some_and(|m| {
                     m.state == MoveTo::Failed
                         || m.target.is_some_and(|t| {
@@ -110,16 +111,20 @@ impl Unit {
         let (state, timer, target) = self
             .actions
             .hunt()
-            .map_or((None, 0.0, None), |h| (Some(h.state), h.timer, h.target));
+            .map_or((None, Seconds::ZERO, None), |h| {
+                (Some(h.state), h.timer, h.target)
+            });
         match state {
-            Some(HuntState::Drop) if timer < 0.0 => self.hunt_drop_wait(c)?,
+            Some(HuntState::Drop) if timer < Seconds::ZERO => self.hunt_drop_wait(c)?,
             Some(HuntState::Drop) => return self.hunt_drop_walk(c, me),
             // State 13: the hunt failed; its next update tells its unit AI (notify 0x1f9) and ends it.
             Some(HuntState::Failed) => return self.hunt_failed(),
             Some(HuntState::WalkPoint | HuntState::WalkSearch) => self.hunt_point_walk(c, me)?,
             Some(HuntState::Search) => self.hunt_search_wait(c)?,
             Some(HuntState::Idle) => self.hunt_idle()?,
-            Some(HuntState::Walk) if target.is_none() && timer < 0.0 => self.hunt_wait_walk(c)?,
+            Some(HuntState::Walk) if target.is_none() && timer < Seconds::ZERO => {
+                self.hunt_wait_walk(c)?;
+            }
             Some(HuntState::Lead) if target.is_none() => {
                 // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
                 self.actions.hunt_mut().expect("above").state = HuntState::Search;
@@ -139,8 +144,8 @@ impl Unit {
     pub(crate) fn hunt_drop_wait(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         hunt.timer += c.dt.seconds();
-        if 0.0 <= hunt.timer {
-            hunt.timer = 0.0;
+        if Seconds::ZERO <= hunt.timer {
+            hunt.timer = Seconds::ZERO;
             let site = hunt.carry_to.take();
             self.hunt_release(c, [site])?;
             self.hunt_drop_off(c)?;
@@ -293,9 +298,9 @@ impl Unit {
     /// AI is told again (notify 0x202, [`Unit::hunt_search_notify`]).
     pub(crate) fn hunt_search_wait(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
-        if hunt.timer < 0.0 {
+        if hunt.timer < Seconds::ZERO {
             hunt.timer += c.dt.seconds();
-            if 0.0 <= hunt.timer {
+            if Seconds::ZERO <= hunt.timer {
                 hunt.timer = SEARCH_AGAIN;
                 self.hunt_search_notify(c)?;
             }

@@ -5,6 +5,7 @@ use genie_core::map::GridSize;
 use genie_core::map::Tile;
 use genie_core::objects::ListIndex;
 use genie_core::world::Millis;
+use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
 
 use crate::masters::{MasterTable, TerrainTable};
@@ -200,12 +201,10 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                 tracker: genie_core::players::tracker::Tracker::default(),
                 // +0x1378 is not saved
                 one_military_queued: false,
-                update_time: p.world_player().update_time,
-                gaia_update_time: p
-                    .player
-                    .gaia_player
-                    .as_deref()
-                    .map_or(0.0, |g| g.world_player_gaia.update_time),
+                update_time: Seconds::new(p.world_player().update_time),
+                gaia_update_time: p.player.gaia_player.as_deref().map_or(Seconds::ZERO, |g| {
+                    Seconds::new(g.world_player_gaia.update_time)
+                }),
                 escrow: p.world_player().base.escrow,
                 escrow_percentage: p.world_player().base.escrow_percentage,
                 sudden_death_eliminable: p.world_player().sudden_death_can_be_eliminated != 0,

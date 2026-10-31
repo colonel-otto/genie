@@ -20,6 +20,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::sprite::Graphic;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use genie_diff::Diff;
 
 /// A hunter's update without its Hunt: the caller's test.
@@ -65,7 +66,7 @@ const HERD_FAR: f32 = 900.0;
 /// (`DAT_142ed7180`).
 const LEAD_REACH: f32 = 2.25;
 /// The wait of a herder leading livestock (`set_state(10)`'s timer, `0xbf800000`).
-const LEAD_WAIT: f32 = -1.0;
+const LEAD_WAIT: Seconds = Seconds::new(-1.0);
 /// A face on dead livestock beyond the task's range plus this walks again (`DAT_142eb5690`).
 const GAP: f32 = crate::math::image::hunt::GAP;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
@@ -104,7 +105,7 @@ pub struct HuntAction {
     /// −1 for none.
     pub carry_to: Option<ObjectId>,
     /// `+0x44`: the state's timer (state 8 waits with it below 0 before it tries again).
-    pub timer: f32,
+    pub timer: Seconds,
     /// What it keeps of the livestock it leads to its drop site.
     pub lead: Lead,
 }

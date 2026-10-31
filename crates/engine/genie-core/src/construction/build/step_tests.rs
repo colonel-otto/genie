@@ -320,7 +320,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     let b = BuildAction {
         state: BuildState::Wait,
         move_to: None,
-        timer: 0.01,
+        timer: Seconds::new(0.01),
         ..started(ANNEX, Position::ORIGIN, 0.0, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), b);
@@ -521,7 +521,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     let b = BuildAction {
         state: BuildState::Wait,
         move_to: None,
-        timer: 0.916,
+        timer: Seconds::new(0.916),
         ..started(HOUSE, AT_HOUSE, 0.8, TASK)
     };
     // within the task's range of the place, so the walk ends without a path
@@ -571,7 +571,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
         point: Position::new(-1.0, -1.0, -1.0),
         task: MOVING_TASK,
         added: false,
-        timer: 0.0,
+        timer: Seconds::ZERO,
         site: None,
     };
     let mut t = site_world(class::VILLAGER, Position::new(30.0, 89.0, 0.0), b);
@@ -649,8 +649,8 @@ fn a_build_s_waiting_move_to_asks_again_at_its_delay() {
         move_to: Some(MoveToAction {
             wait: MoveWait {
                 state: MoveWaitState::Waiting,
-                timer: 0.5,
-                delay: 1.0,
+                timer: Seconds::new(0.5),
+                delay: Seconds::new(1.0),
             },
             ..walk_in(MoveTo::Waiting)
         }),
@@ -659,10 +659,16 @@ fn a_build_s_waiting_move_to_asks_again_at_its_delay() {
     let mut t = site_world(class::VILLAGER, Position::new(2.5, 2.5, 0.0), b);
     let _ = code(&mut t, 250);
     let walk = build(&t).move_to.unwrap();
-    assert_eq!((walk.state, walk.wait.timer), (MoveTo::Waiting, 0.75));
+    assert_eq!(
+        (walk.state, walk.wait.timer),
+        (MoveTo::Waiting, Seconds::new(0.75))
+    );
     let _ = code(&mut t, 250);
     let walk = build(&t).move_to.unwrap();
-    assert_eq!((walk.state, walk.wait.timer), (MoveTo::Start, 0.0));
+    assert_eq!(
+        (walk.state, walk.wait.timer),
+        (MoveTo::Start, Seconds::ZERO)
+    );
     // in reach now: its start arrives at once, no path asked
     put(&mut t, BUILDER, Position::new(11.6, 10.5, 0.0));
     let _ = code(&mut t, 250);
@@ -903,7 +909,7 @@ fn placing() -> BuildAction {
     BuildAction {
         state: BuildState::Wait,
         move_to: None,
-        timer: 0.01,
+        timer: Seconds::new(0.01),
         ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
     }
 }
@@ -1012,7 +1018,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
             );
             assert!(stands(&t));
         } else {
-            assert_eq!(b.timer, 1.0);
+            assert_eq!(b.timer, Seconds::new(1.0));
         }
     }
 }
@@ -1412,13 +1418,13 @@ fn a_builder_at_its_drop_site_gives_its_load_and_walks_back() {
     let b = build(&t);
     assert_eq!(
         (b.state, b.timer, walk_state(&t)),
-        (BuildState::Drop, -3.0, Some(MoveTo::Arrived))
+        (BuildState::Drop, Seconds::new(-3.0), Some(MoveTo::Arrived))
     );
     assert_eq!(builder(&t).body.anim_speed(), Some(0.0));
     assert_eq!(wood(&t).0, 10.0);
     let _ = code(&mut t, 250);
-    assert_eq!(build(&t).timer, -2.75);
-    own(&mut t, BUILDER).actions.build_mut().unwrap().timer = -0.1;
+    assert_eq!(build(&t).timer, Seconds::new(-2.75));
+    own(&mut t, BUILDER).actions.build_mut().unwrap().timer = Seconds::new(-0.1);
     let _ = code(&mut t, 250);
     // its search again: the mill out of reach is still the nearest, a MoveTo to it again
     let b = build(&t);
@@ -1426,7 +1432,7 @@ fn a_builder_at_its_drop_site_gives_its_load_and_walks_back() {
         (b.state, b.timer, b.site, walk_state(&t)),
         (
             BuildState::Drop,
-            0.0,
+            Seconds::ZERO,
             Some(object_id(300)),
             Some(MoveTo::Start)
         )

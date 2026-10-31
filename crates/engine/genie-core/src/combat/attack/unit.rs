@@ -13,6 +13,7 @@ use crate::objects::masters::ClassId;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -150,10 +151,10 @@ impl Unit {
     pub(crate) fn run_down_attack_timers(&mut self, c: &Step<'_>) {
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
         // `+0x87c` (a terrain look's rate, [`crate::combat::abilities`])
-        if 0.0 < self.attack_timer {
+        if Seconds::ZERO < self.attack_timer {
             self.attack_timer -= c.dt.seconds() * self.abilities.attack_rate;
-            if self.attack_timer < 0.0 {
-                self.attack_timer = 0.0;
+            if self.attack_timer < Seconds::ZERO {
+                self.attack_timer = Seconds::ZERO;
             }
         }
         // then a reload world time past ends the volley under way (`+0xa04`) and is none

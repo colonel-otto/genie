@@ -24,6 +24,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::sprite::sprite_id;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use genie_diff::Diff;
 
 mod action;
@@ -113,7 +114,7 @@ pub struct RepairAction {
     /// 4, 6 and 7), or the point the unit was sent to.
     pub point: Position,
     /// `+0x44`: state 10's wait.
-    pub timer: f32,
+    pub timer: Seconds,
     /// The task it repairs with (`+0x48`).
     pub task: RepairTask,
     /// The `MoveTo`'s range toward the target: the unit's master's weapon range (`+0x828`).

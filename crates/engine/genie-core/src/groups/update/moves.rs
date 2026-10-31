@@ -373,7 +373,7 @@ impl World {
             let g = self.groups.held_mut(group)?;
             let timer = &mut g.members.checked_mut(i - 1)?.specific_move.timer;
             *timer -= dt;
-            if !crate::math::fmath::below_or_unordered(0.0, *timer) {
+            if !crate::math::fmath::below_or_unordered(0.0, timer.get()) {
                 g.members.checked_mut(i - 1)?.specific_move = SpecificMove {
                     path_id: -1,
                     reason: -1,
@@ -473,7 +473,7 @@ impl World {
     /// is [`Millis::seconds`]: the round trip gives the milliseconds back exactly for
     /// any update below 2^22 of them.
     pub(super) fn dt_ms(&self) -> Millis {
-        Millis::new((self.dt_seconds * 1000.0).round() as u32)
+        Millis::new((self.dt_seconds.get() * 1000.0).round() as u32)
     }
 }
 

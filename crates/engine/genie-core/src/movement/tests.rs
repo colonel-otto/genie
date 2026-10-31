@@ -104,7 +104,7 @@ fn level(level: u8, points: &[Point], state: PathState) -> PathData {
         state,
         range: 0.1,
         target: Some(object_id(10028)),
-        pause_time: 0.0,
+        pause_time: Seconds::ZERO,
         flags: 0,
         length: 0.0,
         created: WorldTime::from_millis(16360),
@@ -610,13 +610,13 @@ fn a_kept_hit_on_the_target_alone_is_kept_and_reaches_the_waypoint() {
     m.paths[0].target = Some(object_id(9175));
     let position = m.moved_at.vector();
     let waypoint = m.paths[0].point(1);
-    let projected = m.projected(m.direction_to(position, waypoint), DT);
+    let projected = m.projected(m.direction_to(position, waypoint), Seconds::new(DT));
     let avoided = m.avoid(
         &me,
         (&w, None),
         &[RecordId::from(object_id(9175))],
         projected,
-        DT,
+        Seconds::new(DT),
         (WorldTime::from_millis(16361), false),
     );
     let avoided = avoided.unwrap();
@@ -701,7 +701,7 @@ fn a_map_edge_s_record_is_a_hit_without_an_object() {
     m.paths[0].target = Some(object_id(9175));
     let position = m.moved_at.vector();
     let waypoint = m.paths[0].point(1);
-    let projected = m.projected(m.direction_to(position, waypoint), DT);
+    let projected = m.projected(m.direction_to(position, waypoint), Seconds::new(DT));
     let edge = RecordId::Edge(Tile::new(5, 3));
     let avoided = m
         .avoid(
@@ -709,7 +709,7 @@ fn a_map_edge_s_record_is_a_hit_without_an_object() {
             (&w, None),
             &[edge],
             projected,
-            DT,
+            Seconds::new(DT),
             (WorldTime::from_millis(16361), false),
         )
         .unwrap();
@@ -723,7 +723,7 @@ fn a_map_edge_s_record_is_a_hit_without_an_object() {
             (&w, None),
             &[edge, RecordId::from(object_id(9175))],
             projected,
-            DT,
+            Seconds::new(DT),
             (WorldTime::from_millis(16361), false),
         )
         .unwrap();
@@ -934,13 +934,19 @@ fn a_nan_most_turns_the_whole_angle_unclipped() {
     m.forward = BVector::new(1.0, 0.0, 0.0);
     m.right = BVector::new(0.0, 0.0, -1.0);
     m.stats.turn_rate = f32::INFINITY;
-    assert_eq!(m.steer(BVector::new(0.0, 0.0, 1.0), 0.0), Ok(false));
+    assert_eq!(
+        m.steer(BVector::new(0.0, 0.0, 1.0), Seconds::ZERO),
+        Ok(false)
+    );
     assert!(m.forward.get().iter().all(|c| c.is_finite()));
     assert!(0.99 < m.forward.y());
     // a small most clips the turn
     m.forward = BVector::new(1.0, 0.0, 0.0);
     m.stats.turn_rate = 1.0;
-    assert_eq!(m.steer(BVector::new(0.0, 0.0, 1.0), 0.02), Ok(true));
+    assert_eq!(
+        m.steer(BVector::new(0.0, 0.0, 1.0), Seconds::new(0.02)),
+        Ok(true)
+    );
     assert!(m.forward.y().abs() < 0.03);
 }
 
@@ -959,9 +965,9 @@ fn a_turn_toward_a_direction_is_signed_and_clipped_by_the_turn_rate() {
     assert_eq!(turn, -std::f32::consts::FRAC_PI_2);
     // a NaN most turns the whole angle (JBE on unordered)
     assert!(!m.turn_toward(x, z, f32::NAN).1);
-    assert_eq!(m.turn_dt(0.02), 0.02);
+    assert_eq!(m.turn_dt(Seconds::new(0.02)), 0.02);
     m.stats.fast_turn = true;
-    assert_eq!(m.turn_dt(0.02), 0.02 * 100.0);
+    assert_eq!(m.turn_dt(Seconds::new(0.02)), 0.02 * 100.0);
 }
 
 /// Slot 184 (`FUN_141163140`): the yaw turns the forward vector about the up axis and
@@ -1024,9 +1030,9 @@ fn the_orientation_speed_and_pause_slots() {
     assert!(!m.paused());
     m.paths = vec![PathData::without_path()];
     assert!(!m.paused());
-    m.paths[0].pause_time = 0.5;
+    m.paths[0].pause_time = Seconds::new(0.5);
     assert!(m.paused());
-    m.paths[0].pause_time = f32::NAN;
+    m.paths[0].pause_time = Seconds::new(f32::NAN);
     assert!(!m.paused());
 }
 
@@ -1164,10 +1170,13 @@ fn a_loop_s_reached_waypoint_moves_on_and_its_first_ends_the_step() {
     // scout 7227 in update 5429 turns by π/2 there)
     let mut expect = m.clone();
     let flat = fmath::normalize(expect.forward.with_height(0.0));
-    let (turn, _) = expect.turn_toward(flat, BVector::ZERO, expect.turn_dt(DT));
+    let (turn, _) = expect.turn_toward(flat, BVector::ZERO, expect.turn_dt(Seconds::new(DT)));
     expect.yaw(turn, expect.facets()).unwrap();
     assert_ne!(turn, 0.0);
-    assert_eq!(m.motion(&me, DT, &mut world, None), Ok(Motion::Moving));
+    assert_eq!(
+        m.motion(&me, Seconds::new(DT), &mut world, None),
+        Ok(Motion::Moving)
+    );
     assert_eq!(
         (m.paths[0].waypoint, m.paths[0].state),
         (0, PathState::WantsPath)
@@ -1191,7 +1200,12 @@ fn a_walk_whose_target_is_gone_walks_as_to_a_point() {
             group: None,
             action_state: 0,
         };
-        let motion = m.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None);
+        let motion = m.motion(
+            &me,
+            Seconds::new(DT),
+            &mut Spatial::new(GridSize::new(120, 120)),
+            None,
+        );
         (motion, m.forward, m.velocity)
     };
     assert_eq!(walk(77), walk(-1));
@@ -1885,7 +1899,7 @@ impl WalkRig {
                 group: None,
                 action_state: state,
             },
-            dt: 0.1,
+            dt: Seconds::new(0.1),
             world: &mut self.world,
             plan: Some(Planning {
                 pathing: &mut self.pathing,
@@ -1940,7 +1954,13 @@ pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
 
 /// One tick of the walker: the velocity step, then the motion step from where it got.
 fn tick(m: &mut Mover, at: Position, world: &mut Spatial) -> (Position, Motion) {
-    let at = m.step_velocity(at, DT, world.map, None, (WorldTime::ZERO, None));
+    let at = m.step_velocity(
+        at,
+        Seconds::new(DT),
+        world.map,
+        None,
+        (WorldTime::ZERO, None),
+    );
     m.new_position(object_id(9177), at, (world, None)).unwrap();
     let motion = m
         .motion(
@@ -1949,7 +1969,7 @@ fn tick(m: &mut Mover, at: Position, world: &mut Spatial) -> (Position, Motion) 
                 group: None,
                 action_state: 0,
             },
-            DT,
+            Seconds::new(DT),
             world,
             None,
         )
@@ -1982,7 +2002,7 @@ fn a_walk_on_or_past_its_waypoint_counts_it_reached() {
         let mut m = builder_9177();
         m.moved_at = at;
         m.place_for_test(at);
-        let motion = m.motion(&me(), DT, &mut w, None).unwrap();
+        let motion = m.motion(&me(), Seconds::new(DT), &mut w, None).unwrap();
         assert_eq!(motion, Motion::Arrived);
         assert_eq!(levels(&m), [(0, 0, PathState::Idle)]);
     }
@@ -2036,11 +2056,11 @@ fn the_speed_slot_caps_the_speed_unless_the_unit_s_group_steers_it() {
     let own = Some(GroupSpeed::OwnMove(1.44));
     assert_eq!(m.paths[0].state, PathState::Walking);
     assert_eq!(m.next_speed(-1.0, own), 1.44);
-    m.paths[0].pause_time = 0.028;
+    m.paths[0].pause_time = Seconds::new(0.028);
     assert_eq!(m.next_speed(0.5, own), 0.0);
-    m.paths[0].pause_time = f32::NAN;
+    m.paths[0].pause_time = Seconds::new(f32::NAN);
     assert_eq!(m.next_speed(0.5, own), 1.44);
-    m.paths[0].pause_time = 0.0;
+    m.paths[0].pause_time = Seconds::ZERO;
     m.paths[0].state = PathState::WantsPath;
     assert_eq!(m.next_speed(0.5, own), 0.0);
     m.paths.clear();
@@ -2052,10 +2072,10 @@ fn the_speed_slot_caps_the_speed_unless_the_unit_s_group_steers_it() {
 #[test]
 fn the_velocity_step_of_a_paused_member_on_its_own_move_stands() {
     let mut m = builder_9177();
-    m.paths[0].pause_time = 0.028;
+    m.paths[0].pause_time = Seconds::new(0.028);
     let at = m.step_velocity(
         Position::new(28.0, 89.0, 0.0),
-        DT,
+        Seconds::new(DT),
         GridSize::new(120, 120),
         None,
         (WorldTime::ZERO, Some(GroupSpeed::OwnMove(1.2))),
@@ -2077,7 +2097,7 @@ fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
     // the step: 0.5 tiles a second for a second, from (10, 20) whatever the caller holds
     let at = m.step_velocity(
         Position::new(40.0, 40.0, 0.0),
-        1.0,
+        Seconds::new(1.0),
         GridSize::new(120, 120),
         None,
         (WorldTime::ZERO, None),
@@ -2086,7 +2106,7 @@ fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
     assert_eq!(m.moved_at, Position::new(10.5, 20.0, 0.0));
     // the projection along +x: 0.5 tiles from (10.5, 20)
     assert_eq!(
-        m.projected(BVector::new(1.0, 0.0, 0.0), 1.0),
+        m.projected(BVector::new(1.0, 0.0, 0.0), Seconds::new(1.0)),
         BVector::new(11.0, 0.0, 20.0)
     );
     // the speed control's turning circle around (10.5, 20) grown to the right by 1: a
@@ -2146,7 +2166,12 @@ fn a_walk_to_a_point_goes_on_until_its_range() {
         action_state: 0,
     };
     assert_eq!(
-        hawk.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None),
+        hawk.motion(
+            &me,
+            Seconds::new(DT),
+            &mut Spatial::new(GridSize::new(120, 120)),
+            None
+        ),
         Ok(Motion::Moving)
     );
     // a deer's walk with range 0.5 whose top path ends within it
@@ -2158,7 +2183,12 @@ fn a_walk_to_a_point_goes_on_until_its_range() {
     deer.paths[1].points = vec![BVector::new(28.0, 0.0, 89.0), BVector::new(28.6, 0.0, 89.0)];
     deer.velocity.as_mut().unwrap().velocity = BVector::new(0.0, 0.0, 0.8);
     assert_eq!(
-        deer.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None),
+        deer.motion(
+            &me,
+            Seconds::new(DT),
+            &mut Spatial::new(GridSize::new(120, 120)),
+            None
+        ),
         Ok(Motion::Arrived)
     );
     // the walk ends: one level, reset, and the deer stops
@@ -2378,9 +2408,15 @@ fn a_reached_waypoint_ends_the_walk_at_the_end_of_the_path() {
         group: None,
         action_state: 0,
     };
-    assert_eq!(m.motion(&me, DT, &mut world, None), Ok(Motion::Moving));
+    assert_eq!(
+        m.motion(&me, Seconds::new(DT), &mut world, None),
+        Ok(Motion::Moving)
+    );
     assert_eq!(m.paths[0].flags, 3);
-    assert_eq!(m.motion(&me, DT, &mut world, None), Ok(Motion::Arrived));
+    assert_eq!(
+        m.motion(&me, Seconds::new(DT), &mut world, None),
+        Ok(Motion::Arrived)
+    );
     assert_eq!(m.position(), Position::new(29.5, 89.5, 0.0));
     assert_eq!(m.paths.len(), 1);
     assert_eq!(m.paths[0].state, PathState::Idle);
@@ -2421,7 +2457,12 @@ fn a_path_request_makes_the_top_level_from_the_unit_to_its_goal() {
         action_state: 0,
     };
     assert_eq!(
-        m.motion(&me, DT, &mut Spatial::new(GridSize::new(120, 120)), None),
+        m.motion(
+            &me,
+            Seconds::new(DT),
+            &mut Spatial::new(GridSize::new(120, 120)),
+            None
+        ),
         Err(GenieError::unsupported(
             "a path request without the world's planners"
         ))
@@ -2437,10 +2478,16 @@ fn a_unit_with_no_speed_or_no_path_is_done() {
         group: None,
         action_state: 0,
     };
-    assert_eq!(m.motion(&me, DT, &mut world(), None), Ok(Motion::Done));
+    assert_eq!(
+        m.motion(&me, Seconds::new(DT), &mut world(), None),
+        Ok(Motion::Done)
+    );
     let mut m = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
     m.paths.clear();
-    assert_eq!(m.motion(&me, DT, &mut world(), None), Ok(Motion::Done));
+    assert_eq!(
+        m.motion(&me, Seconds::new(DT), &mut world(), None),
+        Ok(Motion::Done)
+    );
 }
 
 /// The 4v4's hawk 30594 in update 2007: its level 0 arrived under a top level without a path
@@ -2470,7 +2517,10 @@ fn an_arrived_level_under_one_without_a_path_ends_the_step() {
         group: None,
         action_state: 0,
     };
-    assert_eq!(m.motion(&me, DT, &mut world(), None), Ok(Motion::Done));
+    assert_eq!(
+        m.motion(&me, Seconds::new(DT), &mut world(), None),
+        Ok(Motion::Done)
+    );
     assert_eq!(m.paths.len(), 1);
     assert_eq!((m.paths[0].flags, m.paths[0].state), (1, PathState::Idle));
     assert_eq!(
@@ -2501,23 +2551,34 @@ fn a_human_walker_pauses_a_met_unit_of_an_older_human_order() {
     w.set_gait(
         object_id(9175),
         Some(Gait {
-            pause: Some(0.0),
+            pause: Some(Seconds::ZERO),
             ..walker(WorldTime::from_millis(17000))
         }),
     );
     let mut walker_9177 = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
-    assert!(walker_9177.motion(&me.clone(), DT, &mut w, None).is_ok());
+    assert!(
+        walker_9177
+            .motion(&me.clone(), Seconds::new(DT), &mut w, None)
+            .is_ok()
+    );
     assert_eq!(walker_9177.pauses, Vec::new());
     w.set_gait(
         object_id(9175),
         Some(Gait {
-            pause: Some(0.0),
+            pause: Some(Seconds::ZERO),
             ..walker(WorldTime::from_millis(16000))
         }),
     );
     let mut walker_9177 = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
-    assert!(walker_9177.motion(&me.clone(), DT, &mut w, None).is_ok());
-    assert_eq!(walker_9177.pauses, [(object_id(9175), 0.0 + DT)]);
+    assert!(
+        walker_9177
+            .motion(&me.clone(), Seconds::new(DT), &mut w, None)
+            .is_ok()
+    );
+    assert_eq!(
+        walker_9177.pauses,
+        [(object_id(9175), Seconds::ZERO + Seconds::new(DT))]
+    );
 }
 
 /// `0x141150f00`'s pause loop between two members of one unit group (`+0x6d0`) ordered at
@@ -2533,7 +2594,7 @@ fn two_members_of_one_group_rank_by_their_places_in_it() {
     w.insert(object_id(9175), close);
     let walker = |group| Gait {
         human_order: WorldTime::from_millis(17000),
-        pause: Some(0.0),
+        pause: Some(Seconds::ZERO),
         group,
         ..Gait::default()
     };
@@ -2562,20 +2623,23 @@ fn two_members_of_one_group_rank_by_their_places_in_it() {
         let m = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
         let position = m.moved_at.vector();
         let waypoint = m.paths[0].point(1);
-        let projected = m.projected(m.direction_to(position, waypoint), DT);
+        let projected = m.projected(m.direction_to(position, waypoint), Seconds::new(DT));
         m.avoid(
             me,
             (w, gs),
             &[RecordId::from(object_id(9175))],
             projected,
-            DT,
+            Seconds::new(DT),
             (WorldTime::from_millis(16361), false),
         )
         .unwrap()
         .pauses
     };
     let first = groups(&[9177, 9175]);
-    assert_eq!(pauses(&w, &me, Some(&first)), [(object_id(9175), DT)]);
+    assert_eq!(
+        pauses(&w, &me, Some(&first)),
+        [(object_id(9175), Seconds::new(DT))]
+    );
     let second = groups(&[9175, 9177]);
     assert_eq!(pauses(&w, &me, Some(&second)), []);
     let none = crate::groups::UnitGroups::default();
@@ -2627,13 +2691,13 @@ fn a_group_member_on_an_own_move_of_reason_0_keeps_only_buildings_walls_and_gate
         let m = builder_9177().placed(Position::new(28.0, 89.0, 0.0));
         let position = m.moved_at.vector();
         let waypoint = m.paths[0].point(1);
-        let projected = m.projected(m.direction_to(position, waypoint), DT);
+        let projected = m.projected(m.direction_to(position, waypoint), Seconds::new(DT));
         m.avoid(
             &me,
             (w, Some(gs)),
             &[RecordId::from(object_id(9175))],
             projected,
-            DT,
+            Seconds::new(DT),
             (WorldTime::from_millis(16361), false),
         )
         .unwrap()
@@ -2965,11 +3029,14 @@ fn a_new_move_to_s_wait_lasts_a_second() {
     let new = MoveWait::default();
     assert_eq!(
         (new.state, new.timer, new.delay),
-        (MoveWaitState::Never, 0.0, 1.0)
+        (MoveWaitState::Never, Seconds::ZERO, Seconds::new(1.0))
     );
     let mut wait = new;
     let _ = wait.give_up(true, UnitStance::STAND_GROUND);
-    assert_eq!((wait.state, wait.delay), (MoveWaitState::Waiting, 2.0));
+    assert_eq!(
+        (wait.state, wait.delay),
+        (MoveWaitState::Waiting, Seconds::new(2.0))
+    );
 }
 
 /// The unit's top speed with the sprite it shows (slot 0x208, `FUN_14114d1d0`): the master's

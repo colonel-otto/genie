@@ -12,6 +12,7 @@ use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::unit_ai::NotifyKind;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -72,7 +73,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: ListIndex,
-        dt_seconds: f32,
+        dt_seconds: Seconds,
     ) -> Result<u8, GenieError> {
         use crate::technology::Attributes;
         if self.players.player(p)?.computer {

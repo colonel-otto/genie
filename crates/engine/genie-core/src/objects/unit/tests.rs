@@ -14,6 +14,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::world::Seconds;
 use crate::world::others::OthersRef;
 use crate::world::tests::{forage_world, in_update};
 
@@ -164,9 +165,9 @@ fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
         .mover_mut()
         .unwrap();
     mover.pauses = vec![
-        (object_id(600), 0.5),
-        (object_id(601), 0.5),
-        (object_id(4242), 0.5),
+        (object_id(600), Seconds::new(0.5)),
+        (object_id(601), Seconds::new(0.5)),
+        (object_id(4242), Seconds::new(0.5)),
     ];
     let paused = in_update(&mut t, (PlayerId::new(1), ListIndex::new(0)), 50, |u, c| {
         u.after_actions(c)?;
@@ -181,7 +182,7 @@ fn after_its_actions_the_units_a_walk_met_take_their_pauses() {
         ))
     })
     .unwrap();
-    assert_eq!(paused, (0.5, Some(0.5)));
+    assert_eq!(paused, (Seconds::new(0.5), Some(Seconds::new(0.5))));
     let u = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(u.position(), at);
     assert_eq!(t.spatial.get(object_id(9175)).map(|p| p.position), Some(at));

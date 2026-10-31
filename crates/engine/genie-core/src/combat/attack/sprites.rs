@@ -8,6 +8,7 @@ use crate::movement::Mover;
 use crate::objects::layers::Body;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 
 /// The sprites a swing of a unit (its terrain look `look`, its master `master`) takes before its
@@ -48,9 +49,9 @@ pub struct SwingSprites {
 
 /// `FUN_141089820`: the unit's attack timer becomes `t` and its reload world time the world's
 /// time `now` plus `t` in whole milliseconds (slot 0x248).
-pub(super) fn set_attack_timer(unit: &mut crate::objects::unit::Unit, now: WorldTime, t: f32) {
+pub(super) fn set_attack_timer(unit: &mut crate::objects::unit::Unit, now: WorldTime, t: Seconds) {
     unit.attack_timer = t;
-    unit.reload_worldtime = now.after(Millis::new((t * RELOAD_MS) as i64 as u32));
+    unit.reload_worldtime = now.after(Millis::new((t.get() * RELOAD_MS) as i64 as u32));
 }
 
 /// `FUN_14120c0a0`'s test of `master`: it has a volley missile or a charge projectile its player

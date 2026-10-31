@@ -1719,16 +1719,22 @@ fn a_fresh_search_s_enemies_set_the_alert_mode() {
         ..Found::NONE
     };
     let mut u = UnitAi {
-        time_since_enemy: 12.0,
+        time_since_enemy: Seconds::new(12.0),
         ..idle(CIVILIAN)
     };
-    u.alert(found(true, true), 0.05);
-    assert_eq!((u.alert_mode, u.time_since_enemy), (true, 0.0));
-    u.time_since_enemy = 3.0;
-    u.alert(found(false, false), 0.05);
-    assert_eq!((u.alert_mode, u.time_since_enemy), (true, 3.0));
-    u.alert(found(true, false), 0.05);
-    assert_eq!((u.alert_mode, u.time_since_enemy), (false, 3.0));
+    u.alert(found(true, true), Seconds::new(0.05));
+    assert_eq!((u.alert_mode, u.time_since_enemy), (true, Seconds::ZERO));
+    u.time_since_enemy = Seconds::new(3.0);
+    u.alert(found(false, false), Seconds::new(0.05));
+    assert_eq!(
+        (u.alert_mode, u.time_since_enemy),
+        (true, Seconds::new(3.0))
+    );
+    u.alert(found(true, false), Seconds::new(0.05));
+    assert_eq!(
+        (u.alert_mode, u.time_since_enemy),
+        (false, Seconds::new(3.0))
+    );
 }
 
 /// The 4v4's boar 29823 in update 2917 walks to its villager and meets another of the same
@@ -4172,7 +4178,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             state_position: Point::new(30.0, 88.0),
             retarget_disabled: 0,
             alert_mode: false,
-            time_since_enemy: 0.0,
+            time_since_enemy: Seconds::ZERO,
             patrol_path: None,
             patrol_waypoint: 0,
             stop_after_kill: false,
@@ -5423,7 +5429,7 @@ fn a_deer_away_from_home_goes_back_and_one_beyond_its_leash_at_once() {
 #[test]
 fn a_deer_that_sees_an_object_evades_it() {
     let mut u = UnitAi {
-        time_since_enemy: 12.0,
+        time_since_enemy: Seconds::new(12.0),
         ..deer()
     };
     let mut r = wander_seed(false);
@@ -5467,7 +5473,7 @@ fn a_deer_that_sees_an_object_evades_it() {
         (u.current_action, u.target_point),
         (Some(ActionKind::Move), moved.point)
     );
-    assert_eq!((u.alert_mode, u.time_since_enemy), (true, 0.0));
+    assert_eq!((u.alert_mode, u.time_since_enemy), (true, Seconds::ZERO));
 }
 
 #[test]

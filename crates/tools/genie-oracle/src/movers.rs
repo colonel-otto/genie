@@ -8,6 +8,7 @@ use genie_core::GenieError;
 use genie_core::map::{Position, Radii};
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
+use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
 use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
@@ -125,7 +126,7 @@ pub(super) fn path_level(
         state: genie_core::movement::PathState::of_int(d.state)?,
         range: d.range,
         target: ObjectId::of_field(d.target_id),
-        pause_time: f32::from_bits(d.pause_time),
+        pause_time: Seconds::new(f32::from_bits(d.pause_time)),
         flags: d.flags_m_bits,
         length: path.map_or(0.0, |p| p.path_length_value),
         created: path.map_or(WorldTime::ZERO, |p| {

@@ -12,6 +12,7 @@ use genie_core::objects::masters::ACTION_FACTORY_TYPES;
 use genie_core::objects::masters::{ActionType, MasterId, action_type};
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_core::players::attribute::AttributeId;
+use genie_core::world::Seconds;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
 /// A saved unit's reload (the Strike's): its `mReloadStinger` plus its master's
@@ -65,7 +66,7 @@ pub(super) fn saved_sprite(
         graphic,
         frame: node.rge_active_sprite.frame,
         interval: node.animate_interval,
-        last: node.animate_last,
+        last: Seconds::new(node.animate_last),
         last_frame: node.last_frame as i16,
         changed: node.frame_changed != 0,
         looped: node.frame_looped != 0,
@@ -116,7 +117,7 @@ pub(super) fn saved_attack(
         target: ObjectId::of_field(b.target_id),
         target2: ObjectId::of_field(b.target2_id),
         state: genie_core::combat::attack::AttackState::of_byte(b.state)?,
-        timer: b.timer,
+        timer: Seconds::new(b.timer),
         range: a.range,
         min_range: a.min_range,
         point: Position::new(b.target_x, b.target_y, b.target_z),
@@ -127,8 +128,8 @@ pub(super) fn saved_attack(
         ),
         move_to,
         pending: a.need_to_attack != 0,
-        swing: 0.0,
-        rest: 0.0,
+        swing: Seconds::ZERO,
+        rest: Seconds::ZERO,
         arms: genie_core::combat::attack::Arms {
             move_sprite: g(a.short_val),
             sprite: g(a.short_val_2),

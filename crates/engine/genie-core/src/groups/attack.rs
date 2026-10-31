@@ -20,6 +20,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -128,7 +129,7 @@ impl World {
         let g = self.groups.held_mut(group)?;
         g.forget_target_data();
         for m in &mut g.members {
-            m.seconds_since_attacking = f32::MAX;
+            m.seconds_since_attacking = Seconds::MAX;
         }
         let (queued, smallest) = (g.command_queue.len(), g.smallest_unit_range);
         let mut range = NO_RANGE;

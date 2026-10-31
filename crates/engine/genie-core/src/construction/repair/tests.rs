@@ -88,11 +88,17 @@ fn started() -> RepairAction {
 /// task, each repairer past the first half of it.
 #[test]
 fn the_work_counts_half_for_each_repairer_past_the_first() {
-    assert_eq!(work_amount(1.0, 0.5, 0.05, None), 1.0 * 0.5 * 0.05);
-    assert_eq!(work_amount(1.0, 0.5, 0.05, Some(1)), 1.0 * 0.5 * 0.05);
+    assert_eq!(
+        work_amount(1.0, 0.5, Seconds::new(0.05), None),
+        1.0 * 0.5 * 0.05
+    );
+    assert_eq!(
+        work_amount(1.0, 0.5, Seconds::new(0.05), Some(1)),
+        1.0 * 0.5 * 0.05
+    );
     let alone = 1.0f32 * 0.5 * 0.05;
     assert_eq!(
-        work_amount(1.0, 0.5, 0.05, Some(3)),
+        work_amount(1.0, 0.5, Seconds::new(0.05), Some(3)),
         alone * (((3.0 - 1.0) * 0.5 + 1.0) / 3.0)
     );
 }
@@ -564,7 +570,7 @@ fn a_repairer_at_its_target_faces_it_or_waits_or_fails() {
     let r = repair_of(&t);
     assert_eq!(
         (r.state, r.timer, sprite_of(&t)),
-        (RepairState::Wait, 1.0, Some(5))
+        (RepairState::Wait, Seconds::new(1.0), Some(5))
     );
     let mut t = repair_at(OFF, arrived);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
@@ -596,7 +602,11 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
     assert_eq!(repair_of(&t).state, RepairState::Work);
     assert_eq!(
         the_house(&t),
-        (300.0 + work_amount(1.0, 0.5, 0.05, Some(1)), 1, 1)
+        (
+            300.0 + work_amount(1.0, 0.5, Seconds::new(0.05), Some(1)),
+            1,
+            1
+        )
     );
     let h = &mut t.players[1].objects[ListIndex::new(1)];
     (h.life.hp, h.armor_removed) = (549.99, [3, 4]);
@@ -652,22 +662,23 @@ fn a_repairer_works_until_the_target_is_full_or_the_player_cannot_pay() {
 /// or waits a second again.
 #[test]
 fn a_waiting_repairer_looks_again_each_second() {
-    let waiting =
-        |r: &mut RepairAction| (r.state, r.move_to, r.timer) = (RepairState::Wait, None, 0.1);
+    let waiting = |r: &mut RepairAction| {
+        (r.state, r.move_to, r.timer) = (RepairState::Wait, None, Seconds::new(0.1));
+    };
     let mut t = repair_at(Position::new(30.0, 95.0, 0.0), waiting);
     passable(&mut t);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
         (repair_of(&t).state, repair_of(&t).timer),
-        (RepairState::Wait, 0.1 - 0.05)
+        (RepairState::Wait, Seconds::new(0.1 - 0.05))
     );
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(
         (repair_of(&t).state, repair_of(&t).timer),
-        (RepairState::Wait, 1.0)
+        (RepairState::Wait, Seconds::new(1.0))
     );
     let mut t = repair_at(NEAR, |r| {
-        (r.state, r.move_to, r.timer) = (RepairState::Wait, None, 0.0);
+        (r.state, r.move_to, r.timer) = (RepairState::Wait, None, Seconds::ZERO);
     });
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     assert_eq!(repair_of(&t).state, RepairState::Face);

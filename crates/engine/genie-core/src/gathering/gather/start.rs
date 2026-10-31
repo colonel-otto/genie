@@ -23,6 +23,7 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 /// What a gather's start takes besides its mover and stream ([`GatherAction::start`]'s
@@ -78,8 +79,11 @@ impl StopRate {
     /// The time per stop (`+0x70`): the capacity times the productivity over the work a second,
     /// shared out over the stops.
     #[must_use]
-    pub fn time_per_stop(self, work_value: f32, stops: u8) -> f32 {
-        ((self.capacity * self.productivity) / (self.work_rate * work_value)) / f32::from(stops)
+    pub fn time_per_stop(self, work_value: f32, stops: u8) -> Seconds {
+        Seconds::new(
+            ((self.capacity * self.productivity) / (self.work_rate * work_value))
+                / f32::from(stops),
+        )
     }
 }
 
@@ -161,20 +165,20 @@ impl GatherAction {
             if farm_stops && target.class == class::FARM && STOP_FARMS.contains(&target.master) {
                 (FARM_STOPS, rate.time_per_stop(task.work_value, FARM_STOPS))
             } else {
-                (1, 0.0)
+                (1, Seconds::ZERO)
             };
         Ok(Self {
             target: Some(target.id),
             carry_to: None,
             state: GatherState::New,
             point: target.position,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             task,
             target_class: target.class.or_none(),
             stops,
             current_stop: 0,
             time_per_stop,
-            time_at_stop: 0.0,
+            time_at_stop: Seconds::ZERO,
             last_stop: Point::ORIGIN,
             worked: false,
             farm,
@@ -288,7 +292,7 @@ impl GatherAction {
             }
         }
         if target.player == player && target.drop_site && 0.0 < held {
-            self.timer = 0.0;
+            self.timer = Seconds::ZERO;
             self.target = None;
             self.point = Position::from([-1.0; 3]);
             self.carry_to = Some(target.id);
@@ -306,7 +310,7 @@ impl GatherAction {
                 self.stops = FARM_STOPS;
                 self.current_stop = 0;
                 self.time_per_stop = rate.time_per_stop(self.task.work_value, FARM_STOPS);
-                self.time_at_stop = 0.0;
+                self.time_at_stop = Seconds::ZERO;
             } else if target.master == ids::FISH_TRAP {
                 self.farm = target.position.ground();
             }
@@ -350,7 +354,7 @@ impl GatherAction {
         let position = to.at;
         self.tear_down(Some(mover))?;
         self.state = GatherState::Walk;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         if self.target.is_none() {
             return Err(GenieError::unsupported(
                 "a gather's walk without its target (set_state 13)",
@@ -451,7 +455,7 @@ impl GatherAction {
     pub fn set_moved(&mut self, mover: &mut Mover, walks: &Walks<'_>) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = GatherState::Moved;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         if self.target.is_some() {
             return Err(GenieError::unsupported(
                 "a gather's walk to a point with a target (its radius)",
@@ -467,7 +471,7 @@ impl GatherAction {
     /// lets them go) and the point is −1.
     pub(super) fn set_idle(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
         self.state = GatherState::Idle;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         Self::show(c, unit, self.stand_sprite(unit, r));
         self.target = None;
         self.carry_to = None;
@@ -493,7 +497,7 @@ impl GatherAction {
         let mut mover = mover;
         self.tear_down(mover.as_deref_mut())?;
         self.state = GatherState::Idle;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         if let Some(s) = stand {
             new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);
         }

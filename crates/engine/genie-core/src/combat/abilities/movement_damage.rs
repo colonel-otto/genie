@@ -17,6 +17,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::{GenieError, math::fmath};
@@ -24,17 +25,17 @@ use crate::{GenieError, math::fmath};
 /// A movement damage task's timer (`+0x9a4`, `0x141207758`): above 0 (not a NaN) it runs down by
 /// the world's dt, never below 0. The task hits once it is at most 0 (`COMISS 0, t` / `JC`: a
 /// NaN never hits).
-pub fn movement_damage_due(timer: &mut f32, dt: f32) -> bool {
+pub fn movement_damage_due(timer: &mut Seconds, dt: Seconds) -> bool {
     let mut t = *timer;
-    if 0.0 < t {
+    if Seconds::ZERO < t {
         t -= dt;
         *timer = t;
-        if t < 0.0 {
-            *timer = 0.0;
-            t = 0.0;
+        if t < Seconds::ZERO {
+            *timer = Seconds::ZERO;
+            t = Seconds::ZERO;
         }
     }
-    !fmath::below_or_unordered(0.0, t)
+    !fmath::below_or_unordered(0.0, t.get())
 }
 
 /// The tiles a movement damage task reaches about the object at `position` (`0x1412077e1`): the
@@ -202,7 +203,8 @@ impl World {
                     if !struck(&hitter, range, &b) {
                         continue;
                     }
-                    self.players[p].objects[i].abilities.movement_damage_timer = task.work_val2;
+                    self.players[p].objects[i].abilities.movement_damage_timer =
+                        Seconds::new(task.work_val2);
                     self.movement_hit(b, owner, task.work_val1)?;
                 }
             }

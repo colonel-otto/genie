@@ -20,6 +20,7 @@ use crate::objects::masters::ids;
 use crate::objects::sprite::{ActiveSprite, new_sprite};
 use crate::objects::unit::Unit;
 use crate::unit_ai::NotifyKind;
+use crate::world::Seconds;
 
 use crate::world::step::Step;
 use crate::{GenieError, combat::damage};
@@ -193,7 +194,7 @@ impl Attack {
         set_attack_timer(
             unit,
             r.world_time,
-            r.reload - f32::from(frame) * sprite.graphic.frame_duration,
+            Seconds::new(r.reload - f32::from(frame) * sprite.graphic.frame_duration),
         );
         // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
         // missile or charge projectile, whose hit is FUN_141081020's melee one
@@ -226,11 +227,13 @@ impl Attack {
         if f.victim.hp <= 0.0 {
             return self.enter(AttackState::Killed, unit);
         }
-        let rest = r.reload - f32::from(sprite.graphic.frames) * sprite.graphic.frame_duration;
+        let rest = Seconds::new(
+            r.reload - f32::from(sprite.graphic.frames) * sprite.graphic.frame_duration,
+        );
         self.rest = rest;
         self.swing = rest;
-        if rest < 0.0 {
-            self.rest = 0.0;
+        if rest < Seconds::ZERO {
+            self.rest = Seconds::ZERO;
         }
         Ok(())
     }
@@ -278,7 +281,7 @@ impl Attack {
         // a reload longer than the sprite: at its last frame the unit waits with its idle attack
         // sprite (`+0x88`), else its standing one (slot 0x68), from its first frame when it
         // changes (`FUN_1413b9f00`), at speed 1
-        if 0.0 < self.swing && sprite.reached(sprite.graphic.frames) {
+        if Seconds::ZERO < self.swing && sprite.reached(sprite.graphic.frames) {
             let idle = self
                 .arms
                 .idle_attack_sprite

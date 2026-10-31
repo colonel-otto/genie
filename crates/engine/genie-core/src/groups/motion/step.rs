@@ -11,6 +11,7 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
+use crate::world::Seconds;
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
 
@@ -29,7 +30,7 @@ pub(super) enum Pass {
 pub(crate) struct StepWorld<'w, 'p> {
     pub(crate) spatial: &'w mut Spatial,
     pub(crate) plan: &'w mut Planning<'p>,
-    pub(crate) dt: f32,
+    pub(crate) dt: Seconds,
 }
 
 /// `FUN_14104a270` (the path step of `BMotion`'s update) on `motion`, for a group whose lead is
@@ -68,13 +69,13 @@ pub(crate) fn path_step(
     let budget = budget && group.computer;
     let dt = world.dt;
     let level = motion.paths.checked_mut(0)?;
-    if 0.0 < level.pause_time {
+    if Seconds::ZERO < level.pause_time {
         level.pause_time -= dt;
-        if 0.0 < level.pause_time {
+        if Seconds::ZERO < level.pause_time {
             motion.stand();
             return Ok(false);
         }
-        level.pause_time = 0.0;
+        level.pause_time = Seconds::ZERO;
     }
     let mut passes = 1;
     loop {

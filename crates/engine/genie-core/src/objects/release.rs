@@ -14,6 +14,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::Notify;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -114,7 +115,7 @@ impl World {
     pub(crate) fn regenerate_object(
         &mut self,
         slot: (PlayerId, ListIndex, ObjectId),
-        dt_seconds: f32,
+        dt_seconds: Seconds,
     ) -> Result<(), GenieError> {
         let Some((p, i)) = self.live_slot(slot) else {
             return Ok(());
@@ -154,7 +155,7 @@ impl World {
 impl World {
     /// Slot 0x5f0 (`FUN_141158b90`): the unit's walked level, if it has one, pauses for `pause`
     /// seconds; the world's view of it follows.
-    pub(crate) fn pause(&mut self, id: ObjectId, pause: f32) {
+    pub(crate) fn pause(&mut self, id: ObjectId, pause: Seconds) {
         let Some(u) = self
             .players
             .iter_mut()

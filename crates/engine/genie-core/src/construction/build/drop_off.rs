@@ -12,6 +12,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
+use crate::world::Seconds;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -213,12 +214,12 @@ impl BuildAction {
         me: Me,
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
-        if crate::math::fmath::below_or_unordered(self.timer, 0.0) {
+        if crate::math::fmath::below_or_unordered(self.timer.get(), 0.0) {
             self.timer += c.dt.seconds();
-            if self.timer < 0.0 {
+            if self.timer < Seconds::ZERO {
                 return Ok(HeadCode::Keeps);
             }
-            self.timer = 0.0;
+            self.timer = Seconds::ZERO;
             self.drop_again(c, builder, reads.by)?;
             return Ok(HeadCode::Keeps);
         }

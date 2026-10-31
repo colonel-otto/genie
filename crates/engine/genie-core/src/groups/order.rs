@@ -11,6 +11,7 @@ use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
+use crate::world::Seconds;
 use crate::world::World;
 
 /// The tasks `BUnitGroup::command` runs through the general command (`FUN_14100fc50`): the cases
@@ -160,7 +161,7 @@ impl World {
         g.forget_target_data();
         g.current_target.range = 0.0;
         for m in &mut g.members {
-            m.seconds_since_attacking = f32::MAX;
+            m.seconds_since_attacking = Seconds::MAX;
         }
         let moved = self.command_move_to(
             group,

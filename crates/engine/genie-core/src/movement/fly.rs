@@ -18,6 +18,7 @@ use crate::objects::masters::Task;
 use crate::objects::sprite::{Graphic, sprite_id};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -43,7 +44,7 @@ pub struct Fly {
     /// `+0x18`.
     pub state: FlyState,
     /// `+0x44`, in seconds: the flight's time left, or the rest's.
-    pub timer: f32,
+    pub timer: Seconds,
     /// Its `MoveTo` sub-action to the flight's point (not quiet).
     pub move_to: Option<MoveToAction>,
     /// `+0x38`, `+0x3c`: the point the bird keeps within its task's leash.
@@ -75,7 +76,7 @@ impl Fly {
     pub fn start(task: Task, position: Position, action: &mut Well512) -> Self {
         let mut fly = Self {
             state: FlyState::New,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             move_to: None,
             home: position.ground(),
             task,
@@ -96,7 +97,7 @@ impl Fly {
         let walked = self.move_to.take().is_some();
         if state == FlyState::Choosing {
             let r = action.rand15() as i32;
-            self.timer = ((r * 10) / 0x7fff + 5) as f32;
+            self.timer = Seconds::new(((r * 10) / 0x7fff + 5) as f32);
         }
         walked
     }
@@ -119,13 +120,13 @@ impl Fly {
         me: Me,
     ) -> Result<(), GenieError> {
         let _ = bird.body.mover().ok_or(NO_MOVER)?;
-        if 0.0 < self.timer {
+        if Seconds::ZERO < self.timer {
             self.timer -= c.dt.seconds();
         }
         let rest = self.task.wait_time;
         match self.state {
             FlyState::Resting => {
-                if 0.0 < self.timer {
+                if Seconds::ZERO < self.timer {
                     return Ok(());
                 }
                 self.set_state_of(bird, FlyState::Choosing, c)
@@ -141,10 +142,10 @@ impl Fly {
                 stop_if(bird, dropped)
             }
             FlyState::Flying => {
-                if self.timer <= 0.0 {
+                if self.timer <= Seconds::ZERO {
                     self.set_state_of(bird, FlyState::Resting, c)?;
                     if EPSILON < rest {
-                        self.timer = rest;
+                        self.timer = Seconds::new(rest);
                     }
                 }
                 // the sub-action list's update (FUN_140a992b0): none left (1), the MoveTo's end
@@ -157,7 +158,7 @@ impl Fly {
                     return Ok(());
                 }
                 if EPSILON < rest {
-                    self.timer += rest;
+                    self.timer += Seconds::new(rest);
                     return self.set_state_of(bird, FlyState::Resting, c);
                 }
                 self.set_state_of(bird, FlyState::Choosing, c)
@@ -397,7 +398,7 @@ mod tests {
     fn hawk(state: FlyState, timer: f32) -> Fly {
         Fly {
             state,
-            timer,
+            timer: Seconds::new(timer),
             move_to: None,
             home: Point::new(78.5, 103.5),
             task: Task {
@@ -523,7 +524,7 @@ mod tests {
         let time = ((e.rand15() as i32 * 10) / 0x7fff + 5) as f32;
         assert_eq!(
             (fly.state, fly.timer, fly.move_to),
-            (FlyState::Choosing, time, None)
+            (FlyState::Choosing, Seconds::new(time), None)
         );
         assert_eq!(t.streams.get(Stream::Action).draws, 1);
     }
@@ -712,7 +713,7 @@ mod tests {
             .actions
             .fly_mut()
             .unwrap()
-            .timer = 0.01;
+            .timer = Seconds::new(0.01);
         let fly = flown(&mut t).unwrap();
         assert_eq!(
             (fly.state, t.streams.get(Stream::Action).draws),

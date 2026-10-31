@@ -401,7 +401,7 @@ fn a_dead_objects_unit_ai_draws_nothing() {
     // its full update adds the world's dt to the time since the last enemy sighting, and
     // returns before anything else
     let dead_ai = dead_building().ai.map(|ai| UnitAi {
-        time_since_enemy: ai.time_since_enemy + 0.01,
+        time_since_enemy: ai.time_since_enemy + Seconds::new(0.01),
         ..ai
     });
     assert_eq!(
@@ -4591,7 +4591,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
             h.attack = None;
         })
     };
-    let mut t = wait(-0.5);
+    let mut t = wait(Seconds::new(-0.5));
     t.players[1].objects[ListIndex::new(2)].workers = 1;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[ListIndex::new(0)]
@@ -4603,8 +4603,8 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
         (h.state, h.carry_to),
         (HuntState::Drop, Some(object_id(700)))
     );
-    assert!((h.timer + 0.45).abs() < 1e-6);
-    let mut t = wait(-0.01);
+    assert!((h.timer + Seconds::new(0.45)).get().abs() < 1e-6);
+    let mut t = wait(Seconds::new(-0.01));
     t.players[1].objects[ListIndex::new(0)].life.attribute_type = Some(attribute::MEAT);
     t.players[1].objects[ListIndex::new(0)].life.amount = 5.0;
     t.players[1].objects[ListIndex::new(2)].workers = 1;
@@ -4616,7 +4616,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
         .unwrap();
     assert_eq!(
         (h.state, h.carry_to, h.timer),
-        (HuntState::Drop, Some(object_id(700)), 0.0)
+        (HuntState::Drop, Some(object_id(700)), Seconds::ZERO)
     );
     // the centre let go, then taken again as the new drop site
     assert_eq!(t.players[1].objects[ListIndex::new(2)].workers, 1);
@@ -4635,7 +4635,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
         let mut t = hunter_in(|h| {
             (h.state, h.timer, h.carry_to, h.move_to) = (
                 HuntState::Drop,
-                0.0,
+                Seconds::ZERO,
                 Some(object_id(700)),
                 Some(MoveToAction::sub_in(move_to)),
             );
@@ -4674,7 +4674,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let v = &t.players[1].objects[ListIndex::new(0)];
     assert_eq!(v.body.anim_speed(), Some(0.0));
-    assert!(v.actions.hunt().is_some_and(|h| h.timer < 0.0));
+    assert!(v.actions.hunt().is_some_and(|h| h.timer < Seconds::ZERO));
     let mut t = dropping(MoveTo::Arrived);
     t.drop_sites.clear();
     assert!(hunt_part_of(&mut t, 50).is_err());
@@ -4717,7 +4717,7 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
     use crate::gathering::hunt::HuntState;
     let search = [ActionKind::Hunt.value(), 9, 700];
     let mut t = hunter_in(|h| {
-        (h.state, h.timer) = (HuntState::Search, -0.5);
+        (h.state, h.timer) = (HuntState::Search, Seconds::new(-0.5));
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
@@ -4726,7 +4726,7 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
         .actions
         .hunt_mut()
         .unwrap()
-        .timer = -0.01;
+        .timer = Seconds::new(-0.01);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(notified(&t, NotifyKind::REQUIRES_SEARCH), [search]);
     assert_eq!(
@@ -4814,7 +4814,7 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
             HuntState::WalkPoint,
             Some(MoveToAction {
                 wait: MoveWait {
-                    delay: 1.0,
+                    delay: Seconds::new(1.0),
                     ..MoveWait::NEW
                 },
                 ..MoveToAction::sub_in(MoveTo::Waiting)
@@ -4833,7 +4833,8 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
         (Some(MoveTo::Waiting), HuntState::WalkPoint)
     );
     let mut t = hunter_in(|h| {
-        (h.state, h.target, h.timer, h.move_to) = (HuntState::Walk, None, -0.01, None);
+        (h.state, h.target, h.timer, h.move_to) =
+            (HuntState::Walk, None, Seconds::new(-0.01), None);
         h.point = Position::new(36.0, 89.5, 0.0);
         h.attack = None;
     });
@@ -5956,7 +5957,7 @@ fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
         .actions
         .enter_mut()
         .unwrap()
-        .timer = 7.0;
+        .timer = Seconds::new(7.0);
     assert_eq!(
         t.enter_command(PlayerId::new(1), ListIndex::new(0), object_id(10028), false),
         Ok(true)
@@ -5968,7 +5969,7 @@ fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
             .copied()
             .unwrap()
             .timer,
-        7.0
+        Seconds::new(7.0)
     );
     assert_eq!(
         t.enter_command(PlayerId::new(1), ListIndex::new(0), object_id(10028), true),
@@ -6134,7 +6135,7 @@ fn an_enter_s_move_to_shows_its_sprite_as_it_starts() {
         // next update starts it and shows the sprite
         v.actions.set_enter(Some(crate::garrison::EnterAction {
             state: crate::garrison::EnterState::Wait,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             moving,
             ..crate::garrison::EnterAction::new(
                 object_id(10028),
@@ -7211,7 +7212,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
         .artifact()
         .copied()
         .unwrap();
-    assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
+    assert_eq!((a.state, a.timer), (ArtifactState::Wait, Seconds::new(1.0)));
 }
 
 /// [`forage_world`]'s villager 9175 (master 120) with `set` run on its master and on itself,
@@ -8169,12 +8170,12 @@ fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
         })
     };
     assert_eq!(
-        gate_update_of(master_id(91), gate(false, 0.3), |_| ()),
-        Ok((master_id(88), ran(false, 0.0)))
+        gate_update_of(master_id(91), gate(false, Seconds::new(0.3)), |_| ()),
+        Ok((master_id(88), ran(false, Seconds::ZERO)))
     );
     assert_eq!(
-        gate_update_of(master_id(91), gate(true, 0.3), |_| ()),
-        Ok((master_id(91), ran(true, 0.3)))
+        gate_update_of(master_id(91), gate(true, Seconds::new(0.3)), |_| ()),
+        Ok((master_id(91), ran(true, Seconds::new(0.3))))
     );
     // the soldier stands aside: nothing in the open gate
     let aside = |t: &mut World| {
@@ -8188,25 +8189,25 @@ fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
         );
     };
     assert_eq!(
-        gate_update_of(master_id(88), gate(false, 0.0), aside),
+        gate_update_of(master_id(88), gate(false, Seconds::ZERO), aside),
         Ok((master_id(88), ran(false, GATE_CLOSE_DELAY)))
     );
     assert_eq!(
-        gate_update_of(master_id(88), gate(false, 0.5), aside),
-        Ok((master_id(88), ran(false, 0.5 - 0.05)))
+        gate_update_of(master_id(88), gate(false, Seconds::new(0.5)), aside),
+        Ok((master_id(88), ran(false, Seconds::new(0.5 - 0.05))))
     );
     assert_eq!(
-        gate_update_of(master_id(88), gate(false, 0.05), aside),
-        Ok((master_id(91), ran(false, 0.0)))
+        gate_update_of(master_id(88), gate(false, Seconds::new(0.05)), aside),
+        Ok((master_id(91), ran(false, Seconds::ZERO)))
     );
     // the soldier in the open gate holds its timer
     assert_eq!(
-        gate_update_of(master_id(88), gate(false, 0.5), |_| ()),
-        Ok((master_id(88), ran(false, 0.5)))
+        gate_update_of(master_id(88), gate(false, Seconds::new(0.5)), |_| ()),
+        Ok((master_id(88), ran(false, Seconds::new(0.5))))
     );
     assert_eq!(
-        gate_update_of(master_id(92), gate(false, 0.5), |_| ()),
-        Ok((master_id(92), gate(false, 0.5)))
+        gate_update_of(master_id(92), gate(false, Seconds::new(0.5)), |_| ()),
+        Ok((master_id(92), gate(false, Seconds::new(0.5))))
     );
     let err = gate_update_of(master_id(91), None, |_| ()).unwrap_err();
     assert_eq!(err.reason(), "a gate without its gate state");
@@ -8892,7 +8893,8 @@ fn a_research_queues_at_an_alive_location_after_its_costs_come_off_the_debit() {
 fn a_queued_research_starts_at_the_buildings_master() {
     let mut t = research_world();
     research_listed(&mut t, &research_at(5, -1)).unwrap();
-    t.produce(PlayerId::new(0), ListIndex::new(0), 0.0).unwrap();
+    t.produce(PlayerId::new(0), ListIndex::new(0), Seconds::ZERO)
+        .unwrap();
     let master = t.players[0].objects[ListIndex::new(0)].life.master_id;
     let action = t.players[0].objects[ListIndex::new(0)]
         .production
@@ -9927,7 +9929,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     let bird = &mut t.players[1].objects[ListIndex::new(1)];
     bird.actions.set_fly(Some(Fly {
         state: FlyState::Choosing,
-        timer: 1.0,
+        timer: Seconds::new(1.0),
         move_to: Some(MoveToAction {
             state: MoveTo::Moving,
             quiet: false,
@@ -9963,7 +9965,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             move_to: None,
             point: Position::new(20.0, 20.0, 0.0),
             range: 0.0,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             retry: true,
             task_class: Some(class_id(0)),
             moving: None,
@@ -10002,7 +10004,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
                 moving: None,
             },
             added: true,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             site: None,
         }));
     t.clear_actions(PlayerId::new(1), ListIndex::new(2))
@@ -10132,7 +10134,7 @@ fn deaths_world() -> World {
             moving: None,
         },
         added: true,
-        timer: 0.0,
+        timer: Seconds::ZERO,
         site: None,
     }));
     let gaia = vec![
@@ -10491,8 +10493,8 @@ fn a_move_to_of_its_own_lets_a_dying_target_go_and_forgets_a_lost_one() {
                 on_target_moved: crate::movement::move_to::TargetMoved::Follows,
                 wait: crate::movement::move_to::MoveWait {
                     state: MoveWaitState::Waiting,
-                    timer: 0.0,
-                    delay: 60.0,
+                    timer: Seconds::ZERO,
+                    delay: Seconds::new(60.0),
                 },
             })),
             pasture: None,
@@ -13032,10 +13034,10 @@ fn a_unit_regenerated_to_its_most_has_its_armor_back() {
         ..Unit::default()
     };
     let mut healed = unit(53.0);
-    healed.regenerate(&berserk, 3.0);
+    healed.regenerate(&berserk, Seconds::new(3.0));
     assert_eq!((healed.life.hp, healed.armor_removed), (54.0, [0, 0]));
     let mut hurt = unit(40.0);
-    hurt.regenerate(&berserk, 3.0);
+    hurt.regenerate(&berserk, Seconds::new(3.0));
     assert_eq!((hurt.life.hp, hurt.armor_removed), (41.0, [2, 1]));
 }
 
@@ -13067,16 +13069,16 @@ fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
     // 20 a minute: a point per 3 s; 2 s of dt plus 1.5 held is one point, the rest held back
     // (in f32: 3.5 / 3 less its whole point, times 3)
     let mut u = unit(30.0);
-    u.regen_timer = 1.5;
-    u.regenerate(&berserk, 2.0);
+    u.regen_timer = Seconds::new(1.5);
+    u.regenerate(&berserk, Seconds::new(2.0));
     assert_eq!(
         (u.life.hp, u.regen_timer),
-        (31.0, ((3.5f32 / 3.0) % 1.0) * 3.0)
+        (31.0, Seconds::new(((3.5f32 / 3.0) % 1.0) * 3.0))
     );
     // at the most nothing is added, and the time still runs
     let mut full = unit(54.0);
-    full.regenerate(&berserk, 3.0);
-    assert_eq!((full.life.hp, full.regen_timer), (54.0, 0.0));
+    full.regenerate(&berserk, Seconds::new(3.0));
+    assert_eq!((full.life.hp, full.regen_timer), (54.0, Seconds::ZERO));
     // a hero's 30 and the powerups: stinger + (powerup + (30 + master))
     let hero = Master {
         hero_flag: 1,
@@ -13099,15 +13101,15 @@ fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
         ..Master::default()
     };
     let mut g = unit(1650.0);
-    g.regenerate(&gate, 0.104);
+    g.regenerate(&gate, Seconds::new(0.104));
     assert_eq!(g.life.hp, 1649.0);
     let mut low = unit(1.0);
-    low.regenerate(&gate, 1.0);
+    low.regenerate(&gate, Seconds::new(1.0));
     assert_eq!(low.life.hp, 0.0);
     // below 1 hit point or out of state 2: nothing
     let mut dead = unit(0.5);
-    dead.regenerate(&gate, 1.0);
-    assert_eq!((dead.life.hp, dead.regen_timer), (0.5, 0.0));
+    dead.regenerate(&gate, Seconds::new(1.0));
+    assert_eq!((dead.life.hp, dead.regen_timer), (0.5, Seconds::ZERO));
 }
 
 /// `TRIBE_Combat_Object::update`'s hit point powerup check: a powerup above its room comes off
@@ -13149,7 +13151,7 @@ fn a_hit_point_powerup_above_its_room_comes_off_the_hit_points() {
 fn the_attack_timer_runs_down_at_the_object_s_rate() {
     let unit = Unit {
         id: object_id(1),
-        attack_timer: 1.0,
+        attack_timer: Seconds::new(1.0),
         abilities: crate::combat::abilities::Abilities {
             attack_rate: 0.5,
             ..crate::combat::abilities::Abilities::default()
@@ -13170,7 +13172,7 @@ fn the_attack_timer_runs_down_at_the_object_s_rate() {
     t.tick(Millis::new(100));
     assert_eq!(
         t.players[0].objects[ListIndex::new(0)].attack_timer,
-        1.0 - 0.1 * 0.5
+        Seconds::new(1.0 - 0.1 * 0.5)
     );
 }
 
@@ -13307,15 +13309,15 @@ fn own_attack(target: i32, target2: i32, state: AttackState) -> crate::combat::a
         target: ObjectId::of_field(target),
         target2: ObjectId::of_field(target2),
         state,
-        timer: 0.0,
+        timer: Seconds::ZERO,
         range: 0.0,
         min_range: 0.0,
         point: Position::new(-1.0, -1.0, -1.0),
         seen: Position::ORIGIN,
         move_to: None,
         pending: false,
-        swing: 0.0,
-        rest: 0.0,
+        swing: Seconds::ZERO,
+        rest: Seconds::ZERO,
         arms: crate::combat::attack::Arms {
             move_sprite: None,
             sprite: None,
@@ -13855,7 +13857,7 @@ fn scout_attack_on(
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
             standing, &mut rng,
         )),
-        attack_timer: timer,
+        attack_timer: Seconds::new(timer),
         actions: ActionList::default().with_attack(own.copied()),
         life: Lifecycle {
             master_id: ids::ID_448,
@@ -13985,7 +13987,7 @@ fn attack_by(
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
             standing, &mut rng,
         )),
-        attack_timer: timer,
+        attack_timer: Seconds::new(timer),
         actions: ActionList::default().with_attack(own),
         life: Lifecycle {
             master_id: attacker_master,
@@ -16229,7 +16231,7 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
         (g.state, g.timer) = (state, timer);
         t
     };
-    let mut t = set(GatherState::Done, 0.0);
+    let mut t = set(GatherState::Done, Seconds::ZERO);
     assert_eq!(t.players[0].objects[ListIndex::new(0)].workers, 1);
     gather_step(&mut t).unwrap();
     assert!(
@@ -16239,10 +16241,13 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
             .is_none()
     );
     assert_eq!(t.players[0].objects[ListIndex::new(0)].workers, 0);
-    let mut t = set(GatherState::Search, -0.02);
+    let mut t = set(GatherState::Search, Seconds::new(-0.02));
     gather_step(&mut t).unwrap();
     let v = &t.players[1].objects[ListIndex::new(0)];
-    assert_eq!(v.actions.gather().map(|g| g.timer), Some(-10.0));
+    assert_eq!(
+        v.actions.gather().map(|g| g.timer),
+        Some(Seconds::new(-10.0))
+    );
     let heard: Vec<NotifyKind> =
         v.ai.as_ref()
             .unwrap()
@@ -16251,7 +16256,7 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
             .map(|n| n.kind)
             .collect();
     assert_eq!(heard, [NotifyKind::REQUIRES_SEARCH]);
-    let mut t = set(GatherState::Search, -0.2);
+    let mut t = set(GatherState::Search, Seconds::new(-0.2));
     gather_step(&mut t).unwrap();
     assert!(
         (t.players[1].objects[ListIndex::new(0)]
@@ -16260,11 +16265,12 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
             .copied()
             .unwrap()
             .timer
-            + 0.15)
-            .abs()
+            + Seconds::new(0.15))
+        .get()
+        .abs()
             < 1e-6
     );
-    let mut t = set(GatherState::Walk, -0.02);
+    let mut t = set(GatherState::Walk, Seconds::new(-0.02));
     gather_step(&mut t).unwrap();
     assert_eq!(
         t.players[1].objects[ListIndex::new(0)]
@@ -16604,7 +16610,7 @@ fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
     let v = &mut t.players[1].objects[ListIndex::new(0)];
     v.actions.set_fly(Some(Fly {
         state: FlyState::Flying,
-        timer: 2.0,
+        timer: Seconds::new(2.0),
         move_to: Some(MoveToAction {
             state: move_to,
             quiet: false,
@@ -16643,7 +16649,10 @@ fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
     assert_eq!(r, Ok(()));
     let fly = fly.unwrap();
     assert_eq!((fly.state, fly.move_to), (FlyState::Resting, None));
-    assert_eq!(fly.timer, 2.0 - Millis::new(50).seconds() + 2.0);
+    assert_eq!(
+        fly.timer,
+        Seconds::new(2.0) - Millis::new(50).seconds() + Seconds::new(2.0)
+    );
     assert_eq!(
         heard,
         [(NotifyKind::ACTION_FAILED, [ActionKind::Move.value(), 0, 0])]

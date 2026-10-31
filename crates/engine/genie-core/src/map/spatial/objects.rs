@@ -16,6 +16,7 @@ use crate::objects::masters::ObstructionType;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::pathing::tile_path::PlanRect;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use std::collections::BTreeMap;
 
 impl Spatial {
@@ -239,7 +240,7 @@ impl Spatial {
     pub fn freeze(&mut self, id: ObjectId) {
         if let Some(p) = self.objects.get_mut(&id) {
             let _ = p.unknown.get_or_insert(0.0);
-            let _ = self.frozen_for.entry(id).or_insert(0.0);
+            let _ = self.frozen_for.entry(id).or_insert(Seconds::ZERO);
         }
     }
 
@@ -252,7 +253,7 @@ impl Spatial {
     }
 
     /// A tick of `dt` seconds passed: every frozen object may have moved its speed times dt.
-    pub fn grow_unknown(&mut self, dt: f32) {
+    pub fn grow_unknown(&mut self, dt: Seconds) {
         for p in self.objects.values_mut() {
             if let Some(u) = p.unknown.as_mut() {
                 *u += p.speed * dt;
@@ -337,7 +338,12 @@ impl Spatial {
             let moved = if 0.0 < q.speed {
                 u
             } else {
-                self.fastest * self.frozen_for.get(&other).copied().unwrap_or(0.0)
+                self.fastest
+                    * self
+                        .frozen_for
+                        .get(&other)
+                        .copied()
+                        .unwrap_or(Seconds::ZERO)
             };
             let grow = moved + self.reach;
             rect.overlaps(q.bounds().grown(grow))
@@ -357,7 +363,7 @@ impl Spatial {
     pub fn insert(&mut self, id: ObjectId, placed: Placed) {
         self.remove(id);
         if placed.unknown.is_some() {
-            let _ = self.frozen_for.entry(id).or_insert(0.0);
+            let _ = self.frozen_for.entry(id).or_insert(Seconds::ZERO);
         }
         if let Some(o) = placed.obstruction.filter(|o| o.kind.marks_tiles()) {
             self.tiles.mark(&placed, o);

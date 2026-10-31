@@ -19,6 +19,7 @@ use crate::unit_ai::{
     TRADE_AI, TRADE_CART_CARED, TRADE_SHIP_CARED, UnitAi, UnitSide, attack_search_radius,
     civilian_search_radius, computer_idle_check, search_radius,
 };
+use crate::world::Seconds;
 
 impl UnitAi {
     /// processIdle, slot 72 (`+0x240`) of each factory type's vtable: the hunted animal's
@@ -616,7 +617,7 @@ impl UnitAi {
                     "a computer player's notify of enemies sighted (0x210, slot 0x3c8)",
                 ));
             }
-            self.time_since_enemy = 0.0;
+            self.time_since_enemy = Seconds::ZERO;
         }
         Ok(())
     }

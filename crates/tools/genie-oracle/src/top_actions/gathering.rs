@@ -9,6 +9,7 @@ use genie_core::movement::move_to::MOVE_TO;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::{ClassId, Task};
 use genie_core::objects::unit::Unit;
+use genie_core::world::Seconds;
 use genie_save::generated::world::Action;
 
 /// A farm's Make (21): its timers and task; it makes no sub-action.
@@ -95,7 +96,7 @@ pub(super) fn import_hunt(
         move_to: None,
         drop_site: ObjectId::of_field(part.sheep_drop_site_id as i32),
         carry_to: ObjectId::of_field(base.target2_id),
-        timer: base.timer,
+        timer: Seconds::new(base.timer),
         lead: genie_core::gathering::hunt::Lead {
             moved: part.moved_sheep != 0,
             still_time: part.sheep_still_time as i16,
@@ -140,8 +141,8 @@ fn hunt_attack(
             "a saved swing without its attack sprite",
         ))?;
         let rest = reload - f32::from(g.frames) * g.frame_duration;
-        attack.swing = rest;
-        attack.rest = rest.max(0.0);
+        attack.swing = Seconds::new(rest);
+        attack.rest = Seconds::new(rest.max(0.0));
     }
     Ok(attack)
 }
@@ -187,13 +188,13 @@ pub(super) fn import_gather(
         carry_to: ObjectId::of_field(base.target2_id),
         state,
         point: saved.point(),
-        timer: base.timer,
+        timer: Seconds::new(base.timer),
         task,
         target_class: ClassId::of_param(part.target_type)?,
         stops: part.number_stops,
         current_stop: part.current_stop,
-        time_per_stop: part.time_per_stop,
-        time_at_stop: part.time_at_current_stop,
+        time_per_stop: Seconds::new(part.time_per_stop),
+        time_at_stop: Seconds::new(part.time_at_current_stop),
         last_stop: Point::new(part.last_stop_x, part.last_stop_y),
         // `+0x80` is not saved: set_state(7) set it
         worked: state == GatherState::Work,

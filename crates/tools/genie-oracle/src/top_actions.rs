@@ -13,6 +13,7 @@ use genie_core::objects::masters::{ActionType, Task};
 use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
+use genie_core::world::Seconds;
 use genie_save::generated::world::{Action, PlayerObjects, RgeAction, RgeStaticObject};
 use std::collections::BTreeMap;
 
@@ -209,7 +210,7 @@ fn import_artifact(
     unit.actions
         .set_artifact(Some(genie_core::ownership::artifact::Artifact {
             state: genie_core::ownership::artifact::ArtifactState::of_byte(base.state)?,
-            timer: base.timer,
+            timer: Seconds::new(base.timer),
             gaia: saved.s.owner == 0,
             move_to,
             goal: if base.target_id == -1 {
@@ -346,7 +347,7 @@ fn import_fly(
         .transpose()?;
     unit.actions.set_fly(Some(Fly {
         state: genie_core::movement::fly::FlyState::of_byte(base.state)?,
-        timer: base.timer,
+        timer: Seconds::new(base.timer),
         move_to,
         home: Point::new(base.target_x, base.target_y),
         task: fly_task(saved.s.master_obj)?,
@@ -379,7 +380,7 @@ fn import_build(
             .tribe_action_build
             .as_deref()
             .is_some_and(|b| b.added_to_num_builders != 0),
-        timer: base.timer,
+        timer: Seconds::new(base.timer),
         site: ObjectId::of_field(base.target2_id),
     }));
     Ok(())
@@ -409,7 +410,7 @@ fn import_repair(
             state: genie_core::construction::repair::RepairState::of_byte(base.state)?,
             move_to,
             point: saved.point(),
-            timer: base.timer,
+            timer: Seconds::new(base.timer),
             task: genie_core::construction::repair::RepairTask::of(&t),
             range: saved
                 .objects
@@ -460,7 +461,7 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
         move_to,
         point: saved.point(),
         range: task.work_range,
-        timer: base.timer,
+        timer: Seconds::new(base.timer),
         retry: first_time != 0,
         task_class: task.object_group,
         moving: (0 <= task.sprites[0]).then_some(task.sprites[0]),

@@ -18,6 +18,7 @@ use crate::objects::layers::Body;
 use crate::objects::masters::ActionType;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite};
 use crate::unit_ai::UnitStance;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use genie_diff::Diff;
 
@@ -65,14 +66,14 @@ pub struct MoveWait {
     /// `+0x6c`, `movement_wait_state`.
     pub state: MoveWaitState,
     /// `+0x70`: the time waited.
-    pub timer: f32,
+    pub timer: Seconds,
     /// `+0x74`: how long it waits.
-    pub delay: f32,
+    pub delay: Seconds,
 }
 
 /// `kDefaultWaitTime`, the wait a `MoveTo`'s constructors set (`+0x74`, `FUN_140aa0d30`,
 /// `FUN_140aa0df0`): one second.
-const DEFAULT_WAIT: f32 = 1.0;
+const DEFAULT_WAIT: Seconds = Seconds::new(1.0);
 
 impl Default for MoveWait {
     fn default() -> Self {
@@ -84,7 +85,7 @@ impl MoveWait {
     /// A new `MoveTo`'s: never waited, no time waited, [`DEFAULT_WAIT`].
     pub const NEW: Self = Self {
         state: MoveWaitState::Never,
-        timer: 0.0,
+        timer: Seconds::ZERO,
         delay: DEFAULT_WAIT,
     };
 
@@ -97,9 +98,9 @@ impl MoveWait {
             return MoveTo::Failed;
         }
         self.delay = if stance.below(UnitStance::STAND_GROUND) {
-            1.0
+            Seconds::new(1.0)
         } else {
-            2.0
+            Seconds::new(2.0)
         };
         self.state = MoveWaitState::Waiting;
         MoveTo::Waiting
@@ -169,7 +170,7 @@ pub struct Walk<'a> {
     /// The unit.
     pub me: Me,
     /// The world's dt in seconds.
-    pub dt: f32,
+    pub dt: Seconds,
     /// The objects' places; the motion step moves the unit onto a waypoint it reached.
     pub world: &'a mut Spatial,
     /// The planners and the world's time for a path request, None where the caller has none.
@@ -531,8 +532,8 @@ mod tests {
             range: 0.1,
             wait: MoveWait {
                 state: MoveWaitState::Waiting,
-                timer: 0.0,
-                delay: 1.0,
+                timer: Seconds::ZERO,
+                delay: Seconds::new(1.0),
             },
             ..MoveToAction::sub_in(MoveTo::Start)
         };
@@ -564,14 +565,17 @@ mod tests {
         m.state = MoveTo::Waiting;
         m.wait = MoveWait {
             state: MoveWaitState::Waiting,
-            timer: 0.0,
-            delay: 0.15,
+            timer: Seconds::ZERO,
+            delay: Seconds::new(0.15),
         };
         assert_eq!(update(&mut m), Ok(0));
-        assert_eq!((m.state, m.wait.timer), (MoveTo::Waiting, 0.1));
+        assert_eq!(
+            (m.state, m.wait.timer),
+            (MoveTo::Waiting, Seconds::new(0.1))
+        );
         assert_eq!(update(&mut m), Ok(0));
-        assert_eq!((m.state, m.wait.timer), (MoveTo::Start, 0.0));
-        m.wait.timer = f32::NAN;
+        assert_eq!((m.state, m.wait.timer), (MoveTo::Start, Seconds::ZERO));
+        m.wait.timer = Seconds::new(f32::NAN);
         m.state = MoveTo::Waiting;
         assert_eq!(update(&mut m), Ok(0));
         assert_eq!(m.state, MoveTo::Waiting);
@@ -593,7 +597,10 @@ mod tests {
     fn a_human_villager_s_moveto_waits_once_before_it_fails() {
         let mut wait = MoveWait::default();
         assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Waiting);
-        assert_eq!((wait.state, wait.delay), (MoveWaitState::Waiting, 1.0));
+        assert_eq!(
+            (wait.state, wait.delay),
+            (MoveWaitState::Waiting, Seconds::new(1.0))
+        );
         assert_eq!(wait.give_up(true, UnitStance::AGGRESSIVE), MoveTo::Failed);
         assert_eq!(
             MoveWait::default().give_up(false, UnitStance::AGGRESSIVE),
@@ -604,7 +611,7 @@ mod tests {
             guarded.give_up(true, UnitStance::STAND_GROUND),
             MoveTo::Waiting
         );
-        assert_eq!(guarded.delay, 2.0);
+        assert_eq!(guarded.delay, Seconds::new(2.0));
     }
 
     /// The start's ask for the path (state 3) turns a wait into an ask again; a `MoveTo` that
@@ -912,7 +919,7 @@ mod tests {
                     group: None,
                     action_state: 4,
                 },
-                dt: 0.1,
+                dt: Seconds::new(0.1),
                 world: &mut world,
                 plan: None,
             };

@@ -15,6 +15,7 @@ use crate::math::fmath::BVector;
 use crate::movement::PathState;
 use crate::movement::{Planning, footprint_gap};
 use crate::objects::ObjectKey;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
@@ -46,7 +47,7 @@ pub(super) fn steer(
     direction = direction.with_height(0.0);
     let l = fmath::sqrt(direction.x() * direction.x() + 0.0 + direction.y() * direction.y());
     direction = BVector::new(direction.x() / l, direction.height() / l, direction.y() / l);
-    let step = (dt * motion.acceleration.y() + motion.velocity.y()) * dt;
+    let step = (dt.get() * motion.acceleration.y() + motion.velocity.y()) * dt.get();
     let next = fmath::add(at, fmath::scale(step, direction));
     match passes_waypoint(waypoint, at, next) {
         Passing::Passes => {
@@ -216,7 +217,7 @@ fn walk_ends(
 
 /// The turn toward the waypoint (`direction`, on the ground) from the forward on the ground, by
 /// the yaw the turn rate allows in `dt` ([`Motion::calculate_yaw_angle`], [`Motion::turn`]).
-fn turn_toward(motion: &mut Motion, direction: BVector, dt: f32) {
+fn turn_toward(motion: &mut Motion, direction: BVector, dt: Seconds) {
     let forward = motion.position[1].with_height(0.0);
     let f = fmath::sqrt(forward.x() * forward.x() + 0.0 + forward.y() * forward.y());
     let forward = BVector::new(forward.x() / f, forward.height() / f, forward.y() / f);

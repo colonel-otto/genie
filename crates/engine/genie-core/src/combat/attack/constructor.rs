@@ -20,6 +20,7 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitStance;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::step::Step;
 
@@ -34,15 +35,15 @@ impl Attack {
             target: Some(target),
             target2: None,
             state: AttackState::New,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             range: e.range,
             min_range: e.min_range,
             point: Position::from([NONE; 3]),
             seen: e.target_position,
             move_to: None,
             pending: false,
-            swing: 0.0,
-            rest: 0.0,
+            swing: Seconds::ZERO,
+            rest: Seconds::ZERO,
             arms,
             sub_action: false,
             on_target_moved: TargetMoved::Follows,

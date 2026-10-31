@@ -19,6 +19,7 @@ use crate::players::attribute;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitStance;
+use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -42,7 +43,7 @@ impl BuildAction {
             point: to.at,
             task,
             added: false,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             site: None,
         })
     }
@@ -333,10 +334,10 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         self.timer -= c.dt.seconds();
-        if 0.0 < self.timer {
+        if Seconds::ZERO < self.timer {
             return Ok(());
         }
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         self.place(c, builder, reads)
     }
 

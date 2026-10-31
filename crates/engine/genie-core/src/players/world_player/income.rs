@@ -11,6 +11,7 @@ use crate::players::PlayerType;
 use crate::players::attribute::{self, AttributeId, RESOURCES};
 use crate::players::tracker::ListKey;
 use crate::players::world_player::{EARLY_SCOUTING_MS, LIVESTOCK_SCALE, MINUTE, SECOND, get, set};
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -38,7 +39,7 @@ impl World {
     /// 0); food grows by attribute 254 over 60 times (`time` times logf(sum / 200 + 1))
     /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`World::add_resource`]),
     /// also when that is 0. `time` is the update time before the loop's step.
-    pub fn mill_food(&mut self, p: PlayerId, time: f32) -> Result<(), GenieError> {
+    pub fn mill_food(&mut self, p: PlayerId, time: Seconds) -> Result<(), GenieError> {
         let mut sum = 0.0;
         for &id in self
             .players

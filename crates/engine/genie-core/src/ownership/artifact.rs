@@ -24,6 +24,7 @@ use crate::ownership::capture::Captured;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::step::Step;
 use genie_diff::Diff;
 
@@ -82,7 +83,7 @@ pub struct Artifact {
     /// 6 checks for a new owner; 10 waits for the timer.
     pub state: ArtifactState,
     /// `+0x44`, in seconds.
-    pub timer: f32,
+    pub timer: Seconds,
     /// Gaia waits half as long between checks.
     pub gaia: bool,
     /// The `MoveTo` sub-action of a move its player gave the animal: to the point
@@ -114,7 +115,7 @@ impl Artifact {
     pub const fn new(gaia: bool, moving: Option<i16>) -> Self {
         Self {
             state: ArtifactState::Check,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             gaia,
             move_to: None,
             goal: None,
@@ -387,12 +388,16 @@ impl Artifact {
                     return Ok(Some(Handover::Taken { new, gone }));
                 }
                 self.state = ArtifactState::Wait;
-                self.timer = if self.gaia { 0.5 } else { 1.0 };
+                self.timer = if self.gaia {
+                    Seconds::new(0.5)
+                } else {
+                    Seconds::new(1.0)
+                };
             }
             ArtifactState::Wait => {
                 // world+0x164 is `dt / 1000.0f`; the subtraction is f32
                 self.timer -= dt_ms.seconds();
-                if self.timer <= 0.0 {
+                if self.timer <= Seconds::ZERO {
                     self.state = ArtifactState::Check;
                 }
             }
@@ -573,7 +578,7 @@ mod tests {
     fn a_check_finds_no_owner_and_waits_one_second() {
         let mut a = Artifact::new(false, None);
         let _ = a.step(Millis::new(50), None).unwrap();
-        assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
+        assert_eq!((a.state, a.timer), (ArtifactState::Wait, Seconds::new(1.0)));
     }
 
     #[test]
@@ -581,7 +586,7 @@ mod tests {
         // MarvinBlue/426048731's cow 9517 in 1118: MOVE to (28.5, 93.5); slot 8 takes the point
         let mut a = Artifact {
             state: ArtifactState::Wait,
-            timer: 0.4,
+            timer: Seconds::new(0.4),
             ..Artifact::new(false, None)
         };
         assert_eq!(
@@ -592,7 +597,7 @@ mod tests {
             (a.state, a.timer, a.goal),
             (
                 ArtifactState::Check,
-                0.4,
+                Seconds::new(0.4),
                 Some(Position::new(28.5, 93.5, 0.0))
             )
         );
@@ -626,7 +631,7 @@ mod tests {
         assert_eq!(found, Ok(None));
         assert_eq!(
             (a.state, a.timer, a.move_to, a.goal),
-            (ArtifactState::Wait, 1.0, None, None)
+            (ArtifactState::Wait, Seconds::new(1.0), None, None)
         );
     }
 
@@ -789,7 +794,7 @@ mod tests {
     fn gaia_waits_half_a_second() {
         let mut a = Artifact::new(true, None);
         let _ = a.step(Millis::new(50), None).unwrap();
-        assert_eq!(a.timer, 0.5);
+        assert_eq!(a.timer, Seconds::new(0.5));
     }
 
     #[test]
@@ -804,7 +809,7 @@ mod tests {
         assert_eq!(waits.count(), 19);
         assert_eq!(a.state, ArtifactState::Check);
         let _ = a.step(Millis::new(50), None).unwrap();
-        assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
+        assert_eq!((a.state, a.timer), (ArtifactState::Wait, Seconds::new(1.0)));
     }
 
     #[test]
@@ -1232,8 +1237,8 @@ mod tests {
                 state: MoveTo::Waiting,
                 wait: MoveWait {
                     state: MoveWaitState::Waiting,
-                    timer: 0.92,
-                    delay: 1.0,
+                    timer: Seconds::new(0.92),
+                    delay: Seconds::new(1.0),
                 },
                 ..start
             }),
@@ -1248,13 +1253,13 @@ mod tests {
                 waiting.move_to.map(|m| (m.state, m.wait.timer)),
                 rig.posted()
             ),
-            (Some((MoveTo::Waiting, 0.92 + 0.05)), vec![])
+            (Some((MoveTo::Waiting, Seconds::new(0.92 + 0.05))), vec![])
         );
         rig.run(50, |c, u, _, _| waiting.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
             waiting.move_to.map(|m| (m.state, m.wait.timer)),
-            Some((MoveTo::Start, 0.0))
+            Some((MoveTo::Start, Seconds::ZERO))
         );
         // a target the world lost is cleared: the MoveTo walks on to its point
         let mut lost = Artifact {

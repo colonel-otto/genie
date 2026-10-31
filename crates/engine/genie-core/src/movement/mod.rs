@@ -29,6 +29,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids::ID_45;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use genie_diff::Diff;
 
@@ -141,7 +142,7 @@ pub struct PathData {
     /// `+0x30`: the target object's id, none for a point.
     pub target: Option<ObjectId>,
     /// `+0x34`, in seconds.
-    pub pause_time: f32,
+    pub pause_time: Seconds,
     /// `+0x3c`: bit 0 a waypoint was reached, bit 1 it was the waypoint itself, bit 3 the tile
     /// pathfinder found only the nearest point.
     pub flags: u32,
@@ -270,7 +271,7 @@ pub struct Mover {
     pub angle: f32,
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
-    pub pauses: Vec<(ObjectId, f32)>,
+    pub pauses: Vec<(ObjectId, Seconds)>,
     /// The kept hits its walk met of the walked level's target's master, of a player neither
     /// counts an ally: the motion step tells the unit AI of each (its slot 0x38 with
     /// [`crate::unit_ai::NotifyKind::IN_THE_WAY`] and the hit's id), which the caller passes on.
@@ -421,7 +422,7 @@ impl PathData {
             state: PathState::Idle,
             range: 0.0,
             target: None,
-            pause_time: 0.0,
+            pause_time: Seconds::ZERO,
             flags: 0,
             length: 0.0,
             created: now,
@@ -446,7 +447,7 @@ impl PathData {
             state: PathState::Idle,
             range: 0.0,
             target: None,
-            pause_time: 0.0,
+            pause_time: Seconds::ZERO,
             flags: 0,
             length: 0.0,
             created: WorldTime::ZERO,
@@ -489,13 +490,13 @@ fn far_waypoint(way: f32, target: Option<(f32, MasterId)>) -> bool {
 
 /// [`Mover::motion_passes`]'s pause of the `level` walked: a paused walk's pause runs down by
 /// `dt`; true while some is left, else it ends at 0.
-fn pause_holds(level: &mut PathData, dt: f32) -> bool {
-    if 0.0 < level.pause_time {
+fn pause_holds(level: &mut PathData, dt: Seconds) -> bool {
+    if Seconds::ZERO < level.pause_time {
         level.pause_time -= dt;
-        if 0.0 < level.pause_time {
+        if Seconds::ZERO < level.pause_time {
             return true;
         }
-        level.pause_time = 0.0;
+        level.pause_time = Seconds::ZERO;
     }
     false
 }

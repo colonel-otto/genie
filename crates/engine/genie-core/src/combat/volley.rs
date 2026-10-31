@@ -30,6 +30,7 @@ use crate::unit_ai::Notify;
 use crate::unit_ai::NotifyKind;
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
+use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -126,7 +127,7 @@ impl Unit {
                 if k < n {
                     self.next_volley = self.next_volley.wrapping_add(k as u8);
                     // an immediate 0.05
-                    self.attack_timer = 0.05;
+                    self.attack_timer = Seconds::new(0.05);
                     n = k;
                     all = false;
                 }

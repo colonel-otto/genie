@@ -1833,12 +1833,12 @@ fn a_frozen_object_may_be_anywhere_its_speed_could_take_it() {
     );
     assert!(s.get_known(object_id(9656)).is_ok());
     // its box reaches x 33.8; 3 s later it may stand on the footprint, which ends at 31
-    s.grow_unknown(2.5);
+    s.grow_unknown(Seconds::new(2.5));
     assert!(
         s.footprint_occupants(object_id(10028), &house, true, &BTreeMap::new())
             .is_ok()
     );
-    s.grow_unknown(0.5);
+    s.grow_unknown(Seconds::new(0.5));
     let e = s
         .footprint_occupants(object_id(10028), &house, true, &BTreeMap::new())
         .unwrap_err();
@@ -1868,9 +1868,9 @@ fn a_frozen_object_that_does_not_move_is_known_unless_a_stopped_unit_may_reach_i
     walker.speed = 0.8;
     s.insert(object_id(9200), walker);
     s.freeze(object_id(9200));
-    s.grow_unknown(10.0);
+    s.grow_unknown(Seconds::new(10.0));
     assert!(s.check_known(near).is_ok());
-    s.grow_unknown(2.0);
+    s.grow_unknown(Seconds::new(2.0));
     assert!(s.check_known(near).is_err());
 }
 

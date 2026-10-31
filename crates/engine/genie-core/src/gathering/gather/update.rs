@@ -18,6 +18,7 @@ use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 /// A gatherer without movement state, which the Gather's walks and turns need.
@@ -121,7 +122,9 @@ impl GatherAction {
             return self.update_without_target(c, unit, r);
         };
         match self.state {
-            GatherState::Walk if self.timer < 0.0 => self.update_walk_wait(c, unit, target, dt, r),
+            GatherState::Walk if self.timer < Seconds::ZERO => {
+                self.update_walk_wait(c, unit, target, dt, r)
+            }
             GatherState::Walk => self.update_walk(c, unit, me, target, r),
             GatherState::Face => self.update_face(c, unit, target, r),
             GatherState::Work => self.update_work(c, unit, target, r),
@@ -133,10 +136,10 @@ impl GatherAction {
 
     /// Case 2, the search's wait: the timer counts up by the world's dt; at 0 it waits again
     /// ([`SEARCH_WAIT`]) and asks again ([`Next::Search`]).
-    fn update_search(&mut self, dt: f32) -> Next {
-        if self.timer < 0.0 {
+    fn update_search(&mut self, dt: Seconds) -> Next {
+        if self.timer < Seconds::ZERO {
             self.timer += dt;
-            if 0.0 <= self.timer {
+            if Seconds::ZERO <= self.timer {
                 self.timer = SEARCH_WAIT;
                 return Next::Search;
             }
@@ -178,14 +181,14 @@ impl GatherAction {
         c: &mut Step<'_>,
         unit: &mut Unit,
         target: &Victim,
-        dt: f32,
+        dt: Seconds,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
         self.timer += dt;
-        if self.timer < 0.0 {
+        if self.timer < Seconds::ZERO {
             return Ok(Next::Stay);
         }
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         let walks = r.walks(&c.w.graphics, unit);
         let mover = unit.body.mover_mut().ok_or(UNMOVING)?;
         if self.stops < 2 {
@@ -239,7 +242,7 @@ impl GatherAction {
         }
         if 0.0 < target.amount || REGATHERED.contains(&target.master_id) {
             self.set_work(c, unit, r);
-            self.time_at_stop = 0.0;
+            self.time_at_stop = Seconds::ZERO;
             return Ok(Next::Stay);
         }
         Err(GenieError::unsupported(

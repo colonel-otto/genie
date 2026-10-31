@@ -47,6 +47,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Task, player_master};
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use genie_diff::Diff;
@@ -97,7 +98,7 @@ const EPSILON: f32 = crate::math::image::abilities::EPSILON;
 pub struct Abilities {
     /// `+0x9a4`, `mMovementDamageTimer` (saved): the seconds before a movement damage task hits
     /// again.
-    pub movement_damage_timer: f32,
+    pub movement_damage_timer: Seconds,
     /// `+0x87c`: the rate the attack timer (`+0x91c`) runs down at (`RGE_Combat_Object::update`,
     /// `0x14107e28e`). Not saved: the constructor's 1 until the first update's abilities.
     #[diff(unsaved)]
@@ -111,7 +112,7 @@ pub struct Abilities {
 impl Default for Abilities {
     fn default() -> Self {
         Self {
-            movement_damage_timer: 0.0,
+            movement_damage_timer: Seconds::ZERO,
             attack_rate: 1.0,
             look: None,
         }

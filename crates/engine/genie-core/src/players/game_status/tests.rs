@@ -38,6 +38,7 @@ use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Millis;
 use crate::world::Player;
+use crate::world::Seconds;
 
 /// An entry of `count` villagers of master `master` that paid `food` each.
 fn villager(master: Option<MasterId>, count: i16, food: f32) -> Entry {
@@ -373,7 +374,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             move_to: None,
             drop_site: None,
             carry_to: None,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             lead: Lead {
                 moved: true,
                 still_time: 2,
@@ -456,7 +457,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
     t.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
-    t.building_production(PlayerId::new(1), ListIndex::new(0), 0.05)
+    t.building_production(PlayerId::new(1), ListIndex::new(0), Seconds::new(0.05))
         .unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (200.0, 0.0));
@@ -466,7 +467,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
         .unwrap()
         .queue;
     assert_eq!((q.count, q.total, q.changes), (0, 0, 1));
-    t.building_production(PlayerId::new(1), ListIndex::new(0), 0.05)
+    t.building_production(PlayerId::new(1), ListIndex::new(0), Seconds::new(0.05))
         .unwrap();
     let q = &t.players[1].objects[ListIndex::new(0)]
         .production
@@ -489,7 +490,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
         .unwrap()
         .queue
         .enabled = false;
-    t.building_production(PlayerId::new(1), ListIndex::new(0), 0.05)
+    t.building_production(PlayerId::new(1), ListIndex::new(0), Seconds::new(0.05))
         .unwrap();
     let p = &t.players[1];
     assert_eq!(
@@ -810,7 +811,8 @@ fn a_research_gives_the_effect_attribute_269_names() {
         t.effects = vec![Vec::new(); 301];
         t.effects[300] = vec![EffectCommand::of_data(1, 3, 1, -1, 20.0).unwrap()];
         let gold = t.players[1].resources[3];
-        t.produce(PlayerId::new(1), ListIndex::new(0), 1.0).unwrap();
+        t.produce(PlayerId::new(1), ListIndex::new(0), Seconds::new(1.0))
+            .unwrap();
         t.players[1].resources[3] - gold
     };
     assert_eq!(run(300.0), 20.0);

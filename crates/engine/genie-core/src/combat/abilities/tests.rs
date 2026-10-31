@@ -189,10 +189,16 @@ fn a_unit_generates_while_its_top_action_works_on_a_target_of_the_task_s_class()
 fn the_amount_is_dt_times_the_rate_times_the_attribute_in_that_order() {
     let t = feitoria_food();
     let dt = 0.044_f32;
-    assert_eq!(generated(dt, &t, 1.0).to_bits(), (dt * 1.6 * 1.0).to_bits());
+    assert_eq!(
+        generated(Seconds::new(dt), &t, 1.0).to_bits(),
+        (dt * 1.6 * 1.0).to_bits()
+    );
     let m = 0.3_f32;
-    assert_eq!(generated(dt, &t, m).to_bits(), ((dt * 1.6) * m).to_bits());
-    assert_eq!(generated(dt, &t, 0.0), 0.0);
+    assert_eq!(
+        generated(Seconds::new(dt), &t, m).to_bits(),
+        ((dt * 1.6) * m).to_bits()
+    );
+    assert_eq!(generated(Seconds::new(dt), &t, 0.0), 0.0);
 }
 
 #[test]
@@ -219,26 +225,26 @@ fn the_store_gives_what_reached_1_and_starts_again() {
 
 #[test]
 fn the_movement_damage_timer_runs_down_to_0_and_then_hits() {
-    let mut t = 0.5_f32;
-    assert!(!movement_damage_due(&mut t, 0.2));
-    assert_eq!(t, 0.5 - 0.2);
-    assert!(movement_damage_due(&mut t, 0.4));
-    assert_eq!(t, 0.0);
+    let mut t = Seconds::new(0.5);
+    assert!(!movement_damage_due(&mut t, Seconds::new(0.2)));
+    assert_eq!(t, Seconds::new(0.5) - Seconds::new(0.2));
+    assert!(movement_damage_due(&mut t, Seconds::new(0.4)));
+    assert_eq!(t, Seconds::ZERO);
     // at 0 it does not run down and hits
-    assert!(movement_damage_due(&mut t, 0.4));
-    assert_eq!(t, 0.0);
+    assert!(movement_damage_due(&mut t, Seconds::new(0.4)));
+    assert_eq!(t, Seconds::ZERO);
     // to exactly 0
-    let mut t = 0.25_f32;
-    assert!(movement_damage_due(&mut t, 0.25));
-    assert_eq!(t, 0.0);
+    let mut t = Seconds::new(0.25);
+    assert!(movement_damage_due(&mut t, Seconds::new(0.25)));
+    assert_eq!(t, Seconds::ZERO);
     // below 0 (a timer the save holds so) hits as it is
-    let mut t = -1.0_f32;
-    assert!(movement_damage_due(&mut t, 0.1));
-    assert_eq!(t, -1.0);
+    let mut t = Seconds::new(-1.0);
+    assert!(movement_damage_due(&mut t, Seconds::new(0.1)));
+    assert_eq!(t, Seconds::new(-1.0));
     // a NaN never hits and stays
-    let mut t = f32::NAN;
-    assert!(!movement_damage_due(&mut t, 0.1));
-    assert!(t.is_nan());
+    let mut t = Seconds::new(f32::NAN);
+    assert!(!movement_damage_due(&mut t, Seconds::new(0.1)));
+    assert!(t.get().is_nan());
 }
 
 #[test]
@@ -547,7 +553,7 @@ fn world() -> World {
         vec![Millis::ZERO; 3],
         players,
     );
-    t.dt_seconds = 0.5;
+    t.dt_seconds = Seconds::new(0.5);
     t.spatial = Spatial::new(GridSize::new(20, 20));
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
     t.masters = vec![Masters::default(), Masters::default(), Masters::default()];
@@ -715,15 +721,15 @@ fn keshik(t: &mut World) {
         target: Some(object_id(77)),
         target2: None,
         state: AttackState::Swing,
-        timer: 0.0,
+        timer: Seconds::ZERO,
         range: 0.0,
         min_range: 0.0,
         point: Position::new(-1.0, -1.0, -1.0),
         seen: Position::new(-1.0, -1.0, -1.0),
         move_to: None,
         pending: false,
-        swing: 0.0,
-        rest: 0.0,
+        swing: Seconds::ZERO,
+        rest: Seconds::ZERO,
         arms: crate::combat::attack::Arms {
             move_sprite: None,
             sprite: None,
@@ -850,7 +856,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         t.players[1].objects[ListIndex::new(0)]
             .abilities
             .movement_damage_timer,
-        3.0
+        Seconds::new(3.0)
     );
     // the timer runs down first: no hit for 3 s
     run(&mut t, PlayerId::new(1), 10);
@@ -859,12 +865,12 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         t.players[1].objects[ListIndex::new(0)]
             .abilities
             .movement_damage_timer,
-        2.5
+        Seconds::new(2.5)
     );
     // standing, no hit even when due
     t.players[1].objects[ListIndex::new(0)]
         .abilities
-        .movement_damage_timer = 0.0;
+        .movement_damage_timer = Seconds::ZERO;
     t.players[1].objects[ListIndex::new(0)]
         .body
         .mover_mut()

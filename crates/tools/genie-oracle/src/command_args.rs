@@ -2,6 +2,7 @@
 //! combat part.
 
 use crate::Error;
+use genie_core::world::Seconds;
 use genie_rec::de;
 use genie_rec::de::Op;
 use genie_save::generated::world::Master;
@@ -59,8 +60,8 @@ pub(super) fn saved_move_wait(
             |m| {
                 Ok(MoveWait {
                     state: MoveWaitState::of_byte(m.movement_wait_state)?,
-                    timer: m.timer,
-                    delay: f32::from_bits(m.k_default_wait_time),
+                    timer: Seconds::new(m.timer),
+                    delay: Seconds::new(f32::from_bits(m.k_default_wait_time)),
                 })
             },
         )

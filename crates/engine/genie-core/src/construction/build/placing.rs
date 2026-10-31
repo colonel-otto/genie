@@ -15,6 +15,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -232,7 +233,7 @@ impl BuildAction {
         }
         builder.footprint_waits += 1;
         self.state = BuildState::Wait;
-        self.timer = 1.0;
+        self.timer = Seconds::new(1.0);
         Ok(())
     }
 

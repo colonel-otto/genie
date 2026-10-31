@@ -13,6 +13,7 @@ use crate::movement::Walker;
 use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -54,9 +55,9 @@ const PASSES: u32 = 20;
 /// A level with fewer plans left than this gives up rather than wait (`FUN_140f95bf0 < 3`).
 const LAST_TRIES: i32 = 3;
 /// A patrolling group at its last waypoint pauses this long (the immediate `0x3f000000`).
-const PATROL_PAUSE: f32 = 0.5;
+const PATROL_PAUSE: Seconds = Seconds::new(0.5);
 /// A group without a path left pauses this long (the immediate `0x3dcccccd`).
-const STUCK_PAUSE: f32 = 0.1;
+const STUCK_PAUSE: Seconds = Seconds::new(0.1);
 
 /// What `BMotion` reads of the group's lead (`+0xc4`, `FUN_141016870`'s member).
 #[derive(Clone, Debug, PartialEq)]
@@ -184,7 +185,7 @@ impl Motion {
         &self,
         forward: BVector,
         direction: BVector,
-        dt: f32,
+        dt: Seconds,
         clamp: bool,
     ) -> f32 {
         let mut angle = fmath::angle_between(direction, forward);
@@ -216,16 +217,16 @@ impl Motion {
     /// speed grows by `dt` times its acceleration; the new position moves by `dt` times each
     /// speed along its vector (forward, right, up) when that is above 1e-7 in size (motion flags
     /// bit 0); then the position is the new position, all four vectors.
-    pub fn integrate(&mut self, dt: f32) -> Result<(), GenieError> {
+    pub fn integrate(&mut self, dt: Seconds) -> Result<(), GenieError> {
         self.velocity = self
             .velocity
-            .with_y(self.velocity.y() + dt * self.acceleration.y());
+            .with_y(self.velocity.y() + dt.get() * self.acceleration.y());
         for (speed, along) in [
             (self.velocity.y(), 1),
             (self.velocity.x(), 3),
             (self.velocity.height(), 2),
         ] {
-            let d = dt * speed;
+            let d = dt.get() * speed;
             if EPSILON < d.abs() {
                 let v = fmath::scale(d, *self.new_position.checked(along)?);
                 let p = &mut self.new_position[0];

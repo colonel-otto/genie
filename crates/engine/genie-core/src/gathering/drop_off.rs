@@ -18,6 +18,7 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::world_view::DropWorld;
+use crate::world::Seconds;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -136,7 +137,7 @@ impl Unit {
         let gather = self.actions.gather_mut().expect("the caller's gather");
         gather.tear_down(self.body.mover_mut())?;
         gather.state = GatherState::Idle;
-        gather.timer = 0.0;
+        gather.timer = Seconds::ZERO;
         gather.target = None;
         gather.carry_to = None;
         gather.point = Position::from([-1.0; 3]);

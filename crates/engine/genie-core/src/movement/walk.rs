@@ -11,6 +11,7 @@ use crate::movement::{
 };
 use crate::objects::ObjectKey;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::{GenieError, math::fmath};
 
@@ -116,7 +117,7 @@ impl Mover {
     /// renormalised, with [`Mover::turn_dt`]), then the yaw by the turn ([`Mover::yaw`]) unless
     /// the walked level's flags have bit 0 and the turn is 0. Returns whether the turn fell short
     /// (the angle was above the most), which brakes the unit ([`Mover::control_speed`]).
-    pub(super) fn steer(&mut self, direction: BVector, dt: f32) -> Result<bool, GenieError> {
+    pub(super) fn steer(&mut self, direction: BVector, dt: Seconds) -> Result<bool, GenieError> {
         let mut flat = self.forward;
         flat = flat.with_height(0.0);
         let flat = fmath::normalize(flat);
@@ -133,11 +134,11 @@ impl Mover {
     /// steering (`FUN_141025fb0` at `0x141027887`) multiply it before slot 195.
     ///
     /// [`MoveStats::fast_turn`]: crate::movement::MoveStats::fast_turn
-    pub(crate) fn turn_dt(&self, dt: f32) -> f32 {
+    pub(crate) fn turn_dt(&self, dt: Seconds) -> f32 {
         if self.stats.fast_turn {
-            dt * FAST_TURN
+            dt.get() * FAST_TURN
         } else {
-            dt
+            dt.get()
         }
     }
 
@@ -219,7 +220,9 @@ impl Mover {
     /// 0.
     #[must_use]
     pub fn paused(&self) -> bool {
-        self.paths.first().is_some_and(|l| 0.0 < l.pause_time)
+        self.paths
+            .first()
+            .is_some_and(|l| Seconds::ZERO < l.pause_time)
     }
 
     /// The speed control toward the waypoint (slot 198, `0x141150a80`): a unit whose turn fell

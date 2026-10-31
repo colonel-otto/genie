@@ -16,6 +16,7 @@ use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
 use crate::objects::unit::Unit;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
@@ -35,7 +36,7 @@ pub enum Dropped {
 }
 
 /// The wait of a hunt's drop-off that cannot go on (`0xc0400000`).
-pub(super) const DROP_WAIT: f32 = -3.0;
+pub(super) const DROP_WAIT: Seconds = Seconds::new(-3.0);
 /// A hunt's drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
 pub(super) const DROP_REACH: f32 = crate::math::image::hunt::DROP_REACH;
 
@@ -96,12 +97,12 @@ impl HuntAction {
         site: Option<DropOff>,
         who: PointWalker,
     ) -> Result<Dropped, GenieError> {
-        if self.timer < 0.0 {
+        if self.timer < Seconds::ZERO {
             self.timer += c.dt.seconds();
-            if self.timer < 0.0 {
+            if self.timer < Seconds::ZERO {
                 return Ok(Dropped::Going);
             }
-            self.timer = 0.0;
+            self.timer = Seconds::ZERO;
             return Ok(Dropped::Again);
         }
         let gives_up = GiveUp {

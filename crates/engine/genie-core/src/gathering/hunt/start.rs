@@ -19,6 +19,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
@@ -136,7 +137,7 @@ impl HuntAction {
             move_to: None,
             drop_site: None,
             carry_to: None,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             lead: Lead::NEW,
         };
         if 0.0 < target.amount {
@@ -190,7 +191,7 @@ impl HuntAction {
     ) -> Result<bool, GenieError> {
         self.tear_down(Some(mover))?;
         self.state = HuntState::Walk;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         self.point = target.position;
         let own_livestock = target.class == class::LIVESTOCK && target.player == player;
         if ObjectState::Alive < target.state || own_livestock {
@@ -212,7 +213,7 @@ impl HuntAction {
             // LAB_140ac679d: set_state(13): the timer clears; the unit's sprite (slot 0x68 with
             // FUN_140ac5210's) is the caller's
             self.state = HuntState::Failed;
-            self.timer = 0.0;
+            self.timer = Seconds::ZERO;
             return Ok(false);
         }
         self.state = HuntState::Attack;
@@ -255,7 +256,7 @@ impl HuntAction {
         }
         if target.player == player && drops_here && 0.0 < held {
             self.set_target(None);
-            self.timer = 0.0;
+            self.timer = Seconds::ZERO;
             self.point = Position::from([-1.0; 3]);
             self.carry_to = Some(target.id);
             self.target_class = Some(target.class);
@@ -340,7 +341,7 @@ impl HuntAction {
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = state;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         self.move_to = self.move_to_point(mover, walks)?;
         Ok(())
     }
@@ -354,15 +355,15 @@ impl HuntAction {
     /// A unit that cannot move.
     pub fn wait_then_walk(
         &mut self,
-        dt: f32,
+        dt: Seconds,
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.timer += dt;
-        if self.timer < 0.0 {
+        if self.timer < Seconds::ZERO {
             return Ok(());
         }
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         self.set_point_walk(HuntState::WalkSearch, mover, walks)
     }
 
@@ -423,7 +424,7 @@ impl HuntAction {
         let target = self.target.take();
         let second = self.carry_to.take();
         self.point = Position::from([-1.0; 3]);
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         [target, second]
     }
 }

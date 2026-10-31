@@ -13,6 +13,7 @@ use crate::math::rng::Stream;
 use crate::movement::footprint_gap_squared;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::step::Step;
 
@@ -90,7 +91,7 @@ impl HuntAction {
             return Ok(HuntNext::Stay);
         }
         self.timer += c.dt.seconds();
-        if self.timer < 0.0 {
+        if self.timer < Seconds::ZERO {
             return Ok(HuntNext::Stay);
         }
         let v = f.victim.position;

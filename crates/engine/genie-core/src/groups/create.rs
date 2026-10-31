@@ -11,6 +11,7 @@ use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::COMBAT;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -82,7 +83,7 @@ impl UnitGroup {
         if n <= 0 || n as usize <= self.member_capacity() {
             return false;
         }
-        self.spare_seconds = vec![f32::MAX; n as usize - self.members.len()];
+        self.spare_seconds = vec![Seconds::MAX; n as usize - self.members.len()];
         true
     }
 
@@ -91,7 +92,7 @@ impl UnitGroup {
     /// and then, as any full one, to twice its capacity (20 the first time). The next member
     /// takes the first spare place's seconds, which a removed member may have left
     /// (`FUN_14102c160` shifts the ids and moves, not this array).
-    fn next_seconds(&mut self) -> f32 {
+    fn next_seconds(&mut self) -> Seconds {
         if self.spare_seconds.is_empty() {
             if self.member_capacity() == 0 {
                 let _ = self.resize_members(FIRST_CAPACITY);
@@ -215,7 +216,7 @@ impl World {
             }
         }
         let g = self.groups.held_mut(group)?;
-        let seconds: Vec<f32> = g
+        let seconds: Vec<Seconds> = g
             .members
             .iter()
             .map(|m| m.seconds_since_attacking)
@@ -438,6 +439,7 @@ mod tests {
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
     use crate::world::Millis;
+    use crate::world::Seconds;
     use crate::world::WorldTime;
 
     use crate::players::relation_row;
@@ -500,11 +502,11 @@ mod tests {
             .iter()
             .map(|&(id, s)| Member {
                 id: object_id(id),
-                seconds_since_attacking: s,
+                seconds_since_attacking: Seconds::new(s),
                 ..Member::default()
             })
             .collect();
-        g.spare_seconds = vec![f32::MAX];
+        g.spare_seconds = vec![Seconds::MAX];
         g.unit_types = vec![
             UnitTypeStatistic {
                 formation_category: 1,
@@ -533,24 +535,24 @@ mod tests {
         let mut g = UnitGroup::new(group_id(1));
         g.members = vec![Member {
             id: object_id(5),
-            seconds_since_attacking: 2.0,
+            seconds_since_attacking: Seconds::new(2.0),
             ..Member::default()
         }];
-        g.spare_seconds = vec![7.0, 8.0];
+        g.spare_seconds = vec![Seconds::new(7.0), Seconds::new(8.0)];
         assert!(!g.resize_members(0));
         assert!(!g.resize_members(-4));
         assert!(!g.resize_members(3));
-        assert_eq!(g.spare_seconds, [7.0, 8.0]);
+        assert_eq!(g.spare_seconds, [Seconds::new(7.0), Seconds::new(8.0)]);
         assert!(g.resize_members(4));
         assert_eq!(
             (g.members[0].id, g.members[0].seconds_since_attacking),
-            (object_id(5), 2.0)
+            (object_id(5), Seconds::new(2.0))
         );
-        assert_eq!(g.spare_seconds, [f32::MAX; 3]);
+        assert_eq!(g.spare_seconds, [Seconds::MAX; 3]);
         assert_eq!(g.member_capacity(), 4);
         // the place taken for the next member leaves 19 spare of 20
         let mut empty = UnitGroup::new(group_id(2));
-        assert_eq!(empty.next_seconds(), f32::MAX);
+        assert_eq!(empty.next_seconds(), Seconds::MAX);
         assert_eq!(empty.spare_seconds.len(), 19);
     }
 
@@ -637,13 +639,19 @@ mod tests {
                 .unwrap()
         );
         let g = t.groups.get(group_id(1)).unwrap();
-        let members: Vec<(ObjectId, f32)> = g
+        let members: Vec<(ObjectId, Seconds)> = g
             .members
             .iter()
             .map(|m| (m.id, m.seconds_since_attacking))
             .collect();
-        assert_eq!(members, [(object_id(10), 1.0), (object_id(12), 2.0)]);
-        assert_eq!(g.spare_seconds, [3.0, f32::MAX]);
+        assert_eq!(
+            members,
+            [
+                (object_id(10), Seconds::new(1.0)),
+                (object_id(12), Seconds::new(2.0))
+            ]
+        );
+        assert_eq!(g.spare_seconds, [Seconds::new(3.0), Seconds::MAX]);
         assert_eq!(g.unit_types[0].units, [object_id(10)]);
         assert_eq!(
             (

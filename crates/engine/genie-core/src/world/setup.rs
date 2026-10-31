@@ -12,6 +12,7 @@ use crate::objects::masters::ObstructionClass;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::player::Player;
 use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, World};
@@ -66,7 +67,7 @@ impl World {
             ai: crate::players::ai_module::AiModules::default(),
             groups: crate::groups::UnitGroups::default(),
             last_commanded: Vec::new(),
-            dt_seconds: 0.0,
+            dt_seconds: Seconds::ZERO,
             dt: Millis::ZERO,
             history_period: HISTORY_PERIOD,
             allow_gaia_capture: Vec::new(),

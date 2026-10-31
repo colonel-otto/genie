@@ -91,7 +91,8 @@ impl World {
                     true
                 } else {
                     own.timer -= dt;
-                    !below_or_unordered(0.0, own.timer) || !below_or_unordered(0.0, own.distance)
+                    !below_or_unordered(0.0, own.timer.get())
+                        || !below_or_unordered(0.0, own.distance)
                 };
                 if !ends {
                     continue;

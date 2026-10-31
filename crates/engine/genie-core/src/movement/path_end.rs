@@ -5,6 +5,7 @@ use crate::movement::PathState;
 use crate::movement::WaypointLevel;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 
 use crate::map::Point;
@@ -401,16 +402,16 @@ impl Mover {
     /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`)
     /// from where it last moved to (`+0x824`, [`Mover::moved_at`]): the forward speed after one
     /// more step of acceleration, capped by the top speed (COMISS/JA, then JC: a NaN speed stays).
-    pub(crate) fn projected(&self, direction: BVector, dt: f32) -> BVector {
+    pub(crate) fn projected(&self, direction: BVector, dt: Seconds) -> BVector {
         let position = self.moved_at.vector();
         let Some(v) = &self.velocity else {
             return position;
         };
-        let mut next = fmath::add(v.velocity, fmath::scale(dt, v.acceleration));
+        let mut next = fmath::add(v.velocity, fmath::scale(dt.get(), v.acceleration));
         if self.stats.speed < next.y() || next.y() <= 0.0 {
             next = next.with_y(self.stats.speed);
         }
-        fmath::add(position, fmath::scale(dt * next.y(), direction))
+        fmath::add(position, fmath::scale(dt.get() * next.y(), direction))
     }
 
     /// [`Mover::avoid`]'s first loop's test of the hit `id` (`other` its record): kept unless
@@ -480,7 +481,7 @@ impl Mover {
         (world, groups): (&Spatial, Option<&crate::groups::UnitGroups>),
         hits: &[RecordId],
         projected: BVector,
-        dt: f32,
+        dt: Seconds,
         (now, computer): (WorldTime, bool),
     ) -> Result<Avoided, GenieError> {
         let level = &self.paths[0];
@@ -564,7 +565,7 @@ impl Mover {
     /// The pause of unit `id`'s walked level as slot 0x5f0 leaves it: the last this walk gave it
     /// (the game's call writes it at once, a later pass of the same step reads it), else the
     /// world's ([`crate::map::spatial::Gait::pause`]).
-    pub(super) fn pause_of(&self, world: &Spatial, id: ObjectId) -> Option<f32> {
+    pub(super) fn pause_of(&self, world: &Spatial, id: ObjectId) -> Option<Seconds> {
         self.pauses
             .iter()
             .rev()

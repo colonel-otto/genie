@@ -21,6 +21,7 @@ use crate::objects::masters::ActionType;
 use crate::players::PlayerId;
 use crate::unit_ai::UnitStance;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
@@ -110,7 +111,7 @@ pub struct SpecificMove {
     /// `mGoal`.
     pub goal: BVector,
     /// `mTimer`.
-    pub timer: f32,
+    pub timer: Seconds,
     /// `mConsecutiveMoveFailures`.
     pub consecutive_move_failures: i32,
     /// `mDistance`.
@@ -127,7 +128,7 @@ pub struct Member {
     /// Its own move.
     pub specific_move: SpecificMove,
     /// `mSecondsSinceAttacking[i]`.
-    pub seconds_since_attacking: f32,
+    pub seconds_since_attacking: Seconds,
 }
 
 /// A formation's slot (`mSlots[i]`).
@@ -414,7 +415,7 @@ pub struct UnitGroup {
     /// `mDifferentiatorID`.
     pub differentiator_id: i32,
     /// `mSecondsNotUnderAttack`.
-    pub seconds_not_under_attack: f32,
+    pub seconds_not_under_attack: Seconds,
     /// `mDifferentiatorGroups`.
     pub differentiator_groups: Vec<GroupId>,
     /// `mTotalSpacing`.
@@ -424,7 +425,7 @@ pub struct UnitGroup {
     /// The members' `mSecondsSinceAttacking` slots past the members (not saved): the array's
     /// capacity beyond its count, which the next members take in order (`AddUnit`'s
     /// `FUN_14102d710`).
-    pub spare_seconds: Vec<f32>,
+    pub spare_seconds: Vec<Seconds>,
     /// The special units (`+0x488` its count, `+0x48c` the ids; not saved): the members a group's
     /// command on an attack task lists for the target (`FUN_14100c6c0`, its one writer).
     pub special_units: Vec<ObjectId>,

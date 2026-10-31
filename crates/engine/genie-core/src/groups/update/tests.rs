@@ -31,6 +31,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::{Player, World};
 
@@ -407,15 +408,15 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         target: None,
         target2: None,
         state,
-        timer: 0.0,
+        timer: Seconds::ZERO,
         range: 0.0,
         min_range: 0.0,
         point: Position::ORIGIN,
         seen: Position::ORIGIN,
         move_to: None,
         pending: false,
-        swing: 0.0,
-        rest: 0.0,
+        swing: Seconds::ZERO,
+        rest: Seconds::ZERO,
         arms: crate::combat::attack::Arms {
             move_sprite: None,
             sprite: None,
@@ -635,7 +636,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
         graphic,
         frame: 0,
         interval: 0.0,
-        last: 0.0,
+        last: Seconds::ZERO,
         last_frame: 0,
         changed: false,
         looped: false,
@@ -842,7 +843,7 @@ fn a_follow_moves_to_its_target_when_it_strays() {
     let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(
         (g.flags, g.members[0].seconds_since_attacking),
-        (0x1000, 0.0)
+        (0x1000, Seconds::ZERO)
     );
     t.groups
         .get_mut(group_id(1))
@@ -853,7 +854,7 @@ fn a_follow_moves_to_its_target_when_it_strays() {
     let g = t.groups.get(group_id(1)).unwrap();
     assert_eq!(
         (g.flags, g.members[0].seconds_since_attacking),
-        (0x1000, f32::MAX)
+        (0x1000, Seconds::MAX)
     );
     assert_eq!(g.motion.lead, Some(object_id(12)));
     t.groups.get_mut(group_id(1)).unwrap().current_target.target = GroupTarget::of_saved(77, -1);
@@ -1047,7 +1048,7 @@ fn units_out_of_their_places_get_paths() {
 #[test]
 fn a_member_moved_aside_waits_out_its_timer() {
     let mut t = world();
-    t.dt_seconds = 0.5;
+    t.dt_seconds = Seconds::new(0.5);
     for u in &mut t.players[1].objects {
         u.body
             .put_mover(Some(crate::gathering::hunt::tests::walking()));
@@ -1056,7 +1057,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
         active: 1,
         path_id: 4,
         reason: 2,
-        timer: 0.75,
+        timer: Seconds::new(0.75),
         ..crate::groups::SpecificMove::default()
     };
     let g = t.groups.get_mut(group_id(1)).unwrap();
@@ -1069,7 +1070,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
         .current_action = Some(ActionKind::Move);
     t.specific_moves_step(group_id(1)).unwrap();
     let g = t.groups.get(group_id(1)).unwrap();
-    assert_eq!(g.members[0].specific_move.timer, 0.25);
+    assert_eq!(g.members[0].specific_move.timer, Seconds::new(0.25));
     assert_eq!(g.members[1].specific_move, aside);
     assert_eq!(
         t.object(object_id(10)).unwrap().1.body.anim_speed(),
@@ -1092,7 +1093,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
     // a NaN timer keeps the move
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.members[0].specific_move = crate::groups::SpecificMove {
-        timer: f32::NAN,
+        timer: Seconds::new(f32::NAN),
         ..aside
     };
     t.specific_moves_step(group_id(1)).unwrap();
@@ -1123,7 +1124,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
 #[test]
 fn a_member_s_own_move_walks_its_path() {
     let mut t = world();
-    t.dt_seconds = 0.5;
+    t.dt_seconds = Seconds::new(0.5);
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.moved_at = Position::new(1.0, 1.0, 0.0);
     walker.take_record_path(
@@ -1155,7 +1156,7 @@ fn a_member_s_own_move_walks_its_path() {
         active: 1,
         path_id: -1,
         reason: 0,
-        timer: 3.0,
+        timer: Seconds::new(3.0),
         distance: 3.0,
         last_position: BVector::new(1.0, 0.0, 0.0),
         ..crate::groups::SpecificMove::default()
@@ -1327,7 +1328,7 @@ fn a_group_steers_its_free_members_speeds_in_their_own_update() {
         .unwrap()
         .paths = vec![crate::movement::PathData {
         state: PathState::Walking,
-        pause_time: 0.5,
+        pause_time: Seconds::new(0.5),
         ..crate::movement::PathData::without_path()
     }];
     let g = t.groups.get_mut(group_id(1)).unwrap();

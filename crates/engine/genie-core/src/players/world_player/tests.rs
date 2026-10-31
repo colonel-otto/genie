@@ -26,6 +26,7 @@ use crate::test_ids::object_id;
 use crate::vision::visibility::{Visibility, VisibleMap};
 use crate::world::Millis;
 use crate::world::Player;
+use crate::world::Seconds;
 
 /// Attributes 0 to 299, all 0.
 fn attributes() -> Vec<f32> {
@@ -61,7 +62,7 @@ fn world() -> World {
         vec![Millis::ZERO; 4],
         vec![gaia, human(), human(), human()],
     );
-    t.dt_seconds = 1.0;
+    t.dt_seconds = Seconds::new(1.0);
     t
 }
 
@@ -92,26 +93,29 @@ fn object(id: i32, m: MasterId, state: ObjectState) -> Unit {
 #[test]
 fn each_whole_second_of_update_time_runs_the_loop_once() {
     let mut t = world();
-    t.dt_seconds = 0.25;
-    t.players[1].update_time = 0.9;
+    t.dt_seconds = Seconds::new(0.25);
+    t.players[1].update_time = Seconds::new(0.9);
     t.update_world_player(PlayerId::new(1)).unwrap();
-    assert_eq!(t.players[1].update_time, (0.25f32 + 0.9) - 1.0);
+    assert_eq!(
+        t.players[1].update_time,
+        Seconds::new((0.25f32 + 0.9) - 1.0)
+    );
     assert_eq!(t.players[1].history.update_count, 1);
-    t.dt_seconds = 2.5;
-    t.players[2].update_time = 0.0;
+    t.dt_seconds = Seconds::new(2.5);
+    t.players[2].update_time = Seconds::ZERO;
     t.update_world_player(PlayerId::new(2)).unwrap();
-    assert_eq!(t.players[2].update_time, 0.5);
+    assert_eq!(t.players[2].update_time, Seconds::new(0.5));
     assert_eq!(t.players[2].history.update_count, 2);
     // below a second, or NaN, no loop
-    t.dt_seconds = 0.5;
-    t.players[3].update_time = f32::NAN;
+    t.dt_seconds = Seconds::new(0.5);
+    t.players[3].update_time = Seconds::new(f32::NAN);
     t.update_world_player(PlayerId::new(3)).unwrap();
     assert_eq!(t.players[3].history.update_count, 0);
     // Gaia: its own update time, no loop
     t.update_world_player(PlayerId::new(0)).unwrap();
     assert_eq!(
         (t.players[0].gaia_update_time, t.players[0].update_time),
-        (0.5, 0.0)
+        (Seconds::new(0.5), Seconds::ZERO)
     );
     assert_eq!(t.players[0].history.update_count, 0);
 }
@@ -209,7 +213,7 @@ fn a_mill_s_livestock_makes_food() {
         p.tracker.add(object_id(id), key);
     }
     p.attributes[254] = 15.0;
-    p.update_time = 0.5;
+    p.update_time = Seconds::new(0.5);
     t.update_world_player(PlayerId::new(1)).unwrap();
     let grows = crate::math::fmath::log(400.0 / 200.0 + 1.0);
     let food = 15.0 / 60.0 * (1.5 * grows);

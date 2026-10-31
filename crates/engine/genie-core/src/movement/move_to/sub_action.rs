@@ -13,6 +13,7 @@ use crate::objects::ObjectState;
 use crate::objects::sprite::Graphic;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::{ActionKind, Inbox};
+use crate::world::Seconds;
 
 /// A sub-action `MoveTo` that is not quiet letting its target go: its release (slot 0x180) would
 /// be its owner's, and no owner makes one.
@@ -140,7 +141,7 @@ impl MoveToAction {
             MoveTo::Waiting => {
                 self.wait.timer += walk.dt;
                 if self.wait.delay <= self.wait.timer {
-                    self.wait.timer = 0.0;
+                    self.wait.timer = Seconds::ZERO;
                     self.state = MoveTo::Start;
                 }
                 0

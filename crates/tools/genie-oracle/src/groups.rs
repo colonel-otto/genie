@@ -15,6 +15,7 @@ use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
 use genie_core::unit_ai::UnitStance;
 use genie_core::world::Millis;
+use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
 use genie_save::generated::world as saved;
 
@@ -138,12 +139,12 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
                         path_id: u.specific_moves_path_id,
                         reason: u.specific_moves_reason,
                         goal: vec3(&u.specific_moves_goal),
-                        timer: u.specific_moves_timer,
+                        timer: Seconds::new(u.specific_moves_timer),
                         consecutive_move_failures: u.specific_moves_consecutive_move_failures,
                         distance: u.specific_moves_distance,
                         last_position: vec3(&u.specific_moves_last_position),
                     },
-                    seconds_since_attacking: u.seconds_since_attacking,
+                    seconds_since_attacking: Seconds::new(u.seconds_since_attacking),
                 })
             })
             .collect::<Result<_, GenieError>>()?,
@@ -234,7 +235,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         // unsaved: the next statistics fill it
         sighted: Vec::new(),
         differentiator_id: g.differentiator_id,
-        seconds_not_under_attack: g.seconds_not_under_attack,
+        seconds_not_under_attack: Seconds::new(g.seconds_not_under_attack),
         differentiator_groups: g
             .differentiator_groups
             .iter()
@@ -437,6 +438,13 @@ impl Flat for Millis {
     }
 }
 
+/// A span of seconds flattens as its f32, as the save holds it.
+impl Flat for Seconds {
+    fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
+        self.get().flat(path, out);
+    }
+}
+
 /// A vector flattens as its three components in the game's order, as the save holds them.
 impl Flat for BVector {
     fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
@@ -521,6 +529,7 @@ flat_struct! {
 mod tests {
     use super::*;
     use crate::test_ids::{group_id, object_id};
+    use genie_core::world::Seconds;
 
     fn world(groups: Vec<UnitGroup>) -> UnitGroups {
         UnitGroups {
@@ -568,7 +577,7 @@ mod tests {
     fn a_field_that_differs_is_named_by_its_path_with_both_values_in_full() {
         let mut theirs = group(3);
         theirs.motion.velocity = theirs.motion.velocity.with_height(0.1);
-        theirs.members[0].specific_move.timer = -0.0;
+        theirs.members[0].specific_move.timer = Seconds::new(-0.0);
         let d = group_differences(&world(vec![group(3)]), &world(vec![theirs]), false);
         assert_eq!(
             d,

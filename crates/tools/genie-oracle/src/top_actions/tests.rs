@@ -237,7 +237,11 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
         (None, 0.5_f32.to_bits(), None)
     );
     assert_eq!(
-        (m.wait.state, m.wait.timer.to_bits(), m.wait.delay.to_bits()),
+        (
+            m.wait.state,
+            m.wait.timer.get().to_bits(),
+            m.wait.delay.get().to_bits()
+        ),
         (
             MoveWaitState::AskedAgain,
             0.25_f32.to_bits(),
@@ -1230,7 +1234,7 @@ fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
         .unwrap()
         .attack
         .unwrap();
-        (a.swing.to_bits(), a.rest.to_bits())
+        (a.swing.get().to_bits(), a.rest.get().to_bits())
     };
     let rest = 2.5_f32 - 10.0 * 0.1_f32;
     assert_eq!(

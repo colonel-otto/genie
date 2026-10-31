@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::{GenieError, combat::damage};
 
 /// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])
@@ -126,10 +127,10 @@ impl Attack {
         }
         self.pending = true;
         let length = f32::from(shown.frames) * shown.frame_duration;
-        self.rest = r.reload - length;
+        self.rest = Seconds::new(r.reload - length);
         set_walker_anim(
             &mut unit.body,
-            if self.rest < 0.0 && 0.0 < r.reload {
+            if self.rest < Seconds::ZERO && 0.0 < r.reload {
                 length / r.reload
             } else {
                 1.0

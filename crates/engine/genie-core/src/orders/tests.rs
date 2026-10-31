@@ -41,6 +41,7 @@ use crate::unit_ai::NotifyKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::UnitStance;
+use crate::world::Seconds;
 
 /// The object's own update knows its slot: it is taken while it still holds the object, and
 /// the object is found by its id once the list moved or the slot is out of the lists; an
@@ -682,7 +683,7 @@ fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
         let (mut t, task) = work_attack(UnitStance::AGGRESSIVE);
         let unit = &mut t.players[1].objects[ListIndex::new(0)];
         unit.ai = None;
-        unit.attack_timer = timer;
+        unit.attack_timer = Seconds::new(timer);
         t.start_attack(
             PlayerId::new(1),
             ListIndex::new(0),
@@ -2794,7 +2795,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
                 moving: None,
             },
             added: true,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             site: None,
         }));
     assert_eq!(

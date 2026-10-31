@@ -25,6 +25,7 @@ use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
+use crate::world::Seconds;
 use genie_diff::Diff;
 
 mod gather_state;
@@ -53,9 +54,9 @@ pub const GATHER: ActionType = ActionType::named(5);
 
 /// `set_state(3)`'s timer: the search asks again once it counted up to 0 (`0xc1200000`, an
 /// immediate in `0x140a8cd40`).
-const SEARCH_WAIT: f32 = -10.0;
+const SEARCH_WAIT: Seconds = Seconds::new(-10.0);
 /// `set_state(0xf3)`'s timer: a second (`0xbf800000`, an immediate in `0x140a8cd40`).
-const FARM_WAIT_TIME: f32 = -1.0;
+const FARM_WAIT_TIME: Seconds = Seconds::new(-1.0);
 /// `mGatherX` of none (`DAT_14330ec20`, −1.0, read at `0x140a8d1c6`).
 const NO_GATHER_POINT: f32 = crate::math::image::gather::NO_GATHER_POINT;
 /// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
@@ -123,7 +124,7 @@ pub struct GatherAction {
     /// `+0x38`..`+0x40`: where the target stood.
     pub point: Position,
     /// `+0x44`: the state's timer.
-    pub timer: f32,
+    pub timer: Seconds,
     /// `+0x48`: its task.
     pub task: HuntTask,
     /// `+0x68`, `mTargetType`: the target's class.
@@ -133,9 +134,9 @@ pub struct GatherAction {
     /// `+0x6d`, `mCurrentStop`.
     pub current_stop: u8,
     /// `+0x70`, `mTimePerStop`.
-    pub time_per_stop: f32,
+    pub time_per_stop: Seconds,
     /// `+0x74`, `mTimeAtCurrentStop`.
-    pub time_at_stop: f32,
+    pub time_at_stop: Seconds,
     /// `+0x78`, `+0x7c`: `mLastStopX`, `mLastStopY`.
     pub last_stop: Point,
     /// `+0x80`: the gathering started (`set_state(7)`); not saved.

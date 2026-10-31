@@ -26,6 +26,7 @@ use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::test_ids::object_id_list;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 
 /// `FUN_14102d580` copies a slot in use without its transform mark (`+0x44`).
@@ -868,7 +869,7 @@ fn level(points: &[BVector], waypoint: i32, flags: u32) -> PathData {
         state: PathState::Idle,
         range: 0.0,
         target: None,
-        pause_time: 0.0,
+        pause_time: Seconds::ZERO,
         flags: 0,
         length: 0.0,
         created: WorldTime::ZERO,

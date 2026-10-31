@@ -297,13 +297,13 @@ fn a_querys_ends_stay_inside_the_map() {
 fn a_turn_is_limited_by_the_yaw_per_second() {
     let mut m = Motion::new();
     let (x, z) = (BVector::new(1.0, 0.0, 0.0), BVector::new(0.0, 0.0, 1.0));
-    let free = m.calculate_yaw_angle(x, z, 0.1, true);
+    let free = m.calculate_yaw_angle(x, z, Seconds::new(0.1), true);
     assert_eq!(free, -std::f32::consts::FRAC_PI_2);
     m.maximum_yaw_per_second_moving = 1.0;
-    assert_eq!(m.calculate_yaw_angle(x, z, 0.1, true), -0.1);
-    assert_eq!(m.calculate_yaw_angle(z, x, 0.1, true), 0.1);
+    assert_eq!(m.calculate_yaw_angle(x, z, Seconds::new(0.1), true), -0.1);
+    assert_eq!(m.calculate_yaw_angle(z, x, Seconds::new(0.1), true), 0.1);
     assert_eq!(
-        m.calculate_yaw_angle(z, x, 0.1, false),
+        m.calculate_yaw_angle(z, x, Seconds::new(0.1), false),
         std::f32::consts::FRAC_PI_2
     );
 }
@@ -317,11 +317,11 @@ fn the_yaw_clamp_keeps_the_angle_for_a_nan_operand() {
     let (x, z) = (BVector::new(1.0, 0.0, 0.0), BVector::new(0.0, 0.0, 1.0));
     m.maximum_yaw_per_second_moving = f32::NAN;
     assert_eq!(
-        m.calculate_yaw_angle(x, z, 0.1, true),
+        m.calculate_yaw_angle(x, z, Seconds::new(0.1), true),
         -std::f32::consts::FRAC_PI_2
     );
     m.maximum_yaw_per_second_moving = 1.0;
-    let nan = m.calculate_yaw_angle(BVector::new(f32::NAN, 0.0, 0.0), z, 0.1, true);
+    let nan = m.calculate_yaw_angle(BVector::new(f32::NAN, 0.0, 0.0), z, Seconds::new(0.1), true);
     assert!(nan.is_nan(), "{nan}");
 }
 
@@ -341,7 +341,7 @@ fn the_motion_turns_then_moves_along_its_forward() {
     m.flags = 0;
     m.velocity = BVector::new(0.0, 0.0, 2.0);
     m.acceleration = BVector::new(0.0, 0.0, 1.0);
-    m.integrate(0.5).unwrap();
+    m.integrate(Seconds::new(0.5)).unwrap();
     assert_eq!(m.velocity.y(), 2.5);
     let p = m.position[0];
     assert!((p.y() - 1.25).abs() < 1e-6 && p.x().abs() < 1e-6, "{p:?}");
@@ -378,7 +378,7 @@ impl Fixture {
         let mut world = StepWorld {
             spatial: &mut self.spatial,
             plan: &mut plan,
-            dt: 0.1,
+            dt: Seconds::new(0.1),
         };
         path_step(m, group, lead, &mut world, false).unwrap()
     }
@@ -478,11 +478,11 @@ fn an_arrived_level_hands_over_and_a_pause_waits() {
         1,
         PathState::Walking,
     );
-    paused.pause_time = 0.3;
+    paused.pause_time = Seconds::new(0.3);
     m.paths = vec![paused];
     assert!(!fx.step(&mut m, &GroupView::default(), &lead()));
     assert_eq!(m.velocity.y(), 0.0);
-    assert!((m.paths[0].pause_time - 0.2).abs() < 1e-6);
+    assert!((m.paths[0].pause_time - Seconds::new(0.2)).get().abs() < 1e-6);
 }
 
 impl Fixture {
@@ -506,7 +506,7 @@ impl Fixture {
         let mut world = StepWorld {
             spatial: &mut self.spatial,
             plan: &mut plan,
-            dt: 0.1,
+            dt: Seconds::new(0.1),
         };
         request(m, lead, &mut world, budget, target, target_gap2).unwrap()
     }
@@ -925,7 +925,7 @@ impl Fixture {
         let mut world = StepWorld {
             spatial: &mut self.spatial,
             plan: &mut plan,
-            dt: 0.1,
+            dt: Seconds::new(0.1),
         };
         step::pass(m, &GroupView::default(), lead, &mut world, false).unwrap()
     }
@@ -1117,7 +1117,7 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
         let mut world = StepWorld {
             spatial: &mut fx.spatial,
             plan: &mut plan,
-            dt: 0.1,
+            dt: Seconds::new(0.1),
         };
         assert!(matches!(
             step::pass(&mut m, &group, &lead(), &mut world, false).unwrap(),

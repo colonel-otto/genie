@@ -14,6 +14,7 @@ use crate::movement::{
 };
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::{GenieError, math::fmath};
 
@@ -50,7 +51,7 @@ pub enum GroupSpeed {
 #[derive(Debug)]
 pub(super) struct WalkStep<'a> {
     /// The step's time.
-    pub(super) time_step: f32,
+    pub(super) time_step: Seconds,
     /// The world's spatial index.
     pub(super) world: &'a mut Spatial,
     /// The world's unit groups (none for a walk without the world's planners).
@@ -85,7 +86,8 @@ impl Mover {
                 // the walked level walks (state 3) and its pause is not above 0 (`COMISS`
                 // then `JA`: a NaN pause walks)
                 let walks = self.paths.first().is_some_and(|l| {
-                    l.state == PathState::Walking && fmath::at_most_or_unordered(l.pause_time, 0.0)
+                    l.state == PathState::Walking
+                        && fmath::at_most_or_unordered(l.pause_time.get(), 0.0)
                 });
                 return if walks { speed } else { 0.0 };
             }
@@ -106,7 +108,7 @@ impl Mover {
     pub fn step_velocity(
         &mut self,
         position: Position,
-        dt: f32,
+        dt: Seconds,
         map: GridSize,
         terrain: Option<&crate::map::terrain::Terrain>,
         (now, group): (WorldTime, Option<GroupSpeed>),
@@ -119,7 +121,7 @@ impl Mover {
             v.velocity = v.velocity.with_y(speed);
         }
         // the position setter runs only for a distance it moves
-        let Some(at) = self.move_forward(dt * speed, map) else {
+        let Some(at) = self.move_forward(dt.get() * speed, map) else {
             return position;
         };
         let at = self.grounded(at, terrain);
@@ -290,7 +292,7 @@ impl Mover {
     pub fn motion(
         &mut self,
         me: &Me,
-        dt: f32,
+        dt: Seconds,
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
     ) -> Result<Motion, GenieError> {
@@ -384,7 +386,7 @@ impl Mover {
     pub(super) fn motion_passes(
         &mut self,
         me: &Me,
-        dt: f32,
+        dt: Seconds,
         world: &mut Spatial,
         mut plan: Option<&mut Planning<'_>>,
     ) -> Result<Motion, GenieError> {
@@ -594,7 +596,7 @@ impl Mover {
     /// 2), stops (slot 0x5d0).
     pub(super) fn loop_end(
         &mut self,
-        dt: f32,
+        dt: Seconds,
         walked: BVector,
         heading: BVector,
     ) -> Result<Motion, GenieError> {

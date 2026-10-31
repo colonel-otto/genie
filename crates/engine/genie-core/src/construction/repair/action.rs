@@ -20,13 +20,14 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::NotifyKind;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's
 /// `work_value` times the world's `dt`; with more than one repairer (`repairers`, `COMISS` with
 /// `JBE`) it is scaled by `((n − 1) × 0.5 + 1) / n`.
 #[must_use]
-pub fn work_amount(rate: f32, work_value: f32, dt: f32, repairers: Option<u8>) -> f32 {
+pub fn work_amount(rate: f32, work_value: f32, dt: Seconds, repairers: Option<u8>) -> f32 {
     let mut amount = rate * work_value * dt;
     if let Some(n) = repairers {
         let n = f32::from(n);
@@ -82,7 +83,7 @@ impl RepairAction {
             state: RepairState::Move,
             move_to: None,
             point: to.at,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             task,
             range,
             counted: false,
@@ -212,13 +213,13 @@ impl RepairAction {
         reads: &RepairReads,
     ) -> Result<(), GenieError> {
         self.timer -= c.dt.seconds();
-        if crate::math::fmath::below_or_unordered(0.0, self.timer) {
+        if crate::math::fmath::below_or_unordered(0.0, self.timer.get()) {
             return Ok(());
         }
         if Self::reaches(repairer, reads) {
             self.set_state(c, repairer, RepairState::Face, reads)?;
         } else {
-            self.timer = ONE;
+            self.timer = Seconds::new(ONE);
         }
         Ok(())
     }
@@ -496,7 +497,7 @@ impl RepairAction {
             }
             RepairState::Wait => {
                 standing(c, repairer)?;
-                self.timer = ONE;
+                self.timer = Seconds::new(ONE);
                 if reads.target.is_some_and(|t| SHIPS.contains(&t.class)) {
                     return Err(SHIP_REPAIR);
                 }

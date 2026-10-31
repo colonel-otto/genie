@@ -20,6 +20,7 @@ use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 impl HuntAction {
@@ -39,7 +40,7 @@ impl HuntAction {
     ) -> Result<(), GenieError> {
         self.tear_down(body.mover_mut())?;
         self.state = HuntState::Walk;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         // The villagers' class, whose `MoveTo` waits once when the motion step gives up.
         // Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
         // The predators' class, whose hunt ends on its own terms (`-0xea2` raw, `0x140ac85fd`).
@@ -151,7 +152,7 @@ impl HuntAction {
     pub(super) fn begin_face(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &HuntReads) {
         self.move_to = None;
         self.state = HuntState::Face;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         let carrying = self.task.resource.is_some()
             && unit.life.attribute_type == self.task.resource
             && 1 <= unit.life.amount as i32;
@@ -195,7 +196,7 @@ impl HuntAction {
     /// (`FUN_140c884c0`), 0 as the tick oracle holds it, would take the whole target at once.
     pub(super) fn gather(
         &self,
-        dt: f32,
+        dt: Seconds,
         unit: &mut Unit,
         victim: &mut Victim,
         r: &HuntReads,

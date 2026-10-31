@@ -11,6 +11,7 @@ use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 impl HuntAction {
@@ -42,7 +43,7 @@ impl HuntAction {
         match self.state {
             HuntState::Attack => self.update_attack(c, unit, me, f, r),
             // case 3: a hunt that gave up on its MoveTo waits (its timer below 0), then set_state 11
-            HuntState::Walk if self.timer < 0.0 => {
+            HuntState::Walk if self.timer < Seconds::ZERO => {
                 let walks = r.walks(&c.w.graphics, unit);
                 let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
                 self.wait_then_walk(c.dt.seconds(), mover, &walks)?;
@@ -159,7 +160,7 @@ impl HuntAction {
     /// unit's animation stops (`FUN_141161850`).
     fn walk_failed(&mut self, unit: &mut Unit, r: &HuntReads) -> Result<(), GenieError> {
         self.no_tree_search(r)?;
-        self.timer = -3.0;
+        self.timer = Seconds::new(-3.0);
         set_walker_anim(&mut unit.body, 0.0);
         Ok(())
     }

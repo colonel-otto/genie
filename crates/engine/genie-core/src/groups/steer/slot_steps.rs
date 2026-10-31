@@ -11,6 +11,7 @@ use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
 use crate::math::fmath::{BVector, at_most_or_unordered, below_or_unordered};
 use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -382,7 +383,7 @@ impl World {
                 path_id: path,
                 reason,
                 goal,
-                timer,
+                timer: Seconds::new(timer),
                 distance,
                 last_position: last,
                 ..*own

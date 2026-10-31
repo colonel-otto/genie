@@ -6,6 +6,7 @@ use crate::objects::ObjectId;
 use crate::objects::object_list::ObjectList;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -178,9 +179,9 @@ pub struct Player {
     pub one_military_queued: bool,
     /// `mUpdateTime` (`+0x7a4`, saved): the seconds the world player's update has not yet run
     /// its per-second loop for ([`crate::players::world_player`]); Gaia's stays 0.
-    pub update_time: f32,
+    pub update_time: Seconds,
     /// Gaia's own `update_time` (`WorldPlayerGaia` `+0x1468`, saved): its update's seconds.
-    pub gaia_update_time: f32,
+    pub gaia_update_time: Seconds,
     /// `escrow` (`+0x6dc`, saved): what a computer player's income set aside of food, wood,
     /// stone and gold ([`World::add_resource`]).
     pub escrow: [f32; 4],

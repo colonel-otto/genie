@@ -20,6 +20,7 @@ use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
 use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::{ActionKind, UnitAi};
+use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
 use genie_save::generated::world::{Path, PlayerObjects, RgeStaticObject};
 
@@ -95,7 +96,9 @@ pub(super) fn unit(
             taken: c.hitpoints_powerup,
             max: c.hitpoints_max_powerup,
         }),
-        regen_timer: object.combat().map_or(0.0, |c| c.berserker_timer),
+        regen_timer: object
+            .combat()
+            .map_or(Seconds::ZERO, |c| Seconds::new(c.berserker_timer)),
         // a building's +0x9e8 is its construction's
         builders: object
             .combat()
@@ -145,13 +148,15 @@ pub(super) fn unit(
                 })
             })
             .map_or(0.0, |c| c.volley_fire_amount),
-        attack_timer: object
-            .combat()
-            .map_or(0.0, |c| c.rge_combat_object.attack_timer),
+        attack_timer: object.combat().map_or(Seconds::ZERO, |c| {
+            Seconds::new(c.rge_combat_object.attack_timer)
+        }),
         // the movement damage timer (+0x9a4) is saved; the attack timer's rate and the terrain
         // look are not (the constructor's 1 and none, until the first update's abilities)
         abilities: genie_core::combat::abilities::Abilities {
-            movement_damage_timer: object.combat().map_or(0.0, |c| c.movement_damage_timer),
+            movement_damage_timer: object
+                .combat()
+                .map_or(Seconds::ZERO, |c| Seconds::new(c.movement_damage_timer)),
             ..genie_core::combat::abilities::Abilities::default()
         },
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
@@ -368,7 +373,7 @@ pub(super) fn saved_gate(object: &genie_save::Object) -> Option<genie_core::worl
     Some(genie_core::world::Gate {
         locked: b.gate_locked != 0,
         first_update: b.first_update != 0,
-        close_timer: b.close_timer,
+        close_timer: Seconds::new(b.close_timer),
         other_masters: b.has_open_closed_master_object != 0 || b.original_owner != -1,
     })
 }

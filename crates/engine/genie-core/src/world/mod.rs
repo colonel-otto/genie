@@ -60,7 +60,7 @@ pub mod settings;
 mod setup;
 mod world_update;
 
-pub use self::clock::{Millis, WorldTime};
+pub use self::clock::{Millis, Seconds, WorldTime};
 pub use self::forced::GameState;
 pub use self::world_update::{scenario_mode, standard_mode};
 
@@ -78,7 +78,7 @@ pub struct Gate {
     /// annexes' places as its endpoints (`mEndpoint1`, `mEndpoint2`, not held) and clears it.
     pub first_update: bool,
     /// `mCloseTimer`: the seconds an open gate with nothing in it waits before it shuts.
-    pub close_timer: f32,
+    pub close_timer: Seconds,
     /// The building has a saved open or shut master (`+0xc58`, the save's
     /// `has_open_closed_master_object`) or its original owner's masters (`mOriginalOwner`,
     /// `+0xc88`): a gate's toggle then takes another master, not modelled. A master of its own
@@ -132,7 +132,7 @@ pub(crate) const GATE_GROW: f32 = crate::math::image::turn::GATE_GROW;
 pub(crate) const GATE_SHUT_HEIGHT: f32 = crate::math::image::turn::GATE_SHUT_HEIGHT;
 /// The seconds an open gate with nothing in it waits before it shuts (`FUN_1411e7730`'s
 /// immediate `0x3f000000`).
-pub(crate) const GATE_CLOSE_DELAY: f32 = 0.5;
+pub(crate) const GATE_CLOSE_DELAY: Seconds = Seconds::new(0.5);
 /// The most records a gate's query lists (`FUN_1411d0570`'s list of 10) and the most units it
 /// counts (25).
 pub(crate) const GATE_QUERY_RECORDS: usize = 10;
@@ -198,7 +198,7 @@ pub(crate) const COMPUTER_QUEUE_LIMIT: usize = 2;
 pub(crate) const ONE_UNIT_GAME: i32 = 0x10;
 /// The Hunt's search timer: it tells its unit AI again every 10 seconds (`0xc1200000`, in
 /// `0x140ac60e0` and `0x140ac7a00`).
-pub(crate) const SEARCH_AGAIN: f32 = -10.0;
+pub(crate) const SEARCH_AGAIN: Seconds = Seconds::new(-10.0);
 /// `FUN_140ac4670`'s first argument when a hunt's target went on the walk to it, or its `MoveTo`
 /// failed (`DAT_142eb9430`): the hunt searches within this of its point.
 pub(crate) const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH_WITHIN;
@@ -299,7 +299,7 @@ pub struct World {
     /// ([`crate::commands::UnitList::LAST_COMMANDED`]).
     pub last_commanded: Vec<Vec<Option<ObjectId>>>,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
-    pub dt_seconds: f32,
+    pub dt_seconds: Seconds,
     /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).
     pub dt: Millis,
     /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads

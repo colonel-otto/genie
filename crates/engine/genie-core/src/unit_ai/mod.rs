@@ -130,6 +130,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use genie_diff::Diff;
 
@@ -232,7 +233,7 @@ const FISHING_BUILDS: [ClassId; 5] = crate::objects::masters::class::classes([3,
 const FISHING_BUILD_FAR: i32 = 9999;
 /// The seconds without a sighting after which enemies found are the owner's news
 /// (`DAT_142eb0f4c`).
-const ENEMY_SIGHTING_GAP: f32 = crate::math::image::unit_ai::ENEMY_SIGHTING_GAP;
+const ENEMY_SIGHTING_GAP: Seconds = Seconds::new(crate::math::image::unit_ai::ENEMY_SIGHTING_GAP);
 
 /// The notify queue's capacity of a unit AI of `ai_type` holding `count` notifies: the
 /// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10
@@ -485,7 +486,7 @@ pub struct UnitAi {
     pub alert_mode: bool,
     /// `+0x1b4`, `time_since_enemy_sighting`: seconds since a search last found enemies; each full
     /// update adds the world's dt.
-    pub time_since_enemy: f32,
+    pub time_since_enemy: Seconds,
     /// `+0x1c0`, the saved patrol (the save's `hasPatrolPath` and its path): what
     /// `savePatrolInformation` (`FUN_140c63d20`) kept of the unit's patrol when an attack took it
     /// off it, which `restorePatrolInformation` (`FUN_140c5e5b0`) walks on.

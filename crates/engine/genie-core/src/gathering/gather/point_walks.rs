@@ -22,6 +22,7 @@ use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::world::step::Step;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_class` waits for
@@ -100,7 +101,7 @@ impl GatherAction {
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
         self.state = state;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         let range = radius + self.task.range;
         self.move_to = self.move_to_point(self.point, range, TargetMoved::Follows, mover, walks)?;
         Ok(())
@@ -153,11 +154,11 @@ impl GatherAction {
         target: Option<&Victim>,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        if 0.0 <= self.timer {
+        if Seconds::ZERO <= self.timer {
             return Ok(Next::Stay);
         }
         self.timer += c.dt.seconds();
-        if self.timer < 0.0 {
+        if self.timer < Seconds::ZERO {
             return Ok(Next::Stay);
         }
         let radius = target.map_or(0.0, |t| {
@@ -234,7 +235,7 @@ impl GatherAction {
     ) -> Result<[Option<ObjectId>; 2], GenieError> {
         let mut mover = mover;
         self.tear_down(mover.as_deref_mut())?;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         if let Some(s) = stand {
             new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);
         }
@@ -270,7 +271,7 @@ impl GatherAction {
     /// `set_state(1)` (case 1): the timer clears and the unit stands.
     pub(super) fn set_done(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
         self.state = GatherState::Done;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         Self::show(c, unit, self.stand_sprite(unit, r));
     }
 

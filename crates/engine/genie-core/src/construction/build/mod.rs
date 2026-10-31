@@ -21,6 +21,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::{MasterId, ids};
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -95,7 +96,7 @@ pub struct BuildAction {
     /// `+0x68`, `added_to_num_builders`: the builder counts among the foundation's builders.
     pub added: bool,
     /// `+0x44`, the action's timer: state 222's wait (a second from its `set_state`).
-    pub timer: f32,
+    pub timer: Seconds,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site of its drop-off (state 8,
     /// `set_state(8)`'s search).
     pub site: Option<ObjectId>,
@@ -382,7 +383,7 @@ const WONDER_RATE: f32 = crate::math::image::build::WONDER_RATE;
 /// The waits a builder makes before it gives up (`0x15`).
 const MAX_WAITS: u8 = 21;
 /// The drop-off's wait after a drop site out of reach (`0xc0400000`).
-const DROP_WAIT: f32 = -3.0;
+const DROP_WAIT: Seconds = Seconds::new(-3.0);
 /// The drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
 const DROP_REACH: f32 = crate::math::image::build::DROP_REACH;
 /// The orders whose targets gone the unit AI drops after a drop-off (`FUN_140c5de60`: the bits

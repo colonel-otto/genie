@@ -11,6 +11,7 @@ use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use crate::pathing::tile_path::Path;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 
 /// `FUN_140f98dd0`: the path ends before its point `i` (the points from `i` on go) and is
@@ -84,17 +85,17 @@ pub(super) fn short_range(near: bool, range: f32) -> f32 {
 pub(super) const FAST_TURN: f32 = crate::math::image::movement::FAST_TURN;
 /// The pause a kept hit's ranking gives a unit the walker outranks: 0.1 for an ally
 /// (`DAT_142eb5690`), 0.5 for another (`DAT_142e7f384`).
-pub(super) const ALLY_PAUSE: f32 = crate::math::image::movement::ALLY_PAUSE;
-pub(super) const OTHER_PAUSE: f32 = crate::math::image::movement::OTHER_PAUSE;
+pub(super) const ALLY_PAUSE: Seconds = Seconds::new(crate::math::image::movement::ALLY_PAUSE);
+pub(super) const OTHER_PAUSE: Seconds = Seconds::new(crate::math::image::movement::OTHER_PAUSE);
 /// The pause a level at its last waypoint without a path gives its own unit while it may still
 /// try (`DAT_142eb5690`).
-pub(super) const STUCK_PAUSE: f32 = crate::math::image::movement::STUCK_PAUSE;
+pub(super) const STUCK_PAUSE: Seconds = Seconds::new(crate::math::image::movement::STUCK_PAUSE);
 /// What [`Mover::avoid`] makes of the walk's hits: the hits it keeps and the pauses it gives.
 ///
 /// [`Mover::avoid`]: crate::movement::Mover::avoid
 pub(super) struct Avoided {
     pub(super) kept: Vec<ObjectId>,
-    pub(super) pauses: Vec<(ObjectId, f32)>,
+    pub(super) pauses: Vec<(ObjectId, Seconds)>,
     /// The step hit only the walked level's target: the waypoint counts as reached.
     pub(super) at_target: bool,
 }

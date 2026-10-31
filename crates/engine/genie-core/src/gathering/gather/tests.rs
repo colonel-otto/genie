@@ -285,7 +285,7 @@ fn under_the_farm_setting_a_farm_s_gather_goes_in_four_timed_stops() {
         (g.stops, g.time_per_stop, g.farm),
         (
             4,
-            ((10.0f32 * 1.0) / (0.33 * 1.0)) / 4.0,
+            Seconds::new(((10.0f32 * 1.0) / (0.33 * 1.0)) / 4.0),
             Point::new(112.5, 173.5)
         )
     );
@@ -296,7 +296,10 @@ fn under_the_farm_setting_a_farm_s_gather_goes_in_four_timed_stops() {
         ..farm()
     };
     let trap = GatherAction::new(task(), &trap, true, rate).unwrap();
-    assert_eq!((one.stops, one.time_per_stop, trap.stops), (1, 0.0, 1));
+    assert_eq!(
+        (one.stops, one.time_per_stop, trap.stops),
+        (1, Seconds::ZERO, 1)
+    );
 }
 
 /// Slot 0x38 (`FUN_140a8e1b0`, `set_state(2)`): the `MoveTo` goes and stops the unit, the
@@ -310,7 +313,7 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
         target: Some(object_id(31)),
         carry_to: Some(object_id(9)),
         point: Position::new(5.0, 6.0, 0.0),
-        timer: 2.0,
+        timer: Seconds::new(2.0),
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
     };
@@ -332,7 +335,7 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
         (g.state, g.timer, g.target, g.carry_to, g.point, g.move_to),
         (
             GatherState::Idle,
-            0.0,
+            Seconds::ZERO,
             None,
             None,
             Position::from([-1.0; 3]),
@@ -375,8 +378,8 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     let mut mover = crate::gathering::hunt::tests::walker();
     let mut g = GatherAction {
         state: GatherState::Work,
-        time_per_stop: 1.0,
-        time_at_stop: 0.95,
+        time_per_stop: Seconds::new(1.0),
+        time_at_stop: Seconds::new(0.95),
         ..GatherAction::new(task(), &farm(), true, rate()).unwrap()
     };
     let mut rng = Well512::default();
@@ -578,13 +581,13 @@ fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
     assert_eq!(run(master_id(120), &mut g, 20), Ok(Next::Search));
     assert_eq!(
         (g.state, g.timer, g.move_to),
-        (GatherState::Search, -10.0, None)
+        (GatherState::Search, Seconds::new(-10.0), None)
     );
     // state 3 counts the world's dt up to 0, then waits 10 seconds again and asks again
-    g.timer = -0.03;
+    g.timer = Seconds::new(-0.03);
     assert_eq!(run(master_id(120), &mut g, 20), Ok(Next::Stay));
     assert_eq!(run(master_id(120), &mut g, 20), Ok(Next::Search));
-    assert_eq!(g.timer, -10.0);
+    assert_eq!(g.timer, Seconds::new(-10.0));
     // a farmer waits a second for another farm instead (set_state 0xf3), its unit AI asked
     let mut g = GatherAction {
         state: GatherState::Work,
@@ -592,7 +595,10 @@ fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
         ..GatherAction::new(task(), &bush(), false, rate()).unwrap()
     };
     assert_eq!(run(master_id(259), &mut g, 20), Ok(Next::Search));
-    assert_eq!((g.state, g.timer), (GatherState::FarmWait, -1.0));
+    assert_eq!(
+        (g.state, g.timer),
+        (GatherState::FarmWait, Seconds::new(-1.0))
+    );
 }
 
 /// A farmer's (master 259) update in its state with `target`, the world's dt `dt` ms, a
@@ -673,39 +679,39 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
         })
     };
     let mut rig = Rig::on_the_path();
-    let mut g = dropping(Some(MoveTo::Arrived), -0.15);
+    let mut g = dropping(Some(MoveTo::Arrived), Seconds::new(-0.15));
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Going));
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Again));
-    assert_eq!(g.timer, 0.0);
-    let mut g = dropping(Some(MoveTo::Waiting), 0.0);
+    assert_eq!(g.timer, Seconds::ZERO);
+    let mut g = dropping(Some(MoveTo::Waiting), Seconds::ZERO);
     g.move_to = g.move_to.map(|m| MoveToAction {
         wait: MoveWait {
-            delay: 0.15,
+            delay: Seconds::new(0.15),
             ..m.wait
         },
         ..m
     });
     let waiting = |g: &GatherAction| g.move_to.map(|m| (m.state, m.wait.timer));
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Going));
-    assert_eq!(waiting(&g), Some((MoveTo::Waiting, 0.1)));
+    assert_eq!(waiting(&g), Some((MoveTo::Waiting, Seconds::new(0.1))));
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Going));
-    assert_eq!(waiting(&g), Some((MoveTo::Start, 0.0)));
-    let mut g = dropping(Some(MoveTo::Failed), 0.0);
+    assert_eq!(waiting(&g), Some((MoveTo::Start, Seconds::ZERO)));
+    let mut g = dropping(Some(MoveTo::Failed), Seconds::ZERO);
     let draw = rig.next_wait();
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Going));
-    assert_eq!(g.timer, draw);
+    assert_eq!(g.timer, Seconds::new(draw));
     assert!(rig.anim_stopped());
-    let mut g = dropping(Some(MoveTo::Arrived), 0.0);
+    let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Again));
     assert_eq!(g.move_to, None);
-    let mut g = dropping(Some(MoveTo::Arrived), 0.0);
+    let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
     assert_eq!(drop(&mut g, &mut rig, site(false, 0.0)), Ok(Dropped::Idle));
     assert_eq!(g.state, GatherState::Idle);
-    let mut g = dropping(Some(MoveTo::Arrived), 0.0);
+    let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
     let far = DROP_REACH + 1.0;
     assert_eq!(drop(&mut g, &mut rig, site(true, far)), Ok(Dropped::Going));
-    assert!(g.timer < 0.0);
-    let mut g = dropping(Some(MoveTo::Arrived), 0.0);
+    assert!(g.timer < Seconds::ZERO);
+    let mut g = dropping(Some(MoveTo::Arrived), Seconds::ZERO);
     assert_eq!(
         drop(&mut g, &mut rig, site(true, 0.0)),
         Ok(Dropped::Load(
@@ -715,7 +721,7 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
     );
     assert_eq!(rig.load(), Held::default());
     // an empty list answers 1 ("There is no list."): the drop site is looked for again
-    let mut g = dropping(None, 0.0);
+    let mut g = dropping(None, Seconds::ZERO);
     assert_eq!(drop(&mut g, &mut rig, None), Ok(Dropped::Again));
 }
 
@@ -736,7 +742,7 @@ fn a_drop_off_whose_site_was_let_go_waits_a_random_while() {
         g.update_drop(c, u, me, &reads(), None)
     });
     assert_eq!(dropped, Ok(Dropped::Going));
-    assert_eq!(g.timer, draw);
+    assert_eq!(g.timer, Seconds::new(draw));
     assert_eq!(g.move_to.map(|m| ObjectId::field(m.target)), Some(-1));
     assert!(rig.anim_stopped());
 }
@@ -827,7 +833,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     let mut g = walking(Some(MoveTo::Waiting));
     g.move_to = g.move_to.map(|m| MoveToAction {
         wait: MoveWait {
-            delay: 0.05,
+            delay: Seconds::new(0.05),
             ..m.wait
         },
         ..m
@@ -838,7 +844,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
     assert_eq!(
         (g.state, g.move_to, g.timer),
-        (GatherState::Face, None, 0.0)
+        (GatherState::Face, None, Seconds::ZERO)
     );
     let mut g = walking(Some(MoveTo::Failed));
     assert_eq!(walk(&mut g, &mut rig, 4), Ok(Next::Search));
@@ -847,7 +853,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     let mut g = walking(Some(MoveTo::Failed));
     let draw = rig.next_wait();
     assert_eq!(walk(&mut g, &mut rig, 3), Ok(Next::Stay));
-    assert_eq!(g.timer, draw);
+    assert_eq!(g.timer, Seconds::new(draw));
     assert!(rig.anim_stopped());
     // an empty list answers 1 ("There is no list."): the unit faces its target
     let mut g = walking(None);
@@ -969,7 +975,12 @@ fn a_gatherer_facing_its_target_works_it() {
     assert_eq!(next, Ok(Next::Stay));
     assert_eq!(
         (g.state, g.worked, g.gather_at, g.time_at_stop),
-        (GatherState::Work, true, Point::new(28.0, 89.0), 0.0)
+        (
+            GatherState::Work,
+            true,
+            Point::new(28.0, 89.0),
+            Seconds::ZERO
+        )
     );
     assert_eq!(rig.load(), carrying(Some(AttributeId::numbered(17)), 0.0));
     assert_eq!(rig.unit().sprite.map(|s| s.graphic.id), Some(7));
@@ -979,7 +990,7 @@ fn a_gatherer_facing_its_target_works_it() {
 fn waiting(worked: bool) -> GatherAction {
     GatherAction {
         state: GatherState::FarmWait,
-        timer: -1.0,
+        timer: Seconds::new(-1.0),
         target: None,
         target_class: Some(class::FARM),
         worked,
@@ -994,7 +1005,10 @@ fn waiting(worked: bool) -> GatherAction {
 fn a_farmer_without_its_farm_waits_a_second_then_walks_back_to_reseed() {
     let mut g = waiting(true);
     assert_eq!(farm_update(&mut g, None, 600, false), Ok(Next::Stay));
-    assert_eq!((g.state, g.timer), (GatherState::FarmWait, -1.0 + 0.6));
+    assert_eq!(
+        (g.state, g.timer),
+        (GatherState::FarmWait, Seconds::new(-1.0 + 0.6))
+    );
     assert_eq!(farm_update(&mut g, None, 600, false), Ok(Next::Stay));
     assert_eq!(g.state, GatherState::ReseedWalk);
     assert_eq!(g.point.ground(), Point::new(112.0, 173.0));
@@ -1019,7 +1033,7 @@ fn a_farmer_without_its_farm_waits_a_second_then_walks_back_to_reseed() {
     );
     // a timer at 0 or more waits on
     let mut g = waiting(true);
-    g.timer = 0.0;
+    g.timer = Seconds::ZERO;
     assert_eq!(farm_update(&mut g, None, 1000, false), Ok(Next::Stay));
     assert_eq!(g.state, GatherState::FarmWait);
 }

@@ -12,6 +12,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::UnitAi;
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
@@ -54,7 +55,7 @@ pub(crate) struct Step<'a> {
 /// the owner's computer flag and construction rate.
 #[derive(Clone, Copy)]
 pub(crate) struct Pace {
-    pub(crate) dt: f32,
+    pub(crate) dt: Seconds,
     pub(crate) now: WorldTime,
     pub(crate) computer: bool,
     pub(crate) construction_rate: f32,

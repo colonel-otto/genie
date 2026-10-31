@@ -23,6 +23,7 @@ use crate::unit_ai::{
     notify_capacity, siege_stance, soldier_stance,
 };
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::slots::CheckedIndex;
 
@@ -171,7 +172,7 @@ impl UnitAi {
             state_position: position.ground(),
             retarget_disabled: 0,
             alert_mode: false,
-            time_since_enemy: 0.0,
+            time_since_enemy: Seconds::ZERO,
             patrol_path: None,
             patrol_waypoint: 0,
             stop_after_kill: false,

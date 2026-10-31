@@ -27,6 +27,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::BUILDING_COST;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiType;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use crate::world::slots::PlayerSlots;
 use crate::world::{Gate, World};
@@ -298,7 +299,7 @@ impl World {
             annex_of: None,
             group: crate::groups::GroupLink::default(),
             hp_powerup: HpPowerup::default(),
-            regen_timer: 0.0,
+            regen_timer: Seconds::ZERO,
             regen_powerup: 0.0,
             regen_stinger: 0.0,
             missile: None,
@@ -329,7 +330,7 @@ impl World {
             default_artifact: false,
             stopped: false,
             sprite,
-            attack_timer: 0.0,
+            attack_timer: Seconds::ZERO,
             abilities: crate::combat::abilities::Abilities::default(),
             reload_stinger: 0.0,
             reload_powerup: 0.0,

@@ -16,6 +16,7 @@ use crate::technology::ResearchState;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::unit_ai::NotifyKind;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -42,7 +43,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: ListIndex,
-        dt_seconds: f32,
+        dt_seconds: Seconds,
     ) -> Result<(), GenieError> {
         if crate::objects::ObjectState::Alive < self.players.live(p, i)?.life.state {
             return self.cancel_queue(p, i);
@@ -75,7 +76,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: ListIndex,
-        dt_seconds: f32,
+        dt_seconds: Seconds,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(p, i)?;
         let Some(production) = unit.production.as_ref() else {
@@ -267,7 +268,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: ListIndex,
-        dt_seconds: f32,
+        dt_seconds: Seconds,
     ) -> Result<u8, GenieError> {
         let action = self
             .players
@@ -295,7 +296,7 @@ impl World {
         &mut self,
         p: PlayerId,
         i: ListIndex,
-        dt_seconds: f32,
+        dt_seconds: Seconds,
     ) -> Result<u8, GenieError> {
         let building = &self.players.live(p, i)?;
         let Some(Some(Making::Unit(make))) = building.production.as_ref().map(|q| q.action) else {

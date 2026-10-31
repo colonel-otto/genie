@@ -11,6 +11,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 use crate::{GenieError, math::fmath};
@@ -76,8 +77,8 @@ pub fn generates(
 /// times the task's `work_val1` times the player's attribute the task's `attribute_type2` names,
 /// in that order (`MULSS`, `MULSS`).
 #[must_use]
-pub fn generated(dt: f32, task: &Task, multiplier: f32) -> f32 {
-    dt * task.work_val1 * multiplier
+pub fn generated(dt: Seconds, task: &Task, multiplier: f32) -> f32 {
+    dt.get() * task.work_val1 * multiplier
 }
 
 /// The player's store of what its generation tasks made (`player+0x658`): `amount` above 0 (not

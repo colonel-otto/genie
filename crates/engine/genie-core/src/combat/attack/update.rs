@@ -23,6 +23,7 @@ use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::unit_ai::NotifyKind;
+use crate::world::Seconds;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
 
@@ -34,7 +35,7 @@ impl Attack {
     /// returns 1, true. The other states without a target are not modelled.
     pub fn update_targetless(
         &mut self,
-        dt: f32,
+        dt: Seconds,
         armed: bool,
         body: &mut Body,
     ) -> Result<(u8, bool), GenieError> {

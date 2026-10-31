@@ -13,6 +13,7 @@ use crate::unit_ai::{
     HUNTED_STEP, KING_UNLED, LION_CARED, LION_IDLE_TIMEOUT, LION_SIGHT_DIVISOR, LION_SIGHT_SHARE,
     Memory, Pick, Search, Surroundings, UnitAi, UnitSide, point_gap_squared,
 };
+use crate::world::Seconds;
 
 impl UnitAi {
     /// The boar's idle check (slot 72, `FUN_140c1e630`): `FUN_140c41e50` first
@@ -105,13 +106,13 @@ impl UnitAi {
     /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
     /// the slice does not hold); none clear the alert mode. A search that read the last answer
     /// leaves it.
-    pub(crate) const fn alert(&mut self, found: Found, _dt: f32) {
+    pub(crate) const fn alert(&mut self, found: Found, _dt: Seconds) {
         if !found.fresh {
             return;
         }
         self.alert_mode = found.enemies;
         if found.enemies {
-            self.time_since_enemy = 0.0;
+            self.time_since_enemy = Seconds::ZERO;
         }
     }
 

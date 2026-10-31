@@ -12,6 +12,7 @@ use crate::objects::release::Releaser;
 use crate::players::PlayerId;
 use crate::players::game_status::{KEEPING_TYPES, UNSTOPPED_BUILDINGS};
 use crate::unit_ai::ActionKind;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -170,7 +171,7 @@ impl World {
         hunt.set_target(None);
         hunt.carry_to = None;
         hunt.point = Position::from([-1.0; 3]);
-        hunt.timer = 0.0;
+        hunt.timer = Seconds::ZERO;
         if let Some(g) = sprite {
             crate::objects::sprite::new_sprite(
                 &mut unit.sprite,

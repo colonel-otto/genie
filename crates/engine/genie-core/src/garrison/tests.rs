@@ -51,6 +51,7 @@ use crate::unit_ai::UnitAiType;
 use crate::unit_ai::UnitStance;
 use crate::world::Millis;
 use crate::world::Player;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 
 /// An Enter task of work range `range` and class `class` without sprites.
@@ -497,7 +498,10 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
         assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
         assert_eq!(ship_goal(&t), None);
         let e = enter_of(&t);
-        assert_eq!((e.state, e.timer, e.move_to), (EnterState::Wait, 1.0, None));
+        assert_eq!(
+            (e.state, e.timer, e.move_to),
+            (EnterState::Wait, Seconds::new(1.0), None)
+        );
     }
     // a transport that cannot reach the point (where it last moved to is off the map):
     // set_state(13), not modelled
@@ -522,8 +526,8 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     if let Some(m) = e.move_to.as_mut() {
         m.wait = crate::movement::move_to::MoveWait {
             state: MoveWaitState::Waiting,
-            timer: 0.0,
-            delay: 1.0,
+            timer: Seconds::ZERO,
+            delay: Seconds::new(1.0),
         };
     }
     let mut t = entering(Point::new(5.5, 12.5), Point::new(5.5, 30.5), e);
@@ -531,7 +535,7 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     let e = enter_of(&t);
     assert_eq!(
         (e.state, e.move_to.map(|m| (m.state, m.wait.timer))),
-        (EnterState::Walk, Some((MoveTo::Waiting, 0.5)))
+        (EnterState::Walk, Some((MoveTo::Waiting, Seconds::new(0.5))))
     );
     let v = t.object_mut(object_id(1000)).unwrap().1;
     v.actions
@@ -541,12 +545,12 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
         .as_mut()
         .unwrap()
         .wait
-        .timer = 1.0;
+        .timer = Seconds::new(1.0);
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
     assert_eq!(
         e.move_to.map(|m| (m.state, m.wait.timer)),
-        Some((MoveTo::Start, 0.0))
+        Some((MoveTo::Start, Seconds::ZERO))
     );
 }
 
@@ -611,12 +615,15 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
         .state = MoveTo::Failed;
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
-    assert_eq!((e.state, e.move_to, e.timer), (EnterState::Wait, None, 1.0));
+    assert_eq!(
+        (e.state, e.move_to, e.timer),
+        (EnterState::Wait, None, Seconds::new(1.0))
+    );
     // the wait counts down by dt (0.5): at 0 it walks again
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     assert_eq!(
         (enter_of(&t).state, enter_of(&t).timer),
-        (EnterState::Wait, 0.5)
+        (EnterState::Wait, Seconds::new(0.5))
     );
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);

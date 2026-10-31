@@ -20,6 +20,7 @@ use crate::objects::masters::master_type;
 use crate::objects::sprite::{ActiveSprite, Graphic, new_sprite, sprite_id, standing, walking};
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::{ActionKind, Inbox};
+use crate::world::Seconds;
 use genie_diff::Diff;
 
 /// A `MoveTo` (`RGE_Action_Move_To`): a unit's own top action (a wandering animal's, a moved or
@@ -366,7 +367,7 @@ impl MoveToAction {
             MoveTo::Waiting => {
                 self.wait.timer += walk.dt;
                 if self.wait.delay <= self.wait.timer {
-                    self.wait.timer = 0.0;
+                    self.wait.timer = Seconds::ZERO;
                     self.state = MoveTo::Start;
                 }
             }
@@ -538,8 +539,8 @@ mod tests {
             on_target_moved: TargetMoved::Follows,
             wait: MoveWait {
                 state: MoveWaitState::Waiting,
-                timer: 0.0,
-                delay: 0.15,
+                timer: Seconds::ZERO,
+                delay: Seconds::new(0.15),
             },
         }
     }
@@ -627,11 +628,14 @@ mod tests {
         let _ = w
             .update(rig.walk(0), PathAsk::default(), looks.shows())
             .unwrap();
-        assert_eq!((w.state, w.wait.timer), (MoveTo::Waiting, 0.1));
+        assert_eq!(
+            (w.state, w.wait.timer),
+            (MoveTo::Waiting, Seconds::new(0.1))
+        );
         let _ = w
             .update(rig.walk(0), PathAsk::default(), looks.shows())
             .unwrap();
-        assert_eq!((w.state, w.wait.timer), (MoveTo::Start, 0.0));
+        assert_eq!((w.state, w.wait.timer), (MoveTo::Start, Seconds::ZERO));
         let reason = |mut m: MoveToAction| {
             let mut rig = WalkRig::on_the_path();
             m.update(rig.walk(0), PathAsk::default(), Looks::default().shows())

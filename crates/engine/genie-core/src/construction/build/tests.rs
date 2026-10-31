@@ -571,7 +571,7 @@ fn a_builder_sent_to_another_foundation_starts_over() {
         state: BuildState::Work,
         move_to: None,
         added: true,
-        timer: 0.5,
+        timer: Seconds::new(0.5),
         ..started(object_id(31148), Position::ORIGIN, 0.0, TASK)
     };
     let walk = started(object_id(31150), Position::ORIGIN, 0.0, TASK).move_to;
@@ -581,7 +581,7 @@ fn a_builder_sent_to_another_foundation_starts_over() {
     assert_eq!(
         b,
         BuildAction {
-            timer: 0.5,
+            timer: Seconds::new(0.5),
             ..started(object_id(31150), Position::ORIGIN, 0.0, TASK)
         }
     );

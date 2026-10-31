@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::ACTION;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::UnitRelation;
 use crate::unit_ai::ActionKind;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -126,7 +127,7 @@ impl World {
         }
         g.motion.maximum_velocity_forward = slowest;
         if under_attack {
-            g.seconds_not_under_attack = 0.0;
+            g.seconds_not_under_attack = Seconds::ZERO;
         } else {
             g.seconds_not_under_attack += dt;
         }
@@ -320,7 +321,7 @@ impl World {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
                 ai.alert_mode = enemies;
                 if enemies {
-                    ai.time_since_enemy = 0.0;
+                    ai.time_since_enemy = Seconds::ZERO;
                 }
             }
         }
@@ -490,7 +491,7 @@ fn member_totals(
     g: &mut crate::groups::UnitGroup,
     views: &[(usize, MemberView)],
     objects: Vec<ObjectId>,
-    dt: f32,
+    dt: Seconds,
 ) -> Result<(i32, f32, bool), GenieError> {
     g.centroid = BVector::ZERO;
     g.desired_height = 0.0;
@@ -539,7 +540,7 @@ fn member_totals(
         under_attack |= v.under_attack;
         let m = g.members.checked_mut(i)?;
         if v.attacking {
-            m.seconds_since_attacking = 0.0;
+            m.seconds_since_attacking = Seconds::ZERO;
         } else {
             m.seconds_since_attacking += dt;
         }
@@ -754,12 +755,12 @@ mod tests {
             .ai
             .as_mut()
             .unwrap()
-            .time_since_enemy = 7.0;
+            .time_since_enemy = Seconds::new(7.0);
         let mut objects = Vec::new();
         t.member_objects(object_id(10), &mut objects).unwrap();
         assert_eq!(objects, [object_id(20), object_id(30)]);
         let ai = t.players[1].objects[ListIndex::new(0)].ai.as_ref().unwrap();
-        assert_eq!((ai.alert_mode, ai.time_since_enemy), (true, 0.0));
+        assert_eq!((ai.alert_mode, ai.time_since_enemy), (true, Seconds::ZERO));
         t.member_objects(object_id(10), &mut objects).unwrap();
         assert_eq!(objects, [object_id(20), object_id(30)]);
         let mut full: Vec<ObjectId> = object_id_list(1000..1069);

@@ -21,6 +21,7 @@ use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -66,7 +67,7 @@ pub struct EnterAction {
     /// needs it.
     pub range: f32,
     /// `+0x44`: state 2's wait, in seconds.
-    pub timer: f32,
+    pub timer: Seconds,
     /// `+0x68`, 1 at first: a `MoveTo` that fails (code 3) asks once more.
     pub retry: bool,
     /// `+0x6c`: the task's class (its `+0x10`), none for any.
@@ -142,7 +143,7 @@ impl EnterAction {
             move_to: None,
             point,
             range: task.work_range,
-            timer: 0.0,
+            timer: Seconds::ZERO,
             retry: true,
             task_class: task.object_group,
             moving: sprite_id(task.sprites[0]),
@@ -249,7 +250,7 @@ impl EnterAction {
     pub(super) fn wait(&mut self, c: &mut Step<'_>, unit: &mut Unit) -> Result<(), GenieError> {
         self.move_to = None;
         self.state = EnterState::Wait;
-        self.timer = WAIT_SECONDS;
+        self.timer = Seconds::new(WAIT_SECONDS);
         unit.shows_standing_sprite(
             c.w.masters.get(c.player.index()),
             &c.w.graphics,
@@ -309,7 +310,7 @@ impl EnterAction {
             EnterState::Done | EnterState::Failed => return Ok(HeadCode::Deletes),
             EnterState::Wait => {
                 self.timer -= c.dt.seconds();
-                if self.timer <= 0.0 {
+                if self.timer <= Seconds::ZERO {
                     let _ = self.again(c, unit, &t, reads)?;
                 }
             }

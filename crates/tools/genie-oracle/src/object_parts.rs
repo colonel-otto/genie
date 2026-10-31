@@ -14,6 +14,7 @@ use genie_core::players::attribute::AttributeId;
 use genie_core::unit_ai::best_target::AttackCategory;
 use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_core::world::Millis;
+use genie_core::world::Seconds;
 use genie_core::world::WorldTime;
 use genie_save::generated::world::{
     PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
@@ -142,7 +143,7 @@ pub(super) fn unit_ai(
         state_position: Point::new(ai.state_position_xvalue, ai.state_position_yvalue),
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,
-        time_since_enemy: ai.time_since_enemy_sighting,
+        time_since_enemy: Seconds::new(ai.time_since_enemy_sighting),
         patrol_path: patrol_path(ai),
         patrol_waypoint: ai.patrol_current_waypoint,
         stop_after_kill: ai.stop_after_target_killed_value != 0,

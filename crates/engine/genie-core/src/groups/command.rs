@@ -20,6 +20,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::WorldTime;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -93,7 +94,7 @@ impl UnitGroup {
             t.disable_retargeting = 0;
         }
         for m in &mut self.members {
-            m.seconds_since_attacking = f32::MAX;
+            m.seconds_since_attacking = Seconds::MAX;
         }
         self.waypoints.push(BVector::new(x, self.desired_height, z));
     }
@@ -249,7 +250,7 @@ impl World {
             t.disable_retargeting = 0;
         }
         for m in &mut g.members {
-            m.seconds_since_attacking = f32::MAX;
+            m.seconds_since_attacking = Seconds::MAX;
         }
         if self.all_horde_units(group)? {
             return Err(GenieError::unsupported(

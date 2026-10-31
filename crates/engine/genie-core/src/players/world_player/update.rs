@@ -14,6 +14,7 @@ use crate::players::tracker::ListKey;
 use crate::players::world_player::{
     ALIVE_STORE_MODE, PERCENT, POPULATION_STORAGE, SECOND, UNKEPT_HIGH, UNKEPT_LOW, get, set,
 };
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -37,10 +38,10 @@ impl World {
         player.update_time += dt;
         loop {
             let time = self.players.player(p)?.update_time;
-            if below_or_unordered(time, SECOND) {
+            if below_or_unordered(time.get(), SECOND) {
                 return Ok(());
             }
-            self.players.player_mut(p)?.update_time = time - SECOND;
+            self.players.player_mut(p)?.update_time = time - Seconds::new(SECOND);
             self.world_player_second(p, time)?;
         }
     }
@@ -59,7 +60,11 @@ impl World {
     /// # Errors
     ///
     /// The defeat check's ([`World::defeat_check`]).
-    pub(super) fn world_player_second(&mut self, p: PlayerId, time: f32) -> Result<(), GenieError> {
+    pub(super) fn world_player_second(
+        &mut self,
+        p: PlayerId,
+        time: Seconds,
+    ) -> Result<(), GenieError> {
         let (world_time, period) = (self.world_time, self.history_period);
         let player = self.players.player_mut(p)?;
         player

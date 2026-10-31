@@ -31,6 +31,7 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Millis;
 use crate::world::Player;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 
 /// The walking and the running sprite's top speeds of the hunt tests' walker (speed 0.8): its
@@ -108,7 +109,7 @@ fn world() -> World {
         players,
     );
     t.world_time = WorldTime::from_millis(100);
-    t.dt_seconds = DT;
+    t.dt_seconds = Seconds::new(DT);
     let master = Master {
         id: master_id(4),
         kind: master_type::COMBAT,
@@ -231,7 +232,7 @@ fn a_member_s_own_move_is_set_or_ended() {
             path_id: 7,
             reason: 0,
             goal: BVector::new(1.0, 2.0, 3.0),
-            timer: 3.0,
+            timer: Seconds::new(3.0),
             consecutive_move_failures: 4,
             distance: 2.5,
             last_position: BVector::new(5.0, 0.0, 5.0),
@@ -306,7 +307,7 @@ fn a_member_in_place_or_failing_too_often() {
     assert_eq!((own.active, own.path_id, own.reason), (1, -1, ASIDE));
     assert_eq!(
         (own.goal, own.timer, own.distance),
-        (BVector::new(5.0, 0.0, 5.0), 0.1, 0.0)
+        (BVector::new(5.0, 0.0, 5.0), Seconds::new(0.1), 0.0)
     );
     assert_eq!(own.consecutive_move_failures, 11);
     assert_eq!(g.flags & 0x200, 0x200);
@@ -555,7 +556,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
             own.distance,
             own.consecutive_move_failures
         ),
-        (1, 0, 3.0, 3.0, 1)
+        (1, 0, Seconds::new(3.0), 3.0, 1)
     );
     assert_eq!(state(&t, 0), SlotState::Steering);
     // the update's list ignored: clear
@@ -612,7 +613,7 @@ fn the_members_moves_end_wait_or_stop() {
             active: 1,
             path_id: 3,
             reason: 0,
-            timer: 1.0,
+            timer: Seconds::new(1.0),
             distance: 2.0,
             ..SpecificMove::default()
         };
@@ -631,7 +632,7 @@ fn the_members_moves_end_wait_or_stop() {
         unit(&t, 10).ai.as_ref().unwrap().state_position,
         Point::new(10.0, 5.0)
     );
-    assert_eq!(g.members[1].specific_move.timer, 1.0 - DT);
+    assert_eq!(g.members[1].specific_move.timer, Seconds::new(1.0 - DT));
     assert_eq!(g.members[1].specific_move.reason, 0);
     assert_eq!(
         unit(&t, 11).ai.as_ref().unwrap().state_position,
@@ -645,7 +646,7 @@ fn the_members_moves_end_wait_or_stop() {
     let g = t2.groups.get_mut(group_id(1)).unwrap();
     g.members[1].specific_move = SpecificMove {
         active: 1,
-        timer: 1.0,
+        timer: Seconds::new(1.0),
         distance: 0.0,
         ..SpecificMove::default()
     };

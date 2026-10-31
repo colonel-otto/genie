@@ -11,6 +11,7 @@ use crate::objects::masters::master_type::MISSILE;
 use crate::objects::masters::master_type::TREE;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use genie_diff::Diff;
 
@@ -99,7 +100,7 @@ pub struct Unit {
     pub hp_powerup: HpPowerup,
     /// `berserker_timer` (`+0xa10`): the seconds the regeneration holds back toward its next
     /// whole hit point ([`Unit::regenerate`]).
-    pub regen_timer: f32,
+    pub regen_timer: Seconds,
     /// `mRegenerationRatePowerup` (`+0xa34`), which the regeneration rate adds to its master's
     /// ([`regeneration_rate`]).
     ///
@@ -166,7 +167,7 @@ pub struct Unit {
     pub sprite: Option<ActiveSprite>,
     /// `+0x91c`, `attack_timer`: the time until it may attack again; `mReloadStinger` and
     /// `mReloadPowerup` (`+0xb40`, `+0xa28`), which change its reload time.
-    pub attack_timer: f32,
+    pub attack_timer: Seconds,
     /// What its master's passive abilities keep on it ([`crate::combat::abilities`]): the movement damage
     /// timer, the attack timer's rate and its terrain look.
     pub abilities: crate::combat::abilities::Abilities,

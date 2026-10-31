@@ -21,6 +21,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::unit::object_master;
 use crate::objects::unit::{Unit, annexes_of};
 use crate::world::Millis;
+use crate::world::Seconds;
 use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
@@ -71,16 +72,16 @@ impl Unit {
         let (total, allied) = self.gate_count(&mut c.w.spatial, others)?;
         let gate = self.gate.as_mut().expect("held above");
         if shut && 0 < allied && !locked {
-            gate.close_timer = 0.0;
+            gate.close_timer = Seconds::ZERO;
             return self.toggle_own_gate(c, GATE_SHUT_HEIGHT <= height);
         }
         if height < GATE_EPSILON && total == 0 {
-            if gate.close_timer <= 0.0 {
+            if gate.close_timer <= Seconds::ZERO {
                 gate.close_timer = GATE_CLOSE_DELAY;
             } else {
                 gate.close_timer -= c.dt.seconds();
-                if gate.close_timer <= 0.0 {
-                    gate.close_timer = 0.0;
+                if gate.close_timer <= Seconds::ZERO {
+                    gate.close_timer = Seconds::ZERO;
                     return self.toggle_own_gate(c, height <= 0.0);
                 }
             }

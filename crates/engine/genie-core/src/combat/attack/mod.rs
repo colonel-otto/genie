@@ -30,6 +30,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::UnitStance;
 use crate::unit_ai::{OrderKind, UnitAi};
+use crate::world::Seconds;
 use crate::world::World;
 use crate::world::WorldTime;
 use genie_diff::Diff;
@@ -131,7 +132,7 @@ pub struct Attack {
     /// The action state (`+0x18`).
     pub state: AttackState,
     /// `+0x44`: seconds in the state, the update adds dt.
-    pub timer: f32,
+    pub timer: Seconds,
     /// `+0x90`: the range it attacks from; `+0x94`, the least.
     pub range: f32,
     /// `+0x94`: the least range it attacks from.
@@ -150,12 +151,12 @@ pub struct Attack {
     #[diff(
         gap = "differs from the save (MarvinBlue/426048731's 9181 at update 1025: genie -0.34, game 0)"
     )]
-    pub swing: f32,
+    pub swing: Seconds,
     /// `+0xb4`: the rest after the swing's sprite.
     #[diff(
         gap = "differs from the save (MarvinBlue/426048731's 10029 at update 1150: genie 0.5, game 0)"
     )]
-    pub rest: f32,
+    pub rest: Seconds,
     /// The sprites and frames from its constructor.
     pub arms: Arms,
     /// `+0x60`, `subActionValue`: the action is another's sub-action (the Hunt's) and posts no

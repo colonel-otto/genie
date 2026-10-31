@@ -21,6 +21,7 @@ use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
+use crate::world::Seconds;
 use genie_diff::Diff;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
@@ -110,7 +111,7 @@ pub struct ActiveSprite {
     /// `+0x28`, `animate_interval`: one frame's time at the last speed.
     pub interval: f32,
     /// `+0x2c`, `animate_last`: the time since the last frame.
-    pub last: f32,
+    pub last: Seconds,
     /// `+0x30`, `last_frame`: the frame before the last advance.
     pub last_frame: i16,
     /// `+0x34`, `frame_changed`; `+0x35`, `frame_looped`.
@@ -140,7 +141,7 @@ impl ActiveSprite {
             graphic,
             frame: graphic.first_frame(),
             interval: graphic.frame_duration,
-            last: 0.0,
+            last: Seconds::ZERO,
             last_frame: graphic.first_frame(),
             changed: false,
             looped: false,
@@ -193,7 +194,7 @@ impl ActiveSprite {
             graphic,
             frame,
             interval: 0.0,
-            last: 0.0,
+            last: Seconds::ZERO,
             last_frame: frame,
             changed: false,
             looped: false,
@@ -252,7 +253,7 @@ impl ActiveSprite {
     /// `+0x7b8`): an animated sprite's time runs, and its whole intervals advance it as many
     /// frames (backwards for such a sprite); past its last frame it loops, after its replay delay,
     /// or stops on it when played once.
-    pub fn update(&mut self, dt: f32, speed: f32) {
+    pub fn update(&mut self, dt: Seconds, speed: f32) {
         // a static sprite's update (`FUN_1413b5330`) does nothing
         if !self.graphic.animated() || self.animate == 0 {
             return;
@@ -283,15 +284,15 @@ impl ActiveSprite {
             i
         };
         // COMISS/JC at 0x1413b5149: an unordered time or interval returns too
-        if fmath::below_or_unordered(time, interval) {
+        if fmath::below_or_unordered(time.get(), interval) {
             return;
         }
         let forward = !g.backwards();
         self.changed = true;
         self.last_frame = start;
         // CVTTSS2SI EDX, MOVSX EAX, DX (0x1413b5177)
-        let steps = crate::math::conversions::cvttss2si(time / interval) as i16;
-        self.last = time - f32::from(steps) * interval;
+        let steps = crate::math::conversions::cvttss2si(time.get() / interval) as i16;
+        self.last = time - Seconds::new(f32::from(steps) * interval);
         if 0.0 < speed || g.speed_multiplier == 0.0 {
             let f = start + if forward { steps } else { -steps };
             self.frame = f;
@@ -454,15 +455,15 @@ mod tests {
         // MarvinBlue/426048731's 9181 from update 1008 (the tick oracle's trace): frame 0 after
         // the first update (time 0.02), frame 1 after the third (time 0.0155...)
         let mut s = ActiveSprite::start(CHOP, &mut Well512::default());
-        s.update(0.02, 1.0);
+        s.update(Seconds::new(0.02), 1.0);
         assert_eq!((s.frame, s.changed), (0, false));
-        s.update(0.02, 1.0);
-        s.update(0.02, 1.0);
+        s.update(Seconds::new(0.02), 1.0);
+        s.update(Seconds::new(0.02), 1.0);
         assert_eq!(s.frame, 1);
-        assert!((s.last - 0.015_555).abs() < 1e-5);
+        assert!((s.last - Seconds::new(0.015_555)).get().abs() < 1e-5);
         let mut n = 3;
         while !s.reached(22) {
-            s.update(0.02, 1.0);
+            s.update(Seconds::new(0.02), 1.0);
             n += 1;
         }
         // update 1057, the 49th
@@ -527,7 +528,7 @@ mod tests {
             ..CHOP
         };
         let mut s = ActiveSprite::start(g, &mut Well512::default());
-        s.update(1.0, 1.0);
+        s.update(Seconds::new(1.0), 1.0);
         assert_eq!((s.frame, s.changed), (0, false));
     }
 
@@ -536,7 +537,7 @@ mod tests {
     #[test]
     fn a_step_count_past_the_i32_range_steps_no_frame() {
         let mut s = ActiveSprite::start(CHOP, &mut Well512::default());
-        s.update(3.0e8, 1.0);
+        s.update(Seconds::new(3.0e8), 1.0);
         assert_eq!((s.frame, s.changed, s.looped), (0, true, false));
     }
 
@@ -562,7 +563,7 @@ mod tests {
             if let Some(f) = frame {
                 s.frame = f;
             }
-            s.update(dt, 1.0);
+            s.update(Seconds::new(dt), 1.0);
             s
         };
         assert_eq!(after(four(1, 0.0), Some(9), 0.1).frame, 3);
@@ -597,7 +598,7 @@ mod tests {
             ..CHOP
         };
         let mut s = ActiveSprite::start(g, &mut Well512::default());
-        s.update(0.1, 1.0);
+        s.update(Seconds::new(0.1), 1.0);
         assert_eq!(s.animate, 1);
     }
 
@@ -616,7 +617,7 @@ mod tests {
         let mut rng = Well512::default();
         let mut s = ActiveSprite::start(still, &mut rng);
         assert_eq!(rng, Well512::default());
-        s.update(0.5, 1.0);
+        s.update(Seconds::new(0.5), 1.0);
         assert_eq!((s.frame, s.changed, s.looped), (0, false, false));
         assert!(s.reached(0) && s.reached(7));
         // a random first frame draws once, not twice as an animated one does

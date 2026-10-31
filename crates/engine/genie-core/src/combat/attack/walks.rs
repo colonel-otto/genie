@@ -10,6 +10,7 @@ use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, Sprite
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
+use crate::world::Seconds;
 use crate::world::step::Step;
 use std::collections::BTreeMap;
 
@@ -89,7 +90,7 @@ impl Attack {
         };
         self.move_to =
             reads.to_object(to, self.range, self.given_sprite(), self.on_target_moved)?;
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         Ok(self.move_to.is_some_and(|m| m.arrived()))
     }
 
@@ -113,7 +114,7 @@ impl Attack {
             on_target_moved: self.on_target_moved,
             ..m
         });
-        self.timer = 0.0;
+        self.timer = Seconds::ZERO;
         Ok(())
     }
 

@@ -1,5 +1,6 @@
 //! The world's clock in the game's milliseconds: a moment of it ([`WorldTime`]) and a span
-//! ([`Millis`]). The game keeps both as `u32` and its arithmetic on them wraps.
+//! ([`Millis`]). The game keeps both as `u32` and its arithmetic on them wraps. The update's
+//! span in seconds and the timers that count it down are `f32` ([`Seconds`]).
 
 /// A moment of the world's clock in milliseconds since the game's start (`world_time`): the
 /// clock itself and the moments the objects keep (a unit AI's last retarget, a reload's end,
@@ -105,8 +106,8 @@ impl Millis {
     /// The span in seconds (`cvtsi2ss`, then `divss` by 1000 in f32: `world+0x164` of an
     /// update's `dt`).
     #[must_use]
-    pub fn seconds(self) -> f32 {
-        self.0 as f32 / 1000.0
+    pub fn seconds(self) -> Seconds {
+        Seconds(self.0 as f32 / 1000.0)
     }
 }
 
@@ -117,6 +118,120 @@ impl std::fmt::Display for Millis {
 }
 
 impl genie_diff::Diff for Millis {
+    fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
+        self.0.diff(&other.0, d);
+    }
+}
+
+/// A span in seconds as the game's `f32` holds it: an update's (`world+0x164`, the dt over
+/// 1000), the timers that count it down or up, the masters' times. Each operator is the one
+/// `f32` operation the game does; a comparison is `f32`'s (a NaN compares false).
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+pub struct Seconds(f32);
+
+impl Seconds {
+    /// No time.
+    pub const ZERO: Self = Self(0.0);
+    /// The longest time, the game's `FLT_MAX`: never (a group member that never attacked).
+    pub const MAX: Self = Self(f32::MAX);
+
+    /// A span of `s` seconds.
+    #[must_use]
+    pub const fn new(s: f32) -> Self {
+        Self(s)
+    }
+
+    /// The seconds, as the save and the game's arithmetic hold them.
+    #[must_use]
+    pub const fn get(self) -> f32 {
+        self.0
+    }
+}
+
+impl std::ops::Add for Seconds {
+    type Output = Self;
+
+    /// The `f32` sum.
+    fn add(self, other: Self) -> Self {
+        Self(self.0 + other.0)
+    }
+}
+
+impl std::ops::Sub for Seconds {
+    type Output = Self;
+
+    /// The `f32` difference.
+    fn sub(self, other: Self) -> Self {
+        Self(self.0 - other.0)
+    }
+}
+
+impl std::ops::AddAssign for Seconds {
+    /// The `f32` sum in place (a timer that counts up).
+    fn add_assign(&mut self, other: Self) {
+        self.0 += other.0;
+    }
+}
+
+impl std::ops::SubAssign for Seconds {
+    /// The `f32` difference in place (a timer that counts down).
+    fn sub_assign(&mut self, other: Self) {
+        self.0 -= other.0;
+    }
+}
+
+impl std::ops::Neg for Seconds {
+    type Output = Self;
+
+    /// The span negated (its sign bit flipped).
+    fn neg(self) -> Self {
+        Self(-self.0)
+    }
+}
+
+impl std::ops::Mul<f32> for Seconds {
+    type Output = Self;
+
+    /// The span scaled by `f` (one `f32` product).
+    fn mul(self, f: f32) -> Self {
+        Self(self.0 * f)
+    }
+}
+
+impl std::ops::Div<f32> for Seconds {
+    type Output = Self;
+
+    /// The span divided by `f` (one `f32` quotient).
+    fn div(self, f: f32) -> Self {
+        Self(self.0 / f)
+    }
+}
+
+impl std::ops::Div for Seconds {
+    type Output = f32;
+
+    /// The ratio of two spans (one `f32` quotient).
+    fn div(self, other: Self) -> f32 {
+        self.0 / other.0
+    }
+}
+
+impl std::ops::Mul<Seconds> for f32 {
+    type Output = Self;
+
+    /// A rate per second over the span: what it adds up to (one `f32` product).
+    fn mul(self, s: Seconds) -> Self {
+        self * s.0
+    }
+}
+
+impl std::fmt::Display for Seconds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl genie_diff::Diff for Seconds {
     fn diff(&self, other: &Self, d: &mut genie_diff::Differ) {
         self.0.diff(&other.0, d);
     }
@@ -157,9 +272,29 @@ mod tests {
     }
 
     #[test]
+    fn seconds_do_the_game_s_f32_operations() {
+        let (a, b) = (Seconds::new(0.1), Seconds::new(0.2));
+        assert_eq!((a + b).get().to_bits(), (0.1_f32 + 0.2).to_bits());
+        assert_eq!((b - a).get().to_bits(), (0.2_f32 - 0.1).to_bits());
+        let mut t = Seconds::new(1.0);
+        t -= Seconds::new(0.069);
+        assert_eq!(t.get().to_bits(), (1.0_f32 - 0.069).to_bits());
+        t += Seconds::new(0.069);
+        assert_eq!(t.get().to_bits(), ((1.0_f32 - 0.069) + 0.069).to_bits());
+        assert_eq!((-a).get().to_bits(), (-0.1_f32).to_bits());
+        assert_eq!((a * 3.0).get().to_bits(), (0.1_f32 * 3.0).to_bits());
+        assert_eq!((a / 3.0).get().to_bits(), (0.1_f32 / 3.0).to_bits());
+        assert_eq!((b / a).to_bits(), (0.2_f32 / 0.1).to_bits());
+        assert_eq!((1.5_f32 * a).to_bits(), (1.5_f32 * 0.1).to_bits());
+        assert!(Seconds::ZERO < a && a <= a);
+        assert_eq!(Seconds::new(f32::NAN).partial_cmp(&Seconds::ZERO), None);
+        assert_eq!(Seconds::new(0.5).to_string(), "0.5");
+    }
+
+    #[test]
     fn seconds_are_the_milliseconds_over_a_thousand_in_f32() {
         assert_eq!(
-            Millis::new(50).seconds().to_bits(),
+            Millis::new(50).seconds().get().to_bits(),
             (50.0_f32 / 1000.0).to_bits()
         );
         assert_eq!(WorldTime::from_millis(16_777_217).seconds(), 16_777.216);

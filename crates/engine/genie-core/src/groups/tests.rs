@@ -651,7 +651,7 @@ fn a_group_commanded_on_a_target_out_of_reach_moves_to_it() {
     assert!(
         g.members
             .iter()
-            .all(|m| m.seconds_since_attacking == f32::MAX)
+            .all(|m| m.seconds_since_attacking == Seconds::MAX)
     );
 }
 
@@ -841,7 +841,7 @@ fn a_general_command_moves_the_group_to_the_target_and_takes_the_command() {
     assert!(
         g.members
             .iter()
-            .all(|m| m.seconds_since_attacking == f32::MAX)
+            .all(|m| m.seconds_since_attacking == Seconds::MAX)
     );
 }
 

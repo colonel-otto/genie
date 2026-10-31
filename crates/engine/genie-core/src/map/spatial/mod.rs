@@ -29,6 +29,7 @@ use crate::players::PlayerId;
 use crate::players::{ByRelation, QueryRelation, UnitRelation};
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use genie_diff::Diff;
 use std::collections::BTreeMap;
@@ -185,7 +186,7 @@ pub struct Gait {
     /// Its last move time (`+0x870`, slot 0x5e8).
     pub last_move: WorldTime,
     /// Its current path level's pause time (slot 0x528), none without a level.
-    pub pause: Option<f32>,
+    pub pause: Option<Seconds>,
     /// `+0x650`, `mLastHumanOrderTime`: a met unit's rank against a human walker.
     pub human_order: WorldTime,
     /// When its current path level's path was made (slot 0x528's `+0x18`, the path's `+8`), none
@@ -579,7 +580,7 @@ pub struct Spatial {
     /// ([`Spatial::take_changes`]).
     changed: Vec<PlanRect>,
     /// The seconds since each frozen object froze.
-    frozen_for: BTreeMap<ObjectId, f32>,
+    frozen_for: BTreeMap<ObjectId, Seconds>,
     /// What a stopped player's units may have done since: the fastest any of the players' unit
     /// masters (type 70) moves and the farthest any acts beyond its footprint (its weapon or work
     /// range), for [`Spatial::check_known`]. 0 when not set.

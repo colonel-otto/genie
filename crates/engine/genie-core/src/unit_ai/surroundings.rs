@@ -14,6 +14,7 @@ use crate::objects::masters::MasterKind;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::unit_ai::Search;
+use crate::world::Seconds;
 use crate::world::WorldTime;
 use genie_diff::Diff;
 
@@ -129,7 +130,7 @@ pub struct Surroundings {
     /// The map's size in tiles.
     pub map: GridSize,
     /// The world's dt in seconds (`world+0x164`).
-    pub dt_seconds: f32,
+    pub dt_seconds: Seconds,
     /// The game's setting at `+0x680` (`FUN_140ec0cd0`) is 1: boars stay put.
     pub mode_1: bool,
     /// The unit's action list has an action (object slot 0x430, `FUN_14106d0e0`; its slot 0x818,
