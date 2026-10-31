@@ -539,7 +539,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
 #[test]
 fn a_team_effect_reaches_the_mutual_allies() {
     let player = |relations: Vec<u8>| Player {
-        relations,
+        relations: crate::players::relation_row(relations),
         ..Player::default()
     };
     let mut t = World::new(
@@ -999,7 +999,7 @@ fn a_farm_food_change_grows_the_farms_food() {
 #[test]
 fn the_resource_commands_side_effects() {
     let player = |relations: Vec<u8>| Player {
-        relations,
+        relations: crate::players::relation_row(relations),
         attributes: vec![0.0; 300],
         ..Player::default()
     };

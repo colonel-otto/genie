@@ -162,7 +162,7 @@ impl World {
             .players
             .get(p.index())
             .and_then(|pl| pl.relations.get(q.index()).copied());
-        if !matches!(mine, Some(0 | 4)) {
+        if !mine.is_some_and(|r| r.allied(true)) {
             return false;
         }
         p != PlayerId::GAIA
@@ -171,7 +171,7 @@ impl World {
                 .players
                 .get(q.index())
                 .and_then(|pl| pl.relations.get(p.index()))
-                .is_some_and(|&r| r & 0xfb == 0)
+                .is_some_and(|r| r.allied(true))
     }
 
     /// `WorldPlayer::update` after `WorldPlayerBase::update`: player `p`'s scout map (`+0x1370`,

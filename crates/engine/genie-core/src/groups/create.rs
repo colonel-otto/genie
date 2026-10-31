@@ -434,6 +434,8 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+
+    use crate::players::relation_row;
     use crate::players::relations;
     use crate::test_ids::group_id;
     use crate::test_ids::master_id;
@@ -678,7 +680,7 @@ mod tests {
             crate::vision::visibility::Visibility::new(20, 20, vec![], vec![], vec![], 0, vec![]);
         v.registry = Some(crate::vision::registry::Registry::new(2, 65));
         t.spatial.sight = Some(v);
-        t.spatial.relations = vec![vec![0, 0], vec![0, 0]];
+        t.spatial.relations = vec![relation_row([0, 0]), relation_row([0, 0])];
         t.spatial.unit_diplomacy = vec![relations([1, 2]), relations([0, 1])];
         let g = t.groups.get_mut(group_id(1)).unwrap();
         g.flags |= 2;

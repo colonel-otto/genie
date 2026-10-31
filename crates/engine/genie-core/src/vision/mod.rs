@@ -79,8 +79,9 @@ impl World {
         {
             let attribute = |i: usize| me.attributes.get(i).copied().unwrap_or(0.0);
             let allies = |q: usize| {
-                me.relations.get(q) == Some(&0)
-                    && self.players.get(q).and_then(|o| o.relations.get(p.index())) == Some(&0)
+                me.relations.get(q) == Some(&crate::players::Relation::ALLY)
+                    && self.players.get(q).and_then(|o| o.relations.get(p.index()))
+                        == Some(&crate::players::Relation::ALLY)
             };
             let mine = masks.checked_mut(p.index())?;
             if me.allied_vision {
@@ -145,6 +146,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::Position;
+    use crate::players::Relation;
     use crate::test_ids::object_id;
     use crate::world::Player;
 
@@ -153,7 +155,7 @@ mod tests {
     /// game's header load (`0xaa` for 1, 3, 5, 7 in its 4v4).
     fn teams() -> World {
         let player = |relations: Vec<u8>| Player {
-            relations,
+            relations: crate::players::relation_row(relations),
             allied_vision: true,
             attributes: vec![0.0; 250],
             ..Player::default()
@@ -185,7 +187,7 @@ mod tests {
     #[test]
     fn an_ally_one_way_or_the_vision_off_shares_nothing() {
         let mut t = teams();
-        t.players[3].relations[1] = 3;
+        t.players[3].relations[1] = Relation::ENEMY;
         t.players[2].allied_vision = false;
         t.rebuild_vision().unwrap();
         assert_eq!(t.spatial.vision[1], own_masks(PlayerId::new(1), false));

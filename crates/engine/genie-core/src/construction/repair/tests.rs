@@ -12,6 +12,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::relation_row;
 use crate::test_ids::costs;
 use crate::test_ids::object_id;
 
@@ -461,10 +462,10 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
                 t.players.push(crate::world::Player {
                     objects: vec![house].into(),
                     attributes: vec![0.0; 300],
-                    relations: vec![1, 0, 0],
+                    relations: relation_row([1, 0, 0]),
                     ..crate::world::Player::default()
                 });
-                t.players[1].relations = vec![1, 0, 3];
+                t.players[1].relations = relation_row([1, 0, 3]);
                 t.masters.push(t.masters[1].clone());
             },
             true,

@@ -7,6 +7,8 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::objects::masters::master_type;
+use crate::players::Relation;
+use crate::players::relation_row;
 use crate::players::relations;
 use crate::test_ids::class_id;
 use crate::test_ids::{master_id, object_id};
@@ -95,7 +97,11 @@ fn a_query_takes_its_kinds_of_players_from_the_save() {
     // player 2's +0x278 as loaded: itself 1, Gaia 0, player 1 an ally (2) whatever its
     // diplomacy byte (2 here, which no derivation knew)
     let mut s = Spatial::new(GridSize::new(10, 10));
-    s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 2, 0]];
+    s.relations = vec![
+        relation_row([1, 4, 4]),
+        relation_row([1, 0, 4]),
+        vec![Relation::NEUTRAL, Relation::from(2), Relation::ALLY],
+    ];
     s.unit_diplomacy = vec![
         relations([1, 4, 4]),
         relations([0, 1, 4]),
@@ -249,7 +255,11 @@ fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
     use crate::vision::registry::Registry;
     let mut s = Spatial::new(GridSize::new(120, 120));
     // player 2 counts player 1 its enemy (3)
-    s.relations = vec![vec![0, 3, 3], vec![0, 0, 3], vec![0, 3, 0]];
+    s.relations = vec![
+        relation_row([0, 3, 3]),
+        relation_row([0, 0, 3]),
+        relation_row([0, 3, 0]),
+    ];
     s.unit_diplomacy = vec![
         relations([1, 4, 4]),
         relations([0, 1, 4]),
@@ -780,7 +790,11 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
 #[test]
 fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
     let mut s = Spatial::new(GridSize::new(120, 120));
-    s.relations = vec![vec![1, 4, 4], vec![1, 0, 4], vec![1, 4, 0]];
+    s.relations = vec![
+        relation_row([1, 4, 4]),
+        relation_row([1, 0, 4]),
+        relation_row([1, 4, 0]),
+    ];
     s.insert(object_id(9175), villager(30.0, 89.0));
     let (from, to) = (Point::new(29.5, 88.0), Point::new(29.5, 88.3));
     let rect = Rect::new(29.5, 88.0, 29.5, 88.3);
@@ -845,7 +859,7 @@ fn a_walk_hits_the_boxes_its_step_crosses_and_a_moving_ally_s_box_shrinks() {
         Ok(vec![])
     );
     // an enemy's moving box grows in full
-    s.relations[2][1] = 3;
+    s.relations[2][1] = Relation::ENEMY;
     assert_eq!(
         s.walk_hits(WalkQuery {
             start: longer.0,
@@ -1224,7 +1238,12 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     use crate::construction::build::ClearLook;
     let (mut s, house) = site();
     // player 2 counts player 3 allied, player 3 counts player 2 neutral
-    s.relations = vec![vec![0; 4], vec![0; 4], vec![0, 3, 1, 0], vec![0, 3, 3, 1]];
+    s.relations = vec![
+        vec![Relation::ALLY; 4],
+        vec![Relation::ALLY; 4],
+        relation_row([0, 3, 1, 0]),
+        relation_row([0, 3, 3, 1]),
+    ];
     let mut wall = villager(30.5, 88.5);
     wall.player = PlayerId::new(3);
     wall.radius = Footprint::new(0.5, 0.5);
@@ -1250,12 +1269,12 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
         Ok(vec![object_id(9175)])
     );
     // allied both ways, the foundation occupies it; built (not desolid) too
-    s.relations[3][2] = 0;
+    s.relations[3][2] = Relation::ALLY;
     assert_eq!(
         occupants(&s, look(0, master_type::BUILDING, true)),
         Ok(vec![object_id(9175), object_id(33990)])
     );
-    s.relations[3][2] = 3;
+    s.relations[3][2] = Relation::ENEMY;
     assert_eq!(
         occupants(&s, look(2, master_type::BUILDING, false)),
         Ok(vec![object_id(9175), object_id(33990)])

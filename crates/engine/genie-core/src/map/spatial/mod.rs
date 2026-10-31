@@ -582,7 +582,7 @@ pub struct Spatial {
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
     annexes: BTreeMap<ObjectId, ObjectId>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
-    pub relations: Vec<Vec<u8>>,
+    pub relations: Vec<Vec<crate::players::Relation>>,
     /// What each player's queries make of the other players' objects (`player+0x278`, the
     /// save's `unit_diplomacy`): none for a saved value past the five relations.
     /// Loaded, not derived: the slice runs no diplomacy change (command 0x76), whose handler

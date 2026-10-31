@@ -23,7 +23,9 @@ use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::orders::action_state::{DONE, FAILED};
 use crate::players::PlayerId;
+use crate::players::Relation;
 use crate::players::attribute::AttributeId;
+use crate::players::relation_row;
 use crate::test_ids::carrying;
 use crate::test_ids::class_of;
 use crate::test_ids::group_id;
@@ -139,9 +141,9 @@ pub(crate) fn unit(id: i32, master: MasterId, hp: f32) -> Unit {
 /// holds town centre 100, ship 200 and gate 300 (an annex of the town centre).
 fn garrison_world() -> World {
     let mut players: Vec<Player> = (0..4).map(|_| Player::default()).collect();
-    players[1].relations = vec![1, 0, 0, 3];
-    players[2].relations = vec![1, 0, 0, 3];
-    players[3].relations = vec![1, 3, 3, 0];
+    players[1].relations = relation_row([1, 0, 0, 3]);
+    players[2].relations = relation_row([1, 0, 0, 3]);
+    players[3].relations = relation_row([1, 3, 3, 0]);
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 4], players);
     t.masters = (0..4).map(|_| garrison_masters()).collect();
     t.players[1].objects.push(unit(100, TC, 2400.0));
@@ -3005,8 +3007,17 @@ fn a_unit_inside_an_ally_s_transport_unloaded_goes_ashore() {
             .unwrap();
         let ship = t.players[1].objects.remove(i).unwrap();
         t.players[2].objects.push(ship);
-        t.players[1].relations = vec![3, 0, 0, 3];
-        t.players[2].relations = vec![3, if both_ways { 4 } else { 3 }, 0, 3];
+        t.players[1].relations = relation_row([3, 0, 0, 3]);
+        t.players[2].relations = vec![
+            Relation::ENEMY,
+            if both_ways {
+                Relation::RELATION_4
+            } else {
+                Relation::ENEMY
+            },
+            Relation::ALLY,
+            Relation::ENEMY,
+        ];
         t
     };
     let mut t = ally(true);
@@ -3686,21 +3697,46 @@ fn a_building_lets_out_the_units_of_a_player_no_longer_its_ally() {
     };
     let mut t = let_out_world();
     inside_tc(&mut t, PlayerId::new(2), 2000, VILLAGER);
-    t.notify_of_relation(PlayerId::new(1), object_id(100), PlayerId::new(2), 0)
-        .unwrap();
-    t.notify_of_relation(PlayerId::new(1), object_id(100), PlayerId::new(3), 3)
-        .unwrap();
+    t.notify_of_relation(
+        PlayerId::new(1),
+        object_id(100),
+        PlayerId::new(2),
+        Relation::ALLY,
+    )
+    .unwrap();
+    t.notify_of_relation(
+        PlayerId::new(1),
+        object_id(100),
+        PlayerId::new(3),
+        Relation::ENEMY,
+    )
+    .unwrap();
     assert_eq!(held(&t), (Some(object_id(100)), vec![object_id(2000)]));
-    t.notify_of_relation(PlayerId::new(1), object_id(100), PlayerId::new(2), 3)
-        .unwrap();
+    t.notify_of_relation(
+        PlayerId::new(1),
+        object_id(100),
+        PlayerId::new(2),
+        Relation::ENEMY,
+    )
+    .unwrap();
     assert_eq!(held(&t), (None, vec![]));
     let mut t = let_out_world();
     inside_tc(&mut t, PlayerId::new(2), 2000, VILLAGER);
-    t.notify_of_relation(PlayerId::new(2), object_id(2000), PlayerId::new(1), 0)
-        .unwrap();
+    t.notify_of_relation(
+        PlayerId::new(2),
+        object_id(2000),
+        PlayerId::new(1),
+        Relation::ALLY,
+    )
+    .unwrap();
     assert_eq!(held(&t).0, Some(object_id(100)));
-    t.notify_of_relation(PlayerId::new(2), object_id(2000), PlayerId::new(1), 3)
-        .unwrap();
+    t.notify_of_relation(
+        PlayerId::new(2),
+        object_id(2000),
+        PlayerId::new(1),
+        Relation::ENEMY,
+    )
+    .unwrap();
     assert_eq!(held(&t), (None, vec![]));
 }
 
@@ -3720,15 +3756,30 @@ fn a_siege_tower_s_unload_on_a_new_relation_is_not_modelled() {
     t.players[1].objects[1].garrison.push(object_id(2000));
     let unload = Err(SIEGE_UNLOAD);
     assert_eq!(
-        t.notify_of_relation(PlayerId::new(2), object_id(2000), PlayerId::new(1), 3),
+        t.notify_of_relation(
+            PlayerId::new(2),
+            object_id(2000),
+            PlayerId::new(1),
+            Relation::ENEMY
+        ),
         unload
     );
     assert_eq!(
-        t.notify_of_relation(PlayerId::new(1), object_id(200), PlayerId::new(2), 3),
+        t.notify_of_relation(
+            PlayerId::new(1),
+            object_id(200),
+            PlayerId::new(2),
+            Relation::ENEMY
+        ),
         unload
     );
     assert_eq!(
-        t.notify_of_relation(PlayerId::new(1), object_id(200), PlayerId::new(2), 0),
+        t.notify_of_relation(
+            PlayerId::new(1),
+            object_id(200),
+            PlayerId::new(2),
+            Relation::ALLY
+        ),
         Ok(())
     );
 }
@@ -3759,8 +3810,13 @@ fn a_market_tells_a_computer_ally_of_its_tile() {
         );
         v.new_tiles = vec![Vec::new(); 4];
         t.spatial.sight = Some(v);
-        t.notify_of_relation(PlayerId::new(1), object_id(100), PlayerId::new(2), 0)
-            .unwrap();
+        t.notify_of_relation(
+            PlayerId::new(1),
+            object_id(100),
+            PlayerId::new(2),
+            Relation::ALLY,
+        )
+        .unwrap();
         t.spatial.sight.unwrap().new_tiles[2].clone()
     };
     assert_eq!(market(true, false), [Tile::new(10, 12)]);

@@ -21,6 +21,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::orders::action_state::FAILED;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::relation_row;
 use crate::players::relations;
 use crate::test_ids::carrying;
 use crate::test_ids::class_of;
@@ -1019,8 +1020,8 @@ fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
         .into(),
         ..crate::world::Player::default()
     });
-    t.players[1].relations = vec![3, 0, 4];
-    t.players[2].relations = vec![3, 0, 0];
+    t.players[1].relations = relation_row([3, 0, 4]);
+    t.players[2].relations = relation_row([3, 0, 0]);
     let check = |t: &World, flag, named| {
         t.unload_check(
             PlayerId::new(1),
@@ -1038,7 +1039,7 @@ fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
     assert_eq!(check(&t, 0, 12), Some(object_ids([11, -1, -1])));
     assert_eq!(check(&t, 7, 12), Some(object_ids([11, -1, -1])));
     // allied one way only: out, unless the setting lets any through
-    t.players[2].relations = vec![3, 3, 0];
+    t.players[2].relations = relation_row([3, 3, 0]);
     assert_eq!(check(&t, 3, 12), Some(object_ids([11, -1, -1])));
     t.settings.cheats_enabled = true;
     assert_eq!(check(&t, 0, 12), Some(object_ids([11, 30, -1])));
@@ -2975,14 +2976,14 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
         PlayerId::new(0),
         vec![0, 0, 0],
         vec![
-            player(vec![].into(), vec![0, 3, 3]),
+            player(vec![].into(), relation_row([0, 3, 3])),
             player(
                 vec![unit(object_id(10), master_id(4), 10.0)].into(),
-                vec![3, 0, 3],
+                relation_row([3, 0, 3]),
             ),
             player(
                 vec![unit(object_id(20), master_id(5), x)].into(),
-                vec![3, 3, 0],
+                relation_row([3, 3, 0]),
             ),
         ],
     );
@@ -3772,7 +3773,7 @@ fn searchable(mut t: World) -> World {
         vec![kind],
         vec![vec![1.0]],
     ));
-    s.relations = vec![vec![0, 3], vec![0, 0]];
+    s.relations = vec![relation_row([0, 3]), relation_row([0, 0])];
     s.unit_diplomacy = vec![relations([1, 4]), relations([0, 1])];
     let mut v =
         crate::vision::visibility::Visibility::new(60, 60, vec![], vec![], vec![], 0, vec![]);

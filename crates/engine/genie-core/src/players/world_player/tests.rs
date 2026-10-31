@@ -15,6 +15,7 @@ use crate::players::PlayerId;
 use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::players::game_status::{LOST, PLAYING};
+use crate::players::relation_row;
 use crate::players::tracker::Key;
 use crate::technology::RESEARCHED;
 use crate::test_ids::master_id;
@@ -33,7 +34,7 @@ fn human() -> Player {
     Player {
         kind: PlayerType::HUMAN,
         attributes: attributes(),
-        relations: vec![1, 0, 3, 3],
+        relations: relation_row([1, 0, 3, 3]),
         victory_times: VictoryTimes {
             ruins: 0.0,
             ..VictoryTimes::default()
@@ -233,9 +234,9 @@ fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     // sharing: 1 and 2 count each other, 3 counts 1 but not the other way round
     let mut t = world();
     t.players[1].sharing = true;
-    t.players[1].relations = vec![1, 0, 0, 3];
-    t.players[2].relations = vec![1, 0, 0, 3];
-    t.players[3].relations = vec![1, 0, 3, 0];
+    t.players[1].relations = relation_row([1, 0, 0, 3]);
+    t.players[2].relations = relation_row([1, 0, 0, 3]);
+    t.players[3].relations = relation_row([1, 0, 3, 0]);
     t.add_resource(PlayerId::new(1), attribute::WOOD, 4.0, 1, true)
         .unwrap();
     assert_eq!(

@@ -85,12 +85,12 @@ impl PlaceMap for WorldMap<'_> {
     }
 
     fn allied(&self, a: PlayerId, b: PlayerId, with_4: bool) -> bool {
-        a == b
-            || (b != PlayerId::new(0)
-                && self.turns.players.get(a.index()).is_some_and(|p| {
-                    matches!(p.relations.get(b.index()), Some(0))
-                        || (with_4 && p.relations.get(b.index()) == Some(&4))
-                }))
+        let relations = self
+            .turns
+            .players
+            .get(a.index())
+            .map_or(&[][..], |p| &p.relations[..]);
+        crate::unit_ai::task_finder::allied(relations, a, b, with_4)
     }
 
     fn objects(&self, x: i32, y: i32) -> Result<Vec<Near>, GenieError> {

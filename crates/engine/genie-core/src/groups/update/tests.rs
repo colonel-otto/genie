@@ -16,6 +16,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::relation_row;
 use crate::players::relations;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
@@ -85,10 +86,10 @@ fn world() -> World {
     t.masters = vec![Masters::new([master]); 4];
     let mut s = crate::map::spatial::Spatial::new(GridSize::new(8, 8));
     s.relations = vec![
-        vec![0, 3, 3, 3],
-        vec![0, 0, 3, 0],
-        vec![0, 3, 0, 3],
-        vec![0, 0, 3, 0],
+        relation_row([0, 3, 3, 3]),
+        relation_row([0, 0, 3, 0]),
+        relation_row([0, 3, 0, 3]),
+        relation_row([0, 0, 3, 0]),
     ];
     s.unit_diplomacy = vec![
         relations([1, 4, 4, 4]),

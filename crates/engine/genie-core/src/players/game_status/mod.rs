@@ -66,13 +66,22 @@ impl Count {
     /// Player `i` of `status`, with the allied victory flag (`+0x2d0`, tested for 0) and the
     /// relations both ways to the first player still playing (`relation` 0: allied;
     /// `FUN_141667f70`).
-    const fn add(&mut self, i: usize, status: u8, allied_victory: u8, relations: (u8, u8)) {
+    const fn add(
+        &mut self,
+        i: usize,
+        status: u8,
+        allied_victory: u8,
+        relations: (crate::players::Relation, crate::players::Relation),
+    ) {
         match status {
             PLAYING => {
                 self.playing += 1;
                 if self.first != 0 && self.side != 0 {
                     // another side unless the two count each other's victory as their own
-                    if allied_victory == 0 || relations.0 != 0 || relations.1 != 0 {
+                    if allied_victory == 0
+                        || !matches!(relations.0, crate::players::Relation::ALLY)
+                        || !matches!(relations.1, crate::players::Relation::ALLY)
+                    {
                         self.side = -1;
                     }
                 } else {

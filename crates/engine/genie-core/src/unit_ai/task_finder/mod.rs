@@ -99,18 +99,21 @@ pub struct TaskOn<'t, 'a> {
 /// counts; Gaia never does; else relation 0 does, and 4 with the ally flag; relation 1 counts only
 /// under allied victory (`FUN_1415e8e10`), which the slice does not model.
 #[must_use]
-pub fn allied(relations: &[u8], from: PlayerId, to: PlayerId, with_ally: bool) -> bool {
+pub fn allied(
+    relations: &[crate::players::Relation],
+    from: PlayerId,
+    to: PlayerId,
+    with_ally: bool,
+) -> bool {
     if from == to {
         return true;
     }
     if to == PlayerId::new(0) {
         return false;
     }
-    match relations.get(to.index()) {
-        Some(0) => true,
-        Some(4) => with_ally,
-        _ => false,
-    }
+    relations
+        .get(to.index())
+        .is_some_and(|r| r.allied(with_ally))
 }
 
 /// The players' relations and the drop sites, as the task finder reads them.

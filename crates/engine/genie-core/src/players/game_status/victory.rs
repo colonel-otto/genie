@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::players::PlayerId;
+use crate::players::Relation;
 use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
@@ -11,13 +12,13 @@ use crate::world::slots::PlayerSlots;
 
 impl World {
     /// The relations of players `a` and `b` each way (`player+0x260`).
-    pub(super) fn relations(&self, a: usize, b: usize) -> (u8, u8) {
+    pub(super) fn relations(&self, a: usize, b: usize) -> (Relation, Relation) {
         let r = |x: usize, y: usize| {
             self.players
                 .get(x)
                 .and_then(|p| p.relations.get(y))
                 .copied()
-                .unwrap_or(0)
+                .unwrap_or(Relation::ALLY)
         };
         (r(a, b), r(b, a))
     }

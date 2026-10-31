@@ -520,7 +520,7 @@ fn world() -> World {
     let player = |relations: Vec<u8>| Player {
         attributes: vec![0.0; 600],
         generated: vec![0.0; 600],
-        relations,
+        relations: crate::players::relation_row(relations),
         ..Player::default()
     };
     let players = vec![

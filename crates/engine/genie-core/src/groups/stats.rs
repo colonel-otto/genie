@@ -570,6 +570,8 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::objects::unit::Unit;
     use crate::players::PlayerId;
+
+    use crate::players::relation_row;
     use crate::players::relations;
     use crate::test_ids::group_id;
     use crate::test_ids::master_id;
@@ -672,10 +674,10 @@ mod tests {
         ];
         let mut s = crate::map::spatial::Spatial::new(GridSize::new(20, 20));
         s.relations = vec![
-            vec![0, 3, 3, 3],
-            vec![0, 0, 3, 1],
-            vec![0, 3, 0, 3],
-            vec![0, 1, 3, 0],
+            relation_row([0, 3, 3, 3]),
+            relation_row([0, 0, 3, 1]),
+            relation_row([0, 3, 0, 3]),
+            relation_row([0, 1, 3, 0]),
         ];
         s.unit_diplomacy = vec![
             relations([1, 4, 4, 4]),

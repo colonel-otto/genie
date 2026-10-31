@@ -8,6 +8,7 @@ use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::relation_row;
 use crate::test_ids::carrying;
 use crate::unit_ai::NotifyKind;
 
@@ -182,7 +183,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
             Player {
                 objects: vec![builder, house].into(),
                 attributes: vec![0.0; 250],
-                relations: vec![1, 0],
+                relations: relation_row([1, 0]),
                 ..Player::default()
             },
         ],

@@ -306,12 +306,10 @@ impl Spatial {
         if to == PlayerId::new(0) {
             return false;
         }
-        matches!(
-            self.relations
-                .get(from.index())
-                .and_then(|r| r.get(to.index())),
-            Some(0 | 4)
-        )
+        self.relations
+            .get(from.index())
+            .and_then(|r| r.get(to.index()))
+            .is_some_and(|r| r.allied(true))
     }
 
     /// `FUN_1410562e0` on the obstruction manager: its ignore list becomes `ids` (none for an

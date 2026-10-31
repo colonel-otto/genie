@@ -13,8 +13,10 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
+use crate::players::Relation;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::relation_row;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
@@ -84,7 +86,7 @@ fn game() -> World {
     let player = |objects| Player {
         objects,
         attributes: attributes.clone(),
-        relations: vec![0, 0, 3],
+        relations: relation_row([0, 0, 3]),
         ..Player::default()
     };
     let mut t = World::new(
@@ -826,17 +828,17 @@ fn early_in_the_game_a_resignation_leaves_the_objects_alone() {
 #[test]
 fn one_side_left_after_a_resignation_ends_a_conquest_game() {
     let mut c = Count::default();
-    c.add(1, LOST, 0, (0, 0));
-    c.add(2, PLAYING, 0, (0, 0));
+    c.add(1, LOST, 0, (Relation::ALLY, Relation::ALLY));
+    c.add(2, PLAYING, 0, (Relation::ALLY, Relation::ALLY));
     assert_eq!((c.playing, c.side, c.lost, c.won), (1, 1, 1, 0));
     // two players still playing, enemies: two sides
     let mut c = Count::default();
-    c.add(1, PLAYING, 0, (0, 0));
-    c.add(2, PLAYING, 0, (3, 3));
+    c.add(1, PLAYING, 0, (Relation::ALLY, Relation::ALLY));
+    c.add(2, PLAYING, 0, (Relation::ENEMY, Relation::ENEMY));
     assert_eq!((c.playing, c.side), (2, -1));
     // allies with the allied victory are one side
     let mut c = Count::default();
-    c.add(1, PLAYING, 1, (0, 0));
-    c.add(2, PLAYING, 1, (0, 0));
+    c.add(1, PLAYING, 1, (Relation::ALLY, Relation::ALLY));
+    c.add(2, PLAYING, 1, (Relation::ALLY, Relation::ALLY));
     assert_eq!((c.playing, c.side), (2, 1));
 }

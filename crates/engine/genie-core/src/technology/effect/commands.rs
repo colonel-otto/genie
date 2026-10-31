@@ -56,17 +56,20 @@ impl World {
                 .get(b.index())
                 .copied()
         };
-        let mutual = |q: PlayerId, wanted: &[u8]| {
+        let mutual = |q: PlayerId, wanted: &[crate::players::Relation]| {
             wanted
                 .iter()
                 .any(|&r| relation(p, q) == Some(r) && relation(q, p) == Some(r))
         };
-        let wanted: &[u8] = match party {
+        let wanted: &[crate::players::Relation] = match party {
             Party::Own => return vec![p],
             Party::Gaia => return vec![PlayerId::GAIA],
-            Party::Allies => &[0],
-            Party::Enemies => &[3, 4],
-            Party::Neutrals => &[1],
+            Party::Allies => &[crate::players::Relation::ALLY],
+            Party::Enemies => &[
+                crate::players::Relation::ENEMY,
+                crate::players::Relation::RELATION_4,
+            ],
+            Party::Neutrals => &[crate::players::Relation::NEUTRAL],
         };
         PlayerId::each(self.players.len())
             .skip(1)

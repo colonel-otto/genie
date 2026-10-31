@@ -116,9 +116,9 @@ mod tests {
     fn world() -> World {
         let player = |p: usize| Player {
             attributes: vec![0.0; 300],
-            relations: (0..4)
-                .map(|q| u8::from(!(q == p || (p, q) == (1, 3) || (p, q) == (3, 1))) * 3)
-                .collect(),
+            relations: crate::players::relation_row(
+                (0..4).map(|q| u8::from(!(q == p || (p, q) == (1, 3) || (p, q) == (3, 1))) * 3),
+            ),
             ..Player::default()
         };
         let mut t = World::new(

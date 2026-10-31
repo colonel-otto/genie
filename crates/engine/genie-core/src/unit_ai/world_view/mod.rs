@@ -156,7 +156,7 @@ impl OwnerView {
     /// # Errors
     ///
     /// A player the world does not hold.
-    pub(crate) fn relations(self, w: &World) -> Result<&[u8], GenieError> {
+    pub(crate) fn relations(self, w: &World) -> Result<&[crate::players::Relation], GenieError> {
         Ok(&w.players.player(self.player)?.relations)
     }
 }

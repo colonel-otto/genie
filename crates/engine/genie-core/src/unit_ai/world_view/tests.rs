@@ -6,6 +6,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::object_list::ObjectList;
+use crate::players::Relation;
 use crate::test_ids::attack_category;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -107,7 +108,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         restriction: -1,
         unit: &me,
         attributes: &[],
-        relations: &[0, 0, 0],
+        relations: &[Relation::ALLY, Relation::ALLY, Relation::ALLY],
         ai_settings: crate::world::player::AiSettings::default(),
         now: 0,
         mode_680: 0,
@@ -217,7 +218,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         restriction: -1,
         unit: &me,
         attributes: &[],
-        relations: &[0, 0, 0],
+        relations: &[Relation::ALLY, Relation::ALLY, Relation::ALLY],
         ai_settings: crate::world::player::AiSettings::default(),
         now: 0,
         mode_680: 0,
@@ -360,7 +361,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         restriction: -1,
         unit: &me,
         attributes: &[],
-        relations: &[0, 0, 0],
+        relations: &[Relation::ALLY, Relation::ALLY, Relation::ALLY],
         ai_settings: crate::world::player::AiSettings::default(),
         now: 0,
         mode_680: 0,

@@ -47,7 +47,7 @@ impl Diplomacy for TaskWorld<'_> {
 /// owner's list is out for its update ([`UnitView`]): the owner's relations, the others'.
 pub(crate) struct SideWorld<'a> {
     pub(crate) player: PlayerId,
-    pub(crate) relations: &'a [u8],
+    pub(crate) relations: &'a [crate::players::Relation],
     pub(crate) foreign: Foreign<'a>,
     pub(crate) drop_sites: &'a [DropSite],
 }

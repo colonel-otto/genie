@@ -30,7 +30,7 @@ use crate::world::{Player, World};
 /// with the unit's state, when its side's call returns: [`crate::objects::unit::Unit::with_side`]).
 pub(crate) struct Lets<'l> {
     pub(crate) player: PlayerId,
-    pub(crate) relations: &'l [u8],
+    pub(crate) relations: &'l [crate::players::Relation],
     pub(crate) masters: &'l [Masters],
     pub(crate) lines: &'l UnitLines,
     pub(crate) tracker: &'l mut Tracker,

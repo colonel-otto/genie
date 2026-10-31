@@ -89,7 +89,7 @@ pub struct Player {
     /// The civ (`player+0x738`), which drop sites read.
     pub civ: u8,
     /// `relation[i]` (`player+0x260`): how the player stands to player i.
-    pub relations: Vec<u8>,
+    pub relations: Vec<crate::players::Relation>,
     /// The sleeping objects, in their list's order: they are not updated; a unit's work on one
     /// wakes it.
     pub sleeping: ObjectList,

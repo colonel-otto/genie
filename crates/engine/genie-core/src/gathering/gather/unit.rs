@@ -402,7 +402,7 @@ impl Unit {
 /// the resources would go to the allies too when the player shares (`sharing`, `+0x1426`,
 /// `FUN_14165d040`): a sharing player with allies is not modelled.
 pub(crate) fn give_load(
-    (relations, sharing): (&[Vec<u8>], bool),
+    (relations, sharing): (&[Vec<crate::players::Relation>], bool),
     player: PlayerId,
     adds: &mut Vec<(AttributeId, f32)>,
     kind: AttributeId,

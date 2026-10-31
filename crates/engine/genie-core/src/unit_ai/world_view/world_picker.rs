@@ -58,7 +58,7 @@ pub(crate) struct WorldPicker<'a> {
     /// Its owner's attributes, diplomacy and AI settings.
     pub(crate) attributes: &'a [f32],
     /// Its owner's diplomacy (`player+0x260`).
-    pub(crate) relations: &'a [u8],
+    pub(crate) relations: &'a [crate::players::Relation],
     /// Its owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
     /// The world's time.
