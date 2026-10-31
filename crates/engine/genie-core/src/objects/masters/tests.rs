@@ -30,7 +30,7 @@ fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
         buildable_on: 0,
         tasks,
         cost: costs(&[]),
-        obstruction_class: 0,
+        obstruction_class: ObstructionClass::NONE,
         object_flags: 0,
         combat_level: 0,
         work_rate: 1.0,
@@ -52,7 +52,7 @@ fn house() -> Master {
         buildable_on: 0,
         tasks: vec![],
         cost: costs(&[(player_attribute::WOOD, 25, true)]),
-        obstruction_class: 2,
+        obstruction_class: ObstructionClass::UNIT,
         object_flags: 0,
         combat_level: 0,
         work_rate: 0.0,
@@ -252,7 +252,7 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
         ),
         (
             a::BLOCKAGE_CLASS,
-            |m| f32::from(m.obstruction_class),
+            |m| f32::from(m.obstruction_class.get()),
             [3.0, 3.0, 3.0],
         ),
         (

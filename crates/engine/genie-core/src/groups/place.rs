@@ -390,6 +390,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
+    use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
     use crate::test_ids::group_id;
@@ -481,7 +482,7 @@ mod tests {
                     unknown: None,
                     obstruction: Some(Obstruction {
                         kind: ObstructionType::CIRCLE,
-                        class: 2,
+                        class: ObstructionClass::UNIT,
                     }),
                 },
             );

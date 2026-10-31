@@ -9,6 +9,7 @@ use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::objects::ObjectId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -163,7 +164,7 @@ fn post(x: f32, y: f32) -> Placed {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
     }
 }

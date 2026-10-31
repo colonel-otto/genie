@@ -681,6 +681,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::TileOffset;
+    use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::ids;
     use crate::objects::masters::ids::HOUSE;
@@ -1219,7 +1220,7 @@ mod tests {
             build_time: 0,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,

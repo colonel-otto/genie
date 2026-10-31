@@ -7,6 +7,7 @@ use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionClass;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
 use crate::world::player::Player;
@@ -121,7 +122,11 @@ impl World {
                 let moving = u.body.mover().is_some_and(Mover::is_moving);
                 let desolid = u.construction.is_some_and(|c| c.desolid);
                 let kind = m.obstruction_type;
-                if placed.tall && kind.recorded() && m.obstruction_class != 0 && !moving && !desolid
+                if placed.tall
+                    && kind.recorded()
+                    && m.obstruction_class != ObstructionClass::NONE
+                    && !moving
+                    && !desolid
                 {
                     self.pathing.place_shape(u.id, placed);
                 }

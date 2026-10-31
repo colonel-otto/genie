@@ -7,6 +7,7 @@ use crate::map::Rect;
 use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -117,7 +118,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
                 unknown: None,
                 obstruction: Some(Obstruction {
                     kind: ObstructionType::CIRCLE,
-                    class: 2,
+                    class: ObstructionClass::UNIT,
                 }),
             },
         );

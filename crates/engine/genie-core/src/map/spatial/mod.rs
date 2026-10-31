@@ -20,6 +20,7 @@ use crate::map::Rect;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::players::PlayerId;
 use crate::vision::registry::Record;
@@ -230,7 +231,7 @@ pub struct Obstruction {
     /// The record's kind (`obstruction_type`).
     pub kind: ObstructionType,
     /// The master's `obstruction_class`.
-    pub class: u8,
+    pub class: ObstructionClass,
 }
 
 impl Obstruction {
@@ -238,7 +239,7 @@ impl Obstruction {
     /// neither a record nor a mesh shape.
     #[must_use]
     pub const fn recorded(self) -> bool {
-        self.kind.recorded() && self.class != 0
+        self.kind.recorded() && !matches!(self.class, ObstructionClass::NONE)
     }
 }
 
@@ -480,8 +481,8 @@ impl Tiles {
     fn mark(&mut self, p: &Placed, o: Obstruction) {
         let player = p.player.index() as u64;
         let mut bits =
-            ((player << 8 | u64::from(o.class & 0x3f) | 0x40) << 8) | (0x80_0000 << player);
-        if o.class == 5 {
+            ((player << 8 | u64::from(o.class.mark_bits()) | 0x40) << 8) | (0x80_0000 << player);
+        if o.class == ObstructionClass::GATE {
             bits |= 0x8000;
         }
         for i in self.covered_indices(p) {

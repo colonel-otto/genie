@@ -7,7 +7,9 @@ use genie_core::GenieError;
 use genie_core::map::Footprint;
 use genie_core::map::Offset;
 use genie_core::map::Radii;
-use genie_core::objects::masters::{ActionType, ClassId, MasterId, ObstructionType};
+use genie_core::objects::masters::{
+    ActionType, ClassId, MasterId, ObstructionClass, ObstructionType,
+};
 use genie_core::objects::masters::{COST_SLOTS, CostSlot};
 use genie_core::players::attribute::AttributeId;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
@@ -175,7 +177,7 @@ pub(super) fn work_masters(
         work.height = s.radius_z;
         work.obstruction_type = ObstructionType::from(s.obstruction_type);
         work.buildable_on = s.can_be_built_on;
-        work.obstruction_class = s.obstruction_class;
+        work.obstruction_class = ObstructionClass::from(s.obstruction_class);
         work.object_flags = s.object_flags;
         work.hit_points = s.read_temp_6;
         work.available = s.available != 0;
@@ -455,7 +457,7 @@ pub(super) struct Placement {
     pub(super) radius: Radii,
     pub(super) class: ClassId,
     pub(super) obstruction_type: ObstructionType,
-    pub(super) obstruction_class: u8,
+    pub(super) obstruction_class: ObstructionClass,
     pub(super) buildable_on: u8,
     pub(super) los: f32,
 }
@@ -468,7 +470,7 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
             radius: Radii::new(own.radius_x, own.radius_y, own.radius_z),
             class: ClassId::of_master(own.read_temp_2),
             obstruction_type: ObstructionType::from(own.obstruction_type),
-            obstruction_class: own.obstruction_class,
+            obstruction_class: ObstructionClass::from(own.obstruction_class),
             buildable_on: own.can_be_built_on,
             los: own.los,
         });
@@ -478,7 +480,7 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
         radius: Radii::new(m.radius_x, m.radius_y, m.radius_z),
         class: ClassId::of_master(m.read_temp_5),
         obstruction_type: ObstructionType::from(m.obstruction_type),
-        obstruction_class: m.obstruction_class,
+        obstruction_class: ObstructionClass::from(m.obstruction_class),
         buildable_on: m.can_be_built_on,
         los: m.los,
     })

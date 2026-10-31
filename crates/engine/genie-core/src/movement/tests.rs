@@ -7,6 +7,7 @@ use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -232,7 +233,7 @@ fn drop_off_world(class: u8, near: &[(i32, Point, f32, ClassId, PlayerId)]) -> S
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
     };
     w.insert(
@@ -465,7 +466,7 @@ fn walled(radius: f32) -> Spatial {
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::CIRCLE,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         },
     );
@@ -761,7 +762,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
     };
     w.insert(object_id(9171), unit(4.5, 0.6));
@@ -856,7 +857,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::CIRCLE,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         },
     );
@@ -1179,7 +1180,7 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 1,
+            class: ObstructionClass::RESOURCE,
         }),
     };
     world.insert(object_id(100), wall(10.0, class::GATE));
@@ -1434,7 +1435,7 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 1,
+                class: ObstructionClass::RESOURCE,
             }),
         },
     );
@@ -1521,7 +1522,7 @@ pub(crate) fn world() -> Spatial {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
     };
     s.insert(object_id(9175), unit(30.0, 89.0));
@@ -1642,7 +1643,7 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
     };
     let walled = |soldier: bool, block: Option<Placed>| {
@@ -2253,7 +2254,7 @@ fn a_next_waypoint_an_object_stands_on_goes() {
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         },
     );

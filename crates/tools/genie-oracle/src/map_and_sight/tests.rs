@@ -200,7 +200,10 @@ mod spatial {
         let obstruction = unit.obstruction.unwrap();
         assert_eq!(
             (obstruction.kind, obstruction.class),
-            (genie_core::objects::masters::ObstructionType::TYPE_2, 3)
+            (
+                genie_core::objects::masters::ObstructionType::TYPE_2,
+                genie_core::objects::masters::ObstructionClass::BUILDING
+            )
         );
         assert_eq!(out.tile_list(1, 1), [object_id(10)]);
         let seer = out.sight.as_ref().unwrap().seer(object_id(10)).unwrap();

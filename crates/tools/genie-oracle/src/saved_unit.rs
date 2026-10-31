@@ -13,6 +13,7 @@ use genie_core::objects::HpPowerup;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::ObstructionClass;
 use genie_core::objects::masters::ObstructionType;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
@@ -386,7 +387,7 @@ pub(super) fn construction(
         build_time,
         record: genie_core::map::spatial::Obstruction {
             kind: ObstructionType::from(ms.obstruction_type),
-            class: ms.obstruction_class,
+            class: ObstructionClass::from(ms.obstruction_class),
         },
         snow: b.snow_flag != 0,
         sprite_override: s.sprite_override_id != -1,

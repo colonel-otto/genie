@@ -13,6 +13,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
@@ -1469,7 +1470,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         },
     );
@@ -1935,7 +1936,7 @@ pub(crate) fn building_at(
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         },
     );

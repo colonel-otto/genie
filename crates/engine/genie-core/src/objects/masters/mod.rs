@@ -240,7 +240,7 @@ pub struct Master {
     /// `can_be_built_on` (`+0x5e9`): a new building deletes an object of it off its footprint.
     pub buildable_on: u8,
     /// `obstruction_class` (`+0x652`).
-    pub obstruction_class: u8,
+    pub obstruction_class: ObstructionClass,
     /// `object_flags` (`+0x654`): bit 0 takes garrisons, bit 4 marks a hunter master.
     pub object_flags: u32,
     /// The `.dat`'s `combat_level` (`+0x62c`).
@@ -582,6 +582,7 @@ pub mod ids;
 mod master_id;
 mod master_kind;
 pub mod master_type;
+mod obstruction_class;
 mod obstruction_type;
 
 pub use self::action_type::ActionType;
@@ -590,6 +591,7 @@ pub use self::class_id::ClassId;
 pub use self::gather_group::GatherGroup;
 pub use self::master_id::MasterId;
 pub use self::master_kind::MasterKind;
+pub use self::obstruction_class::ObstructionClass;
 pub use self::obstruction_type::ObstructionType;
 
 #[cfg(test)]

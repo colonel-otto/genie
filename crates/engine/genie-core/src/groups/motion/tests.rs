@@ -3,6 +3,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -884,7 +885,7 @@ fn placed_at(x: f32, y: f32) -> Placed {
         radius: Footprint::new(0.2, 0.2),
         obstruction: Some(crate::map::spatial::Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
         ..target_at(y)
     }

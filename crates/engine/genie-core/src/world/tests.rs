@@ -34,6 +34,7 @@ use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -386,7 +387,7 @@ pub(crate) fn builder_masters() -> Masters {
         buildable_on: 0,
         tasks,
         cost: costs(&[]),
-        obstruction_class: 0,
+        obstruction_class: ObstructionClass::NONE,
         object_flags: 0,
         combat_level: 0,
         work_rate: 1.0,
@@ -444,7 +445,7 @@ pub(crate) fn builder_masters() -> Masters {
             buildable_on: 0,
             tasks: vec![],
             cost: costs(&[(attribute::WOOD, 25, true)]),
-            obstruction_class: 2,
+            obstruction_class: ObstructionClass::UNIT,
             object_flags: 0,
             combat_level: 0,
             work_rate: 0.0,
@@ -1878,7 +1879,7 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
             build_time: 25,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -3881,7 +3882,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
             build_time: 25,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -3917,8 +3918,8 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
         ..Master::default()
     };
     t.masters = vec![Masters::new([
-        master(ids::HOUSE, 2),
-        master(master_id(71), 0),
+        master(ids::HOUSE, ObstructionClass::UNIT),
+        master(master_id(71), ObstructionClass::NONE),
     ])];
     t.spatial = Spatial::new(GridSize::new(40, 40));
     for id in [1, 2, 3, 4, 6] {
@@ -7096,7 +7097,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         id: master_id(64),
         class: class::GATE,
         obstruction_type: ObstructionType::TYPE_2,
-        obstruction_class: 5,
+        obstruction_class: ObstructionClass::GATE,
         building: Some(crate::objects::masters::BuildingMaster {
             transform_unit: Some(master_id(63)),
             ..crate::objects::masters::BuildingMaster::default()
@@ -7111,7 +7112,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
     let record = crate::map::spatial::Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 5,
+        class: ObstructionClass::GATE,
     };
     t.spatial.insert(
         object_id(27687),
@@ -7194,7 +7195,10 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
         tall: true,
         speed,
         unknown: None,
-        obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
+        obstruction: Some(crate::map::spatial::Obstruction {
+            kind,
+            class: ObstructionClass::UNIT,
+        }),
     };
     s.insert(
         object_id(27745),
@@ -7385,7 +7389,10 @@ fn gate_world() -> World {
         tall: true,
         speed,
         unknown: None,
-        obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
+        obstruction: Some(crate::map::spatial::Obstruction {
+            kind,
+            class: ObstructionClass::UNIT,
+        }),
     };
     t.spatial.insert(
         object_id(27745),
@@ -9058,7 +9065,7 @@ fn teardown_world() -> World {
             build_time: 25,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -9386,7 +9393,7 @@ fn deaths_world() -> World {
             build_time: 25,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -10182,7 +10189,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             (None, 0.0, 0),
         ],
         obstruction_type: ObstructionType::TYPE_2,
-        obstruction_class: 2,
+        obstruction_class: ObstructionClass::UNIT,
         building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: None,
             foundation_terrain: -1,
@@ -10219,7 +10226,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             build_time: 10,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -11858,7 +11865,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
             build_time: 100,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -11969,7 +11976,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             build_time: 70,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -12278,7 +12285,7 @@ fn building_short_of_its_build_time_dies(state: u8) {
             build_time: 50,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 0,
+                class: ObstructionClass::NONE,
             },
             snow: false,
             sprite_override: false,
@@ -14338,7 +14345,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 0,
+                class: ObstructionClass::NONE,
             }),
         },
     );
@@ -15809,7 +15816,7 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
         build_time: 25,
         record: crate::map::spatial::Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -16963,7 +16970,7 @@ fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Outcome;
     let record = Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 2,
+        class: ObstructionClass::UNIT,
     };
     let mut t = house_builder();
     let r = finished_with(&mut t, (PlayerId::new(1), 0), |c| {

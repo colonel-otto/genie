@@ -8,6 +8,7 @@ use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, W
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
@@ -333,7 +334,7 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
         build_time: 15,
         record: Obstruction {
             kind: ObstructionType::NONE,
-            class: 0,
+            class: ObstructionClass::NONE,
         },
         snow: false,
         sprite_override: false,
@@ -591,7 +592,7 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -767,7 +768,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -824,7 +825,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             build_time: 100,
             record: Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -913,7 +914,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -969,7 +970,7 @@ fn the_work_starts_the_desolid_annexes_first() {
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -1057,7 +1058,7 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -1093,7 +1094,7 @@ fn an_annex_s_work_goes_to_its_main_building() {
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,

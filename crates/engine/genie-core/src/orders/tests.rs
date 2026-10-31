@@ -9,6 +9,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -262,7 +263,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             build_time: 25,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -1377,7 +1378,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
             build_time: 10,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,
@@ -1958,7 +1959,7 @@ fn switched_in_the_open(
             unknown: None,
             obstruction: Some(crate::map::spatial::Obstruction {
                 kind: ObstructionType::CIRCLE,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         },
     );
@@ -2022,7 +2023,7 @@ fn switch_masters() -> (Master, Master) {
         ],
         volley_fire: 3.0,
         obstruction_type: ObstructionType::TYPE_3,
-        obstruction_class: 1,
+        obstruction_class: ObstructionClass::RESOURCE,
         ..Master::default()
     };
     (old, next)
@@ -2091,7 +2092,7 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
         record.obstruction,
         Some(crate::map::spatial::Obstruction {
             kind: ObstructionType::TYPE_3,
-            class: 1
+            class: ObstructionClass::RESOURCE
         })
     );
     let hp = |hp| {
@@ -2446,7 +2447,7 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         build_time: 10,
         record: crate::map::spatial::Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -2620,7 +2621,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             build_time: 10,
             record: crate::map::spatial::Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 2,
+                class: ObstructionClass::UNIT,
             },
             snow: false,
             sprite_override: false,

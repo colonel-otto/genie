@@ -7,6 +7,7 @@ use genie_core::objects::masters as work;
 use genie_core::objects::masters::ActionType;
 use genie_core::objects::masters::GatherGroup;
 use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::ObstructionClass;
 use genie_core::objects::masters::ObstructionType;
 use genie_core::objects::masters::{COST_SLOTS, CostSlot};
 use genie_core::players::attribute::AttributeId;
@@ -126,7 +127,7 @@ pub(super) fn dat_work(
         height: Radii::from(unit.collision_size).z(),
         obstruction_type: ObstructionType::from(unit.obstruction_type),
         buildable_on: unit.can_be_built_on,
-        obstruction_class: unit.obstruction_class,
+        obstruction_class: ObstructionClass::from(unit.obstruction_class),
         object_flags: 0,
         combat_level: unit.combat_level,
         tasks: dat_tasks(unit, sounds)?,

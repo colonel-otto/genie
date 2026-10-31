@@ -2,6 +2,7 @@
 
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::{
     AttributeWorld, MISSILE_SPEED_CAP, Master, ROUND, SPEED_CAP, add_short, add_sprite, attribute,
@@ -49,7 +50,7 @@ impl Master {
             a::OBSTRUCTION_TYPE => {
                 self.obstruction_type = ObstructionType::set(low8(v));
             }
-            a::BLOCKAGE_CLASS => self.obstruction_class = low8(v),
+            a::BLOCKAGE_CLASS => self.obstruction_class = ObstructionClass::from(low8(v)),
             a::SELECTION_EFFECT => self.selection_effect = low8(v),
             a::DAMAGE_GRAPHIC
             | a::DAMAGE_GRAPHICS_ENTRY_MOD

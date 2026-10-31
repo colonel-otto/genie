@@ -15,7 +15,7 @@
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
-use crate::map::spatial::{BLOCKED, Placed, Tiles};
+use crate::map::spatial::{BLOCKED, Obstruction, Placed, Tiles};
 use crate::objects::ObjectId;
 use crate::objects::masters::ObstructionType;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
@@ -296,9 +296,7 @@ impl Pathing {
         let Some(mesh) = self.mesh.as_mut() else {
             return;
         };
-        let has_shape = p.tall
-            && p.obstruction
-                .is_some_and(|o| o.kind.recorded() && o.class != 0);
+        let has_shape = p.tall && p.obstruction.is_some_and(Obstruction::recorded);
         if !has_shape {
             return;
         }
@@ -394,6 +392,7 @@ impl Pathing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
     use crate::test_ids::object_id;
@@ -530,7 +529,7 @@ mod tests {
             unknown: None,
             obstruction: Some(Obstruction {
                 kind: ObstructionType::CIRCLE,
-                class: 2,
+                class: ObstructionClass::UNIT,
             }),
         }
     }

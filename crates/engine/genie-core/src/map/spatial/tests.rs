@@ -36,7 +36,10 @@ fn the_record_cells_answer_as_the_full_scan_does() {
         tall: false,
         speed: 0.0,
         unknown: None,
-        obstruction: kind.map(|kind| Obstruction { kind, class: 0 }),
+        obstruction: kind.map(|kind| Obstruction {
+            kind,
+            class: ObstructionClass::NONE,
+        }),
     };
     let scan = |s: &Spatial, rect: Rect| -> Vec<ObjectId> {
         s.objects
@@ -64,7 +67,13 @@ fn the_record_cells_answer_as_the_full_scan_does() {
                 s.change_master(object_id(id), placed(here, r, kind));
             }
             5 => match kind {
-                Some(kind) => s.add_record(object_id(id), Obstruction { kind, class: 0 }),
+                Some(kind) => s.add_record(
+                    object_id(id),
+                    Obstruction {
+                        kind,
+                        class: ObstructionClass::NONE,
+                    },
+                ),
                 None => s.drop_record(object_id(id)),
             },
             _ => s.remove(object_id(id)),
@@ -224,7 +233,7 @@ fn villager(x: f32, y: f32) -> Placed {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2,
+            class: ObstructionClass::UNIT,
         }),
     }
 }
@@ -666,7 +675,7 @@ fn a_record_filed_in_a_cell_the_query_does_not_visit_is_not_found() {
     bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 1,
+        class: ObstructionClass::RESOURCE,
     });
     s.insert(object_id(13594), bush);
     assert_eq!(s.filed(&bush, ObstructionType::TYPE_2), (5, 3, 19));
@@ -694,7 +703,7 @@ fn a_record_leaving_a_tile_another_static_record_stands_on_leaves_its_marks() {
     bush.player = PlayerId::new(0);
     bush.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 1,
+        class: ObstructionClass::RESOURCE,
     });
     s.insert(object_id(808), bush);
     s.insert(object_id(0), bush);
@@ -719,7 +728,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     rock.obstruction_type = ObstructionType::TYPE_1;
     rock.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_1,
-        class: 1,
+        class: ObstructionClass::RESOURCE,
     });
     s.insert(object_id(1), rock);
     assert!(s.tiles().word(5, 5).is_some_and(|w| w & BLOCKED != 0));
@@ -740,7 +749,7 @@ fn a_record_goes_by_its_master_s_obstruction_type() {
     wall.obstruction_type = ObstructionType::TYPE_2;
     wall.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 1,
+        class: ObstructionClass::RESOURCE,
     });
     wall.position = Position::new(12.5, 12.5, 0.0);
     s.insert(object_id(3), wall);
@@ -860,7 +869,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 3,
+            class: ObstructionClass::BUILDING,
         }),
     };
     s.insert(object_id(9157), centre);
@@ -877,7 +886,7 @@ fn a_static_record_marks_its_tiles_with_its_class_and_player() {
         unknown: None,
         obstruction: Some(Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 1,
+            class: ObstructionClass::RESOURCE,
         }),
     };
     s.insert(object_id(48), tree);
@@ -1027,7 +1036,7 @@ fn a_tile_is_passable_when_its_class_is_in_the_mask_and_nothing_blocks_it() {
     tree.radius = Footprint::new(0.5, 0.5);
     tree.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 1,
+        class: ObstructionClass::RESOURCE,
     });
     s.insert(object_id(48), tree);
     assert_eq!(s.passable(29, 90, 6, object_id(1), 0.2), Ok(false));
@@ -1287,7 +1296,7 @@ fn a_walk_meets_a_static_box_in_its_way_but_not_one_beside_it() {
     house.radius = Footprint::new(1.0, 1.0);
     house.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 3,
+        class: ObstructionClass::BUILDING,
     });
     s.insert(object_id(7), house);
     assert!(s.segment_blocked(Point::new(4.0, 8.0), Point::new(12.0, 8.0), 0.2, 1, &[]));
@@ -1367,13 +1376,13 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     house.radius = Footprint::new(1.0, 1.0);
     house.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 3,
+        class: ObstructionClass::BUILDING,
     });
     s.insert(object_id(7), house);
     let mut beside = villager(12.0, 2.0);
     beside.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 3,
+        class: ObstructionClass::BUILDING,
     });
     s.insert(object_id(8), beside);
     let (a, b) = (Point::new(0.2, 8.0), Point::new(6.0, 8.0));
@@ -1404,7 +1413,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     let mut own = villager(4.0, 8.0);
     own.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_11,
-        class: 3,
+        class: ObstructionClass::BUILDING,
     });
     s.insert(object_id(7), own);
     assert!(
@@ -1421,7 +1430,7 @@ fn a_pather_walk_off_the_map_meets_its_edge_first() {
     gate.class = class::GATE;
     gate.obstruction = Some(Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 3,
+        class: ObstructionClass::BUILDING,
     });
     s.insert(object_id(7), gate);
     assert!(

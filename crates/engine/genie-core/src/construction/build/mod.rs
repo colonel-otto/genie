@@ -415,6 +415,7 @@ mod stack_tests {
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{BuildingMaster, Masters};
@@ -449,7 +450,7 @@ mod stack_tests {
             height: z,
             tall: 0.0 < z,
             obstruction_type: kind,
-            obstruction_class: 2,
+            obstruction_class: ObstructionClass::UNIT,
             build_time: bt,
             trained_at: vec![master_id(9999)],
             hit_points: hp,
@@ -564,7 +565,7 @@ mod stack_tests {
                 build_time: 150,
                 record: Obstruction {
                     kind: ObstructionType::TYPE_2,
-                    class: 2,
+                    class: ObstructionClass::UNIT,
                 },
                 snow: false,
                 sprite_override: false,
@@ -620,7 +621,7 @@ mod stack_tests {
                 unknown: None,
                 obstruction: Some(Obstruction {
                     kind: ObstructionType::TYPE_2,
-                    class: 2,
+                    class: ObstructionClass::UNIT,
                 }),
             },
         );
@@ -753,13 +754,16 @@ mod stack_tests {
     /// and class would give one; with a height it does (431153923's builder, update 412).
     #[test]
     fn a_new_building_without_a_height_gets_no_record() {
-        for (height, record) in [(0.0, None), (1.0, Some((ObstructionType::CIRCLE, 2)))] {
+        for (height, record) in [
+            (0.0, None),
+            (1.0, Some((ObstructionType::CIRCLE, ObstructionClass::UNIT))),
+        ] {
             let mut t = world();
             for ms in &mut t.masters {
                 let m = ms.get_mut(ids::TOWN_CENTRE).unwrap();
                 m.build_time = 0;
                 m.obstruction_type = ObstructionType::CIRCLE;
-                m.obstruction_class = 2;
+                m.obstruction_class = ObstructionClass::UNIT;
                 m.height = height;
                 m.building.as_mut().unwrap().annexes = [None; 4];
             }

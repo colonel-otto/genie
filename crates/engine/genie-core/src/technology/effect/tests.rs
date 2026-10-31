@@ -4,6 +4,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -217,7 +218,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         id: ids::HOUSE,
         height: 2.0,
         obstruction_type: ObstructionType::TYPE_2,
-        obstruction_class: 2,
+        obstruction_class: ObstructionClass::UNIT,
         ..Master::default()
     };
     for id in 1..=3 {
@@ -226,7 +227,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     let record = |t: &World, id: ObjectId| t.spatial.get(id).and_then(|p| p.obstruction);
     let wall = Some(crate::map::spatial::Obstruction {
         kind: ObstructionType::TYPE_2,
-        class: 2,
+        class: ObstructionClass::UNIT,
     });
     assert_eq!(
         [
@@ -378,7 +379,7 @@ fn built() -> crate::construction::build::Construction {
         build_time: 1,
         record: crate::map::spatial::Obstruction {
             kind: ObstructionType::NONE,
-            class: 0,
+            class: ObstructionClass::NONE,
         },
         snow: false,
         sprite_override: false,
@@ -803,7 +804,8 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut m = combat(master_id(4), class::CLASS_6, 60);
     (m.death_sprite, m.death_spawns) = (7, [Some(master_id(0)), Some(master_id(9))]);
-    (m.build_time, m.obstruction_type, m.obstruction_class) = (33, ObstructionType::CIRCLE, 2);
+    (m.build_time, m.obstruction_type, m.obstruction_class) =
+        (33, ObstructionType::CIRCLE, ObstructionClass::UNIT);
     (m.line_of_sight, m.tall) = (6.0, true);
     t.masters = vec![Masters::new([m, combat(master_id(5), class::CLASS_6, 60)])];
     for id in [1, 3] {
@@ -873,7 +875,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         c.record,
         crate::map::spatial::Obstruction {
             kind: ObstructionType::CIRCLE,
-            class: 2
+            class: ObstructionClass::UNIT
         }
     );
     let tall = |id: ObjectId| t.spatial.get(id).unwrap().tall;
@@ -1754,7 +1756,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             hit_points: 550,
             radius: Footprint::new(0.5, 0.5),
             obstruction_type: ObstructionType::TYPE_2,
-            obstruction_class: 2,
+            obstruction_class: ObstructionClass::UNIT,
             ..Master::default()
         },
     ])];
@@ -1783,7 +1785,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         record(&t),
         Some(crate::map::spatial::Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2
+            class: ObstructionClass::UNIT
         })
     );
     t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 78, 3.0)], None)
@@ -1792,7 +1794,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         record(&t),
         Some(crate::map::spatial::Obstruction {
             kind: ObstructionType::TYPE_3,
-            class: 2
+            class: ObstructionClass::UNIT
         })
     );
     t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 32, 0.0)], None)

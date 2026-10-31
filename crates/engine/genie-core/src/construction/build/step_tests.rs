@@ -4,6 +4,7 @@
 use crate::map::GridSize;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
@@ -101,7 +102,7 @@ const fn construction(progress: f32, builders: u8, desolid: bool) -> Constructio
         build_time: 25,
         record: Obstruction {
             kind: ObstructionType::TYPE_2,
-            class: 2,
+            class: ObstructionClass::UNIT,
         },
         snow: false,
         sprite_override: false,
@@ -831,7 +832,7 @@ fn stump(t: &mut World) {
             player: PlayerId::new(0),
             obstruction: Some(Obstruction {
                 kind: ObstructionType::TYPE_2,
-                class: 0,
+                class: ObstructionClass::NONE,
             }),
             ..placed(
                 Position::new(10.2, 10.2, 0.0),

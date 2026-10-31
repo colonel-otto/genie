@@ -6,6 +6,7 @@ use crate::map::Rect;
 use crate::map::Tile;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -188,7 +189,10 @@ fn placed(x: f32, y: f32, r: f32, kind: ObstructionType) -> Placed {
         tall: true,
         speed: 0.0,
         unknown: None,
-        obstruction: Some(Obstruction { kind, class: 2 }),
+        obstruction: Some(Obstruction {
+            kind,
+            class: ObstructionClass::UNIT,
+        }),
     }
 }
 

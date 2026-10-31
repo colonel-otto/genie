@@ -577,6 +577,7 @@ mod tests {
     use super::*;
     use crate::construction::build::Construction;
     use crate::map::spatial::Obstruction;
+    use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters};
@@ -601,7 +602,7 @@ mod tests {
                 build_time: 25,
                 record: Obstruction {
                     kind: ObstructionType::TYPE_2,
-                    class: 0,
+                    class: ObstructionClass::NONE,
                 },
                 snow: false,
                 sprite_override: false,
@@ -764,6 +765,7 @@ mod clearing_tests {
     use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
@@ -906,7 +908,7 @@ mod clearing_tests {
                 if m.obstruction_type == ObstructionType::TYPE_2 {
                     at.obstruction = Some(crate::map::spatial::Obstruction {
                         kind: ObstructionType::TYPE_2,
-                        class: 0,
+                        class: ObstructionClass::NONE,
                     });
                 }
                 t.spatial.insert(u.id, at);
