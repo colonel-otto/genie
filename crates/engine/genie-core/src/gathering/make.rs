@@ -129,7 +129,7 @@ impl MakeAction {
     ) -> Result<HeadCode, GenieError> {
         let master = object_master(
             farm.own_master.as_deref(),
-            (farm.id.get(), farm.life.master_id),
+            (farm.id, farm.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         match self.state {

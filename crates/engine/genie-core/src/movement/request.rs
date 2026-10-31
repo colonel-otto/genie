@@ -11,6 +11,7 @@ use crate::movement::{
     Planning, RANGE_FLOOR, SHORT_REACH, cut_path, footprint_gap, ground, long_path_for, may_plan,
     point_or_zero,
 };
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::pathing::tile_path::Path;
 
@@ -25,7 +26,7 @@ pub(super) struct LongAsk<'a> {
     /// How near the waypoint counts.
     pub(super) range: f32,
     /// The target object, its id and record.
-    pub(super) target: Option<(i32, &'a Placed)>,
+    pub(super) target: Option<(ObjectId, &'a Placed)>,
 }
 
 impl Mover {
@@ -47,7 +48,7 @@ impl Mover {
         plan: &mut Planning<'_>,
         goal: Goal<'_>,
         plans: &mut u32,
-        include: &[i32],
+        include: &[ObjectId],
     ) -> Result<AfterRequest, GenieError> {
         // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
         // last moved to
@@ -94,7 +95,7 @@ impl Mover {
             self.straight_way(position, &mut np);
         }
         if np.path.points.len() < 2 || np.path.length < EPSILON {
-            return self.no_path(np.found, goal.target, goal.to_end);
+            return self.no_path(np.found, goal.target.map(|(_, t)| t), goal.to_end);
         }
         Ok(self.link(np.new, np.path, np.found, np.partial, np.planned, solid))
     }
@@ -120,9 +121,9 @@ impl Mover {
         if ground(position, waypoint) != 0.0 {
             return None;
         }
-        let away = goal
-            .target
-            .is_none_or(|t| EPSILON < footprint_gap(here, ground_radius, t.position, t.radius));
+        let away = goal.target.is_none_or(|(_, t)| {
+            EPSILON < footprint_gap(here, ground_radius, t.position, t.radius)
+        });
         if away {
             level.flags |= 2;
         }
@@ -240,7 +241,7 @@ impl Mover {
             ignore_units: &self.ignore_units,
             group_units: plan.groups.group_units(me.group),
         };
-        let target_id = target.map_or(-1, |(id, _)| id);
+        let target_id = target.map(|(id, _)| id);
         // from +0x824, the motion step's `local_18c8`
         let (mut found, long) = long_path_for(
             &walker,
@@ -279,7 +280,7 @@ impl Mover {
         &self,
         me: &Me,
         world: &mut Spatial,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         path: &mut Path,
     ) -> Result<bool, GenieError> {
         let me_at = world.get(me.id);
@@ -287,7 +288,7 @@ impl Mover {
             return Ok(true);
         }
         let player = me_at.map(|p| p.player);
-        let ignore = world.query_ignore(&[me.id, target_id]);
+        let ignore = world.query_ignore(&[Some(me.id), target_id]);
         let grow = self.stats.radius.x() * LONG_PATH_GROW;
         for i in 0..path.points.len().saturating_sub(1) {
             let (from, to) = self.query_ends(path.points[i], path.points[i + 1], world.map);
@@ -334,11 +335,11 @@ impl Mover {
     /// range on a top level.
     pub(super) fn near_goal(&self, way: f32, gap: f32, to_end: f32) -> bool {
         let level = &self.paths[0];
-        let d = if level.target == -1 { to_end } else { gap };
+        let d = if level.target.is_none() { to_end } else { gap };
         if d - level.range < EPSILON {
             return true;
         }
-        level.target != -1
+        level.target.is_some()
             && level.points.len() as i32 == level.waypoint + 1
             && way - level.range <= SHORT_REACH
             && level.level == 2

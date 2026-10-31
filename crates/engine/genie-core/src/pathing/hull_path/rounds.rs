@@ -162,7 +162,7 @@ impl HullPather<'_> {
                 count: &mut count,
             })?;
             if walk.result == 0 {
-                let partial = q.target.is_some() && q.target_id < 1;
+                let partial = q.target.is_some() && q.target_id.is_none_or(|t| t.get() < 1);
                 return Ok(Some(if partial { 2 } else { 1 }));
             }
             if walk.result == 3 || !walk.left_boxes {
@@ -300,7 +300,7 @@ impl HullPather<'_> {
         self.close(0, best)?;
         let at = self.nodes.checked(best)?.at;
         if self.reached(q, at) {
-            rounds.found = q.target.is_none() || q.target_id >= 0;
+            rounds.found = q.target.is_none() || q.target_id.is_some_and(|t| !t.is_recyclable());
             rounds.best_node = Some(best);
             return Ok(Expanded::End);
         }

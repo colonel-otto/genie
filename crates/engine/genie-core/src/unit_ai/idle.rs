@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
@@ -102,10 +103,10 @@ impl UnitAi {
             memory: Memory::default(),
         })?;
         self.alert(found, at.dt_seconds);
-        if found.id == -1 {
+        let Some(id) = found.id else {
             return Ok(false);
-        }
-        let Some(u) = side.seen_unit(found.id)? else {
+        };
+        let Some(u) = side.seen_unit(id)? else {
             return Ok(false);
         };
         let reach = at.speed * SHIP_EVADE_REACH;
@@ -153,10 +154,12 @@ impl UnitAi {
             self.siege_no_attack(at, computer, side, ai)?;
             return Ok(false);
         }
-        let mut target = Self::top_target_in_range(at, side)?.unwrap_or(-1);
+        let mut target = Self::top_target_in_range(at, side)?;
         if self.retarget_disabled != 0 && at.target.is_some() {
             // slot 0x3d0 with the top target (−1 answers 0) and the weapon range
-            if target != -1 && side.reaches(target, at.weapon_range)? {
+            if let Some(t) = target
+                && side.reaches(t, at.weapon_range)?
+            {
                 return Ok(false);
             }
             self.retarget_disabled = 0;
@@ -164,10 +167,12 @@ impl UnitAi {
         if computer {
             computer_idle_check()?;
         }
-        if target == -1 {
+        if target.is_none() {
             target = self.siege_best(at, computer, side)?;
         }
-        if target != -1 && self.siege_attack(target, at, ai, side)? {
+        if let Some(t) = target
+            && self.siege_attack(t, at, ai, side)?
+        {
             return Ok(true);
         }
         self.siege_idle_end(at, computer, ai, side)
@@ -183,7 +188,7 @@ impl UnitAi {
     /// What the attack does not model.
     fn siege_attack(
         &mut self,
-        target: i32,
+        target: ObjectId,
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
@@ -242,7 +247,7 @@ impl UnitAi {
     }
 
     /// [`UnitAi::siege_idle`]'s `bestUnitToAttack` without a target, from its place
-    /// ([`Pick::Attack`] over [`SIEGE_CARED`]): the object found, or −1.
+    /// ([`Pick::Attack`] over [`SIEGE_CARED`]): the object found, if any.
     ///
     /// # Errors
     ///
@@ -252,7 +257,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let found = side.closest(&Search {
             at: at.position.ground(),
             radius: attack_search_radius(at),
@@ -338,7 +343,7 @@ impl UnitAi {
             (self.retarget_disabled != 0 && at.target.is_some()).then_some(self.current_target);
         let target = match held {
             Some(t) => Some(t),
-            None => Self::top_target_in_range(at, side)?,
+            None => Self::top_target_in_range(at, side)?.map(Some),
         };
         if computer {
             computer_idle_check()?;
@@ -347,14 +352,16 @@ impl UnitAi {
             Some(t) => t,
             None => self.soldier_best(at, computer, side)?,
         };
-        if target != -1 && self.soldier_attack(target, at, ai, side)? {
+        if let Some(t) = target
+            && self.soldier_attack(t, at, ai, side)?
+        {
             return Ok(true);
         }
         self.soldier_idle_end(at, ai, side)
     }
 
     /// [`UnitAi::soldier_idle`]'s `bestUnitToAttack` without a target, from its place
-    /// ([`Pick::Attack`] over [`SOLDIER_CARED`]): the object found, or −1.
+    /// ([`Pick::Attack`] over [`SOLDIER_CARED`]): the object found, if any.
     ///
     /// # Errors
     ///
@@ -364,7 +371,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let found = side.closest(&Search {
             at: at.position.ground(),
             radius: attack_search_radius(at),
@@ -393,7 +400,7 @@ impl UnitAi {
     /// What the attack does not model.
     fn soldier_attack(
         &mut self,
-        target: i32,
+        target: ObjectId,
         at: &Surroundings,
         ai: &mut Well512,
         side: &mut dyn UnitSide,
@@ -553,11 +560,11 @@ impl UnitAi {
         })?;
         self.add_retries(&found);
         self.attack_search_alert(found, computer)?;
-        if found.id == -1 {
+        let Some(id) = found.id else {
             return Ok(false);
-        }
+        };
         // slot 0xb8 with 1 (`+0x1d5` then 1, not held)
-        self.attack_object(found.id, true, false, at, side)
+        self.attack_object(id, true, false, at, side)
     }
 
     /// What `bestUnitToAttack` reads of this unit AI ([`Seeker`]), its current target's master
@@ -565,7 +572,7 @@ impl UnitAi {
     pub(super) fn seeker(&self, at: &Surroundings) -> Seeker {
         self.seeker_with(
             at.target
-                .filter(|_| self.current_target != -1)
+                .filter(|_| self.current_target.is_some())
                 .map(|t| t.kind),
         )
     }

@@ -7,6 +7,7 @@ use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::movement::fly::{FLY, Fly};
 use genie_core::movement::move_to::{MOVE_TO, MoveTo, MoveToAction, TargetMoved};
+use genie_core::objects::ObjectId;
 use genie_core::objects::masters::Task;
 use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::sprite::Graphic;
@@ -201,7 +202,7 @@ fn import_artifact(
                 // the target's place, `+0x38`
                 (base.target_x != -1.0).then_some(saved.point())
             },
-            target: base.target_id,
+            target: ObjectId::of_field(base.target_id),
             enter: None,
             moving,
         }));
@@ -227,7 +228,7 @@ pub(crate) fn saved_move_to(
         state: move_to_state(base.state)?,
         // its point (`+0x38`..`+0x40`), for a target object the target's place it last took
         point: Position::new(base.target_x, base.target_y, base.target_z),
-        target: genie_core::objects::ObjectId::of_field(base.target_id),
+        target: ObjectId::of_field(base.target_id),
         range: sub_range(action)?,
         // its sprite (`+0x58`, the save's second `short_val`; −1 for none)
         sprite: saved_move_to_sprite(base.short_val_2, graphics)?,
@@ -289,7 +290,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
         .map_or(0, |m| m.missile_hit_info);
     unit.missile = Some(genie_core::combat::missile::Missile {
         max_range: mo.max_range,
-        fired_from: mo.fired_from_id,
+        fired_from: ObjectId::of_field(mo.fired_from_id),
         charge: mo.is_charge_projectile != 0,
         flying: genie_core::combat::missile::LANDING < ma.distance,
         step: Offset::new(moving.velocity_x, moving.velocity_y, moving.velocity_z),
@@ -297,8 +298,8 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
     unit.actions
         .set_missile(Some(genie_core::combat::missile::MissileAction {
             state: base.state,
-            target: base.target_id,
-            fired_from: base.target2_id,
+            target: ObjectId::of_field(base.target_id),
+            fired_from: ObjectId::of_field(base.target2_id),
             point: saved.point(),
             timer: base.timer,
             direction: Offset::new(ma.velocity_x, ma.velocity_y, ma.velocity_z),
@@ -352,7 +353,7 @@ fn import_build(
     let mut task = work(saved.s.master_obj)?;
     task.work_rate += unit.work_rate_powerup;
     unit.actions.set_build(Some(BuildAction {
-        target: base.target_id,
+        target: ObjectId::of_field(base.target_id),
         state: base.state,
         move_to,
         point: saved.point(),
@@ -363,7 +364,7 @@ fn import_build(
             .as_deref()
             .is_some_and(|b| b.added_to_num_builders != 0),
         timer: base.timer,
-        site: base.target2_id,
+        site: ObjectId::of_field(base.target2_id),
     }));
     Ok(())
 }
@@ -388,7 +389,7 @@ fn import_repair(
     let t = saved.task(task_at)?;
     unit.actions
         .set_repair(Some(genie_core::construction::repair::RepairAction {
-            target: base.target_id,
+            target: ObjectId::of_field(base.target_id),
             state: base.state,
             move_to,
             point: saved.point(),
@@ -432,7 +433,7 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
     }
     let task = saved.task(task_at)?;
     unit.actions.set_enter(Some(EnterAction {
-        target: base.target_id,
+        target: ObjectId::of_field(base.target_id),
         state: base.state,
         move_to,
         point: saved.point(),
@@ -524,6 +525,7 @@ fn import_wait_solidify(
             "a saved Wait_Solidify without its own part",
         ))?
         .target_building_id;
+    let target = ObjectId::try_from(target)?;
     let mut wait =
         genie_core::construction::wait_solidify::WaitSolidify::new(saved.task(task_at)?, target);
     wait.set_state(saved.base.state);

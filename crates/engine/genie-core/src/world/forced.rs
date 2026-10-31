@@ -41,7 +41,7 @@ pub struct GameState {
     pub next_reusable_id: ObjectId,
     /// The map tiles' object lists in the game's order (`x`, `y`, ids; each tile of two objects
     /// or more), when the oracle dumped them: the order is the game's history, no save holds it.
-    pub tile_lists: Option<Vec<(i32, i32, Vec<i32>)>>,
+    pub tile_lists: Option<Vec<(i32, i32, Vec<ObjectId>)>>,
     /// The pool of recycled missiles ([`Recycling::missiles`]), when the oracle dumped it: no
     /// save holds it.
     ///
@@ -56,14 +56,14 @@ pub struct GameState {
 impl World {
     /// The objects' inside lists in the game's order (`+0x2f8`, the tick oracle's dump): each
     /// container listed takes the order when it holds the same objects. Returns how many did.
-    pub fn force_garrisons(&mut self, lists: &[(i32, Vec<i32>)]) -> usize {
+    pub fn force_garrisons(&mut self, lists: &[(ObjectId, Vec<ObjectId>)]) -> usize {
         let mut n = 0;
         for (id, order) in lists {
             let Some(c) = self
                 .players
                 .iter_mut()
                 .flat_map(|p| p.objects.iter_mut().chain(p.sleeping.iter_mut()))
-                .find(|u| u.id.get() == *id)
+                .find(|u| u.id == *id)
             else {
                 continue;
             };
@@ -88,37 +88,37 @@ impl World {
     /// what could not be forced (an object that changed hands or masters, or
     /// that the game made and the slice did not). Not part of a replay: a dev hook to see past a
     /// freeze.
-    pub fn force(&mut self, game: &GameState) -> Vec<(PlayerId, i32, GenieError)> {
+    pub fn force(&mut self, game: &GameState) -> Vec<(PlayerId, Option<ObjectId>, GenieError)> {
         let mut notes = Vec::new();
         self.force_world_values(game);
         // the objects the slice holds, sorted: forcing only takes away objects the game no
         // longer holds
-        let mut known: Vec<i32> = self
+        let mut known: Vec<ObjectId> = self
             .players
             .iter()
-            .flat_map(|q| q.objects.iter().chain(&q.sleeping).map(|u| u.id.get()))
+            .flat_map(|q| q.objects.iter().chain(&q.sleeping).map(|u| u.id))
             .collect();
         known.sort_unstable();
         for p in PlayerId::each(self.players.len()) {
             let Some(theirs) = game.players.get(p.index()) else {
                 continue;
             };
-            // an error here belongs to the player, not to an object: id -1
+            // an error here belongs to the player, not to an object
             let stopped = match self.force_player_values(p, game) {
                 Ok(stopped) => stopped,
                 Err(e) => {
-                    notes.push((p, -1, e));
+                    notes.push((p, None, e));
                     continue;
                 }
             };
             if let Err(e) = self.force_objects(p, theirs, (game, stopped), &mut notes) {
-                notes.push((p, -1, e));
+                notes.push((p, None, e));
             }
             for g in theirs {
-                if known.binary_search(&g.id.get()).is_err() {
+                if known.binary_search(&g.id).is_err() {
                     notes.push((
                         p,
-                        g.id.get(),
+                        Some(g.id),
                         GenieError::unsupported("an object the game made and the slice did not"),
                     ));
                 }
@@ -198,7 +198,7 @@ impl World {
         p: PlayerId,
         theirs: &[Unit],
         (game, stopped): (&GameState, bool),
-        notes: &mut Vec<(PlayerId, i32, GenieError)>,
+        notes: &mut Vec<(PlayerId, Option<ObjectId>, GenieError)>,
     ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < self.players.player(p)?.objects.len() {
@@ -216,7 +216,7 @@ impl World {
                 if elsewhere {
                     notes.push((
                         p,
-                        id.get(),
+                        Some(id),
                         GenieError::unsupported("a forced object changed hands"),
                     ));
                     i += 1;
@@ -224,14 +224,14 @@ impl World {
                 }
                 let gone = self.players.player_mut(p)?.objects.swap_remove(i)?;
                 if let Err(e) = self.leave_world(p, &gone) {
-                    notes.push((p, id.get(), e));
+                    notes.push((p, Some(id), e));
                 }
                 continue;
             };
             if g.life.master_id != unit.life.master_id {
                 notes.push((
                     p,
-                    id.get(),
+                    Some(id),
                     GenieError::unsupported("a forced object changed masters"),
                 ));
                 i += 1;
@@ -268,25 +268,25 @@ impl World {
         }
         let (before, state) = (unit.life.state, forced.life.state);
         if forced.position() != unit.position() {
-            self.spatial.set_position(id.get(), forced.position())?;
+            self.spatial.set_position(id, forced.position())?;
         }
         if state != before {
             if before <= 2 && 3 <= state {
-                self.spatial.sight_state(id.get(), 3)?;
+                self.spatial.sight_state(id, 3)?;
             }
             if state != 3 {
-                self.spatial.sight_state(id.get(), state)?;
+                self.spatial.sight_state(id, state)?;
             }
             if before < 4 && 6 < state {
                 let master = forced.master(&self.masters, p)?;
-                forget_resource(&mut self.spatial, Some(master), id.get(), forced.position())?;
+                forget_resource(&mut self.spatial, Some(master), id, forced.position())?;
             }
         }
-        self.spatial.unfreeze(id.get());
-        self.spatial.set_gait(id.get(), forced.gait());
+        self.spatial.unfreeze(id);
+        self.spatial.set_gait(id, forced.gait());
         if let Some(placed) = self.spatial.get(id).copied() {
             let moving = forced.body.mover().is_some_and(Mover::is_moving);
-            self.pathing.moved(id.get(), &placed, moving);
+            self.pathing.moved(id, &placed, moving);
         }
         forced.stopped = false;
         *self.players.live_mut(p, i)? = forced;
@@ -389,7 +389,7 @@ mod tests {
         );
         assert_eq!(forager.ai.as_ref().unwrap().hunted, hunted);
         assert_eq!(
-            t.spatial.get(9175).map(|p| p.position),
+            t.spatial.get(object_id(9175)).map(|p| p.position),
             Some(Position::new(29.5, 88.5, 0.0))
         );
         // the game made 800, then the forager changed hands, then masters, then left
@@ -397,7 +397,7 @@ mod tests {
             id: object_id(800),
             ..Unit::default()
         });
-        let reasons = |t: &mut World, game: &GameState| -> Vec<(i32, &'static str)> {
+        let reasons = |t: &mut World, game: &GameState| -> Vec<(Option<ObjectId>, &'static str)> {
             t.players[1].objects[0].stopped = true;
             t.force(game)
                 .into_iter()
@@ -406,7 +406,10 @@ mod tests {
         };
         assert_eq!(
             reasons(&mut t, &game),
-            [(800, "an object the game made and the slice did not")]
+            [(
+                Some(object_id(800)),
+                "an object the game made and the slice did not"
+            )]
         );
         let mut moved = game.clone();
         let forager = moved.players[1].remove(0);
@@ -414,7 +417,7 @@ mod tests {
         let _ = moved.players[1].pop();
         assert_eq!(
             reasons(&mut t, &moved),
-            [(9175, "a forced object changed hands")]
+            [(Some(object_id(9175)), "a forced object changed hands")]
         );
         let mut changed = moved.clone();
         let forager = changed.players[0].pop().unwrap();
@@ -430,7 +433,7 @@ mod tests {
         );
         assert_eq!(
             reasons(&mut t, &changed),
-            [(9175, "a forced object changed masters")]
+            [(Some(object_id(9175)), "a forced object changed masters")]
         );
         let mut gone = changed;
         let _ = gone.players[1].remove(0);

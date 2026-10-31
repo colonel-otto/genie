@@ -26,7 +26,7 @@ fn same(save: &Header, turns: &World) -> SavedStep {
             .map(|p| p.objects.iter().filter(|u| listed(u)).cloned().collect())
             .collect(),
         ghosts: Vec::new(),
-        seen: saved_sight(save),
+        seen: saved_sight(save).unwrap(),
         width: 0,
         terrain: Vec::new(),
         game: GameState::default(),
@@ -68,7 +68,7 @@ fn the_state_the_status_and_the_unfrozen_objects_differ() {
     after.game.statuses = vec![(0, false), (1, false)];
     turns.players[1]
         .freezes
-        .push((5, 7, GenieError::unsupported("a test's freeze")));
+        .push((5, object_id(7), GenieError::unsupported("a test's freeze")));
     for unit in &mut after.objects[1] {
         unit.life.hp += 1.0;
     }
@@ -120,10 +120,13 @@ fn stops_and_freezes_are_reported_by_their_update() {
     player.unsupported = Some((5, 0, GenieError::unsupported("a test's stop")));
     player
         .freezes
-        .push((6, 40, GenieError::unsupported("a test's freeze")));
+        .push((6, object_id(40), GenieError::unsupported("a test's freeze")));
     player.objects[0].stopped = true;
     let mut report = TickReport::default();
-    assert_eq!(stops(player, 1, Some(5), &mut report), [7, 40]);
+    assert_eq!(
+        stops(player, 1, Some(5), &mut report),
+        [object_id(7), object_id(40)]
+    );
     assert_eq!(
         report
             .unsupported
@@ -144,7 +147,7 @@ fn stops_and_freezes_are_reported_by_their_update() {
             .iter()
             .map(|(p, o, t, _)| (*p, *o, *t))
             .collect::<Vec<_>>(),
-        [(1, Some(40), 6)]
+        [(1, Some(object_id(40)), 6)]
     );
     // a player that runs on reports no stop, whatever it last met
     player.stopped = false;

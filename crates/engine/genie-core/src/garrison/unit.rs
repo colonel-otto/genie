@@ -29,7 +29,7 @@ use crate::world::slots::PlayerSlots;
 use crate::world::step::Step;
 
 /// The units inside object `id`, any player's (its slot 0x498).
-fn units_inside(others: OthersRef<'_>, id: i32) -> usize {
+fn units_inside(others: OthersRef<'_>, id: ObjectId) -> usize {
     others.every().filter(|u| u.life.inside == Some(id)).count()
 }
 
@@ -74,7 +74,7 @@ impl Unit {
         let (target, start) = match others.find(enter.target) {
             Some((tp, t)) => {
                 let master = t.master(&c.w.masters, tp)?;
-                let room = units_inside(others, t.id.get()) < usize::from(master.garrison);
+                let room = units_inside(others, t.id) < usize::from(master.garrison);
                 let (mut view, start) = crate::garrison::enter_view(
                     &mut c.w.spatial,
                     &c.w.masters,
@@ -110,8 +110,11 @@ impl Unit {
     pub(crate) fn enter_in_update(
         &mut self,
         c: &mut Step<'_>,
-        target: i32,
+        target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
+        let target = target.ok_or(GenieError::unreachable(
+            "an Enter's enter without its target",
+        ))?;
         let inside = units_inside(OthersRef::of(&c.w.players, c.player)?, target);
         if !self.enter_building(c, target, inside)? {
             return Err(GenieError::unsupported(
@@ -159,7 +162,7 @@ impl Unit {
             .ok_or(crate::garrison::transport::NO_TRANSPORT)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         let given = crate::garrison::transport::TransportAction::given_sprite(t.task, master)?;
@@ -293,7 +296,7 @@ impl Unit {
     pub(crate) fn enter_building(
         &mut self,
         c: &mut Step<'_>,
-        target: i32,
+        target: ObjectId,
         inside: usize,
     ) -> Result<bool, GenieError> {
         let (tp, building) = c.w.object(target).ok_or(GenieError::unreachable(
@@ -309,7 +312,7 @@ impl Unit {
         let me = self.master_in(Some(masters))?.clone();
         let owner = c.w.players.player(c.player)?;
         let actor = Actor {
-            id: self.id.get(),
+            id: self.id,
             master: &me,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
@@ -383,7 +386,7 @@ impl Unit {
     pub(crate) fn go_inside(
         &mut self,
         c: &mut Step<'_>,
-        target: i32,
+        target: ObjectId,
         me: &Master,
         bm: &Master,
     ) -> Result<(), GenieError> {
@@ -399,11 +402,11 @@ impl Unit {
         }
         let placed =
             c.w.spatial
-                .get(id.get())
+                .get(id)
                 .copied()
                 .ok_or(GenieError::unsupported("an entering unit without a place"))?;
         if let Some(v) = c.w.spatial.sight.as_mut() {
-            v.sight_off(id.get(), self.position(), placed.radius, false, false)?;
+            v.sight_off(id, self.position(), placed.radius, false, false)?;
         }
         let (bp, building) = c.w.object(target).ok_or(GenieError::unreachable(
             "an enter into a building the world does not hold",
@@ -413,18 +416,15 @@ impl Unit {
             building.life.state,
             building.reload_powerup,
         );
-        self.body
-            .base_mut()
-            .go_inside(id.get(), at, &mut c.w.spatial);
-        c.w.pathing.removed(id.get());
+        self.body.base_mut().go_inside(id, at, &mut c.w.spatial);
+        c.w.pathing.removed(id);
         // a member of a unit group (+0x6d0) leaves the group the world holds, then stands
         // (slot 0x560)
         let group = self.group.id;
         if group != -1 {
             if c.w.groups.get(group).is_some() {
                 c.lend(self, |w| {
-                    w.remove_unit(group, id, ObjectId::of_field(target), false)
-                        .map(drop)
+                    w.remove_unit(group, id, Some(target), false).map(drop)
                 })?;
             }
             if let Some(m) = self.body.mover_mut() {
@@ -433,9 +433,9 @@ impl Unit {
         }
         let building_radius = c.w.spatial.get(target).map_or(bm.radius, |p| p.radius);
         self.life.inside = Some(target);
-        self.join_building(c, target, bp, reload, me, bm)?;
+        self.join_building(c, Some(target), bp, reload, me, bm)?;
         self.enter_sight(c, target, at, building_radius, placed, bm)?;
-        self.enter_town_bell(target, at, state, me, bm)?;
+        self.enter_town_bell(Some(target), at, state, me, bm)?;
         Ok(())
     }
 
@@ -445,7 +445,7 @@ impl Unit {
     fn join_building(
         &self,
         c: &mut Step<'_>,
-        target: i32,
+        target: Option<ObjectId>,
         bp: PlayerId,
         reload: f32,
         me: &Master,
@@ -464,7 +464,7 @@ impl Unit {
         };
         if let Some((_, b)) = c.w.object_mut(target) {
             b.firepower += firepower;
-            b.garrison.push(self.id.get());
+            b.garrison.push(self.id);
         }
         Ok(())
     }
@@ -475,7 +475,7 @@ impl Unit {
     fn enter_sight(
         &self,
         c: &mut Step<'_>,
-        target: i32,
+        target: ObjectId,
         at: Position,
         radius: Footprint,
         placed: crate::map::spatial::Placed,
@@ -486,9 +486,9 @@ impl Unit {
             return Ok(());
         };
         if let Some(r) = v.registry.as_mut().filter(|_| 0 <= id.get()) {
-            let mask = r.entry(id.get()).map_or(0, |e| e.mask);
+            let mask = r.entry(id).map_or(0, |e| e.mask);
             r.update_unit(UnitUpdate {
-                id: id.get(),
+                id,
                 owner: c.player.index() as u8,
                 position: self.position().ground(),
                 radii: placed.radius,
@@ -497,7 +497,7 @@ impl Unit {
                 new: 0,
             })?;
             // its mask (`+0x8f8`) is none after
-            r.entries.entry(id.get()).or_default().mask = 0;
+            r.entries.entry(id).or_default().mask = 0;
         }
         // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
         if bm.kind == BUILDING {
@@ -513,7 +513,7 @@ impl Unit {
     /// villagers; with 3 it is never cleared.
     fn enter_town_bell(
         &mut self,
-        target: i32,
+        target: Option<ObjectId>,
         at: Position,
         state: u8,
         me: &Master,
@@ -534,7 +534,7 @@ impl Unit {
                 target,
                 target_type: -1,
                 action,
-                target2: -1,
+                target2: None,
                 point: at.ground(),
             });
         }

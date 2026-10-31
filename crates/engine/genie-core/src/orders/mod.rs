@@ -95,7 +95,7 @@ pub struct MoveOrder {
 /// of a type above 69).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Work {
-    pub target: i32,
+    pub target: Option<ObjectId>,
     pub point: Position,
     pub carry_test: bool,
     pub filter: i16,
@@ -392,7 +392,11 @@ impl World {
 
     /// What the task finder reads of object `id`; an annex stands for its main building (`+0xbb8`),
     /// `steps` times.
-    pub(crate) fn task_target(&self, id: i32, steps: usize) -> Result<TaskTarget<'_>, GenieError> {
+    pub(crate) fn task_target(
+        &self,
+        id: ObjectId,
+        steps: usize,
+    ) -> Result<TaskTarget<'_>, GenieError> {
         let mut id = id;
         for _ in 0..steps {
             match self.object(id).and_then(|(_, u)| u.annex_of) {
@@ -405,7 +409,7 @@ impl World {
             .ok_or(GenieError::unsupported("a target the slice does not hold"))?;
         let master = u.master(&self.masters, player)?;
         Ok(TaskTarget {
-            id,
+            id: u.id,
             master,
             player,
             state: u.life.state,
@@ -501,11 +505,12 @@ fn waypoints_from(from: Point, waypoints: &[Point]) -> Vec<Point> {
     kept
 }
 
-fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
+fn own_order_target(ai: &crate::unit_ai::UnitAi, id: ObjectId) -> Option<ObjectId> {
+    // the issuer compares as the game's integer (a player's number equals that object's id)
     ai.orders
         .iter()
-        .find(|o| 0 <= o.target && o.issuer == id)
-        .map_or(-1, |o| o.target)
+        .filter(|o| o.issuer.is_some_and(|i| i == id))
+        .find_map(|o| o.target.filter(|t| !t.is_recyclable()))
 }
 
 /// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
@@ -562,8 +567,8 @@ fn set_differentiator_groups(g: &mut crate::groups::UnitGroup, list: &[u32]) {
 /// `FUN_14118c790`: unit `id` joins the end of a unit's ignore list (`+0x670`, count `+0x678`);
 /// the list's capacity (`+0x67c`: 24 at first, then twice the count, the new slots −1) is the
 /// `Vec`'s, which no reader sees.
-fn ignore_unit(ignore: &mut Vec<i32>, id: ObjectId) {
-    ignore.push(id.get());
+fn ignore_unit(ignore: &mut Vec<ObjectId>, id: ObjectId) {
+    ignore.push(id);
 }
 
 /// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it
@@ -628,13 +633,14 @@ pub(crate) fn nearest_table_site(
         &crate::players::tracker::Tracker,
     ),
     (at, held, class): (Point, i16, ClassId),
-    look: impl Fn(i32) -> Option<(u8, Position)>,
-) -> Option<i32> {
+    look: impl Fn(ObjectId) -> Option<(u8, Position)>,
+) -> Option<ObjectId> {
     let buildings =
         crate::unit_ai::task_finder::table_drop_buildings(table, held, Some(class), civ);
     let mut best = (None, TABLE_DROP_FAR);
     for m in buildings {
-        for &id in tracker.list(i32::from(m.get())) {
+        // a queued unit's place (−1) names no object
+        for &id in tracker.list(i32::from(m.get())).iter().flatten() {
             let Some((state, position)) = look(id) else {
                 continue;
             };

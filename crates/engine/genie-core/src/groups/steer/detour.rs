@@ -11,6 +11,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::{BVector, at_most_or_unordered};
+use crate::objects::ObjectId;
 use crate::pathing::tile_path::Path;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -63,7 +64,7 @@ impl World {
         index: usize,
         slot: usize,
         gap: f32,
-        differentiators: &[i32],
+        differentiators: &[ObjectId],
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let id = g.members.checked(index)?.id;
@@ -148,7 +149,11 @@ impl World {
     /// # Errors
     ///
     /// A member of a master the slice does not have.
-    fn rounder<'d>(&self, id: i32, differentiators: &'d [i32]) -> Result<Rounder<'d>, GenieError> {
+    fn rounder<'d>(
+        &self,
+        id: ObjectId,
+        differentiators: &'d [ObjectId],
+    ) -> Result<Rounder<'d>, GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let master = u.master(&self.masters, p)?;
         let mover = u.body.mover().ok_or(NO_MOVER)?;
@@ -341,7 +346,7 @@ impl World {
         computer: bool,
         from: Point,
         to: BVector,
-        ignore: &[i32],
+        ignore: &[ObjectId],
         record: &mut Path,
     ) -> Result<u8, GenieError> {
         let mut plan = crate::movement::Planning {
@@ -357,7 +362,7 @@ impl World {
             from,
             &mut self.spatial,
             &mut plan,
-            (to, 0.0, -1),
+            (to, 0.0, None),
             ignore,
             record,
         )?;
@@ -370,7 +375,7 @@ impl World {
     /// the path.
     pub(super) fn round_long(
         &self,
-        id: i32,
+        id: ObjectId,
         from: Point,
         to: BVector,
     ) -> Result<(bool, Path), GenieError> {
@@ -423,7 +428,7 @@ impl World {
 /// grow the records by, its master's radii and height radius (`+0x5e0`), whether it has a
 /// footprint and a height (`FUN_141194060`) and the ignore list.
 pub(super) struct Rounder<'d> {
-    pub(super) id: i32,
+    pub(super) id: ObjectId,
     pub(super) walker: crate::movement::Walker,
     pub(super) computer: bool,
     pub(super) at: BVector,
@@ -434,7 +439,7 @@ pub(super) struct Rounder<'d> {
     pub(super) radius: Footprint,
     pub(super) height: f32,
     pub(super) solid: bool,
-    pub(super) differentiators: &'d [i32],
+    pub(super) differentiators: &'d [ObjectId],
 }
 
 impl Rounder<'_> {

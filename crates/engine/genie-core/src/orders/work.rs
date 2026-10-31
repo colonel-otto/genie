@@ -24,9 +24,24 @@ use crate::world::World;
 use crate::world::slots::CheckedIndex;
 use crate::world::slots::PlayerSlots;
 
-/// Whether the unit's top action (`top`) is the Attack `a` on `target`.
-fn attack_on(top: Option<i16>, a: &crate::combat::attack::Attack, target: i32) -> bool {
-    top == Some(crate::combat::attack::ATTACK) && a.target == ObjectId::of_field(target)
+/// A task of an object's action (Enter, Attack, Hunt, Build, Repair, Gather) that the task
+/// finder gave a work command without a target, for the terrain at its point: the game starts
+/// the action on −1, which the slice does not model.
+const TERRAIN_TASK: GenieError =
+    GenieError::unsupported("a work command's task of an object's action for a terrain");
+
+/// The action list's factory for a task the slice does not model.
+const UNMODELLED_FACTORY: GenieError =
+    GenieError::unsupported("the action factory for a task the slice does not model");
+
+/// Whether the unit's top action (`top`) is the Attack `a` on `target` (both none counts, as
+/// the game compares −1 with −1).
+fn attack_on(
+    top: Option<i16>,
+    a: &crate::combat::attack::Attack,
+    target: Option<ObjectId>,
+) -> bool {
+    top == Some(crate::combat::attack::ATTACK) && a.target == target
 }
 
 impl World {
@@ -40,7 +55,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: Option<ObjectId>,
         filter: i16,
         point: Position,
         clears: bool,
@@ -67,12 +82,13 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
         clears: bool,
     ) -> Result<(), GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold",
         ))?;
+        let target = t.id;
         let class = i32::from(t.master(&self.masters, tp)?.class.get());
         let world_time = self.world_time;
         let unit = self.players.live_mut(player, idx)?;
@@ -104,7 +120,7 @@ impl World {
         let owner = self.players.player(player)?;
         let unit = owner.live(idx)?;
         Ok(Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: unit.master(&self.masters, player)?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -121,7 +137,7 @@ impl World {
         &self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
     ) -> Result<bool, GenieError> {
         let actor = self.garrison_actor(player, idx)?;
@@ -199,7 +215,7 @@ impl World {
             notified,
         } = *order;
         let unit = &self.players.live(player, idx)?;
-        if unit.id.get() == target {
+        if target == Some(unit.id) {
             return Ok(());
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
@@ -247,15 +263,15 @@ impl World {
         self.start_task(player, idx, (target, point), &task, (clears, notified))
     }
 
-    /// The work command's master and task for the unit at (`player`, `idx`) on `target` (−1 for
-    /// none) at `point` ([`crate::objects::masters::Masters::work_master`] under the task
+    /// The work command's master and task for the unit at (`player`, `idx`) on `target` (none
+    /// for a point) at `point` ([`crate::objects::masters::Masters::work_master`] under the task
     /// `filter`, the terrain under the point for a task for a terrain): the master with the task
     /// found.
     pub(super) fn work_task(
         &self,
         player: PlayerId,
         idx: usize,
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
         filter: i16,
     ) -> Result<Option<(MasterId, crate::objects::masters::Task)>, GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -265,7 +281,7 @@ impl World {
             .ok_or(GenieError::unsupported("a work command: no master table"))?;
         let owner = &self.players.player(player)?;
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: unit.master(&self.masters, player)?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -276,13 +292,12 @@ impl World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let (t, general) = if target == -1 {
-            (None, None)
-        } else {
-            (
+        let (t, general) = match target {
+            None => (None, None),
+            Some(target) => (
                 Some(self.task_target(target, 1)?),
                 Some(self.task_target(target, 2)?),
-            )
+            ),
         };
         let on = crate::unit_ai::task_finder::TaskOn {
             target: t.as_ref(),
@@ -310,7 +325,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point, clears): (i32, Position, bool),
+        (target, point, clears): (Option<ObjectId>, Position, bool),
         task: &crate::objects::masters::Task,
         same_master: bool,
     ) -> Result<bool, GenieError> {
@@ -318,7 +333,7 @@ impl World {
         let top = unit.top_action_kind();
         Ok(match unit.actions.hunt().copied() {
             Some(h) if task.action_type == HUNT && h.task.id == task.id => {
-                self.retarget_hunt_work(player, idx, (target, point, clears))?;
+                self.retarget_hunt_work(player, idx, (target.ok_or(TERRAIN_TASK)?, point, clears))?;
                 true
             }
             _ if top == Some(task.action_type) && task.action_type == action_type::BUILD => {
@@ -327,20 +342,24 @@ impl World {
                         "a work command on the Build task of the unit's former master",
                     ));
                 }
-                self.retake_build(player, idx, target, point, clears)?;
+                self.retake_build(player, idx, target.ok_or(TERRAIN_TASK)?, point, clears)?;
                 true
             }
             _ if top == Some(task.action_type)
                 && task.action_type == crate::construction::repair::REPAIR =>
             {
-                self.retake_repair(player, idx, target, point, clears)?;
+                self.retake_repair(player, idx, target.ok_or(TERRAIN_TASK)?, point, clears)?;
                 true
             }
             _ if top == Some(GATHER)
                 && task.action_type == GATHER
                 && unit.actions.gather().is_some_and(|g| g.task.id == task.id) =>
             {
-                self.retarget_gather_work(player, idx, (target, point, clears))?
+                self.retarget_gather_work(
+                    player,
+                    idx,
+                    (target.ok_or(TERRAIN_TASK)?, point, clears),
+                )?
             }
             _ if top == Some(crate::garrison::transport::TRANSPORT)
                 && task.action_type == crate::garrison::transport::TRANSPORT =>
@@ -365,7 +384,7 @@ impl World {
                     )
                     .with("action", format_args!("{top:?}"))
                     .with("task", task.id.get())
-                    .with("target", target));
+                    .with("target", ObjectId::field(target)));
                 }
             },
             _ => false,
@@ -379,7 +398,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point, clears): (i32, Position, bool),
+        (target, point, clears): (ObjectId, Position, bool),
     ) -> Result<(), GenieError> {
         let t = self.task_target(target, 0)?;
         if t.master.id == MARKET && t.player == player {
@@ -411,7 +430,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point, clears): (i32, Position, bool),
+        (target, point, clears): (ObjectId, Position, bool),
     ) -> Result<bool, GenieError> {
         let t = self.task_target(target, 0)?;
         if t.master.id == MARKET && t.player == player {
@@ -449,9 +468,40 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
         task: &crate::objects::masters::Task,
         (clears, notified): (bool, bool),
+    ) -> Result<(), GenieError> {
+        match task.action_type {
+            // the factory makes no action of a mule cart's task: the move without one
+            crate::construction::build::CART_TASK => {
+                self.work_move(player, idx, target, point, (clears, notified))
+            }
+            crate::garrison::transport::TRANSPORT => {
+                self.start_transport((player, idx), (target, point), task, clears)
+            }
+            crate::garrison::ENTER
+            | ATTACK_TASK
+            | HUNT
+            | action_type::BUILD
+            | crate::construction::repair::REPAIR
+            | GATHER => {
+                let target = target.ok_or(TERRAIN_TASK)?;
+                self.start_object_task(player, idx, (target, point), task, clears)
+            }
+            _ => Err(UNMODELLED_FACTORY),
+        }
+    }
+
+    /// [`World::start_task`]'s actions on an object: the Enter, Attack, Hunt, Build, Repair or
+    /// Gather on `target` starts.
+    fn start_object_task(
+        &mut self,
+        player: PlayerId,
+        idx: usize,
+        (target, point): (ObjectId, Position),
+        task: &crate::objects::masters::Task,
+        clears: bool,
     ) -> Result<(), GenieError> {
         match task.action_type {
             crate::garrison::ENTER => self.start_enter(player, idx, target, task, point, clears),
@@ -477,17 +527,8 @@ impl World {
             crate::construction::repair::REPAIR => {
                 self.start_repair(player, idx, target, task, point, clears)
             }
-            // the factory makes no action of a mule cart's task: the move without one
-            crate::construction::build::CART_TASK => {
-                self.work_move(player, idx, target, point, (clears, notified))
-            }
             GATHER => self.start_gather(player, idx, target, task, Some((point, clears))),
-            crate::garrison::transport::TRANSPORT => {
-                self.start_transport((player, idx), (target, point), task, clears)
-            }
-            _ => Err(GenieError::unsupported(
-                "the action factory for a task the slice does not model",
-            )),
+            _ => Err(UNMODELLED_FACTORY),
         }
     }
 
@@ -500,7 +541,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: Option<ObjectId>,
         point: Position,
         (clears, notified): (bool, bool),
     ) -> Result<(), GenieError> {
@@ -513,13 +554,14 @@ impl World {
         // another; then the move to the target (slot 0x138) for a unit in state 2 or of
         // class 51
         let (alive, class) = (unit.life.state == 2, master.class);
-        let named = if target == -1 {
-            None
-        } else {
-            let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
-                "a work command's target the slice does not hold",
-            ))?;
-            Some((target, i32::from(t.master(&self.masters, tp)?.class.get())))
+        let named = match target {
+            None => None,
+            Some(target) => {
+                let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
+                    "a work command's target the slice does not hold",
+                ))?;
+                Some((target, i32::from(t.master(&self.masters, tp)?.class.get())))
+            }
         };
         let (order, action) = if alive {
             (Some(OrderKind::Move), Some(ActionKind::Move))
@@ -539,7 +581,7 @@ impl World {
             self.remember_order(player, idx, (order, action))?;
         }
         if alive || class == class::CLASS_51 {
-            match ObjectId::of_field(target) {
+            match target {
                 None => self.move_point_order_with(player, idx, point, notified)?,
                 Some(target) => {
                     let _ = self.move_to_object_with(player, idx, target, point, notified)?;
@@ -563,7 +605,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         filter: i16,
         change: bool,
     ) -> Result<Option<crate::objects::masters::Task>, GenieError> {
@@ -571,7 +613,7 @@ impl World {
         let own = unit.master(&self.masters, player)?;
         let owner = &self.players.player(player)?;
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),

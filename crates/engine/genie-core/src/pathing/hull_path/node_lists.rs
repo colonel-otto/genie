@@ -2,8 +2,9 @@
 //! built back from its end.
 
 use crate::GenieError;
-use crate::map::spatial::Hit;
+use crate::map::spatial::{Hit, RecordId};
 use crate::math::fmath::sqrt;
+use crate::objects::ObjectId;
 use crate::pathing::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Waypoints};
 use crate::world::slots::CheckedIndex;
 
@@ -289,7 +290,7 @@ impl HullPather<'_> {
         for id in self.included_movers(a, b)? {
             if let Some(p) = self.world.get(id) {
                 hits.push(Hit {
-                    id,
+                    id: RecordId::from(id),
                     bounds: p.bounds(),
                 });
             }
@@ -305,13 +306,14 @@ impl HullPather<'_> {
     /// (flags 0x10) tests the same records alike, the buffer the grow, and leaves none out, at
     /// most [`LINE_HITS`] a call: what it lists goes into its ignore list until a call lists
     /// fewer.
-    pub(super) fn included_movers(&self, a: Point, b: Point) -> Result<Vec<i32>, GenieError> {
-        let movers: Vec<i32> = self
+    pub(super) fn included_movers(&self, a: Point, b: Point) -> Result<Vec<ObjectId>, GenieError> {
+        let movers: Vec<ObjectId> = self
             .include
             .iter()
             .copied()
             .filter(|id| {
-                !self.ignore.contains(id) && self.world.gait(*id).is_some_and(|g| g.moving)
+                !self.ignore.contains(&RecordId::from(*id))
+                    && self.world.gait(*id).is_some_and(|g| g.moving)
             })
             .collect();
         let mut met = Vec::new();
@@ -324,8 +326,11 @@ impl HullPather<'_> {
             let hits = self.world.line_hits(a, b, grow, false, &skip)?;
             let full = LINE_HITS <= hits.len();
             for id in hits {
-                if movers.contains(&id) && !met.contains(&id) {
-                    met.push(id);
+                if let Some(o) = id.object()
+                    && movers.contains(&o)
+                    && !met.contains(&o)
+                {
+                    met.push(o);
                 }
                 if !skip.contains(&id) {
                     skip.push(id);

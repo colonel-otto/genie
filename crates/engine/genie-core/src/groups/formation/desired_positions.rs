@@ -10,6 +10,7 @@ use crate::groups::{Formation, UnitGroup};
 use crate::map::GridSize;
 use crate::math::fmath::{BVector, Rotation, add, sub};
 use crate::movement::PathData;
+use crate::objects::ObjectKey;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -81,7 +82,7 @@ impl World {
                 .unwrap_or_default();
             let mut column_to_line = formations.column_to_line_distance as f32;
             let min_column = formations.min_column_distance as f32;
-            if g.current_target.target != -1 {
+            if g.current_target.target.key().is_some() {
                 column_to_line =
                     column_to_line + g.current_target.target_radius + g.current_target.range;
             }

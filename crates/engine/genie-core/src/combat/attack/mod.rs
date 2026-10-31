@@ -65,6 +65,10 @@ use crate::objects::sprite::ActiveSprite;
 /// The Attack action's type, which word 9 adds.
 pub const ATTACK: i16 = 9;
 
+/// An Attack whose target the map does not hold (none, or one gone).
+pub(super) const TARGET_GONE: GenieError =
+    GenieError::unsupported("an Attack whose target is gone");
+
 /// A range at most this counts as none (`DAT_142eb5690`): the range test widens the gap by
 /// `-0.5` (`DAT_142eb6e58`) and the reach by `0.5` (`DAT_142e7f384`).
 const NO_RANGE: f32 = 0.1;
@@ -182,7 +186,7 @@ pub(crate) type Posted = (i32, [i32; 3]);
 #[derive(Clone, Debug)]
 pub(crate) struct AttackCommand<'a> {
     /// The target.
-    pub(crate) target: i32,
+    pub(crate) target: ObjectId,
     /// What the Attack reads of its unit and its target as it starts.
     pub(crate) engagement: &'a Engagement,
     /// Its sprites, missile and frames.

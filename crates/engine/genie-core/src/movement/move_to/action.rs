@@ -208,7 +208,7 @@ impl MoveToAction {
         world: &Spatial,
         me: Position,
         mover: &mut Mover,
-        target: i32,
+        target: ObjectId,
         range: f32,
         sprite: Option<Graphic>,
     ) -> Result<Self, GenieError> {
@@ -224,7 +224,7 @@ impl MoveToAction {
         Ok(Self {
             state,
             point: t.position,
-            target: ObjectId::of_field(target),
+            target: Some(target),
             range,
             sprite,
             quiet: false,
@@ -249,7 +249,7 @@ impl MoveToAction {
         world: &Spatial,
         me: Position,
         mover: &mut Mover,
-        (target, state): (i32, u8),
+        (target, state): (ObjectId, u8),
         range: f32,
         (sprite, livestock): (Option<Graphic>, bool),
     ) -> Result<Self, GenieError> {
@@ -789,11 +789,13 @@ mod tests {
         let mut walker = crate::gathering::hunt::tests::walker();
         // footprints 0 apart: within ARRIVED, state 1 (its owner shows the standing sprite)
         let me = Position::new(30.0, 40.0, 0.0);
-        let at_hand = MoveToAction::to_target(&world, me, &mut walker, 9185, 0.0, None).unwrap();
+        let at_hand =
+            MoveToAction::to_target(&world, me, &mut walker, object_id(9185), 0.0, None).unwrap();
         assert!(at_hand.arrived());
         // 4.6 tiles on it starts walking (state 3)
         let mut walker = crate::gathering::hunt::tests::walker();
-        let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
+        let far =
+            MoveToAction::to_target(&world, me, &mut walker, object_id(9186), 0.0, None).unwrap();
         assert!(!far.arrived());
         assert_eq!(walker.stats.speed, 0.8);
     }
@@ -821,20 +823,23 @@ mod tests {
             MoveToAction::to_object(&world, me, &mut walker, target, 0.0, (None, livestock))
                 .unwrap()
         };
-        let held = to((9186, 2), false, 0.8);
+        let held = to((object_id(9186), 2), false, 0.8);
         assert_eq!(
             (ObjectId::field(held.target), held.goal(), held.state),
             (9186, None, MoveTo::Start)
         );
-        let gone = to((9186, 7), false, 0.8);
+        let gone = to((object_id(9186), 7), false, 0.8);
         assert_eq!(
             (ObjectId::field(gone.target), gone.goal(), gone.state),
             (-1, Some(Position::new(35.0, 40.0, 0.0)), MoveTo::Start)
         );
-        assert_eq!(to((9186, 7), false, 0.0).state, MoveTo::Failed);
+        assert_eq!(to((object_id(9186), 7), false, 0.0).state, MoveTo::Failed);
         // a villager to the town centre holds it; livestock walks beside it
-        assert_eq!(to((9149, 2), false, 0.8).target, Some(object_id(9149)));
-        let beside = to((9149, 2), true, 0.8);
+        assert_eq!(
+            to((object_id(9149), 2), false, 0.8).target,
+            Some(object_id(9149))
+        );
+        let beside = to((object_id(9149), 2), true, 0.8);
         assert_eq!(
             (ObjectId::field(beside.target), beside.goal()),
             (-1, Some(Position::new(50.0 - 0.2, 40.0 - 0.2, 0.0)))
@@ -885,11 +890,13 @@ mod tests {
         world.insert(object_id(9186), sheep(35.0, 40.0));
         let me = Position::new(30.0, 40.0, 0.0);
         let mut walker = crate::gathering::hunt::tests::walker();
-        let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
+        let far =
+            MoveToAction::to_target(&world, me, &mut walker, object_id(9186), 0.0, None).unwrap();
         assert_eq!(far.point, Position::new(35.0, 40.0, 0.0));
         assert_eq!(walker.stats.speed, 0.8);
         walker.stats.speed = 0.0;
-        let stuck = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, None).unwrap();
+        let stuck =
+            MoveToAction::to_target(&world, me, &mut walker, object_id(9186), 0.0, None).unwrap();
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
     }

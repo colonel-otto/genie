@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -110,18 +111,22 @@ impl UnitAi {
         // "Target is still visible, tracking.": a target the world holds within the
         // lion's line of sight (FUN_14118f8c0 against its sight squared: COMISS, JC
         // past)
-        let gap = at.target.filter(|_| self.current_target != -1).map(|t| {
-            crate::movement::footprint_gap_squared(at.position, at.size, t.position, t.radius)
-        });
+        let gap = at
+            .target
+            .filter(|_| self.current_target.is_some())
+            .map(|t| {
+                crate::movement::footprint_gap_squared(at.position, at.size, t.position, t.radius)
+            });
         // a target within its sight whose master has no flag 0x10 (`+0x654`) it
         // attacks again (slot 0xb8: the target, forced, not any, its group) and the
         // processing breaks
         let flags = at.target.map_or(0, |t| t.flags);
         if let Some(gap) = gap
+            && let Some(target) = self.current_target
             && !crate::math::fmath::below_or_unordered(at.los * at.los, gap)
             && flags & 0x10 == 0
         {
-            let _ = self.attack_object(self.current_target, true, false, at, side)?;
+            let _ = self.attack_object(target, true, false, at, side)?;
             return Ok(BREAK);
         }
         // "Target is invalid or no longer visible, stopping pursuit.": the target
@@ -211,7 +216,7 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         if (n.p[0] == ActionKind::Build.value() || n.p[0] == ActionKind::Hunt.value())
-            && let Some(made) = Self::world_object(n.p[1], at, side)?
+            && let Some(made) = Self::world_object(ObjectId::of_field(n.p[1]), at, side)?
         {
             side.effect_now(
                 Effect::Command(AiCommand::WorkOn {
@@ -413,7 +418,7 @@ impl UnitAi {
             // attack order.": a target gone or dead (above state 2) is forgotten
             // (`FUN_140c5e1e0`) and the current action stops (slot 0xb0 with 1)
             ACTION_COMPLETED if n.p[0] == 600 && self.current_order == Some(OrderKind::Attack) => {
-                let gone = self.current_target == -1 || at.target.is_none_or(|t| 2 < t.state);
+                let gone = self.current_target.is_none() || at.target.is_none_or(|t| 2 < t.state);
                 if gone {
                     self.remove_target();
                     self.stop_current(true, at, side, ai_rng)?;
@@ -439,15 +444,13 @@ impl UnitAi {
             DAMAGED => self.building_damaged(n, time, at, computer, side, ai_rng),
             // "Unit #%d is attacking me": it joins the attackers and the unit is under attack
             600 => {
-                let _ = self.add_attacker(n.caller);
+                let _ = self.attackers.add(n.caller);
                 side.set_under_attack(true);
                 Ok(GO_ON)
             }
             // "is no longer doing an action on me.": one in the set (FUN_140bf4cb0) leaves it
             NO_LONGER_ON_ME => {
-                if let Ok(i) = self.attackers.binary_search(&n.caller) {
-                    let _ = self.attackers.remove(i);
-                }
+                self.attackers.remove(n.caller);
                 Ok(GO_ON)
             }
             0x202 | 0x216 | 0x21b => self.base_notify(n, time, at, computer, ai_rng, side),

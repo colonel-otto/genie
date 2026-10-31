@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Rect;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
+use crate::objects::ObjectId;
 use crate::pathing::hull_path::rounds::Rounds;
 use crate::pathing::hull_path::{
     HALF, HullPather, HullQuery, NEAR_TARGET, Point, Target, Waypoints,
@@ -26,7 +27,7 @@ impl HullPather<'_> {
         &mut self,
         from: Point,
         to: Point,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         range: f32,
     ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, false, false)
@@ -42,7 +43,7 @@ impl HullPather<'_> {
         &mut self,
         from: Point,
         to: Point,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         range: f32,
     ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, true, false)
@@ -58,7 +59,7 @@ impl HullPather<'_> {
         &mut self,
         from: Point,
         to: Point,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         range: f32,
     ) -> Result<(u8, Waypoints), GenieError> {
         self.find_with(from, to, target_id, range, false, true)
@@ -72,7 +73,7 @@ impl HullPather<'_> {
         &mut self,
         from: Point,
         to: Point,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         range: f32,
         keep: bool,
         quick_only: bool,
@@ -96,7 +97,7 @@ impl HullPather<'_> {
         &mut self,
         from: Point,
         to: Point,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         range: f32,
         keep: bool,
         quick_only: bool,
@@ -122,8 +123,7 @@ impl HullPather<'_> {
         self.world.set_manager_buffer(self.buffer);
         self.world.clear_tile_records();
         self.world.set_manager_ignore(&self.ignore);
-        let quick_target = (q.target_id != -1).then_some(q.target_id);
-        if self.quick_path(from, self.quick_goal(&q), quick_target, &mut path)? {
+        if self.quick_path(from, self.quick_goal(&q), q.target_id, &mut path)? {
             return Ok((1, path, true));
         }
         if quick_only {
@@ -156,7 +156,12 @@ impl HullPather<'_> {
     /// `FindShortPath`'s bounds, the map less the radius (`+0x118`), and whether the start or the
     /// goal lies beyond them (result 4): a goal beyond them stays when [`HullPather::edge_goal`]
     /// takes it.
-    fn off_map(&mut self, from: Point, to: Point, target_id: i32) -> Result<bool, GenieError> {
+    fn off_map(
+        &mut self,
+        from: Point,
+        to: Point,
+        target_id: Option<ObjectId>,
+    ) -> Result<bool, GenieError> {
         let r = self.radius;
         let (w, h) = (self.world.map.width(), self.world.map.height());
         self.bounds = Rect::new(r, r, w as f32 - r, h as f32 - r);
@@ -175,25 +180,25 @@ impl HullPather<'_> {
         &self,
         from: Point,
         to: Point,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         range: f32,
     ) -> Result<HullQuery, GenieError> {
         let mut target_id = target_id;
-        let target = if target_id < 0 {
-            None
-        } else {
-            match self.world.get_known(target_id)? {
+        // the game tests the id's sign: a recyclable object's id is no target either
+        let target = match target_id {
+            Some(t) if !t.is_recyclable() => match self.world.get_known(t)? {
                 Some(p) if p.position.x() == to.x() && p.position.y() == to.y() => Some(Target {
                     at: p.position.ground(),
                     radius: p.radius,
                     speed: p.speed,
                 }),
                 Some(_) => {
-                    target_id = -1;
+                    target_id = None;
                     None
                 }
                 None => None,
-            }
+            },
+            _ => None,
         };
         Ok(HullQuery {
             from,
@@ -338,7 +343,12 @@ impl HullPather<'_> {
         }
         let k = path.points.len() - 1;
         let hits = self.hits(*path.points.checked(k)?, *path.points.checked(k - 1)?)?;
-        if hits.len() < 2 && (hits.len() != 1 || hits.checked(0)?.id == q.target_id) {
+        let clear = match hits.as_slice() {
+            [] => true,
+            [h] => q.target_id.is_some_and(|t| h.id == t),
+            _ => false,
+        };
+        if clear {
             return Ok(true);
         }
         let _ = path.points.remove(k);

@@ -3,7 +3,9 @@
 
 use crate::GenieError;
 use crate::map::Rect;
+use crate::map::spatial::RecordId;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::objects::ObjectId;
 use crate::pathing::hull_path::{EPSILON, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints};
 use crate::world::slots::CheckedIndex;
 
@@ -22,17 +24,23 @@ impl HullPather<'_> {
         if !self.world.point_hit(to, grow, &self.ignore, false)? {
             return Ok(None);
         }
-        let near: Vec<i32> = self
+        let near: Vec<ObjectId> = self
             .world
             .records()
-            .filter(|&(id, _, b)| !self.ignore.contains(&id) && b.grown(grow).holds(to))
+            .filter(|&(id, _, b)| {
+                !self.ignore.contains(&RecordId::from(id)) && b.grown(grow).holds(to)
+            })
             .map(|(id, _, _)| id)
             .collect();
         // each one the query lists (the cells it visits): the point test with the others ignored
         let mut held = Vec::new();
         for &id in &near {
             let mut others = self.ignore.clone();
-            others.extend(near.iter().filter(|&&o| o != id));
+            others.extend(
+                near.iter()
+                    .filter(|&&o| o != id)
+                    .map(|&o| RecordId::from(o)),
+            );
             if !self.world.point_hit(to, grow, &others, false)? {
                 continue;
             }
@@ -60,8 +68,12 @@ impl HullPather<'_> {
     /// on it (`UCOMISS`, an unordered coordinate does not), and the goal lie on the map itself
     /// (`FUN_140f89d80` with the bounds the map's: `COMISS`/`JA` each way, an unordered
     /// coordinate on it); then the bounds go back to the map less the radius.
-    pub(super) fn edge_goal(&mut self, to: Point, target_id: i32) -> Result<bool, GenieError> {
-        if target_id == -1 {
+    pub(super) fn edge_goal(
+        &mut self,
+        to: Point,
+        target_id: Option<ObjectId>,
+    ) -> Result<bool, GenieError> {
+        if target_id.is_none() {
             return Ok(false);
         }
         let Some(t) = self.world.get_known(target_id)? else {

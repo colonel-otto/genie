@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::MARKET;
 use crate::vision::registry::MASK;
@@ -15,7 +16,7 @@ use crate::world::slots::CheckedIndex;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SightOn {
     /// The object.
-    pub(super) id: i32,
+    pub(super) id: ObjectId,
     /// Its seer.
     pub(super) seer: Seer,
     /// Its place (x, y, z).
@@ -36,7 +37,7 @@ impl Visibility {
     /// tiles explored.
     pub fn sight_on(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
         square: bool,
@@ -52,7 +53,7 @@ impl Visibility {
     /// 5 when a unit enters it (`FUN_141212e10`).
     pub fn sight_on_los(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
         square: bool,
@@ -142,7 +143,7 @@ impl Visibility {
     /// does nothing for a building that never explored).
     pub fn sight_off(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
         square: bool,
@@ -159,7 +160,7 @@ impl Visibility {
     /// go when a unit leaves it (`FUN_141213120`).
     pub fn sight_off_los(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
         square: bool,
@@ -207,7 +208,7 @@ impl Visibility {
     /// the old tile (whatever its state) and, in state 2, comes to the new one.
     pub fn moved(
         &mut self,
-        id: i32,
+        id: ObjectId,
         from: Position,
         to: Position,
         radius: Footprint,
@@ -227,7 +228,7 @@ impl Visibility {
     /// object's sight shrinks to its footprint, which goes with state 7.
     pub fn state_changed(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
         new: u8,
@@ -258,7 +259,7 @@ impl Visibility {
     /// new one's comes, whatever the state.
     pub fn master_changed(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         old_radius: Footprint,
         new_radius: Footprint,
@@ -276,7 +277,7 @@ impl Visibility {
 
     /// The master and line of sight of seer `id` without its sight (a master change inside
     /// another, whose unit has no tile, `+0x2e8` 0: its sight comes with them on its way out).
-    pub fn seer_master(&mut self, id: i32, master: MasterId, los: f32) {
+    pub fn seer_master(&mut self, id: ObjectId, master: MasterId, los: f32) {
         if let Some(s) = self.seers.get_mut(&id) {
             s.master = master;
             s.los = los;

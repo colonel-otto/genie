@@ -6,6 +6,7 @@ use genie_core::GenieError;
 use genie_core::map::Point;
 use genie_core::map::Position;
 use genie_core::math::game_vector::GameVector;
+use genie_core::objects::ObjectId;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::objects::masters::MasterId;
 use genie_core::unit_ai::{ActionKind, OrderKind};
@@ -80,7 +81,7 @@ pub(super) fn lifecycle(
         death_spawn: death_spawn >= 0,
         remains: MasterId::of_data(remains),
         death_facets,
-        inside: (s.inside_obj != -1).then_some(s.inside_obj),
+        inside: ObjectId::of_field(s.inside_obj),
         goto_sleep: s.goto_sleep_flag != 0,
         master_id,
         master,
@@ -95,6 +96,8 @@ pub(super) fn lifecycle(
 /// [`ActionKind::try_from`]), in the current or last one, the history or a queue.
 pub(super) fn unit_ai(
     object: &genie_save::Object,
+    own: ObjectId,
+    players: usize,
 ) -> Result<Option<genie_core::unit_ai::UnitAi>, GenieError> {
     let Some((combat, ai)) = object.combat().and_then(|c| Some((c, c.unit_ai()?))) else {
         return Ok(None);
@@ -104,7 +107,7 @@ pub(super) fn unit_ai(
         current_order: OrderKind::of_field(ai.current_order_value)?,
         order_priority: ai.current_order_priority_value,
         current_action: ActionKind::of_field(ai.current_action_value)?,
-        current_target: ai.current_target_value,
+        current_target: ObjectId::of_field(ai.current_target_value),
         target_type: ai.current_target_type_value,
         target_point: Position::new(
             ai.current_target_xvalue,
@@ -112,10 +115,10 @@ pub(super) fn unit_ai(
             ai.current_target_zvalue,
         ),
         desired_distance: ai.desired_target_distance_value,
-        defend_target: ai.defend_target_value,
+        defend_target: ObjectId::of_field(ai.defend_target_value),
         last_order: OrderKind::of_field(ai.last_order_value)?,
         last_action: ActionKind::of_field(ai.last_action_value)?,
-        last_target: ai.last_target_value,
+        last_target: ObjectId::of_field(ai.last_target_value),
         last_target_type: ai.last_target_type_value,
         idle_timer: ai.idle_timer_value,
         adjusted_idle_timeout: ai.adjusted_idle_timeout_value,
@@ -137,16 +140,16 @@ pub(super) fn unit_ai(
         home: home(combat),
         hunted: None,
         last_update_time: ai.last_update_time_value,
-        attackers: ai.temp_int.clone(),
+        attackers: genie_core::unit_ai::Attackers::of_saved(&ai.temp_int),
         order_history: order_history(ai)?,
         retries: ai
             .retarget_entries
             .iter()
-            .map(|e| (e.target_id, e.timeout))
-            .collect(),
-        best_this_update: ai.best_unit_to_attack_this_update,
-        orders: queue(&ai.temp_order)?,
-        building_orders: queue(building_orders(combat))?,
+            .map(|e| Ok((ObjectId::try_from(e.target_id)?, e.timeout)))
+            .collect::<Result<_, GenieError>>()?,
+        best_this_update: ObjectId::of_field(ai.best_unit_to_attack_this_update),
+        orders: queue(&ai.temp_order, own, players)?,
+        building_orders: queue(building_orders(combat), own, players)?,
         notifies: ai
             .temp_notify
             .iter()
@@ -204,7 +207,7 @@ fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderReco
                 time: e.new_oh_time,
                 // the save's 12 bytes are the game's vector, x, height, y
                 position: GameVector::from_xhy(vec3(&e.new_oh_position)),
-                target: e.new_oh_target_id,
+                target: ObjectId::of_field(e.new_oh_target_id),
                 category: e.new_oh_target_attack_category,
                 target_position: GameVector::from_xhy(vec3(&e.new_oh_target_position)),
             })
@@ -232,10 +235,14 @@ fn building_orders(combat: &TribeCombatObject) -> &[[u8; 52]] {
 /// # Errors
 ///
 /// A record's order value no order holds.
-fn queue(records: &[[u8; 52]]) -> Result<Vec<genie_core::unit_ai::QueuedOrder>, GenieError> {
+fn queue(
+    records: &[[u8; 52]],
+    own: ObjectId,
+    players: usize,
+) -> Result<Vec<genie_core::unit_ai::QueuedOrder>, GenieError> {
     records
         .iter()
-        .map(genie_core::unit_ai::QueuedOrder::from_bytes)
+        .map(|r| genie_core::unit_ai::QueuedOrder::from_bytes(r, own, players))
         .collect()
 }
 

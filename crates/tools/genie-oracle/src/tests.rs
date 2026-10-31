@@ -14,7 +14,7 @@ fn a_building_s_production_state_comes_before_its_top_action_s() {
         gaia: false,
         move_to: None,
         goal: None,
-        target: -1,
+        target: None,
         enter: None,
         moving: None,
     };

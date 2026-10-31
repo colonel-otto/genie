@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::groups::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, BVector};
+use crate::objects::ObjectId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 
@@ -35,7 +36,7 @@ pub const BOX_POSITIONS: usize = 60;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MemberPlace {
     /// The unit.
-    pub id: i32,
+    pub id: ObjectId,
     /// Slot 0x520.
     pub at: BVector,
     /// `FUN_141011300(unit, 0)`.
@@ -85,7 +86,7 @@ pub(crate) fn slots_by_place(
             continue;
         };
         let s = formation.slot_mut(i)?;
-        s.unit_id = m.id;
+        s.unit_id = Some(m.id);
         s.offset = fmath::sub(m.at, position);
         s.desired_transform_position = m.at;
         s.transform_position = m.at;
@@ -231,7 +232,7 @@ pub(crate) fn phalanx_slots(
         for k in 0..width.max(0) as usize {
             statistic = next_statistic(group, statistic, &mut placed);
             *formation.slot_mut(slot)? = Slot {
-                unit_id: -1,
+                unit_id: None,
                 offset: at,
                 desired_transform_position: BVector::ZERO,
                 transform_position: BVector::ZERO,
@@ -502,7 +503,7 @@ pub(crate) fn box_slots(
         for (j, &p) in positions.iter().enumerate().take(count) {
             let at = used + j;
             *formation.slot_mut(at)? = Slot {
-                unit_id: -1,
+                unit_id: None,
                 offset: p,
                 desired_transform_position: BVector::ZERO,
                 transform_position: BVector::ZERO,
@@ -627,12 +628,14 @@ impl World {
 mod tests {
     use super::*;
     use crate::groups::{Member, UnitTypeStatistic};
+    use crate::test_ids::object_id;
+    use crate::test_ids::object_id_list;
 
     fn group(members: usize, spacing: f32, stats: &[(i32, usize)]) -> UnitGroup {
         let mut g = UnitGroup::new(1);
         g.members = (0..members)
             .map(|i| Member {
-                id: i as i32,
+                id: object_id(i as i32),
                 ..Member::default()
             })
             .collect();
@@ -642,7 +645,7 @@ mod tests {
             .iter()
             .map(|&(category, n)| UnitTypeStatistic {
                 formation_category: category,
-                units: (0..n as i32).collect(),
+                units: object_id_list(0..n as i32),
                 ..UnitTypeStatistic::default()
             })
             .collect();
@@ -651,7 +654,7 @@ mod tests {
 
     const fn place(id: i32, x: f32, z: f32, category: i32) -> MemberPlace {
         MemberPlace {
-            id,
+            id: object_id(id),
             at: BVector::new(x, 0.0, z),
             category,
         }
@@ -684,7 +687,7 @@ mod tests {
         assert_eq!(
             (s.unit_id, s.offset, s.desired_transform_position),
             (
-                7,
+                Some(object_id(7)),
                 BVector::new(2.0, 0.0, 0.0),
                 BVector::new(12.0, 0.0, 10.0)
             )
@@ -701,7 +704,7 @@ mod tests {
             (1, 640, 1, 1, 1)
         );
         assert_eq!(s.desired_sub_category, -1);
-        assert_eq!((f.slots[1].unit_id, f.slots[1].active), (-1, 0));
+        assert_eq!((f.slots[1].unit_id, f.slots[1].active), (None, 0));
         assert_eq!(f.slots[2].offset, BVector::new(5.0, 0.0, 0.0));
         // no members, no layout
         let mut f = Formation::new();
@@ -813,13 +816,13 @@ mod tests {
         g.unit_types = vec![
             UnitTypeStatistic {
                 formation_category: 1,
-                units: vec![10, 11],
+                units: vec![object_id(10), object_id(11)],
                 desired_spacing: 1.0,
                 ..UnitTypeStatistic::default()
             },
             UnitTypeStatistic {
                 formation_category: 3,
-                units: vec![12],
+                units: vec![object_id(12)],
                 desired_spacing: 1.0,
                 ..UnitTypeStatistic::default()
             },
@@ -836,7 +839,7 @@ mod tests {
         let mut t = three_at_six();
         let g = t.groups.get(1).unwrap().clone();
         let stale = Slot {
-            unit_id: 99,
+            unit_id: Some(object_id(99)),
             position_filled: 1,
             ..Slot::default()
         };
@@ -848,14 +851,21 @@ mod tests {
         assert!(phalanx_slots(&mut parts, &g, t.world_time).unwrap());
         t.lay_units(&mut parts, 1, false).unwrap();
         assert_eq!(whole, parts);
-        let mut ids: Vec<i32> = whole.slots.iter().map(|s| s.unit_id).collect();
+        let mut ids: Vec<Option<ObjectId>> = whole.slots.iter().map(|s| s.unit_id).collect();
         ids.sort_unstable();
-        assert_eq!(ids, [10, 11, 12]);
+        assert_eq!(
+            ids,
+            [
+                Some(object_id(10)),
+                Some(object_id(11)),
+                Some(object_id(12))
+            ]
+        );
         assert!(
             whole
                 .spare_slots
                 .iter()
-                .all(|s| (s.unit_id, s.position_filled) == (-1, 0))
+                .all(|s| (s.unit_id, s.position_filled) == (None, 0))
         );
         let mut whole = start.clone();
         assert!(t.create_box(&mut whole, 1).unwrap());
@@ -863,7 +873,7 @@ mod tests {
         assert!(box_slots(&mut parts, &g, t.world_time).unwrap());
         t.lay_units(&mut parts, 1, false).unwrap();
         assert_eq!(whole, parts);
-        assert!(whole.slots.iter().all(|s| s.unit_id != -1));
+        assert!(whole.slots.iter().all(|s| s.unit_id.is_some()));
         // without members, nothing
         let mut none = Formation::new();
         t.groups.groups[0] = group(0, 1.0, &[]);
@@ -880,14 +890,14 @@ mod tests {
         t.groups.groups[0].members.insert(
             1,
             Member {
-                id: 50,
+                id: object_id(50),
                 ..Member::default()
             },
         );
         let g = t.groups.get(1).unwrap().clone();
         let mut f = Formation::new();
         assert!(t.create_horde(&mut f, &g).unwrap());
-        let slots: Vec<(i32, BVector, i32, u32)> = f
+        let slots: Vec<(Option<ObjectId>, BVector, i32, u32)> = f
             .slots
             .iter()
             .map(|s| {
@@ -902,10 +912,10 @@ mod tests {
         assert_eq!(
             slots,
             [
-                (10, BVector::new(5.5, 0.0, 5.5), 1, 1),
-                (-1, BVector::ZERO, -1, 0),
-                (11, BVector::new(6.5, 0.0, 5.5), 1, 1),
-                (12, BVector::new(5.5, 0.0, 6.5), 3, 1),
+                (Some(object_id(10)), BVector::new(5.5, 0.0, 5.5), 1, 1),
+                (None, BVector::ZERO, -1, 0),
+                (Some(object_id(11)), BVector::new(6.5, 0.0, 5.5), 1, 1),
+                (Some(object_id(12)), BVector::new(5.5, 0.0, 6.5), 3, 1),
             ]
         );
         assert_eq!((f.kind, f.transform_type), (HORDE, 3));
@@ -913,7 +923,7 @@ mod tests {
         assert!(t.create_udf(&mut f, &g).unwrap());
         assert_eq!(
             (f.kind, f.transform_type, f.slots[3].unit_id),
-            (USER_DEFINED, 1, 12)
+            (USER_DEFINED, 1, Some(object_id(12)))
         );
     }
 
@@ -964,7 +974,7 @@ mod tests {
         assert!(
             f.slots
                 .iter()
-                .all(|s| (s.unit_id, s.active, s.time) == (-1, 1, 99))
+                .all(|s| (s.unit_id, s.active, s.time) == (None, 1, 99))
         );
         // without statistics the slots take no category
         let mut f = Formation::new();

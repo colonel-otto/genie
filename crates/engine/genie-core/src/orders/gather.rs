@@ -30,7 +30,7 @@ pub(super) struct HuntOrder {
     /// The hunter's index in the player's objects.
     pub(super) index: usize,
     /// The target.
-    pub(super) target: i32,
+    pub(super) target: ObjectId,
     /// The task.
     pub(super) task: HuntTask,
     /// The command's point.
@@ -52,7 +52,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<bool, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a gather's target the slice does not hold",
@@ -117,7 +117,7 @@ impl World {
         // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
         let waits = gather.state == crate::gathering::gather::WALK_BACK && new[0].is_none();
         self.exchange_gather_targets(old, new, by)?;
-        if waits && old[0] != ObjectId::of_field(target) {
+        if waits && old[0] != Some(target) {
             self.take(target, by)?;
             self.release(target, by)?;
         }
@@ -135,10 +135,10 @@ impl World {
         for (old, new) in old.into_iter().zip(new) {
             if old != new {
                 if let Some(old) = old {
-                    self.release(old.get(), by)?;
+                    self.release(old, by)?;
                 }
                 if let Some(new) = new {
-                    self.take(new.get(), by)?;
+                    self.take(new, by)?;
                 }
             }
         }
@@ -152,7 +152,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
     ) -> Result<bool, GenieError> {
         let (tp, o) = self.object(target).ok_or(GenieError::unsupported(
@@ -190,7 +190,7 @@ impl World {
         &self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<bool, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold",
@@ -222,7 +222,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
     ) -> Result<bool, GenieError> {
         let mut q = self.quarry(player, target)?;
@@ -254,20 +254,24 @@ impl World {
             return Ok(false);
         }
         let new_second = hunt.carry_to;
-        if old_target.is_some() && hunt.target.is_none() {
-            self.release(ObjectId::field(old_target), by)?;
+        if let Some(old) = old_target
+            && hunt.target.is_none()
+        {
+            self.release(old, by)?;
         }
-        if new_second != old_second && new_second.is_some() {
-            if old_second.is_some() {
-                self.release(ObjectId::field(old_second), by)?;
+        if new_second != old_second
+            && let Some(new) = new_second
+        {
+            if let Some(old) = old_second {
+                self.release(old, by)?;
             }
-            self.take(ObjectId::field(new_second), by)?;
+            self.take(new, by)?;
         }
         Ok(true)
     }
 
     /// What a hunt reads of its target.
-    pub(super) fn quarry(&self, player: PlayerId, target: i32) -> Result<Quarry, GenieError> {
+    pub(super) fn quarry(&self, player: PlayerId, target: ObjectId) -> Result<Quarry, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold",
         ))?;
@@ -301,7 +305,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &crate::objects::masters::Task,
         notify: Option<(Position, bool)>,
     ) -> Result<(), GenieError> {
@@ -390,9 +394,9 @@ impl World {
             rng,
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
-        let drops = gather.target.is_none() && gather.carry_to == ObjectId::of_field(target);
+        let drops = gather.target.is_none() && gather.carry_to == Some(target);
         // a farm another farmer works: the start let it go (set_state 11, then slot 0x68)
-        let waits = gather.target.is_none() && gather.carry_to != ObjectId::of_field(target);
+        let waits = gather.target.is_none() && gather.carry_to != Some(target);
         unit.actions.set_gather(Some(gather));
         if drops {
             self.take(target, self.releaser(player, idx)?)?;
@@ -428,13 +432,13 @@ impl World {
         &self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<Engagement, GenieError> {
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
         let me = self
             .spatial
-            .get(unit.id.get())
+            .get(unit.id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let them = self
             .spatial
@@ -576,7 +580,7 @@ impl World {
             );
             unit.body.set_anim_speed(0.0);
         }
-        let drops = hunt.target.is_none() && hunt.carry_to == ObjectId::of_field(target);
+        let drops = hunt.target.is_none() && hunt.carry_to == Some(target);
         unit.actions.set_hunt(Some(hunt));
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
         // go as the first (slot 0x68 with none)

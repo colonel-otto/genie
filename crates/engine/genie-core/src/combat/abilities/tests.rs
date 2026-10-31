@@ -234,7 +234,7 @@ fn the_reach_is_the_truncated_range_about_the_truncated_place_within_the_map() {
 
 fn hitter() -> Hitter {
     Hitter {
-        id: 1,
+        id: object_id(1),
         blast_level: 1,
         position: Position::new(10.0, 10.0, 0.0),
         radius: Footprint::new(0.4, 0.4),
@@ -243,7 +243,7 @@ fn hitter() -> Hitter {
 
 fn bystander() -> Bystander {
     Bystander {
-        id: 2,
+        id: object_id(2),
         player: PlayerId::new(2),
         allied: false,
         kind: COMBAT,
@@ -263,7 +263,14 @@ fn a_movement_damage_strikes_enemies_in_reach() {
     assert!(struck(&h, 1.0, &b));
     assert!(!struck(&h, 0.5, &b));
     assert!(struck(&h, f32::NAN, &b));
-    assert!(!struck(&h, 1.0, &Bystander { id: 1, ..b }));
+    assert!(!struck(
+        &h,
+        1.0,
+        &Bystander {
+            id: object_id(1),
+            ..b
+        }
+    ));
     assert!(!struck(&h, 1.0, &Bystander { allied: true, ..b }));
     assert!(!struck(
         &h,
@@ -574,7 +581,7 @@ fn building_sight(t: &mut World, p: PlayerId, id: i32, built: bool) {
         vec![false; 3],
     );
     v.add_seer(
-        id,
+        object_id(id),
         crate::vision::visibility::Seer {
             player: p,
             master: master_id(1021),
@@ -773,21 +780,21 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
         Point::new(4.5, 5.5),
     );
     run(&mut t, PlayerId::new(1), 10);
-    let hp = |t: &World, id| t.object(id).unwrap().1.life.hp;
-    assert_eq!(hp(&t, 20), 25.0);
-    assert_eq!(hp(&t, 21), 30.0);
-    assert_eq!(hp(&t, 30), 30.0);
-    assert_eq!(hp(&t, 40), 30.0);
+    let hp = |t: &World, id: ObjectId| t.object(id).unwrap().1.life.hp;
+    assert_eq!(hp(&t, object_id(20)), 25.0);
+    assert_eq!(hp(&t, object_id(21)), 30.0);
+    assert_eq!(hp(&t, object_id(30)), 30.0);
+    assert_eq!(hp(&t, object_id(40)), 30.0);
     assert_eq!(t.players[1].objects[0].abilities.movement_damage_timer, 3.0);
     // the timer runs down first: no hit for 3 s
     run(&mut t, PlayerId::new(1), 10);
-    assert_eq!(hp(&t, 20), 25.0);
+    assert_eq!(hp(&t, object_id(20)), 25.0);
     assert_eq!(t.players[1].objects[0].abilities.movement_damage_timer, 2.5);
     // standing, no hit even when due
     t.players[1].objects[0].abilities.movement_damage_timer = 0.0;
     t.players[1].objects[0].body.mover_mut().unwrap().velocity = None;
     run(&mut t, PlayerId::new(1), 10);
-    assert_eq!(hp(&t, 20), 25.0);
+    assert_eq!(hp(&t, object_id(20)), 25.0);
 }
 
 #[test]
@@ -805,7 +812,7 @@ fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
     );
     t.players[2].objects[0].life.amount = 10.0;
     run(&mut t, PlayerId::new(1), 10);
-    let (_, u) = t.object(20).unwrap();
+    let (_, u) = t.object(object_id(20)).unwrap();
     assert_eq!((u.life.hp, u.life.amount), (0.0, 0.0));
     // FUN_1412005b0: player 1 a kill (20) of player 2 (302), player 2 a loss (154)
     assert_eq!(t.players[1].attributes[20], 1.0);

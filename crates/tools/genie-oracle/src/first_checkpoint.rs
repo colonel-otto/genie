@@ -2,6 +2,7 @@
 //! recording's ([`compare_first_checkpoint`]).
 
 use crate::Error;
+use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
@@ -48,33 +49,49 @@ pub(super) fn dies_at_start(s: &RgeStaticObject) -> bool {
 }
 
 /// What the block reads of a saved object, before the slice changes any of it.
-pub(super) const fn object_state(s: &RgeStaticObject) -> ObjectState {
-    ObjectState {
-        id: s.id,
+///
+/// # Errors
+///
+/// An id of −1, which names no object.
+pub(super) fn object_state(s: &RgeStaticObject) -> Result<ObjectState, GenieError> {
+    Ok(ObjectState {
+        id: ObjectId::try_from(s.id)?,
         main_id: s.master_obj,
         state: s.object_state,
         amount_held: s.attribute_amount_held,
         position: Position::new(s.t_x, s.t_y, s.t_z),
         top_action: None,
         retarget_timer: None,
-    }
+    })
 }
 
 /// The checkpoint inputs of one player section at the first checkpoint, from the save alone: the
 /// objects that die at the start ([`dies_at_start`]) are gone by then. Word 9's inputs stay empty
 /// (see the crate docs).
-pub fn player_state(section: &PlayerSection<'_>, id: u32) -> PlayerState {
+///
+/// # Errors
+///
+/// A live object's id of −1, which names no object.
+pub fn player_state(section: &PlayerSection<'_>, id: u32) -> Result<PlayerState, GenieError> {
+    Ok(PlayerState {
+        live: live(section)
+            .map(|(_, s)| s)
+            .filter(|s| !dies_at_start(s))
+            .map(object_state)
+            .collect::<Result<_, _>>()?,
+        ..player_totals(section, id)
+    })
+}
+
+/// A player section's resources and sleeping count, without its live objects.
+pub(super) fn player_totals(section: &PlayerSection<'_>, id: u32) -> PlayerState {
     let attributes = &section.world_player().base.attributes;
     let resource = |i: usize| attributes.get(i).copied().unwrap_or_default();
     PlayerState {
         id,
         resources: [resource(0), resource(1), resource(2), resource(3)],
         sleeping_count: section.sleeping_objects().count() as u32,
-        live: live(section)
-            .map(|(_, s)| s)
-            .filter(|s| !dies_at_start(s))
-            .map(object_state)
-            .collect(),
+        live: Vec::new(),
     }
 }
 
@@ -101,7 +118,7 @@ pub fn compare_first_checkpoint(recording: &[u8]) -> Result<Vec<PlayerComparison
             let section = players.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
             Ok(PlayerComparison {
                 id,
-                from_save: player_block(&player_state(section, id)),
+                from_save: player_block(&player_state(section, id).map_err(Error::Unmodelled)?),
                 checkpoint: *lane,
             })
         })

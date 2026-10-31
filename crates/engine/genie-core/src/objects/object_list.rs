@@ -131,7 +131,7 @@ impl ObjectList {
 
     /// Object `id` leaves the list; the last one takes its slot. None when the list does not
     /// hold it.
-    pub fn swap_remove_id(&mut self, id: i32) -> Option<Unit> {
+    pub fn swap_remove_id(&mut self, id: ObjectId) -> Option<Unit> {
         let i = self.position_of(id)?;
         self.swap_remove(i).ok()
     }
@@ -351,17 +351,17 @@ mod tests {
     #[test]
     fn a_lookup_by_id_finds_the_object_s_slot() {
         let mut l = list(&[5, 7, 9]);
-        assert_eq!(l.position_of(7), Some(1));
-        assert_eq!(l.by_id(9).map(|u| u.id.get()), Some(9));
-        assert!(l.by_id(8).is_none());
-        if let Some(u) = l.by_id_mut(5) {
+        assert_eq!(l.position_of(object_id(7)), Some(1));
+        assert_eq!(l.by_id(object_id(9)).map(|u| u.id.get()), Some(9));
+        assert!(l.by_id(object_id(8)).is_none());
+        if let Some(u) = l.by_id_mut(object_id(5)) {
             u.life.hp = 3.0;
         }
         assert_eq!(l[0].life.hp, 3.0);
         l.push(unit(11));
-        assert_eq!(l.position_of(11), Some(3));
+        assert_eq!(l.position_of(object_id(11)), Some(3));
         l.extend([unit(12), unit(13)]);
-        assert_eq!(l.position_of(13), Some(5));
+        assert_eq!(l.position_of(object_id(13)), Some(5));
         assert!(indexed_as_scanned(&l));
     }
 
@@ -373,24 +373,27 @@ mod tests {
             object_id(2),
             "the last takes its slot"
         );
-        assert_eq!((l.position_of(6), l.position_of(2)), (Some(1), None));
+        assert_eq!(
+            (l.position_of(object_id(6)), l.position_of(object_id(2))),
+            (Some(1), None)
+        );
         assert_eq!(
             l.remove(0).unwrap().id,
             object_id(1),
             "the ones after it move up"
         );
-        assert_eq!(l.position_of(6), Some(0));
+        assert_eq!(l.position_of(object_id(6)), Some(0));
         assert_eq!(l.pop().map(|u| u.id.get()), Some(5));
-        assert!(l.by_id(5).is_none());
+        assert!(l.by_id(object_id(5)).is_none());
         l.truncate(2);
         assert_eq!(l.iter().map(|u| u.id.get()).collect::<Vec<_>>(), [6, 3]);
-        assert!(l.by_id(4).is_none());
+        assert!(l.by_id(object_id(4)).is_none());
         l.retain(|u| u.id != object_id(6));
-        assert_eq!(l.position_of(3), Some(0));
+        assert_eq!(l.position_of(object_id(3)), Some(0));
         let last = l.swap_remove(0).unwrap();
         assert_eq!((last.id.get(), l.is_empty()), (3, true));
         l.clear();
-        assert!(l.by_id(3).is_none());
+        assert!(l.by_id(object_id(3)).is_none());
         assert!(indexed_as_scanned(&list(&[8, 9])));
     }
 
@@ -398,13 +401,17 @@ mod tests {
     fn an_object_out_for_its_update_is_not_in_its_list() {
         let mut l = list(&[1, 2]);
         let out = l.take_out(0).unwrap();
-        assert!(l.by_id(1).is_none(), "its slot holds the stand-in");
         assert!(
-            l.by_id(TAKEN_OUT.get()).is_none(),
-            "the stand-in is no object"
+            l.by_id(object_id(1)).is_none(),
+            "its slot holds the stand-in"
         );
+        assert!(l.by_id(TAKEN_OUT).is_none(), "the stand-in is no object");
         assert_eq!(l.put_back(out).ok(), Some(0));
-        assert_eq!(l.position_of(1), Some(0), "put back, it is found again");
+        assert_eq!(
+            l.position_of(object_id(1)),
+            Some(0),
+            "put back, it is found again"
+        );
     }
 
     fn ids(l: &ObjectList) -> Vec<i32> {
@@ -416,7 +423,10 @@ mod tests {
         let mut l = list(&[1, 2, 3]);
         let out = l.take_out(2).unwrap();
         assert_eq!(out.id, object_id(3));
-        assert!(l.by_id(3).is_none(), "its slot holds the stand-in");
+        assert!(
+            l.by_id(object_id(3)).is_none(),
+            "its slot holds the stand-in"
+        );
         assert_eq!(
             l.swap_remove(0).unwrap().id,
             object_id(1),
@@ -424,7 +434,7 @@ mod tests {
         );
         assert_eq!(l.put_back(out).ok(), Some(0));
         assert_eq!(ids(&l), [3, 2]);
-        assert_eq!(l.position_of(3), Some(0));
+        assert_eq!(l.position_of(object_id(3)), Some(0));
         assert!(indexed_as_scanned(&l));
     }
 
@@ -472,7 +482,7 @@ mod tests {
         let (a, b) = (l.take_out(0).unwrap(), l.take_out(2).unwrap());
         l.reindex();
         assert!(!l.twice, "the stand-ins are no id held twice");
-        assert_eq!(l.position_of(2), Some(1));
+        assert_eq!(l.position_of(object_id(2)), Some(1));
         assert_eq!((l.put_back(a).ok(), l.put_back(b).ok()), (Some(0), Some(2)));
         assert!(indexed_as_scanned(&l));
     }
@@ -480,20 +490,20 @@ mod tests {
     #[test]
     fn a_list_that_held_an_id_twice_finds_its_first_slot() {
         let mut l = list(&[0, 4, 0]);
-        assert_eq!(l.position_of(0), Some(0));
+        assert_eq!(l.position_of(object_id(0)), Some(0));
         let _ = l.swap_remove(0).unwrap();
         assert_eq!(
-            l.position_of(0),
+            l.position_of(object_id(0)),
             Some(0),
             "the other one, which took the slot"
         );
         let _ = l.remove(0).unwrap();
-        assert_eq!(l.position_of(0), None);
-        assert_eq!(l.position_of(4), Some(0));
+        assert_eq!(l.position_of(object_id(0)), None);
+        assert_eq!(l.position_of(object_id(4)), Some(0));
         l[0].id = object_id(6);
         l.reindex();
         assert_eq!(
-            l.position_of(6),
+            l.position_of(object_id(6)),
             Some(0),
             "an id written in place counts once reindexed"
         );
@@ -508,8 +518,8 @@ mod tests {
         assert_eq!(a, [unit(1), unit(2)]);
         let _ = a.swap_remove(0).unwrap();
         assert_ne!(a, b);
-        let ids: Vec<i32> = b.into_iter().map(|u| u.id.get()).collect();
-        assert_eq!(ids, [1, 2]);
+        let ids: Vec<ObjectId> = b.into_iter().map(|u| u.id).collect();
+        assert_eq!(ids, [object_id(1), object_id(2)]);
         let mut c = list(&[3]);
         for u in &mut c {
             u.life.hp = 2.0;

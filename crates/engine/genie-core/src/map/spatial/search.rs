@@ -6,10 +6,11 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FarmLook, Filter, LIVESTOCK_CLASS, PASTURE_CLASS,
-    PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED, Spatial, TESTED_KINDS, TRAPPERS,
-    players_seen, record_meets_segment, tile_record_id,
+    PASTURES, Placed, QUERY_HITS, Reach, RecordId, SEARCH_REUSE_SQUARED, Spatial, TESTED_KINDS,
+    TRAPPERS, players_seen, record_meets_segment, tile_record_id,
 };
 use crate::map::{Rect, Segment};
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::players::PlayerId;
@@ -42,7 +43,7 @@ impl Spatial {
         from: Point,
         to: Point,
         grow: f32,
-        ignore: &[i32],
+        ignore: &[RecordId],
     ) -> Result<bool, GenieError> {
         let rect = Rect::new(
             if to.x() <= from.x() { to.x() } else { from.x() },
@@ -78,7 +79,7 @@ impl Spatial {
             };
             let kind = if o.kind == 10 { 2 } else { o.kind };
             TESTED_KINDS.contains(&kind)
-                && !ignore.contains(&id)
+                && !ignore.contains(&RecordId::from(id))
                 && !self.gaits.get(&id).is_some_and(|g| g.moving)
                 && self.visits(p, kind, query)
                 && meets(kind, p.bounds())
@@ -90,7 +91,7 @@ impl Spatial {
     /// through the object's place setter ([`crate::objects::layers::Static::new_position`]),
     /// which moves the object with it (FD-045-D15); a tool that asks a query from another place
     /// moves the index alone.
-    pub fn set_position(&mut self, id: i32, position: Position) -> Result<(), GenieError> {
+    pub fn set_position(&mut self, id: ObjectId, position: Position) -> Result<(), GenieError> {
         if let Some(p) = self.objects.get_mut(&id) {
             let from = p.position;
             p.position = position;
@@ -273,7 +274,7 @@ impl Spatial {
     /// The search's pick of what it found ([`Spatial::search`]).
     pub(super) fn pick_found(
         &mut self,
-        (me, player): (i32, PlayerId),
+        (me, player): (ObjectId, PlayerId),
         search: &Search<'_>,
         fresh: bool,
         attack: &mut dyn crate::unit_ai::AttackPicker,
@@ -304,7 +305,7 @@ impl Spatial {
                 Ok(Found {
                     id,
                     enemies: !found[4].is_empty(),
-                    position: self.objects.get(&id).map(|p| p.position),
+                    position: id.and_then(|id| self.objects.get(&id)).map(|p| p.position),
                     fresh,
                     players: players_seen(found),
                     distance: crate::math::conversions::cvttss2si(distance),
@@ -314,7 +315,7 @@ impl Spatial {
             Pick::Look => {
                 let found = self.last_found()?;
                 Ok(Found {
-                    id: -1,
+                    id: None,
                     enemies: !found[4].is_empty(),
                     position: None,
                     fresh,
@@ -333,7 +334,7 @@ impl Spatial {
                 Ok(Found {
                     id,
                     enemies: !self.last_found()?[4].is_empty(),
-                    position: self.objects.get(&id).map(|p| p.position),
+                    position: id.and_then(|id| self.objects.get(&id)).map(|p| p.position),
                     fresh,
                     players: 0,
                     distance: -1,
@@ -357,12 +358,12 @@ impl Spatial {
     /// pastures and farms (class 49). Nothing found answers −1.
     pub(super) fn closest_object(
         &mut self,
-        me: i32,
+        me: ObjectId,
         player: PlayerId,
         filter: Filter,
         reach: &mut Reach<'_>,
         checks: ClosestChecks<'_>,
-    ) -> Result<(i32, f32), GenieError> {
+    ) -> Result<(Option<ObjectId>, f32), GenieError> {
         let at = self.objects.get(&me);
         let searcher = Searcher {
             class_10: at.is_some_and(|m| m.class == class::PREDATOR),
@@ -371,7 +372,7 @@ impl Spatial {
             trapper: at.is_some_and(|m| TRAPPERS.contains(&m.master)),
         };
         let spared = spared_list(filter.spared);
-        let mut best: Option<(i32, f32)> = None;
+        let mut best: Option<(ObjectId, f32)> = None;
         for kind in 0..5 {
             let related = related(filter.relation, kind);
             // each record is read where it is tested: the reachability check is handed the
@@ -402,7 +403,7 @@ impl Spatial {
             }
         }
         // the distance starts at `DAT_14330ec20` (−1) without a find
-        Ok(best.unwrap_or((-1, -1.0)))
+        Ok(best.map_or((None, -1.0), |(id, d)| (Some(id), d)))
     }
 
     /// `bestUnitToAttack` (`FUN_140c44680`, [`crate::unit_ai::best_target::best_unit_to_attack`]) over
@@ -421,7 +422,7 @@ impl Spatial {
     ) -> Result<crate::unit_ai::best_target::Choice, GenieError> {
         let me = attack.searcher(memory)?;
         let found = self.last_found()?;
-        let lists: [Vec<i32>; 5] = found.each_ref().map(|v| v.iter().map(|r| r.id).collect());
+        let lists: [Vec<ObjectId>; 5] = found.each_ref().map(|v| v.iter().map(|r| r.id).collect());
         let mut field = AttackField {
             picker: attack,
             reach,
@@ -435,7 +436,7 @@ impl Spatial {
 /// callers' answers for what the search reads of the world beyond the spatial index.
 pub struct SearchQuery<'a> {
     /// The searching object.
-    pub searcher: i32,
+    pub searcher: ObjectId,
     /// Its player.
     pub player: PlayerId,
     /// What it searches for.
@@ -445,7 +446,7 @@ pub struct SearchQuery<'a> {
     /// The reachability of a found object (slot 0x3d0).
     pub reach: &'a mut Reach<'a>,
     /// Whether livestock is moving (slot 0x288 not −1 and slot 0x530 107).
-    pub moving: &'a dyn Fn(i32) -> bool,
+    pub moving: &'a dyn Fn(ObjectId) -> bool,
     /// Whether a class-10 searcher passes a found object.
     pub shuns: &'a dyn Fn(&Placed) -> Result<bool, GenieError>,
     /// A farm's workers and pasture.
@@ -501,7 +502,7 @@ pub(super) const fn related(relation: i32, kind: usize) -> bool {
 /// class 10, not what `shuns` names. A workers cap and the unbuilt farm test (a state of 0)
 /// are not modelled.
 pub(super) fn closest_kept(
-    id: i32,
+    id: ObjectId,
     (seer, p): (&Seer, &Placed),
     filter: Filter,
     (player, searcher): (PlayerId, Searcher),
@@ -540,7 +541,7 @@ pub(super) fn closest_kept(
 /// (`+0x790`); a pasture is not modelled; without a master asked for, one without workers that
 /// the searcher gathers from (a fish trap for a trapper, any other for a farmer).
 pub(super) fn farm_kept(
-    id: i32,
+    id: ObjectId,
     p: &Placed,
     filter: Filter,
     searcher: Searcher,
@@ -549,7 +550,7 @@ pub(super) fn farm_kept(
     let (workers, parent) = farm(id).ok_or(GenieError::unsupported(
         "a found farm the slice does not hold",
     ))?;
-    if parent != -1 {
+    if parent.is_some() {
         return Ok(false);
     }
     if PASTURES.contains(&p.master) {
@@ -574,7 +575,7 @@ pub(super) fn farm_kept(
 
 /// The nearer of the nearest so far, `best`, and `record`, by the search's distance; a tie
 /// goes to the lower id (a NaN distance so far gives way).
-pub(super) fn nearer(best: Option<(i32, f32)>, record: &Record) -> Option<(i32, f32)> {
+pub(super) fn nearer(best: Option<(ObjectId, f32)>, record: &Record) -> Option<(ObjectId, f32)> {
     match best {
         Some((id, d)) if d <= record.distance => {
             if record.distance == d && record.id < id {

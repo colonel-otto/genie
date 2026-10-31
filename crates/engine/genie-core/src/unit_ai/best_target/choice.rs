@@ -1,5 +1,6 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -52,15 +53,15 @@ pub(super) const FEW_MOVING: i32 = 5;
 pub(super) const RETRY_MOVING: u32 = 1000;
 pub(super) const RETRY_OTHER: u32 = 2000;
 
-/// What `bestUnitToAttack` found: the object to attack (−1 for none) and the retarget entries
+/// What `bestUnitToAttack` found: the object to attack (none for none) and the retarget entries
 /// its failed paths add (`FUN_140c42320`: each target and the world time until which it is
 /// ignored), the caller's for the unit AI.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Choice {
-    /// The object, −1 for none.
-    pub target: i32,
+    /// The object, if any.
+    pub target: Option<ObjectId>,
     /// The retarget entries to add, in order.
-    pub retries: Vec<(i32, u32)>,
+    pub retries: Vec<(ObjectId, u32)>,
 }
 
 /// The object tests the statistics' main and retry walks share: the world's attack checks
@@ -70,7 +71,7 @@ pub struct Choice {
 pub(super) fn tested(
     me: &Searcher,
     ask: &Ask,
-    id: i32,
+    id: ObjectId,
     kind: usize,
     world: &mut dyn Battlefield,
 ) -> Result<Option<Thing>, crate::GenieError> {
@@ -98,7 +99,7 @@ pub(super) fn tested(
 /// combat unit's friends' scan; a neutral object's (list 3) test.
 pub(super) fn may_attack(
     me: &Searcher,
-    (id, t): (i32, &Thing),
+    (id, t): (ObjectId, &Thing),
     kind: usize,
     world: &mut dyn Battlefield,
 ) -> Result<bool, crate::GenieError> {
@@ -166,7 +167,7 @@ pub(super) fn within(me: &Searcher, ask: &Ask, gap: f32, near: f32) -> bool {
 ///
 /// With walls to attack and nothing but walls, the closest gate answers. Without statistics the
 /// retry walk adds its targets the same way (by the unit's range, not the sight, unless it
-/// may move); still none, the closest wall answers (a unit that attacks walls) or −1. Then the
+/// may move); still none, the closest wall answers (a unit that attacks walls) or none. Then the
 /// scores ([`Statistics::score`]), the ranks (a fixed entry but category 6 by its weapon range:
 /// 3 above the epsilon, else 2, a farm 1; the others 4 for a unit of priority 1 or of 0 but
 /// [`PRIORITY_0_MASTERS`], else 0) and the sort. Fewer than 5 moving entries and a current
@@ -176,7 +177,7 @@ pub(super) fn within(me: &Searcher, ask: &Ask, gap: f32, near: f32) -> bool {
 /// another rank rule); more than 5 moving entries outside an idle check: the closest moving one
 /// by its path; in an attack work state a current target on top; without path checks the top;
 /// else the first three by their paths, each one that fails ignored for 1 s (moving) or 2 s.
-/// Last the closest wall (a unit that attacks walls) or −1.
+/// Last the closest wall (a unit that attacks walls) or none.
 ///
 /// # Errors
 ///
@@ -184,7 +185,7 @@ pub(super) fn within(me: &Searcher, ask: &Ask, gap: f32, near: f32) -> bool {
 pub fn best_unit_to_attack(
     me: &Searcher,
     ask: &Ask,
-    lists: &[Vec<i32>; 5],
+    lists: &[Vec<ObjectId>; 5],
     world: &mut dyn Battlefield,
 ) -> Result<Choice, crate::GenieError> {
     let current = current_target(me, world)?;
@@ -194,7 +195,7 @@ pub fn best_unit_to_attack(
     add_extra(me, ask, &mut st, world)?;
     let mut walked = Walked::new(narrowed, walls);
     walked.walk_lists(me, ask, lists, &mut st, world)?;
-    if walls && !walked.beyond_walls && walked.gate.0 != -1 {
+    if walls && !walked.beyond_walls && walked.gate.0.is_some() {
         return Ok(Choice {
             target: walked.gate.0,
             retries: Vec::new(),
@@ -213,17 +214,19 @@ pub fn best_unit_to_attack(
     choose(me, ask, current, &st, ranked, world, walked.last_resort())
 }
 
-/// The current target, when the world holds it alive (state 2 at most) and not allied.
+/// The current target and what the world holds of it, when it holds it alive (state 2 at
+/// most) and not allied.
 fn current_target(
     me: &Searcher,
     world: &mut dyn Battlefield,
-) -> Result<Option<Thing>, crate::GenieError> {
-    if me.target == -1 {
+) -> Result<Option<(ObjectId, Thing)>, crate::GenieError> {
+    let Some(target) = me.target else {
         return Ok(None);
-    }
+    };
     Ok(world
-        .thing(me.target)?
-        .filter(|t| t.state <= 2 && !t.allied))
+        .thing(target)?
+        .filter(|t| t.state <= 2 && !t.allied)
+        .map(|t| (target, t)))
 }
 
 /// Whether the unit attacks walls: its targets' classes name a wall or a gate, or its owner's
@@ -243,15 +246,16 @@ fn attacks_walls(me: &Searcher) -> bool {
 fn add_current(
     me: &Searcher,
     ask: &Ask,
-    current: Option<Thing>,
+    current: Option<(ObjectId, Thing)>,
     st: &mut Statistics,
     world: &mut dyn Battlefield,
 ) -> Result<i32, crate::GenieError> {
-    let Some(t) = current.filter(|t| t.distance <= me.range || 0.0 < me.speed) else {
+    let Some((target, t)) = current.filter(|(_, t)| t.distance <= me.range || 0.0 < me.speed)
+    else {
         return Ok(-1);
     };
     let k = category(t.master, t.class);
-    st.add(&world.candidate(me.target, t.distance, k)?);
+    st.add(&world.candidate(target, t.distance, k)?);
     let narrows = !ask.idle
         && t.distance <= ask.distance
         && !matches!(t.class, class::BUILDING | class::FARM);
@@ -268,7 +272,7 @@ pub(super) fn add_extra(
     world: &mut dyn Battlefield,
 ) -> Result<(), crate::GenieError> {
     for &id in &ask.extra {
-        if id == me.target {
+        if Some(id) == me.target {
             continue;
         }
         let Some(t) = world.thing(id)? else {
@@ -291,14 +295,14 @@ pub(super) fn add_extra(
 
 /// The relation lists' walks (the main one and the retry walk): the category the search keeps
 /// to, whether the unit attacks walls, the retarget entries' targets the main walk leaves for
-/// the retry walk, the closest gate and wall (id, gap; −1 for none) and whether anything but
+/// the retry walk, the closest gate and wall (id, gap; none at −1) and whether anything but
 /// walls counted.
 struct Walked {
     narrowed: i32,
     walls: bool,
-    later: Vec<(i32, usize)>,
-    gate: (i32, f32),
-    wall: (i32, f32),
+    later: Vec<(ObjectId, usize)>,
+    gate: (Option<ObjectId>, f32),
+    wall: (Option<ObjectId>, f32),
     beyond_walls: bool,
 }
 
@@ -309,8 +313,8 @@ impl Walked {
             narrowed,
             walls,
             later: Vec::new(),
-            gate: (-1, -1.0),
-            wall: (-1, -1.0),
+            gate: (None, -1.0),
+            wall: (None, -1.0),
             beyond_walls: false,
         }
     }
@@ -323,7 +327,7 @@ impl Walked {
         &mut self,
         me: &Searcher,
         ask: &Ask,
-        lists: &[Vec<i32>; 5],
+        lists: &[Vec<ObjectId>; 5],
         st: &mut Statistics,
         world: &mut dyn Battlefield,
     ) -> Result<(), crate::GenieError> {
@@ -333,7 +337,7 @@ impl Walked {
                 if STATISTICS <= st.entries.len() {
                     return Ok(());
                 }
-                if id == me.target || ask.extra.contains(&id) {
+                if Some(id) == me.target || ask.extra.contains(&id) {
                     continue;
                 }
                 if me.retries.contains(&id) {
@@ -347,7 +351,7 @@ impl Walked {
                     // The wall's and the gate's classes.
                     class::GATE => {
                         if self.gate.1 < 0.0 || gap < self.gate.1 {
-                            self.gate = (id, gap);
+                            self.gate = (Some(id), gap);
                         }
                         if !self.walls {
                             continue;
@@ -398,7 +402,7 @@ impl Walked {
         &self,
         me: &Searcher,
         ask: &Ask,
-        id: i32,
+        id: ObjectId,
         kind: usize,
         near: f32,
         world: &mut dyn Battlefield,
@@ -419,16 +423,16 @@ impl Walked {
 
     /// A wall `id` at `gap`: the closest wall when it is the first or nearer; whether it counts
     /// (only for a unit that attacks walls).
-    fn note_wall(&mut self, id: i32, gap: f32) -> bool {
+    fn note_wall(&mut self, id: ObjectId, gap: f32) -> bool {
         if self.wall.1 < 0.0 || gap < self.wall.1 {
-            self.wall = (id, gap);
+            self.wall = (Some(id), gap);
         }
         self.walls
     }
 
-    /// The answer without a target: the closest wall for a unit that attacks walls, else −1.
-    const fn last_resort(&self) -> i32 {
-        if self.walls { self.wall.0 } else { -1 }
+    /// The answer without a target: the closest wall for a unit that attacks walls, else none.
+    const fn last_resort(&self) -> Option<ObjectId> {
+        if self.walls { self.wall.0 } else { None }
     }
 }
 
@@ -466,58 +470,60 @@ fn rank_entries(
 fn choose(
     me: &Searcher,
     ask: &Ask,
-    current: Option<Thing>,
+    current: Option<(ObjectId, Thing)>,
     st: &Statistics,
     ranked: bool,
     world: &mut dyn Battlefield,
-    last_resort: i32,
+    last_resort: Option<ObjectId>,
 ) -> Result<Choice, crate::GenieError> {
     let range = me.range;
     let mut choice = Choice::default();
-    choice.target = if current_holds(me, ask, current, st, world)? {
-        me.target
+    choice.target = if let Some(target) = current_holds(me, ask, current, st, world)? {
+        Some(target)
     } else if let Some(id) = quick_pick(st, ranked, range, world)? {
-        id
+        Some(id)
     } else {
-        let mut tried = -1;
+        let mut tried = None;
         if !ask.idle && FEW_MOVING < st.moving {
+            // none at the largest float: a gone target's path fails (slot 0x3d0)
             let closest = st.closest_moving.1;
-            if ask.paths == 0 || world.path(closest, range)? {
+            if ask.paths == 0 || closest.map_or(Ok(false), |c| world.path(c, range))? {
                 choice.target = closest;
                 return Ok(choice);
             }
             tried = closest;
         }
         let top = st.entries.checked(*st.order.checked(0)?)?.id;
-        if ask.work_state && top == me.target {
-            me.target
-        } else if ask.paths == 0 {
-            top
+        // the game's two branches: the unit's own target when it is the top, else the top
+        // without paths; either is the top
+        if (ask.work_state && Some(top) == me.target) || ask.paths == 0 {
+            Some(top)
         } else {
-            path_pick(me, st, tried, world, &mut choice.retries)?.unwrap_or(last_resort)
+            path_pick(me, st, tried, world, &mut choice.retries)?.or(last_resort)
         }
     };
     Ok(choice)
 }
 
-/// Whether the current target answers: fewer than 5 moving entries and a current target that
+/// The current target when it answers: fewer than 5 moving entries and a current target that
 /// moves (or nothing moves at all), outside an idle check, when it engages or nothing is armed,
 /// by its path (without path checks at once).
 fn current_holds(
     me: &Searcher,
     ask: &Ask,
-    current: Option<Thing>,
+    current: Option<(ObjectId, Thing)>,
     st: &Statistics,
     world: &mut dyn Battlefield,
-) -> Result<bool, crate::GenieError> {
-    let Some(t) = current else {
-        return Ok(false);
+) -> Result<Option<ObjectId>, crate::GenieError> {
+    let Some((target, t)) = current else {
+        return Ok(None);
     };
-    Ok(st.moving < FEW_MOVING
+    let holds = st.moving < FEW_MOVING
         && ((t.speed < EPSILON && st.moving == 0) || 0.0 < t.speed)
         && !ask.idle
-        && (world.engages(me.target)? || st.armed < 1)
-        && (ask.paths == 0 || world.path(me.target, me.range)?))
+        && (world.engages(target)? || st.armed < 1)
+        && (ask.paths == 0 || world.path(target, me.range)?);
+    Ok(holds.then_some(target))
 }
 
 /// The first of the first three entries with a quick path: a moving one, or any with nothing
@@ -527,7 +533,7 @@ fn quick_pick(
     ranked: bool,
     range: f32,
     world: &mut dyn Battlefield,
-) -> Result<Option<i32>, crate::GenieError> {
+) -> Result<Option<ObjectId>, crate::GenieError> {
     for &i in st.order.iter().take(3) {
         let e = *st.entries.checked(i)?;
         if (e.moving || st.moving < 1 || !ranked) && world.quick_path(e.id, range)? {
@@ -542,13 +548,13 @@ fn quick_pick(
 fn path_pick(
     me: &Searcher,
     st: &Statistics,
-    tried: i32,
+    tried: Option<ObjectId>,
     world: &mut dyn Battlefield,
-    retries: &mut Vec<(i32, u32)>,
-) -> Result<Option<i32>, crate::GenieError> {
+    retries: &mut Vec<(ObjectId, u32)>,
+) -> Result<Option<ObjectId>, crate::GenieError> {
     for &i in st.order.iter().take(3) {
         let e = *st.entries.checked(i)?;
-        if e.id != tried && world.path(e.id, me.range)? {
+        if Some(e.id) != tried && world.path(e.id, me.range)? {
             return Ok(Some(e.id));
         }
         let wait = if e.moving { RETRY_MOVING } else { RETRY_OTHER };

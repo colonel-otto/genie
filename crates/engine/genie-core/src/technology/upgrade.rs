@@ -426,18 +426,18 @@ impl World {
             && let Some(placed) = self.spatial.get(id).copied()
             && let Some(sight) = self.spatial.sight.as_mut()
         {
-            let now = sight.seer(id.get()).map_or(old.line_of_sight, |s| s.los);
+            let now = sight.seer(id).map_or(old.line_of_sight, |s| s.los);
             let los = (now - old.line_of_sight) + new.line_of_sight;
-            sight.sight_off(id.get(), placed.position, placed.radius, false, false)?;
+            sight.sight_off(id, placed.position, placed.radius, false, false)?;
             let _ = sight.sight_on_los(
-                id.get(),
+                id,
                 placed.position,
                 placed.radius,
                 false,
                 crate::math::conversions::cvttss2si(los),
                 false,
             )?;
-            if let Some(s) = sight.seer_mut(id.get()) {
+            if let Some(s) = sight.seer_mut(id) {
                 s.los = los;
                 if !keep {
                     s.master = new.id;
@@ -679,6 +679,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
+    use crate::objects::ObjectId;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
     use crate::objects::masters::{MasterId, ids};
@@ -1035,7 +1036,8 @@ mod tests {
             ..Task::default()
         };
         let mut t = crate::world::tests::forage_world();
-        t.gather_command(PlayerId::new(1), 0, 600).unwrap();
+        t.gather_command(PlayerId::new(1), 0, object_id(600))
+            .unwrap();
         let mut old = t.masters[1].get(master_id(120)).unwrap().clone();
         old.tasks
             .push(task(TaskId::test(3), action_type::BUILD, 3, 0.25));
@@ -1065,7 +1067,7 @@ mod tests {
         };
         u.actions
             .set_build(Some(crate::construction::build::tests::started(
-                10028,
+                object_id(10028),
                 Position::new(30.0, 88.0, 0.0),
                 1.0,
                 build,
@@ -1080,7 +1082,7 @@ mod tests {
             .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify {
                 state: 0,
                 task: waiting,
-                target: 10028,
+                target: object_id(10028),
             }));
         t.actions_take_master(Place::Live(PlayerId::new(1), 0), &old, &new)
             .unwrap();
@@ -1144,7 +1146,8 @@ mod tests {
             soldier(master_id(5), 60),
             soldier(master_id(0x67f), 60),
         ])];
-        t.track_add(PlayerId::new(0), 10, master_id(4)).unwrap();
+        t.track_add(PlayerId::new(0), object_id(10), master_id(4))
+            .unwrap();
         t
     }
 
@@ -1163,8 +1166,14 @@ mod tests {
                 .collect()
         };
         let mut t = upgrade_world();
-        t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 2, Some(10))
-            .unwrap();
+        t.upgrade_objects(
+            PlayerId::new(0),
+            master_id(4),
+            master_id(5),
+            2,
+            Some(object_id(10)),
+        )
+        .unwrap();
         let own = t.players[0].objects[0].own_master.as_deref().unwrap();
         assert_eq!((own.id, own.hit_points), (master_id(4), 60));
         assert_eq!(hp(&t), [30.0, 20.0, 20.0]);
@@ -1198,11 +1207,14 @@ mod tests {
         t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(0x67f), 0, None)
             .unwrap();
         let tracker = &t.players[0].tracker;
-        assert_eq!((tracker.list(0x67f), tracker.list(4)), (&[10][..], &[][..]));
+        assert_eq!(
+            (tracker.list(0x67f), tracker.list(4)),
+            (&[Some(object_id(10))][..], &[][..])
+        );
         let mut t = upgrade_world();
         t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 0, None)
             .unwrap();
-        assert_eq!(t.players[0].tracker.list(4), [10]);
+        assert_eq!(t.players[0].tracker.list(4), [Some(object_id(10))]);
     }
     /// A world of player 0 holding `objects`, its masters `masters`, its graphics `graphics`
     /// (each animated) and 300 attributes.
@@ -1223,7 +1235,8 @@ mod tests {
     #[test]
     fn an_upgrade_stops_a_top_action_the_new_master_has_no_task_for() {
         let mut t = crate::world::tests::forage_world();
-        t.gather_command(PlayerId::new(1), 0, 600).unwrap();
+        t.gather_command(PlayerId::new(1), 0, object_id(600))
+            .unwrap();
         let old = t.masters[1].get(master_id(120)).unwrap().clone();
         let bare = Master {
             id: master_id(121),
@@ -1332,7 +1345,7 @@ mod tests {
             line_of_sight: 6.0,
             ..Master::default()
         };
-        let sighted = |state: u8, inside: Option<i32>, keep: bool| {
+        let sighted = |state: u8, inside: Option<ObjectId>, keep: bool| {
             let mut u = object(10, master_id(4), state, 10.0);
             u.place_for_test(Position::new(5.5, 5.5, 0.0));
             u.life.inside = inside;
@@ -1368,7 +1381,7 @@ mod tests {
                 vec![false],
             );
             v.add_seer(
-                10,
+                object_id(10),
                 crate::vision::visibility::Seer {
                     player: PlayerId::new(0),
                     master: master_id(4),
@@ -1384,12 +1397,20 @@ mod tests {
             t.spatial.sight = Some(v);
             t.upgrade_sight(Place::Live(PlayerId::new(0), 0), (&old, &new), keep)
                 .unwrap();
-            let seer = t.spatial.sight.as_ref().and_then(|v| v.seer(10)).copied();
+            let seer = t
+                .spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(object_id(10)))
+                .copied();
             seer.map(|s| (s.los, s.master))
         };
         assert_eq!(sighted(2, None, false), Some((7.0, master_id(5))));
         assert_eq!(sighted(2, None, true), Some((7.0, master_id(4))));
-        assert_eq!(sighted(2, Some(99), false), Some((5.0, master_id(4))));
+        assert_eq!(
+            sighted(2, Some(object_id(99)), false),
+            Some((5.0, master_id(4)))
+        );
         assert_eq!(sighted(4, None, false), Some((5.0, master_id(4))));
     }
 

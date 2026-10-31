@@ -47,8 +47,8 @@ pub struct MoveToReads<'a> {
 /// (`FUN_14118f680`) and its object state (`+0x640`), None where the world does not hold it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WalkTo {
-    /// Its id.
-    pub id: i32,
+    /// Its id, none for a `MoveTo` that holds no object ([`WalkTo::unheld`]).
+    pub id: Option<ObjectId>,
     /// Its place, the `MoveTo`'s point (`+0x38`).
     pub at: Position,
     /// The unit's footprint gap to it.
@@ -63,7 +63,7 @@ impl WalkTo {
     #[must_use]
     pub const fn unheld(at: Position) -> Self {
         Self {
-            id: -1,
+            id: None,
             at,
             gap: NO_TARGET_GAP,
             state: None,
@@ -78,7 +78,7 @@ impl WalkTo {
     const fn held(&self) -> (Option<ObjectId>, f32) {
         match self.state {
             Some(s) if LAST_TAKEN < s => (None, NO_TARGET_GAP),
-            _ => (ObjectId::of_field(self.id), self.gap),
+            _ => (self.id, self.gap),
         }
     }
 }
@@ -119,7 +119,7 @@ impl<'g> MoveToReads<'g> {
     /// # Errors
     ///
     /// An object whose master its player's table lacks.
-    pub fn walk_to(&self, w: &World, id: i32) -> Result<Option<WalkTo>, GenieError> {
+    pub fn walk_to(&self, w: &World, id: Option<ObjectId>) -> Result<Option<WalkTo>, GenieError> {
         let Some((player, t)) = w.object(id) else {
             return Ok(None);
         };
@@ -251,6 +251,7 @@ impl Unit {
 mod tests {
     use super::*;
     use crate::movement::move_to::MoveDefaults;
+    use crate::test_ids::object_id;
 
     /// The sub-action `MoveTo`s (`FUN_140aa0df0`, `FUN_140aa0d30`, then `FUN_140a977e0`): one to an
     /// object takes its maker's sprite, else the object default; one to a point the point default;
@@ -275,7 +276,7 @@ mod tests {
             ground: Footprint::new(0.2, 0.2),
         };
         let house = WalkTo {
-            id: 10028,
+            id: Some(object_id(10028)),
             at: Position::new(10.5, 10.5, 0.0),
             gap: 5.0,
             state: Some(0),

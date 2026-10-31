@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
@@ -55,12 +56,12 @@ impl World {
         class: Option<ClassId>,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        let ids: Vec<i32> = self
+        let ids: Vec<ObjectId> = self
             .players
             .player(p)?
             .objects
             .iter()
-            .map(|u| u.id.get())
+            .map(|u| u.id)
             .collect();
         for id in ids {
             let Some((_, u)) = self.object(id) else {
@@ -88,7 +89,7 @@ impl World {
     pub(super) fn garrison_volleys(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         after: bool,
     ) -> Result<(), GenieError> {
         use crate::math::fmath::at_most_or_unordered;
@@ -142,7 +143,7 @@ impl World {
     pub(super) fn show_changed_sprite(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         attribute: u8,
     ) -> Result<(), GenieError> {
         use crate::objects::masters::attribute as a;
@@ -366,7 +367,7 @@ impl World {
     /// takes the flag as that): a master with height above 0 (the record's `+0x658`, which the
     /// slice holds with the place's record, otherwise) has the obstruction manager drop the
     /// object's record (`FUN_141055b40`) and the mesh its shape (`+0x660`, `FUN_141053840`).
-    pub(super) fn take_record(&mut self, id: i32, inside: bool, master: &Master) {
+    pub(super) fn take_record(&mut self, id: ObjectId, inside: bool, master: &Master) {
         if inside {
             return;
         }
@@ -383,7 +384,7 @@ impl World {
     /// `FUN_14118c540` on object `id`: below state 7, not inside another (`+0x686`) and of a
     /// master with height above 0, it takes its record again (`FUN_141056460`: by the master's
     /// obstruction kind, not 0 or 12, and class, not 0) and its mesh shape.
-    pub(super) fn give_record(&mut self, id: i32, master: &Master) {
+    pub(super) fn give_record(&mut self, id: ObjectId, master: &Master) {
         let Some((_, u)) = self.object(id) else {
             return;
         };
@@ -496,16 +497,11 @@ impl World {
         for id in ids {
             match attribute {
                 a::LINE_OF_SIGHT => {
-                    if let Some(s) = self
-                        .spatial
-                        .sight
-                        .as_mut()
-                        .and_then(|v| v.seer_mut(id.get()))
-                    {
+                    if let Some(s) = self.spatial.sight.as_mut().and_then(|v| v.seer_mut(id)) {
                         s.los = master.line_of_sight;
                     }
                 }
-                a::SIZE_Z => self.spatial.set_tall(id.get(), master.tall),
+                a::SIZE_Z => self.spatial.set_tall(id, master.tall),
                 _ => {}
             }
         }

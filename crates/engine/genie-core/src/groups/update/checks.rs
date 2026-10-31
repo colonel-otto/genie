@@ -16,6 +16,7 @@ use crate::objects::masters::master_type::ACTION;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MOVING;
 use crate::objects::unit::Unit;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -174,7 +175,7 @@ impl World {
             return Err(e);
         }
         Ok(u.top_target()
-            .filter(|&t| -1 < t)
+            .filter(|&t| !t.is_recyclable())
             .and_then(|t| self.world_object(t)))
     }
 
@@ -378,7 +379,7 @@ impl World {
     ///
     /// An object of a master the slice does not have, or with an action the slice does not
     /// model.
-    pub fn member_idle(&self, id: i32) -> Result<bool, GenieError> {
+    pub fn member_idle(&self, id: impl ObjectKey) -> Result<bool, GenieError> {
         let Some(object) = self.world_object(id) else {
             return Ok(false);
         };
@@ -403,7 +404,7 @@ impl World {
     /// An object of a master the slice does not have, with an action the slice does not model,
     /// a trade cart (whose goods the slice does not hold), and a standing sprite the slice's
     /// graphics lack.
-    pub(crate) fn show_standing(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn show_standing(&mut self, id: ObjectId) -> Result<(), GenieError> {
         self.show_sprite(id, Shown::Standing).map(|_| ())
     }
 
@@ -419,7 +420,7 @@ impl World {
     /// # Errors
     ///
     /// As [`World::show_standing`].
-    pub(crate) fn show_walking(&mut self, id: i32) -> Result<bool, GenieError> {
+    pub(crate) fn show_walking(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.show_sprite(id, Shown::Walking)
     }
 
@@ -432,7 +433,7 @@ impl World {
     /// # Errors
     ///
     /// As [`World::show_standing`], a trade cart aside.
-    pub(crate) fn show_running(&mut self, id: i32) -> Result<bool, GenieError> {
+    pub(crate) fn show_running(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.show_sprite(id, Shown::Running)
     }
 
@@ -442,7 +443,7 @@ impl World {
     /// # Errors
     ///
     /// A trade cart, or an action the slice does not model ([`World::show_sprite`]).
-    fn sprite_to_show(&self, id: i32, shown: Shown) -> Result<Option<i16>, GenieError> {
+    fn sprite_to_show(&self, id: ObjectId, shown: Shown) -> Result<Option<i16>, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(None);
         };
@@ -475,7 +476,7 @@ impl World {
     }
 
     /// Slots 0x660, 0x658 and 0x650 of object `id` ([`Shown`]): whether it shows the sprite.
-    pub(super) fn show_sprite(&mut self, id: i32, shown: Shown) -> Result<bool, GenieError> {
+    pub(super) fn show_sprite(&mut self, id: ObjectId, shown: Shown) -> Result<bool, GenieError> {
         let Some(sprite) = self.sprite_to_show(id, shown)? else {
             return Ok(false);
         };
@@ -502,15 +503,13 @@ impl World {
 
     /// `FUN_141016870`: the group's lead (`+0xc4`) is the member the world holds nearest (in 3D,
     /// slot 0x520's place) the target's place (`mCurrentTarget`'s original position), the first
-    /// of equals; -1 without one.
+    /// of equals; none without one.
     #[must_use]
-    pub fn nearest_to_target(&self, group: i32) -> i32 {
-        let Some(g) = self.groups.get(group) else {
-            return -1;
-        };
+    pub fn nearest_to_target(&self, group: i32) -> Option<ObjectId> {
+        let g = self.groups.get(group)?;
         let to = g.current_target.original_position;
         let mut best = f32::MAX;
-        let mut lead = -1;
+        let mut lead = None;
         for m in &g.members {
             let Some((_, u)) = self.object(m.id) else {
                 continue;
@@ -519,7 +518,7 @@ impl World {
             let d = crate::math::fmath::sub(crate::groups::attack::moved_place(u), to);
             let squared = d.x() * d.x() + d.height() * d.height() + d.y() * d.y();
             if squared < best {
-                lead = m.id;
+                lead = Some(m.id);
                 best = squared;
             }
         }

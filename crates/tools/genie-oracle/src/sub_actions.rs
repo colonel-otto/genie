@@ -364,7 +364,7 @@ pub(super) fn gather_point(
     Some(genie_core::commands::GatherPoint {
         state: b.gather_point_exists,
         point: Position::new(b.gather_point_x, b.gather_point_y, b.gather_point_z),
-        target: b.gather_point_target,
+        target: ObjectId::of_field(b.gather_point_target),
         target_master: MasterId::of_data(b.gather_point_target_master),
     })
 }

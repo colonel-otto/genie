@@ -31,6 +31,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::vision::registry::{MASK, Registry};
 use crate::world::slots::CheckedIndex;
@@ -124,7 +125,7 @@ pub struct Extent {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct VisibleResource {
     /// The object (`+0xc`).
-    pub id: i32,
+    pub id: ObjectId,
     /// Its distance from the point of the last search that chose it (`+0x10`,
     /// [`VisibleResources::closest`]); 0 when added.
     pub distance: f32,
@@ -152,7 +153,7 @@ impl VisibleResources {
     /// puts its record last in list `group`, doubling a full list's capacity. The masters' groups
     /// are 0 to 4 and every manager holds 5 lists; the game writes past its lists for a group out
     /// of range.
-    pub fn add(&mut self, id: i32, group: u8, x: f32, y: f32) {
+    pub fn add(&mut self, id: ObjectId, group: u8, x: f32, y: f32) {
         let g = usize::from(group);
         let (Some(list), Some(capacity)) = (self.lists.get_mut(g), self.capacities.get_mut(g))
         else {
@@ -173,7 +174,7 @@ impl VisibleResources {
     /// `Remove_Resource` (`FUN_141289b80`): the first record of the object `id` in list `group`
     /// takes the last record and the list shortens. Its index; 0 for an empty list, -1 when the
     /// object is not in it or the manager has no lists.
-    pub fn remove(&mut self, id: i32, group: u8) -> i32 {
+    pub fn remove(&mut self, id: ObjectId, group: u8) -> i32 {
         let Some(list) = self.lists.get_mut(usize::from(group)) else {
             return -1;
         };
@@ -190,7 +191,7 @@ impl VisibleResources {
     /// `Get_Closest_Resource` (`FUN_141289000`): the record of list `group` nearest (`x`, `y`)
     /// (squared, the first of equals) whose object is not in `skip`; its distance becomes the
     /// root. None for a group out of range or an empty list.
-    pub fn closest(&mut self, x: f32, y: f32, group: i32, skip: &[i32]) -> Option<usize> {
+    pub fn closest(&mut self, x: f32, y: f32, group: i32, skip: &[ObjectId]) -> Option<usize> {
         let list = usize::try_from(group)
             .ok()
             .and_then(|g| self.lists.get_mut(g))?;
@@ -244,7 +245,7 @@ pub struct Visibility {
     /// The tiles a computer player's map explored that its AI module has not heard of yet, in
     /// order ([`Visibility::take_ai_tiles`]).
     ai_tiles: Vec<(PlayerId, Tile)>,
-    seers: BTreeMap<i32, Seer>,
+    seers: BTreeMap<ObjectId, Seer>,
     /// The objects-in-sight registry, when the slice holds it (the save does not).
     pub registry: Option<Registry>,
     /// Each player's tile list (`RGE_Tile_List`, player `+0x180`, not saved): the tiles its map
@@ -378,7 +379,7 @@ impl Visibility {
     /// ([`VisibleResources::remove`]).
     pub fn forget_resource(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         group: u8,
     ) -> Result<(), GenieError> {
@@ -402,23 +403,23 @@ impl Visibility {
     }
 
     /// The object `id` comes into the players' sight with `seer`.
-    pub fn add_seer(&mut self, id: i32, seer: Seer) {
+    pub fn add_seer(&mut self, id: ObjectId, seer: Seer) {
         let _ = self.seers.insert(id, seer);
     }
 
     /// The object `id` leaves the sight.
-    pub fn remove_seer(&mut self, id: i32) {
+    pub fn remove_seer(&mut self, id: ObjectId) {
         let _ = self.seers.remove(&id);
     }
 
     /// What the object `id`'s sight reads of it.
     #[must_use]
-    pub fn seer(&self, id: i32) -> Option<&Seer> {
-        self.seers.get(&id)
+    pub fn seer(&self, id: impl ObjectKey) -> Option<&Seer> {
+        self.seers.get(&id.key()?)
     }
 
     /// The same, to change.
-    pub fn seer_mut(&mut self, id: i32) -> Option<&mut Seer> {
+    pub fn seer_mut(&mut self, id: ObjectId) -> Option<&mut Seer> {
         self.seers.get_mut(&id)
     }
 

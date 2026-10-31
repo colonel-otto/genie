@@ -6,12 +6,13 @@
 
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
+use crate::objects::ObjectId;
 
 /// What the block reads from one object of a player's live list.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ObjectState {
     /// The object's id.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master.
     pub main_id: i16,
     /// Its state.
@@ -65,7 +66,7 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
             w[7] = w[7].wrapping_add(cvttss2si(axis * 100.0) as u32);
         }
         w[9] = w[9].wrapping_add(action_checksum(o));
-        w[10] = w[10].wrapping_add(o.id as u32);
+        w[10] = w[10].wrapping_add(o.id.get() as u32);
     }
     // w[5] (ObjectWaypoints) stays 0: the engine zeroes it and never writes it.
     w[6] = player.live.len() as u32;
@@ -85,10 +86,11 @@ fn action_checksum(o: &ObjectState) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
 
     fn object() -> ObjectState {
         ObjectState {
-            id: 1,
+            id: object_id(1),
             main_id: 4,
             state: 2,
             ..ObjectState::default()
@@ -168,11 +170,11 @@ mod tests {
     fn sums_wrap_in_32_bits() {
         let p = player(vec![
             ObjectState {
-                id: i32::MAX,
+                id: object_id(i32::MAX),
                 ..object()
             },
             ObjectState {
-                id: i32::MAX,
+                id: object_id(i32::MAX),
                 ..object()
             },
         ]);

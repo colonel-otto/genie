@@ -45,6 +45,6 @@ pub(crate) fn update_sub_actions(
         rng: beside.sprite_rng,
         graphic: move_to.sprite.or(how.otherwise),
     });
-    let mut inbox = Inbox::of(&mut unit.ai, unit.id.get(), unit.life.state);
+    let mut inbox = Inbox::of(&mut unit.ai, unit.id, unit.life.state);
     move_to.sub_update(&mut walk, how.ask, how.gives_up, held, shown, &mut inbox)
 }

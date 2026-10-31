@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Tile;
+use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -22,7 +23,7 @@ impl UnitView<'_, '_> {
     /// reads before it takes the build ([`crate::unit_ai::UnitSide::builds`]): 0 for a
     /// foundation the world does not hold (`FUN_1415417a0`), 1 with a Build on top (its slot
     /// 0x48), else whether slot 0x820 finds a task ([`UnitView::build_found`]).
-    pub(crate) fn builds_on(&self, foundation: i32) -> Result<bool, GenieError> {
+    pub(crate) fn builds_on(&self, foundation: ObjectId) -> Result<bool, GenieError> {
         let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
         if self.find_in(view, foundation).is_none() {
             return Ok(false);
@@ -37,8 +38,8 @@ impl UnitView<'_, '_> {
     /// Object `id` as slot 0x380 finds it (`FUN_1415417a0`): the unit, the player's live list,
     /// another player's ([`crate::unit_ai::world_view::Foreign::find`]). The owner's sleeping
     /// list holds only objects of a type below 30, never a building.
-    fn find_in<'v>(&'v self, view: OthersRef<'v>, id: i32) -> Option<(PlayerId, &'v Unit)> {
-        if id == self.unit.id.get() {
+    fn find_in<'v>(&'v self, view: OthersRef<'v>, id: ObjectId) -> Option<(PlayerId, &'v Unit)> {
+        if id == self.unit.id {
             return Some((self.player, &*self.unit));
         }
         view.find(id)
@@ -47,9 +48,9 @@ impl UnitView<'_, '_> {
     /// Slot 0x380's search without a Build on top: the foundation (false when the world does not
     /// hold it), then slot 0x820 with any action type and the switch ([`task_search`] on the
     /// foundation and its main building); false without a task.
-    fn build_found(&self, foundation: i32) -> Result<bool, GenieError> {
+    fn build_found(&self, foundation: ObjectId) -> Result<bool, GenieError> {
         let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
-        let find = |id: i32| self.find_in(view, id);
+        let find = |id: ObjectId| self.find_in(view, id);
         let Some((_, f)) = find(foundation) else {
             return Ok(false);
         };
@@ -68,7 +69,7 @@ impl UnitView<'_, '_> {
         let unit = &*self.unit;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: own,
             player: self.player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -97,8 +98,8 @@ impl UnitView<'_, '_> {
     /// `FUN_140c1c7c0`: the flood ([`crate::unit_ai::flood_search`]) from the unit's tile over the
     /// larger of its search radius (slot 0x2c8) and its line of sight, truncated, testing each tile
     /// it reaches (`FUN_140c2b950`: the first object of its tile's list, in order, of type 80 or
-    /// more in state 0 of the unit's player); −1 for none.
-    pub(crate) fn own_foundation_near(&self) -> Result<i32, GenieError> {
+    /// more in state 0 of the unit's player), if any.
+    pub(crate) fn own_foundation_near(&self) -> Result<Option<ObjectId>, GenieError> {
         let unit = &*self.unit;
         let master = unit.master(&self.c.w.masters, self.player)?;
         let r = if master.search_radius <= master.line_of_sight {
@@ -113,7 +114,7 @@ impl UnitView<'_, '_> {
             &self.c.w.masters,
             &self.c.w.spatial,
         );
-        let foundation_on = |x: i32, y: i32| -> Result<Option<i32>, GenieError> {
+        let foundation_on = |x: i32, y: i32| -> Result<Option<ObjectId>, GenieError> {
             for (id, p) in spatial.objects_on(x, y) {
                 if p.player != player {
                     continue;
@@ -128,7 +129,7 @@ impl UnitView<'_, '_> {
             }
             Ok(None)
         };
-        Ok(crate::unit_ai::flood_search(Tile::new(ux, uy), r, foundation_on)?.unwrap_or(-1))
+        crate::unit_ai::flood_search(Tile::new(ux, uy), r, foundation_on)
     }
 
     /// The base handler's case 0x216: the unit's closest spot beside the foundation `site`
@@ -138,7 +139,7 @@ impl UnitView<'_, '_> {
     /// [`Spatial::spot_off`]: crate::map::spatial::Spatial::spot_off
     pub(crate) fn spot_off_footprint(
         &mut self,
-        site: i32,
+        site: ObjectId,
         radius: Footprint,
     ) -> Result<crate::unit_ai::OffFootprint, GenieError> {
         let unit = &*self.unit;
@@ -147,8 +148,8 @@ impl UnitView<'_, '_> {
             self.player,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
         );
-        let named = |id: i32| {
-            let found = if id == unit.id.get() {
+        let named = |id: ObjectId| {
+            let found = if id == unit.id {
                 Some((player, unit))
             } else {
                 others.find(id)
@@ -167,7 +168,7 @@ impl UnitView<'_, '_> {
                 ))?;
                 self.c.w.spatial.spot_off(
                     unit.position(),
-                    (unit.id.get(), mover.stats.radius.x()),
+                    (unit.id, mover.stats.radius.x()),
                     mover.stats.restriction_mask,
                     (placed.position, radius),
                     false,
@@ -175,14 +176,14 @@ impl UnitView<'_, '_> {
             }
             None => None,
         };
-        let target = unit.top_target().filter(|&t| t != -1);
+        let target = unit.top_target();
         Ok(crate::unit_ai::OffFootprint {
             spot,
             z: unit.position().z(),
             class: master.class,
             computer: self.computer,
-            player: player.index() as i32,
-            site: (site != -1).then(|| named(site)).flatten(),
+            player,
+            site: named(site),
             action_target: target.and_then(named),
         })
     }

@@ -51,15 +51,14 @@ impl World {
     pub fn group_command(
         &mut self,
         group: i32,
-        target: i32,
+        target: Option<ObjectId>,
         point: Point,
         order: CommandArgs,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held_mut(group)?;
         g.flags &= !0x20;
-        let held = ObjectId::of_field(target).filter(|t| self.world_object(t.get()).is_some());
-        let target = ObjectId::field(held);
-        let task = match held {
+        let target = target.filter(|&t| self.world_object(t).is_some());
+        let task = match target {
             Some(t) => self.group_task(group, t, point, order)?,
             None => None,
         };
@@ -85,7 +84,7 @@ impl World {
                 },
             )?;
         }
-        if let (Some(task), Some(held)) = (task, held) {
+        if let (Some(task), Some(held)) = (task, target) {
             if ATTACK_COMMANDS.contains(&i32::from(task.command)) {
                 moved = self.attack_command(group, held, point, (task, order), moved)?;
             } else if GENERAL_COMMANDS.contains(&i32::from(task.command)) {
@@ -133,7 +132,7 @@ impl World {
         let g = self.groups.held_mut(group)?;
         let entry = |approved: u8| GroupCommand {
             command,
-            target_id: target.get(),
+            target_id: Some(target),
             range,
             point: BVector::new(point.x(), 0.0, point.y()),
             approved,
@@ -163,7 +162,7 @@ impl World {
         }
         let moved = self.command_move_to(
             group,
-            target.get(),
+            Some(target),
             point,
             MoveTo {
                 range,
@@ -175,13 +174,12 @@ impl World {
         if !moved {
             return Ok(false);
         }
-        self.raise_attack_ranges(group, target.get())?;
-        let at = self.moved_place_of(target.get())?;
-        let radius = self.target_radius(target.get())?;
+        self.raise_attack_ranges(group, target)?;
+        let at = self.moved_place_of(target)?;
+        let radius = self.target_radius(target)?;
         let g = self.groups.held_mut(group)?;
         g.current_target = crate::groups::TargetData {
-            target: target.get(),
-            kind: 1,
+            target: crate::groups::GroupTarget::Object(target),
             original_position: at,
             range,
             target_radius: radius,
@@ -209,7 +207,7 @@ impl World {
         let g = self.groups.held_mut(group)?;
         let entry = |approved: u8| GroupCommand {
             command: i32::from(task.command),
-            target_id: target.get(),
+            target_id: Some(target),
             range: task.range.unwrap_or(0.0),
             point: BVector::new(point.x(), 0.0, point.y()),
             approved,

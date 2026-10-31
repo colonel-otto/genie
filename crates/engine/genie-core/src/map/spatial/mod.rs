@@ -17,6 +17,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
@@ -29,6 +30,7 @@ mod footprint;
 mod grid;
 mod objects;
 mod pather;
+mod record_id;
 mod search;
 mod sight;
 
@@ -38,6 +40,7 @@ pub use self::pather::{Hit, SmoothingWalls, tile_record_id};
 use self::pather::{WalkTest, record_meets_segment};
 #[cfg(test)]
 use self::pather::{box_meets_segment, ccw};
+pub use self::record_id::RecordId;
 pub use self::search::SearchQuery;
 
 /// The range of `ClosestObject`'s reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
@@ -54,7 +57,7 @@ const LIVESTOCK_CLASS: i32 = crate::objects::masters::class::LIVESTOCK.get() as 
 /// The caller's reachability check of a found object (slot 0x3d0 within a range): it paths over
 /// the spatial index the search reads, which the check's queries write, so the search hands it
 /// over for each call.
-pub type Reach<'a> = dyn FnMut(&mut Spatial, i32, f32) -> Result<bool, GenieError> + 'a;
+pub type Reach<'a> = dyn FnMut(&mut Spatial, ObjectId, f32) -> Result<bool, GenieError> + 'a;
 
 /// `bestUnitToAttack`'s world ([`crate::unit_ai::best_target::Battlefield`]): the unit AI's picker for its
 /// reads and tests, the search's reachability for its paths (slot 0x3d0).
@@ -66,11 +69,14 @@ struct AttackField<'p, 'r> {
 }
 
 impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
-    fn thing(&mut self, id: i32) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
+    fn thing(
+        &mut self,
+        id: ObjectId,
+    ) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
         self.picker.thing(self.world, id)
     }
 
-    fn can_attack(&mut self, id: i32) -> Result<bool, GenieError> {
+    fn can_attack(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.picker.can_attack(self.world, id)
     }
 
@@ -78,40 +84,40 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
         self.picker.attacks_neutral(class)
     }
 
-    fn spares_friends(&mut self, id: i32) -> Result<bool, GenieError> {
+    fn spares_friends(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.picker.spares_friends(self.world, id)
     }
 
-    fn shuns(&mut self, id: i32) -> Result<bool, GenieError> {
+    fn shuns(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.picker.shuns(id)
     }
 
     fn candidate(
         &mut self,
-        id: i32,
+        id: ObjectId,
         distance: f32,
         category: i32,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         self.picker.candidate(self.world, id, distance, category)
     }
 
-    fn armored(&mut self, id: i32) -> Result<bool, GenieError> {
+    fn armored(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.picker.armored(id)
     }
 
-    fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError> {
+    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, GenieError> {
         self.picker.weapon_range(id)
     }
 
-    fn engages(&mut self, id: i32) -> Result<bool, GenieError> {
+    fn engages(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         self.picker.engages(id)
     }
 
-    fn quick_path(&mut self, id: i32, range: f32) -> Result<bool, GenieError> {
+    fn quick_path(&mut self, id: ObjectId, range: f32) -> Result<bool, GenieError> {
         self.picker.quick_path(self.world, id, range)
     }
 
-    fn path(&mut self, id: i32, range: f32) -> Result<bool, GenieError> {
+    fn path(&mut self, id: ObjectId, range: f32) -> Result<bool, GenieError> {
         (self.reach)(self.world, id, range)
     }
 }
@@ -319,7 +325,7 @@ pub struct Tiles {
     /// The objects whose centre is on the tile, in the tile's order (its list `+0x28`, count
     /// `+0x1b`): an object entering the tile goes last (`FUN_140f5f0a0`), one leaving it gives
     /// its slot to the last (`FUN_140f5f560`).
-    lists: Vec<Vec<i32>>,
+    lists: Vec<Vec<ObjectId>>,
 }
 
 impl Tiles {
@@ -372,7 +378,7 @@ impl Tiles {
 
     /// The objects on tile (`x`, `y`) in the tile's order; none off the map.
     #[must_use]
-    pub fn list(&self, x: i32, y: i32) -> &[i32] {
+    pub fn list(&self, x: i32, y: i32) -> &[ObjectId] {
         self.index(x, y)
             .and_then(|i| self.lists.get(i))
             .map_or(&[], Vec::as_slice)
@@ -388,7 +394,7 @@ impl Tiles {
     /// of [`MOST_ON_TILE`] objects or more takes none and keeps its count; else the object goes
     /// last and the tall count is redone over the list, each object by `tall` (its master's
     /// height radius above 0 now).
-    fn append(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
+    fn append(&mut self, i: usize, id: ObjectId, tall: impl Fn(ObjectId) -> bool) {
         let (Some(list), Some(count)) = (self.lists.get_mut(i), self.tall.get_mut(i)) else {
             return;
         };
@@ -409,7 +415,7 @@ impl Tiles {
 
     /// The object leaves tile `i` (`FUN_140f5f560`): one not on the list changes nothing; else
     /// the last object takes its slot and the tall count is redone over the list.
-    fn take_off(&mut self, i: usize, id: i32, tall: impl Fn(i32) -> bool) {
+    fn take_off(&mut self, i: usize, id: ObjectId, tall: impl Fn(ObjectId) -> bool) {
         let Some(list) = self.lists.get_mut(i) else {
             return;
         };
@@ -421,7 +427,7 @@ impl Tiles {
     }
 
     /// Tile `i`'s tall count over its list, each object by `tall` (a byte, as the game counts).
-    fn recount(&mut self, i: usize, tall: impl Fn(i32) -> bool) {
+    fn recount(&mut self, i: usize, tall: impl Fn(ObjectId) -> bool) {
         let (Some(list), Some(count)) = (self.lists.get(i), self.tall.get_mut(i)) else {
             return;
         };
@@ -439,7 +445,7 @@ impl Tiles {
     #[cfg(test)]
     pub(crate) fn add_tall_for_test(&mut self, x: i32, y: i32) {
         let i = self.index(x, y).expect("a tile on the map");
-        self.lists[i].push(i32::MIN);
+        self.lists[i].push(crate::objects::unit::TAKEN_OUT);
         self.tall[i] += 1;
     }
 
@@ -499,7 +505,12 @@ impl Tiles {
     /// the tiles it covers, a tile its player marked keeps only its terrain class; but at a tile
     /// where another object (its centre on the tile) holds a static record (`static_record`:
     /// kind 0, 1, 2, 11 or 13), the rest stays as it is and the planners hear nothing (false).
-    fn unmark(&mut self, p: &Placed, me: i32, static_record: impl Fn(i32) -> bool) -> bool {
+    fn unmark(
+        &mut self,
+        p: &Placed,
+        me: ObjectId,
+        static_record: impl Fn(ObjectId) -> bool,
+    ) -> bool {
         let own = 1u64 << p.player.get();
         for i in self.covered_indices(p) {
             if self
@@ -526,8 +537,8 @@ impl Tiles {
 struct RecordCells {
     /// The ids by cell, in (level, x, y) order: a query that visits more cells than are held
     /// walks one level's range of them.
-    cells: BTreeMap<(i32, i32, i32), std::collections::BTreeSet<i32>>,
-    filed: std::collections::HashMap<i32, (i32, i32, i32)>,
+    cells: BTreeMap<(i32, i32, i32), std::collections::BTreeSet<ObjectId>>,
+    filed: std::collections::HashMap<ObjectId, (i32, i32, i32)>,
 }
 
 /// The world's objects by id, the map's size in tiles and what the game keeps per tile.
@@ -540,7 +551,7 @@ pub struct Spatial {
     /// ([`Spatial::set_manager_ignore`]) leave it to the ones that do not (the motion step's
     /// query of a level's waypoint). The game keeps a pointer to the caller's list; the slice
     /// keeps the ids it held then.
-    manager_ignore: Vec<i32>,
+    manager_ignore: Vec<RecordId>,
     /// The obstruction manager's temporary tile records (`FUN_1410510c0`: kind 3, the tile's box,
     /// id [`tile_record_id`], on the list `+0x70` with the count `+0x78`, bit 0x80 in the tile's
     /// word), as (y, x): [`Spatial::put_tile_records`] puts them, and they stay for every query
@@ -551,19 +562,19 @@ pub struct Spatial {
     /// set it reset it at their end but `FindShortPath`'s quick-only exit, and the queries that
     /// set none read what is left ([`Spatial::manager_grow`]).
     manager_buffer: Option<f32>,
-    objects: BTreeMap<i32, Placed>,
+    objects: BTreeMap<ObjectId, Placed>,
     /// The cell of each object's record ([`RecordCells`]), kept with `objects`
     /// ([`Spatial::refile`]).
     records: RecordCells,
     /// The objects inside others (`+0x2f0`): off the tiles' lists and the obstruction manager,
     /// without a record, at their container's x and y; a lookup by id still finds them.
-    inside: BTreeMap<i32, Placed>,
+    inside: BTreeMap<ObjectId, Placed>,
     tiles: Tiles,
     /// The tile rectangles (x0, y0, x1, y1) whose static marks changed, for the planners
     /// ([`Spatial::take_changes`]).
     changed: Vec<[i16; 4]>,
     /// The seconds since each frozen object froze.
-    frozen_for: BTreeMap<i32, f32>,
+    frozen_for: BTreeMap<ObjectId, f32>,
     /// What a stopped player's units may have done since: the fastest any of the players' unit
     /// masters (type 70) moves and the farthest any acts beyond its footprint (its weapon or work
     /// range), for [`Spatial::check_known`]. 0 when not set.
@@ -571,11 +582,11 @@ pub struct Spatial {
     /// The farthest any of the players' units acts beyond its footprint.
     pub reach: f32,
     /// What the walk reads of the moving objects it meets ([`Gait`]).
-    gaits: BTreeMap<i32, Gait>,
+    gaits: BTreeMap<ObjectId, Gait>,
     /// Each player's scout map (`player+0x1370`, `mIsScoutMapEnabled` `+0x1368`), once made.
     scout_maps: BTreeMap<PlayerId, crate::movement::explore::InfluenceMap>,
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
-    annexes: BTreeMap<i32, i32>,
+    annexes: BTreeMap<ObjectId, ObjectId>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.
     pub relations: Vec<Vec<u8>>,
     /// What each player's queries make of the other players' objects (`player+0x278`, the
@@ -631,14 +642,14 @@ impl SearchCache {
 /// [`Spatial::closest_object`]'s per-object checks: livestock that is moving, and the objects a
 /// class-10 searcher passes.
 type ClosestChecks<'a> = (
-    &'a dyn Fn(i32) -> bool,
+    &'a dyn Fn(ObjectId) -> bool,
     &'a dyn Fn(&Placed) -> Result<bool, GenieError>,
     &'a FarmLook<'a>,
 );
 
 /// What `ClosestObject` reads of a farm it found: its workers (`+0x644`) and the pasture it is in
-/// (`+0x790`, `parent_pasture_id`, −1 for none); None for an object the caller does not hold.
-pub type FarmLook<'a> = dyn Fn(i32) -> Option<(i32, i32)> + 'a;
+/// (`+0x790`, `parent_pasture_id`); None for an object the caller does not hold.
+pub type FarmLook<'a> = dyn Fn(ObjectId) -> Option<(i32, Option<ObjectId>)> + 'a;
 
 #[cfg(test)]
 mod tests;

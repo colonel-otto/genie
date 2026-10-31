@@ -6,8 +6,10 @@ use crate::combat::volley::Fired;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
-use crate::map::spatial::WalkQuery;
+use crate::map::spatial::{RecordId, WalkQuery};
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
+use crate::objects::ObjectKey;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::MasterKind;
@@ -62,28 +64,30 @@ impl Unit {
         let shooter_state = OthersRef::of(&c.w.players, c.player)?
             .own(action.fired_from)
             .map(|u| u.life.state);
-        if action.target != -1 && target_state.is_none() {
+        if action.target.is_some() && target_state.is_none() {
             if c.w.spatial.get(action.target).is_some() {
                 return Err(GenieError::unsupported(
                     "a missile's target the slice cannot read",
                 ));
             }
-            action.target = -1;
+            action.target = None;
         }
-        if action.fired_from != -1 && shooter_state.is_none() {
+        if action.fired_from.is_some() && shooter_state.is_none() {
             if c.w.spatial.get(action.fired_from).is_some() {
                 return Err(GenieError::unsupported(
                     "a missile's shooter the slice cannot read",
                 ));
             }
-            action.fired_from = -1;
+            action.fired_from = None;
         }
-        if action.target != -1 && target_state.is_some_and(dead) {
+        if let Some(target) = action.target
+            && target_state.is_some_and(dead)
+        {
             let by = self.releaser(c)?;
-            crate::world::lets::release(c, self, action.target, by)?;
-            action.target = -1;
+            crate::world::lets::release(c, self, target, by)?;
+            action.target = None;
         }
-        if action.fired_from != -1 && shooter_state.is_some_and(dead) {
+        if action.fired_from.is_some() && shooter_state.is_some_and(dead) {
             return Err(GenieError::unsupported(
                 "a missile whose shooter died (its weapons, FUN_14113e170)",
             ));
@@ -147,11 +151,7 @@ impl Unit {
             stats.fly_mode,
         ));
         mover.mark_move(at, c.w.world_time);
-        mover.new_position(
-            self.id.get(),
-            at,
-            (&mut c.w.spatial, Some(&mut c.w.pathing)),
-        )?;
+        mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)))?;
         if matches!(stats.projectile_type, 0..=2) {
             let fired = Fired {
                 charge: missile.charge,
@@ -199,7 +199,7 @@ impl Unit {
             }
             match action.hit_mode {
                 0 => {
-                    if id != action.target {
+                    if Some(id) != action.target {
                         continue;
                     }
                     let result = self.missile_strike(action, fired, c)?;
@@ -212,7 +212,7 @@ impl Unit {
                     if missed_passes(c, (id, player, kind, level), action.target, blast_level) {
                         continue;
                     }
-                    if id != action.target {
+                    if Some(id) != action.target {
                         return Err(GenieError::unsupported(
                             "a missed missile meeting another object than its target",
                         ));
@@ -248,7 +248,7 @@ impl Unit {
         stats: &crate::combat::missile::MissileStats,
         old: Position,
         c: &mut Step<'_>,
-    ) -> Result<Vec<(i32, PlayerId, MasterKind, u8)>, GenieError> {
+    ) -> Result<Vec<(ObjectId, PlayerId, MasterKind, u8)>, GenieError> {
         let (w, h) = (c.w.spatial.map.width(), c.w.spatial.map.height());
         let hold = |v: f32, size: i32| {
             if v < 0.0 {
@@ -272,10 +272,14 @@ impl Unit {
             grow,
             ally_factor: 1.0,
             player: Some(c.player),
-            ignore: &[self.id.get()],
+            ignore: &[RecordId::from(self.id)],
         })?;
         let mut met = Vec::new();
-        for id in crossed {
+        for record in crossed {
+            // the game's table reads the hit's integer (an edge's may name an object)
+            let Some(id) = record.key() else {
+                continue;
+            };
             let Some(p) = c.w.spatial.get(id) else {
                 continue;
             };
@@ -319,7 +323,7 @@ impl Unit {
         if fired.charge {
             return Err(GenieError::unsupported("a charge projectile's own hit"));
         }
-        if action.fired_from == -1 {
+        if action.fired_from.is_none() {
             return self.own_strike(action, fired.by, c);
         }
         let mut victim = victim(c, action.target)?;
@@ -361,7 +365,7 @@ impl Unit {
         let object = streams.get(Stream::Object);
         let struck = crate::combat::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if let Some(target) = struck.executed {
-            shooter.post_own(ACTION_EXECUTED, [600, target, 0])?;
+            shooter.post_own(ACTION_EXECUTED, [600, target.get(), 0])?;
         }
         if shooter.hit_back(own)?.is_some() {
             return Err(GenieError::unsupported(
@@ -383,7 +387,7 @@ impl Unit {
     pub(crate) fn own_strike(
         &mut self,
         action: &crate::combat::missile::MissileAction,
-        fired_from: i32,
+        fired_from: Option<ObjectId>,
         c: &mut Step<'_>,
     ) -> Result<u8, GenieError> {
         if action.origin.owner != -1 {
@@ -456,7 +460,7 @@ impl Unit {
             return Ok(());
         }
         if action.result != 2 {
-            let blaster = if !charge && action.fired_from != -1 {
+            let blaster = if !charge && action.fired_from.is_some() {
                 OthersRef::of(&c.w.players, c.player)?
                     .own(action.fired_from)
                     .map(|u| u.life.master_id)
@@ -490,7 +494,10 @@ impl Unit {
         stats: &crate::combat::missile::MissileStats,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
-        if action.state == DONE || action.target == -1 || action.met.contains(&action.target) {
+        let Some(target) = action.target else {
+            return Ok(());
+        };
+        if action.state == DONE || action.met.contains(&target) {
             return Ok(());
         }
         let v = victim(c, action.target)?.ok_or(GenieError::unsupported(
@@ -525,7 +532,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         if let Some(a) = slot.take() {
             let by = self.releaser(c)?;
-            for t in [a.target, a.fired_from].into_iter().filter(|&t| t != -1) {
+            for t in [a.target, a.fired_from].into_iter().flatten() {
                 crate::world::lets::release(c, self, t, by)?;
             }
         }
@@ -539,15 +546,10 @@ impl Unit {
             self.life.hp = 0.0;
             self.life.goto_sleep = false;
             self.life.state = 7;
-            c.w.spatial.sight_state(self.id.get(), 7)?;
+            c.w.spatial.sight_state(self.id, 7)?;
             if before < 4 {
                 let master = self.master(&c.w.masters, c.player)?;
-                forget_resource(
-                    &mut c.w.spatial,
-                    Some(master),
-                    self.id.get(),
-                    self.position(),
-                )?;
+                forget_resource(&mut c.w.spatial, Some(master), self.id, self.position())?;
             }
         }
         Ok(())

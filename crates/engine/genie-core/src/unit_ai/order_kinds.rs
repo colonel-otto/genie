@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
@@ -23,7 +24,7 @@ impl UnitAi {
     /// (`FUN_140c64c10`), the desired distance `range` and the defend target the object.
     pub(super) fn defend_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         range: f32,
         force: bool,
         at: &Surroundings,
@@ -36,9 +37,9 @@ impl UnitAi {
             return Ok(false);
         };
         self.set_action(Some(ActionKind::Defend));
-        self.target_at(target, Some(i32::from(t.class.get())), t.position);
+        self.target_at(Some(target), Some(i32::from(t.class.get())), t.position);
         self.desired_distance = range;
-        self.defend_target = target;
+        self.defend_target = Some(target);
         Ok(true)
     }
 
@@ -57,9 +58,9 @@ impl UnitAi {
             return false;
         }
         self.set_action(Some(ActionKind::Defend));
-        self.target_at(-1, None, point.with_height(at.position.z()));
+        self.target_at(None, None, point.with_height(at.position.z()));
         self.desired_distance = range;
-        self.defend_target = -1;
+        self.defend_target = None;
         true
     }
 
@@ -77,7 +78,7 @@ impl UnitAi {
     /// model.
     pub(crate) fn build_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -89,8 +90,8 @@ impl UnitAi {
         side.effect_now(Effect::Command(AiCommand::BuildObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
-            Some(t) => self.set_target(target, i32::from(t.class.get()), t.position),
-            None => self.set_target(target, -1, Position::ORIGIN),
+            Some(t) => self.set_target(Some(target), i32::from(t.class.get()), t.position),
+            None => self.set_target(Some(target), -1, Position::ORIGIN),
         }
         Ok(true)
     }
@@ -103,7 +104,7 @@ impl UnitAi {
     /// (the target and class before becoming the last).
     pub(super) fn work_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         (action, command): (ActionKind, UnitCommand),
         (at, side): (&Surroundings, &mut dyn UnitSide),
@@ -116,8 +117,8 @@ impl UnitAi {
         }
         self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
-            Some(t) => self.set_target(target, i32::from(t.class.get()), t.position),
-            None => self.set_target(target, -1, Position::ORIGIN),
+            Some(t) => self.set_target(Some(target), i32::from(t.class.get()), t.position),
+            None => self.set_target(Some(target), -1, Position::ORIGIN),
         }
         Ok(true)
     }
@@ -128,7 +129,7 @@ impl UnitAi {
     /// task: the caller stops then) and the AI holds the gather ([`UnitAi::gather_object`]).
     pub(super) fn gather_order(
         &mut self,
-        target: i32,
+        target: ObjectId,
         at: &Surroundings,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -150,16 +151,20 @@ impl UnitAi {
 
     /// `HuntObject` (slot 0xc8, `FUN_140c4e220`) forced on the order's `target`: the action stops
     /// first (slot 0xb0 with 1); the unit's hunt command (slot 0x360, `FUN_1412151f0`) takes no
-    /// object the world does not hold (0, the stop made); on one it holds,
+    /// object the world does not hold, nor none (0, the stop made); on one it holds,
     /// [`UnitAi::hunt_object`].
     pub(super) fn hunt_order(
         &mut self,
-        target: i32,
+        target: Option<ObjectId>,
         at: &Surroundings,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
-        let Some(t) = Self::world_object(target, at, side)? else {
+        let held = match target {
+            Some(id) => Self::world_object(id, at, side)?.map(|t| (id, t)),
+            None => None,
+        };
+        let Some((target, t)) = held else {
             self.stop_current(true, at, side, rng)?;
             return Ok(false);
         };
@@ -175,7 +180,7 @@ impl UnitAi {
     /// moves to it (slot 0x138, [`UnitAi::move_to_object`]).
     pub(super) fn follow_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         range: f32,
         force: bool,
         at: &Surroundings,
@@ -189,7 +194,7 @@ impl UnitAi {
             return Ok(false);
         };
         self.set_action(Some(ActionKind::Follow));
-        self.target_at(target, Some(i32::from(t.class.get())), t.position);
+        self.target_at(Some(target), Some(i32::from(t.class.get())), t.position);
         self.desired_distance = range;
         if range * range < t.gap_squared {
             let seen = Seen {
@@ -216,7 +221,7 @@ impl UnitAi {
     /// (`FUN_140c64c10`: its class when the world holds it).
     pub(super) fn enter_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         (at, side): (&Surroundings, &mut dyn UnitSide),
     ) -> Result<bool, GenieError> {
@@ -232,7 +237,7 @@ impl UnitAi {
         }
         self.set_action(Some(ActionKind::Enter));
         self.target_at(
-            target,
+            Some(target),
             held.map(|t| i32::from(t.class.get())),
             Position::from([-1.0; 3]),
         );
@@ -256,7 +261,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Transport));
-        self.target_at(-1, None, point);
+        self.target_at(None, None, point);
         Ok(true)
     }
 
@@ -283,7 +288,11 @@ impl UnitAi {
         } else {
             ActionKind::Unload
         }));
-        self.set_target(at.id, i32::from(ClassId::field(at.class)), at.position);
+        self.set_target(
+            Some(at.id),
+            i32::from(ClassId::field(at.class)),
+            at.position,
+        );
         Ok(true)
     }
 
@@ -293,7 +302,7 @@ impl UnitAi {
     /// the old) and the target at the tile (as floats) at height 1 (`FUN_140c64c10`).
     pub(super) fn seek_and_destroy(
         &mut self,
-        target: i32,
+        target: ObjectId,
         tile: Tile,
         force: bool,
         at: &Surroundings,
@@ -308,7 +317,7 @@ impl UnitAi {
         self.set_action(Some(ActionKind::SeekAndDestroy));
         let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class.get()));
         self.target_at(
-            target,
+            Some(target),
             class,
             Position::new(tile.x() as f32, tile.y() as f32, EXPLORE_Z),
         );
@@ -332,7 +341,7 @@ impl UnitAi {
         let point = Point::new(tile.x() as f32, tile.y() as f32);
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.set_action(Some(ActionKind::ExploreAndDestroy));
-        self.target_at(-1, None, point.with_height(EXPLORE_Z));
+        self.target_at(None, None, point.with_height(EXPLORE_Z));
         Ok(true)
     }
 
@@ -380,7 +389,7 @@ impl UnitAi {
             let found = side.closest_resource(ResourceSearch {
                 kind: kind as u8,
                 cap: if kind == 0 { 2 } else { -1 },
-                site: -1,
+                site: None,
                 current: self.current_target,
                 point: o.shown,
                 min_state: 0,
@@ -433,7 +442,7 @@ impl UnitAi {
     /// waits.
     pub(super) fn wait_for_foundation(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
@@ -465,7 +474,7 @@ impl UnitAi {
         let point = Point::new(x as f32, y as f32);
         side.effect_now(Effect::Explore(point), self, rng)?;
         self.last_action = self.current_action.replace(ActionKind::Explore);
-        self.target_at(-1, None, point.with_height(EXPLORE_Z));
+        self.target_at(None, None, point.with_height(EXPLORE_Z));
         Ok(true)
     }
 

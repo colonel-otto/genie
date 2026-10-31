@@ -14,6 +14,7 @@ use crate::objects::masters::Masters;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::release::{Releaser, released, released_fields};
 use crate::objects::unit::Unit;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::object_gone;
 use crate::players::PlayerId;
 use crate::players::tracker::Tracker;
@@ -101,7 +102,8 @@ fn own_lets<R>(
 }
 
 /// Slot 0x178 on object `id`, which an action of `by` takes, from an update: the world's take
-/// ([`World::take`]); the updating object's own runs on `me` ([`Lets::take`]).
+/// ([`World::take`]); the updating object's own runs on `me` ([`Lets::take`]). An id that
+/// names none takes nothing, as the game's lookup of −1 finds no object.
 ///
 /// # Errors
 ///
@@ -109,9 +111,12 @@ fn own_lets<R>(
 pub(crate) fn take(
     c: &mut Step<'_>,
     me: &mut Unit,
-    id: i32,
+    id: impl ObjectKey,
     by: Releaser,
 ) -> Result<(), GenieError> {
+    let Some(id) = id.key() else {
+        return Ok(());
+    };
     if id == c.me {
         own_lets(c, |lets, others| lets.take(others, Some(me), id, by))?
     } else {
@@ -121,6 +126,7 @@ pub(crate) fn take(
 
 /// Slot 0x180 on object `id`, which an action of `by` lets go, from an update: the world's
 /// release ([`World::release`]); the updating object's own runs on `me` ([`Lets::release`]).
+/// An id that names none lets nothing go, as the game's lookup of −1 finds no object.
 ///
 /// # Errors
 ///
@@ -128,9 +134,12 @@ pub(crate) fn take(
 pub(crate) fn release(
     c: &mut Step<'_>,
     me: &mut Unit,
-    id: i32,
+    id: impl ObjectKey,
     by: Releaser,
 ) -> Result<(), GenieError> {
+    let Some(id) = id.key() else {
+        return Ok(());
+    };
     if id == c.me {
         return own_lets(c, |lets, others| lets.release(others, Some(me), id, by))?;
     }
@@ -139,12 +148,20 @@ pub(crate) fn release(
 
 /// A counted builder's leave of the building a Build on `id` counted it in, from an update
 /// ([`World::leave_builders`]): one on the updating object `me` itself, or on an annex whose
-/// main building it is, counts on `me` ([`Lets::leave_builders`]).
+/// main building it is, counts on `me` ([`Lets::leave_builders`]). An id that names none
+/// leaves nothing, as the game's lookup of −1 finds no object.
 ///
 /// # Errors
 ///
 /// An object of a master its owner lacks.
-pub(crate) fn leave_builders(c: &mut Step<'_>, me: &mut Unit, id: i32) -> Result<(), GenieError> {
+pub(crate) fn leave_builders(
+    c: &mut Step<'_>,
+    me: &mut Unit,
+    id: impl ObjectKey,
+) -> Result<(), GenieError> {
+    let Some(id) = id.key() else {
+        return Ok(());
+    };
     // the updating player's lets: the updating object's own site is reckoned by its owner
     own_lets(c, |lets, others| lets.leave_builders(others, Some(me), id))?
 }
@@ -159,7 +176,7 @@ pub(crate) fn leave_builders(c: &mut Step<'_>, me: &mut Unit, id: i32) -> Result
 pub(crate) fn torn_down(
     c: &mut Step<'_>,
     me: &mut Unit,
-    (builder_leaves, releases): (Vec<i32>, Vec<(i32, Releaser)>),
+    (builder_leaves, releases): (Vec<ObjectId>, Vec<(ObjectId, Releaser)>),
 ) -> Result<(), GenieError> {
     for id in builder_leaves {
         leave_builders(c, me, id)?;
@@ -188,10 +205,10 @@ impl Lets<'_> {
         &mut self,
         others: &mut Others<'_>,
         me: Option<&mut Unit>,
-        id: i32,
+        id: ObjectId,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        if let Some(u) = me.filter(|u| u.id.get() == id) {
+        if let Some(u) = me.filter(|u| u.id == id) {
             let allied = self.allied(others.view(), by.player, self.player);
             self.taken_live(u, (self.player, allied), by)?;
             return Ok(());
@@ -242,10 +259,10 @@ impl Lets<'_> {
         &mut self,
         others: &mut Others<'_>,
         me: Option<&mut Unit>,
-        id: i32,
+        id: ObjectId,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        if let Some(u) = me.filter(|u| u.id.get() == id) {
+        if let Some(u) = me.filter(|u| u.id == id) {
             return self.release_own(others, u, by);
         }
         let Some((p, _, sleeps)) = others.locate(id) else {
@@ -310,9 +327,9 @@ impl Lets<'_> {
         &self,
         others: &mut Others<'_>,
         me: Option<&mut Unit>,
-        id: i32,
+        id: ObjectId,
     ) -> Result<(), GenieError> {
-        let site = if let Some(u) = me.as_deref().filter(|u| u.id.get() == id) {
+        let site = if let Some(u) = me.as_deref().filter(|u| u.id == id) {
             self.site_of(u, self.player, id)?
         } else {
             let Some((p, f, _)) = others.locate(id) else {
@@ -320,7 +337,7 @@ impl Lets<'_> {
             };
             self.site_of(f, p, id)?
         };
-        if let Some(u) = me.filter(|u| u.id.get() == site) {
+        if let Some(u) = me.filter(|u| u.id == site) {
             leave_site(u);
         } else if let Some((_, b)) = others.get_mut(site) {
             leave_site(b);
@@ -330,7 +347,7 @@ impl Lets<'_> {
 
     /// The building whose builders object `f` (`id`, of player `p`) counts in: an annex's main
     /// building, else the object itself.
-    fn site_of(&self, f: &Unit, p: PlayerId, id: i32) -> Result<i32, GenieError> {
+    fn site_of(&self, f: &Unit, p: PlayerId, id: ObjectId) -> Result<ObjectId, GenieError> {
         // The building master type RESEARCH asks for (`'P'`, 80).
         Ok(if f.master(self.masters, p)?.kind == BUILDING {
             f.annex_of.unwrap_or(id)

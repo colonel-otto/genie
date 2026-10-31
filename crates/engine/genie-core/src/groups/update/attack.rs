@@ -7,7 +7,7 @@ use crate::groups::command::MoveTo;
 use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
 use crate::groups::update::{ATTACK, NO_COMMAND};
-use crate::groups::{UnitTypeStatistic, WorldObject};
+use crate::groups::{GroupTarget, UnitTypeStatistic, WorldObject};
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::math::fmath;
@@ -19,9 +19,6 @@ use crate::world::World;
 
 /// The formation categories a group keeps its units by, which the update walks in order.
 const CATEGORIES: std::ops::RangeInclusive<i32> = 0..=5;
-/// A group's target is an object (`mType`, [`crate::groups::TargetData::kind`]); any other kind
-/// names a group, whose first member is the target.
-const OBJECT_TARGET: i32 = 1;
 /// The group's flags: bit 3 (the group has arrived) and bit 4 (it is on its way to attack).
 const ARRIVED: u32 = 8;
 const ATTACKING: u32 = 0x10;
@@ -83,17 +80,14 @@ impl World {
     /// The object of group `group`'s target (`plVar8`): the object the target names, or the
     /// first member of the group it names (none when that has no members); None for an object
     /// or a group the world does not hold.
-    fn attacked_object(&self, group: i32) -> Option<i32> {
+    fn attacked_object(&self, group: i32) -> Option<ObjectId> {
         let g = self.groups.get(group)?;
-        if g.current_target.kind == OBJECT_TARGET {
-            return self.world_object(g.current_target.target).map(|o| o.id());
+        let target = g.current_target.target;
+        if let GroupTarget::Object(id) = target {
+            return self.world_object(id).map(|o| o.id());
         }
-        let first = self
-            .groups
-            .get(g.current_target.target)?
-            .members
-            .first()?
-            .id;
+        // any other kind names a group, whose first member is the target
+        let first = self.groups.get(target.group()?)?.members.first()?.id;
         self.world_object(first).map(|o| o.id())
     }
 
@@ -112,7 +106,7 @@ impl World {
     fn attack_target_lost(
         &mut self,
         group: i32,
-        target: Option<i32>,
+        target: Option<ObjectId>,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
         let g = self.groups.held_mut(group)?;
@@ -141,7 +135,7 @@ impl World {
         }
         let _ = self.command_move_to(
             group,
-            -1,
+            None,
             to,
             MoveTo {
                 range,
@@ -156,7 +150,11 @@ impl World {
 
     /// The member of group `group`, other than `target`, nearest to it by the footprint gap
     /// (`FUN_14118f680`) below [`FARTHEST`], with that gap ([`FARTHEST`] for none).
-    fn nearest_member(&self, group: i32, target: i32) -> Result<(Option<i32>, f32), GenieError> {
+    fn nearest_member(
+        &self,
+        group: i32,
+        target: ObjectId,
+    ) -> Result<(Option<ObjectId>, f32), GenieError> {
         let t = self
             .world_object(target)
             .ok_or_else(|| member_gone(target))?;
@@ -190,7 +188,7 @@ impl World {
     /// # Errors
     ///
     /// A master the world lacks, and what the release does not model.
-    fn release_categories(&mut self, group: i32, target: i32) -> Result<bool, GenieError> {
+    fn release_categories(&mut self, group: i32, target: ObjectId) -> Result<bool, GenieError> {
         let mut finished = true;
         for category in CATEGORIES {
             let Some((units, range)) = self
@@ -225,9 +223,9 @@ impl World {
     /// tests: the footprint gap less the slack by the category's `listed` range.
     fn category_in_reach(
         &self,
-        units: &[i32],
+        units: &[ObjectId],
         listed: f32,
-        target: i32,
+        target: ObjectId,
     ) -> Result<bool, GenieError> {
         let t = self
             .world_object(target)
@@ -279,11 +277,11 @@ impl World {
     fn attack_chase(
         &mut self,
         group: i32,
-        target: i32,
+        target: ObjectId,
         owner: PlayerId,
     ) -> Result<Option<bool>, GenieError> {
         let g = self.groups.held(group)?;
-        if g.current_target.kind != OBJECT_TARGET {
+        if !matches!(g.current_target.target, GroupTarget::Object(_)) {
             return Ok(None);
         }
         let t = self
@@ -298,7 +296,7 @@ impl World {
         if !self.sees_object(t, owner)? {
             let _ = self.command_move_to(
                 group,
-                -1,
+                None,
                 from.ground(),
                 MoveTo {
                     range: 0.0,
@@ -313,7 +311,7 @@ impl World {
             disable_retargeting: g.current_target.disable_retargeting != 0,
             filter: g.current_target.certain_action,
         };
-        let id = ObjectId::of_field(target).ok_or_else(|| {
+        let id = Some(target).ok_or_else(|| {
             GenieError::unreachable("an attack target without an id").with("group", group)
         })?;
         if self.command_attack(group, id, order)? {
@@ -327,7 +325,7 @@ impl World {
             .xhy();
         let _ = self.command_move_to(
             group,
-            target,
+            Some(target),
             at.ground(),
             MoveTo {
                 range,
@@ -356,7 +354,7 @@ impl World {
     fn attack_settle(
         &mut self,
         group: i32,
-        target: i32,
+        target: ObjectId,
         finished: bool,
         relayout: &mut bool,
     ) -> Result<bool, GenieError> {
@@ -384,7 +382,7 @@ impl World {
             });
         }
         g.flags &= !ATTACKING;
-        let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        let members: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
         self.release_units(group, &members, target)?;
         Ok(true)
     }

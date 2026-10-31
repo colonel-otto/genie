@@ -384,7 +384,7 @@ fn lay_line(
             *cat.unit_types.checked(subs.next as usize)? as i32
         };
         *formation.slot_mut(i)? = Slot {
-            unit_id: -1,
+            unit_id: None,
             offset: (flank_offset(total, at.line_index, style)),
             desired_transform_position: BVector::ZERO,
             time: style.world_time,

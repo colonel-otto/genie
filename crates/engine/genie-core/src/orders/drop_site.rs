@@ -6,6 +6,7 @@ use crate::gathering::hunt::HUNT;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -14,6 +15,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
 use crate::orders::{HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::players::PlayerId;
+use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -57,7 +59,7 @@ impl World {
             crate::gathering::gather::GATHER
         };
         let work = Work {
-            target: site,
+            target: Some(site),
             point: Position::from([NO_POINT; 3]),
             carry_test: false,
             filter,
@@ -79,7 +81,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let unit = &self.players.live(p, idx)?;
         let master = unit.master(&self.masters, p)?;
         let seeks = master.kind < COMBAT
@@ -134,9 +136,9 @@ impl World {
         at: Point,
         held: i16,
         class: ClassId,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let player = self.players.player(p)?;
-        let look = |id: i32| self.object(id).map(|(_, o)| (o.life.state, o.position()));
+        let look = |id: ObjectId| self.object(id).map(|(_, o)| (o.life.state, o.position()));
         Ok(nearest_table_site(
             (&self.drop_sites, player.civ, &player.tracker),
             (at, held, class),
@@ -209,7 +211,7 @@ impl World {
         let unit = self.players.live_mut(p, idx)?;
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
-            let n = crate::unit_ai::Notify::own(id.get(), crate::unit_ai::OTHER_LOAD, [0; 3]);
+            let n = crate::unit_ai::Notify::own(id, crate::unit_ai::OTHER_LOAD, [0; 3]);
             let _ = ai.accept(n, state);
         }
         Ok(())
@@ -231,10 +233,10 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-        site: i32,
-        back: Option<i32>,
+        site: ObjectId,
+        back: Option<ObjectId>,
     ) -> Result<(), GenieError> {
-        let back = back.filter(|&t| 0 <= t).and_then(|t| {
+        let back = back.filter(|t| !t.is_recyclable()).and_then(|t| {
             let (q, o) = self.object(t)?;
             Some((t, o.life.master_id, q, o.position()))
         });
@@ -243,7 +245,7 @@ impl World {
             .map(|(_, o)| o.position())
             .ok_or(GenieError::unreachable("the drop site found"))?;
         let work = Work {
-            target: site,
+            target: Some(site),
             point,
             carry_test: true,
             filter: -1,
@@ -257,10 +259,10 @@ impl World {
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let order = crate::unit_ai::QueuedOrder {
-                issuer: id.get(),
+                issuer: Some(Issuer::Object(id)),
                 order: OrderKind::OnTarget,
                 priority: 100,
-                target,
+                target: Some(target),
                 target_owner: owner.index() as i32,
                 point: place,
                 range: 0.0,
@@ -284,7 +286,7 @@ impl World {
     pub(crate) fn queue_way_back(&mut self, p: PlayerId, idx: usize) -> Result<(), GenieError> {
         use crate::orders::town_bell::RecordTarget;
         let mut bell = self.players.live(p, idx)?.town_bell;
-        let lookup = |t: i32| -> Result<Option<RecordTarget>, GenieError> {
+        let lookup = |t: ObjectId| -> Result<Option<RecordTarget>, GenieError> {
             let Some((op, o)) = self.object(t) else {
                 return Ok(None);
             };
@@ -304,7 +306,7 @@ impl World {
                 let (op, o) = self.object(f.id).ok_or_else(|| object_gone(f.id))?;
                 let master = o.master(&self.masters, op)?.id;
                 (
-                    f.id,
+                    Some(f.id),
                     i32::from(master.get()),
                     op.index() as i32,
                     o.position().ground(),
@@ -321,7 +323,7 @@ impl World {
         let (x, y) = (at.x(), at.y());
         ai.insert_order(
             crate::unit_ai::QueuedOrder {
-                issuer: p.index() as i32,
+                issuer: Some(Issuer::Player(p)),
                 order: OrderKind::OnTarget2,
                 priority: 100,
                 target: id,

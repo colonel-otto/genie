@@ -34,7 +34,7 @@ impl GatherAction {
     /// `gap` from its footprint.
     const fn walk_to(&self, target: &Victim, gap: f32) -> WalkTo {
         WalkTo {
-            id: target.id,
+            id: Some(target.id),
             at: target.position,
             gap,
             state: Some(target.state),

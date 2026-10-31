@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::garrison::transport::{Changed, MapShore, Ship, TRANSPORT, TransportAction};
 use crate::map::Position;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
@@ -30,7 +31,7 @@ impl crate::world::World {
     pub(crate) fn start_transport(
         &mut self,
         (p, i): (PlayerId, usize),
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
         task: &Task,
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -58,7 +59,7 @@ impl crate::world::World {
     pub(crate) fn retake_transport(
         &mut self,
         (p, i): (PlayerId, usize),
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
         task: &Task,
         clears: bool,
     ) -> Result<bool, GenieError> {
@@ -68,7 +69,7 @@ impl crate::world::World {
         if !on_task || self.trade_at_own_market((p, i), target)? {
             return Ok(false);
         }
-        let by_self = target == unit.id.get();
+        let by_self = target == Some(unit.id);
         let mut t = unit
             .actions
             .transport()
@@ -92,7 +93,7 @@ impl crate::world::World {
     fn trade_at_own_market(
         &self,
         (p, i): (PlayerId, usize),
-        target: i32,
+        target: Option<ObjectId>,
     ) -> Result<bool, GenieError> {
         let Some((tp, t)) = self.object(target) else {
             return Ok(false);
@@ -111,11 +112,13 @@ impl crate::world::World {
     fn notify_transport(
         &mut self,
         (p, i): (PlayerId, usize),
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
         clears: bool,
     ) -> Result<(), GenieError> {
-        let named = match self.object(target) {
-            Some((tp, t)) => Some((target, i32::from(t.master(&self.masters, tp)?.class.get()))),
+        let named = match target.and_then(|id| Some((id, self.object(id)?))) {
+            Some((target, (tp, t))) => {
+                Some((target, i32::from(t.master(&self.masters, tp)?.class.get())))
+            }
             None => None,
         };
         let unit = &mut self.players.player_mut(p)?.objects[i];

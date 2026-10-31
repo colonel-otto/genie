@@ -106,9 +106,9 @@ impl UnitGroup {
     fn join_statistic(
         &mut self,
         sub: i32,
-        id: i32,
+        id: ObjectId,
         unit: FormationUnit,
-        masters_of: &dyn Fn(i32) -> Option<MasterId>,
+        masters_of: &dyn Fn(ObjectId) -> Option<MasterId>,
         scratch: &mut Vec<u32>,
     ) -> Result<(), GenieError> {
         let at = self
@@ -141,9 +141,9 @@ impl UnitGroup {
     /// [`count_unit_types`]). False when none held it.
     fn drop_from_statistic(
         &mut self,
-        id: i32,
+        id: ObjectId,
         category: Option<i32>,
-        masters_of: &dyn Fn(i32) -> Option<MasterId>,
+        masters_of: &dyn Fn(ObjectId) -> Option<MasterId>,
         scratch: &mut Vec<u32>,
     ) -> bool {
         let leave = |stat: &mut UnitTypeStatistic, scratch: &mut Vec<u32>| {
@@ -194,7 +194,7 @@ impl World {
         let Some(g) = self.groups.get(group) else {
             return Ok(false);
         };
-        let Some(index) = g.members.iter().position(|m| m.id == id.raw()) else {
+        let Some(index) = g.members.iter().position(|m| m.id == id) else {
             return Ok(false);
         };
         let group_id = g.id;
@@ -227,7 +227,7 @@ impl World {
             .insert(0, *seconds.checked(seconds.len() - 1)?);
         let _ = self.leave_statistic(group, id)?;
         let g = self.groups.held(group)?;
-        if g.motion.lead == id.raw() {
+        if g.motion.lead == Some(id) {
             let lead = self.nearest_to_target(group);
             self.groups.held_mut(group)?.motion.lead = lead;
         }
@@ -254,16 +254,16 @@ impl World {
             Some(object) => Some(self.unit_category(Some(object))?),
             None => None,
         };
-        let masters: Vec<(i32, MasterId)> = self
+        let masters: Vec<(ObjectId, MasterId)> = self
             .players
             .iter()
             .flat_map(|q| q.objects.iter().chain(&q.sleeping))
-            .map(|u| (u.id.get(), u.life.master_id))
+            .map(|u| (u.id, u.life.master_id))
             .collect();
-        let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
+        let masters_of = |id: ObjectId| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
         let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
         let left = self.groups.held_mut(group)?.drop_from_statistic(
-            id.raw(),
+            id,
             category,
             &masters_of,
             &mut scratch,
@@ -279,7 +279,7 @@ impl World {
 /// world does not hold is passed over; past 51 types the count stops.
 pub(crate) fn count_unit_types(
     stat: &mut UnitTypeStatistic,
-    masters_of: &dyn Fn(i32) -> Option<MasterId>,
+    masters_of: &dyn Fn(ObjectId) -> Option<MasterId>,
     scratch: &mut Vec<u32>,
 ) {
     scratch.resize(50, 0);
@@ -382,18 +382,18 @@ impl World {
         // the walks that meet it read its group
         let gait = u.gait();
         self.spatial.set_gait(id, gait);
-        let masters: Vec<(i32, MasterId)> = self
+        let masters: Vec<(ObjectId, MasterId)> = self
             .players
             .iter()
             .flat_map(|q| q.objects.iter().chain(&q.sleeping))
-            .map(|u| (u.id.get(), u.life.master_id))
+            .map(|u| (u.id, u.life.master_id))
             .collect();
-        let masters_of = |id: i32| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
+        let masters_of = |id: ObjectId| masters.iter().find(|(u, _)| *u == id).map(|&(_, m)| m);
         let mut scratch = std::mem::take(&mut self.groups.unit_types_scratch);
         let g = self.groups.held_mut(group)?;
         let seconds = g.next_seconds();
         g.members.push(Member {
-            id: id.raw(),
+            id,
             specific_move: SpecificMove {
                 path_id: -1,
                 reason: -1,
@@ -401,7 +401,7 @@ impl World {
             },
             seconds_since_attacking: seconds,
         });
-        g.join_statistic(sub, id.raw(), unit, &masters_of, &mut scratch)?;
+        g.join_statistic(sub, id, unit, &masters_of, &mut scratch)?;
         let spacing = unit.radius * SPACING_FACTOR;
         if g.desired_spacing < spacing {
             g.desired_spacing = spacing;
@@ -420,6 +420,7 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
     use crate::map::Position;
+    use crate::objects::ObjectId;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::masters::{MasterId, ids};
@@ -481,7 +482,7 @@ mod tests {
         g.members = [(10, 1.0), (11, 2.0), (12, 3.0)]
             .iter()
             .map(|&(id, s)| Member {
-                id,
+                id: object_id(id),
                 seconds_since_attacking: s,
                 ..Member::default()
             })
@@ -490,16 +491,16 @@ mod tests {
         g.unit_types = vec![
             UnitTypeStatistic {
                 formation_category: 1,
-                units: vec![10, 11],
+                units: vec![object_id(10), object_id(11)],
                 ..UnitTypeStatistic::default()
             },
             UnitTypeStatistic {
                 formation_category: 3,
-                units: vec![12],
+                units: vec![object_id(12)],
                 ..UnitTypeStatistic::default()
             },
         ];
-        g.motion.lead = 11;
+        g.motion.lead = Some(object_id(11));
         t.groups = UnitGroups {
             groups: vec![g],
             ..UnitGroups::default()
@@ -514,7 +515,7 @@ mod tests {
     fn the_members_arrays_grow_with_fresh_places_past_the_members() {
         let mut g = UnitGroup::new(1);
         g.members = vec![Member {
-            id: 5,
+            id: object_id(5),
             seconds_since_attacking: 2.0,
             ..Member::default()
         }];
@@ -526,7 +527,7 @@ mod tests {
         assert!(g.resize_members(4));
         assert_eq!(
             (g.members[0].id, g.members[0].seconds_since_attacking),
-            (5, 2.0)
+            (object_id(5), 2.0)
         );
         assert_eq!(g.spare_seconds, [f32::MAX; 3]);
         assert_eq!(g.member_capacity(), 4);
@@ -550,8 +551,11 @@ mod tests {
         assert!(t.add_to_group(1, object_id(13)).unwrap());
         assert_eq!(t.players[1].sleeping[0].group.id, 1);
         let g = t.groups.get(1).unwrap();
-        assert_eq!(g.members.last().map(|m| m.id), Some(13));
-        assert_eq!(g.unit_types[0].units, [10, 11, 13]);
+        assert_eq!(g.members.last().map(|m| m.id), Some(object_id(13)));
+        assert_eq!(
+            g.unit_types[0].units,
+            [object_id(10), object_id(11), object_id(13)]
+        );
         // an object the world's table does not hold, or of no sub-formation, joins nothing
         assert!(!t.add_to_group(1, object_id(99)).unwrap());
     }
@@ -588,15 +592,15 @@ mod tests {
             ];
             *masters = Masters::new(masters.iter().cloned().chain(extra));
         }
-        t.groups.groups[0].unit_types[0].units.push(14);
+        t.groups.groups[0].unit_types[0].units.push(object_id(14));
         assert!(!t.leave_statistic(1, object_id(14)).unwrap());
         assert!(!t.leave_statistic(1, object_id(15)).unwrap());
-        assert_eq!(t.groups.get(1).unwrap().unit_types[0].units, [10, 11, 14]);
-        assert!(t.leave_statistic(1, object_id(12)).unwrap());
         assert_eq!(
-            t.groups.get(1).unwrap().unit_types[1].units,
-            Vec::<i32>::new()
+            t.groups.get(1).unwrap().unit_types[0].units,
+            [object_id(10), object_id(11), object_id(14)]
         );
+        assert!(t.leave_statistic(1, object_id(12)).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().unit_types[1].units, Vec::new());
     }
 
     /// `FUN_14102c160`: 11 leaves: the ids close up, the seconds keep their places (11's 2 now
@@ -607,14 +611,14 @@ mod tests {
         let mut t = three();
         assert!(t.remove_unit(1, object_id(11), None, false).unwrap());
         let g = t.groups.get(1).unwrap();
-        let members: Vec<(i32, f32)> = g
+        let members: Vec<(ObjectId, f32)> = g
             .members
             .iter()
             .map(|m| (m.id, m.seconds_since_attacking))
             .collect();
-        assert_eq!(members, [(10, 1.0), (12, 2.0)]);
+        assert_eq!(members, [(object_id(10), 1.0), (object_id(12), 2.0)]);
         assert_eq!(g.spare_seconds, [3.0, f32::MAX]);
-        assert_eq!(g.unit_types[0].units, [10]);
+        assert_eq!(g.unit_types[0].units, [object_id(10)]);
         assert_eq!(
             (
                 g.unit_types[0].number_unit_types,
@@ -622,8 +626,11 @@ mod tests {
             ),
             (1, 1)
         );
-        assert_eq!(g.unit_types[1].units, [12]);
-        assert_eq!((g.motion.lead, g.flags & 0x1_0002), (10, 0x1_0002));
+        assert_eq!(g.unit_types[1].units, [object_id(12)]);
+        assert_eq!(
+            (g.motion.lead, g.flags & 0x1_0002),
+            (Some(object_id(10)), 0x1_0002)
+        );
         let u = &t.players[1].objects[1];
         assert_eq!(u.group.id, -1);
         let m = u.body.mover().unwrap();

@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -30,7 +31,7 @@ impl Unit {
         &mut self,
         c: &mut Step<'_>,
         new: PlayerId,
-    ) -> Result<(bool, Vec<i32>), GenieError> {
+    ) -> Result<(bool, Vec<ObjectId>), GenieError> {
         let class = self.placed_class(c)?;
         self.capture_stop(c, class)?;
         let changed = self.change_owner(c, new)?;
@@ -48,7 +49,7 @@ impl Unit {
     /// The master class the world files the captured object under.
     pub(crate) fn placed_class(&self, c: &Step<'_>) -> Result<ClassId, GenieError> {
         c.w.spatial
-            .get(self.id.get())
+            .get(self.id)
             .map(|p| p.class)
             .ok_or(GenieError::unsupported(
                 "a captured object the world does not hold",
@@ -158,12 +159,7 @@ impl Unit {
         }
         let _ = self.change_owner(c, new)?;
         self.capture_flag = 0;
-        if let Some(s) =
-            c.w.spatial
-                .sight
-                .as_mut()
-                .and_then(|v| v.seer_mut(self.id.get()))
-        {
+        if let Some(s) = c.w.spatial.sight.as_mut().and_then(|v| v.seer_mut(self.id)) {
             s.capture = 0;
         }
         Ok(())
@@ -218,7 +214,7 @@ pub(crate) fn scan_livestock(
     c: &mut Step<'_>,
     at: Position,
     new: PlayerId,
-    taken: &mut Vec<i32>,
+    taken: &mut Vec<ObjectId>,
 ) -> Result<(), GenieError> {
     let (tx, ty) = (at.x() as i32, at.y() as i32);
     let (w, h) = (c.w.spatial.map.width(), c.w.spatial.map.height());
@@ -248,7 +244,7 @@ pub(crate) fn scan_livestock(
 
 /// The scan's finds on tile (`x`, `y`): Gaia's livestock in state 2 of the updating object's
 /// player's list whose centre is on the tile, not yet `taken`.
-fn livestock_on(c: &Step<'_>, tile: Tile, taken: &[i32]) -> Result<Vec<i32>, GenieError> {
+fn livestock_on(c: &Step<'_>, tile: Tile, taken: &[ObjectId]) -> Result<Vec<ObjectId>, GenieError> {
     let (x, y) = (tile.x(), tile.y());
     Ok(OthersRef::of(&c.w.players, c.player)?
         .own_iter()
@@ -257,13 +253,13 @@ fn livestock_on(c: &Step<'_>, tile: Tile, taken: &[i32]) -> Result<Vec<i32>, Gen
             u.life.state == 2
                 && ux as i32 == x
                 && uy as i32 == y
-                && !taken.contains(&u.id.get())
+                && !taken.contains(&u.id)
                 && c.w
                     .spatial
-                    .get(u.id.get())
+                    .get(u.id)
                     .is_some_and(|p| p.class == class::LIVESTOCK && p.player == PlayerId::GAIA)
         })
-        .map(|u| u.id.get())
+        .map(|u| u.id)
         .collect())
 }
 
@@ -272,7 +268,7 @@ fn livestock_on(c: &Step<'_>, tile: Tile, taken: &[i32]) -> Result<Vec<i32>, Gen
 /// None when `new` lacks the master and the animal stays Gaia's, which scans nothing.
 fn take_livestock(
     c: &mut Step<'_>,
-    id: i32,
+    id: ObjectId,
     new: PlayerId,
 ) -> Result<Option<Position>, GenieError> {
     let mut unit =
@@ -297,7 +293,7 @@ fn take_livestock(
 pub(crate) struct Captured {
     pub(crate) new: PlayerId,
     pub(crate) main: bool,
-    pub(crate) also: Vec<i32>,
+    pub(crate) also: Vec<ObjectId>,
     /// The object is a building: its slot 0x70 (`FUN_1411cd860`) is the caller's, whole
     /// ([`crate::world::World::building_changes_hands`]); `main` says whether the new owner has
     /// its master.

@@ -83,7 +83,7 @@ pub(super) fn import_hunt(
         task,
         attack: None,
         move_to: None,
-        drop_site: part.sheep_drop_site_id as i32,
+        drop_site: ObjectId::of_field(part.sheep_drop_site_id as i32),
         carry_to: ObjectId::of_field(base.target2_id),
         timer: base.timer,
         lead: genie_core::gathering::hunt::Lead {

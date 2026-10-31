@@ -7,12 +7,13 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::{Tile, TileRect};
 use crate::math::fmath::BVector;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
-use crate::map::spatial::{Placed, QUERY_HITS, Spatial, TESTED_KINDS, tile_record_id};
+use crate::map::spatial::{Placed, QUERY_HITS, RecordId, Spatial, TESTED_KINDS, tile_record_id};
 
 impl Spatial {
     /// `FUN_1411566b0`: the tile beside a footprint at `at` of radii `radius` a unit at `from`
@@ -29,7 +30,7 @@ impl Spatial {
     pub fn spot_off(
         &mut self,
         from: Position,
-        (me, radius_x): (i32, f32),
+        (me, radius_x): (ObjectId, f32),
         mask: u8,
         (at, radius): (Position, Footprint),
         farthest: bool,
@@ -120,16 +121,16 @@ impl Spatial {
     /// state 2 or 6) passes the state and foundation tests.
     pub fn footprint_occupants(
         &self,
-        site_id: i32,
+        site_id: ObjectId,
         site: &Placed,
         obstructs: bool,
-        looks: &BTreeMap<i32, crate::construction::build::ClearLook>,
-    ) -> Result<Vec<i32>, GenieError> {
+        looks: &BTreeMap<ObjectId, crate::construction::build::ClearLook>,
+    ) -> Result<Vec<ObjectId>, GenieError> {
         use crate::objects::masters::master_type::BUILDING;
         let (sx, sy) = (site.position.x(), site.position.y());
         let (rx, ry) = (site.radius.x(), site.radius.y());
         self.check_known(Rect::new(sx - rx, sy - ry, sx + rx, sy + ry))?;
-        let counts = |id: i32, o: &Placed| {
+        let counts = |id: ObjectId, o: &Placed| {
             looks.get(&id).is_none_or(|l| {
                 let alive = l.state < 3 || (l.kind != BUILDING && l.state < 7);
                 let foundation = l.kind == BUILDING && l.desolid;
@@ -160,7 +161,11 @@ impl Spatial {
     /// (`FUN_1415c3620`): those whose footprint overlaps the site's, of another master, that may
     /// be built over (`can_be_built_on`) or are trees (class 15, which it clears when their hit
     /// points are at most 1).
-    pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, GenieError> {
+    pub fn footprint_clearing(
+        &self,
+        site_id: ObjectId,
+        site: &Placed,
+    ) -> Result<Vec<ObjectId>, GenieError> {
         let (sx, sy) = (site.position.x(), site.position.y());
         let (rx, ry) = (site.radius.x(), site.radius.y());
         self.check_known(Rect::new(sx - rx, sy - ry, sx + rx, sy + ry))?;
@@ -211,7 +216,7 @@ impl Spatial {
     /// records ([`Spatial::edge_records`]) and is never clear.
     pub fn point_clear(
         &mut self,
-        me: i32,
+        me: ObjectId,
         point: Point,
         grow: f32,
         mask: u8,
@@ -226,9 +231,10 @@ impl Spatial {
         }
         // the unit alone the manager's ignore list (FUN_1410562e0 with DAT_143f49fc8); the
         // buffer it set for the query it resets after (FUN_1410562d0 with 0)
-        self.set_manager_ignore(&[me]);
+        let own = [RecordId::from(me)];
+        self.set_manager_ignore(&own);
         self.set_manager_buffer(None);
-        Ok(!self.point_hit(point, grow, &[me], false)?)
+        Ok(!self.point_hit(point, grow, &own, false)?)
     }
 
     /// Slot 0x270 of unit `me` (`FUN_141158940`): whether it could stand at `point` among the
@@ -243,11 +249,11 @@ impl Spatial {
     /// As [`Spatial::point_hit`].
     pub fn point_clear_among(
         &mut self,
-        me: i32,
+        me: ObjectId,
         point: Point,
         grow: f32,
         mask: u8,
-        ignore: &[i32],
+        ignore: &[ObjectId],
     ) -> Result<bool, GenieError> {
         use crate::math::conversions::cvttss2si;
         // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
@@ -257,11 +263,16 @@ impl Spatial {
         if word & u64::from(mask ^ 0xff) != 0 {
             return Ok(false);
         }
-        let ignore = if ignore.is_empty() { &[me][..] } else { ignore };
-        self.set_manager_ignore(ignore);
+        // the objects as the record query ignores them, the unit alone for none
+        let ignore: Vec<RecordId> = if ignore.is_empty() {
+            vec![RecordId::from(me)]
+        } else {
+            ignore.iter().map(|&id| RecordId::from(id)).collect()
+        };
+        self.set_manager_ignore(&ignore);
         // the buffer it set for the query it resets after (FUN_1410562d0 with 0)
         self.set_manager_buffer(None);
-        Ok(!self.point_hit(point, grow, ignore, false)?)
+        Ok(!self.point_hit(point, grow, &ignore, false)?)
     }
 
     /// The obstruction manager's point query (`FUN_141051900` with flags 0x20, any player, the
@@ -282,7 +293,7 @@ impl Spatial {
         &self,
         point: Point,
         grow: f32,
-        ignore: &[i32],
+        ignore: &[RecordId],
         still: bool,
     ) -> Result<bool, GenieError> {
         let rect = Rect::between(point, point).grown(grow);
@@ -315,13 +326,16 @@ impl Spatial {
         &self,
         point: Point,
         grow: f32,
-        ignore: &[i32],
+        ignore: &[RecordId],
         still: bool,
     ) -> Result<bool, GenieError> {
         let rect = Rect::between(point, point).grown(grow);
         self.check_known_records(rect)?;
         Ok(self.records_in(rect).any(|(id, p)| {
-            let Some(o) = p.obstruction.filter(|_| !ignore.contains(&id)) else {
+            let Some(o) = p
+                .obstruction
+                .filter(|_| !ignore.contains(&RecordId::from(id)))
+            else {
                 return false;
             };
             if still && self.gaits.get(&id).is_some_and(|g| g.moving) {
@@ -352,13 +366,18 @@ impl Spatial {
     /// segment and shrinks moving allies' boxes (master `+0x780`, at most 1); every hit is a
     /// candidate, so no candidate means no hit.
     #[must_use]
-    pub fn obstruction_candidates(&self, rect: Rect, grow: f32, ignore: &[i32]) -> Vec<i32> {
+    pub fn obstruction_candidates(
+        &self,
+        rect: Rect,
+        grow: f32,
+        ignore: &[RecordId],
+    ) -> Vec<ObjectId> {
         let query = rect.grown(grow);
         self.records_in(query)
             .filter(|(id, p)| {
                 p.obstruction.is_some_and(|o| {
                     TESTED_KINDS.contains(&o.kind) && self.visits(p, o.kind, query)
-                }) && !ignore.contains(id)
+                }) && !ignore.contains(&RecordId::from(*id))
             })
             .filter(|(_, p)| rect.overlaps(p.bounds().grown(grow)))
             .map(|(id, _)| id)

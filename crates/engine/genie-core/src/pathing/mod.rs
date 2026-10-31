@@ -16,6 +16,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Placed, Tiles};
+use crate::objects::ObjectId;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::short_path::Pather;
 use crate::pathing::tile_path::Planner;
@@ -51,14 +52,14 @@ pub struct Pathing {
     /// The mesh, None until the slice has the game's.
     mesh: Option<Mesh>,
     /// Each object's shape (`+0x64c`).
-    shapes: BTreeMap<i32, u32>,
+    shapes: BTreeMap<ObjectId, u32>,
     /// The temporary shapes of the motion step under way (its `local_1688`).
     temporary: Vec<u32>,
     /// The short pather.
     pub pather: Pather,
     /// The ignore list the tile planner's smoothing hands the obstruction manager
     /// (`DAT_143f0db50`, six ids, a static the game never clears: zero at the load).
-    smoothing_ignore: [i32; 6],
+    smoothing_ignore: [ObjectId; 6],
     /// Each player's path budget (by player index): its plans this update and the caps the
     /// save holds ([`PlanBudget`]).
     pub budgets: Vec<PlanBudget>,
@@ -174,9 +175,9 @@ impl Pathing {
     #[must_use]
     pub fn smoothing_ignore(
         &self,
-        unit: i32,
-        target: Option<(i32, &[i32])>,
-    ) -> ([i32; 6], Vec<i32>) {
+        unit: ObjectId,
+        target: Option<(ObjectId, &[ObjectId])>,
+    ) -> ([ObjectId; 6], Vec<ObjectId>) {
         let mut slots = self.smoothing_ignore;
         slots[0] = unit;
         let Some((target, annexes)) = target else {
@@ -198,7 +199,7 @@ impl Pathing {
 
     /// The smoothing ran with the ignore list `slots` ([`Pathing::smoothing_ignore`]): the static
     /// keeps it.
-    pub const fn smoothing_ran(&mut self, slots: [i32; 6]) {
+    pub const fn smoothing_ran(&mut self, slots: [ObjectId; 6]) {
         self.smoothing_ignore = slots;
     }
 
@@ -210,7 +211,7 @@ impl Pathing {
     }
 
     /// The game's mesh and each object's shape in it, at the tick the slice starts from.
-    pub fn set_mesh(&mut self, mesh: Mesh, shapes: impl IntoIterator<Item = (i32, u32)>) {
+    pub fn set_mesh(&mut self, mesh: Mesh, shapes: impl IntoIterator<Item = (ObjectId, u32)>) {
         self.mesh = Some(mesh);
         self.shapes = shapes.into_iter().collect();
     }
@@ -228,7 +229,7 @@ impl Pathing {
 
     /// An object's shape in the mesh.
     #[must_use]
-    pub fn shape(&self, id: i32) -> Option<u32> {
+    pub fn shape(&self, id: ObjectId) -> Option<u32> {
         self.shapes.get(&id).copied()
     }
 
@@ -290,7 +291,7 @@ impl Pathing {
     /// while it is not moving (object slot 185, `0x1411583d0`), added or replaced
     /// (`FUN_140fdb8d0`, `FUN_140fdc730`), and none while it moves (`FUN_140fdc250`). Without the
     /// game's mesh nothing is kept.
-    pub fn moved(&mut self, id: i32, p: &Placed, moving: bool) {
+    pub fn moved(&mut self, id: ObjectId, p: &Placed, moving: bool) {
         let Some(mesh) = self.mesh.as_mut() else {
             return;
         };
@@ -316,7 +317,7 @@ impl Pathing {
 
     /// `FUN_141056460`'s shape for an object that does not move, by its master's obstruction
     /// kind and class whether or not it has its record (the load's rehook): added or replaced.
-    pub fn place_shape(&mut self, id: i32, p: &Placed) {
+    pub fn place_shape(&mut self, id: ObjectId, p: &Placed) {
         let Some(mesh) = self.mesh.as_mut() else {
             return;
         };
@@ -335,7 +336,7 @@ impl Pathing {
     /// ([`refreshed_rect`]), added or replaced (an odd box always replaces: its shape is removed
     /// and added again); none while it moves. The record's moving flag (byte 3, 0x10) is not
     /// held: the walk reads the gait. Without the game's mesh nothing is kept.
-    pub fn refresh(&mut self, id: i32, p: &Placed, moving: bool, outline: Footprint) {
+    pub fn refresh(&mut self, id: ObjectId, p: &Placed, moving: bool, outline: Footprint) {
         let Some(mesh) = self.mesh.as_mut() else {
             return;
         };
@@ -382,7 +383,7 @@ impl Pathing {
     }
 
     /// The object left the world: its shape leaves the mesh.
-    pub fn removed(&mut self, id: i32) {
+    pub fn removed(&mut self, id: ObjectId) {
         if let (Some(mesh), Some(s)) = (self.mesh.as_mut(), self.shapes.remove(&id)) {
             mesh.remove(s);
         }
@@ -394,6 +395,7 @@ mod tests {
     use super::*;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
+    use crate::test_ids::object_id;
 
     /// `FUN_14165d6f0`: no budget once the plans reached a set attempt cap, unless the walker
     /// waited more often than a set delay cap allows; caps of -1 never stop a plan. A plan counts
@@ -473,18 +475,43 @@ mod tests {
     #[test]
     fn the_smoothing_ignores_a_main_building_s_annexes_over_its_own_slot() {
         let mut p = Pathing::default();
-        assert_eq!(p.smoothing_ignore(31128, None).1, [31128]);
         assert_eq!(
-            p.smoothing_ignore(31128, Some((9156, &[]))).1,
-            [31128, 9156]
+            p.smoothing_ignore(object_id(31128), None).1,
+            [object_id(31128)]
         );
-        let (slots, ignore) = p.smoothing_ignore(31128, Some((27171, &[27172, 27173, 27175])));
-        assert_eq!(ignore, [31128, 27172, 27173, 27175, 0]);
+        assert_eq!(
+            p.smoothing_ignore(object_id(31128), Some((object_id(9156), &[])))
+                .1,
+            [object_id(31128), object_id(9156)]
+        );
+        let (slots, ignore) = p.smoothing_ignore(
+            object_id(31128),
+            Some((
+                object_id(27171),
+                &[object_id(27172), object_id(27173), object_id(27175)],
+            )),
+        );
+        assert_eq!(
+            ignore,
+            [
+                object_id(31128),
+                object_id(27172),
+                object_id(27173),
+                object_id(27175),
+                object_id(0)
+            ]
+        );
         // the static keeps the list once the smoothing ran: a later one-annex list's extra slot
         // holds the second annex
         p.smoothing_ran(slots);
-        let (_, ignore) = p.smoothing_ignore(31143, Some((5000, &[5001])));
-        assert_eq!(ignore, [31143, 5001, 27173]);
+        let (_, ignore) = p.smoothing_ignore(
+            object_id(31143),
+            Some((object_id(5000), &[object_id(5001)])),
+        );
+        assert_eq!(
+            ignore,
+            [object_id(31143), object_id(5001), object_id(27173)]
+        );
     }
     use crate::map::spatial::Obstruction;
 
@@ -525,8 +552,8 @@ mod tests {
         let mut p = Pathing::default();
         p.set_mesh(Mesh::new(120), []);
         let hunter = villager(106.53662, 46.65576);
-        p.refresh(10029, &hunter, false, Footprint::ZERO);
-        let s = p.shape(10029).unwrap();
+        p.refresh(object_id(10029), &hunter, false, Footprint::ZERO);
+        let s = p.shape(object_id(10029)).unwrap();
         let r = refreshed_rect(hunter.position, hunter.radius);
         assert_eq!(
             r[0],
@@ -537,30 +564,30 @@ mod tests {
             [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
         );
         // moving, it has none; without a record, none either
-        p.refresh(10029, &hunter, true, Footprint::ZERO);
-        assert_eq!(p.shape(10029), None);
+        p.refresh(object_id(10029), &hunter, true, Footprint::ZERO);
+        assert_eq!(p.shape(object_id(10029)), None);
         let mut bare = hunter;
         bare.obstruction = None;
-        p.refresh(10029, &bare, false, Footprint::ZERO);
-        assert_eq!(p.shape(10029), None);
+        p.refresh(object_id(10029), &bare, false, Footprint::ZERO);
+        assert_eq!(p.shape(object_id(10029)), None);
     }
 
     #[test]
     fn a_unit_has_a_shape_while_it_stands_and_none_while_it_moves() {
         let mut p = Pathing::default();
         p.set_mesh(Mesh::new(120), []);
-        p.moved(9175, &villager(30.0, 89.0), false);
-        let s = p.shape(9175).unwrap();
+        p.moved(object_id(9175), &villager(30.0, 89.0), false);
+        let s = p.shape(object_id(9175)).unwrap();
         assert_eq!(p.mesh().unwrap().shapes[s as usize], {
             let r = shape_rect(&villager(30.0, 89.0));
             [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
         });
-        p.moved(9175, &villager(30.1, 89.0), true);
-        assert_eq!(p.shape(9175), None);
+        p.moved(object_id(9175), &villager(30.1, 89.0), true);
+        assert_eq!(p.shape(object_id(9175)), None);
         // a foundation without its record has none
         let mut site = villager(30.0, 88.0);
         site.obstruction = None;
-        p.moved(10028, &site, false);
-        assert_eq!(p.shape(10028), None);
+        p.moved(object_id(10028), &site, false);
+        assert_eq!(p.shape(object_id(10028)), None);
     }
 }

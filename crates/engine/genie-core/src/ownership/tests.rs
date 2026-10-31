@@ -6,6 +6,7 @@ use crate::objects::masters::class;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
 use crate::players::PlayerId;
+use crate::test_ids::object_id;
 
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -29,8 +30,11 @@ fn walking_forager() -> World {
         wait: MoveWait::default(),
     }));
     let ai = u.ai.as_mut().unwrap();
-    (ai.current_order, ai.current_action, ai.current_target) =
-        (Some(OrderKind::Move), Some(ActionKind::Move), 600);
+    (ai.current_order, ai.current_action, ai.current_target) = (
+        Some(OrderKind::Move),
+        Some(ActionKind::Move),
+        Some(object_id(600)),
+    );
     t
 }
 
@@ -64,7 +68,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (None, None, -1)
+        (None, None, None)
     );
     assert_eq!(
         (ai.last_order, ai.last_action),
@@ -74,11 +78,17 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     let (u, _) = stopped(walking_forager(), class::LIVESTOCK).unwrap();
     assert_eq!(u.actions.move_to().copied(), None);
     let kept = |ai: &crate::unit_ai::UnitAi| (ai.current_order, ai.current_target);
-    assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
+    assert_eq!(
+        kept(u.ai.as_ref().unwrap()),
+        (Some(OrderKind::Move), Some(object_id(600)))
+    );
     let mut t = walking_forager();
     t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::HeroPower);
     let (u, _) = stopped(t, class::VILLAGER).unwrap();
-    assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
+    assert_eq!(
+        kept(u.ai.as_ref().unwrap()),
+        (Some(OrderKind::Move), Some(object_id(600)))
+    );
 }
 
 /// `FUN_14108c050` with an Artifact on top: its slot 0x38 keeps the action, drops its walking
@@ -89,7 +99,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     let artifact = || Artifact {
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
         goal: Some(Position::new(32.5, 89.5, 0.0)),
-        target: 600,
+        target: Some(object_id(600)),
         ..Artifact::new(false, None)
     };
     let mut t = forage_world();
@@ -100,7 +110,7 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     let a = u.actions.artifact().copied().unwrap();
     assert_eq!(
         (a.move_to, a.goal, a.target, a.state),
-        (None, None, -1, crate::ownership::artifact::CHECK)
+        (None, None, None, crate::ownership::artifact::CHECK)
     );
     assert_eq!(released, [600]);
     assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);

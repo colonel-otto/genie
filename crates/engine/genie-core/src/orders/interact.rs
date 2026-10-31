@@ -81,7 +81,7 @@ impl World {
         if still {
             // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
             // test, any task) at the order's point, z 0; a queued order then goes on as a mover's
-            self.order_at_once(player, idx, ObjectId::field(order.target), order.point)?;
+            self.order_at_once(player, idx, order.target, order.point)?;
             if !order.queued {
                 return Ok(());
             }
@@ -128,7 +128,7 @@ impl World {
             }
             let at = point.with_height(0.0);
             let work = Work {
-                target: ObjectId::field(order.target),
+                target: order.target,
                 point: at,
                 carry_test: order.carry_test,
                 filter: order.filter,
@@ -139,14 +139,10 @@ impl World {
         let (target_type, target_owner) =
             target.map_or((-1, -1), |(m, o)| (i32::from(m.get()), o.index() as i32));
         let queued = crate::unit_ai::QueuedOrder {
-            issuer: issuer.index() as i32,
+            issuer: Some(crate::unit_ai::Issuer::Player(issuer)),
             order: OrderKind::OnTarget,
             priority: 100,
-            target: if target.is_some() {
-                ObjectId::field(order.target)
-            } else {
-                -1
-            },
+            target: if target.is_some() { order.target } else { None },
             target_owner,
             point: point.with_height(0.0),
             range: 0.0,
@@ -176,14 +172,14 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: Option<ObjectId>,
         point: Point,
     ) -> Result<(), GenieError> {
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
-        if target == unit.id.get() {
+        if target == Some(unit.id) {
             return Ok(());
         }
         let work = Work {
@@ -205,7 +201,7 @@ impl World {
     /// # Errors
     ///
     /// What the work command does not model.
-    pub(crate) fn give_work(&mut self, id: i32, work: &Work) -> Result<(), GenieError> {
+    pub(crate) fn give_work(&mut self, id: ObjectId, work: &Work) -> Result<(), GenieError> {
         let Some(Place::Live(player, idx)) = self.place(id) else {
             return Ok(());
         };
@@ -218,7 +214,7 @@ impl World {
         {
             ai.orders.clear();
         }
-        if work.target == id {
+        if work.target == Some(id) {
             return Ok(());
         }
         self.order_work(player, idx, work)
@@ -242,7 +238,7 @@ impl World {
             "a queued order on a target that is gone",
         ))?;
         let point = t.position();
-        if order.target != self.players.live(player, idx)?.id.get() {
+        if order.target != Some(self.players.live(player, idx)?.id) {
             let work = Work {
                 target: order.target,
                 point,
@@ -450,10 +446,9 @@ impl World {
                     disable_retargeting: (order.first.disable_retargeting)(retargets),
                     filter: order.first.filter,
                 };
-                let _ = self.group_command(id, target, at, args)?;
+                let _ = self.group_command(id, Some(target), at, args)?;
             }
-            let _ =
-                self.group_command(id, ObjectId::field(order.target), order.point, order.args)?;
+            let _ = self.group_command(id, order.target, order.point, order.args)?;
         }
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
@@ -469,7 +464,7 @@ impl World {
     /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
     /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
     /// (`FUN_140c4ee90`: `+0x1d6` is 0) is the command's seventh argument, as the game passes it.
-    pub(super) fn first_unit_target(&self, units: &[ObjectId]) -> Option<(i32, Point, bool)> {
+    pub(super) fn first_unit_target(&self, units: &[ObjectId]) -> Option<(ObjectId, Point, bool)> {
         let (_, first) = units.iter().find_map(|&id| self.object(id))?;
         let ai = first.ai.as_ref()?;
         let t = self.world_object(ai.current_target)?;

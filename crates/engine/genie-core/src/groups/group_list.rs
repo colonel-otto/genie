@@ -45,7 +45,7 @@ impl UnitGroups {
     /// by id `FUN_14152ff40`, then `FUN_14100bbe0` with 255): None for no group (-1) or one the
     /// world does not hold.
     #[must_use]
-    pub fn group_units(&self, group: i32) -> Option<Vec<i32>> {
+    pub fn group_units(&self, group: i32) -> Option<Vec<ObjectId>> {
         /// The long pather's list holds this many (`0xff`).
         const LOWERED: usize = 255;
         self.get(group)
@@ -55,7 +55,7 @@ impl UnitGroups {
     /// `FUN_14100bbe0` of group `group` with `cap`: the members of each group of its
     /// differentiator groups the world holds (by id), in order, at most `cap`.
     #[must_use]
-    pub fn differentiator_units(&self, group: &UnitGroup, cap: usize) -> Vec<i32> {
+    pub fn differentiator_units(&self, group: &UnitGroup, cap: usize) -> Vec<ObjectId> {
         let mut out = Vec::new();
         for &id in &group.differentiator_groups {
             let Some(g) = self.get(id as i32) else {

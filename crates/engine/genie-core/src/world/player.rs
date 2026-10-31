@@ -1,6 +1,7 @@
 //! A player ([`Player`]): its objects, attributes and formations, and the stop of its update.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::object_list::ObjectList;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
@@ -121,7 +122,7 @@ pub struct Player {
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, GenieError)>,
     /// Every object the slice stopped updating, with the tick and why.
-    pub freezes: Vec<(u32, i32, GenieError)>,
+    pub freezes: Vec<(u32, ObjectId, GenieError)>,
     /// A command the slice could not model stopped the whole player: its objects freeze.
     pub stopped: bool,
     /// `game_status` (`+0x89`, saved): playing, won or lost ([`crate::players::game_status`]).

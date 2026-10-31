@@ -212,25 +212,12 @@ impl UnitAi {
         Ok(GO_ON)
     }
 
-    /// `FUN_140b43f30` on the attackers (`+0xc0`, count `+0xc8`): a binary search of the sorted
-    /// set; an id not in it goes into its place (the array grows by `capacity * 103 / 64 + 1`,
-    /// Vec's own growth here) and the call answers true, one already in it answers false.
-    pub(crate) fn add_attacker(&mut self, id: i32) -> bool {
-        match self.attackers.binary_search(&id) {
-            Ok(_) => false,
-            Err(i) => {
-                self.attackers.insert(i, id);
-                true
-            }
-        }
-    }
-
     /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
     pub(crate) fn remove_target(&mut self) {
-        if self.current_target != -1 {
+        if self.current_target.is_some() {
             self.last_target = self.current_target;
             self.last_target_type = self.target_type;
-            self.current_target = -1;
+            self.current_target = None;
             self.target_type = -1;
             self.target_point = Position::from([-1.0; 3]);
         }
@@ -300,9 +287,9 @@ impl UnitAi {
     /// current one (`+0x48`, `+0x4c`) go, the target point with them. Its only other line is the
     /// debug log behind `DAT_143f0900d`, which changes no state.
     pub(crate) fn forget_targets(&mut self) {
-        self.last_target = -1;
+        self.last_target = None;
         self.last_target_type = -1;
-        self.current_target = -1;
+        self.current_target = None;
         self.target_type = -1;
         self.target_point = Position::from([-1.0; 3]);
     }

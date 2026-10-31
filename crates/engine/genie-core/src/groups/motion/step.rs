@@ -102,10 +102,10 @@ pub(super) fn pass(
         return Ok(Pass::Done(false));
     }
     let target_id = level.target;
-    let target: Option<Placed> = if 0 <= target_id {
-        spatial.get_known(target_id)?.copied()
-    } else {
-        None
+    // the game tests the sign: a recyclable object's id is no target here
+    let target: Option<Placed> = match target_id.filter(|t| !t.is_recyclable()) {
+        Some(t) => spatial.get_known(t)?.copied(),
+        None => None,
     };
     let at = motion.position[0];
     // `fVar39`: the target's footprint gap to the group's place, squared (FUN_140a847c0)

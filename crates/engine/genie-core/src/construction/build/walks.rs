@@ -44,7 +44,7 @@ impl BuildAction {
         builder: &Unit,
     ) -> Result<(Option<WalkTo>, Option<MoveToAction>), GenieError> {
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
-        let to = if self.target == -1 {
+        let to = if self.target.is_none() {
             None
         } else {
             Some(move_reads.walk_to(c.w, self.target)?.ok_or(SITE_GONE)?)

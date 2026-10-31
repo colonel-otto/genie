@@ -9,7 +9,7 @@ use crate::groups::update::{
 };
 use crate::groups::{SpecificMove, UnitGroup};
 use crate::math::fmath::BVector;
-use crate::objects::ObjectId;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -36,7 +36,7 @@ impl World {
             NO_COMMAND => false,
             MOVE_COMMAND => self.move_update(group, relayout)?,
             FOLLOW => {
-                let target = g.current_target.target;
+                let target = g.current_target.target.key();
                 let from = g.current_target.original_position;
                 let to = self
                     .world_object(target)
@@ -46,10 +46,10 @@ impl World {
                     self.groups.held_mut(group)?.motion.lead = lead;
                     lead
                 } else {
-                    -1
+                    None
                 };
                 match to {
-                    Some((moved, at)) if lead != -1 => {
+                    Some((moved, at)) if lead.is_some() => {
                         let g = self.groups.held(group)?;
                         let leader = self
                             .lead_object(&g.motion)
@@ -169,19 +169,20 @@ impl World {
             if g.command_queue.is_empty()
                 && let Some((kind, slots)) = slots
             {
-                let target = g.current_target.target;
+                let target = g.current_target.target.key();
                 let mut kept = 0;
                 for &(unit, state) in &slots {
                     if state == 3 {
-                        let (unit, target) =
-                            (ObjectId::try_from(unit)?, ObjectId::of_field(target));
-                        let _ = self.remove_unit(group, unit, target, false)?;
+                        // a slot without a unit names no member: the removal finds none
+                        if let Some(unit) = unit {
+                            let _ = self.remove_unit(group, unit, target, false)?;
+                        }
                     } else {
                         kept += 1;
                     }
                 }
                 if kept != 0 && kept != slots.len() {
-                    self.move_to_desired_positions(group, MOVE_COMMAND, -1)?;
+                    self.move_to_desired_positions(group, MOVE_COMMAND, None)?;
                     return Ok(false);
                 }
                 if !walks {
@@ -244,7 +245,7 @@ impl World {
     ) -> Result<bool, GenieError> {
         let g = self.groups.held_mut(group)?;
         g.flags = (g.flags & !4) | 0x20;
-        self.move_to_desired_positions(group, MOVE_COMMAND, -1)?;
+        self.move_to_desired_positions(group, MOVE_COMMAND, None)?;
         Ok(!walks && !patrolling)
     }
 
@@ -268,7 +269,7 @@ impl World {
         &mut self,
         group: i32,
         command: i32,
-        target: i32,
+        target: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let Some(f) = g
@@ -280,7 +281,7 @@ impl World {
         };
         let held_target = self.world_object(target).is_some();
         for slot in &f.slots {
-            if slot.unit_id == -1 || self.world_object(slot.unit_id).is_none() {
+            if slot.unit_id.is_none() || self.world_object(slot.unit_id).is_none() {
                 continue;
             }
             if !self.member_idle(slot.unit_id)? {
@@ -396,7 +397,7 @@ impl World {
     /// # Errors
     ///
     /// What the motion step does not model, and a walk's unit in the way (notify 0x215).
-    pub(crate) fn member_step(&mut self, id: i32) -> Result<bool, GenieError> {
+    pub(crate) fn member_step(&mut self, id: ObjectId) -> Result<bool, GenieError> {
         use crate::movement::{Me, Motion, Planning};
         let Some(place) = self.place(id) else {
             return Ok(true);
@@ -405,7 +406,7 @@ impl World {
             return Err(GenieError::unsupported("a sleeping member's own move"));
         };
         // the walk meets the group's members as its update left them so far
-        let members: Vec<i32> = self
+        let members: Vec<ObjectId> = self
             .groups
             .get(self.players.live(p, idx)?.group.id)
             .map(|g| g.members.iter().map(|m| m.id).collect())

@@ -8,6 +8,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
@@ -95,7 +96,7 @@ impl World {
     ///
     /// Its master or attributes the player has not got, a facet draw on a sprite of one facet
     /// (the game divides by zero), and what the object's making does not model.
-    pub(crate) fn setup_pasture(&mut self, p: PlayerId, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn setup_pasture(&mut self, p: PlayerId, id: ObjectId) -> Result<(), GenieError> {
         let (at, master) = self
             .object(id)
             .map(|(_, u)| (u.position(), u.life.master_id))
@@ -142,7 +143,7 @@ impl World {
                     .object_mut(new)
                     .ok_or(GenieError::unreachable("the livestock just made"))?;
                 u.untargetable = true;
-                u.pasture = id;
+                u.pasture = Some(id);
                 u.life.amount = food;
                 let graphic = u.sprite.map(|s| s.graphic);
                 if let Some(g) = graphic.filter(|g| g.flags & 4 != 0) {
@@ -162,7 +163,7 @@ impl World {
     /// A pasture's slot 0x780 (`FUN_1411c5dd0`): the workers (`+0x644`) of its livestock
     /// ([`crate::objects::unit::Unit::livestock`]) the world holds, summed; 0 for an object the world does
     /// not hold.
-    pub(crate) fn livestock_workers(&self, pasture: i32) -> i32 {
+    pub(crate) fn livestock_workers(&self, pasture: ObjectId) -> i32 {
         self.object(pasture).map_or(0, |(_, b)| {
             b.livestock
                 .iter()
@@ -183,15 +184,15 @@ impl World {
     /// A master the players have not got, or an attribute the owner has not got.
     pub(crate) fn pasture_pick(
         &self,
-        pasture: i32,
+        pasture: ObjectId,
         p: PlayerId,
         idx: usize,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let Some((q, b)) = self.object(pasture) else {
-            return Ok(-1);
+            return Ok(None);
         };
         if q != p {
-            return Ok(-1);
+            return Ok(None);
         }
         let unit = &self.players.live(p, idx)?;
         let reach = unit.master(&self.masters, p)?.radius;
@@ -214,21 +215,22 @@ impl World {
             self.players.player(q)?,
             AttributeId::try_from(PASTURE_WORKERS)?,
         )?;
-        let mut pick = -1;
+        let mut pick = None;
         for (id, workers, _) in tended {
             if workers == 0 {
-                return Ok(id);
+                return Ok(Some(id));
             }
-            if pick == -1 && (workers as f32) < room {
-                pick = id;
+            if pick.is_none() && (workers as f32) < room {
+                pick = Some(id);
             }
         }
         Ok(pick)
     }
 
-    /// `FUN_141189ca0`: player `p`'s unit at `idx` tends `pasture`, −1 for none. The building it
-    /// names (the one the unit tends, `+0x794`, for −1; none for an object that is no building)
-    /// takes the unit last among its workers unless it lists it already, or for −1 drops it
+    /// `FUN_141189ca0`: player `p`'s unit at `idx` tends `pasture`, none (−1) to tend none. The
+    /// building it names (the one the unit tends, `+0x794`, for none; none for an object that is
+    /// no building) takes the unit last among its workers unless it lists it already, or for none
+    /// drops it
     /// (`FUN_1411cafa0`, [`crate::objects::unit::Unit::pasture_workers`]); then the unit tends `pasture`
     /// ([`crate::objects::unit::Unit::my_pasture`]).
     ///
@@ -239,26 +241,19 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-        pasture: i32,
+        pasture: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(p, idx)?;
-        let (id, named) = (
-            unit.id,
-            if pasture == -1 {
-                unit.my_pasture
-            } else {
-                pasture
-            },
-        );
+        let (id, named) = (unit.id, pasture.or(unit.my_pasture));
         let building = match self.object(named) {
             Some((q, b)) => b.master(&self.masters, q)?.kind == BUILDING,
             None => false,
         };
         if building && let Some((_, b)) = self.object_mut(named) {
-            if pasture == -1 {
-                b.pasture_workers.retain(|&w| w != id.get());
-            } else if !b.pasture_workers.contains(&id.get()) {
-                b.pasture_workers.push(id.get());
+            if pasture.is_none() {
+                b.pasture_workers.retain(|&w| w != id);
+            } else if !b.pasture_workers.contains(&id) {
+                b.pasture_workers.push(id);
             }
         }
         self.players.live_mut(p, idx)?.my_pasture = pasture;
@@ -267,10 +262,11 @@ impl World {
 
     /// Whether the objects on tile (`x`, `y`) (its list, `+0x28`) hold a livestock master
     /// ([`LIVESTOCK`]) of the pasture `pasture` (`+0x790`). A ghost on it is not of a pasture.
-    fn holds_livestock_of(&self, pasture: i32, x: i32, y: i32) -> bool {
+    fn holds_livestock_of(&self, pasture: ObjectId, x: i32, y: i32) -> bool {
         self.spatial.tile_list(x, y).iter().any(|&o| {
-            self.object(o)
-                .is_some_and(|(_, u)| u.pasture == pasture && LIVESTOCK.contains(&u.life.master_id))
+            self.object(o).is_some_and(|(_, u)| {
+                u.pasture == Some(pasture) && LIVESTOCK.contains(&u.life.master_id)
+            })
         })
     }
 }

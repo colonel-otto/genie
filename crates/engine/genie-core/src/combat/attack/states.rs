@@ -10,7 +10,6 @@ use crate::map::Position;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
 use crate::movement::move_to::MoveToReads;
-use crate::objects::ObjectId;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
@@ -131,7 +130,7 @@ impl Attack {
             forget_target(unit);
         }
         let target = self.target.take();
-        let_go(c, unit, ObjectId::field(target))?;
+        let_go(c, unit, target)?;
         self.point = Position::from([NONE; 3]);
         let human = f.own.player != PlayerId::new(0) && !r.computer;
         let waits = match r.ai_order {
@@ -185,7 +184,7 @@ impl Attack {
         if self.sub_action {
             return Ok(3);
         }
-        let_go(c, unit, ObjectId::field(target))?;
+        let_go(c, unit, target)?;
         if r.ai_order.has_ai() {
             forget_target(unit);
         }

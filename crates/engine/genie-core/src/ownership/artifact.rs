@@ -13,6 +13,7 @@ use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveToReads, WalkTo};
+use crate::objects::ObjectId;
 use crate::objects::actions::Action;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
@@ -30,9 +31,9 @@ use genie_diff::Diff;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Targets {
     /// The old target it let go.
-    pub released: Option<i32>,
+    pub released: Option<ObjectId>,
     /// The new target it took.
-    pub taken: Option<i32>,
+    pub taken: Option<ObjectId>,
 }
 
 /// What the Artifact's update reads of its unit ([`Artifact::update`]).
@@ -69,7 +70,7 @@ pub struct SubActionsGone {
     /// stops the unit (slot 0x5d0).
     pub stops: bool,
     /// The building or transport the Enter's teardown let go (slot 0x180).
-    pub released: Option<i32>,
+    pub released: Option<ObjectId>,
 }
 
 /// One animal's Artifact action, as the checkpoint sees it.
@@ -86,8 +87,8 @@ pub struct Artifact {
     pub move_to: Option<MoveToAction>,
     /// The action's point (`+0x38`..`+0x40`): where its `MoveTo` walks, or its target's place.
     pub goal: Option<Position>,
-    /// The target of a move to an object (`+0x20`, its id at `+0x30`), −1 for none.
-    pub target: i32,
+    /// The target of a move to an object (`+0x20`, its id at `+0x30`).
+    pub target: Option<ObjectId>,
     /// The Enter an enter command made its sub-action (`FUN_1410847e0` under an Artifact on
     /// top), which its update runs first ([`Artifact::hold_enter`]).
     pub enter: Option<crate::garrison::EnterAction>,
@@ -117,15 +118,15 @@ impl Artifact {
             gaia,
             move_to: None,
             goal: None,
-            target: -1,
+            target: None,
             enter: None,
             moving,
         }
     }
 
     /// Slot 0x68 with none: the target goes; the one let go, if any.
-    pub fn drop_target(&mut self) -> Option<i32> {
-        self.set_target(-1, false).released
+    pub fn drop_target(&mut self) -> Option<ObjectId> {
+        self.set_target(None, false).released
     }
 
     /// `FUN_140a98620` on the sub-actions (one at most): a `MoveTo` goes with its goal, whose
@@ -137,7 +138,7 @@ impl Artifact {
         let enter = self.enter.take();
         SubActionsGone {
             stops: walked || enter.is_some_and(|e| e.move_to.is_some()),
-            released: enter.map(|e| e.target),
+            released: enter.and_then(|e| e.target),
         }
     }
 
@@ -155,25 +156,24 @@ impl Artifact {
     /// before it slaughters.
     #[must_use]
     pub const fn idle(&self) -> bool {
-        self.target == -1 && self.goal.is_none()
+        self.target.is_none() && self.goal.is_none()
     }
 
     /// Slot 0x68, the base's (`FUN_140a7a230`, `+0x60` 0): a target other than `new` goes (let
-    /// go), then `new` comes when it is one (not −1) in a state below 7 (`alive`, taken); a dead
-    /// one leaves none.
-    fn set_target(&mut self, new: i32, alive: bool) -> Targets {
+    /// go), then `new` comes when it is one in a state below 7 (`alive`, taken); a dead one
+    /// leaves none.
+    fn set_target(&mut self, new: Option<ObjectId>, alive: bool) -> Targets {
         let mut t = Targets::default();
         if self.target == new {
             return t;
         }
-        if self.target != -1 {
-            t.released = Some(self.target);
-        }
-        if new != -1 && alive {
-            self.target = new;
-            t.taken = Some(new);
-        } else {
-            self.target = -1;
+        t.released = self.target;
+        match new.filter(|_| alive) {
+            Some(new) => {
+                self.target = Some(new);
+                t.taken = Some(new);
+            }
+            None => self.target = None,
         }
         t
     }
@@ -212,7 +212,7 @@ impl Artifact {
         };
         let walk = reads.to_object(held, range, self.moving, TargetMoved::Follows)?;
         let alive = to.state.is_none_or(|s| s < 7);
-        let released = self.set_target(-1, false).released;
+        let released = self.set_target(None, false).released;
         let taken = self.set_target(to.id, alive).taken;
         let gone = self.drop_sub_actions();
         self.goal = Some(to.at);
@@ -250,13 +250,13 @@ impl Artifact {
     /// else). Returns the sub-actions that went, then the target let go (the caller's release,
     /// after the Enter's); the unit's standing sprite (slot 0x68 with the master's `+0x470`) is
     /// the caller's too.
-    pub fn stop(&mut self) -> (SubActionsGone, Option<i32>) {
+    pub fn stop(&mut self) -> (SubActionsGone, Option<ObjectId>) {
         let mut gone = SubActionsGone::default();
         let mut released = None;
         if self.move_to.is_some() || self.enter.is_some() {
             gone = self.drop_sub_actions();
             self.goal = None;
-            released = self.set_target(-1, false).released;
+            released = self.set_target(None, false).released;
         }
         self.state = CHECK;
         (gone, released)
@@ -266,9 +266,8 @@ impl Artifact {
     /// list's clearing or a dead object's runs it): the target goes (let go, `+0x60` 0); it holds
     /// no second target (`+0x28`); its sub-actions go ([`Artifact::drop_sub_actions`]). Returns
     /// the target let go, then the sub-actions that went, the caller's.
-    pub fn tear_down(&mut self) -> (Option<i32>, SubActionsGone) {
-        let released = (self.target != -1).then_some(self.target);
-        self.target = -1;
+    pub fn tear_down(&mut self) -> (Option<ObjectId>, SubActionsGone) {
+        let released = self.target.take();
         (released, self.drop_sub_actions())
     }
 
@@ -294,7 +293,7 @@ impl Artifact {
     ) -> Result<Option<Handover>, GenieError> {
         self.walk(c, unit, me, r)?;
         let owner = if self.state == CHECK && r.searches {
-            c.w.spatial.artifact_owner(unit.id.get(), &c.w.players)?
+            c.w.spatial.artifact_owner(unit.id, &c.w.players)?
         } else {
             None
         };
@@ -362,10 +361,10 @@ impl Artifact {
 
     /// The `MoveTo` ended (codes 1 to 5): it goes with the point and the target (slot 0x68 with
     /// none); true when it was quiet, and the target let go.
-    fn end_walk(&mut self) -> (bool, Option<i32>) {
+    fn end_walk(&mut self) -> (bool, Option<ObjectId>) {
         let quiet = self.move_to.take().is_some_and(|m| m.quiet);
         self.goal = None;
-        let released = self.set_target(-1, false).released;
+        let released = self.set_target(None, false).released;
         (quiet, released)
     }
 
@@ -510,7 +509,7 @@ impl Unit {
             c.w.spatial
                 .sight
                 .as_ref()
-                .and_then(|v| v.seer(self.id.get()))
+                .and_then(|v| v.seer(self.id))
                 .map(|s| s.capture);
         let r = ArtifactReads {
             searches: !(self.combat && capture == Some(0)),
@@ -634,7 +633,7 @@ mod tests {
     fn a_move_deletes_the_held_enter_letting_its_transport_go() {
         let walking_enter = || {
             crate::garrison::EnterAction::new(
-                11970,
+                object_id(11970),
                 Position::new(34.125, 123.333, 0.0),
                 &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
             )
@@ -642,7 +641,7 @@ mod tests {
         };
         let by_enter = SubActionsGone {
             stops: true,
-            released: Some(11970),
+            released: Some(object_id(11970)),
         };
         let mut a = Artifact::new(false, None);
         a.enter = Some(walking_enter());
@@ -673,7 +672,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (targets.released, targets.taken, gone),
-            (None, Some(9149), by_enter)
+            (None, Some(object_id(9149)), by_enter)
         );
         assert_eq!(
             (b.enter, b.move_to.map(|m| m.state)),
@@ -682,7 +681,7 @@ mod tests {
         // an Enter that does not walk stops nothing
         let mut c = Artifact::new(false, None);
         c.enter = Some(crate::garrison::EnterAction::new(
-            11970,
+            object_id(11970),
             Position::new(1.0, 2.0, 0.0),
             &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         ));
@@ -690,7 +689,7 @@ mod tests {
             c.take_point(Position::new(3.0, 4.0, 0.0), &move_reads(&sprites())),
             Ok(SubActionsGone {
                 stops: false,
-                released: Some(11970)
+                released: Some(object_id(11970))
             })
         );
     }
@@ -701,27 +700,31 @@ mod tests {
     #[test]
     fn the_stop_and_the_teardown_delete_the_held_enter() {
         let mut e = crate::garrison::EnterAction::new(
-            11970,
+            object_id(11970),
             Position::new(1.0, 2.0, 0.0),
             &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         );
         e = e.walking(MoveTo::Moving);
         let by_enter = SubActionsGone {
             stops: true,
-            released: Some(11970),
+            released: Some(object_id(11970)),
         };
         let mut a = Artifact::new(false, None);
-        (a.enter, a.goal, a.target, a.state) =
-            (Some(e), Some(Position::new(1.0, 2.0, 0.0)), 77, WAIT);
-        assert_eq!(a.stop(), (by_enter, Some(77)));
+        (a.enter, a.goal, a.target, a.state) = (
+            Some(e),
+            Some(Position::new(1.0, 2.0, 0.0)),
+            Some(object_id(77)),
+            WAIT,
+        );
+        assert_eq!(a.stop(), (by_enter, Some(object_id(77))));
         assert_eq!(
             (a.enter, a.goal, a.target, a.state),
-            (None, None, -1, CHECK)
+            (None, None, None, CHECK)
         );
         let mut b = Artifact::new(false, None);
-        (b.enter, b.target) = (Some(e), 77);
-        assert_eq!(b.tear_down(), (Some(77), by_enter));
-        assert_eq!((b.enter, b.target), (None, -1));
+        (b.enter, b.target) = (Some(e), Some(object_id(77)));
+        assert_eq!(b.tear_down(), (Some(object_id(77)), by_enter));
+        assert_eq!((b.enter, b.target), (None, None));
         // the check that finds an owner deletes it too
         let mut c = Artifact::new(false, None);
         c.enter = Some(e);
@@ -753,18 +756,27 @@ mod tests {
         let gone = |stops, released| SubActionsGone { stops, released };
         let mut a = Artifact::new(false, None);
         // nothing held: nothing to let go, nothing walking
-        assert_eq!(a.hold_enter(enter(7934)), gone(false, None));
+        assert_eq!(a.hold_enter(enter(object_id(7934))), gone(false, None));
         // the held Enter walks: its MoveTo's teardown stops the unit
         let held = a.enter.take().unwrap();
         a.enter = Some(held.walking(MoveTo::Moving));
-        assert_eq!(a.hold_enter(enter(7934)), gone(true, Some(7934)));
-        assert_eq!(a.enter.map(|e| (e.target, e.move_to)), Some((7934, None)));
+        assert_eq!(
+            a.hold_enter(enter(object_id(7934))),
+            gone(true, Some(object_id(7934)))
+        );
+        assert_eq!(
+            a.enter.map(|e| (e.target, e.move_to)),
+            Some((Some(object_id(7934)), None))
+        );
         // an Enter not walking only lets its target go
-        assert_eq!(a.hold_enter(enter(7935)), gone(false, Some(7934)));
+        assert_eq!(
+            a.hold_enter(enter(object_id(7935))),
+            gone(false, Some(object_id(7934)))
+        );
         // the Artifact's own MoveTo goes with its goal and stops the unit
         a.enter = None;
         a.move_to = Some(MoveToAction::sub_in(MoveTo::Moving));
-        assert_eq!(a.hold_enter(enter(7934)), gone(true, None));
+        assert_eq!(a.hold_enter(enter(object_id(7934))), gone(true, None));
         assert_eq!(a.move_to, None);
     }
 
@@ -816,7 +828,7 @@ mod tests {
         let _ = walking
             .take_point(Position::new(28.5, 94.5, 0.0), &move_reads(&sprites()))
             .unwrap();
-        walking.target = 9149;
+        walking.target = Some(object_id(9149));
         assert_eq!(
             walking.stop(),
             (
@@ -824,20 +836,28 @@ mod tests {
                     stops: true,
                     released: None
                 },
-                Some(9149)
+                Some(object_id(9149))
             )
         );
         assert_eq!(
             (walking.move_to, walking.goal, walking.target),
-            (None, None, -1)
+            (None, None, None)
         );
         // without a sub-action the point and the target stay (FUN_140a98730 false)
         let mut kept = Artifact::new(false, None);
-        (kept.goal, kept.target, kept.state) = (Some(Position::new(3.0, 4.0, 0.0)), 77, WAIT);
+        (kept.goal, kept.target, kept.state) = (
+            Some(Position::new(3.0, 4.0, 0.0)),
+            Some(object_id(77)),
+            WAIT,
+        );
         assert_eq!(kept.stop(), (SubActionsGone::default(), None));
         assert_eq!(
             (kept.goal, kept.target, kept.state),
-            (Some(Position::new(3.0, 4.0, 0.0)), 77, CHECK)
+            (
+                Some(Position::new(3.0, 4.0, 0.0)),
+                Some(object_id(77)),
+                CHECK
+            )
         );
     }
 
@@ -848,7 +868,7 @@ mod tests {
     fn a_walking_animal_taken_over_keeps_its_point_and_target() {
         let mut a = Artifact::new(true, None);
         a.goal = Some(Position::new(5.0, 6.0, 0.0));
-        a.target = 9149;
+        a.target = Some(object_id(9149));
         a.move_to = Some(to_object(9149, MoveTo::Moving));
         let found = a.step(50, Some(PlayerId::new(1))).unwrap();
         assert_eq!(
@@ -863,10 +883,14 @@ mod tests {
         );
         assert_eq!(
             (a.move_to, a.goal, a.target),
-            (None, Some(Position::new(5.0, 6.0, 0.0)), 9149)
+            (
+                None,
+                Some(Position::new(5.0, 6.0, 0.0)),
+                Some(object_id(9149))
+            )
         );
         assert_eq!(a.stop(), (SubActionsGone::default(), None));
-        assert_eq!(a.target, 9149);
+        assert_eq!(a.target, Some(object_id(9149)));
     }
 
     /// State 100 (`0x140aad250`'s case `'d'`): the animal goes to Gaia, the caller's, and the
@@ -899,7 +923,7 @@ mod tests {
             (
                 Targets {
                     released: None,
-                    taken: Some(9149)
+                    taken: Some(object_id(9149))
                 },
                 SubActionsGone::default()
             )
@@ -907,7 +931,7 @@ mod tests {
         // a quiet MoveTo to the target within 1 (a building)
         assert_eq!(
             (a.target, a.move_to),
-            (9149, Some(to_object(9149, MoveTo::Start)))
+            (Some(object_id(9149)), Some(to_object(9149, MoveTo::Start)))
         );
         let (t, gone) = a
             .take_object(
@@ -920,8 +944,8 @@ mod tests {
         assert_eq!(
             t,
             Targets {
-                released: Some(9149),
-                taken: Some(9149)
+                released: Some(object_id(9149)),
+                taken: Some(object_id(9149))
             }
         );
         let (t, _) = a
@@ -934,7 +958,7 @@ mod tests {
         assert_eq!(
             t,
             Targets {
-                released: Some(9149),
+                released: Some(object_id(9149)),
                 taken: None
             }
         );
@@ -944,20 +968,20 @@ mod tests {
                 a.target,
                 a.move_to.map(|m| (ObjectId::field(m.target), m.range))
             ),
-            (-1, Some((-1, 0.0)))
+            (None, Some((-1, 0.0)))
         );
-        a.target = 9149;
+        a.target = Some(object_id(9149));
         assert_eq!(
             a.tear_down(),
             (
-                Some(9149),
+                Some(object_id(9149)),
                 SubActionsGone {
                     stops: true,
                     released: None
                 }
             )
         );
-        assert_eq!((a.target, a.move_to), (-1, None));
+        assert_eq!((a.target, a.move_to), (None, None));
         assert_eq!(a.tear_down(), (None, SubActionsGone::default()));
     }
 
@@ -1001,7 +1025,7 @@ mod tests {
     /// The unit 9177 as the targets it lets go count it.
     const fn by() -> Releaser {
         Releaser {
-            id: 9177,
+            id: object_id(9177),
             class: Some(class::VILLAGER),
             player: PlayerId::new(1),
         }
@@ -1010,7 +1034,7 @@ mod tests {
     /// [`Rig::on_the_path`]'s unit 9177 as the walker.
     const fn me() -> Me {
         Me {
-            id: 9177,
+            id: object_id(9177),
             group: -1,
             action_state: 0,
         }
@@ -1051,7 +1075,7 @@ mod tests {
     /// The object `id` at `at`, far from the animal, in state 2 (alive) or 7.
     fn object(id: i32, at: Position, alive: bool) -> WalkTo {
         WalkTo {
-            id,
+            id: ObjectId::of_field(id),
             at,
             gap: 5.0,
             state: Some(if alive { 2 } else { 7 }),
@@ -1142,7 +1166,7 @@ mod tests {
                 .map(|m| (m.goal(), ObjectId::field(m.target), m.range, m.quiet)),
             Some((Some(Position::new(9.8, 11.8, 0.0)), -1, 1.0, true))
         );
-        assert_eq!(a.target, 9149);
+        assert_eq!(a.target, Some(object_id(9149)));
     }
 
     /// The walk's start shows its sprite (`0x140aa29e0`'s `set_state(4)`) before the motion
@@ -1163,7 +1187,7 @@ mod tests {
         // the top speed derives from the base and the sprite shown
         (rig.mover_mut().stats.speed, rig.mover_mut().stats.base) = (0.0, 0.0);
         assert_eq!(rig.t.graphics.insert(3, graphic(3)), None);
-        rig.mover_mut().in_the_way = vec![77];
+        rig.mover_mut().in_the_way = vec![object_id(77)];
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         let in_the_way = (crate::unit_ai::IN_THE_WAY, [77, -1, -1]);
@@ -1182,7 +1206,7 @@ mod tests {
             ..start
         });
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
-        rig.mover_mut().in_the_way = vec![77];
+        rig.mover_mut().in_the_way = vec![object_id(77)];
         rig.run(50, |c, u, _, _| walking.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
@@ -1204,7 +1228,7 @@ mod tests {
             ..Artifact::new(false, None)
         };
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
-        rig.mover_mut().in_the_way = vec![77];
+        rig.mover_mut().in_the_way = vec![object_id(77)];
         rig.run(50, |c, u, _, _| waiting.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
@@ -1242,12 +1266,12 @@ mod tests {
                 target: Some(object_id(600)),
                 ..MoveToAction::sub_in(MoveTo::Moving)
             }),
-            target: 600,
+            target: Some(object_id(600)),
             ..Artifact::new(false, None)
         };
         rig.run(50, |c, u, _, _| dying.walk(c, u, me(), &reads()))
             .unwrap();
-        assert_eq!((dying.move_to, dying.target), (None, -1));
+        assert_eq!((dying.move_to, dying.target), (None, None));
         assert_eq!(rig.posted(), vec![]);
     }
 
@@ -1259,17 +1283,17 @@ mod tests {
             .holding(9149, PlayerId::new(1))
             .holding(77, PlayerId::new(1));
         let mut a = Artifact::new(false, None);
-        a.target = 9149;
+        a.target = Some(object_id(9149));
         a.goal = Some(Position::new(1.0, 1.0, 0.0));
         a.move_to = Some(to_object(9149, MoveTo::Arrived));
         rig.run(50, |c, u, _, _| a.walk(c, u, me(), &reads()))
             .unwrap();
         assert_eq!(
             (a.target, a.goal, rig.workers(9149, PlayerId::new(1))),
-            (-1, None, Some(0))
+            (None, None, Some(0))
         );
         assert_eq!(rig.posted(), vec![]);
-        a.target = 77;
+        a.target = Some(object_id(77));
         a.move_to = Some(MoveToAction {
             quiet: false,
             ..MoveToAction::sub_in(MoveTo::Failed)
@@ -1301,7 +1325,7 @@ mod tests {
         assert_eq!((found, a.state), (Ok(None), WAIT));
         // the step's effects on a handover: the Enter's transport let go, the unit stopped
         let mut e = crate::garrison::EnterAction::new(
-            11970,
+            object_id(11970),
             Position::new(1.0, 2.0, 0.0),
             &crate::garrison::tests::enter_task(0.0, class::TRANSPORT),
         );

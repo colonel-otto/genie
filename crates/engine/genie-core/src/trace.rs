@@ -28,6 +28,7 @@
 //!   stream's draws part from the game's.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -56,12 +57,12 @@ pub(crate) fn draw(stream: u8, draw: u32, value: u32) {
 /// A new object of `master` for `player` took the world's next object id `object` in update
 /// `tick` ([`STATE`]); `at` is the line of the engine that made it.
 #[track_caller]
-pub(crate) fn new_object(tick: u32, player: PlayerId, object: i32, master: MasterId) {
+pub(crate) fn new_object(tick: u32, player: PlayerId, object: ObjectId, master: MasterId) {
     tracing::debug!(
         target: STATE,
         tick,
         player = player.index(),
-        object,
+        object = object.get(),
         master = %master,
         at = %std::panic::Location::caller(),
         "new_object"
@@ -75,14 +76,14 @@ fn context_of(why: &GenieError) -> Option<String> {
 }
 
 /// An object's update meets a case the engine does not model: the object freezes.
-pub(crate) fn object_freezes(tick: u32, player: PlayerId, object: i32, why: &GenieError) {
+pub(crate) fn object_freezes(tick: u32, player: PlayerId, object: ObjectId, why: &GenieError) {
     let (reason, at) = (why.reason(), why.location());
     if let Some(context) = context_of(why) {
         tracing::warn!(
             target: UNSUPPORTED,
             tick,
             player = player.index(),
-            object,
+            object = object.get(),
             why = reason,
             at = %at,
             context,
@@ -93,7 +94,7 @@ pub(crate) fn object_freezes(tick: u32, player: PlayerId, object: i32, why: &Gen
             target: UNSUPPORTED,
             tick,
             player = player.index(),
-            object,
+            object = object.get(),
             why = reason,
             at = %at,
             "an object freezes"
@@ -173,7 +174,7 @@ impl Watch {
                 [
                     crate::unit_ai::OrderKind::field(ai.current_order),
                     crate::unit_ai::ActionKind::field(ai.current_action),
-                    ai.current_target,
+                    ObjectId::field(ai.current_target),
                 ]
             }),
         })

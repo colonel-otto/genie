@@ -4,10 +4,12 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
+use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, BREAK, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED,
@@ -57,21 +59,22 @@ impl UnitAi {
         let Some(attacker) = at.unit(n.caller).copied() else {
             return Ok(GO_ON);
         };
+        let caller = attacker.id;
         if computer {
             return Err(GenieError::unsupported(
                 "a computer villager's damage notify (its slot 0x50)",
             ));
         }
-        let added = self.add_attacker(n.caller);
+        let added = self.attackers.add(Some(caller));
         let fierce = attacker.class == class::PREDATOR && attacker.combat_level == 1;
-        if added && self.current_target != n.caller && !fierce {
-            self.ask_for_help(n.caller, at, computer, side)?;
+        if added && self.current_target != Some(caller) && !fierce {
+            self.ask_for_help(caller, at, computer, side)?;
         }
         side.set_under_attack(true);
         if self.villager_ignores(at, &attacker, fierce)? {
             return Ok(GO_ON);
         }
-        if attacker.owner != PlayerId::GAIA && !side.harmless(n.caller)? {
+        if attacker.owner != PlayerId::GAIA && !side.harmless(caller)? {
             // "I have %d attackers, evading them.", but on the move action at a speed (not 0,
             // UCOMISS: a NaN keeps moving): the current order goes to the queue's end (slot 0x30
             // neither immediate nor in front), the action stops (slot 0xb0 with 1) and it runs
@@ -89,13 +92,13 @@ impl UnitAi {
         // "I have a GAIA attacker" (or a harmless one): with an order not on the attacker, the current order goes back
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
-        if self.current_order.is_some() && n.caller != self.current_target {
+        if self.current_order.is_some() && Some(caller) != self.current_target {
             self.requeue_current(at, side, computer, ai_rng)?;
             self.set_order_with(Some(OrderKind::Attack), false, ai_rng);
             self.order_priority = 100;
         }
         // slot 0xb8 forced, the civilian's
-        let _ = self.civilian_attack(n.caller, at, side, ai_rng)?;
+        let _ = self.civilian_attack(caller, at, side, ai_rng)?;
         self.stop_after_kill = true;
         Ok(BREAK)
     }
@@ -161,11 +164,16 @@ impl UnitAi {
             self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
-        let new = self.attackers.binary_search(&n.caller).is_err();
-        if new && !computer && self.current_target != n.caller {
-            self.ask_for_help(n.caller, at, computer, side)?;
+        let new = !self.attackers.contains(n.caller);
+        // a help request on no attacker asks no one (`AskForHelp` finds none)
+        if new
+            && !computer
+            && self.current_target != n.caller
+            && let Some(caller) = n.caller
+        {
+            self.ask_for_help(caller, at, computer, side)?;
         }
-        let _ = self.add_attacker(n.caller);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
         if self.current_order.is_some() {
             return Ok(GO_ON);
@@ -248,11 +256,16 @@ impl UnitAi {
         if self.attackers.is_empty() || computer {
             alert_owner(computer)?;
         }
-        let new = self.attackers.binary_search(&n.caller).is_err();
-        if new && !computer && self.current_target != n.caller {
-            self.ask_for_help(n.caller, at, computer, side)?;
+        let new = !self.attackers.contains(n.caller);
+        // a help request on no attacker asks no one (`AskForHelp` finds none)
+        if new
+            && !computer
+            && self.current_target != n.caller
+            && let Some(caller) = n.caller
+        {
+            self.ask_for_help(caller, at, computer, side)?;
         }
-        let _ = self.add_attacker(n.caller);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
         if self.current_order.is_some() {
             return Ok(GO_ON);
@@ -285,11 +298,16 @@ impl UnitAi {
             self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
-        let new = self.attackers.binary_search(&n.caller).is_err();
-        if new && !computer && self.current_target != n.caller {
-            self.ask_for_help(n.caller, at, computer, side)?;
+        let new = !self.attackers.contains(n.caller);
+        // a help request on no attacker asks no one (`AskForHelp` finds none)
+        if new
+            && !computer
+            && self.current_target != n.caller
+            && let Some(caller) = n.caller
+        {
+            self.ask_for_help(caller, at, computer, side)?;
         }
-        let _ = self.add_attacker(n.caller);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
         if self.current_order.is_some() {
             return Ok(GO_ON);
@@ -317,7 +335,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let mut best = (-1, FISHING_BUILD_FAR);
+        let mut best = (None, FISHING_BUILD_FAR);
         for class in FISHING_BUILDS {
             let found = side.closest(&Search {
                 at: at.position.ground(),
@@ -336,12 +354,16 @@ impl UnitAi {
                 memory: Memory::default(),
             })?;
             self.alert(found, at.dt_seconds);
-            if found.id != -1 && found.distance < best.1 {
-                best = (found.id, found.distance);
+            if let Some(id) = found.id
+                && found.distance < best.1
+            {
+                best = (Some(id), found.distance);
             }
         }
-        if best.0 != -1 && side.reaches(best.0, FOUNDATION_REACH)? {
-            let _ = self.build_object(best.0, true, at, side, rng)?;
+        if let Some(site) = best.0
+            && side.reaches(site, FOUNDATION_REACH)?
+        {
+            let _ = self.build_object(site, true, at, side, rng)?;
             return Ok(BREAK);
         }
         if computer {
@@ -364,7 +386,7 @@ impl UnitAi {
             return Ok(());
         };
         let record = QueuedOrder {
-            issuer: at.id,
+            issuer: Some(Issuer::Object(at.id)),
             order,
             priority: self.order_priority,
             target: self.current_target,
@@ -396,19 +418,23 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let new = self.attackers.binary_search(&n.caller).is_err();
+        let new = !self.attackers.contains(n.caller);
         alert_owner(computer)?;
         if n.p[1] >= 1 {
             alert_owner(at.guest_computer)?;
         }
-        if n.p[1] >= 1 && new && self.current_target != n.caller {
-            self.ask_for_help(n.caller, at, computer, side)?;
+        if n.p[1] >= 1
+            && new
+            && self.current_target != n.caller
+            && let Some(caller) = n.caller
+        {
+            self.ask_for_help(caller, at, computer, side)?;
         }
         if n.p[1] < 1 {
             self.end_notifies(time, at, side, rng)?;
             return Ok(DEAD);
         }
-        let _ = self.add_attacker(n.caller);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
         Ok(GO_ON)
     }
@@ -416,10 +442,15 @@ impl UnitAi {
     /// `ClosestValidAttacker` (`FUN_140c158d0`): over the attackers in their order, those the
     /// world holds but of classes 3, 13, 52 and 54, the one with the least squared gap
     /// (`FUN_14118f8c0`); one within `DAT_142ef9004` (0.0625) of the best so far takes over on a
-    /// coin from the Ai stream (`rand15`, odd). −1 for none.
-    pub(super) fn closest_valid_attacker(&self, at: &Surroundings, ai_rng: &mut Well512) -> i32 {
-        let mut best = (ATTACKER_FAR, -1);
-        for &id in &self.attackers {
+    /// coin from the Ai stream (`rand15`, odd). None for none.
+    pub(super) fn closest_valid_attacker(
+        &self,
+        at: &Surroundings,
+        ai_rng: &mut Well512,
+    ) -> Option<ObjectId> {
+        let mut best = (ATTACKER_FAR, None);
+        // none (−1) is an object the update does not hold
+        for id in self.attackers.iter().flatten() {
             let Some(u) = at.unit(id) else {
                 continue;
             };
@@ -435,7 +466,7 @@ impl UnitAi {
             {
                 continue;
             }
-            best = (d, id);
+            best = (d, Some(id));
         }
         best.1
     }
@@ -447,7 +478,7 @@ impl UnitAi {
     /// stopped one the last, the target with its class and point (the last ones kept).
     pub(super) fn hunt_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         class: i32,
         point: Position,
         at: &Surroundings,
@@ -457,7 +488,7 @@ impl UnitAi {
         self.stop_current(true, at, side, rng)?;
         side.effect_now(Effect::Command(AiCommand::HuntObject(target)), self, rng)?;
         self.set_action(Some(ActionKind::Hunt));
-        self.set_target(target, class, point);
+        self.set_target(Some(target), class, point);
         Ok(())
     }
 
@@ -478,7 +509,7 @@ impl UnitAi {
             return Ok(());
         };
         let record = QueuedOrder {
-            issuer: at.id,
+            issuer: Some(Issuer::Object(at.id)),
             order,
             priority: self.order_priority,
             target: self.current_target,

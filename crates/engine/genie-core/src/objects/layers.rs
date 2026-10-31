@@ -11,6 +11,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use genie_diff::Diff;
 
@@ -45,7 +46,7 @@ impl Static {
     /// shape goes) where the caller holds the mesh.
     pub(crate) fn new_position(
         &mut self,
-        id: i32,
+        id: ObjectId,
         at: Position,
         moving: bool,
         (world, pathing): (&mut Spatial, Option<&mut Pathing>),
@@ -60,7 +61,7 @@ impl Static {
 
     /// The object goes inside one at `at` (`FUN_14118c890`): it takes the container's x and y
     /// and keeps its height, and it leaves the world's index ([`Spatial::go_inside`]).
-    pub(crate) fn go_inside(&mut self, id: i32, at: Position, world: &mut Spatial) {
+    pub(crate) fn go_inside(&mut self, id: ObjectId, at: Position, world: &mut Spatial) {
         self.position = Position::new(at.x(), at.y(), self.position.z());
         world.go_inside(id, self.position);
     }
@@ -71,7 +72,7 @@ impl Static {
     /// mesh takes its shape (`FUN_14118c540`, standing). Returns the record as filed.
     pub(crate) fn put_down(
         &mut self,
-        id: crate::objects::ObjectId,
+        id: ObjectId,
         at: Position,
         mut placed: crate::map::spatial::Placed,
         (world, pathing): (&mut Spatial, &mut Pathing),
@@ -79,7 +80,7 @@ impl Static {
         self.position = at;
         placed.position = at;
         world.insert(id, placed);
-        pathing.moved(id.get(), &placed, false);
+        pathing.moved(id, &placed, false);
         placed
     }
 
@@ -93,7 +94,7 @@ impl Static {
     /// An object inside another takes the container's place `at` as a copy of its fields
     /// (`FUN_141191b40` before the unload: an object inside takes no `new_position`), and so
     /// does its record inside ([`Spatial::set_inside_position`]).
-    pub(crate) fn inside_at(&mut self, id: i32, at: Position, world: &mut Spatial) {
+    pub(crate) fn inside_at(&mut self, id: ObjectId, at: Position, world: &mut Spatial) {
         self.position = at;
         world.set_inside_position(id, at);
     }
@@ -223,7 +224,7 @@ impl Body {
     /// the mesh while it moves (slot 185, [`Mover::is_moving`]).
     pub(crate) fn new_position(
         &mut self,
-        id: i32,
+        id: ObjectId,
         at: Position,
         places: (&mut Spatial, Option<&mut Pathing>),
     ) -> Result<(), GenieError> {
@@ -411,16 +412,20 @@ mod tests {
     fn the_place_setter_moves_the_object_and_its_index_together() {
         let mut world = indexed(Position::new(1.5, 1.5, 0.0));
         let mut body = Body::new(Position::new(1.5, 1.5, 0.0), None, Some(mover()));
-        body.new_position(7, Position::new(2.5, 1.25, 0.0), (&mut world, None))
-            .unwrap();
+        body.new_position(
+            object_id(7),
+            Position::new(2.5, 1.25, 0.0),
+            (&mut world, None),
+        )
+        .unwrap();
         assert_eq!(body.position(), Position::new(2.5, 1.25, 0.0));
         assert_eq!(
-            world.get(7).map(|p| p.position),
+            world.get(object_id(7)).map(|p| p.position),
             Some(Position::new(2.5, 1.25, 0.0))
         );
         assert_eq!(
             world.tiles().list(2, 1),
-            [7],
+            [object_id(7)],
             "it joins its new tile's list"
         );
         assert!(
@@ -433,28 +438,28 @@ mod tests {
     fn an_object_going_inside_takes_its_containers_ground_place() {
         let mut world = indexed(Position::new(1.5, 1.5, 0.5));
         let mut base = Static::at(Position::new(1.5, 1.5, 0.5));
-        base.go_inside(7, Position::new(4.0, 5.0, 0.0), &mut world);
+        base.go_inside(object_id(7), Position::new(4.0, 5.0, 0.0), &mut world);
         assert_eq!(
             base.position(),
             Position::new(4.0, 5.0, 0.5),
             "it keeps its height"
         );
         assert_eq!(
-            world.get(7).map(|p| p.position),
+            world.get(object_id(7)).map(|p| p.position),
             Some(Position::new(4.0, 5.0, 0.5))
         );
         assert!(world.tiles().list(1, 1).is_empty(), "it leaves its tile");
-        base.inside_at(7, Position::new(4.0, 5.0, 1.0), &mut world);
+        base.inside_at(object_id(7), Position::new(4.0, 5.0, 1.0), &mut world);
         assert_eq!(
             base.position(),
             Position::new(4.0, 5.0, 1.0),
             "a copy of the container's place"
         );
         assert_eq!(
-            world.get(7).map(|p| p.position),
+            world.get(object_id(7)).map(|p| p.position),
             Some(Position::new(4.0, 5.0, 1.0))
         );
-        let record = world.come_out(7).expect("its record inside");
+        let record = world.come_out(object_id(7)).expect("its record inside");
         let mut pathing = Pathing::default();
         let filed = base.put_down(
             object_id(7),
@@ -465,9 +470,13 @@ mod tests {
         assert_eq!(base.position(), Position::new(2.5, 2.5, 0.0));
         assert_eq!(filed.position, Position::new(2.5, 2.5, 0.0));
         assert_eq!(
-            world.get(7).map(|p| p.position),
+            world.get(object_id(7)).map(|p| p.position),
             Some(Position::new(2.5, 2.5, 0.0))
         );
-        assert_eq!(world.tiles().list(2, 2), [7], "back on a tile's list");
+        assert_eq!(
+            world.tiles().list(2, 2),
+            [object_id(7)],
+            "back on a tile's list"
+        );
     }
 }

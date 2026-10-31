@@ -9,7 +9,7 @@ use genie_core::commands::{
     OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand,
     SetGatherStateCommand, StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand,
     TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
-    UnmodelledCommand, Waypoints,
+    UnloadPick, UnmodelledCommand, Waypoints,
 };
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
@@ -515,8 +515,7 @@ fn unload_and_unit_order_keep_their_lists_and_counts() {
             player: player_id(2),
             units: unit_list(object_ids([60])),
             point: Point::new(1.0, 1.0),
-            flag: 1,
-            unit_type: -1,
+            pick: UnloadPick::Player(-1),
             sound: true,
         })
     );

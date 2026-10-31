@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
@@ -18,14 +19,14 @@ pub struct Inbox<'a> {
     /// The unit's AI.
     pub ai: Option<&'a mut UnitAi>,
     /// The unit's id: the notify's caller and its recipient.
-    pub id: i32,
+    pub id: ObjectId,
     /// The unit's state, which the AI's acceptance reads ([`UnitAi::accept`]).
     pub state: u8,
 }
 
 impl<'a> Inbox<'a> {
     /// The inbox of the unit `id` in `state` with its AI `ai`, borrowed beside its body.
-    pub const fn of(ai: &'a mut Option<UnitAi>, id: i32, state: u8) -> Self {
+    pub const fn of(ai: &'a mut Option<UnitAi>, id: ObjectId, state: u8) -> Self {
         Self {
             ai: ai.as_mut(),
             id,
@@ -181,7 +182,7 @@ impl UnitAi {
         let action = self.current_action;
         let taken = match n.kind {
             // "That unit is not attacking me, so I'm ignoring it."
-            NO_LONGER_ON_ME => self.attackers.binary_search(&n.caller).is_ok(),
+            NO_LONGER_ON_ME => self.attackers.contains(n.caller),
             ACTION_INVALIDATED => n.p[0] == ActionKind::field(action),
             ACTION_COMPLETED => {
                 // ignored (and handled) for a non-movement action

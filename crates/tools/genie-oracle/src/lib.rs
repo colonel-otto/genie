@@ -56,6 +56,7 @@ pub mod views;
 pub use masters::{DefaultAction, MasterTable, ReadError, TerrainTable};
 
 use genie_core::GenieError;
+use genie_core::objects::ObjectId;
 use genie_rec::de;
 
 mod command_args;
@@ -96,7 +97,7 @@ pub use self::differences::{
 pub use self::first_checkpoint::{
     PlayerComparison, SAVE_WORDS, compare_first_checkpoint, player_state,
 };
-use self::first_checkpoint::{listed, live};
+use self::first_checkpoint::{listed, live, player_totals};
 use self::forced_replay::game_state;
 pub use self::forced_replay::{
     PatherAnswer, PatherCall, TickReport, Times, command_phase, forced_run, forced_ticks,
@@ -204,6 +205,15 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+/// The ids of a saved list of objects, which names no none (−1).
+///
+/// # Errors
+///
+/// An entry of −1.
+pub(crate) fn object_ids(ids: &[i32]) -> Result<Vec<ObjectId>, GenieError> {
+    ids.iter().map(|&id| ObjectId::try_from(id)).collect()
+}
 
 #[cfg(test)]
 mod tests;

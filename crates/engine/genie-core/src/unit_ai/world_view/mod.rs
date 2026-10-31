@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
@@ -51,7 +52,7 @@ pub(crate) struct DropWorld<'a> {
 /// [`UnitView::lend`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Wait {
-    pub(crate) target: i32,
+    pub(crate) target: ObjectId,
     pub(crate) task: crate::objects::masters::Task,
     pub(crate) switch: Option<MasterId>,
 }
@@ -61,11 +62,11 @@ pub(crate) struct Wait {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RepairOrder {
     /// The Repair on top takes the target (its slot 0x48, `FUN_140adb480`).
-    Retake(i32),
+    Retake(ObjectId),
     /// The masters the unit switches to (slot 0x90 with 0): the repairer of its task swap group,
     /// then the one the task search's swap group gave; then a Repair on the task found, if any.
     Start {
-        target: i32,
+        target: ObjectId,
         switches: [Option<MasterId>; 2],
         task: Option<crate::objects::masters::Task>,
     },
@@ -78,7 +79,7 @@ pub(crate) enum RepairOrder {
 /// or not.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct EnterOrder {
-    pub(crate) target: i32,
+    pub(crate) target: ObjectId,
     pub(crate) task: crate::objects::masters::Task,
     pub(crate) switch: Option<MasterId>,
     pub(crate) under_artifact: bool,

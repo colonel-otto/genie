@@ -26,8 +26,9 @@ use crate::map::Footprint;
 use crate::map::GroundOffset;
 use crate::map::Point;
 use crate::map::Rect;
-use crate::map::spatial::Spatial;
+use crate::map::spatial::{RecordId, Spatial};
 use crate::math::fmath::sqrt;
+use crate::objects::ObjectId;
 use std::collections::BTreeSet;
 
 mod area;
@@ -114,7 +115,7 @@ const SIDES: [GroundOffset; 4] = GroundOffset::table(crate::math::image::hull_pa
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Shape {
     bounds: Rect,
-    id: i32,
+    id: RecordId,
 }
 
 impl Shape {
@@ -230,7 +231,7 @@ struct HullQuery {
     from: Point,
     to: Point,
     target: Option<Target>,
-    target_id: i32,
+    target_id: Option<ObjectId>,
     range: f32,
 }
 
@@ -272,14 +273,14 @@ pub struct HullPather<'w> {
     /// The gates its player may pass (slot 0x678, `FUN_1411d4a30`, a gate's), by id, when the
     /// caller gives them ([`HullPather::with_gates`]): the world's update knows the gates'
     /// states and the players' diplomacy; the pather does not.
-    gates: Option<&'w BTreeSet<i32>>,
+    gates: Option<&'w BTreeSet<ObjectId>>,
     /// The objects `FindShortPath` includes (its arguments 13 and 14): in the hulls even when
     /// ignored or moving.
-    include: Vec<i32>,
+    include: Vec<ObjectId>,
     /// The manager's buffer for the line tests (`+0x57`, `+0x58`): half the radius.
     buffer: Option<f32>,
     /// The ignore list (`+0xc0` on, `+0xc4` count, `+0xd0` ids), which the manager's tests read.
-    ignore: Vec<i32>,
+    ignore: Vec<RecordId>,
     hulls: Vec<Hull>,
     /// The nodes; 0 and 1 head the open lists (`+0x20`, `+0x58`).
     nodes: Vec<Node>,

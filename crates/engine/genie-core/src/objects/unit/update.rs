@@ -82,7 +82,7 @@ impl Unit {
         c: &mut Step<'_>,
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let me = Me {
-            id: self.id.get(),
+            id: self.id,
             group: self.group.id,
             action_state: self.top_action().map_or(0, |a| a.state),
         };
@@ -202,7 +202,7 @@ impl Unit {
             sprite.update(seconds(c.dt), speed);
             if let Ok(master) = object_master(
                 self.own_master.as_deref(),
-                (self.id.get(), self.life.master_id),
+                (self.id, self.life.master_id),
                 c.w.masters.get(c.player.index()),
             ) {
                 let (standing, second) = (master.standing_sprite, master.standing_sprite_2);
@@ -267,7 +267,7 @@ impl Unit {
             && let Some(p) = c.w.spatial.get(self.id).copied()
         {
             let moving = self.body.mover().is_some_and(Mover::is_moving);
-            c.w.pathing.refresh(self.id.get(), &p, moving, m.outline);
+            c.w.pathing.refresh(self.id, &p, moving, m.outline);
         }
         Ok(())
     }

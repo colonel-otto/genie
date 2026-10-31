@@ -9,6 +9,7 @@ use crate::construction::build::{
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::FISH_TRAP;
@@ -38,7 +39,11 @@ impl BuildAction {
     /// # Errors
     ///
     /// An object of a master its owner lacks.
-    pub(super) fn count(c: &mut Step<'_>, site: i32, by: i8) -> Result<(), GenieError> {
+    pub(super) fn count(
+        c: &mut Step<'_>,
+        site: Option<ObjectId>,
+        by: i8,
+    ) -> Result<(), GenieError> {
         if let Some(id) = c.w.counted_building(site)?
             && let Some((_, u)) = c.w.object_mut(id)
         {
@@ -54,7 +59,7 @@ impl BuildAction {
     /// # Errors
     ///
     /// An object of a master its owner lacks.
-    pub(super) fn builders(c: &Step<'_>, site: i32) -> Result<u8, GenieError> {
+    pub(super) fn builders(c: &Step<'_>, site: Option<ObjectId>) -> Result<u8, GenieError> {
         Ok(c.w
             .counted_building(site)?
             .and_then(|id| c.w.object(id))
@@ -178,7 +183,7 @@ impl BuildAction {
                 "the end of a Build on a pasture (its animals, slot 0x780)",
             ));
         }
-        let built = site.map(|s| (s.id.get(), s.life.state));
+        let built = site.map(|s| (s.id, s.life.state));
         let ai = builder.ai.as_mut().ok_or(GenieError::unsupported(
             "a builder without a unit AI after its work",
         ))?;
@@ -239,10 +244,11 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         // the caller read the foundation, so the player holds it
-        let built = reads.built.ok_or(GenieError::unreachable(
-            "a builder's search for more work without its building",
-        ))?;
-        let target = self.target;
+        let (Some(target), Some(built)) = (self.target, reads.built) else {
+            return Err(GenieError::unreachable(
+                "a builder's search for more work without its building",
+            ));
+        };
         if let Some(work) = builder.more_work(c, target, built)? {
             return self.lend(c, builder, |w, p, i| w.order_work(p, i, &work));
         }
@@ -308,7 +314,7 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        let built = Self::site_unit(c, reads)?.map(|s| (s.id.get(), s.life.state));
+        let built = Self::site_unit(c, reads)?.map(|s| (s.id, s.life.state));
         self.leave(c, builder)?;
         self.state = IDLE;
         let mut left = 0;
@@ -378,7 +384,7 @@ impl BuildAction {
     /// The unit's stop that the motion step does not model.
     pub fn retarget(
         &mut self,
-        target: i32,
+        target: ObjectId,
         at: Position,
         walk: Option<MoveToAction>,
         mover: Option<&mut crate::movement::Mover>,
@@ -388,7 +394,7 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        *self = self.restarted(target, at, walk);
+        *self = self.restarted(Some(target), at, walk);
         Ok(())
     }
 
@@ -407,7 +413,7 @@ impl BuildAction {
     pub(crate) fn halt(
         &mut self,
         mover: Option<&mut crate::movement::Mover>,
-    ) -> Result<(bool, [i32; 2]), GenieError> {
+    ) -> Result<(bool, [Option<ObjectId>; 2]), GenieError> {
         let counted = std::mem::replace(&mut self.added, false);
         if self.move_to.take().is_some()
             && let Some(m) = mover
@@ -416,8 +422,8 @@ impl BuildAction {
         }
         self.point = Position::from([-1.0; 3]);
         self.state = HALTED;
-        let target = std::mem::replace(&mut self.target, -1);
-        let site = std::mem::replace(&mut self.site, -1);
+        let target = self.target.take();
+        let site = self.site.take();
         Ok((counted, [target, site]))
     }
 
@@ -439,12 +445,8 @@ impl BuildAction {
             Self::count(c, target, -1)?;
         }
         Self::stand(c, builder)?;
-        if target != -1 {
-            crate::world::lets::release(c, builder, target, reads.by)?;
-        }
-        if second != -1 {
-            crate::world::lets::release(c, builder, second, reads.by)?;
-        }
+        crate::world::lets::release(c, builder, target, reads.by)?;
+        crate::world::lets::release(c, builder, second, reads.by)?;
         Ok(())
     }
 
@@ -459,7 +461,7 @@ impl BuildAction {
         if self.move_to.is_some() {
             return Err(GenieError::unsupported("a Build waiting with its MoveTo"));
         }
-        self.target = -1;
+        self.target = None;
         self.state = IDLE;
         Ok(())
     }

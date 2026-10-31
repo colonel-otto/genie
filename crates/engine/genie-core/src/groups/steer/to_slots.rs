@@ -5,8 +5,10 @@ use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::motion::hold;
 use crate::groups::steer::{ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO};
+use crate::map::spatial::RecordId;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::movement::ASIDE;
+use crate::objects::ObjectId;
 use crate::objects::masters::master_type::ACTION;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -47,7 +49,7 @@ impl World {
     pub fn members_to_slots(
         &mut self,
         group: i32,
-        differentiators: &[i32],
+        differentiators: &[ObjectId],
     ) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
@@ -64,7 +66,7 @@ impl World {
             let slot = g
                 .current_formation
                 .as_ref()
-                .and_then(|f| f.slots.iter().position(|s| s.unit_id == m.id));
+                .and_then(|f| f.slots.iter().position(|s| s.unit_id == Some(m.id)));
             let Some(slot) = slot else {
                 self.stop_free_member(m.id)?;
                 continue;
@@ -77,7 +79,7 @@ impl World {
                     .slots
                     .checked(slot)?
                     .transform_position;
-                let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+                let members: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
                 let from = u.moved_vector().xhy();
                 let clear = self.line_clear(m.id, from, to, CLEARANCE, &members)?;
                 let dt = self.dt_seconds;
@@ -115,7 +117,7 @@ impl World {
     /// A member in no slot (`0x14103ef2e`): it stops (slot 0x5d0) when its action list holds no
     /// `MoveTo` (slot 0x538 with 1), its top action is not in state 4, 5 or 11 (slot 0x2b0) and
     /// it moves (slot 0x5c8).
-    pub(super) fn stop_free_member(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(super) fn stop_free_member(&mut self, id: ObjectId) -> Result<(), GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
@@ -173,11 +175,11 @@ impl World {
     /// For a unit without movement state: a group's members move (see `NO_MOVER`).
     pub(super) fn line_clear(
         &mut self,
-        id: i32,
+        id: ObjectId,
         from: BVector,
         to: BVector,
         grow: f32,
-        ignore: &[i32],
+        ignore: &[ObjectId],
     ) -> Result<bool, GenieError> {
         let (_, u) = self.object(id).ok_or(GenieError::unreachable(
             "a steered member the world does not hold",
@@ -185,7 +187,10 @@ impl World {
         let mover = u.body.mover().ok_or(NO_MOVER)?;
         let (radius, mask) = (mover.stats.radius.x(), mover.stats.restriction_mask);
         let own = [id];
-        let ignore = if ignore.is_empty() { &own[..] } else { ignore };
+        let ignore: Vec<RecordId> = if ignore.is_empty() { &own[..] } else { ignore }
+            .iter()
+            .map(|&i| RecordId::from(i))
+            .collect();
         // FUN_1411570c0 sets the manager's ignore list to it (FUN_1410562e0)
         let map = self.spatial.map;
         let hits = self.spatial.line_query(
@@ -193,7 +198,7 @@ impl World {
             hold(to, map),
             grow * radius,
             Some(mask),
-            ignore,
+            &ignore,
         )?;
         Ok(hits.is_empty())
     }
@@ -258,7 +263,7 @@ impl World {
         group: i32,
         index: usize,
         slot: usize,
-        differentiators: &[i32],
+        differentiators: &[ObjectId],
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let id = g.members.checked(index)?.id;
@@ -339,7 +344,7 @@ impl World {
         &mut self,
         group: i32,
         (index, slot): (usize, usize),
-        id: i32,
+        id: ObjectId,
     ) -> Result<(), GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let (keeps_moving, _) = self.action_list(p, u)?;

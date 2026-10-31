@@ -164,41 +164,41 @@ impl Action {
 }
 
 impl Action {
-    /// Slot 0x190's read of the action's target (`+0x30`), −1 for an action without one (an
+    /// Slot 0x190's read of the action's target (`+0x30`), none for an action without one (an
     /// Artifact not moving to an object, a Fly, an Explore, a Transport, a Make, a wait for a
     /// foundation, which keeps the foundation at `+0x68`).
     #[must_use]
-    pub const fn target(&self) -> i32 {
+    pub const fn target(&self) -> Option<ObjectId> {
         match self {
             Self::Artifact(a) => a.target,
             Self::Build(a) => a.target,
             Self::Repair(a) => a.target,
-            Self::MoveTo(a) => ObjectId::field(a.target),
-            Self::Hunt(a) => ObjectId::field(a.target),
-            Self::Gather(a) => ObjectId::field(a.target),
-            Self::Attack(a) => ObjectId::field(a.target),
+            Self::MoveTo(a) => a.target,
+            Self::Hunt(a) => a.target,
+            Self::Gather(a) => a.target,
+            Self::Attack(a) => a.target,
             Self::Enter(a) => a.target,
             Self::Missile(a) => a.target,
             Self::Fly(_)
             | Self::Explore(_)
             | Self::Transport(_)
             | Self::Make(_)
-            | Self::WaitSolidify(_) => -1,
+            | Self::WaitSolidify(_) => None,
         }
     }
 
-    /// The action's second target (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's, a Gather's
+    /// The action's second target (`+0x34`, `FUN_140a78430`), if any: a Hunt's, a Gather's
     /// or a Build's drop site, a missile's shooter, an Attack's second target; the slice's other
     /// actions hold none (an import checks the save's).
     #[must_use]
-    pub const fn second_target(&self) -> i32 {
+    pub const fn second_target(&self) -> Option<ObjectId> {
         match self {
-            Self::Hunt(h) => ObjectId::field(h.carry_to),
-            Self::Gather(g) => ObjectId::field(g.carry_to),
+            Self::Hunt(h) => h.carry_to,
+            Self::Gather(g) => g.carry_to,
             Self::Build(b) => b.site,
             Self::Missile(m) => m.fired_from,
-            Self::Attack(a) => ObjectId::field(a.target2),
-            _ => -1,
+            Self::Attack(a) => a.target2,
+            _ => None,
         }
     }
 }

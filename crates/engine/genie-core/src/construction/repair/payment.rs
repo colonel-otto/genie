@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::construction::repair::ONE;
 use crate::objects::HpPowerup;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -37,7 +38,7 @@ pub const BUILDING_REPAIR_COST: usize = 271;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Repaired {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master's type.
     pub kind: MasterKind,
     /// Its master's class.
@@ -51,9 +52,9 @@ pub struct Repaired {
     /// Its hit point powerup (`+0xa38`, `+0xa3c`).
     pub hp_powerup: HpPowerup,
     /// An annex's main building (`+0xbb8`).
-    pub main: Option<i32>,
+    pub main: Option<ObjectId>,
     /// A main building's annexes (`+0xbc0`, its four slots in their order).
-    pub annexes: Vec<i32>,
+    pub annexes: Vec<ObjectId>,
     /// Its owner's attribute 270 ([`UNIT_REPAIR_COST`]): a unit's repair cost rate.
     pub unit_repair_cost: f32,
     /// Its owner's attribute 271 ([`BUILDING_REPAIR_COST`]): a building's repair cost rate.
@@ -76,7 +77,7 @@ impl std::fmt::Debug for Payer<'_> {
 }
 
 /// The object of `set` with id `id`.
-pub(super) fn find(set: &[Repaired], id: i32) -> Result<usize, GenieError> {
+pub(super) fn find(set: &[Repaired], id: ObjectId) -> Result<usize, GenieError> {
     set.iter()
         .position(|o| o.id == id)
         .ok_or(GenieError::unreachable("a repair's object outside its set"))

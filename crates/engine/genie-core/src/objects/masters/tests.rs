@@ -3,6 +3,7 @@ use crate::map::Radii;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
+use crate::test_ids::object_id;
 
 fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> Task {
     Task {
@@ -1102,7 +1103,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
     };
     let pick = |m: &Masters, own: &Master| {
         let site = TaskTarget {
-            id: 12557,
+            id: object_id(12557),
             master: m.get(ids::FARM).unwrap(),
             player: PlayerId::new(2),
             state: 2,
@@ -1110,11 +1111,11 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             hp: 1.0,
             max_hp: 480.0,
             attackable: true,
-            pasture: -1,
+            pasture: None,
             top_action: None,
         };
         let actor = Actor {
-            id: 9181,
+            id: object_id(9181),
             master: own,
             player: PlayerId::new(2),
             held: (-1, 0.0),
@@ -1153,7 +1154,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
 fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_foundation() {
     let m = villagers();
     let site = TaskTarget {
-        id: 10028,
+        id: object_id(10028),
         master: m.get(ids::HOUSE).unwrap(),
         player: PlayerId::new(2),
         state: 0,
@@ -1161,12 +1162,12 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
         hp: 1.0,
         max_hp: 550.0,
         attackable: true,
-        pasture: -1,
+        pasture: None,
         top_action: None,
     };
     let pick = |own| {
         let actor = Actor {
-            id: 9181,
+            id: object_id(9181),
             master: m.get(own).unwrap(),
             player: PlayerId::new(2),
             held: (-1, 0.0),

@@ -71,7 +71,7 @@ const fn move_reads(
 
 /// The tests' target, the object 20 at (11, 10), 0.3 from the repairer and alive.
 const TARGET: WalkTo = WalkTo {
-    id: 20,
+    id: Some(object_id(20)),
     at: Position::new(11.0, 10.0, 0.0),
     gap: 0.3,
     state: Some(2),
@@ -133,7 +133,7 @@ fn masters() -> crate::objects::masters::Masters {
 
 fn house(id: i32, hp: f32) -> Repaired {
     Repaired {
-        id,
+        id: object_id(id),
         kind: master_type::BUILDING,
         class: class::BUILDING,
         master: ids::HOUSE,
@@ -189,11 +189,11 @@ fn an_annex_s_repair_goes_to_its_main_building_and_its_annexes() {
     let mut wood = Held(vec![0.0, 100.0, 0.0, 0.0]);
     let mut set = vec![
         Repaired {
-            main: Some(2),
+            main: Some(object_id(2)),
             ..house(1, 500.0)
         },
         Repaired {
-            annexes: vec![1],
+            annexes: vec![object_id(1)],
             ..house(2, 540.0)
         },
     ];
@@ -248,7 +248,7 @@ fn repair_at(at: Position, set: impl FnOnce(&mut RepairAction)) -> crate::world:
         (m.standing_sprite, m.move_sprite) = (5, 20);
     }
     let work = crate::orders::Work {
-        target: 10028,
+        target: Some(object_id(10028)),
         point: Position::new(30.0, 88.0, 0.0),
         carry_test: false,
         filter: -1,
@@ -275,7 +275,7 @@ fn passable(t: &mut crate::world::World) {
 fn repaired(t: &mut crate::world::World) -> Result<HeadCode, GenieError> {
     crate::world::tests::in_update(t, (PlayerId::new(1), 0), 50, |unit, c| {
         let me = Me {
-            id: unit.id.get(),
+            id: unit.id,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -306,7 +306,7 @@ fn sprite_of(t: &crate::world::World) -> Option<i16> {
 
 /// The house's hit points, repairers and holders (its slot 0x180 count).
 fn the_house(t: &crate::world::World) -> (f32, u8, i32) {
-    let h = t.object(10028).unwrap().1;
+    let h = t.object(object_id(10028)).unwrap().1;
     (h.life.hp, h.repairers(), h.workers)
 }
 
@@ -475,7 +475,7 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
         change(&mut t);
         assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
         let r = repair_of(&t);
-        assert_eq!((r.state, r.target), (DONE, -1));
+        assert_eq!((r.state, r.target), (DONE, None));
         assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
         assert_eq!(sprite_of(&t), Some(5));
         if held {
@@ -504,7 +504,7 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
     t.players[1].objects.push(dying);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);
-    assert_eq!((r.state, r.target, r.move_to), (DONE, -1, None));
+    assert_eq!((r.state, r.target, r.move_to), (DONE, None, None));
     assert_eq!(heard(&t), [crate::unit_ai::ACTION_COMPLETED]);
     assert_eq!(the_house(&t).2, 0, "the house let go");
 }
@@ -654,7 +654,7 @@ fn a_move_sends_the_repairer_to_its_point() {
             Some(&mut mover),
             &move_reads(&g)
         ),
-        Ok((20, true))
+        Ok((Some(object_id(20)), true))
     );
     assert_eq!(
         (
@@ -663,7 +663,7 @@ fn a_move_sends_the_repairer_to_its_point() {
             r.move_to.and_then(|m| m.goal()),
             r.counted
         ),
-        (WALK_POINT, -1, Some(Position::new(30.0, 5.0, 0.0)), false)
+        (WALK_POINT, None, Some(Position::new(30.0, 5.0, 0.0)), false)
     );
     let mut t = repair_at(NEAR, |a| *a = r);
     t.players[1].objects[0]
@@ -691,7 +691,7 @@ fn a_halt_stops_the_repair_and_answers_whether_it_counted() {
     assert_eq!(r.halt(Some(&mut mover)), Ok(true));
     assert_eq!(
         (r.state, r.counted, r.move_to, r.target),
-        (HALTED, false, None, 20)
+        (HALTED, false, None, Some(object_id(20)))
     );
     assert_eq!(r.halt(None), Ok(false));
 }

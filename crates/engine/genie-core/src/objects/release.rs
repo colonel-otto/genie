@@ -20,7 +20,7 @@ use crate::world::step::Step;
 /// master's class and its owner.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Releaser {
-    pub(crate) id: i32,
+    pub(crate) id: ObjectId,
     pub(crate) class: Option<ClassId>,
     pub(crate) player: PlayerId,
 }
@@ -67,9 +67,9 @@ pub(crate) fn released_fields(
     if kind < ANIMATED && u.workers == 0 && alive {
         u.life.goto_sleep = true;
     }
-    (u.combat && 0 <= by.id).then(|| Notify {
-        caller: by.id,
-        recipient: u.id.get(),
+    (u.combat && !by.id.is_recyclable()).then(|| Notify {
+        caller: Some(by.id),
+        recipient: u.id,
         kind: crate::unit_ai::NO_LONGER_ON_ME,
         p: [i32::from(ClassId::field(by.class)), 0, 0],
     })
@@ -84,24 +84,19 @@ impl World {
     /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
     /// world's leave of the place that the slice does not model.
     pub(crate) fn leave_world(&mut self, p: PlayerId, gone: &Unit) -> Result<(), GenieError> {
-        self.track_remove(p, gone.id.get(), gone.life.master_id)?;
+        self.track_remove(p, gone.id, gone.life.master_id)?;
         let master = gone.master(&self.masters, p)?;
-        forget_resource(
-            &mut self.spatial,
-            Some(master),
-            gone.id.get(),
-            gone.position(),
-        )?;
+        forget_resource(&mut self.spatial, Some(master), gone.id, gone.position())?;
         if COMBAT <= master.kind {
             count_class(&mut self.players.player_mut(p)?.attributes, master, -1.0);
         }
         let recyclable = master.recyclable;
-        let left = self.spatial.leave(gone.id.get());
-        self.unwatch(p, gone.id.get())?;
+        let left = self.spatial.leave(gone.id);
+        self.unwatch(p, gone.id)?;
         if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
             self.recycling.missiles.push((gone.id, m.flying));
         }
-        self.pathing.removed(gone.id.get());
+        self.pathing.removed(gone.id);
         self.pathing.tiles_changed(self.spatial.take_changes());
         left
     }
@@ -156,12 +151,12 @@ impl World {
 impl World {
     /// Slot 0x5f0 (`FUN_141158b90`): the unit's walked level, if it has one, pauses for `pause`
     /// seconds; the world's view of it follows.
-    pub(crate) fn pause(&mut self, id: i32, pause: f32) {
+    pub(crate) fn pause(&mut self, id: ObjectId, pause: f32) {
         let Some(u) = self
             .players
             .iter_mut()
             .flat_map(|p| p.objects.iter_mut())
-            .find(|u| u.id.get() == id)
+            .find(|u| u.id == id)
         else {
             return;
         };
@@ -177,7 +172,7 @@ impl Unit {
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
     pub(crate) fn releaser(&self, c: &Step<'_>) -> Result<Releaser, GenieError> {
         Ok(Releaser {
-            id: self.id.get(),
+            id: self.id,
             class: Some(self.master(&c.w.masters, c.player)?.class),
             player: c.player,
         })

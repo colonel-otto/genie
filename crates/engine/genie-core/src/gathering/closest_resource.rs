@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
@@ -41,7 +42,7 @@ pub(crate) fn search_origin(point: Point, has_site: bool, unit: Position) -> Pos
 }
 
 /// [`crate::gathering::gather_search::closest_resource_at`] for `unit` of gather group `kind` with fewer
-/// than `cap` workers (−1 any) from the drop site `site` (−1 for none; one the world does not hold
+/// than `cap` workers (−1 any) from the drop site `site` (if any; one the world does not hold
 /// counts as none, `FUN_1415417a0`), its unit AI's current target `current` passed over, below
 /// state `min_state` nothing found, and without a site from `point` unless that is (−1, −1)
 /// (`param_7`, `param_8`; [`crate::unit_ai::NO_POINT`]: the unit's place, as with a site): the
@@ -52,52 +53,53 @@ pub(crate) fn closest_resource_of(
     unit: &Unit,
     c: &mut ResourceWorld<'_, '_>,
     others: OthersRef<'_>,
-    (kind, cap, site): (u8, i32, i32),
-    (current, min_state, point): (i32, u8, Point),
-) -> Result<(i32, Option<i32>), GenieError> {
+    (kind, cap, site): (u8, i32, Option<ObjectId>),
+    (current, min_state, point): (Option<ObjectId>, u8, Point),
+) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
     use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
     /// The site masters whose search starts from their footprint in any zone.
     const DOCKS: [MasterId; 2] = [MasterId::named(45), MasterId::named(2172)];
-    let site = if site == -1 || c.spatial.get(site).is_none() {
-        None
-    } else {
-        // the unit itself (a mule cart searches from its own place) or another object
-        let (sp, s) = if site == unit.id.get() {
-            Some((c.player, unit))
-        } else {
-            others.find(site)
-        }
-        .ok_or(GenieError::unsupported(
-            "a resource search's drop site the slice does not hold",
-        ))?;
-        let m = s.master(c.every, sp)?;
-        let footprint = DOCKS.contains(&m.id) || {
-            let restriction = unit
-                .body
-                .mover()
-                .ok_or(GenieError::unsupported(
-                    "a resource search without movement state",
-                ))?
-                .stats
-                .restriction;
-            let (w, h) = (c.spatial.map.width(), c.spatial.map.height());
-            let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
-                "the map's zones without its terrain",
+    let site = match site.filter(|&s| c.spatial.get(s).is_some()) {
+        None => None,
+        Some(site) => {
+            // the unit itself (a mule cart searches from its own place) or another object
+            let (sp, s) = if site == unit.id {
+                Some((c.player, unit))
+            } else {
+                others.find(site)
+            }
+            .ok_or(GenieError::unsupported(
+                "a resource search's drop site the slice does not hold",
             ))?;
-            let values = terrain
-                .restrictions
-                .get(restriction)
-                .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-            let zones = c.zones.of(w, h, &terrain.kinds, values)?;
-            let zone = |p: Position| zones.zone(p.x() as i32, p.y() as i32);
-            zone(s.position()) == zone(unit.position())
-        };
-        Some(gather_search::SearchSite {
-            position: s.position(),
-            radius: m.radius,
-            line_of_sight: m.line_of_sight,
-            footprint,
-        })
+            let m = s.master(c.every, sp)?;
+            let footprint = DOCKS.contains(&m.id) || {
+                let restriction = unit
+                    .body
+                    .mover()
+                    .ok_or(GenieError::unsupported(
+                        "a resource search without movement state",
+                    ))?
+                    .stats
+                    .restriction;
+                let (w, h) = (c.spatial.map.width(), c.spatial.map.height());
+                let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
+                    "the map's zones without its terrain",
+                ))?;
+                let values = terrain
+                    .restrictions
+                    .get(restriction)
+                    .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
+                let zones = c.zones.of(w, h, &terrain.kinds, values)?;
+                let zone = |p: Position| zones.zone(p.x() as i32, p.y() as i32);
+                zone(s.position()) == zone(unit.position())
+            };
+            Some(gather_search::SearchSite {
+                position: s.position(),
+                radius: m.radius,
+                line_of_sight: m.line_of_sight,
+                footprint,
+            })
+        }
     };
     let masters = c.masters.ok_or(GenieError::unsupported(
         "a resource search without its player's masters",
@@ -108,7 +110,7 @@ pub(crate) fn closest_resource_of(
     ))?;
     let mask = mover.stats.restriction_mask;
     let (player, me_id, every) = (c.player, unit.id, c.every);
-    let candidate = |id: i32, owner: PlayerId, u: &Unit, position: Position| {
+    let candidate = |id: ObjectId, owner: PlayerId, u: &Unit, position: Position| {
         let m = u.master(every, owner)?;
         Ok(Candidate {
             id,
@@ -126,12 +128,12 @@ pub(crate) fn closest_resource_of(
             gather_group: m.gather_group,
         })
     };
-    let me = candidate(me_id.get(), player, unit, unit.position())?;
+    let me = candidate(me_id, player, unit, unit.position())?;
     let objects = |spatial: &Spatial, x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
         spatial
             .objects_on(x, y)
             .map(|(id, p)| {
-                if id == me_id.get() {
+                if id == me_id {
                     return Ok(me);
                 }
                 let (owner, u) = others.find(id).ok_or(GenieError::unsupported(
@@ -152,7 +154,7 @@ pub(crate) fn closest_resource_of(
         min_state,
     };
     let me_walk = Me {
-        id: unit.id.get(),
+        id: unit.id,
         group: unit.group.id,
         action_state: unit.top_action().map_or(0, |a| a.state),
     };
@@ -179,7 +181,7 @@ pub(crate) fn closest_resource_of(
 
 /// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
 /// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
-pub(crate) fn herded(others: OthersRef<'_>, id: i32) -> bool {
+pub(crate) fn herded(others: OthersRef<'_>, id: ObjectId) -> bool {
     others.get(id).is_some_and(|u| {
         u.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE)
             && u.actions
@@ -218,9 +220,9 @@ impl UnitView<'_, '_> {
             (search.kind, search.cap, search.site),
             (search.current, search.min_state, search.point),
         )?;
-        if id == -1 {
+        let Some(id) = id else {
             return Ok(None);
-        }
+        };
         let (owner, u) = owner_view(&self.c.w.players, self.c.player, self.new_owner)?
             .find(id)
             .ok_or(GenieError::unsupported(
@@ -240,17 +242,17 @@ impl Unit {
     /// point and `param_6` 2 ([`crate::gathering::gather_search::closest_resource`]): the closest object of
     /// gather group `kind` with fewer than `cap` workers (−1 any) the unit reaches (slot 0x3d0
     /// with range 0), from the tiles the player explored that the unit's restriction lets it
-    /// stand on; −1 for none.
+    /// stand on; None for none.
     pub(crate) fn resource_search(
         &self,
         c: &mut Step<'_>,
         kind: u8,
         cap: i32,
-    ) -> Result<i32, GenieError> {
-        self.resource_search_from(c, kind, cap, -1)
+    ) -> Result<Option<ObjectId>, GenieError> {
+        self.resource_search_from(c, kind, cap, None)
     }
 
-    /// [`Unit::resource_search`] from the drop site `site` (−1 for none;
+    /// [`Unit::resource_search`] from the drop site `site` (if any;
     /// [`crate::gathering::gather_search::closest_resource_at`]): the site's place, its master's radii and
     /// line of sight, and whether the search starts from its footprint (the site's tile in the
     /// unit's zone of its restriction, or a dock: masters 45 and 2172, `0x140c49d17`).
@@ -259,8 +261,8 @@ impl Unit {
         c: &mut Step<'_>,
         kind: u8,
         cap: i32,
-        site: i32,
-    ) -> Result<i32, GenieError> {
+        site: Option<ObjectId>,
+    ) -> Result<Option<ObjectId>, GenieError> {
         let others = OthersRef::of(&c.w.players, c.player)?;
         let current = self
             .ai

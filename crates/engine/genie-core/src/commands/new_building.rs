@@ -36,7 +36,7 @@ impl World {
         player: PlayerId,
         master: MasterId,
         position: Position,
-    ) -> Result<(i32, Position), GenieError> {
+    ) -> Result<(ObjectId, Position), GenieError> {
         let unit_ai = self.master(player, master)?.unit_ai_type(master);
         let made = self.make_building(player, master, Ok(unit_ai), position)?;
         let cost = self.master(player, master)?.cost.clone();
@@ -143,7 +143,7 @@ impl World {
         master: MasterId,
         unit_ai: Result<Option<UnitAiType>, GenieError>,
         position: Position,
-    ) -> Result<(i32, Position), GenieError> {
+    ) -> Result<(ObjectId, Position), GenieError> {
         let made = self.master(player, master)?.clone();
         let building = made.building.ok_or(GenieError::unsupported(
             "a building constructor of a master without its building part",
@@ -297,8 +297,8 @@ impl World {
             under_attack: false,
             last_human_order: 0,
             town_bell: crate::orders::town_bell::TownBell::default(),
-            pasture: -1,
-            my_pasture: -1,
+            pasture: None,
+            my_pasture: None,
             undeletable: false,
             capture_flag: 0,
             annex_of: None,
@@ -368,11 +368,11 @@ impl World {
             let ai = Ok(am.unit_ai_type(annex));
             let at = Position::new(position.x() + off.x(), position.y() + off.y(), given_z);
             let (aid, at) = self.make_building(player, annex, ai, at)?;
-            self.link_annex(player, id.get(), aid, &made, &am)?;
+            self.link_annex(player, id, aid, &made, &am)?;
             self.clear_footprint(player, annex, at.ground(), false)?;
         }
-        self.watch_started(player, id.get())?;
-        Ok((id.get(), position))
+        self.watch_started(player, id)?;
+        Ok((id, position))
     }
 
     /// The static init's add of the new building `id` to its player (slot 0x2d0: it waits in the
@@ -386,7 +386,7 @@ impl World {
         foundation: bool,
     ) -> Result<(), GenieError> {
         let master = made.id;
-        self.track_add(player, id.get(), master)?;
+        self.track_add(player, id, master)?;
         self.building_place(player, id, made, position, desolid)?;
         if foundation && 0 < made.build_time {
             self.construction_terrain(player, master, position)?;
@@ -403,8 +403,8 @@ impl World {
     pub(crate) fn link_annex(
         &mut self,
         player: PlayerId,
-        id: i32,
-        aid: i32,
+        id: ObjectId,
+        aid: ObjectId,
         made: &Master,
         am: &Master,
     ) -> Result<(), GenieError> {

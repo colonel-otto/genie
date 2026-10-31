@@ -5,14 +5,14 @@ use crate::GenieError;
 use crate::groups::CommandArgs;
 use crate::groups::attack::AttackOrder;
 use crate::groups::group_list::member_gone;
-use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
+use crate::groups::{GroupCommand, GroupTarget, SpecificMove, UnitGroup};
 use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
-use crate::objects::ObjectId;
 use crate::objects::masters::master_type::COMBAT;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
 use crate::world::World;
@@ -80,8 +80,7 @@ impl UnitGroup {
         self.flags &= !0x20;
         if forget_target {
             let t = &mut self.current_target;
-            t.target = -1;
-            t.kind = -1;
+            t.target = GroupTarget::None;
             t.original_position = BVector::ZERO;
             t.range = 0.0;
             t.target_radius = 0.0;
@@ -147,7 +146,7 @@ impl World {
         if how.queued {
             g.queue_command(GroupCommand {
                 command: MOVE_COMMAND,
-                target_id: -1,
+                target_id: None,
                 range: how.range,
                 point: at,
                 approved: u8::from(how.direct),
@@ -162,7 +161,7 @@ impl World {
         if !how.direct && !g.command_queue.is_empty() {
             g.queue_command(GroupCommand {
                 command: MOVE_COMMAND,
-                target_id: -1,
+                target_id: None,
                 range: how.range,
                 point: at,
                 approved: 0,
@@ -219,18 +218,15 @@ impl World {
     pub fn command_move_to(
         &mut self,
         group: i32,
-        target: i32,
+        target: Option<ObjectId>,
         point: Point,
         how: MoveTo,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
         let g = self.groups.held_mut(group)?;
         g.flags &= !0x1020;
-        let changed = if target == -1 {
-            g.current_target.target != -1
-        } else {
-            target != g.current_target.target
-        };
+        // the game compares the two integers: a target of none changes a group with one
+        let changed = target != g.current_target.target.key();
         if let Some(done) = self.queue_move(group, point, &how)? {
             return Ok(done);
         }
@@ -240,8 +236,7 @@ impl World {
         }
         if how.forget_target {
             let t = &mut g.current_target;
-            t.target = -1;
-            t.kind = -1;
+            t.target = GroupTarget::None;
             t.original_position = BVector::ZERO;
             t.range = 0.0;
             t.target_radius = 0.0;
@@ -260,7 +255,7 @@ impl World {
             return Ok(false);
         };
         self.stop_all_units(group, false)?;
-        let ids: Vec<i32> = self
+        let ids: Vec<ObjectId> = self
             .groups
             .held(group)?
             .members
@@ -310,7 +305,7 @@ impl World {
         group: i32,
         point: Point,
         how: &MoveTo,
-        (target, changed): (i32, bool),
+        (target, changed): (Option<ObjectId>, bool),
     ) -> Result<Option<(bool, Option<f32>)>, GenieError> {
         let world_time = self.world_time;
         let g = self.groups.held_mut(group)?;
@@ -435,7 +430,7 @@ impl World {
             ))?;
             let _ = self.command_move_to(
                 group,
-                -1,
+                None,
                 last.point.ground(),
                 MoveTo {
                     range: last.range,
@@ -515,7 +510,7 @@ impl World {
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn stop_all_units(&mut self, group: i32, all: bool) -> Result<(), GenieError> {
-        let ids: Vec<i32> = self
+        let ids: Vec<ObjectId> = self
             .groups
             .held(group)?
             .members
@@ -548,7 +543,7 @@ impl World {
     fn stop_listed_unit(
         &mut self,
         group: i32,
-        (k, id): (usize, i32),
+        (k, id): (usize, ObjectId),
         all: bool,
     ) -> Result<(), GenieError> {
         // FUN_1415417a0: a sleeping member too
@@ -606,7 +601,7 @@ fn move_level(
     repath_time: f32,
     world_time: u32,
     range: f32,
-    target: i32,
+    target: Option<ObjectId>,
 ) -> PathData {
     let mut level = PathData {
         repath_time,
@@ -629,10 +624,10 @@ fn move_level(
     level
 }
 /// The id of a queued command's target, which the world holds.
-fn held_id(id: i32) -> Result<ObjectId, GenieError> {
-    ObjectId::of_field(id).ok_or_else(|| {
-        GenieError::unreachable("a held queued target without an id").with("target", id)
-    })
+fn held_id(id: Option<ObjectId>) -> Result<ObjectId, GenieError> {
+    id.ok_or(GenieError::unreachable(
+        "a held queued target without an id",
+    ))
 }
 
 #[cfg(test)]
@@ -673,7 +668,7 @@ mod tests {
         let mut g = UnitGroup::new(1);
         g.owner = 1;
         g.members = vec![Member {
-            id: 7,
+            id: object_id(7),
             ..Member::default()
         }];
         g.motion.flags = 2;
@@ -688,7 +683,7 @@ mod tests {
     fn command(command: i32, target: i32, x: f32, z: f32, approved: u8) -> GroupCommand {
         GroupCommand {
             command,
-            target_id: target,
+            target_id: ObjectId::of_field(target),
             range: 0.5,
             point: BVector::new(x, 0.0, z),
             approved,
@@ -708,7 +703,10 @@ mod tests {
             direct: true,
             ..MoveTo::default()
         };
-        assert!(!t.command_move_to(1, -1, Point::new(3.0, 4.0), how).unwrap());
+        assert!(
+            !t.command_move_to(1, None, Point::new(3.0, 4.0), how)
+                .unwrap()
+        );
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.command_queue, [command(1, -1, 3.0, 4.0, 1)]);
         assert_eq!((g.hibernating, g.current_command), (1, -1));
@@ -769,7 +767,10 @@ mod tests {
         t.check_queued_orders(1).unwrap();
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.command_queue, []);
-        assert_eq!((g.current_command, g.current_target.target), (3, 7));
+        assert_eq!(
+            (g.current_command, g.current_target.target),
+            (3, GroupTarget::Object(object_id(7)))
+        );
         // nothing queued: a hibernating group wakes
         let mut t = moving_world();
         t.groups.get_mut(1).unwrap().hibernating = 1;
@@ -788,7 +789,10 @@ mod tests {
             range: 0.5,
             ..MoveTo::default()
         };
-        assert!(t.command_move_to(1, -1, Point::new(2.0, 3.0), how).unwrap());
+        assert!(
+            t.command_move_to(1, None, Point::new(2.0, 3.0), how)
+                .unwrap()
+        );
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.command_queue, Vec::<GroupCommand>::new());
         assert_eq!(
@@ -809,7 +813,7 @@ mod tests {
             ..MoveTo::default()
         };
         assert!(
-            t.command_move_to(1, -1, Point::new(2.0, 3.0), hold)
+            t.command_move_to(1, None, Point::new(2.0, 3.0), hold)
                 .unwrap()
         );
         let g = t.groups.get(1).unwrap();
@@ -830,7 +834,7 @@ mod tests {
             ..asleep
         });
         assert!(
-            t.command_move_to(1, -1, Point::new(2.0, 3.0), MoveTo::default())
+            t.command_move_to(1, None, Point::new(2.0, 3.0), MoveTo::default())
                 .unwrap()
         );
         let g = t.groups.get(1).unwrap();
@@ -839,7 +843,7 @@ mod tests {
         assert_eq!(ai.last_update_time, 50);
         let mut t = moving_world();
         assert!(
-            t.command_move_to(1, -1, Point::new(f32::NAN, 3.0), MoveTo::default())
+            t.command_move_to(1, None, Point::new(f32::NAN, 3.0), MoveTo::default())
                 .unwrap()
         );
         assert!(t.groups.get(1).unwrap().motion.paths[0].has_path);
@@ -863,7 +867,7 @@ mod tests {
         ] {
             let mut t = moving_world();
             t.groups.get_mut(1).unwrap().flags = 0x800;
-            assert!(t.command_move_to(1, -1, point, leg).unwrap());
+            assert!(t.command_move_to(1, None, point, leg).unwrap());
             let g = t.groups.get(1).unwrap();
             assert_eq!(
                 (g.motion.paths[0].path_flags, g.flags & 0x800),
@@ -877,7 +881,10 @@ mod tests {
         top.has_path = true;
         top.path_flags = 1;
         t.groups.get_mut(1).unwrap().motion.paths = vec![top];
-        assert!(t.command_move_to(1, -1, Point::new(8.0, 0.0), leg).unwrap());
+        assert!(
+            t.command_move_to(1, None, Point::new(8.0, 0.0), leg)
+                .unwrap()
+        );
         assert_eq!(t.groups.get(1).unwrap().flags & 0xc000, 0);
     }
 }

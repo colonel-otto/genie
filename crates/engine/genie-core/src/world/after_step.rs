@@ -39,12 +39,12 @@ impl World {
     ) -> Result<Stepped, GenieError> {
         let id = self.players.live(p, i)?.id;
         let outcome = self.run_object((p, i), (dt, turn), f)?;
-        let at = (p, self.slot_of(p, id.get())?, id);
+        let at = (p, self.slot_of(p, id)?, id);
         self.finish_own_update(at, (dt, full), &outcome)?;
         self.hand_changed_tiles();
         Ok(Stepped {
             outcome,
-            slot: self.slot_of(p, id.get())?,
+            slot: self.slot_of(p, id)?,
         })
     }
 
@@ -53,7 +53,7 @@ impl World {
     /// # Errors
     ///
     /// The object left the list in its own step.
-    fn slot_of(&self, p: PlayerId, id: i32) -> Result<usize, GenieError> {
+    fn slot_of(&self, p: PlayerId, id: ObjectId) -> Result<usize, GenieError> {
         self.players
             .player(p)?
             .objects

@@ -67,7 +67,7 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
     let h = hunting(31);
     let walk = |state| {
         let to = WalkTo {
-            id: 31,
+            id: Some(object_id(31)),
             at: Position::new(5.0, 6.0, 0.0),
             gap: 0.0,
             state: Some(state),
@@ -110,7 +110,7 @@ fn to_point(state: MoveTo, point: Position, range: f32) -> MoveToAction {
 /// The hunter 9177 of [`Rig::on_the_path`] in action state `state`.
 const fn me(state: u8) -> Me {
     Me {
-        id: 9177,
+        id: object_id(9177),
         group: -1,
         action_state: state,
     }
@@ -138,7 +138,7 @@ pub(crate) fn hunting(target: i32) -> HuntAction {
         task: CHOP,
         attack: None,
         move_to: None,
-        drop_site: -1,
+        drop_site: None,
         carry_to: None,
         timer: 0.0,
         lead: Lead::default(),
@@ -174,7 +174,7 @@ fn a_decay_task_stops_its_target_s_decay_once() {
 #[test]
 fn a_stopped_decay_goes_back_to_the_world_at_once() {
     let decaying = Victim {
-        id: 10028,
+        id: object_id(10028),
         decay: 0.25,
         ..Victim::default()
     };
@@ -248,7 +248,7 @@ pub(crate) fn walker() -> Mover {
 /// MarvinBlue/426048731's tree 9365 (Gaia, class 15, 100 wood) as 9181 meets it in update 748.
 fn tree() -> Quarry {
     Quarry {
-        id: 9365,
+        id: object_id(9365),
         position: Position::new(24.5, 97.5, 0.0),
         class: class::TREE,
         kind: master_type::STATIC,
@@ -380,7 +380,7 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
         None
     );
     let beside = Quarry {
-        id: 9366,
+        id: object_id(9366),
         position: Position::new(20.78, 97.5, 0.0),
         ..tree()
     };
@@ -433,7 +433,7 @@ fn a_hunt_s_new_target_clears_its_lead() {
     };
     hunt.lead = led;
     let other = Quarry {
-        id: 9366,
+        id: object_id(9366),
         position: Position::new(20.78, 97.5, 0.0),
         ..tree()
     };
@@ -496,7 +496,7 @@ fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
 
 fn victim(amount: f32) -> Victim {
     Victim {
-        id: 9357,
+        id: object_id(9357),
         amount,
         state: 3,
         kind: master_type::STATIC,
@@ -520,7 +520,7 @@ fn a_villager_gathers_work_rate_times_work_value_times_dt_until_its_load_is_full
         },
         attack: None,
         move_to: None,
-        drop_site: -1,
+        drop_site: None,
         carry_to: None,
         timer: 0.0,
         lead: Lead::default(),
@@ -557,7 +557,7 @@ fn a_hunt_without_a_target_carries_its_load_off_or_searches() {
         task: CHOP,
         attack: None,
         move_to: None,
-        drop_site: -1,
+        drop_site: None,
         carry_to: None,
         timer: 0.0,
         lead: Lead::default(),
@@ -597,7 +597,7 @@ fn a_hunt_on_a_live_ally_fails() {
     .expect("a hunt");
     assert_eq!(
         (hunt.state, hunt.timer, hunt.target),
-        (FAILED, 0.0, ObjectId::of_field(ally.id))
+        (FAILED, 0.0, Some(ally.id))
     );
 }
 
@@ -663,7 +663,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         task: CHOP,
         attack: None,
         move_to: Some(to_house(MoveTo::Moving, CHOP.range)),
-        drop_site: -1,
+        drop_site: None,
         carry_to: None,
         timer: 0.0,
         lead: Lead::default(),
@@ -712,7 +712,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
         flags: 3,
     };
     let ibex = Victim {
-        id: 15371,
+        id: object_id(15371),
         class: class::FARM,
         kind: master_type::MOVING,
         player: PlayerId::new(1),
@@ -766,7 +766,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         task: CHOP,
         attack: None,
         move_to: Some(MoveToAction::sub_in(move_to)),
-        drop_site: -1,
+        drop_site: None,
         carry_to: None,
         timer: 0.0,
         lead: Lead::default(),
@@ -790,8 +790,8 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
         (got, rig.mover().velocity.unwrap().velocity.y())
     };
     let done = PointWalk::Done {
-        target: -1,
-        second: -1,
+        target: None,
+        second: None,
     };
     for (state, ends) in [(WALK_SEARCH, PointWalk::Search), (WALK_POINT, done)] {
         // ended (code 1) or failed (code 3)
@@ -816,7 +816,10 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
     // set_state(2) lets the target and the second target go, in that order
     let mut h = hunt(SEARCH, MoveTo::Arrived);
     (h.target, h.carry_to, h.timer) = (Some(object_id(28813)), Some(object_id(9156)), -10.0);
-    assert_eq!(h.set_done(), [28813, 9156]);
+    assert_eq!(
+        h.set_done(),
+        [Some(object_id(28813)), Some(object_id(9156))]
+    );
     assert_eq!(
         (h.state, h.target, h.carry_to, h.point, h.timer),
         (IDLE, None, None, Position::from([-1.0; 3]), 0.0)
@@ -965,7 +968,7 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
     for state in [DROP, WALK_POINT] {
         for move_to in [MoveTo::Start, MoveTo::Moving] {
             let mut rig = Rig::on_the_path(Victim::default()).holding(10028, PlayerId::new(0));
-            rig.mover_mut().in_the_way = vec![77, 78];
+            rig.mover_mut().in_the_way = vec![object_id(77), object_id(78)];
             let mut h = HuntAction {
                 state,
                 carry_to: Some(object_id(10028)),
@@ -985,7 +988,7 @@ fn a_hunter_s_walks_pass_on_the_units_in_their_way() {
             })
             .unwrap();
             assert_eq!(rig.posted(), in_the_way, "{state} {move_to:?}");
-            assert_eq!(rig.mover().in_the_way, Vec::<i32>::new());
+            assert_eq!(rig.mover().in_the_way, Vec::new());
         }
     }
 }
@@ -1065,7 +1068,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
         special_graphic: None,
     };
     let animal = |position| Victim {
-        id: 10028,
+        id: object_id(10028),
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
         state: 2,
@@ -1262,7 +1265,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
 fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
     use crate::combat::attack::tests::own_attack;
     let sheep = || Victim {
-        id: 10028,
+        id: object_id(10028),
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
         state: 2,
@@ -1360,7 +1363,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
 /// one unprepared is not modelled.
 #[test]
 fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
-    let herd = |site: Option<(i32, f32)>, idle| Herd {
+    let herd = |site: Option<(ObjectId, f32)>, idle| Herd {
         own: true,
         drop_site: site,
         engagement: engagement(),
@@ -1369,7 +1372,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
         special_graphic: None,
     };
     let sheep = |state| Victim {
-        id: 10028,
+        id: object_id(10028),
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
         state,
@@ -1394,11 +1397,21 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     };
     assert!(face(&mut walking(10028, false), sheep(2), None).is_err());
     let mut h = walking(10028, false);
-    let led = face(&mut h, sheep(2), Some(herd(Some((500, 16.0)), false)));
+    let led = face(
+        &mut h,
+        sheep(2),
+        Some(herd(Some((object_id(500), 16.0)), false)),
+    );
     assert_eq!(led, Ok(HuntNext::Stay));
     assert_eq!(
         (h.state, h.drop_site, h.lead.moved, h.lead.start, h.timer),
-        (LEAD, 500, true, Point::new(29.5, 89.0), LEAD_WAIT)
+        (
+            LEAD,
+            Some(object_id(500)),
+            true,
+            Point::new(29.5, 89.0),
+            LEAD_WAIT
+        )
     );
     for (gap_squared, moved, state) in [
         (4.0, false, ATTACK),
@@ -1406,7 +1419,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
         (HERD_FAR, true, LEAD),
     ] {
         let mut h = walking(10028, moved);
-        let herd = herd(Some((500, gap_squared)), false);
+        let herd = herd(Some((object_id(500), gap_squared)), false);
         assert_eq!(face(&mut h, sheep(2), Some(herd)), Ok(HuntNext::Stay));
         assert_eq!(h.state, state, "{gap_squared} {moved}");
     }
@@ -1440,7 +1453,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         task: CHOP,
         attack: None,
         move_to: Some(MoveToAction::sub_in(MoveTo::Arrived)),
-        drop_site: -1,
+        drop_site: None,
         carry_to: Some(object_id(9156)),
         timer: 0.0,
         lead: Lead::default(),
@@ -1528,7 +1541,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
     };
     let start = |range: f32| {
         let house = Victim {
-            id: 10028,
+            id: object_id(10028),
             state: 3,
             ..Victim::default()
         };

@@ -5,8 +5,10 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Attackers;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
@@ -140,14 +142,14 @@ impl UnitAi {
             current_order: None,
             order_priority: -1,
             current_action: None,
-            current_target: -1,
+            current_target: None,
             target_type: -1,
             target_point: Position::from([-1.0; 3]),
             desired_distance: DESIRED_DISTANCE,
-            defend_target: -1,
+            defend_target: None,
             last_order: None,
             last_action: None,
-            last_target: -1,
+            last_target: None,
             last_target_type: -1,
             idle_timer: 0,
             adjusted_idle_timeout,
@@ -178,10 +180,10 @@ impl UnitAi {
             processing: false,
             buffered: Vec::new(),
             ordered_on_target: false,
-            attackers: Vec::new(),
+            attackers: Attackers::default(),
             order_history: Vec::new(),
             retries: Vec::new(),
-            best_this_update: -1,
+            best_this_update: None,
         }
     }
 
@@ -219,7 +221,7 @@ impl UnitAi {
     pub fn expire_retries(
         &mut self,
         now: u32,
-        seen: &mut dyn FnMut(i32) -> Result<Option<UnitSeen>, GenieError>,
+        seen: &mut dyn FnMut(ObjectId) -> Result<Option<UnitSeen>, GenieError>,
     ) -> Result<(), GenieError> {
         let mut i = 0;
         while i < self.retries.len() {
@@ -408,9 +410,15 @@ impl UnitAi {
     }
 
     /// `FUN_140c64c10`: the target and its class become the last ones (`+0x6c`, `+0x70`), the
-    /// target takes `id` and the point (`+0x50`..`+0x58`); the class (`+0x4c`) is the master's
-    /// of the object the world holds under `id` (`FUN_1415417a0`; `class`), else it stays.
-    pub(crate) const fn target_at(&mut self, id: i32, class: Option<i32>, point: Position) {
+    /// target takes `id` (none: −1) and the point (`+0x50`..`+0x58`); the class (`+0x4c`) is the
+    /// master's of the object the world holds under `id` (`FUN_1415417a0`; `class`), else it
+    /// stays.
+    pub(crate) const fn target_at(
+        &mut self,
+        id: Option<ObjectId>,
+        class: Option<i32>,
+        point: Position,
+    ) {
         self.last_target = self.current_target;
         self.last_target_type = self.target_type;
         self.current_target = id;
@@ -420,8 +428,13 @@ impl UnitAi {
         }
     }
 
-    /// `FUN_140c64be0`: the target, its class and its point.
-    pub(crate) const fn set_target(&mut self, target: i32, class: i32, point: Position) {
+    /// `FUN_140c64be0`: the target (none: −1), its class and its point.
+    pub(crate) const fn set_target(
+        &mut self,
+        target: Option<ObjectId>,
+        class: i32,
+        point: Position,
+    ) {
         self.last_target = self.current_target;
         self.last_target_type = self.target_type;
         self.target_type = class;
@@ -440,14 +453,14 @@ impl UnitAi {
         &mut self,
         order: Option<OrderKind>,
         action: Option<ActionKind>,
-        target: Option<(i32, i32)>,
+        target: Option<(ObjectId, i32)>,
         point: Position,
         clears: bool,
         ai: &mut Well512,
     ) -> Result<(), GenieError> {
         self.set_order(order, ai);
         self.set_action(action);
-        let (id, class) = target.unwrap_or((-1, -1));
+        let (id, class) = target.map_or((None, -1), |(id, class)| (Some(id), class));
         self.set_target(id, class, point);
         if clears {
             self.clear_notifies(0)?;
@@ -461,7 +474,7 @@ impl UnitAi {
     pub fn notify_move(
         &mut self,
         moved: bool,
-        target: Option<(i32, i32)>,
+        target: Option<(ObjectId, i32)>,
         point: Point,
         ai: &mut Well512,
     ) {
@@ -470,7 +483,7 @@ impl UnitAi {
             self.set_action(Some(ActionKind::Move));
             self.forget_targets();
         }
-        let (id, class) = target.unwrap_or((-1, -1));
+        let (id, class) = target.map_or((None, -1), |(id, class)| (Some(id), class));
         self.set_target(id, class, point.with_height(0.0));
     }
 
@@ -480,7 +493,7 @@ impl UnitAi {
     pub fn notify_grid_move(&mut self, cell: Point, ai: &mut Well512) {
         self.set_order(Some(OrderKind::Move), ai);
         self.set_action(Some(ActionKind::Move));
-        self.set_target(-1, -1, cell.with_height(0.0));
+        self.set_target(None, -1, cell.with_height(0.0));
     }
 
     /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes
@@ -495,7 +508,7 @@ impl UnitAi {
         }
         self.set_action(Some(ActionKind::Move));
         // FUN_140c64c10 with -1: the world holds no object -1
-        self.target_at(-1, None, m.point);
+        self.target_at(None, None, m.point);
         Some(m)
     }
 

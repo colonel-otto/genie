@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -40,7 +41,7 @@ impl UnitAi {
         if at.player != PlayerId::GAIA {
             alert_owner(computer)?;
         }
-        let _ = self.add_attacker(n.caller);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
         // the game also tests the action values 0x25f and 0x268 here, which no unit AI holds
         // ([`ActionKind`])
@@ -88,7 +89,8 @@ impl UnitAi {
         let (x, y, z) = (at.position.x(), at.position.y(), at.position.z());
         let (mut vx, mut vy) = (0.0f32, 0.0f32);
         let mut class_22 = false;
-        for &id in &self.attackers {
+        // none (−1) is an object the update does not hold
+        for id in self.attackers.iter().flatten() {
             let Some(u) = at.unit(id) else {
                 continue;
             };
@@ -220,10 +222,12 @@ impl UnitAi {
             self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
-        let _ = self.add_attacker(n.caller);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
-        let target = self.closest_valid_attacker(at, ai_rng);
-        let Some(attacker) = at.unit(target) else {
+        let Some((target, attacker)) = self
+            .closest_valid_attacker(at, ai_rng)
+            .and_then(|t| at.unit(t).map(|u| (t, u)))
+        else {
             return Ok(GO_ON);
         };
         let villager = attacker.class == class::VILLAGER;
@@ -256,7 +260,7 @@ impl UnitAi {
     /// [`helper_answers`]: crate::unit_ai::helper_answers
     pub(super) fn ask_for_help(
         &mut self,
-        attacker: i32,
+        attacker: ObjectId,
         at: &Surroundings,
         computer: bool,
         side: &mut dyn UnitSide,
@@ -324,8 +328,9 @@ impl UnitAi {
             }
             Some(ActionKind::Gather) => return self.gatherer_search(n, at, computer, side, rng),
             Some(ActionKind::Build) => {
-                let found = side.foundation_search()?;
-                if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
+                if let Some(found) = side.foundation_search()?
+                    && side.reaches(found, FOUNDATION_REACH)?
+                {
                     let _ = self.build_object(found, true, at, side, rng)?;
                     return Ok(BREAK);
                 }

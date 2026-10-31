@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -52,7 +53,7 @@ pub struct AttackAsk {
     /// The path checks.
     pub paths: bool,
     /// An extra object for the statistics.
-    pub extra: Option<i32>,
+    pub extra: Option<ObjectId>,
     /// Any class.
     pub any_class: bool,
     /// The unit is in an attack work state.
@@ -90,7 +91,7 @@ impl AttackAsk {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Memory<'a> {
     /// The retarget entries.
-    pub retries: &'a [(i32, u32)],
+    pub retries: &'a [(ObjectId, u32)],
     /// The order history, the newest first.
     pub history: &'a [OrderRecord],
 }
@@ -242,7 +243,7 @@ pub struct Seeker {
     /// `+0x44`.
     pub action: Option<ActionKind>,
     /// `+0x48`.
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// `+0x4c`.
     pub target_type: i32,
     /// `+0x70`.
@@ -549,7 +550,7 @@ pub trait AttackPicker {
     fn thing(
         &mut self,
         world: &Spatial,
-        id: i32,
+        id: ObjectId,
     ) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::can_attack`].
@@ -557,7 +558,7 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// What the attack check does not model.
-    fn can_attack(&mut self, world: &Spatial, id: i32) -> Result<bool, GenieError>;
+    fn can_attack(&mut self, world: &Spatial, id: ObjectId) -> Result<bool, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::attacks_neutral`].
     ///
@@ -571,14 +572,14 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// What the scan does not model.
-    fn spares_friends(&mut self, world: &Spatial, id: i32) -> Result<bool, GenieError>;
+    fn spares_friends(&mut self, world: &Spatial, id: ObjectId) -> Result<bool, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::shuns`].
     ///
     /// # Errors
     ///
     /// What the test does not model.
-    fn shuns(&mut self, id: i32) -> Result<bool, GenieError>;
+    fn shuns(&mut self, id: ObjectId) -> Result<bool, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::candidate`].
     ///
@@ -588,7 +589,7 @@ pub trait AttackPicker {
     fn candidate(
         &mut self,
         world: &Spatial,
-        id: i32,
+        id: ObjectId,
         distance: f32,
         category: i32,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError>;
@@ -598,28 +599,33 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// What the read does not model.
-    fn armored(&mut self, id: i32) -> Result<bool, GenieError>;
+    fn armored(&mut self, id: ObjectId) -> Result<bool, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::weapon_range`].
     ///
     /// # Errors
     ///
     /// What the read does not model.
-    fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError>;
+    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::engages`].
     ///
     /// # Errors
     ///
     /// What the reads do not model.
-    fn engages(&mut self, id: i32) -> Result<bool, GenieError>;
+    fn engages(&mut self, id: ObjectId) -> Result<bool, GenieError>;
 
     /// [`crate::unit_ai::best_target::Battlefield::quick_path`].
     ///
     /// # Errors
     ///
     /// What the path does not model.
-    fn quick_path(&mut self, world: &mut Spatial, id: i32, range: f32) -> Result<bool, GenieError>;
+    fn quick_path(
+        &mut self,
+        world: &mut Spatial,
+        id: ObjectId,
+        range: f32,
+    ) -> Result<bool, GenieError>;
 }
 
 /// A search that picks no attack, asked about one ([`NoAttack`]).
@@ -641,12 +647,12 @@ impl AttackPicker for NoAttack {
     fn thing(
         &mut self,
         _: &Spatial,
-        _: i32,
+        _: ObjectId,
     ) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn can_attack(&mut self, _: &Spatial, _: i32) -> Result<bool, GenieError> {
+    fn can_attack(&mut self, _: &Spatial, _: ObjectId) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 
@@ -654,37 +660,37 @@ impl AttackPicker for NoAttack {
         Err(NO_ATTACK)
     }
 
-    fn spares_friends(&mut self, _: &Spatial, _: i32) -> Result<bool, GenieError> {
+    fn spares_friends(&mut self, _: &Spatial, _: ObjectId) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn shuns(&mut self, _: i32) -> Result<bool, GenieError> {
+    fn shuns(&mut self, _: ObjectId) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 
     fn candidate(
         &mut self,
         _: &Spatial,
-        _: i32,
+        _: ObjectId,
         _: f32,
         _: i32,
     ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn armored(&mut self, _: i32) -> Result<bool, GenieError> {
+    fn armored(&mut self, _: ObjectId) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn weapon_range(&mut self, _: i32) -> Result<f32, GenieError> {
+    fn weapon_range(&mut self, _: ObjectId) -> Result<f32, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn engages(&mut self, _: i32) -> Result<bool, GenieError> {
+    fn engages(&mut self, _: ObjectId) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn quick_path(&mut self, _: &mut Spatial, _: i32, _: f32) -> Result<bool, GenieError> {
+    fn quick_path(&mut self, _: &mut Spatial, _: ObjectId, _: f32) -> Result<bool, GenieError> {
         Err(NO_ATTACK)
     }
 }

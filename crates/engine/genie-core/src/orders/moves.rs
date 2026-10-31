@@ -22,6 +22,16 @@ use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
+/// What a work order leaves of the pasture its unit tends ([`World::work_pasture`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PastureAfter {
+    /// The order ends there: no livestock was given.
+    Ends,
+    /// The unit tends this pasture, or none (`FUN_141189ca0` with −1: it leaves the one it
+    /// tends).
+    Tends(Option<ObjectId>),
+}
+
 impl World {
     /// One unit of MOVE: an object that does not move ignores an order not queued. The unit's
     /// ignore list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the
@@ -92,14 +102,10 @@ impl World {
             let (target_type, target_owner) =
                 target.map_or((-1, -1), |(m, o)| (i32::from(m.get()), o.index() as i32));
             let queued = crate::unit_ai::QueuedOrder {
-                issuer: issuer.index() as i32,
+                issuer: Some(crate::unit_ai::Issuer::Player(issuer)),
                 order: OrderKind::Move,
                 priority: 100,
-                target: if target.is_some() {
-                    ObjectId::field(order.target)
-                } else {
-                    -1
-                },
+                target: if target.is_some() { order.target } else { None },
                 target_owner,
                 point: point2.with_height(0.0),
                 range: 0.0,
@@ -246,7 +252,7 @@ impl World {
             self.transport_move(player, idx, m.point)?;
         }
         for id in builder_leaves {
-            self.leave_builders(id)?;
+            self.leave_builders(Some(id))?;
         }
         for (id, by) in releases {
             self.release(id, by)?;
@@ -284,7 +290,7 @@ impl World {
         }
         let class = master.class;
         let target = self.object(order.target).map(|(tp, _)| tp);
-        let reach = self.order_reach(player, unit.id.get(), order, target, master)?;
+        let reach = self.order_reach(player, unit.id, order, target, master)?;
         let packs = packs(
             class,
             reach,
@@ -299,46 +305,58 @@ impl World {
         }
         if reach.is_some_and(|(_, too_close)| too_close) {
             let unit = self.players.live_mut(player, idx)?;
-            unit.post_own(TOO_CLOSE, [order.target, -1, -1])?;
+            unit.post_own(TOO_CLOSE, [ObjectId::field(order.target), -1, -1])?;
             return Ok(());
         }
         if target.is_none() {
             // no target, or one the world does not hold (slot 0x7e8 with none): the work command
-            // at the point
+            // at the point (FUN_1412067f0's town bell reads no target)
             let order = Work {
-                target: -1,
+                target: None,
                 ..*order
             };
-            self.town_bell_order(player, idx, -1, order.filter)?;
             self.work_command(player, idx, &order)?;
             // FUN_141189ca0 with −1: the unit leaves the pasture it tends
-            return self.tend_pasture(player, idx, -1);
+            return self.tend_pasture(player, idx, None);
         }
+        self.work_on_held(player, idx, order)
+    }
+
+    /// [`World::order_work`] on a target the world holds: livestock (class 58) takes the enter
+    /// command (slot 0x3a0), and where it enters nothing the work command goes to the target's
+    /// place without a target; the town bell (`FUN_1412067f0`, which reads no target), the work
+    /// command and the pasture ([`World::work_pasture`]).
+    fn work_on_held(
+        &mut self,
+        player: PlayerId,
+        idx: usize,
+        order: &Work,
+    ) -> Result<(), GenieError> {
         let master = self
             .players
             .live(player, idx)?
             .master(&self.masters, player)?;
-        // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
-        // work command goes to the target's place without a target
         let mut order = *order;
         if master.class == class::LIVESTOCK
-            && !self.enter_command(player, idx, order.target, false)?
+            && let Some(target) = order.target
+            && !self.enter_command(player, idx, target, false)?
         {
             let at = self
                 .spatial
-                .get_known(order.target)?
+                .get_known(target)?
                 .ok_or(GenieError::unsupported("a target without a place"))?
                 .position;
             order.point = order.point.with_x(at.x()).with_y(at.y());
-            order.target = -1;
+            order.target = None;
         }
-        let order = &order;
-        self.town_bell_order(player, idx, order.target, order.filter)?;
-        self.work_command(player, idx, order)?;
-        let Some(tends) = self.work_pasture(player, idx, order)? else {
-            return Ok(());
-        };
-        self.tend_pasture(player, idx, tends)
+        if let Some(target) = order.target {
+            self.town_bell_order(player, idx, target, order.filter)?;
+        }
+        self.work_command(player, idx, &order)?;
+        match self.work_pasture(player, idx, &order)? {
+            PastureAfter::Ends => Ok(()),
+            PastureAfter::Tends(pasture) => self.tend_pasture(player, idx, pasture),
+        }
     }
 
     /// [`World::order_work`]'s reach against `target` (the world's player holding the order's
@@ -347,7 +365,7 @@ impl World {
     pub(super) fn order_reach(
         &self,
         player: PlayerId,
-        id: i32,
+        id: ObjectId,
         order: &Work,
         target: Option<PlayerId>,
         master: &Master,
@@ -373,8 +391,7 @@ impl World {
         })
     }
 
-    /// [`World::order_work`]'s pasture after the work command: the pasture the unit then tends
-    /// (−1 for none), or none when the order ends there (no livestock given). A villager ordered
+    /// [`World::order_work`]'s pasture after the work command ([`PastureAfter`]). A villager ordered
     /// onto a pasture (1893, 1897) with room for workers works the livestock
     /// [`World::pasture_pick`] gives and tends the pasture; a full one has its unit AI take a
     /// search.
@@ -383,43 +400,42 @@ impl World {
         player: PlayerId,
         idx: usize,
         order: &Work,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<PastureAfter, GenieError> {
         use crate::gathering::pasture::PASTURE_WORKERS;
         use crate::technology::Attributes;
         let unit = &self.players.live(player, idx)?;
         let master = unit.master(&self.masters, player)?;
-        if order.target == -1 {
-            return Ok(Some(-1));
-        }
-        let target = self.task_target(order.target, 0)?;
+        let Some(on) = order.target else {
+            return Ok(PastureAfter::Tends(None));
+        };
+        let target = self.task_target(on, 0)?;
         let pasture = master.class == class::VILLAGER
             && target.master.kind == BUILDING
             && matches!(target.master.id, PASTURE_MANGROVE | PASTURE);
         if !pasture {
-            return Ok(Some(-1));
+            return Ok(PastureAfter::Tends(None));
         }
         let room = Attributes::get(
             self.players.player(player)?,
             AttributeId::try_from(PASTURE_WORKERS)?,
         )?;
-        let workers = self.livestock_workers(order.target) as f32;
+        let workers = self.livestock_workers(on) as f32;
         // COMISS room with the workers, JBE: a NaN is full
         if room > workers {
-            let pick = self.pasture_pick(order.target, player, idx)?;
-            if pick == -1 {
-                return Ok(None);
-            }
+            let Some(pick) = self.pasture_pick(on, player, idx)? else {
+                return Ok(PastureAfter::Ends);
+            };
             let point = self
                 .object(pick)
                 .map(|(_, l)| l.position())
                 .ok_or(GenieError::unreachable("the livestock picked"))?;
             let on_it = Work {
-                target: pick,
+                target: Some(pick),
                 point,
                 ..*order
             };
             self.order_work(player, idx, &on_it)?;
-            return Ok(Some(order.target));
+            return Ok(PastureAfter::Tends(Some(on)));
         }
         // its unit AI's slot 0x38 takes a search (0x202 with the hunt action, class 49 and −1,
         // from and to the unit)
@@ -427,13 +443,13 @@ impl World {
         let (id, state) = (unit.id, unit.life.state);
         if let Some(ai) = unit.ai.as_mut() {
             let search = crate::unit_ai::Notify::own(
-                id.get(),
+                id,
                 crate::unit_ai::REQUIRES_SEARCH,
                 [ActionKind::Hunt.value(), i32::from(class::FARM.get()), -1],
             );
             let _ = ai.accept(search, state);
         }
-        Ok(Some(-1))
+        Ok(PastureAfter::Tends(None))
     }
 
     /// Slot 0x138 (`FUN_141216f10`) without a target, outside slot 0x128's work command (the

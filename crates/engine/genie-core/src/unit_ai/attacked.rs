@@ -4,12 +4,14 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type::MISSILE;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
+use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, Pick, QueuedOrder,
@@ -64,44 +66,40 @@ impl UnitAi {
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<u32, GenieError> {
-        let attacker_id = n.caller;
-        let known = self.attackers.binary_search(&attacker_id).is_ok();
+        let known = self.attackers.contains(n.caller);
         self.retries.clear();
         if known && side.top_target_now()?.is_some() {
             return Ok(GO_ON);
         }
         // slot 0x48's notify and the alert 0x201 reach the same owner
         alert_owner(computer)?;
-        let _ = self.add_attacker(attacker_id);
+        let _ = self.attackers.add(n.caller);
         side.set_under_attack(true);
         if n.p[1] < 1 {
             self.end_notifies(time, at, side, ai_rng)?;
             return Ok(DEAD);
         }
-        let Some(attacker) = Self::world_object(attacker_id, at, side)? else {
+        let Some(attacker) = Self::world_object(n.caller, at, side)? else {
             return Ok(GO_ON);
         };
+        let attacker_id = attacker.id;
         if attacker.allied {
             return Ok(GO_ON);
         }
         // `IsIdle` (FUN_141017ad0) of the unit's group, read at the handler's start
         let held_by_group = at.group.is_some_and(|g| !g.idle);
-        if !known && !computer && self.current_target != attacker_id && !held_by_group {
+        if !known && !computer && self.current_target != Some(attacker_id) && !held_by_group {
             self.ask_for_help(attacker_id, at, computer, side)?;
         }
         if self.ignores_attacker(&attacker, attacker_id, computer, held_by_group) {
             return Ok(GO_ON);
         }
-        let current = if self.current_target == -1 {
-            None
-        } else {
-            Self::world_object(self.current_target, at, side)?
-        };
-        if self.best_this_update == -1 {
+        let current = Self::world_object(self.current_target, at, side)?;
+        if self.best_this_update.is_none() {
             self.best_against(attacker_id, current.as_ref(), at, computer, side)?;
         }
-        if self.best_this_update == -1
-            && self.current_target == -1
+        if self.best_this_update.is_none()
+            && self.current_target.is_none()
             && self.current_order.is_none()
             && self.current_action.is_none()
         {
@@ -112,7 +110,7 @@ impl UnitAi {
             let ran = self.run_away(true, at, computer, ai_rng, side)?;
             return Ok(if ran { BREAK } else { GO_ON });
         }
-        if self.best_this_update != attacker_id {
+        if self.best_this_update != Some(attacker_id) {
             return Ok(GO_ON);
         }
         self.answer_attacker(&attacker, current, at, computer, ai_rng, side)
@@ -125,12 +123,12 @@ impl UnitAi {
     pub(super) fn ignores_attacker(
         &self,
         attacker: &UnitSeen,
-        attacker_id: i32,
+        attacker_id: ObjectId,
         computer: bool,
         held_by_group: bool,
     ) -> bool {
         if matches!(self.current_action, Some(ActionKind::Attack))
-            && self.current_target == attacker_id
+            && self.current_target == Some(attacker_id)
         {
             return true;
         }
@@ -156,7 +154,7 @@ impl UnitAi {
     /// extra object, any class, no attack work state.
     pub(super) fn best_against(
         &mut self,
-        attacker_id: i32,
+        attacker_id: ObjectId,
         current: Option<&UnitSeen>,
         at: &Surroundings,
         computer: bool,
@@ -288,7 +286,7 @@ impl UnitAi {
     /// lets its timers go ([`UnitAi::leave_patrol_timers`]) and the order is −1. It answers 3.
     pub(super) fn strike_back(
         &mut self,
-        attacker: i32,
+        attacker: ObjectId,
         at: &Surroundings,
         ai_rng: &mut Well512,
         side: &mut dyn UnitSide,
@@ -322,14 +320,16 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let boar = at.class == Some(class::PREDATOR) && at.combat_level == 1;
+        // p1 the unit met (−1 names none the update holds)
         if !boar
-            && at.unit(n.p[0]).is_some()
+            && let Some(met) = ObjectId::of_field(n.p[0])
+            && at.unit(met).is_some()
             && self.retarget_disabled == 0
             && self.current_order.is_none()
             && self.stance == 0
         {
             // slot 0xb8 forced, by the type
-            let _ = self.attack_slot(n.p[0], false, at, side, rng)?;
+            let _ = self.attack_slot(met, false, at, side, rng)?;
         }
         Ok(GO_ON)
     }
@@ -351,7 +351,11 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
         let radius = Footprint::new(n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE);
-        let off = side.off_footprint(n.p[2], radius)?;
+        // p3 the foundation: none (−1) has no footprint, so the unit has nowhere to go
+        let Some(site) = ObjectId::of_field(n.p[2]) else {
+            return Ok(GO_ON);
+        };
+        let off = side.off_footprint(site, radius)?;
         if let Some(spot) = off.spot {
             let _ = self.move_aside(
                 AiMove {
@@ -372,10 +376,10 @@ impl UnitAi {
             && let (Some(site), Some(target)) = (off.site, off.action_target)
         {
             let order = |o: &Named, order: OrderKind| QueuedOrder {
-                issuer: off.player,
+                issuer: Some(Issuer::Player(off.player)),
                 order,
                 priority: 100,
-                target: o.id,
+                target: Some(o.id),
                 target_owner: o.owner,
                 point: o.vector.with_height(0.0),
                 range: 0.0,

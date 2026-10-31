@@ -19,7 +19,7 @@ pub struct SliceRun {
     /// The first update the slice could not model: the tick, the object's index and why.
     pub unsupported: Option<(u32, usize, GenieError)>,
     /// The id of the object whose update was not modelled.
-    pub unsupported_id: Option<i32>,
+    pub unsupported_id: Option<ObjectId>,
     /// Every player's first unsupported update, by player.
     pub stopped: Vec<Option<(u32, usize, GenieError)>>,
     /// What the players see after the run.
@@ -27,9 +27,9 @@ pub struct SliceRun {
     /// The map's terrain after the run.
     pub terrain: Option<genie_core::map::terrain::Terrain>,
     /// The objects the slice stopped updating, of every player.
-    pub frozen: Vec<i32>,
+    pub frozen: Vec<ObjectId>,
     /// Every object's freeze, by player: the tick, the object and why.
-    pub freezes: Vec<Vec<(u32, i32, GenieError)>>,
+    pub freezes: Vec<Vec<(u32, ObjectId, GenieError)>>,
 }
 
 /// An object's unit group link as saved (`mGroupID`, `mGroupFlag`).
@@ -68,13 +68,18 @@ pub struct Dumps<'a> {
 
 /// The objects' inside lists as the tick oracle dumps them (`state_dumps.inside_lists_text`):
 /// `container id...` per object with objects inside, in the list's order.
-pub fn inside_lists_from_dump(text: &str) -> Result<Vec<(i32, Vec<i32>)>, Error> {
+pub fn inside_lists_from_dump(text: &str) -> Result<Vec<(ObjectId, Vec<ObjectId>)>, Error> {
     text.lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| {
             let words = l
                 .split_whitespace()
-                .map(|w| w.parse::<i32>().map_err(|_| Error::BadTileDump))
+                .map(|w| {
+                    w.parse::<i32>()
+                        .ok()
+                        .and_then(ObjectId::of_field)
+                        .ok_or(Error::BadTileDump)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             match words[..] {
                 [c, ..] => Ok((c, words[1..].to_vec())),
@@ -143,7 +148,7 @@ pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<ObjectId>, Error> {
 /// The map tiles' object lists as the tick oracle dumps them (`state_dumps.tile_lists_text`):
 /// `x y id...` per tile of two objects or more, in the tile's order (an id signed, or its 32
 /// bits unsigned as the first dumps wrote a missile's).
-pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<i32>)>, Error> {
+pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<ObjectId>)>, Error> {
     let word = |v: &str| {
         v.parse::<i64>()
             .ok()
@@ -159,10 +164,18 @@ pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<i32>)>, Err
                 .map(word)
                 .collect::<Result<Vec<_>, _>>()?;
             match words[..] {
-                [x, y, ..] => Ok((x, y, words[2..].to_vec())),
+                [x, y, ..] => Ok((x, y, ids(&words[2..])?)),
                 _ => Err(Error::BadTileDump),
             }
         })
+        .collect()
+}
+
+/// A tile list dump's ids, which name no none (−1).
+fn ids(words: &[i32]) -> Result<Vec<ObjectId>, Error> {
+    words
+        .iter()
+        .map(|&w| ObjectId::of_field(w).ok_or(Error::BadTileDump))
         .collect()
 }
 
@@ -171,7 +184,7 @@ pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<i32>)>, Err
 /// differ are left out: their objects' places differ.
 pub(super) fn tile_order_differences(
     spatial: &genie_core::map::spatial::Spatial,
-    game: &[(i32, i32, Vec<i32>)],
+    game: &[(i32, i32, Vec<ObjectId>)],
 ) -> Vec<String> {
     game.iter()
         .filter_map(|(x, y, ids)| {
@@ -198,6 +211,12 @@ pub fn registry_from_dump(text: &str) -> Result<genie_core::vision::registry::Re
         return Err(bad());
     };
     let number = |w: &str| w.parse::<i64>().map_err(|_| bad());
+    let object = |w: &str| {
+        w.parse::<i32>()
+            .ok()
+            .and_then(ObjectId::of_field)
+            .ok_or_else(bad)
+    };
     let bits = |w: &str| {
         u32::from_str_radix(w, 16)
             .map(f32::from_bits)
@@ -218,7 +237,7 @@ pub fn registry_from_dump(text: &str) -> Result<genie_core::vision::registry::Re
             Some("rec") if w.len() == 8 => {
                 let (p, c) = list.ok_or_else(bad)?;
                 out.lists[p][c].push(Record {
-                    id: number(w[1])? as i32,
+                    id: object(w[1])?,
                     distance: bits(w[2])?,
                     owner: number(w[3])? as u8,
                     x: bits(w[4])?,
@@ -236,7 +255,7 @@ pub fn registry_from_dump(text: &str) -> Result<genie_core::vision::registry::Re
                     let v = number(w[3 + k])?;
                     *slot = usize::try_from(v).ok();
                 }
-                let _ = out.entries.insert(number(w[1])? as i32, entry);
+                let _ = out.entries.insert(object(w[1])?, entry);
             }
             _ => return Err(bad()),
         }
@@ -274,7 +293,7 @@ pub fn objects_from_save(
         unsupported_id: player
             .unsupported
             .as_ref()
-            .and_then(|&(_, i, _)| player.objects.get(i).map(|u| u.id.get())),
+            .and_then(|&(_, i, _)| player.objects.get(i).map(|u| u.id)),
         stopped: turns
             .players
             .iter()
@@ -286,7 +305,7 @@ pub fn objects_from_save(
             .players
             .iter()
             .flat_map(|p| p.objects.iter().filter(|u| p.stopped || u.stopped))
-            .map(|u| u.id.get())
+            .map(|u| u.id)
             .collect(),
         freezes: turns.players.iter().map(|p| p.freezes.clone()).collect(),
     })

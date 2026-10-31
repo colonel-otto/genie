@@ -52,7 +52,7 @@ impl Unit {
     /// load (`FUN_1411df160` -> `FUN_1411ddd20`) sets that flag, from the save's
     /// `temp_semi_asleep`, which no saved building of the 158041 recordings has (1473 headers
     /// read); the slice does not hold it.
-    pub(crate) fn taken(&mut self, listed: bool, by: i32) {
+    pub(crate) fn taken(&mut self, listed: bool, by: ObjectId) {
         if listed {
             self.attacking_units.push(by);
         }
@@ -62,24 +62,17 @@ impl Unit {
         self.life.goto_sleep = false;
     }
 
-    /// The target of its hunt, which it attacks or gathers from.
-    pub(crate) fn attack_target(&self) -> Option<i32> {
+    /// The target of its hunt, which it attacks or gathers from: the first of its actions that
+    /// decides, the Hunt, a Gather with a target, the Attack and a missile with a target (a Hunt
+    /// or an Attack without one decides none).
+    pub(crate) fn attack_target(&self) -> Option<ObjectId> {
         self.actions
             .hunt()
-            .map(|h| ObjectId::field(h.target))
-            .or_else(|| {
-                self.actions
-                    .gather()
-                    .and_then(|g| g.target)
-                    .map(ObjectId::get)
-            })
-            .or_else(|| self.actions.attack().map(|a| ObjectId::field(a.target)))
-            .or_else(|| {
-                self.actions
-                    .missile()
-                    .map(|a| a.target)
-                    .filter(|&t| t != -1)
-            })
+            .map(|h| h.target)
+            .or_else(|| self.actions.gather().and_then(|g| g.target).map(Some))
+            .or_else(|| self.actions.attack().map(|a| a.target))
+            .or_else(|| self.actions.missile().and_then(|a| a.target).map(Some))
+            .flatten()
     }
 
     /// `why` with what this object was doing in its context: its id and master, its top action
@@ -99,7 +92,7 @@ impl Unit {
                     "order {} action {} target {}",
                     crate::unit_ai::OrderKind::field(ai.current_order),
                     crate::unit_ai::ActionKind::field(ai.current_action),
-                    ai.current_target
+                    ObjectId::field(ai.current_target)
                 ),
             );
         }
@@ -134,13 +127,13 @@ impl Unit {
     /// # Errors
     ///
     /// A top action the slice does not model.
-    pub fn top_action_object(&self) -> Result<Option<i32>, GenieError> {
+    pub fn top_action_object(&self) -> Result<Option<ObjectId>, GenieError> {
         if self.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(
                 "slot 0x190 of an action the slice does not model",
             ));
         }
-        Ok(self.top_target().filter(|&t| t != -1))
+        Ok(self.top_target())
     }
 
     /// Its top action's slots 0x190 and 0x288 (`FUN_14106d090`, `FUN_141082dc0`): the action has
@@ -227,17 +220,17 @@ impl Unit {
     }
 
     /// The target of its top action ([`Unit::top_action`], [`Action::target`]); None without an
-    /// action the slice holds.
+    /// action the slice holds or without a target.
     #[must_use]
-    pub fn top_target(&self) -> Option<i32> {
-        self.actions.head().map(Action::target)
+    pub fn top_target(&self) -> Option<ObjectId> {
+        self.actions.head().and_then(Action::target)
     }
 
     /// The second target of its top action ([`Action::second_target`]); None without an action
-    /// the slice holds.
+    /// the slice holds or without a second target.
     #[must_use]
-    pub fn top_second_target(&self) -> Option<i32> {
-        self.actions.head().map(Action::second_target)
+    pub fn top_second_target(&self) -> Option<ObjectId> {
+        self.actions.head().and_then(Action::second_target)
     }
 
     /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group

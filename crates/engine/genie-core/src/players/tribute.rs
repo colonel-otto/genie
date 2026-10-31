@@ -141,6 +141,7 @@ mod tests {
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
+    use crate::test_ids::object_id;
     use crate::test_ids::player_id;
     use crate::world::Player;
 
@@ -197,7 +198,7 @@ mod tests {
         t.masters = vec![masters.clone(), masters.clone(), masters];
         if market {
             t.players[1].tracker.add(
-                7,
+                object_id(7),
                 crate::players::tracker::Key {
                     master: 84,
                     class: Some(class::BUILDING),

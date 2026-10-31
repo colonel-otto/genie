@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -60,7 +61,7 @@ impl UnitAi {
     ) -> Result<Option<AfterOrder>, GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
         self.ordered_on_target = false;
-        self.best_this_update = -1;
+        self.best_this_update = None;
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
         self.expire_retries(world_time, &mut |id| Self::world_object(id, at, side))?;
@@ -217,7 +218,7 @@ impl UnitAi {
         } else {
             self.current_action
         };
-        let untargeted = t.pasture == -1
+        let untargeted = t.pasture.is_none()
             && (t.untargetable || (!t.attackable && action == Some(ActionKind::Attack)))
             && action != Some(ActionKind::Trade);
         if captured_again {
@@ -242,11 +243,16 @@ impl UnitAi {
             return Ok(());
         }
         for k in (0..self.orders.len()).rev() {
-            if self.orders.checked(k)?.order == OrderKind::Build
-                && side
-                    .seen_unit(self.orders.checked(k)?.target)?
-                    .is_none_or(|u| u.state != 0)
-            {
+            let order = *self.orders.checked(k)?;
+            if order.order != OrderKind::Build {
+                continue;
+            }
+            // none (−1) is a foundation the world does not hold
+            let seen = match order.target {
+                Some(t) => side.seen_unit(t)?,
+                None => None,
+            };
+            if seen.is_none_or(|u| u.state != 0) {
                 let _ = self.orders.remove(k);
             }
         }
@@ -292,16 +298,16 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        if self.current_target != -1 && at.garrisoned {
-            self.current_target = -1;
+        if self.current_target.is_some() && at.garrisoned {
+            self.current_target = None;
         }
-        if self.current_target == -1 {
+        if self.current_target.is_none() {
             return Ok(());
         }
         let action = self.current_action;
         match at.target {
             None => {
-                self.current_target = -1;
+                self.current_target = None;
                 if action == Some(ActionKind::Attack) {
                     self.idle_timer = self.idle_timeout;
                 }
@@ -399,23 +405,23 @@ impl UnitAi {
                 memory: Memory::default(),
             })?;
             self.alert(found, at.dt_seconds);
-            match found.position {
-                Some(position) if found.id != -1 => Some(Gatherable {
-                    id: found.id,
+            match (found.id, found.position) {
+                (Some(id), Some(position)) => Some(Gatherable {
+                    id,
                     position,
                     class,
                 }),
-                None if found.id != -1 => {
+                (Some(_), None) => {
                     return Err(GenieError::unsupported("a found object without its place"));
                 }
-                _ => None,
+                (None, _) => None,
             }
         } else {
             // slot 0x80 from the notify's drop site: kind 0 below 2 workers, any other any
             side.closest_resource(ResourceSearch {
                 kind: kind as u8,
                 cap: if kind == 0 { 2 } else { -1 },
-                site: n.p[2],
+                site: ObjectId::of_field(n.p[2]),
                 current: self.current_target,
                 point: NO_POINT,
                 min_state: 2,
@@ -492,23 +498,23 @@ impl UnitAi {
                 memory: Memory::default(),
             })?;
             self.alert(found, at.dt_seconds);
-            match found.position {
-                Some(position) if found.id != -1 => Some(Gatherable {
-                    id: found.id,
+            match (found.id, found.position) {
+                (Some(id), Some(position)) => Some(Gatherable {
+                    id,
                     position,
                     class,
                 }),
-                None if found.id != -1 => {
+                (Some(_), None) => {
                     return Err(GenieError::unsupported("a found object without its place"));
                 }
-                _ => None,
+                (None, _) => None,
             }
         } else {
             let cap = if matches!(kind, 3 | 4) { 4 } else { -1 };
             side.closest_resource(ResourceSearch {
                 kind: kind as u8,
                 cap,
-                site: n.p[2],
+                site: ObjectId::of_field(n.p[2]),
                 current: self.current_target,
                 point: NO_POINT,
                 min_state: 2,
@@ -541,7 +547,7 @@ impl UnitAi {
             rng,
         )?;
         self.set_action(Some(ActionKind::Gather));
-        self.set_target(found.id, found.class, found.position);
+        self.set_target(Some(found.id), found.class, found.position);
         Ok(())
     }
 

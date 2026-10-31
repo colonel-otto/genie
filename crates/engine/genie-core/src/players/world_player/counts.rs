@@ -1,6 +1,7 @@
 //! The counts the update reads: the town centres, the trainable and the upgradable masters,
 //! and where a master trains.
 
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
@@ -17,11 +18,11 @@ impl World {
     /// files under masters 109 and 444 (`FUN_14104f560`, `FUN_14104f4b0`: the first list, then
     /// the second), the objects the world holds.
     #[must_use]
-    pub fn first_town_centre(&self, p: PlayerId) -> Option<i32> {
+    pub fn first_town_centre(&self, p: PlayerId) -> Option<ObjectId> {
         let tracker = &self.players.get(p.index())?.tracker;
         TOWN_CENTRES
             .iter()
-            .flat_map(|&k| tracker.list(k).iter().copied())
+            .flat_map(|&k| tracker.list(k).iter().copied().flatten())
             .find(|&id| self.object(id).is_some_and(|(_, u)| u.life.state == 2))
     }
 
@@ -29,11 +30,12 @@ impl World {
     /// state) among the ids player `p`'s tracker files under masters 109 and 444 (`FUN_14104f560`,
     /// `FUN_14104f4b0`: the first list, then the second).
     #[must_use]
-    pub fn town_centre_at(&self, p: PlayerId, n: usize) -> Option<i32> {
+    pub fn town_centre_at(&self, p: PlayerId, n: usize) -> Option<ObjectId> {
         let tracker = &self.players.get(p.index())?.tracker;
+        // a queued unit's place (−1) names no object the world holds
         TOWN_CENTRES
             .iter()
-            .flat_map(|&k| tracker.list(k).iter().copied())
+            .flat_map(|&k| tracker.list(k).iter().copied().flatten())
             .filter(|&id| self.object(id).is_some())
             .nth(n)
     }

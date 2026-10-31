@@ -106,6 +106,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::Position;
+    use crate::objects::ObjectId;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::unit::Unit;
     use crate::test_ids::object_id;
@@ -170,7 +171,7 @@ mod tests {
             .collect();
     }
 
-    fn king(id: i32, position: Position, inside: Option<i32>) -> Unit {
+    fn king(id: i32, position: Position, inside: Option<ObjectId>) -> Unit {
         Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(position),
@@ -216,8 +217,11 @@ mod tests {
         with_flares(&mut t);
         let mut castle = king(40, Position::new(12.0, 13.0, 0.0), None);
         castle.life.master_id = CASTLE;
-        t.players[2].objects =
-            vec![king(20, Position::new(5.0, 6.0, 0.0), Some(40)), castle].into();
+        t.players[2].objects = vec![
+            king(20, Position::new(5.0, 6.0, 0.0), Some(object_id(40))),
+            castle,
+        ]
+        .into();
         t.treason(PlayerId::new(1)).unwrap();
         assert_eq!(flares(&t, 1)[0].1, Position::new(12.0, 13.0, 0.0));
     }

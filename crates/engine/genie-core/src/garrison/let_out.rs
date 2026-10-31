@@ -6,6 +6,7 @@ use crate::commands::GatherPoint;
 use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share};
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -19,7 +20,7 @@ use crate::world::slots::PlayerSlots;
 impl World {
     /// The player and live index of the unit `id` inside a building or a transport, whoever's
     /// it is.
-    pub(crate) fn live_inside(&self, id: i32) -> Result<(PlayerId, usize), GenieError> {
+    pub(crate) fn live_inside(&self, id: ObjectId) -> Result<(PlayerId, usize), GenieError> {
         match self.place(id) {
             Some(crate::orders::Place::Live(p, i)) => Ok((p, i)),
             _ => Err(GenieError::unsupported(
@@ -54,9 +55,9 @@ impl World {
         &mut self,
         player: PlayerId,
         building: usize,
-        id: i32,
+        id: ObjectId,
         point: Point,
-        (work_on, _sound): (Option<i32>, bool),
+        (work_on, _sound): (Option<ObjectId>, bool),
     ) -> Result<bool, GenieError> {
         let b = &self.players.player(player)?.objects[building];
         let bid = b.id;
@@ -73,7 +74,7 @@ impl World {
             match (gather, queue_first) {
                 (None, Some(q)) => Some(q),
                 _ => gather
-                    .filter(|g| g.target != bid.get())
+                    .filter(|g| g.target != Some(bid))
                     .map(|g| g.point.ground()),
             }
         } else {
@@ -111,15 +112,10 @@ impl World {
         // a new unit an effect could not take in (`FUN_1416136f0`) comes out from where it stands
         let inside = self.players.player(up)?.objects[ui].life.inside.is_some();
         if !inside {
-            return self.let_out_from_the_map(
-                up,
-                ui,
-                (&made, at),
-                (point, gather, bid.get(), work_on),
-            );
+            return self.let_out_from_the_map(up, ui, (&made, at), (point, gather, bid, work_on));
         }
         self.leave_container((player, building), (up.index(), ui), &made, at)?;
-        self.came_out(up, ui, made.class, (point, gather, bid.get(), work_on))
+        self.came_out(up, ui, made.class, (point, gather, bid, work_on))
     }
 
     /// Slot 0x1a8 (`FUN_141213120`) of the unit at (`up`, `ui`), of master `made`, inside the
@@ -168,7 +164,7 @@ impl World {
             b.firepower -= share;
         }
         // the unit out of its list (`FUN_141197e10`)
-        if let Some(k) = b.garrison.iter().position(|&g| g == id.get()) {
+        if let Some(k) = b.garrison.iter().position(|&g| g == id) {
             let _ = b.garrison.swap_remove(k);
         }
         // COMISS volley, firepower; JBE keeps it: a NaN firepower stays
@@ -180,10 +176,10 @@ impl World {
         if bm.kind == BUILDING
             && let Some(v) = self.spatial.sight.as_mut()
         {
-            v.sight_off_los(bid.get(), b_at, b_radius, false, 5, false)?;
+            v.sight_off_los(bid, b_at, b_radius, false, 5, false)?;
         }
         // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
-        let mut placed = self.spatial.come_out(id.get()).ok_or_else(|| {
+        let mut placed = self.spatial.come_out(id).ok_or_else(|| {
             GenieError::unsupported("a unit inside a building without its record")
                 .with("unit", id)
                 .with("building", bid)
@@ -212,7 +208,7 @@ impl World {
         if let Some(v) = self.spatial.sight.as_mut()
             && state == 2
         {
-            let _ = v.sight_on(id.get(), at, made.radius, false, false)?;
+            let _ = v.sight_on(id, at, made.radius, false, false)?;
         }
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
@@ -231,13 +227,13 @@ impl World {
         up: PlayerId,
         ui: usize,
         class: ClassId,
-        (point, gather, bid, work_on): (Point, Option<GatherPoint>, i32, Option<i32>),
+        (point, gather, bid, work_on): (Point, Option<GatherPoint>, ObjectId, Option<ObjectId>),
     ) -> Result<bool, GenieError> {
         // an object to work on (GO_BACK_TO_WORK's): slot 0x128 on it at the point, the unit's
         // `+0xa14` 0 (its unit AI keeps its notifies)
         if let Some(target) = work_on {
             let work = Work {
-                target,
+                target: Some(target),
                 point: point.with_height(0.0),
                 carry_test: false,
                 filter: -1,
@@ -250,7 +246,7 @@ impl World {
         // target, when the world holds it, else its point
         let to = match let_out_aim(gather, point, bid) {
             LetOutAim::Target(g) => {
-                if g.target != -1 && self.object(g.target).is_some() {
+                if self.object(g.target).is_some() {
                     if let Some(ai) = self.players.player_mut(up)?.objects[ui].ai.as_mut() {
                         ai.remove_target();
                     }
@@ -301,16 +297,16 @@ impl World {
         up: PlayerId,
         ui: usize,
         (made, at): (&Master, Position),
-        rest: (Point, Option<GatherPoint>, i32, Option<i32>),
+        rest: (Point, Option<GatherPoint>, ObjectId, Option<ObjectId>),
     ) -> Result<bool, GenieError> {
         let id = self.players.player(up)?.objects[ui].id;
         let mut placed = *self
             .spatial
-            .get(id.get())
+            .get(id)
             .ok_or(GenieError::unsupported("a unit let out without a place"))?;
         let from = placed.position;
-        self.pathing.removed(id.get());
-        self.spatial.remove(id.get());
+        self.pathing.removed(id);
+        self.spatial.remove(id);
         let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
         placed.obstruction =
             (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
@@ -325,8 +321,8 @@ impl World {
                 .put_down(id, at, placed, (&mut self.spatial, &mut self.pathing));
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
-            v.moved(id.get(), from, at, placed.radius)?;
-            v.registry_moved(id.get(), placed.class, from, at);
+            v.moved(id, from, at, placed.radius)?;
+            v.registry_moved(id, placed.class, from, at);
         }
         let unit = &mut self.players.player_mut(up)?.objects[ui];
         if let Some(m) = unit.body.mover_mut() {
@@ -348,9 +344,13 @@ pub(super) enum LetOutAim {
 /// The aim of a let-out toward `point` ([`NO_POINT`] for none) from the building `building`
 /// with `gather`: a gather point of state 1 gives a unit without a point its target, one of
 /// state 0xff ([`GatherPoint::KEPT`]) its x and y whatever point was given, else the point.
-pub(super) fn let_out_aim(gather: Option<GatherPoint>, point: Point, building: i32) -> LetOutAim {
+pub(super) fn let_out_aim(
+    gather: Option<GatherPoint>,
+    point: Point,
+    building: ObjectId,
+) -> LetOutAim {
     match gather {
-        Some(g) if point.x() == NO_POINT && g.state == 1 && g.target != building => {
+        Some(g) if point.x() == NO_POINT && g.state == 1 && g.target != Some(building) => {
             LetOutAim::Target(g)
         }
         Some(g) if g.state == GatherPoint::KEPT => LetOutAim::Point(g.point.ground()),

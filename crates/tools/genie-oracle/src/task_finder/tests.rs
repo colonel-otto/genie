@@ -1,11 +1,13 @@
-use crate::task_finder::{FinderObject, FinderWorld};
+use crate::task_finder::{FinderObject, FinderWorld, finder_objects};
+use crate::test_ids::object_id;
+use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ids;
 use genie_core::objects::masters::{Master, Masters};
 use genie_core::players::PlayerId;
 use genie_core::unit_ai::task_finder::Diplomacy;
 
 /// An object of player 1, master 83, at the main building `annex_of` if it is an annex.
-fn object(annex_of: Option<i32>) -> FinderObject {
+fn object(annex_of: Option<ObjectId>) -> FinderObject {
     FinderObject {
         player: PlayerId::new(1),
         master: ids::VILLAGER_MALE,
@@ -14,7 +16,7 @@ fn object(annex_of: Option<i32>) -> FinderObject {
         hp: 25.0,
         max_hp: 30.0,
         attackable: true,
-        pasture: -1,
+        pasture: None,
         annex_of,
         top_action: Some(5),
         position: [1.0, 2.0, 0.0],
@@ -30,9 +32,9 @@ fn world(relation: u8) -> FinderWorld {
     FinderWorld {
         masters: vec![Masters::default(), Masters::new([master])],
         objects: [
-            (10, object(None)),
-            (11, object(Some(10))),
-            (12, object(Some(11))),
+            (object_id(10), object(None)),
+            (object_id(11), object(Some(object_id(10)))),
+            (object_id(12), object(Some(object_id(11)))),
         ]
         .into_iter()
         .collect(),
@@ -62,29 +64,57 @@ fn allied_follows_the_relation() {
 #[test]
 fn an_annex_stands_for_its_main_building() {
     let w = world(0);
-    assert_eq!(w.target_up(12, 0).map(|t| t.id), Some(12));
-    assert_eq!(w.target(12).map(|t| t.id), Some(11));
-    assert_eq!(w.target_up(12, 5).map(|t| t.id), Some(10));
-    let target = w.target(10).unwrap();
+    assert_eq!(
+        w.target_up(object_id(12), 0).map(|t| t.id),
+        Some(object_id(12))
+    );
+    assert_eq!(w.target(object_id(12)).map(|t| t.id), Some(object_id(11)));
+    assert_eq!(
+        w.target_up(object_id(12), 5).map(|t| t.id),
+        Some(object_id(10))
+    );
+    let target = w.target(object_id(10)).unwrap();
     assert_eq!(
         (target.player, target.state, target.hp),
         (PlayerId::new(1), 2, 25.0)
     );
-    assert_eq!((target.pasture, target.top_action), (-1, Some(5)));
-    assert!(w.target(99).is_none());
+    assert_eq!((target.pasture, target.top_action), (None, Some(5)));
+    assert!(w.target(object_id(99)).is_none());
     let mut lost = world(0);
     lost.masters.truncate(1);
-    assert!(lost.target(10).is_none());
+    assert!(lost.target(object_id(10)).is_none());
 }
 
 #[test]
 fn the_actor_reads_its_player_s_attribute_95_and_civ() {
     let w = world(0);
-    let actor = w.actor(10).unwrap();
+    let actor = w.actor(object_id(10)).unwrap();
     assert_eq!(
         (actor.id, actor.player, actor.civ),
-        (10, PlayerId::new(1), 4)
+        (object_id(10), PlayerId::new(1), 4)
     );
     assert_eq!(actor.attribute_95.to_bits(), 1.5_f32.to_bits());
-    assert!(w.actor(99).is_none());
+    assert!(w.actor(object_id(99)).is_none());
+}
+
+/// Every live object of each player's section is in the finder's view by its id, with its
+/// player and its static part's values; a saved id of −1 names no object and fails.
+#[test]
+fn the_finder_s_objects_are_every_player_s_by_id() {
+    use crate::fixtures::{combat_object, gaia, header, human, static_mut};
+    let mut deer = combat_object(3, 65);
+    static_mut(&mut deer).hp = 7.0;
+    let save = header(vec![gaia(vec![deer]), human(vec![combat_object(10, 83)])]);
+    let objects = finder_objects(&save.players()).unwrap();
+    let mut ids: Vec<_> = objects.keys().copied().collect();
+    ids.sort_unstable();
+    assert_eq!(ids, [object_id(3), object_id(10)]);
+    let (gaia_deer, villager) = (&objects[&object_id(3)], &objects[&object_id(10)]);
+    assert_eq!((gaia_deer.player, gaia_deer.hp), (PlayerId::GAIA, 7.0));
+    assert_eq!(villager.player, PlayerId::new(1));
+    let none = header(vec![gaia(Vec::new()), human(vec![combat_object(-1, 83)])]);
+    assert!(matches!(
+        finder_objects(&none.players()),
+        Err(crate::Error::Unmodelled(_))
+    ));
 }

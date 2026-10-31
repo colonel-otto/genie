@@ -2,10 +2,11 @@
 
 use crate::map::Footprint;
 use crate::map::Rect;
+use crate::objects::ObjectId;
 use std::collections::BTreeSet;
 
 use crate::GenieError;
-use crate::map::spatial::{Spatial, tile_record_id};
+use crate::map::spatial::{RecordId, Spatial, tile_record_id};
 use crate::math::conversions::cvttss2si;
 use crate::pathing::hull_path::{HALF, HullPather, KeptHulls, Node, ONE, PATHS, Point, Waypoints};
 
@@ -25,8 +26,8 @@ pub(crate) const NO_RESTRICTION: GenieError =
 /// Where the pather meets what the slice does not model, or an object the world does not place.
 pub fn quick_reach(
     world: &mut Spatial,
-    me: i32,
-    target: i32,
+    me: ObjectId,
+    target: Option<ObjectId>,
     mask: u8,
     radius: f32,
     range: f32,
@@ -54,9 +55,9 @@ pub fn quick_reach(
 /// Where the pather meets what the slice does not model.
 pub fn quick_reach_from(
     world: &mut Spatial,
-    me: i32,
+    me: ObjectId,
     from: Point,
-    target: i32,
+    target: Option<ObjectId>,
     mask: u8,
     radius: f32,
     range: f32,
@@ -75,8 +76,9 @@ pub fn quick_reach_from(
 
 impl<'w> HullPather<'w> {
     /// The pather for unit `unit` (terrain `mask`, `radius`, its player) with the ignore list slot
-    /// 0x3e8 sets ([`HullPather::for_list`] with the unit and `target`): both objects, and the
-    /// tile under one of one tile on a tile's middle whose terrain the mask lacks.
+    /// 0x3e8 sets ([`HullPather::for_list`] with the unit and `target`): both objects (the game's
+    /// −1 for no target matches no record, so it is left out), and the tile under one of one
+    /// tile on a tile's middle whose terrain the mask lacks.
     ///
     /// The rest is `MShortPather`'s constructor (`FUN_140f84e40`): no hulls (`+0x8`, `+0x10`), the
     /// open lists' heads without links (`+0x28`..`+0x38`, `+0x60`..`+0x70`), two empty closed
@@ -89,9 +91,16 @@ impl<'w> HullPather<'w> {
     /// when it keeps them ([`HullPather::find_keeping`]), so a caller that keeps this pather
     /// across searches holds the same state.
     #[must_use]
-    pub fn new(world: &'w mut Spatial, unit: i32, target: i32, mask: u8, radius: f32) -> Self {
+    pub fn new(
+        world: &'w mut Spatial,
+        unit: ObjectId,
+        target: Option<ObjectId>,
+        mask: u8,
+        radius: f32,
+    ) -> Self {
         let player = world.get(unit).map_or(-1, |p| i32::from(p.player.get()));
-        Self::for_list(world, &[unit, target], mask, radius, player)
+        let ids: Vec<ObjectId> = [Some(unit), target].into_iter().flatten().collect();
+        Self::for_list(world, &ids, mask, radius, player)
     }
 
     /// The pather for a unit of terrain `mask`, `radius` and player `player` (`FindShortPath`'s
@@ -105,12 +114,12 @@ impl<'w> HullPather<'w> {
     #[must_use]
     pub fn for_list(
         world: &'w mut Spatial,
-        ids: &[i32],
+        ids: &[ObjectId],
         mask: u8,
         radius: f32,
         player: i32,
     ) -> Self {
-        let mut ignore = ids.to_vec();
+        let mut ignore: Vec<RecordId> = ids.iter().copied().map(RecordId::from).collect();
         for &id in ids {
             let Some(p) = world.get(id) else {
                 continue;
@@ -148,7 +157,7 @@ impl<'w> HullPather<'w> {
     /// The pather with the gates the unit's player may pass (slot 0x678, by id): such a gate in
     /// its area stays out of the hulls.
     #[must_use]
-    pub const fn with_gates(mut self, passable: &'w BTreeSet<i32>) -> Self {
+    pub const fn with_gates(mut self, passable: &'w BTreeSet<ObjectId>) -> Self {
         self.gates = Some(passable);
         self
     }
@@ -156,7 +165,7 @@ impl<'w> HullPather<'w> {
     /// The pather with `FindShortPath`'s include list (its arguments 13 and 14): these objects go
     /// into the hulls even when ignored or moving.
     #[must_use]
-    pub fn including(mut self, ids: &[i32]) -> Self {
+    pub fn including(mut self, ids: &[ObjectId]) -> Self {
         self.include = ids.to_vec();
         self
     }

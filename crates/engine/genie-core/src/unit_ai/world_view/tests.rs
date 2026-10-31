@@ -8,6 +8,8 @@ use crate::objects::masters::master_type;
 use crate::objects::object_list::ObjectList;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::unit_ai::Attackers;
+use crate::unit_ai::NearestAttacker;
 use crate::unit_ai::UnitAiType;
 use crate::world::others::OthersRef;
 
@@ -96,7 +98,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
     let picker = WorldPicker {
         attacker: &attacker,
         seeker: None,
-        me: 123,
+        me: object_id(123),
         player: PlayerId::new(1),
         others: OthersRef::new(PlayerId::new(1), &none, foreign),
         foreign,
@@ -109,7 +111,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         now: 0,
         mode_680: 0,
     };
-    picker.harmless(&spatial, 50).unwrap()
+    picker.harmless(&spatial, object_id(50)).unwrap()
 }
 
 /// Slot 0x78 of the ward's unit AI: of its attackers the world holds, the nearest by the
@@ -143,10 +145,15 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
             object_id(20),
             12.0,
             master_id(4),
-            Some(attacked(vec![50, 51, 52, 53])),
+            Some(attacked(Attackers::of_saved(&[50, 51, 52, 53]))),
         ),
         unit(object_id(21), 12.0, master_id(4), None),
-        unit(object_id(22), 12.0, master_id(4), Some(attacked(vec![99]))),
+        unit(
+            object_id(22),
+            12.0,
+            master_id(4),
+            Some(attacked(Attackers::of_saved(&[99]))),
+        ),
     ]);
     let enemy = Player {
         // 50 at a gap of 4.4, 51 of 2.4 (its radius 1), 53 of 2.4 too
@@ -201,7 +208,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
     let picker = WorldPicker {
         attacker: &attacker,
         seeker: None,
-        me: 123,
+        me: object_id(123),
         player: PlayerId::new(1),
         others: OthersRef::new(PlayerId::new(1), &others, foreign),
         foreign,
@@ -214,12 +221,24 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         now: 0,
         mode_680: 0,
     };
-    assert_eq!(picker.nearest_attacker_of(20), Ok(Some(51)));
-    assert_eq!(picker.nearest_attacker_of(21), Ok(None));
-    assert_eq!(picker.nearest_attacker_of(22), Ok(Some(-1)));
-    assert_eq!(picker.nearest_attacker_of(77), Ok(None));
+    assert_eq!(
+        picker.nearest_attacker_of(object_id(20)),
+        Ok(NearestAttacker::Attacker(object_id(51)))
+    );
+    assert_eq!(
+        picker.nearest_attacker_of(object_id(21)),
+        Ok(NearestAttacker::NoUnitAi)
+    );
+    assert_eq!(
+        picker.nearest_attacker_of(object_id(22)),
+        Ok(NearestAttacker::NoAttacker)
+    );
+    assert_eq!(
+        picker.nearest_attacker_of(object_id(77)),
+        Ok(NearestAttacker::NoUnitAi)
+    );
     // an object the world does not hold is not weighed
-    assert!(picker.duel(&Spatial::default(), 77).is_err());
+    assert!(picker.duel(&Spatial::default(), object_id(77)).is_err());
 }
 
 #[test]
@@ -332,7 +351,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     let mut picker = WorldPicker {
         attacker: &attacker,
         seeker: None,
-        me: 123,
+        me: object_id(123),
         player: PlayerId::new(1),
         others: OthersRef::new(PlayerId::new(1), &none, foreign),
         foreign,
@@ -345,15 +364,15 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         now: 0,
         mode_680: 0,
     };
-    let c = picker.candidate(&spatial, 50, 1.4, 2).unwrap();
+    let c = picker.candidate(&spatial, object_id(50), 1.4, 2).unwrap();
     assert_eq!(
         (c.id, c.distance, c.category, c.class, c.speed),
-        (50, 1.4, 2, class::CLASS_6, 0.0)
+        (object_id(50), 1.4, 2, class::CLASS_6, 0.0)
     );
     assert_eq!(
         (c.armed, c.reach, c.damage, c.hp, c.reload),
         (true, 0.5, 6.0, 40.0, 2.0)
     );
     assert_eq!((c.workable, c.current), (false, false));
-    assert!(picker.candidate(&spatial, 77, 1.4, 2).is_err());
+    assert!(picker.candidate(&spatial, object_id(77), 1.4, 2).is_err());
 }

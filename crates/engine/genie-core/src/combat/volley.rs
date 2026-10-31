@@ -9,6 +9,7 @@ use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::ClassId;
@@ -71,7 +72,7 @@ impl Unit {
             for &(attacker, p) in &own.damaged {
                 let n = Notify {
                     caller: attacker,
-                    recipient: self.id.get(),
+                    recipient: self.id,
                     kind: crate::unit_ai::DAMAGED,
                     p,
                 };
@@ -104,7 +105,7 @@ impl Unit {
     pub(crate) fn volley(&mut self, c: &mut Step<'_>, aimed: Aimed) -> Result<(), GenieError> {
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         if (matches!(
@@ -231,7 +232,7 @@ impl Unit {
         let (weapon_range, blast_level) = (master.weapon_range, master.blast_level);
         self.launch(c, aimed, &shot)?;
         if !matches!(self.life.master_id, ids::ID_73 | ids::ID_559) {
-            self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
+            self.post_own(ACTION_EXECUTED, [600, ObjectId::field(aimed.target), 0])?;
         }
         // FUN_1410bfcb0: a blast of a unit of range above 1 without the level's bit 2 does not
         // spare friends
@@ -452,10 +453,10 @@ impl Unit {
             ),
         };
         c.w.spatial.insert(id, placed);
-        c.w.pathing.moved(id.get(), &placed, false);
+        c.w.pathing.moved(id, &placed, false);
         if let Some(v) = c.w.spatial.sight.as_mut() {
             v.add_seer(
-                id.get(),
+                id,
                 Seer {
                     player: c.player,
                     master: made.id,
@@ -468,14 +469,14 @@ impl Unit {
                     kind: made.kind,
                 },
             );
-            let _ = v.sight_on(id.get(), position, made.radius, false, false)?;
+            let _ = v.sight_on(id, position, made.radius, false, false)?;
         }
         let held = missile_storage(c.w.players.player_mut(c.player)?, &made.storage)?;
         // its action: the target and the shooter taken (slot 0x178), then the start
         let mut action = crate::combat::missile::MissileAction {
             state: 0,
             target: aimed.target,
-            fired_from: if shot.shooter { self.id.get() } else { -1 },
+            fired_from: shot.shooter.then_some(self.id),
             point: shot.point,
             timer: 0.0,
             direction: Offset::ZERO,
@@ -535,7 +536,7 @@ impl Unit {
             body: crate::objects::layers::Body::new(position, None, Some(mover)),
             missile: Some(crate::combat::missile::Missile {
                 max_range: shot.reach,
-                fired_from: self.id.get(),
+                fired_from: Some(self.id),
                 charge: false,
                 flying,
                 step: Offset::ZERO,
@@ -544,26 +545,26 @@ impl Unit {
             attack_count: self.attack_count,
             actions: ActionList::default().with_missile(Some(action)),
             attackable: true,
-            pasture: -1,
-            my_pasture: -1,
+            pasture: None,
+            my_pasture: None,
             ..Self::default()
         };
         // it joins the end of its owner's list (slot 0x2d0, which files it in the tracker);
         // then its action takes the target and the shooter
         c.w.players.player_mut(c.player)?.tracker.add(
-            id.get(),
+            id,
             crate::players::tracker::key(c.w.masters.get(c.player.index()), &c.w.lines, made.id),
         );
         c.w.players.player_mut(c.player)?.objects.push(missile);
         let missile = Releaser {
-            id: id.get(),
+            id,
             class: Some(made.class),
             player: c.player,
         };
         crate::world::lets::take(c, self, aimed.target, missile)?;
         if shot.shooter {
             // the shooter, of the missile's own player: never listed
-            self.taken(false, id.get());
+            self.taken(false, id);
         }
         Ok(())
     }
@@ -572,7 +573,7 @@ impl Unit {
 /// What a ranged unit's fire reads of its target ([`Unit::fire`]): its id, place, master's radii
 /// and class, and player.
 pub(crate) struct Aimed {
-    pub(crate) target: i32,
+    pub(crate) target: Option<ObjectId>,
     pub(crate) position: Position,
     pub(crate) radius: Radii,
     pub(crate) class: ClassId,
@@ -582,7 +583,7 @@ pub(crate) struct Aimed {
 impl Aimed {
     /// The fire's aim at `target` as the strike read it (`v`): its place, its master's radii
     /// and height, its class and its player.
-    pub(crate) const fn at(target: i32, v: &Victim) -> Self {
+    pub(crate) const fn at(target: Option<ObjectId>, v: &Victim) -> Self {
         Self {
             target,
             position: v.position,
@@ -603,7 +604,7 @@ pub(crate) fn armed(master: &Master, firepower: f32) -> bool {
 }
 
 /// Whether two lists hold the same objects, in any order.
-pub(crate) fn same_members(a: &[i32], b: &[i32]) -> bool {
+pub(crate) fn same_members(a: &[ObjectId], b: &[ObjectId]) -> bool {
     let (mut a, mut b) = (a.to_vec(), b.to_vec());
     a.sort_unstable();
     b.sort_unstable();
@@ -615,7 +616,7 @@ pub(crate) fn same_members(a: &[i32], b: &[i32]) -> bool {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Fired {
     pub(crate) charge: bool,
-    pub(crate) by: i32,
+    pub(crate) by: Option<ObjectId>,
 }
 
 /// A missile [`Unit::launch`] makes: its master, where it starts, the point its action aims at,

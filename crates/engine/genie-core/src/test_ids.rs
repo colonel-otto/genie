@@ -7,9 +7,12 @@ use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::technology::TechId;
 
-/// The object id `value` (not −1).
-pub(crate) fn object_id(value: i32) -> ObjectId {
-    ObjectId::try_from(value).expect("a test's object id is not −1")
+/// The object id `value` (not −1); const, so a test's constants name objects too.
+pub(crate) const fn object_id(value: i32) -> ObjectId {
+    match ObjectId::of_field(value) {
+        Some(id) => id,
+        None => panic!("a test's object id is not −1"),
+    }
 }
 
 /// The entries of a list of ids of `values`, −1 for none.

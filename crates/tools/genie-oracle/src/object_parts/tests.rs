@@ -1,8 +1,12 @@
 use crate::fixtures::{combat_mut, combat_object};
 use crate::object_parts::unit_ai;
+use crate::test_ids::object_id;
 use genie_core::ErrorKind;
 use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{TribeTowerUnitAiModule, UnitAiModule, UnitAiModuleEntry1};
+
+/// A two-player game's players with Gaia.
+const PLAYERS: usize = 3;
 
 /// A saved queue record holding order value `order`.
 fn record(order: i32) -> [u8; 52] {
@@ -43,7 +47,7 @@ fn with_ai(ai: UnitAiModule) -> genie_save::Object {
 #[test]
 fn an_object_without_a_unit_ai_imports_none() {
     assert_eq!(
-        unit_ai(&combat_object(5, 4)).map(|ai| ai.is_none()),
+        unit_ai(&combat_object(5, 4), object_id(5), PLAYERS).map(|ai| ai.is_none()),
         Ok(true)
     );
 }
@@ -52,13 +56,17 @@ fn an_object_without_a_unit_ai_imports_none() {
 /// queue's records as theirs.
 #[test]
 fn the_saved_orders_and_actions_import_as_their_kinds() {
-    let ai = unit_ai(&with_ai(UnitAiModule {
-        last_order_value: 0x2c5,
-        current_action_value: 0x261,
-        oh: vec![history(0x2c9, 0x265), history(-1, -1)],
-        temp_order: vec![record(0x2c6)],
-        ..idle()
-    }))
+    let ai = unit_ai(
+        &with_ai(UnitAiModule {
+            last_order_value: 0x2c5,
+            current_action_value: 0x261,
+            oh: vec![history(0x2c9, 0x265), history(-1, -1)],
+            temp_order: vec![record(0x2c6)],
+            ..idle()
+        }),
+        object_id(5),
+        PLAYERS,
+    )
     .unwrap()
     .unwrap();
     assert_eq!(
@@ -94,7 +102,7 @@ fn a_tower_s_saved_orders_import() {
         saved_order: vec![record(700)],
         ..TribeTowerUnitAiModule::default()
     }));
-    let ai = unit_ai(&object).unwrap().unwrap();
+    let ai = unit_ai(&object, object_id(5), PLAYERS).unwrap().unwrap();
     assert_eq!(ai.building_orders[0].order, OrderKind::Attack);
 }
 
@@ -133,7 +141,9 @@ fn a_value_none_names_fails_the_import() {
     ];
     for save in saves {
         assert_eq!(
-            unit_ai(&with_ai(save)).map_err(|e| e.kind()).err(),
+            unit_ai(&with_ai(save), object_id(5), PLAYERS)
+                .map_err(|e| e.kind())
+                .err(),
             Some(ErrorKind::InvalidInput)
         );
     }

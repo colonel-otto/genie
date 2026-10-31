@@ -6,6 +6,7 @@ use crate::construction::build::{
 };
 use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
@@ -29,7 +30,7 @@ pub enum DropSearch {
     /// and its carrying sprite `+0x58`), else the Build task's.
     Site {
         /// The drop site.
-        id: i32,
+        id: ObjectId,
         /// The `MoveTo`'s range.
         range: f32,
         /// The found task's carrying sprite, None without the task or the sprite.
@@ -78,7 +79,7 @@ impl BuildAction {
                 .ok_or(crate::world::OBJECT_MASTER)?;
         let own = builder.master_in(Some(masters))?;
         let at = builder.position().ground();
-        let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position()));
+        let look = |id: ObjectId| view.own(id).map(|u| (u.life.state, u.position()));
         let found = crate::orders::nearest_table_site(
             (
                 &c.w.drop_sites,
@@ -92,8 +93,8 @@ impl BuildAction {
             return Ok(DropSearch::Nothing);
         };
         let (player, foreign) = (c.player, view.players());
-        let find = |t: i32| {
-            if t == builder.id.get() {
+        let find = |t: ObjectId| {
+            if t == builder.id {
                 return Some((player, builder));
             }
             view.find(t)
@@ -107,7 +108,7 @@ impl BuildAction {
                 use crate::unit_ai::task_finder::world::SideWorld;
                 use crate::unit_ai::task_finder::world::task_search;
                 let actor = Actor {
-                    id: builder.id.get(),
+                    id: builder.id,
                     master: own,
                     player,
                     held: (builder.life.attribute_type, builder.life.amount),
@@ -169,15 +170,11 @@ impl BuildAction {
             DropSearch::Nothing => None,
             DropSearch::Site { id, range, sprite } => Some((id, range, sprite)),
         };
-        let new = found.map_or(-1, |(id, _, _)| id);
+        let new = found.map(|(id, _, _)| id);
         if self.site != new {
             let old = std::mem::replace(&mut self.site, new);
-            if old != -1 {
-                crate::world::lets::release(c, builder, old, by)?;
-            }
-            if new != -1 {
-                crate::world::lets::take(c, builder, new, by)?;
-            }
+            crate::world::lets::release(c, builder, old, by)?;
+            crate::world::lets::take(c, builder, new, by)?;
         }
         let Some((id, range, sprite)) = found else {
             builder.post_own(
@@ -188,7 +185,7 @@ impl BuildAction {
         };
         let move_reads = builder.move_to_reads(&c.w.masters, c.player, &c.w.graphics)?;
         let to = move_reads
-            .walk_to(c.w, id)?
+            .walk_to(c.w, Some(id))?
             .ok_or(GenieError::unsupported("a drop site without a place"))?;
         let given = sprite.or(self.task.moving);
         self.move_to = move_reads.to_object(to, range, given, TargetMoved::AsksAgain)?;
@@ -236,7 +233,7 @@ impl BuildAction {
             // 0 (it walks or waits) and any code above 5 (none): the update returns 0
             _ => return Ok(HeadCode::Keeps),
         }
-        let Some((2, drop)) = reads.deposit.filter(|_| self.site != -1) else {
+        let Some((2, drop)) = reads.deposit.filter(|_| self.site.is_some()) else {
             self.drop_again(c, builder, reads.by)?;
             return Ok(HeadCode::Keeps);
         };
@@ -268,9 +265,9 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
-        if self.target != -1 {
-            let site = std::mem::replace(&mut self.site, -1);
-            if site != -1 {
+        if self.target.is_some() {
+            let site = self.site.take();
+            if site.is_some() {
                 crate::world::lets::release(c, builder, site, reads.by)?;
             }
             self.restart(c, builder)?;

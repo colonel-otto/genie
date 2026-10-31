@@ -11,6 +11,7 @@ use crate::map::spatial::Spatial;
 use crate::math::conversions::cvttss2si;
 use crate::movement::MoveStats;
 use crate::movement::footprint_gap_squared;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::{Master, Masters, class, player_master};
@@ -150,7 +151,7 @@ pub fn walled_off(
     them: Point,
     spatial: &mut Spatial,
     masters: &[Masters],
-    (id, stats): (i32, &MoveStats),
+    (id, stats): (ObjectId, &MoveStats),
 ) -> Result<bool, GenieError> {
     let map = spatial.map;
     let (mx, my) = (cvttss2si(me.x()), cvttss2si(me.y()));
@@ -249,7 +250,7 @@ pub(super) const UNPLACED: GenieError =
 /// A target under an action whose point the slice does not keep, and the shore's search's.
 pub(crate) fn meeting_point(
     t: &MeetingTarget,
-    unit: (i32, Position, &MoveStats),
+    unit: (ObjectId, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<(Point, u8), GenieError> {
@@ -270,7 +271,7 @@ pub(crate) fn meeting_point(
 /// The shore's search's.
 fn shore_or_beach(
     t: &MeetingTarget,
-    unit: (i32, Position, &MoveStats),
+    unit: (ObjectId, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<(Point, u8), GenieError> {
@@ -300,7 +301,7 @@ fn shore_or_beach(
 /// A map without terrain or the unit's restriction, and slot 0x278's.
 fn shore(
     t: &MeetingTarget,
-    (id, at, stats): (i32, Position, &MoveStats),
+    (id, at, stats): (ObjectId, Position, &MoveStats),
     spatial: &mut Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<Option<Tile>, GenieError> {
@@ -348,7 +349,7 @@ pub struct Walls<'a> {
     /// Each player's masters, which tell the buildings.
     pub masters: &'a [Masters],
     /// The unit's id.
-    pub id: i32,
+    pub id: ObjectId,
     /// The unit's movement state.
     pub stats: &'a MoveStats,
 }
@@ -378,8 +379,8 @@ impl Walls<'_> {
 pub(crate) fn enter_reach(
     spatial: &mut Spatial,
     masters: &[Masters],
-    (id, stats, moved_at): (i32, &MoveStats, Position),
-    (target, target_mover): (i32, Option<&crate::movement::Mover>),
+    (id, stats, moved_at): (ObjectId, &MoveStats, Position),
+    (target, target_mover): (ObjectId, Option<&crate::movement::Mover>),
     range: f32,
 ) -> Result<bool, GenieError> {
     let me = spatial
@@ -425,17 +426,17 @@ pub(crate) fn enter_view(
     let in_reach = enter_reach(
         spatial,
         masters,
-        (unit.id.get(), &stats, moved_at),
-        (t.id.get(), target_mover),
+        (unit.id, &stats, moved_at),
+        (t.id, target_mover),
         range,
     )?;
-    let placed = |id| {
+    let placed = |id: ObjectId| {
         spatial.get(id).ok_or_else(|| {
             GenieError::unreachable("an Enter's unit or target unplaced after its reach")
                 .with("object", id)
         })
     };
-    let (me, them) = (placed(unit.id.get())?, placed(t.id.get())?);
+    let (me, them) = (placed(unit.id)?, placed(t.id)?);
     let gap = crate::movement::footprint_gap(me.position, me.radius, them.position, them.radius);
     Ok((
         EnterTarget {
@@ -484,7 +485,7 @@ impl Meeting<'_> {
         let t = meeting_target(self.target, self.master, self.room)?;
         meeting_point(
             &t,
-            (self.unit.id.get(), self.unit.position(), &stats),
+            (self.unit.id, self.unit.position(), &stats),
             self.spatial,
             self.zones,
         )
@@ -504,7 +505,7 @@ pub(crate) fn ship_reaches(
         return Ok(false);
     };
     let me = crate::movement::Me {
-        id: ship.id.get(),
+        id: ship.id,
         action_state: ship.top_action().map_or(0, |a| a.state),
         group: ship.group.id,
     };

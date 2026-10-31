@@ -7,6 +7,7 @@ use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone, slot_gone};
 use crate::groups::motion::passes_waypoint;
 use crate::groups::steer::{CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, SLOT_REACH};
 use crate::math::fmath::{BVector, at_most_or_unordered, below_or_unordered};
+use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -74,7 +75,7 @@ impl World {
     pub(super) fn try_slot(
         &mut self,
         group: i32,
-        id: i32,
+        id: ObjectId,
         to: BVector,
     ) -> Result<bool, GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
@@ -83,7 +84,7 @@ impl World {
         let computer = self.players.get(p.index()).is_some_and(|q| q.computer);
         let solid = mover.stats.radius.sized();
         let found = if solid {
-            let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+            let members: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
             let at = u.moved_vector().xhy();
             let walker = mover.walker(id);
             let mut plan = crate::movement::Planning {
@@ -100,7 +101,7 @@ impl World {
                 at.ground(),
                 &mut self.spatial,
                 &mut plan,
-                (to, 0.0, -1),
+                (to, 0.0, None),
                 &members,
                 &mut path,
             )?;
@@ -139,7 +140,7 @@ impl World {
         &mut self,
         group: i32,
         slot: usize,
-        id: i32,
+        id: ObjectId,
         gap: f32,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
@@ -186,7 +187,7 @@ impl World {
 
     /// A member that passed its slot's waypoint (state 2) stops, and stands when it is paused
     /// or the group's walk has no path to go on.
-    fn stop_at_slot(&mut self, group: i32, id: i32) -> Result<(), GenieError> {
+    fn stop_at_slot(&mut self, group: i32, id: ObjectId) -> Result<(), GenieError> {
         self.stop_member(id)?;
         let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let paused = u.body.mover().is_some_and(crate::movement::Mover::paused);
@@ -209,7 +210,7 @@ impl World {
     fn catch_up_to_slot(
         &mut self,
         group: i32,
-        id: i32,
+        id: ObjectId,
         (gap, speed): (f32, f32),
     ) -> Result<(), GenieError> {
         self.groups.held_mut(group)?.flags |= 0x200;
@@ -233,7 +234,7 @@ impl World {
 
     /// The unit AI's `state_position` (`+0x1ac`, `+0x1b0`) of unit `id` takes the slot place
     /// `to`'s x and y (`LAB_141027c88`).
-    pub(super) fn set_state_position(&mut self, id: i32, to: BVector) {
+    pub(super) fn set_state_position(&mut self, id: ObjectId, to: BVector) {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(ai) = u.ai.as_mut()
         {
@@ -259,7 +260,7 @@ impl World {
     }
 
     /// Slot 0x5d0 of member `id`: it stops ([`crate::movement::Mover::stop`]).
-    pub(super) fn stop_member(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(super) fn stop_member(&mut self, id: ObjectId) -> Result<(), GenieError> {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.body.mover_mut()
         {
@@ -269,7 +270,7 @@ impl World {
     }
 
     /// Slot 0x598 of member `id` ([`crate::movement::Mover::set_speed`]).
-    pub(super) fn set_member_speed(&mut self, id: i32, speed: f32) {
+    pub(super) fn set_member_speed(&mut self, id: ObjectId, speed: f32) {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.body.mover_mut()
         {
@@ -279,7 +280,7 @@ impl World {
 
     /// Slot 0x568 of member `id` with group `group`'s forward and up vectors (`+0x14`,
     /// `+0x20`, [`crate::movement::Mover::set_orientation`]).
-    pub(super) fn face_group(&mut self, group: i32, id: i32) -> Result<(), GenieError> {
+    pub(super) fn face_group(&mut self, group: i32, id: ObjectId) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         let [_, forward, up, _] = g.motion.position;
         if let Some((_, u)) = self.object_mut(id)
@@ -304,7 +305,7 @@ impl World {
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    pub(super) fn place_member(&mut self, id: i32, to: BVector) -> Result<(), GenieError> {
+    pub(super) fn place_member(&mut self, id: ObjectId, to: BVector) -> Result<(), GenieError> {
         let Some(place) = self.place(id) else {
             return Ok(());
         };
@@ -326,7 +327,7 @@ impl World {
         mover.mark_move(at, self.world_time);
         let (speed, radius) = (mover.stats.speed, mover.stats.radius);
         mover.new_position(id, at, (&mut self.spatial, Some(&mut self.pathing)))?;
-        if 0 <= id
+        if !id.is_recyclable()
             // The types of action objects (`RGE_Action_Object`) and of buildings (`TRIBE_Building_Object`).
             && kind < BUILDING
             && speed == 0.0
@@ -346,7 +347,7 @@ impl World {
     pub(crate) fn set_specific_move(
         &mut self,
         group: i32,
-        id: i32,
+        id: ObjectId,
         (path, reason): (i32, i32),
         (goal, timer, distance): (BVector, f32, f32),
     ) -> Result<bool, GenieError> {

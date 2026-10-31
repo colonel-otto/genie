@@ -100,7 +100,7 @@ impl World {
                     counts: vec![self.garrisoned(target)?],
                 }
             } else {
-                let building = match target_annex.and_then(ObjectId::of_field) {
+                let building = match target_annex {
                     // The class of buildings, which a unit's garrison task names (`FUN_1415c9240` with 3, 3).
                     // A gate's class: its annex is not its main building for a garrison order.
                     Some(main) if tm.class != class::GATE => main,
@@ -380,10 +380,10 @@ impl World {
             if through_ai && unit.ai.is_some() {
                 let state = unit.life.state;
                 let order = crate::unit_ai::QueuedOrder {
-                    issuer: id.raw(),
+                    issuer: Some(crate::unit_ai::Issuer::Object(id)),
                     order: OrderKind::Enter,
                     priority: 100,
-                    target: building.raw(),
+                    target: Some(building),
                     target_owner: owner.index() as i32,
                     point,
                     range: 0.0,
@@ -399,7 +399,7 @@ impl World {
                 continue;
             }
             let work = Work {
-                target: building.raw(),
+                target: Some(building),
                 point,
                 carry_test: false,
                 filter: GARRISON,

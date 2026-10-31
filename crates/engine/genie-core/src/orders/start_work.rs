@@ -21,6 +21,7 @@ use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
 use crate::map::Rect;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
@@ -111,7 +112,7 @@ impl World {
                 None => self.closest_of_groups(p, i)?,
             };
             let own = self.players.live(p, i)?.id;
-            if let Some(target) = target.filter(|&t| t != own.get()) {
+            if let Some(target) = target.filter(|&t| t != own) {
                 let point = self
                     .spatial
                     .get_known(target)?
@@ -120,7 +121,7 @@ impl World {
                     ))?
                     .position;
                 let work = Work {
-                    target,
+                    target: Some(target),
                     point,
                     carry_test: false,
                     filter: -1,
@@ -134,7 +135,12 @@ impl World {
     }
 
     /// The first farm in the object list of the unit's tile (a fish trap for a fishing ship).
-    fn farm_under(&self, p: PlayerId, i: usize, class: ClassId) -> Result<Option<i32>, GenieError> {
+    fn farm_under(
+        &self,
+        p: PlayerId,
+        i: usize,
+        class: ClassId,
+    ) -> Result<Option<ObjectId>, GenieError> {
         let at = self.players.live(p, i)?.position();
         let (x, y) = (at.x() as i32, at.y() as i32);
         self.spatial
@@ -153,12 +159,12 @@ impl World {
 
     /// The unit AI's `ClosestResourceObject` for each gather group (no drop site, any workers,
     /// `param_6` 2, no point): the answer at the least distance, the first group at a tie.
-    fn closest_of_groups(&mut self, p: PlayerId, i: usize) -> Result<Option<i32>, GenieError> {
+    fn closest_of_groups(&mut self, p: PlayerId, i: usize) -> Result<Option<ObjectId>, GenieError> {
         let mut best = (NO_DISTANCE, None);
         for kind in 0..GROUPS {
             let (id, distance) = self.resource_search_from(p, i, kind)?;
             if let Some(d) = distance.filter(|&d| d < best.0) {
-                best = (d, Some(id));
+                best = (d, id);
             }
         }
         Ok(best.1)
@@ -189,7 +195,7 @@ impl World {
             min_state: 2,
         };
         let me_walk = Me {
-            id: unit.id.get(),
+            id: unit.id,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
@@ -204,7 +210,7 @@ impl World {
         p: PlayerId,
         i: usize,
         kind: u8,
-    ) -> Result<(i32, Option<i32>), GenieError> {
+    ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
         let owner = self.players.player(p)?;
         let unit = owner.live(i)?;
         let mover = unit.body.mover().ok_or(GenieError::unsupported(
@@ -213,38 +219,39 @@ impl World {
         let (seeker, me_walk) = self.search_seeker(p, unit)?;
         let (mask, master_id) = (mover.stats.restriction_mask, unit.life.master_id);
         let (players, masters) = (&self.players, &self.masters);
-        let candidate =
-            |spatial: &crate::map::spatial::Spatial, id: i32| -> Result<Candidate, GenieError> {
-                let (owner, u) = PlayerId::each(players.len())
-                    .zip(players)
-                    .find_map(|(q, player)| {
-                        player
-                            .objects
-                            .by_id(id)
-                            .or_else(|| player.sleeping.by_id(id))
-                            .map(|u| (q, u))
-                    })
-                    .ok_or(GenieError::unsupported(
-                        "an object on a tile the slice does not hold",
-                    ))?;
-                let m = u.master(masters, owner)?;
-                let position = spatial.get(id).map_or_else(|| u.position(), |o| o.position);
-                Ok(Candidate {
-                    id,
-                    player: owner,
-                    class: m.class,
-                    master: m.id,
-                    state: u.life.state,
-                    workers: u.workers,
-                    position,
-                    pasture: u.pasture,
-                    untargetable: u.untargetable,
-                    attribute: u.life.attribute_type,
-                    amount: u.life.amount,
-                    auto_gather: m.auto_gather,
-                    gather_group: m.gather_group,
+        let candidate = |spatial: &crate::map::spatial::Spatial,
+                         id: ObjectId|
+         -> Result<Candidate, GenieError> {
+            let (owner, u) = PlayerId::each(players.len())
+                .zip(players)
+                .find_map(|(q, player)| {
+                    player
+                        .objects
+                        .by_id(id)
+                        .or_else(|| player.sleeping.by_id(id))
+                        .map(|u| (q, u))
                 })
-            };
+                .ok_or(GenieError::unsupported(
+                    "an object on a tile the slice does not hold",
+                ))?;
+            let m = u.master(masters, owner)?;
+            let position = spatial.get(id).map_or_else(|| u.position(), |o| o.position);
+            Ok(Candidate {
+                id,
+                player: owner,
+                class: m.class,
+                master: m.id,
+                state: u.life.state,
+                workers: u.workers,
+                position,
+                pasture: u.pasture,
+                untargetable: u.untargetable,
+                attribute: u.life.attribute_type,
+                amount: u.life.amount,
+                auto_gather: m.auto_gather,
+                gather_group: m.gather_group,
+            })
+        };
         let objects = |spatial: &crate::map::spatial::Spatial,
                        x: i32,
                        y: i32|

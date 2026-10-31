@@ -117,7 +117,7 @@ impl World {
         master: MasterId,
         at: Point,
         human: bool,
-        own: &[i32],
+        own: &[ObjectId],
     ) -> Result<u8, GenieError> {
         let site = self.master(player, master)?;
         let build = crate::production::spawn::BuildSite {
@@ -154,7 +154,7 @@ impl World {
         &self,
         placed: &crate::map::spatial::Placed,
         desolid: bool,
-        own: &[i32],
+        own: &[ObjectId],
     ) -> Result<u8, GenieError> {
         let player = placed.player;
         let site = self.master(player, placed.master)?;

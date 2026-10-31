@@ -3,9 +3,10 @@
 
 use crate::GenieError;
 use crate::map::Rect;
-use crate::map::spatial::{Spatial, WalkQuery};
+use crate::map::spatial::{RecordId, Spatial, WalkQuery};
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::world::slots::PlayerSlots;
 use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, World};
@@ -20,9 +21,9 @@ use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, 
 /// (`FUN_141663d90` with the ally flag).
 pub(crate) fn gate_units(
     spatial: &mut Spatial,
-    gate: i32,
-    annexes: &[i32],
-) -> Result<(Vec<i32>, usize), GenieError> {
+    gate: ObjectId,
+    annexes: &[ObjectId],
+) -> Result<(Vec<ObjectId>, usize), GenieError> {
     let [a, b] = annexes[..] else {
         return Err(GenieError::unsupported("a gate without its two annexes"));
     };
@@ -46,7 +47,7 @@ pub(crate) fn gate_units(
         grow: GATE_GROW,
         ally_factor: 1.0,
         player: Some(owner),
-        ignore: &[gate, a, b],
+        ignore: &[RecordId::from(gate), RecordId::from(a), RecordId::from(b)],
     })?;
     if GATE_QUERY_RECORDS < hits.len() {
         return Err(GenieError::unsupported(
@@ -58,7 +59,7 @@ pub(crate) fn gate_units(
         if GATE_COUNT_CAP <= units.len() {
             break;
         }
-        let Some(p) = spatial.get(id) else {
+        let Some((id, p)) = id.key().and_then(|o| Some((o, spatial.get(o)?))) else {
             continue;
         };
         let counts = !matches!(p.class, class::WALL | class::GATE | class::TOWER)
@@ -141,15 +142,15 @@ impl World {
                 let id = self.players.live(q, i)?.id;
                 if self
                     .spatial
-                    .get(id.get())
+                    .get(id)
                     .is_some_and(|g| g.obstruction.is_some_and(|o| o.kind == 10))
                 {
                     return Err(GenieError::unsupported(
                         "a gate of obstruction kind 10 opens (FUN_140f65580)",
                     ));
                 }
-                self.spatial.drop_record(id.get());
-                self.pathing.removed(id.get());
+                self.spatial.drop_record(id);
+                self.pathing.removed(id);
             }
             *is_open = true;
         }
@@ -196,12 +197,12 @@ impl World {
                 if record.recorded()
                     && self
                         .spatial
-                        .get(id.get())
+                        .get(id)
                         .is_some_and(|g| g.obstruction.is_none())
                 {
-                    self.spatial.add_record(id.get(), record);
+                    self.spatial.add_record(id, record);
                     if let Some(placed) = self.spatial.get(id).copied() {
-                        self.pathing.place_shape(id.get(), &placed);
+                        self.pathing.place_shape(id, &placed);
                     }
                 }
             }

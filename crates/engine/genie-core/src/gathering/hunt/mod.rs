@@ -122,8 +122,8 @@ pub struct HuntAction {
     /// [`MoveToAction`]) to the target within the task's range (`OWN_LIVESTOCK_RANGE` to its own
     /// player's livestock), to the drop site, or to the point, which `set_state` makes.
     pub move_to: Option<MoveToAction>,
-    /// `+0x70`: the drop site its own livestock is led to, −1 for none yet.
-    pub drop_site: i32,
+    /// `+0x70`: the drop site its own livestock is led to, none yet.
+    pub drop_site: Option<ObjectId>,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site the load goes to in state 8,
     /// −1 for none.
     pub carry_to: Option<ObjectId>,
@@ -172,7 +172,7 @@ pub struct Herd {
     pub own: bool,
     /// For its own livestock, the drop site (the hunt's, else the nearest that takes livestock,
     /// `FUN_1411671e0`) and the gap between it and the target squared (`FUN_14118f8c0`).
-    pub drop_site: Option<(i32, f32)>,
+    pub drop_site: Option<(ObjectId, f32)>,
     /// The Attack `set_state(12)` starts.
     pub engagement: Engagement,
     /// The Attack's sprites and frames.
@@ -260,7 +260,7 @@ pub(crate) enum HuntNext {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Quarry {
     /// The target.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its place.
     pub position: Position,
     /// Its master's class and type, its state (`+0x640`) and owner.

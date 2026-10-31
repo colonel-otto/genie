@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::MOVING;
 use crate::orders::{Followed, GUARD_RANGE, Place, follow_axis, follow_spread, ignore_unit};
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -103,10 +104,10 @@ impl World {
         let tm = t.master(&self.masters, tp)?;
         let (x, y, z) = (t.position().x(), t.position().y(), t.position().z());
         let order = crate::unit_ai::QueuedOrder {
-            issuer: -1,
+            issuer: None,
             order: OrderKind::Defend,
             priority: 100,
-            target: target.raw(),
+            target: Some(target),
             target_owner: tp.index() as i32,
             point: Position::new(x, y, z),
             range: GUARD_RANGE,
@@ -139,7 +140,7 @@ impl World {
                 continue;
             }
             let order = crate::unit_ai::QueuedOrder {
-                issuer: p.index() as i32,
+                issuer: Some(Issuer::Player(p)),
                 ..order
             };
             self.run_unit_ai((p, idx), |ai, at, side, computer, rng| {
@@ -236,7 +237,9 @@ impl World {
                 ai.set_order(Some(OrderKind::Follow), rng);
                 ai.set_action(Some(ActionKind::Follow));
             }
-            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id.raw(), c));
+            let (t, class) = followed
+                .class
+                .map_or((None, -1), |c| (Some(followed.id), c));
             ai.set_target(t, class, Position::new(x, y, 0.0));
         }
         Ok(())
@@ -277,7 +280,9 @@ impl World {
         if let Some(ai) = self.players.live_mut(p, idx)?.ai.as_mut() {
             ai.set_order(Some(OrderKind::Move), rng);
             ai.set_action(Some(ActionKind::Move));
-            let (t, class) = followed.class.map_or((-1, -1), |c| (followed.id.raw(), c));
+            let (t, class) = followed
+                .class
+                .map_or((None, -1), |c| (Some(followed.id), c));
             ai.set_target(t, class, at);
         }
         Ok(())
@@ -365,7 +370,7 @@ impl World {
         let t_state = t.life.state;
         let t_master = t.master(&self.masters, tp)?.id;
         if crate::movement::move_to::holds_object(livestock, t_master, t_state) {
-            self.take(target.raw(), self.releaser(player, idx)?)?;
+            self.take(target, self.releaser(player, idx)?)?;
         }
         self.clear_actions(player, idx)?;
         self.start_object_move(player, idx, (target, t_state), livestock)
@@ -401,7 +406,7 @@ impl World {
             &self.spatial,
             here,
             mover,
-            (target.raw(), t_state),
+            (target, t_state),
             range,
             (sprite, livestock),
         )?;
@@ -455,12 +460,12 @@ impl World {
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),
             Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
-                self.artifact_take_object(player, idx, target.raw())?;
+                self.artifact_take_object(player, idx, target)?;
                 Ok(true)
             }
-            Some(HUNT) => self.hunt_take_move(player, idx, target.raw(), point),
+            Some(HUNT) => self.hunt_take_move(player, idx, target, point),
             Some(crate::gathering::gather::GATHER) => {
-                self.gather_take_move(player, idx, target.raw(), point)
+                self.gather_take_move(player, idx, target, point)
             }
             // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target, and
             // the Transport's (0x140aa3e40) sails there
@@ -498,7 +503,7 @@ impl World {
             }
         };
         if let Some(t) = left {
-            self.leave_builders(t)?;
+            self.leave_builders(Some(t))?;
         }
         if let Some(t) = released {
             self.release(t, by)?;

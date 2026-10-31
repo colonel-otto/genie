@@ -10,7 +10,7 @@ use genie_core::commands::{
     OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand,
     SetGatherStateCommand, StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand,
     TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
-    UnmodelledCommand, Waypoints,
+    UnloadPick, UnmodelledCommand, Waypoints,
 };
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
@@ -192,8 +192,7 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
             player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
             point: Point::new(c.x, c.y),
-            flag: c.flag,
-            unit_type: c.unit_type,
+            pick: UnloadPick::of_packet(c.flag, c.unit_type),
             sound: c.field_0x18 != 0,
         }),
         Packet::UnitOrder(c) => Command::UnitOrder(UnitOrderCommand {

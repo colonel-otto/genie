@@ -29,27 +29,27 @@ use genie_diff::Diff;
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct BackToWork {
     /// `townBellTargetId` (`+0x9ac`): the top action's target (the pasture of a target in one),
-    /// else the target of the unit AI's first own queued order, −1 for none.
-    pub target: i32,
+    /// else the target of the unit AI's first own queued order.
+    pub target: Option<ObjectId>,
     /// `town_bell_target_type` (`+0x9b0`): a Gather's (5) or Hunt's (`0x6e`) target class
     /// (`+0x68`), else −1.
     pub target_type: i32,
     /// `town_bell_action` (`+0x9b4`): the unit AI's current action (`+0x44`).
     pub action: Option<ActionKind>,
-    /// `townBellTargetId2` (`+0x9b8`): the top action's second target (`+0x34`), −1 for none.
-    pub target2: i32,
+    /// `townBellTargetId2` (`+0x9b8`): the top action's second target (`+0x34`).
+    pub target2: Option<ObjectId>,
     /// `town_bell_target_x`, `_y` (`+0x9bc`, `+0x9c0`): the target's place, else the unit's own.
     pub point: Point,
 }
 
 impl BackToWork {
     /// A record of nothing, as a new unit's (`FUN_14121df60`) and the second record a work other
-    /// than building drops: ids −1, the point (−1, −1).
+    /// than building drops: no ids, the point (−1, −1).
     pub const NONE: Self = Self {
-        target: -1,
+        target: None,
         target_type: -1,
         action: None,
-        target2: -1,
+        target2: None,
         point: Point::new(-1.0, -1.0),
     };
 }
@@ -108,7 +108,7 @@ const ENDED_ON_A_BUILDING: [ActionKind; 3] =
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RecordTarget {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master is of type 80.
     pub building: bool,
     /// Its master's class.
@@ -119,22 +119,23 @@ pub struct RecordTarget {
 
 /// `FUN_1411f8fa0`: the object a record names, its target, else its second target, the world
 /// holds (`lookup`); for the actions of [`ENDED_ON_A_BUILDING`] a building other than a farm
-/// that is built ends the record (no object, both targets −1 in the copy returned).
+/// that is built ends the record (no object, no targets in the copy returned). A negative id
+/// names none (`JL`), as −1 does.
 fn record_object(
     record: BackToWork,
-    lookup: &dyn Fn(i32) -> Result<Option<RecordTarget>, GenieError>,
+    lookup: &dyn Fn(ObjectId) -> Result<Option<RecordTarget>, GenieError>,
 ) -> Result<(Option<RecordTarget>, BackToWork), GenieError> {
     let mut out = record;
-    let mut found = if 0 <= record.target {
-        lookup(record.target)?
-    } else {
-        None
+    let named = |id: Option<ObjectId>| id.filter(|id| !id.is_recyclable());
+    let mut found = match named(record.target) {
+        Some(t) => lookup(t)?,
+        None => None,
     };
     if found.is_none() {
-        if record.target2 < 0 {
+        let Some(t2) = named(record.target2) else {
             return Ok((None, out));
-        }
-        found = lookup(record.target2)?;
+        };
+        found = lookup(t2)?;
     }
     if let Some(o) = found
         && record
@@ -145,8 +146,8 @@ fn record_object(
         && o.class != class::FARM
         && o.built
     {
-        out.target = -1;
-        out.target2 = -1;
+        out.target = None;
+        out.target2 = None;
         return Ok((None, out));
     }
     Ok((found, out))
@@ -164,7 +165,7 @@ impl TownBell {
     /// The lookup's: an object whose master the world lacks.
     pub fn back_to_work(
         &mut self,
-        lookup: &dyn Fn(i32) -> Result<Option<RecordTarget>, GenieError>,
+        lookup: &dyn Fn(ObjectId) -> Result<Option<RecordTarget>, GenieError>,
     ) -> Result<(Option<RecordTarget>, BackToWork), GenieError> {
         let (found, out) = record_object(self.work, lookup)?;
         if found.is_some() {
@@ -393,7 +394,8 @@ impl World {
         let tracker = &self.players.player(owner)?.tracker;
         let mut ids = tracker.class_list(class::VILLAGER).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808.get())));
-        for id in ids {
+        // a queued unit's place (−1) names no object
+        for id in ids.into_iter().flatten() {
             // the tracker's keepers follow every object its player gains and loses: the world
             // holds each (the game reads it without a test)
             let Some((_, u)) = self.object(id) else {
@@ -415,8 +417,8 @@ impl World {
     /// the town bell (`+0xa14` takes 1, not held). True when it went.
     pub(crate) fn back_outside(
         &mut self,
-        id: i32,
-        work_on: Option<i32>,
+        id: ObjectId,
+        work_on: Option<ObjectId>,
         point: Point,
     ) -> Result<bool, GenieError> {
         let Some(crate::orders::Place::Live(up, ui)) = self.place(id) else {
@@ -444,7 +446,7 @@ impl World {
                 up,
                 ui,
                 &crate::orders::Work {
-                    target,
+                    target: Some(target),
                     point: Position::new(x, y, 0.0),
                     carry_test: true,
                     filter: -1,
@@ -467,7 +469,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         filter: i16,
     ) -> Result<(), GenieError> {
         let unit = &self.players.live(player, idx)?;
@@ -521,23 +523,24 @@ impl World {
                 "a town-bell record of an action not held",
             ));
         }
-        let held = |id: i32| (0 <= id).then(|| self.object(id)).flatten();
+        // an id below 0 names none (`JL`)
+        let held = |id: ObjectId| (!id.is_recyclable()).then(|| self.object(id)).flatten();
         let mut found = unit.top_target().and_then(held).map(|(_, t)| t);
         if let Some(t) = found
-            && t.pasture != -1
+            && let Some(pasture) = t.pasture
         {
-            found = held(t.pasture).map(|(_, p)| p);
+            found = held(pasture).map(|(_, p)| p);
         }
         if found.is_none() {
             let own = unit
                 .ai
                 .as_ref()
-                .map_or(-1, |ai| own_order_target(ai, unit.id.get()));
-            found = held(own).map(|(_, t)| t);
+                .and_then(|ai| own_order_target(ai, unit.id));
+            found = own.and_then(held).map(|(_, t)| t);
         }
         let (target, point) = found.map_or_else(
-            || (-1, unit.position().ground()),
-            |t| (t.id.get(), t.position().ground()),
+            || (None, unit.position().ground()),
+            |t| (Some(t.id), t.position().ground()),
         );
         let actions = &unit.actions;
         let target_type = match unit.top_action_kind() {
@@ -550,10 +553,7 @@ impl World {
         let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
             "a town-bell record of a unit without a unit AI",
         ))?;
-        let target2 = unit
-            .top_second_target()
-            .and_then(held)
-            .map_or(-1, |(_, t)| t.id.get());
+        let target2 = unit.top_second_target().and_then(held).map(|(_, t)| t.id);
         let now = BackToWork {
             target,
             target_type,
@@ -569,10 +569,12 @@ impl World {
 #[cfg(test)]
 mod tests {
     use crate::map::Point;
+    use crate::objects::ObjectId;
+    use crate::test_ids::object_id;
 
     use super::*;
 
-    fn work(target: i32, action: Option<ActionKind>, point: Point) -> BackToWork {
+    fn work(target: Option<ObjectId>, action: Option<ActionKind>, point: Point) -> BackToWork {
         BackToWork {
             target,
             action,
@@ -586,16 +588,27 @@ mod tests {
         // MarvinBlue/426048731's 9181: its first record (no target, its own place), then the
         // INTERACT of update 748 while it builds 10028, then the one of 797 while it cuts a tree
         let mut bell = TownBell {
-            work: work(-1, None, Point::new(29.0, 99.0)),
+            work: work(None, None, Point::new(29.0, 99.0)),
             ..TownBell::default()
         };
-        let building = work(10028, Some(ActionKind::Build), Point::new(30.0, 88.0));
+        let building = work(
+            Some(object_id(10028)),
+            Some(ActionKind::Build),
+            Point::new(30.0, 88.0),
+        );
         bell.record(building);
         assert_eq!(bell.work, building);
-        assert_eq!(bell.before_building, work(-1, None, Point::new(29.0, 99.0)));
+        assert_eq!(
+            bell.before_building,
+            work(None, None, Point::new(29.0, 99.0))
+        );
         let cutting = BackToWork {
             target_type: 15,
-            ..work(9365, Some(ActionKind::Hunt), Point::new(24.5, 97.5))
+            ..work(
+                Some(object_id(9365)),
+                Some(ActionKind::Hunt),
+                Point::new(24.5, 97.5),
+            )
         };
         bell.record(cutting);
         assert_eq!(bell.work, cutting);
@@ -605,14 +618,18 @@ mod tests {
         bell.record(cutting);
         assert_eq!(bell.before_building, building);
         bell.flag = true;
-        bell.record(work(1, Some(ActionKind::Wait), Point::new(3.0, 4.0)));
+        bell.record(work(
+            Some(object_id(1)),
+            Some(ActionKind::Wait),
+            Point::new(3.0, 4.0),
+        ));
         assert_eq!(bell.work, cutting);
     }
 
     /// The objects of a test world: a house 7 that is built, a house 8 that is not, a farm 9
     /// that is built, a sheep 10.
-    fn object(id: i32) -> Option<RecordTarget> {
-        let (building, class, built) = match id {
+    fn object(id: ObjectId) -> Option<RecordTarget> {
+        let (building, class, built) = match id.get() {
             7 => (true, class::BUILDING, true),
             8 => (true, class::BUILDING, false),
             9 => (true, class::FARM, true),
@@ -631,24 +648,32 @@ mod tests {
     fn a_record_names_its_target_else_its_second_target_unless_a_built_building_ended_it() {
         // FUN_1411f8fa0: the target the world holds
         let shepherd = BackToWork {
-            target2: 7,
-            ..work(10, Some(ActionKind::Gather), Point::new(5.0, 6.0))
+            target2: Some(object_id(7)),
+            ..work(
+                Some(object_id(10)),
+                Some(ActionKind::Gather),
+                Point::new(5.0, 6.0),
+            )
         };
         assert_eq!(
             record_object(shepherd, &|id| Ok(object(id))).unwrap(),
-            (object(10), shepherd)
+            (object(object_id(10)), shepherd)
         );
         // a target the world no longer holds: the second target, unless it is below 0
         let gone = BackToWork {
-            target2: 10,
-            ..work(11, Some(ActionKind::Hunt), Point::new(5.0, 6.0))
+            target2: Some(object_id(10)),
+            ..work(
+                Some(object_id(11)),
+                Some(ActionKind::Hunt),
+                Point::new(5.0, 6.0),
+            )
         };
         assert_eq!(
             record_object(gone, &|id| Ok(object(id))).unwrap(),
-            (object(10), gone)
+            (object(object_id(10)), gone)
         );
         let none = BackToWork {
-            target2: -1,
+            target2: None,
             ..gone
         };
         assert_eq!(
@@ -656,7 +681,7 @@ mod tests {
             (None, none)
         );
         let lost = BackToWork {
-            target2: 12,
+            target2: Some(object_id(12)),
             ..gone
         };
         assert_eq!(
@@ -665,23 +690,23 @@ mod tests {
         );
         // a target below 0 is not looked up: the second target is
         let second = BackToWork {
-            target2: 10,
-            ..work(-1, Some(ActionKind::Build), Point::new(5.0, 6.0))
+            target2: Some(object_id(10)),
+            ..work(None, Some(ActionKind::Build), Point::new(5.0, 6.0))
         };
         assert_eq!(
             record_object(second, &|id| Ok(object(id))).unwrap(),
-            (object(10), second)
+            (object(object_id(10)), second)
         );
         // building, gathering and hunting (mask 0x881 over 0x25a..0x265) on a built building
         // other than a farm end the record: no object, both targets −1 in the copy
         for action in [ActionKind::Build, ActionKind::Gather, ActionKind::Hunt].map(Some) {
             let on_house = BackToWork {
-                target2: 10,
-                ..work(7, action, Point::new(5.0, 6.0))
+                target2: Some(object_id(10)),
+                ..work(Some(object_id(7)), action, Point::new(5.0, 6.0))
             };
             let ended = BackToWork {
-                target: -1,
-                target2: -1,
+                target: None,
+                target2: None,
                 ..on_house
             };
             assert_eq!(
@@ -690,12 +715,12 @@ mod tests {
             );
             // reached through the second target, too
             let through_second = BackToWork {
-                target2: 7,
-                ..work(11, action, Point::new(5.0, 6.0))
+                target2: Some(object_id(7)),
+                ..work(Some(object_id(11)), action, Point::new(5.0, 6.0))
             };
             let ended = BackToWork {
-                target: -1,
-                target2: -1,
+                target: None,
+                target2: None,
                 ..through_second
             };
             assert_eq!(
@@ -704,10 +729,10 @@ mod tests {
             );
             // a house not built yet and a built farm stay
             for kept in [8, 9] {
-                let r = work(kept, action, Point::new(5.0, 6.0));
+                let r = work(Some(object_id(kept)), action, Point::new(5.0, 6.0));
                 assert_eq!(
                     record_object(r, &|id| Ok(object(id))).unwrap(),
-                    (object(kept), r)
+                    (object(object_id(kept)), r)
                 );
             }
         }
@@ -720,10 +745,10 @@ mod tests {
             Some(ActionKind::Defend),
             None,
         ] {
-            let r = work(7, action, Point::new(5.0, 6.0));
+            let r = work(Some(object_id(7)), action, Point::new(5.0, 6.0));
             assert_eq!(
                 record_object(r, &|id| Ok(object(id))).unwrap(),
-                (object(7), r)
+                (object(object_id(7)), r)
             );
         }
     }
@@ -733,13 +758,19 @@ mod tests {
             ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
         };
         use crate::map::{Point, Position};
+        use crate::objects::ObjectId;
         use crate::players::PlayerId;
         use crate::test_ids::object_id;
         use crate::test_ids::player_id;
         use crate::world::World;
 
-        fn enter(t: &World, id: i32) -> Option<i32> {
-            t.object(id).unwrap().1.actions.enter().map(|e| e.target)
+        fn enter(t: &World, id: i32) -> Option<ObjectId> {
+            t.object(object_id(id))
+                .unwrap()
+                .1
+                .actions
+                .enter()
+                .and_then(|e| e.target)
         }
 
         #[test]
@@ -765,9 +796,9 @@ mod tests {
             t.town_bell(player_id(1), object_id(100), true).unwrap();
             assert_eq!(
                 [1000, 1001, 1002].map(|id| enter(&t, id)),
-                [Some(100), None, None]
+                [Some(object_id(100)), None, None]
             );
-            assert!(t.object(100).unwrap().1.town_bell.flag);
+            assert!(t.object(object_id(100)).unwrap().1.town_bell.flag);
         }
 
         #[test]
@@ -785,7 +816,7 @@ mod tests {
             assert_eq!(enter(&t, 1000), None);
             t.settings.cheats_enabled = true;
             t.town_bell(player_id(2), object_id(100), true).unwrap();
-            assert_eq!(enter(&t, 1000), Some(100));
+            assert_eq!(enter(&t, 1000), Some(object_id(100)));
             // an object that is no town centre rings nothing; nor does an id the world lacks
             let mut t = let_out_world();
             walker(
@@ -806,7 +837,7 @@ mod tests {
             // record; villager 1001 outside, filed under class 4, walks back to its record's
             // point (slot 0x340); 1002 has no flag and stays; 1003 is not filed and stays
             let mut t = let_out_world();
-            t.object_mut(100).unwrap().1.town_bell.flag = true;
+            t.object_mut(object_id(100)).unwrap().1.town_bell.flag = true;
             inside_tc(&mut t, PlayerId::new(1), 1000, VILLAGER);
             walker(
                 &mut t,
@@ -834,22 +865,27 @@ mod tests {
                 (1001, Point::new(3.5, 3.5)),
                 (1002, Point::new(2.5, 2.5)),
             ] {
-                let v = &mut t.object_mut(id).unwrap().1.town_bell;
+                let v = &mut t.object_mut(object_id(id)).unwrap().1.town_bell;
                 v.flag = id != 1002;
                 v.work = crate::orders::town_bell::BackToWork {
                     point,
                     ..crate::orders::town_bell::BackToWork::NONE
                 };
             }
-            t.object_mut(1003).unwrap().1.town_bell.flag = true;
-            t.object_mut(1003).unwrap().1.town_bell.work.point = Point::new(1.5, 1.5);
+            t.object_mut(object_id(1003)).unwrap().1.town_bell.flag = true;
+            t.object_mut(object_id(1003))
+                .unwrap()
+                .1
+                .town_bell
+                .work
+                .point = Point::new(1.5, 1.5);
             tracked(&mut t, VILLAGER, &[1000, 1001, 1002]);
             t.town_bell(player_id(1), object_id(100), false).unwrap();
-            assert!(!t.object(100).unwrap().1.town_bell.flag);
-            let v = t.object(1000).unwrap().1;
+            assert!(!t.object(object_id(100)).unwrap().1.town_bell.flag);
+            let v = t.object(object_id(1000)).unwrap().1;
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
             let goal = |t: &World, id: i32| {
-                let u = t.object(id).unwrap().1;
+                let u = t.object(object_id(id)).unwrap().1;
                 (
                     u.actions.move_to().copied().and_then(|m| m.goal()),
                     u.town_bell.flag,
@@ -867,7 +903,7 @@ mod tests {
                 VILLAGER,
                 Point::new(5.5, 5.5),
             );
-            let v = &mut t.object_mut(1001).unwrap().1.town_bell;
+            let v = &mut t.object_mut(object_id(1001)).unwrap().1.town_bell;
             v.flag = true;
             v.work.point = Point::new(3.5, -1.0);
             tracked(&mut t, VILLAGER, &[1001]);
@@ -881,7 +917,7 @@ mod tests {
             // record, 1001 outside, filed under class 4, walks back to its record's point
             let world = || {
                 let mut t = let_out_world();
-                t.object_mut(100).unwrap().1.town_bell.flag = true;
+                t.object_mut(object_id(100)).unwrap().1.town_bell.flag = true;
                 inside_tc(&mut t, PlayerId::new(1), 1000, VILLAGER);
                 walker(
                     &mut t,
@@ -891,7 +927,7 @@ mod tests {
                     Point::new(5.5, 5.5),
                 );
                 for (id, point) in [(1000, Point::new(4.5, 4.5)), (1001, Point::new(3.5, 3.5))] {
-                    let v = &mut t.object_mut(id).unwrap().1.town_bell;
+                    let v = &mut t.object_mut(object_id(id)).unwrap().1.town_bell;
                     v.flag = true;
                     v.work = crate::orders::town_bell::BackToWork {
                         point,
@@ -903,10 +939,10 @@ mod tests {
             };
             let mut t = world();
             t.all_back_to_work(player_id(1), object_id(100)).unwrap();
-            assert!(t.object(100).unwrap().1.town_bell.flag);
-            let v = t.object(1000).unwrap().1;
+            assert!(t.object(object_id(100)).unwrap().1.town_bell.flag);
+            let v = t.object(object_id(1000)).unwrap().1;
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
-            let u = t.object(1001).unwrap().1;
+            let u = t.object(object_id(1001)).unwrap().1;
             assert_eq!(
                 (
                     u.actions.move_to().copied().and_then(|m| m.goal()),
@@ -917,15 +953,26 @@ mod tests {
             // another player's command does nothing without the game's cheats
             let mut t = world();
             t.all_back_to_work(player_id(2), object_id(100)).unwrap();
-            assert_eq!(t.object(1000).unwrap().1.life.inside, Some(100));
+            assert_eq!(
+                t.object(object_id(1000)).unwrap().1.life.inside,
+                Some(object_id(100))
+            );
         }
     }
 
     #[test]
     fn back_to_work_takes_the_first_record_else_the_second_which_moves_up() {
         // FUN_1412035a0: the first record's object wins; the records stay
-        let first = work(10, Some(ActionKind::Gather), Point::new(5.0, 6.0));
-        let second = work(8, Some(ActionKind::Build), Point::new(1.0, 2.0));
+        let first = work(
+            Some(object_id(10)),
+            Some(ActionKind::Gather),
+            Point::new(5.0, 6.0),
+        );
+        let second = work(
+            Some(object_id(8)),
+            Some(ActionKind::Build),
+            Point::new(1.0, 2.0),
+        );
         let mut bell = TownBell {
             flag: false,
             work: first,
@@ -933,15 +980,19 @@ mod tests {
         };
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),
-            (object(10), first)
+            (object(object_id(10)), first)
         );
         assert_eq!((bell.work, bell.before_building), (first, second));
         // the first's object gone: the second's object, and the second becomes the first
-        let gone = work(11, Some(ActionKind::Gather), Point::new(5.0, 6.0));
+        let gone = work(
+            Some(object_id(11)),
+            Some(ActionKind::Gather),
+            Point::new(5.0, 6.0),
+        );
         bell.work = gone;
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),
-            (object(8), second)
+            (object(object_id(8)), second)
         );
         assert_eq!(
             (bell.work, bell.before_building),
@@ -949,11 +1000,19 @@ mod tests {
         );
         // neither has an object: the first record as it is, its targets kept even when a built
         // building ended it
-        let ended = work(7, Some(ActionKind::Build), Point::new(5.0, 6.0));
+        let ended = work(
+            Some(object_id(7)),
+            Some(ActionKind::Build),
+            Point::new(5.0, 6.0),
+        );
         let mut bell = TownBell {
             flag: false,
             work: ended,
-            before_building: work(12, Some(ActionKind::Gather), Point::new(1.0, 2.0)),
+            before_building: work(
+                Some(object_id(12)),
+                Some(ActionKind::Gather),
+                Point::new(1.0, 2.0),
+            ),
         };
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),
@@ -961,8 +1020,16 @@ mod tests {
         );
         assert_eq!(bell.work, ended);
         // ... or the second when the first has no point (−1, −1 on both axes)
-        let pointless = work(11, Some(ActionKind::Gather), Point::new(-1.0, -1.0));
-        let before = work(12, Some(ActionKind::Gather), Point::new(1.0, 2.0));
+        let pointless = work(
+            Some(object_id(11)),
+            Some(ActionKind::Gather),
+            Point::new(-1.0, -1.0),
+        );
+        let before = work(
+            Some(object_id(12)),
+            Some(ActionKind::Gather),
+            Point::new(1.0, 2.0),
+        );
         let mut bell = TownBell {
             flag: false,
             work: pointless,
@@ -973,7 +1040,11 @@ mod tests {
             (None, before)
         );
         // one axis at −1 is a point
-        let half = work(11, Some(ActionKind::Gather), Point::new(-1.0, 3.0));
+        let half = work(
+            Some(object_id(11)),
+            Some(ActionKind::Gather),
+            Point::new(-1.0, 3.0),
+        );
         bell.work = half;
         assert_eq!(
             bell.back_to_work(&|id| Ok(object(id))).unwrap(),

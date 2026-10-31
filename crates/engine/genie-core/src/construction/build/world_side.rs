@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::construction::build::{Completion, Construction, StackUnit};
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -25,7 +26,7 @@ impl crate::world::World {
     pub(crate) fn storage_leaves(
         &mut self,
         owner: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
@@ -48,7 +49,7 @@ impl crate::world::World {
     pub(crate) fn completion_part(
         &mut self,
         owner: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(NOT_HELD)?;
@@ -90,7 +91,7 @@ impl crate::world::World {
     pub(crate) fn construction_starts(
         &mut self,
         owner: PlayerId,
-        id: i32,
+        id: ObjectId,
     ) -> Result<(), GenieError> {
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
@@ -157,7 +158,7 @@ impl crate::world::World {
     /// # Errors
     ///
     /// What the starts and the completion do not model.
-    pub(crate) fn work_building(&mut self, id: i32, amount: f32) -> Result<bool, GenieError> {
+    pub(crate) fn work_building(&mut self, id: ObjectId, amount: f32) -> Result<bool, GenieError> {
         let mut at = id;
         loop {
             for annex in self.spatial.annexes_of(at) {
@@ -221,7 +222,7 @@ impl crate::world::World {
     pub(crate) fn stack_unit(
         &mut self,
         p: PlayerId,
-        building: i32,
+        building: ObjectId,
         stack: StackUnit,
     ) -> Result<(), GenieError> {
         let (_, old) = self.object(building).ok_or(NOT_HELD)?;
@@ -263,7 +264,11 @@ impl crate::world::World {
             // a gather point on the old building names the new one; one whose target the world
             // no longer holds keeps its point, none at x or y −1 (compared as floats)
             point = gather.map(|g| {
-                let target = if g.target == building { new } else { g.target };
+                let target = if g.target == Some(building) {
+                    Some(new)
+                } else {
+                    g.target
+                };
                 match self.object(target) {
                     Some((_, t)) => Some(crate::commands::GatherPoint {
                         state: 1,
@@ -275,7 +280,7 @@ impl crate::world::World {
                         crate::commands::GatherPoint {
                             state: 1,
                             point: Position::new(g.point.x(), g.point.y(), 0.0),
-                            target: -1,
+                            target: None,
                             target_master: None,
                         },
                     ),
@@ -325,7 +330,7 @@ impl crate::world::World {
         master: MasterId,
         at: Position,
         flagged: bool,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let Some(made) = player_master(&self.masters, p, master).cloned() else {
             return Ok(None);
         };
@@ -340,7 +345,7 @@ impl crate::world::World {
             if made.auto_gather {
                 self.made_new_object(p)?;
             }
-            return Ok(Some(id.get()));
+            return Ok(Some(id));
         }
         // a plain object (types 10 and 20 to 39: a pasture's livestock): the master's slot 0x40
         // there, facing its drawn angle
@@ -359,7 +364,7 @@ impl crate::world::World {
             if made.auto_gather {
                 self.made_new_object(p)?;
             }
-            return Ok(Some(id.get()));
+            return Ok(Some(id));
         }
         let ai = Ok(made.unit_ai_type(master));
         let (id, _) = self.make_building(p, master, ai, at)?;
@@ -368,7 +373,7 @@ impl crate::world::World {
             let _ = self.work_building(id, STACK_WORK)?;
         }
         if made.auto_gather {
-            if self.players.player(p)?.objects.last().map(|u| u.id.get()) != Some(id) {
+            if self.players.player(p)?.objects.last().map(|u| u.id) != Some(id) {
                 return Err(GenieError::unsupported(
                     "an auto-gathered new building with annexes (its visible resources)",
                 ));

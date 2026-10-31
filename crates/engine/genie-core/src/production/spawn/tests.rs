@@ -11,7 +11,9 @@ use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
+use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
@@ -69,12 +71,12 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
     let g = GatherPoint {
         state: 1,
         point: Position::new(21.0, 21.0, 0.0),
-        target: 5,
+        target: Some(object_id(5)),
         target_master: Some(master_id(349)),
     };
     assert_eq!(
         t.lost_gather_target(PlayerId::new(1), 0, g).unwrap(),
-        Some(10)
+        Some(object_id(10))
     );
     // 7 tiles from the closest tree's footprint, beyond the villager's sight of 4
     let far = GatherPoint {
@@ -201,7 +203,7 @@ fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
 
 fn sheep(state: u8) -> Near {
     Near {
-        id: 9520,
+        id: object_id(9520),
         position: Position::new(106.68481, 47.14652, 0.0),
         radius: Footprint::new(0.35, 0.35),
         tall: true,
@@ -280,7 +282,7 @@ impl PlaceMap for Fogged {
 #[test]
 fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
     let house = Near {
-        id: 500,
+        id: object_id(500),
         position: Position::new(20.5, 20.5, 0.0),
         radius: Footprint::new(1.0, 1.0),
         kind: master_type::BUILDING,
@@ -402,7 +404,7 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
     };
     // a sheep that stays (state 2) and a soldier that does not, on the same tile
     let soldier = Near {
-        id: 9521,
+        id: object_id(9521),
         class: class::CLASS_6,
         master: master_id(4),
         ..sheep(2)
@@ -449,7 +451,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
             ai_type: UnitAiType::PREDATOR,
             current_order: None,
             current_action: None,
-            current_target: -1,
+            current_target: None,
             ..UnitAi::default()
         });
         t
@@ -474,10 +476,10 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     // the centre's command queue goes to the new unit
     let mut t = world();
     let order = crate::unit_ai::QueuedOrder {
-        issuer: 1,
+        issuer: Some(Issuer::Player(player_id(1))),
         order: OrderKind::Move,
         priority: 5,
-        target: -1,
+        target: None,
         target_owner: -1,
         point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
@@ -556,13 +558,13 @@ fn only_a_gather_point_of_state_1_sends_the_new_unit() {
             ai_type: UnitAiType::PREDATOR,
             current_order: None,
             current_action: None,
-            current_target: -1,
+            current_target: None,
             ..UnitAi::default()
         });
         p.objects[2].gather_point = Some(GatherPoint {
             state,
             point: Position::new(40.0, 80.0, 0.0),
-            target: -1,
+            target: None,
             target_master: None,
         });
         t.spawn(PlayerId::new(1), 2, ids::VILLAGER_MALE, 1.0)
@@ -690,10 +692,10 @@ fn a_second_pass_between_walled_corners_tries_the_bottom_right_corner() {
 /// A queued move of the centre's, which a new unit's notified walk forgets.
 fn queued_move() -> crate::unit_ai::QueuedOrder {
     crate::unit_ai::QueuedOrder {
-        issuer: 1,
+        issuer: Some(Issuer::Player(player_id(1))),
         order: OrderKind::Move,
         priority: 5,
-        target: -1,
+        target: None,
         target_owner: -1,
         point: Position::new(40.0, 80.0, 7.0),
         range: 2.0,
@@ -729,7 +731,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Move), Some(ActionKind::Move), -1)
+        (Some(OrderKind::Move), Some(ActionKind::Move), None)
     );
     assert_eq!(ai.target_point, Position::new(40.0, 80.0, 0.0));
     assert_eq!(ai.orders, []);
@@ -1201,7 +1203,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
     let site = house_site(&[1.0], true);
     let flat = Flat(Vec::new());
     let house = Near {
-        id: 500,
+        id: object_id(500),
         position: Position::new(20.5, 20.5, 0.0),
         radius: Footprint::new(1.0, 1.0),
         kind: master_type::BUILDING,
@@ -1276,7 +1278,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
 #[test]
 fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
     let house = Near {
-        id: 600,
+        id: object_id(600),
         position: Position::new(21.5, 21.5, 0.0),
         radius: Footprint::new(1.0, 1.0),
         kind: master_type::BUILDING,
@@ -1301,7 +1303,7 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
     assert_eq!(
         test(
             &BuildSite {
-                own: &[600],
+                own: &[object_id(600)],
                 ..scans
             },
             house

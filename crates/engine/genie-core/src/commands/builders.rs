@@ -45,7 +45,7 @@ impl World {
     pub(crate) fn task_builders(
         &mut self,
         player: PlayerId,
-        foundation: i32,
+        foundation: ObjectId,
         master: MasterId,
         position: Position,
         builders: &[Option<ObjectId>],
@@ -86,7 +86,7 @@ impl World {
         &mut self,
         (q, idx): (PlayerId, usize),
         (id, kind): (ObjectId, MasterKind),
-        (site, position): ((PlayerId, i32, MasterId), Position),
+        (site, position): ((PlayerId, ObjectId, MasterId), Position),
         (to_queue, commits): (bool, bool),
     ) -> Result<(), GenieError> {
         let (player, foundation, _) = site;
@@ -101,7 +101,7 @@ impl World {
             // another player's unit: slot 0x128's slot 0x7e8 finds whatever task it has on
             // the foundation (a Build on an ally's), the work command's general path
             let work = crate::orders::Work {
-                target: foundation,
+                target: Some(foundation),
                 point: Position::new(position.x(), position.y(), 0.0),
                 carry_test: false,
                 filter: -1,
@@ -119,7 +119,7 @@ impl World {
     fn queue_builder(
         &mut self,
         (q, idx): (PlayerId, usize),
-        site: (PlayerId, i32, MasterId),
+        site: (PlayerId, ObjectId, MasterId),
         position: Position,
         commits: bool,
     ) -> Result<(), GenieError> {
@@ -159,7 +159,7 @@ impl World {
         &self,
         q: PlayerId,
         id: ObjectId,
-        (fp, foundation, master): (PlayerId, i32, MasterId),
+        (fp, foundation, master): (PlayerId, ObjectId, MasterId),
         position: Position,
     ) -> Result<(MasterId, BuildAction), GenieError> {
         let masters = self.masters.get(q.index()).ok_or(GenieError::unsupported(
@@ -177,7 +177,7 @@ impl World {
             hp: 1.0,
             max_hp: f32::from(site.hit_points),
             attackable: true,
-            pasture: -1,
+            pasture: None,
             top_action: None,
         };
         let world = TaskWorld {
@@ -198,7 +198,7 @@ impl World {
             ));
         }
         let actor = Actor {
-            id: id.raw(),
+            id,
             master: unit.master_in(Some(masters))?,
             player: q,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -229,7 +229,7 @@ impl World {
         }
         let builder = masters.get(with).ok_or(NO_WORK_MASTER)?;
         let to = WalkTo {
-            id: foundation,
+            id: Some(foundation),
             at: position,
             gap: footprint_gap(unit.position(), builder.radius, position, site.radius),
             state: self.object_state(foundation),
@@ -250,7 +250,7 @@ impl World {
         &mut self,
         q: PlayerId,
         idx: usize,
-        (fp, foundation, master): (PlayerId, i32, MasterId),
+        (fp, foundation, master): (PlayerId, ObjectId, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
         let unit = self.players.live_mut(q, idx)?;
@@ -259,10 +259,10 @@ impl World {
         }
         let state = unit.life.state;
         let order = crate::unit_ai::QueuedOrder {
-            issuer: q.index() as i32,
+            issuer: Some(crate::unit_ai::Issuer::Player(q)),
             order: OrderKind::Build,
             priority: 100,
-            target: foundation,
+            target: Some(foundation),
             target_owner: fp.index() as i32,
             point: Position::new(position.x(), position.y(), 0.0),
             range: 0.0,
@@ -287,7 +287,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         (with, build): (MasterId, BuildAction),
-        (fp, foundation, master): (PlayerId, i32, MasterId),
+        (fp, foundation, master): (PlayerId, ObjectId, MasterId),
         position: Position,
     ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master(fp, master)?.class.get());
@@ -370,7 +370,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        foundation: i32,
+        foundation: ObjectId,
     ) -> Result<bool, GenieError> {
         if self.object(foundation).is_none() {
             return Ok(false);
@@ -382,7 +382,7 @@ impl World {
         let gone = FOUNDATION_GONE;
         let (fp, f) = self.object(foundation).ok_or_else(|| gone.clone())?;
         let (site, f_at) = (f.master(&self.masters, fp)?, f.position());
-        let find = |id: i32| self.object(id);
+        let find = |id: ObjectId| self.object(id);
         let t =
             task_target_with(foundation, 1, &find, &self.masters)?.ok_or_else(|| gone.clone())?;
         let general =
@@ -398,7 +398,7 @@ impl World {
         let owner = world.players.player(player)?;
         let unit = &owner.objects[idx];
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: unit.master_in(Some(masters))?,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -415,7 +415,7 @@ impl World {
         };
         let builder = switch.unwrap_or(actor.master);
         let to = WalkTo {
-            id: foundation,
+            id: Some(foundation),
             at: f_at,
             gap: footprint_gap(unit.position(), builder.radius, f_at, site.radius),
             state: Some(f.life.state),

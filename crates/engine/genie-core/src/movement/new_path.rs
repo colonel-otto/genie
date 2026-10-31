@@ -3,12 +3,13 @@
 
 use crate::map::Point;
 use crate::map::Rect;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::movement::{
     AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, ReachAsk,
     SHORT_PATHER, SPLIT, STUCK_PAUSE, ShortAsk, TileAsk, Walker, footprint_gap_squared,
     owner_number, short_path_including, split, tile_plan_for,
 };
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::HullPather;
@@ -146,14 +147,13 @@ impl Mover {
         me: &Me,
         world: &Spatial,
         plan: &mut Planning<'_>,
-        target: Option<&Placed>,
-        target_id: i32,
+        target: Option<(ObjectId, &Placed)>,
         line: (Point, Point),
-    ) -> Result<Vec<i32>, GenieError> {
+    ) -> Result<Vec<ObjectId>, GenieError> {
         let now = plan.now;
         let mut list = vec![me.id];
-        if target.is_some() {
-            list.push(target_id);
+        if let Some((id, _)) = target {
+            list.push(id);
         }
         // the unit's own list but itself, when the walked level's top path (`FUN_140f960f0`: a
         // level holding a path) was made this update; before the drop-off workers
@@ -166,7 +166,7 @@ impl Mover {
         }
         // the query runs for a unit that does not move (slot 0x5c8); a hit counts only with a
         // target and the unit's action in state 8
-        if let Some(t) = target
+        if let Some((target_id, t)) = target
             && !self.is_moving()
             && me.action_state == 8
         {
@@ -177,7 +177,7 @@ impl Mover {
             world.check_known_records(rect.grown(grow))?;
             let owner = world.get(me.id).map(|p| p.player);
             let r = self.stats.radius.x();
-            let skip = [me.id, target_id];
+            let skip = [RecordId::from(me.id), RecordId::from(target_id)];
             for id in world.obstruction_candidates(rect, grow, &skip) {
                 let Some(p) = world.get(id) else { continue };
                 let gait = world.gait(id);
@@ -292,7 +292,7 @@ impl Mover {
     }
 
     /// What the planners read of this unit ([`Walker`]).
-    pub(crate) const fn walker(&self, id: i32) -> Walker {
+    pub(crate) const fn walker(&self, id: ObjectId) -> Walker {
         Walker {
             id,
             radius: self.stats.radius.x(),
@@ -319,8 +319,8 @@ impl Mover {
         let level_target = self
             .paths
             .first()
-            .map(|l| l.target)
-            .filter(|&t| t != -1 && world.get(t).is_some());
+            .and_then(|l| l.target)
+            .filter(|&t| world.get(t).is_some());
         // from +0x824, the motion step's `local_18c8`
         tile_plan_for(
             self.walker(me.id),
@@ -362,7 +362,7 @@ impl Mover {
         me: &Me,
         world: &mut Spatial,
         plan: &mut Planning<'_>,
-        target: i32,
+        target: ObjectId,
         range: f32,
         master: MasterId,
     ) -> Result<bool, GenieError> {
@@ -389,7 +389,7 @@ impl Mover {
         &self,
         me: &Me,
         world: &mut Spatial,
-        target: i32,
+        target: ObjectId,
         range: f32,
     ) -> Result<Option<f32>, GenieError> {
         let Some(t) = world.get_known(target)? else {
@@ -397,8 +397,8 @@ impl Mover {
         };
         let to = t.position.ground();
         let mask = self.stats.restriction_mask;
-        let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius.x());
-        let (result, path) = pather.find(self.position().ground(), to, target, range)?;
+        let mut pather = HullPather::new(world, me.id, Some(target), mask, self.stats.radius.x());
+        let (result, path) = pather.find(self.position().ground(), to, Some(target), range)?;
         // the slot removes the manager's temporary tile records after (FUN_1410561f0)
         world.clear_tile_records();
         Ok((result < 2).then(|| path.length()))

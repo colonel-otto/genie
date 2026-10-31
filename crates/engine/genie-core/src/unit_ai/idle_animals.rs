@@ -213,7 +213,7 @@ impl UnitAi {
             memory: Memory::default(),
         })?;
         self.alert(found, at.dt_seconds);
-        if found.id != -1 {
+        if found.id.is_some() {
             let other = found
                 .position
                 .ok_or(GenieError::unsupported("a found object without its place"))?;
@@ -304,23 +304,24 @@ impl UnitAi {
         // each search that queries sets the alert mode (`FUN_140c63e20`)
         let mut found = side.closest(&search(4))?;
         self.alert(found, at.dt_seconds);
-        if found.id < 0 {
+        // none or a negative id (`JL`)
+        if found.id.is_none_or(|id| id.get() < 0) {
             found = side.closest(&search(-1))?;
             self.alert(found, at.dt_seconds);
             if !at.mode_1 {
                 reach = at.los / LION_SIGHT_DIVISOR;
             }
         }
-        if found.id == -1 {
+        let Some(id) = found.id else {
             return Ok(false);
-        }
-        let Some(t) = side.seen_unit(found.id)? else {
+        };
+        let Some(t) = side.seen_unit(id)? else {
             return Ok(false);
         };
         if 0.0 <= reach && reach * reach < t.gap_squared {
             return Ok(false);
         }
-        let _ = self.attack_object(found.id, false, false, at, side)?;
+        let _ = self.attack_object(id, false, false, at, side)?;
         Ok(true)
     }
 }

@@ -1,6 +1,7 @@
 //! Player 2 of the tier-1 recording MarvinBlue/426048731 against its first checkpoint.
 
 use genie_core::map::Position;
+use genie_core::objects::ObjectId;
 use genie_core::world::checkpoint::{ObjectState, PlayerState, player_block};
 
 const FIXTURE: &str = include_str!("fixtures/marvinblue-426048731-p2-checkpoint1.txt");
@@ -23,7 +24,7 @@ fn load() -> (PlayerState, [Option<u32>; 11]) {
                 player.sleeping_count = v[5].parse().unwrap();
             }
             "object" => player.live.push(ObjectState {
-                id: v[0].parse().unwrap(),
+                id: ObjectId::try_from(v[0].parse::<i32>().unwrap()).unwrap(),
                 main_id: v[1].parse().unwrap(),
                 state: v[2].parse().unwrap(),
                 amount_held: num(3),

@@ -83,7 +83,7 @@ impl Formation {
             return;
         }
         let fresh = Slot {
-            unit_id: -1,
+            unit_id: None,
             desired_category: -1,
             desired_sub_category: -1,
             ..Slot::default()
@@ -108,7 +108,7 @@ impl Formation {
     /// mark.
     pub fn clear_units(&mut self) {
         for s in self.every_slot_mut() {
-            s.unit_id = -1;
+            s.unit_id = None;
             s.position_filled = 0;
         }
     }

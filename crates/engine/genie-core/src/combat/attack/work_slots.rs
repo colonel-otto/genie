@@ -22,7 +22,7 @@ use crate::{GenieError, combat::damage};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mark {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master's type (80 a building).
     pub kind: MasterKind,
     /// Its master's class.
@@ -56,9 +56,9 @@ pub struct Worked {
     /// Slot 0x68 took another target: the unit's attack count (`+0x900`) clears.
     pub clears_count: bool,
     /// The old target, whose slot 0x180 lets the unit go when the world still holds it.
-    pub lets_go: Option<i32>,
+    pub lets_go: Option<ObjectId>,
     /// The new target, whose slot 0x178 takes the unit with the action's type (9).
-    pub takes: Option<i32>,
+    pub takes: Option<ObjectId>,
 }
 
 impl Attack {
@@ -142,10 +142,8 @@ impl Attack {
     /// states 4 to 7 or 11 keeps it as it is. The rest of the slot (the main building of an area
     /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
     /// needs the unit's and the target's values.
-    pub const fn keeps(&self, target: i32) -> Result<bool, GenieError> {
-        if target == ObjectId::field(self.target)
-            && (matches!(self.state, 4..=7) || self.state == 11)
-        {
+    pub fn keeps(&self, target: Option<ObjectId>) -> Result<bool, GenieError> {
+        if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
             return Ok(true);
         }
         Err(GenieError::unsupported(
@@ -168,7 +166,7 @@ impl Attack {
         target: Option<Mark>,
         main: Option<Mark>,
         unit: &Wielder,
-        can_move: impl FnOnce(i32) -> bool,
+        can_move: impl FnOnce(ObjectId) -> bool,
     ) -> Worked {
         let Some(mut target) = target else {
             return Worked::default();
@@ -179,9 +177,7 @@ impl Attack {
         {
             target = m;
         }
-        if target.id == ObjectId::field(self.target)
-            && (matches!(self.state, 4..=7) || self.state == 11)
-        {
+        if Some(target.id) == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
             return Worked {
                 kept: true,
                 ..Worked::default()
@@ -211,20 +207,20 @@ impl Attack {
         if target.is_some_and(|t| t.class == CLASS_60) {
             return worked;
         }
-        let new = target.map_or(-1, |t| t.id);
-        if new != ObjectId::field(self.target) {
+        let new = target.map(|t| t.id);
+        if new != self.target {
             worked.clears_count = true;
         }
-        if self.target.is_some() && self.target != ObjectId::of_field(new) && !self.sub_action {
-            worked.lets_go = Some(ObjectId::field(self.target));
+        if self.target.is_some() && self.target != new && !self.sub_action {
+            worked.lets_go = self.target;
         }
-        if self.target != ObjectId::of_field(new) {
+        if self.target != new {
             self.target = match target {
                 Some(t) if t.state < 7 => {
                     if !self.sub_action {
                         worked.takes = Some(t.id);
                     }
-                    ObjectId::of_field(t.id)
+                    Some(t.id)
                 }
                 _ => None,
             };

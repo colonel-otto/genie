@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::spatial::{
-    Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
+    Gait, Placed, QUERY_HITS, RecordId, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
 use crate::map::{Rect, Segment};
 use crate::objects::{ObjectId, ObjectKey};
@@ -27,12 +27,12 @@ pub struct WalkQuery<'a> {
     /// The walker's player.
     pub player: Option<PlayerId>,
     /// The objects the query ignores.
-    pub ignore: &'a [i32],
+    pub ignore: &'a [RecordId],
 }
 
 impl Spatial {
     /// Each obstruction record: the object's id, the record's kind and box.
-    pub fn records(&self) -> impl Iterator<Item = (i32, u8, Rect)> + '_ {
+    pub fn records(&self) -> impl Iterator<Item = (ObjectId, u8, Rect)> + '_ {
         self.objects
             .iter()
             .filter_map(|(&id, p)| Some((id, p.obstruction?.kind, p.bounds())))
@@ -40,7 +40,7 @@ impl Spatial {
 
     /// Each obstruction record's grid cell ([`Spatial::filed`]): the object's id, the level and
     /// the cell's x and y.
-    pub fn record_cells(&self) -> impl Iterator<Item = (i32, (i32, i32, i32))> + '_ {
+    pub fn record_cells(&self) -> impl Iterator<Item = (ObjectId, (i32, i32, i32))> + '_ {
         self.objects
             .iter()
             .filter_map(|(&id, p)| Some((id, self.filed(p, p.obstruction?.kind))))
@@ -100,7 +100,7 @@ impl Spatial {
     /// radii or record runs it.
     ///
     /// [`RecordCells`]: crate::map::spatial::RecordCells
-    pub(super) fn refile(&mut self, id: i32) {
+    pub(super) fn refile(&mut self, id: ObjectId) {
         let cell = self
             .objects
             .get(&id)
@@ -134,7 +134,7 @@ impl Spatial {
     /// each level ([`RecordCells`]) instead of tested one by one.
     ///
     /// [`RecordCells`]: crate::map::spatial::RecordCells
-    pub(super) fn visited_records(&self, rect: Rect) -> Vec<i32> {
+    pub(super) fn visited_records(&self, rect: Rect) -> Vec<ObjectId> {
         let mut ids = Vec::new();
         for level in -1..self.grid.levels {
             let [x0, y0, x1, y1] = self.visited_cells(level, rect);
@@ -164,7 +164,7 @@ impl Spatial {
     }
 
     /// [`Spatial::visited_records`] with each object's place.
-    pub(super) fn records_in(&self, rect: Rect) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+    pub(super) fn records_in(&self, rect: Rect) -> impl Iterator<Item = (ObjectId, &Placed)> + '_ {
         self.visited_records(rect)
             .into_iter()
             .filter_map(|id| self.objects.get(&id).map(|p| (id, p)))
@@ -192,7 +192,7 @@ impl Spatial {
 
     /// What the walk reads of a moving object now, None for one without movement state.
     pub fn set_gait(&mut self, id: impl ObjectKey, gait: Option<Gait>) {
-        let Some(id) = id.key().map(ObjectId::get) else {
+        let Some(id) = id.key() else {
             return;
         };
         match gait {
@@ -208,7 +208,7 @@ impl Spatial {
     /// The walk's view of the moving object `id`'s last human order time (`+0x650`) as the field
     /// changes; nothing for an object without one.
     pub fn set_human_order(&mut self, id: impl ObjectKey, human_order: u32) {
-        let Some(id) = id.key().map(ObjectId::get) else {
+        let Some(id) = id.key() else {
             return;
         };
         if let Some(g) = self.gaits.get_mut(&id) {
@@ -221,7 +221,7 @@ impl Spatial {
     /// locks): a later walker of the same update reads it at once; nothing for an object without
     /// movement state.
     pub fn set_last_move(&mut self, id: impl ObjectKey, last_move: u32) {
-        let Some(id) = id.key().map(ObjectId::get) else {
+        let Some(id) = id.key() else {
             return;
         };
         if let Some(g) = self.gaits.get_mut(&id) {
@@ -231,12 +231,12 @@ impl Spatial {
 
     /// What the walk reads of the moving object `id`.
     #[must_use]
-    pub fn gait(&self, id: i32) -> Option<Gait> {
-        self.gaits.get(&id).copied()
+    pub fn gait(&self, id: impl ObjectKey) -> Option<Gait> {
+        self.gaits.get(&id.key()?).copied()
     }
 
     /// An annex's main building, or none.
-    pub fn set_annex(&mut self, id: i32, main: Option<i32>) {
+    pub fn set_annex(&mut self, id: ObjectId, main: Option<ObjectId>) {
         match main {
             Some(m) => {
                 let _ = self.annexes.insert(id, m);
@@ -250,18 +250,18 @@ impl Spatial {
     /// The obstruction query's ignore list for `ids` (−1 for none), as `FUN_14114e8a0` adds each
     /// object: its id, then a building's annexes (`+0xbc0`..`+0xbd8`, in id order).
     #[must_use]
-    pub fn query_ignore(&self, ids: &[i32]) -> Vec<i32> {
+    pub fn query_ignore(&self, ids: &[Option<ObjectId>]) -> Vec<RecordId> {
         let mut ignore = Vec::new();
-        for &id in ids.iter().filter(|&&id| id != -1) {
-            ignore.push(id);
-            ignore.extend(self.annexes_of(id));
+        for &id in ids.iter().flatten() {
+            ignore.push(RecordId::from(id));
+            ignore.extend(self.annexes_of(id).into_iter().map(RecordId::from));
         }
         ignore
     }
 
     /// The annexes of the building `main`, in id order.
     #[must_use]
-    pub fn annexes_of(&self, main: i32) -> Vec<i32> {
+    pub fn annexes_of(&self, main: ObjectId) -> Vec<ObjectId> {
         self.annexes
             .iter()
             .filter(|&(_, &m)| m == main)
@@ -271,8 +271,8 @@ impl Spatial {
 
     /// The main building of the annex `id`, if it is one.
     #[must_use]
-    pub fn annex_of(&self, id: i32) -> Option<i32> {
-        self.annexes.get(&id).copied()
+    pub fn annex_of(&self, id: impl ObjectKey) -> Option<ObjectId> {
+        self.annexes.get(&id.key()?).copied()
     }
 
     /// `FUN_141663dc0` with the ally flag ([`Spatial::allied`]), for the walk's avoidance.
@@ -308,7 +308,7 @@ impl Spatial {
 
     /// `FUN_1410562e0` on the obstruction manager: its ignore list becomes `ids` (none for an
     /// empty list), until the next call.
-    pub fn set_manager_ignore(&mut self, ids: &[i32]) {
+    pub fn set_manager_ignore(&mut self, ids: &[RecordId]) {
         self.manager_ignore.clear();
         self.manager_ignore.extend_from_slice(ids);
     }
@@ -316,7 +316,7 @@ impl Spatial {
     /// The obstruction manager's ignore list as the last `FUN_1410562e0` left it
     /// ([`Spatial::set_manager_ignore`]).
     #[must_use]
-    pub fn manager_ignore(&self) -> Vec<i32> {
+    pub fn manager_ignore(&self) -> Vec<RecordId> {
         self.manager_ignore.clone()
     }
 
@@ -354,7 +354,7 @@ impl Spatial {
     /// records first ([`Spatial::edge_records`], `FUN_141057290`). Both its callers
     /// (`FUN_14114cc60`, the gate's `FUN_1411d0570`) set the manager's ignore list to `ignore`
     /// first ([`Spatial::set_manager_ignore`]).
-    pub fn walk_hits(&mut self, walk: WalkQuery<'_>) -> Result<Vec<i32>, GenieError> {
+    pub fn walk_hits(&mut self, walk: WalkQuery<'_>) -> Result<Vec<RecordId>, GenieError> {
         let WalkQuery {
             start: from,
             end: to,
@@ -370,7 +370,7 @@ impl Spatial {
         let walk = Segment { from, to };
         let query = rect.grown(grow);
         // a query beyond the map's edge meets the edge's records first (FUN_141057290)
-        let mut hits: Vec<i32> = if query.leaves_map(self.map) {
+        let mut hits: Vec<RecordId> = if query.leaves_map(self.map) {
             self.edge_records(query, QUERY_HITS)
                 .iter()
                 .map(|e| e.id)
@@ -392,7 +392,9 @@ impl Spatial {
                 continue;
             }
             let kind = if o.kind == 10 { 2 } else { o.kind };
-            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
+            if !TESTED_KINDS.contains(&kind)
+                || ignore.contains(&RecordId::from(id))
+                || !self.visits(p, kind, query)
             {
                 continue;
             }
@@ -408,7 +410,7 @@ impl Spatial {
             };
             let b = p.bounds();
             if rect.overlaps(b.grown(g)) && record_meets_segment(kind, b, g, walk) {
-                hits.push(id);
+                hits.push(RecordId::from(id));
             }
         }
         Ok(hits)
@@ -429,8 +431,8 @@ impl Spatial {
         to: Point,
         grow: f32,
         mask: Option<u8>,
-        ignore: &[i32],
-    ) -> Result<Vec<i32>, GenieError> {
+        ignore: &[RecordId],
+    ) -> Result<Vec<RecordId>, GenieError> {
         self.set_manager_ignore(ignore);
         if let Some(mask) = mask {
             self.put_tile_records(from, to, grow, mask);
@@ -463,12 +465,12 @@ impl Spatial {
         to: Point,
         grow: f32,
         tiles: bool,
-        ignore: &[i32],
-    ) -> Result<Vec<i32>, GenieError> {
+        ignore: &[RecordId],
+    ) -> Result<Vec<RecordId>, GenieError> {
         const MOST_HITS: usize = 25;
         let rect = Rect::spanning(from, to);
         let query = rect.grown(grow);
-        let mut hits: Vec<i32> = Vec::new();
+        let mut hits: Vec<RecordId> = Vec::new();
         if query.leaves_map(self.map) {
             hits.extend(self.edge_records(query, QUERY_HITS).iter().map(|e| e.id));
             if MOST_HITS <= hits.len() {
@@ -503,14 +505,16 @@ impl Spatial {
                 continue;
             };
             let kind = if o.kind == 10 { 2 } else { o.kind };
-            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
+            if !TESTED_KINDS.contains(&kind)
+                || ignore.contains(&RecordId::from(id))
+                || !self.visits(p, kind, query)
             {
                 continue;
             }
             if !meets(kind, p.bounds()) {
                 continue;
             }
-            hits.push(id);
+            hits.push(RecordId::from(id));
             if MOST_HITS <= hits.len() {
                 break;
             }

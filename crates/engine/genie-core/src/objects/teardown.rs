@@ -13,15 +13,15 @@ use crate::world::step::Step;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TornDown {
     /// The objects let go, in the order the destructors let them go.
-    pub(crate) releases: Vec<i32>,
+    pub(crate) releases: Vec<ObjectId>,
     /// The buildings whose builders or repairers count one less.
-    pub(crate) builder_leaves: Vec<i32>,
+    pub(crate) builder_leaves: Vec<ObjectId>,
 }
 
 impl TornDown {
     /// `target` let go, unless it is none (−1).
-    fn release(&mut self, target: i32) {
-        if target != -1 {
+    fn release(&mut self, target: Option<ObjectId>) {
+        if let Some(target) = target {
             self.releases.push(target);
         }
     }
@@ -74,8 +74,8 @@ impl Action {
             Self::WaitSolidify(_) | Self::Make(_) => {}
             Self::Artifact(mut a) => {
                 let (released, gone) = a.tear_down();
-                torn.release(released.unwrap_or(-1));
-                torn.release(gone.released.unwrap_or(-1));
+                torn.release(released);
+                torn.release(gone.released);
                 stop_if_moving(body, gone.stops)?;
             }
             Self::Fly(f) => {
@@ -88,16 +88,20 @@ impl Action {
             }
             Self::Transport(t) => stop_if_moving(body, t.move_to.is_some())?,
             Self::Build(b) => {
-                if b.added {
-                    torn.builder_leaves.push(b.target);
+                if b.added
+                    && let Some(target) = b.target
+                {
+                    torn.builder_leaves.push(target);
                 }
                 torn.release(b.target);
                 torn.release(b.site);
                 stop_if_moving(body, b.move_to.is_some())?;
             }
             Self::Repair(r) => {
-                if r.counted {
-                    torn.builder_leaves.push(r.target);
+                if r.counted
+                    && let Some(target) = r.target
+                {
+                    torn.builder_leaves.push(target);
                 }
                 torn.release(r.target);
                 stop_if_moving(body, r.move_to.is_some())?;
@@ -105,22 +109,22 @@ impl Action {
             Self::Explore(e) => stop_if_moving(body, e.move_to.is_some())?,
             Self::Hunt(mut h) => {
                 h.tear_down(body.mover_mut())?;
-                torn.release(ObjectId::field(h.target));
-                torn.release(ObjectId::field(h.carry_to));
+                torn.release(h.target);
+                torn.release(h.carry_to);
             }
             Self::Gather(mut g) => {
                 g.tear_down(body.mover_mut())?;
-                torn.release(ObjectId::field(g.target));
-                torn.release(ObjectId::field(g.carry_to));
+                torn.release(g.target);
+                torn.release(g.carry_to);
             }
             Self::Attack(mut a) => {
                 a.tear_down(body.mover_mut())?;
-                torn.release(ObjectId::field(a.target));
-                torn.release(ObjectId::field(a.target2));
+                torn.release(a.target);
+                torn.release(a.target2);
             }
             Self::MoveTo(m) => {
                 stop_if_moving(body, true)?;
-                torn.release(ObjectId::field(m.target));
+                torn.release(m.target);
             }
             Self::Missile(m) => {
                 torn.release(m.target);
@@ -217,6 +221,7 @@ mod tests {
     use crate::math::fmath::BVector;
     use crate::movement::move_to::MoveToAction;
     use crate::objects::masters::TaskId;
+    use crate::test_ids::object_id;
 
     /// A moving body, moving (its velocity and animation speed set).
     fn moving() -> Body {
@@ -240,7 +245,12 @@ mod tests {
             id: TaskId::of_task(-1),
             moving: None,
         };
-        crate::construction::build::tests::started(10028, Position::new(30.0, 88.0, 0.0), 0.0, task)
+        crate::construction::build::tests::started(
+            object_id(10028),
+            Position::new(30.0, 88.0, 0.0),
+            0.0,
+            task,
+        )
     }
 
     /// `RGE_Action_Object::update` deletes the head on codes 1 and 3 alone.
@@ -277,16 +287,16 @@ mod tests {
         assert_eq!(
             torn,
             TornDown {
-                releases: vec![10028],
-                builder_leaves: vec![10028],
+                releases: vec![object_id(10028)],
+                builder_leaves: vec![object_id(10028)],
             }
         );
         assert!(!moves(&body));
-        (b.added, b.move_to, b.site) = (false, None, 10050);
+        (b.added, b.move_to, b.site) = (false, None, Some(object_id(10050)));
         let torn = Action::Build(b).tear_down(&mut moving()).unwrap();
         assert_eq!(
             (torn.releases, torn.builder_leaves),
-            (vec![10028, 10050], vec![])
+            (vec![object_id(10028), object_id(10050)], vec![])
         );
     }
 
@@ -294,9 +304,9 @@ mod tests {
     #[test]
     fn a_build_s_second_target_is_its_drop_site() {
         let mut b = build();
-        assert_eq!(Action::Build(b).second_target(), -1);
-        b.site = 10050;
-        assert_eq!(Action::Build(b).second_target(), 10050);
+        assert_eq!(Action::Build(b).second_target(), None);
+        b.site = Some(object_id(10050));
+        assert_eq!(Action::Build(b).second_target(), Some(object_id(10050)));
     }
 
     /// A `MoveTo`'s destructor (`FUN_140aa1f30`) stops the unit and lets its target go; one
@@ -318,7 +328,7 @@ mod tests {
         let mut body = moving();
         let mut list = ActionList::default().with_build(Some(build()));
         let torn = list.delete_all(&mut body, 2).unwrap();
-        assert_eq!(torn.releases, [10028]);
+        assert_eq!(torn.releases, [object_id(10028)]);
         assert!(list.is_empty());
         assert_eq!(list.delete_head(&mut body, 2), Ok(TornDown::default()));
         let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), 0.0, None, body.mover_mut());

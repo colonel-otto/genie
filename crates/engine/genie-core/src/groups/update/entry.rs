@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
-use crate::objects::ObjectId;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -32,7 +32,7 @@ impl World {
             .map(|g| g.id)
             .collect();
         for id in ids {
-            let members: Vec<i32> = self
+            let members: Vec<ObjectId> = self
                 .groups
                 .get(id)
                 .map(|g| g.members.iter().map(|m| m.id).collect())
@@ -153,7 +153,7 @@ impl World {
                     u.ai.is_none() || u.life.hp < 1.0 || p.index() as u32 != owner
                 }
             };
-            if leaves && self.remove_unit(group, ObjectId::try_from(id)?, None, false)? {
+            if leaves && self.remove_unit(group, id, None, false)? {
                 if let Some((_, u)) = self.object_mut(id)
                     && let Some(mover) = u.body.mover_mut()
                 {
@@ -201,7 +201,8 @@ impl World {
     /// When the world does not hold `group`.
     pub(super) fn hibernation(&self, group: i32) -> Result<Option<bool>, GenieError> {
         let g = self.groups.held(group)?;
-        let (target, owner) = (g.current_target.target, g.owner_player()?);
+        // the readers look the target's integer up as an object, whatever its kind
+        let (target, owner) = (g.current_target.target.key(), g.owner_player()?);
         Ok(Some(match g.current_command {
             PICK_UP_RELIC | DELIVER_RELIC | ATTACK => !self.target_pending(group)?,
             REPAIR => !self.repair_waits(target, owner)?,
@@ -221,7 +222,11 @@ impl World {
     ///
     /// A ghost target, whose hit points (`+0x278`) the slice does not hold, and a target of a
     /// master the slice does not have.
-    pub(super) fn repair_waits(&self, target: i32, owner: PlayerId) -> Result<bool, GenieError> {
+    pub(super) fn repair_waits(
+        &self,
+        target: Option<ObjectId>,
+        owner: PlayerId,
+    ) -> Result<bool, GenieError> {
         let Some(object) = self.world_object(target) else {
             return Ok(false);
         };

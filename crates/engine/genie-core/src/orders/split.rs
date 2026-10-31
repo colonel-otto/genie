@@ -294,8 +294,7 @@ impl World {
         let target = if 1 < loose.len() && !self.players.player(player)?.computer {
             None
         } else {
-            self.world_object(target)
-                .and_then(|t| ObjectId::of_field(t.id()))
+            self.world_object(target).map(|t| t.id())
         };
         for &id in loose {
             self.leave_group_of(id, target)?;

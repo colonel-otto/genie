@@ -3,11 +3,13 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::NearestAttacker;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     AiMove, AttackAsk, DEFEND_LEASH, DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH,
@@ -41,7 +43,7 @@ impl UnitAi {
         if !class_20
             && self.adjusted_idle_timeout < self.idle_timer
             && self.current_action.is_none()
-            && (self.current_target == -1 || !busy)
+            && (self.current_target.is_none() || !busy)
             && group_lets_idle(group)
         {
             // slot 0x240 with 1; the idle part reads no result
@@ -116,14 +118,14 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        if self.current_target != -1
+        if self.current_target.is_some()
             && at.kind == BUILDING
             && !at.ranged
             && at.firepower <= SINGLE_VOLLEY
         {
             self.remove_target();
         }
-        if self.idle_timer <= self.adjusted_idle_timeout || self.current_target != -1 {
+        if self.idle_timer <= self.adjusted_idle_timeout || self.current_target.is_some() {
             return Ok(());
         }
         self.idle_timer = 0;
@@ -161,7 +163,8 @@ impl UnitAi {
             }
             return Ok(());
         }
-        if (self.current_action.is_some() || self.current_target != -1) && player != PlayerId::GAIA
+        if (self.current_action.is_some() || self.current_target.is_some())
+            && player != PlayerId::GAIA
         {
             self.idle_timer = 0;
         }
@@ -324,11 +327,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<u32, GenieError> {
-        let current = if self.current_target == -1 {
-            None
-        } else {
-            Self::world_object(self.current_target, at, side)?
-        };
+        let current = Self::world_object(self.current_target, at, side)?;
         let (from, distance, any_class, work_state) =
             current.map_or((at.position, 0.0, true, false), |t| {
                 (
@@ -361,11 +360,7 @@ impl UnitAi {
         self.add_retries(&found);
         self.attack_search_alert(found, computer)?;
         let keeps = search.building && computer && self.stance == 0;
-        let new = if found.id == -1 {
-            None
-        } else {
-            Self::world_object(found.id, at, side)?
-        };
+        let new = Self::world_object(found.id, at, side)?;
         if !keeps
             && self.current_order == Some(OrderKind::Attack)
             && let (Some(n), Some(c)) = (new, current)
@@ -379,9 +374,7 @@ impl UnitAi {
             return Ok(9);
         }
         let mut id = found.id;
-        if let Some(n) = new
-            && id != -1
-        {
+        if let Some(n) = new {
             if n.kind == BUILDING {
                 let farm_rule =
                     current.is_none_or(|c| c.class != class::FARM) || n.class == class::FARM;
@@ -392,12 +385,12 @@ impl UnitAi {
             if BUILDING <= n.kind
                 && let Some(main) = n.main
             {
-                id = main;
+                id = Some(main);
             }
         }
-        if id == -1 || id == self.current_target {
+        let Some(id) = id.filter(|&id| Some(id) != self.current_target) else {
             return Ok(9);
-        }
+        };
         let _ = self.attack_slot(id, false, at, side, rng)?;
         Ok(10)
     }
@@ -424,7 +417,7 @@ impl UnitAi {
             return Ok(None);
         }
         let mut search = false;
-        if self.current_target != -1 {
+        if self.current_target.is_some() {
             match target {
                 Some((PlayerId::GAIA, _)) => return Ok(None),
                 Some((_, class)) if searches_on_class(class) => {
@@ -471,7 +464,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
-        if self.current_order == Some(OrderKind::Attack) && self.current_target == -1 {
+        if self.current_order == Some(OrderKind::Attack) && self.current_target.is_none() {
             self.stop_current(false, at, side, rng)?;
         }
         Ok(())
@@ -504,9 +497,8 @@ impl UnitAi {
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        let target = self.defend_target;
         let mut defended = None;
-        if target != -1 {
+        if let Some(target) = self.defend_target {
             let held = Self::world_object(target, at, side)?.filter(|t| t.allied);
             let ends = match held {
                 None => true,
@@ -521,17 +513,17 @@ impl UnitAi {
                 }
             };
             if ends {
-                self.defend_target = -1;
+                self.defend_target = None;
                 self.remove_target();
                 self.stop_current(true, at, side, ai)?;
                 self.leave_patrol_timers(ai);
                 self.current_order = None;
                 return Ok(true);
             }
-            defended = held;
+            defended = held.map(|t| (target, t));
         }
         let toward_it = self.current_action == Some(ActionKind::Move)
-            && Self::top_target_live(at, side)?.map_or(-1, |t| t.id) == self.defend_target;
+            && Self::top_target_live(at, side)?.map(|t| t.id) == self.defend_target;
         if matches!(
             self.current_action,
             Some(ActionKind::Attack | ActionKind::MoveAside)
@@ -539,7 +531,7 @@ impl UnitAi {
         {
             return Ok(false);
         }
-        let gap = if let Some(t) = defended {
+        let gap = if let Some((_, t)) = defended {
             self.target_point = t.position;
             t.gap_squared
         } else {
@@ -547,7 +539,7 @@ impl UnitAi {
         };
         let reach = self.desired_distance + DEFEND_SLACK;
         if reach * reach < gap {
-            if let Some(t) = defended {
+            if let Some((target, t)) = defended {
                 let range = self.desired_distance;
                 self.move_to_object(target, (t.state, t.class, t.position), range, side, ai)?;
             } else {
@@ -563,14 +555,15 @@ impl UnitAi {
             }
             return Ok(true);
         }
-        if defended.is_some()
-            && let Some(attacker) = side.defended_attacker(target)?
-        {
-            if attacker != -1 {
-                let _ = self.attack_slot(attacker, true, at, side, ai)?;
-                return Ok(true);
+        if let Some((target, _)) = defended {
+            match side.defended_attacker(target)? {
+                NearestAttacker::Attacker(attacker) => {
+                    let _ = self.attack_slot(attacker, true, at, side, ai)?;
+                    return Ok(true);
+                }
+                NearestAttacker::NoAttacker => return self.process_idle(at, computer, ai, side),
+                NearestAttacker::NoUnitAi => {}
             }
-            return self.process_idle(at, computer, ai, side);
         }
         Ok(false)
     }
@@ -590,15 +583,16 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
-        let target = match at.target {
-            Some(t) if t.state <= 2 && t.visible => t,
-            _ => {
-                self.defend_target = -1;
-                self.remove_target();
-                self.stop_current(true, at, side, rng)?;
-                self.current_order = None;
-                return Ok(true);
-            }
+        // the world holds the current target (`at.target`) only when the AI has one
+        let (Some(id), Some(target)) = (
+            self.current_target,
+            at.target.filter(|t| t.state <= 2 && t.visible),
+        ) else {
+            self.defend_target = None;
+            self.remove_target();
+            self.stop_current(true, at, side, rng)?;
+            self.current_order = None;
+            return Ok(true);
         };
         if matches!(
             self.current_action,
@@ -626,7 +620,7 @@ impl UnitAi {
         let range = self.desired_distance;
         if range * range < gap {
             let held = (target.state, target.class, target.position);
-            self.move_to_object(self.current_target, held, range, side, rng)?;
+            self.move_to_object(id, held, range, side, rng)?;
             return Ok(true);
         }
         Ok(false)
@@ -640,7 +634,7 @@ impl UnitAi {
     /// (`FUN_141086440`) answers 0 for such a target, and the routine then changes nothing.
     pub(super) fn move_to_object(
         &mut self,
-        id: i32,
+        id: ObjectId,
         (state, class, position): (u8, ClassId, Position),
         range: f32,
         side: &mut dyn UnitSide,
@@ -656,7 +650,7 @@ impl UnitAi {
             rng,
         )?;
         self.set_action(Some(ActionKind::Move));
-        self.target_at(id, Some(i32::from(class.get())), position);
+        self.target_at(Some(id), Some(i32::from(class.get())), position);
         Ok(())
     }
 
@@ -670,7 +664,7 @@ impl UnitAi {
 
     /// The boar's end of its full update: without a target it is no longer furious.
     pub(super) fn calm_down(&mut self) {
-        let calm = self.current_target == -1;
+        let calm = self.current_target.is_none();
         if let Some(home) = self.home.as_mut().filter(|_| calm) {
             home.furious = false;
         }

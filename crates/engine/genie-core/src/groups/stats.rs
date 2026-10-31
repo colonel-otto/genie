@@ -7,10 +7,10 @@ use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
 use crate::math::fmath::BVector;
-use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::ACTION;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::unit_ai::ActionKind;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -34,7 +34,7 @@ type MemberViews = Vec<(usize, MemberView)>;
 
 /// What the statistics read of one member.
 struct MemberView {
-    id: i32,
+    id: ObjectId,
     unit: FormationUnit,
     /// Slot 0x520's vector (x, height, y): where the unit last moved to.
     at: BVector,
@@ -128,7 +128,8 @@ impl World {
         }
         let old_plan = g.attack_plan_type;
         g.attack_plan_type = 0;
-        let target = g.current_target.target;
+        // the readers look the target's integer up as an object, whatever its kind
+        let target = g.current_target.target.key();
         // each sub-formation with units: its attack range the largest of its units' slot 0x238
         // against the group's target, its spacing twice its widest unit (the first unit's
         // place counts even when the world does not hold it); its units are looked up in the
@@ -137,11 +138,7 @@ impl World {
         let g = self.groups.held(group)?;
         // the re-attack: an attack plan of 1 before, command 9 (attack) and a target the
         // world's table holds; a target it does not hold does nothing
-        if old_plan == 1
-            && g.current_command == 9
-            && target != -1
-            && self.world_object(target).is_some()
-        {
+        if old_plan == 1 && g.current_command == 9 && self.world_object(target).is_some() {
             return Err(GenieError::unsupported(
                 "a group's attack plan that attacks again (FUN_14100f7f0)",
             ));
@@ -156,7 +153,7 @@ impl World {
         &mut self,
         group: i32,
         far: bool,
-    ) -> Result<(MemberViews, Vec<i32>), GenieError> {
+    ) -> Result<(MemberViews, Vec<ObjectId>), GenieError> {
         // each member's view in the members' order, its search first (FUN_140c65c60 before
         // anything else of it), then the far test; the index the member has then, which a
         // later member's leaving does not move
@@ -192,7 +189,7 @@ impl World {
             };
             self.member_objects(id, &mut objects)?;
             if far && self.far_from_slot(group, &view, largest)? {
-                if self.remove_unit(group, ObjectId::try_from(id)?, None, false)? {
+                if self.remove_unit(group, id, None, false)? {
                     if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.body.mover_mut()) {
                         m.stop()?;
                     }
@@ -213,9 +210,13 @@ impl World {
 
     /// [`World::statistics_only`]'s sub-formations: each one with units gets its attack range
     /// against `target` and its spacing.
-    fn sub_formation_stats(&mut self, group: i32, target: i32) -> Result<(), GenieError> {
+    fn sub_formation_stats(
+        &mut self,
+        group: i32,
+        target: Option<ObjectId>,
+    ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
-        let stats: Vec<Vec<i32>> = g.unit_types.iter().map(|u| u.units.clone()).collect();
+        let stats: Vec<Vec<ObjectId>> = g.unit_types.iter().map(|u| u.units.clone()).collect();
         for (n, units) in stats.iter().enumerate() {
             if units.is_empty() {
                 continue;
@@ -261,7 +262,7 @@ impl World {
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
     pub fn calc_formation_type(&mut self, group: i32) -> Result<(), GenieError> {
-        let ids: Vec<i32> = self
+        let ids: Vec<ObjectId> = self
             .groups
             .held(group)?
             .members
@@ -348,7 +349,7 @@ impl World {
         let Some(g) = self.groups.get(group) else {
             return Ok(());
         };
-        let ids: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        let ids: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
         let mut n = [0i32; 4];
         for &id in &ids {
             if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
@@ -397,7 +398,11 @@ impl World {
     ///
     /// A member without a unit AI (the game calls through its null pointer), of a unit-AI type
     /// whose classes are not held or of a computer player (its notify), and the search's.
-    fn member_objects(&mut self, id: i32, objects: &mut Vec<i32>) -> Result<(), GenieError> {
+    fn member_objects(
+        &mut self,
+        id: ObjectId,
+        objects: &mut Vec<ObjectId>,
+    ) -> Result<(), GenieError> {
         if MOST_OBJECTS <= objects.len() {
             return Ok(());
         }
@@ -500,7 +505,7 @@ impl World {
         };
         let target = target.or_else(|| {
             u.top_target()
-                .filter(|&t| -1 < t)
+                .filter(|&t| !t.is_recyclable())
                 .and_then(|t| self.world_object(t))
         });
         let Some(t) = target else {
@@ -551,7 +556,7 @@ impl World {
         let Some(f) = g.current_formation.as_ref() else {
             return Ok(false);
         };
-        let Some(slot) = f.slots.iter().find(|s| s.unit_id == view.id) else {
+        let Some(slot) = f.slots.iter().find(|s| s.unit_id == Some(view.id)) else {
             return Ok(false);
         };
         let mut d = crate::math::fmath::sub(view.at, slot.transform_position);
@@ -573,7 +578,7 @@ impl World {
     /// # Errors
     ///
     /// What the stop does not model.
-    fn stop_if_inside(&mut self, id: i32) -> Result<(), GenieError> {
+    fn stop_if_inside(&mut self, id: ObjectId) -> Result<(), GenieError> {
         let inside = self
             .players
             .iter()
@@ -604,7 +609,7 @@ pub(in crate::groups) const COMBAT_KINDS: [MasterKind; 4] = [
 fn member_totals(
     g: &mut crate::groups::UnitGroup,
     views: &[(usize, MemberView)],
-    objects: Vec<i32>,
+    objects: Vec<ObjectId>,
     dt: f32,
 ) -> Result<(i32, f32, bool), GenieError> {
     g.centroid = BVector::ZERO;
@@ -675,6 +680,7 @@ pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::groups::GroupTarget;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
     use crate::map::GridSize;
@@ -687,6 +693,7 @@ mod tests {
     use crate::players::PlayerId;
     use crate::test_ids::master_id;
     use crate::test_ids::object_id;
+    use crate::test_ids::object_id_list;
     use crate::unit_ai::UnitAiType;
     use crate::vision::registry::UnitUpdate;
     use crate::world::Player;
@@ -702,20 +709,26 @@ mod tests {
             let m = t.masters[1].get_mut(master_id(4)).unwrap();
             (m.charge_type, m.charge_target, m.charge_event) = (charge_type, charge_target, 2);
         };
-        let range = |t: &World, target: Option<i32>| {
-            let me = t.world_object(10).unwrap();
-            t.range_against(me, target.and_then(|id| t.world_object(id)))
+        let range = |t: &World, target: Option<ObjectId>| {
+            let me = t.world_object(object_id(10)).unwrap();
+            t.range_against(me, target.and_then(|id: ObjectId| t.world_object(id)))
                 .unwrap()
         };
         charging(&mut t, 6, -1);
-        assert_eq!(range(&t, Some(20)), 1.0);
+        assert_eq!(range(&t, Some(object_id(20))), 1.0);
         t.players[1].objects[0].charge = 1.0;
-        assert_eq!(range(&t, Some(20)), 3.0);
+        assert_eq!(range(&t, Some(object_id(20))), 3.0);
         assert_eq!(range(&t, None), 1.0);
         charging(&mut t, 7, 1 << 5);
-        assert_eq!((range(&t, Some(20)), range(&t, Some(31))), (1.0, 3.0));
+        assert_eq!(
+            (
+                range(&t, Some(object_id(20))),
+                range(&t, Some(object_id(31)))
+            ),
+            (1.0, 3.0)
+        );
         charging(&mut t, 1, -1);
-        assert_eq!(range(&t, Some(20)), 1.0);
+        assert_eq!(range(&t, Some(object_id(20))), 1.0);
     }
 
     /// Player 1's soldier 10 (master 4, class 6) at (5, 5) in group 1; player 2 (its enemy)
@@ -797,7 +810,7 @@ mod tests {
             (31, 3, Point::new(5.0, 4.0), class::VILLAGER),
         ] {
             r.update_unit(UnitUpdate {
-                id,
+                id: object_id(id),
                 owner,
                 position: at,
                 radii: Footprint::new(0.2, 0.2),
@@ -822,12 +835,12 @@ mod tests {
         let mut g = UnitGroup::new(1);
         g.owner = 1;
         g.members = vec![Member {
-            id: 10,
+            id: object_id(10),
             ..Member::default()
         }];
         g.unit_types = vec![UnitTypeStatistic {
             formation_category: 1,
-            units: vec![10],
+            units: vec![object_id(10)],
             ..UnitTypeStatistic::default()
         }];
         t.groups = UnitGroups {
@@ -851,16 +864,16 @@ mod tests {
             .unwrap()
             .time_since_enemy = 7.0;
         let mut objects = Vec::new();
-        t.member_objects(10, &mut objects).unwrap();
-        assert_eq!(objects, [20, 30]);
+        t.member_objects(object_id(10), &mut objects).unwrap();
+        assert_eq!(objects, [object_id(20), object_id(30)]);
         let ai = t.players[1].objects[0].ai.as_ref().unwrap();
         assert_eq!((ai.alert_mode, ai.time_since_enemy), (true, 0.0));
-        t.member_objects(10, &mut objects).unwrap();
-        assert_eq!(objects, [20, 30]);
-        let mut full: Vec<i32> = (1000..1069).collect();
-        t.member_objects(10, &mut full).unwrap();
-        assert_eq!((full.len(), full[69]), (70, 20));
-        t.member_objects(10, &mut full).unwrap();
+        t.member_objects(object_id(10), &mut objects).unwrap();
+        assert_eq!(objects, [object_id(20), object_id(30)]);
+        let mut full: Vec<ObjectId> = object_id_list(1000..1069);
+        t.member_objects(object_id(10), &mut full).unwrap();
+        assert_eq!((full.len(), full[69]), (70, object_id(20)));
+        t.member_objects(object_id(10), &mut full).unwrap();
         assert_eq!(full.len(), 70);
     }
 
@@ -882,7 +895,7 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .update_unit(UnitUpdate {
-                    id: 22,
+                    id: object_id(22),
                     owner: 2,
                     position: Point::new(13.0, 5.0),
                     radii: Footprint::new(0.2, 0.2),
@@ -897,15 +910,21 @@ mod tests {
         let found = |ai_type: UnitAiType| {
             let mut t = world(ai_type);
             let mut objects = Vec::new();
-            t.member_objects(10, &mut objects).unwrap();
+            t.member_objects(object_id(10), &mut objects).unwrap();
             (
                 objects,
                 t.players[1].objects[0].ai.as_ref().unwrap().alert_mode,
             )
         };
         assert_eq!(found(UnitAiType::TRANSPORT), (vec![], false));
-        assert_eq!(found(crate::unit_ai::CIVILIAN), (vec![20, 22], true));
-        assert_eq!(found(crate::unit_ai::SOLDIER_AI), (vec![20, 30], true));
+        assert_eq!(
+            found(crate::unit_ai::CIVILIAN),
+            (vec![object_id(20), object_id(22)], true)
+        );
+        assert_eq!(
+            found(crate::unit_ai::SOLDIER_AI),
+            (vec![object_id(20), object_id(30)], true)
+        );
     }
 
     /// `FUN_14100bcb0`'s sub-formations: a statistic's unit the world holds that is no member
@@ -933,20 +952,23 @@ mod tests {
             *masters = Masters::new(masters.iter().cloned().chain([archer]));
         }
         let g = t.groups.get_mut(1).unwrap();
-        g.unit_types[0].units.push(50);
-        g.current_target.target = 99;
+        g.unit_types[0].units.push(object_id(50));
+        g.current_target.target = GroupTarget::of_saved(99, -1);
         g.attack_plan_type = 1;
         g.current_command = 9;
-        g.objects = vec![77];
+        g.objects = vec![object_id(77)];
         let _ = t.statistics_only(1, false).unwrap();
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.unit_types[0].attack_range, 6.0);
         // the searches fill their own list (+0x49c), not the units kept apart (+0x458)
-        assert_eq!((&g.sighted[..], &g.objects[..]), (&[20, 30][..], &[77][..]));
+        assert_eq!(
+            (&g.sighted[..], &g.objects[..]),
+            (&[object_id(20), object_id(30)][..], &[object_id(77)][..])
+        );
         assert_eq!(g.attack_plan_type, 0);
         // a target the world holds: the re-attack is not modelled
         let g = t.groups.get_mut(1).unwrap();
-        g.current_target.target = 20;
+        g.current_target.target = GroupTarget::of_saved(20, -1);
         g.attack_plan_type = 1;
         assert!(t.statistics_only(1, false).is_err());
     }
@@ -981,20 +1003,20 @@ mod tests {
             g.flags = 0;
             g.members = order
                 .map(|id| Member {
-                    id,
+                    id: object_id(id),
                     ..Member::default()
                 })
                 .to_vec();
-            g.unit_types[0].units = order.to_vec();
+            g.unit_types[0].units = object_id_list(order);
             g.current_formation = Some(crate::groups::Formation {
                 slots: vec![
                     crate::groups::Slot {
-                        unit_id: 10,
+                        unit_id: Some(object_id(10)),
                         transform_position: BVector::new(5.0, 0.0, 5.0),
                         ..crate::groups::Slot::default()
                     },
                     crate::groups::Slot {
-                        unit_id: 11,
+                        unit_id: Some(object_id(11)),
                         transform_position: BVector::new(30.0, 0.0, 6.0),
                         ..crate::groups::Slot::default()
                     },
@@ -1003,7 +1025,7 @@ mod tests {
             });
             t
         };
-        let ids = |t: &World| -> Vec<i32> {
+        let ids = |t: &World| -> Vec<ObjectId> {
             t.groups
                 .get(1)
                 .unwrap()
@@ -1014,8 +1036,8 @@ mod tests {
         };
         let mut t = world(1.0, [11, 10]);
         let _ = t.statistics_only(1, true).unwrap();
-        assert_eq!(ids(&t), [10]);
-        let u = t.object(11).unwrap().1;
+        assert_eq!(ids(&t), [object_id(10)]);
+        let u = t.object(object_id(11)).unwrap().1;
         assert_eq!(u.group.id, -1);
         assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
         let g = t.groups.get(1).unwrap();
@@ -1031,26 +1053,26 @@ mod tests {
             .unwrap()
             .kind = 7;
         let _ = t.statistics_only(1, true).unwrap();
-        assert_eq!(ids(&t), [11, 10]);
+        assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(2.5, [10, 11]);
         let _ = t.statistics_only(1, true).unwrap();
-        assert_eq!(ids(&t), [10, 11]);
+        assert_eq!(ids(&t), [object_id(10), object_id(11)]);
         let mut t = world(2.5, [11, 10]);
         let _ = t.statistics_only(1, true).unwrap();
-        assert_eq!(ids(&t), [10]);
+        assert_eq!(ids(&t), [object_id(10)]);
         // no far test without far, on a patrol, with flags bit 11
         let mut t = world(1.0, [11, 10]);
         let _ = t.statistics_only(1, false).unwrap();
-        assert_eq!(ids(&t), [11, 10]);
+        assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(1.0, [11, 10]);
         t.groups.get_mut(1).unwrap().flags = 0x800;
         let _ = t.statistics_only(1, true).unwrap();
-        assert_eq!(ids(&t), [11, 10]);
+        assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(1.0, [11, 10]);
         let paths = &mut t.groups.get_mut(1).unwrap().motion.paths;
         paths[0].has_path = true;
         paths[0].path_flags = 1;
         let _ = t.statistics_only(1, true).unwrap();
-        assert_eq!(ids(&t), [11, 10]);
+        assert_eq!(ids(&t), [object_id(11), object_id(10)]);
     }
 }

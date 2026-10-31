@@ -207,24 +207,27 @@ impl World {
     /// `FUN_140e6b250`), each listed one the world holds (`+0x11..`, `FUN_140e6bad0`) whose load
     /// ([`World::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
     /// takes its place, of `buildings`, the listed ones the check left (none for the others).
-    /// −1 for none.
+    /// None for none.
     pub(crate) fn least_loaded(
         &self,
         r: &ResearchCommand,
         buildings: &[Option<ObjectId>],
-    ) -> Result<i32, GenieError> {
-        let load = |id: i32| -> Result<f32, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
+        let load = |id: ObjectId| -> Result<f32, GenieError> {
             self.object(id)
                 .map_or(Ok(0.0), |(q, u)| self.production_load(q, u))
         };
-        let is_building = |id: i32| -> Result<bool, GenieError> {
+        let is_building = |id: Option<ObjectId>| -> Result<bool, GenieError> {
             match self.object(id) {
                 Some((q, u)) => Ok(u.master(&self.masters, q)?.kind == BUILDING),
                 None => Ok(false),
             }
         };
-        let building = ObjectId::field(r.building);
-        let mut chosen = is_building(building)?.then_some(building);
+        let mut chosen = if is_building(r.building)? {
+            r.building
+        } else {
+            None
+        };
         if 1 < r.count {
             let limit = if self.players.player(r.player)?.computer {
                 500
@@ -232,7 +235,7 @@ impl World {
                 60
             };
             let n = usize::from(r.count as u16).min(limit);
-            for id in buildings.iter().take(n).flatten().map(|id| id.get()) {
+            for id in buildings.iter().take(n).flatten().copied() {
                 if self.object(id).is_none() {
                     continue;
                 }
@@ -245,7 +248,7 @@ impl World {
                 }
             }
         }
-        Ok(chosen.unwrap_or(-1))
+        Ok(chosen)
     }
 
     /// `FUN_1411d0e90`: the seconds of work `building` (live or sleeping) of player `p` has queued: each

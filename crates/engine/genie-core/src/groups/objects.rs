@@ -40,9 +40,9 @@ impl WorldObject<'_> {
     }
 
     /// Its id (`+0x8`).
-    pub(crate) const fn id(&self) -> i32 {
+    pub(crate) const fn id(&self) -> ObjectId {
         match *self {
-            Self::Unit(_, u) => u.id.get(),
+            Self::Unit(_, u) => u.id,
             Self::Ghost(_, g) => g.id,
         }
     }

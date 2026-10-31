@@ -11,6 +11,7 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, Sprites, TargetMoved, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::{Me, footprint_gap};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
@@ -143,10 +144,10 @@ impl RepairAction {
         me: Me,
         reads: &RepairReads,
     ) -> Result<HeadCode, GenieError> {
-        if self.target != -1 && reads.target.is_none() {
+        if self.target.is_some() && reads.target.is_none() {
             // the target is gone: FUN_140ad9050 finds no object to leave the repairers of
             self.counted = false;
-            self.target = -1;
+            self.target = None;
             self.set_state(c, repairer, DONE, reads)?;
             return Ok(HeadCode::Keeps);
         }
@@ -292,7 +293,7 @@ impl RepairAction {
         let mask = terrain.restriction_mask(r);
         crate::pathing::hull_path::quick_reach(
             spatial,
-            repairer.id.get(),
+            repairer.id,
             self.target,
             mask,
             reads.radius.x(),
@@ -412,8 +413,8 @@ impl RepairAction {
             Self::count(c, reads, -1);
             self.counted = false;
         }
-        let target = std::mem::replace(&mut self.target, -1);
-        if target != -1 {
+        let target = self.target.take();
+        if target.is_some() {
             let by = repairer.releaser(c)?;
             crate::world::lets::release(c, repairer, target, by)?;
         }
@@ -567,11 +568,11 @@ impl RepairAction {
         point: Position,
         mover: Option<&mut crate::movement::Mover>,
         move_reads: &MoveToReads<'_>,
-    ) -> Result<(i32, bool), GenieError> {
+    ) -> Result<(Option<ObjectId>, bool), GenieError> {
         let walk = self.to_point(point, move_reads)?;
         self.point = point;
         let counted = std::mem::replace(&mut self.counted, false);
-        let old = std::mem::replace(&mut self.target, -1);
+        let old = self.target.take();
         if self.move_to.take().is_some()
             && let Some(m) = mover
         {

@@ -14,6 +14,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
@@ -106,8 +107,8 @@ impl RepairTask {
 /// The Repair action of a repairer (`TRIBE_Action_Repair`, type 106).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct RepairAction {
-    /// The target's id (`+0x30`), −1 for none.
-    pub target: i32,
+    /// The target's id (`+0x30`).
+    pub target: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     /// Its quiet `MoveTo` sub-action: to the target (state 4) or to the point (state 11).
@@ -152,7 +153,7 @@ pub struct Repairee {
 
 /// The object `FUN_140ad9050` counts a Repair's repairers in (the target, an annex's main
 /// building) and their count (`+0x9e8`), None without one.
-pub(crate) type CountedIn = Option<(i32, u8)>;
+pub(crate) type CountedIn = Option<(ObjectId, u8)>;
 
 /// What a Repair's update reads as it starts, each constant through the update: its target,
 /// the object its repairers count in, and the repairer's own values ([`Unit::repair_reads`]).

@@ -1,6 +1,7 @@
 //! What `bestUnitToAttack` reads of the unit whose AI searches, of its arguments and of the
 //! world ([`Battlefield`]).
 
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -14,9 +15,9 @@ pub(super) const ORDER_WINDOW: f32 = crate::math::image::best_target::ORDER_WIND
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Searcher {
     /// The unit.
-    pub id: i32,
-    /// Its unit AI's current target (`+0x48`), −1 for none.
-    pub target: i32,
+    pub id: ObjectId,
+    /// Its unit AI's current target (`+0x48`).
+    pub target: Option<ObjectId>,
     /// The AI's target's class (`+0x4c`) and its last target's (`+0x70`).
     pub target_types: [i32; 2],
     /// The AI's order (`+0x3c`) and action (`+0x44`).
@@ -56,7 +57,7 @@ pub struct Searcher {
     /// [`order_weights`]: crate::unit_ai::best_target::statistics::order_weights
     pub weights: [f32; 12],
     /// The AI's retarget entries' targets (`+0x1e0`).
-    pub retries: Vec<i32>,
+    pub retries: Vec<ObjectId>,
     /// The world's time (`FUN_1415300d0`).
     pub now: u32,
 }
@@ -71,7 +72,7 @@ pub struct Ask {
     /// The path checks: 1 on, 0 off (the shortcuts answer without a path).
     pub paths: u8,
     /// Extra objects for the statistics (`int*`, count).
-    pub extra: Vec<i32>,
+    pub extra: Vec<ObjectId>,
     /// Any class: walls, gates, buildings, towers and packed units are not passed over.
     pub any_class: bool,
     /// The unit is in an attack work state: a current target on top answers at once.
@@ -118,14 +119,14 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn thing(&mut self, id: i32) -> Result<Option<Thing>, crate::GenieError>;
+    fn thing(&mut self, id: ObjectId) -> Result<Option<Thing>, crate::GenieError>;
 
     /// The unit AI's attack check (slot 0xa0 with 0) on object `id`.
     ///
     /// # Errors
     ///
     /// What the check does not model.
-    fn can_attack(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+    fn can_attack(&mut self, id: ObjectId) -> Result<bool, crate::GenieError>;
 
     /// The unit AI's neutral test (slot 0xa8) of an object of `class`.
     ///
@@ -139,14 +140,14 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// What the test does not model.
-    fn spares_friends(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+    fn spares_friends(&mut self, id: ObjectId) -> Result<bool, crate::GenieError>;
 
     /// `FUN_140c41690`: a computer player's unit passes object `id` over.
     ///
     /// # Errors
     ///
     /// What the test does not model.
-    fn shuns(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+    fn shuns(&mut self, id: ObjectId) -> Result<bool, crate::GenieError>;
 
     /// What the statistics read of object `id` at `distance` of `category`
     /// ([`Candidate`]).
@@ -156,7 +157,7 @@ pub trait Battlefield {
     /// What the reads do not model.
     fn candidate(
         &mut self,
-        id: i32,
+        id: ObjectId,
         distance: f32,
         category: i32,
     ) -> Result<Candidate, crate::GenieError>;
@@ -166,14 +167,14 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// What the read does not model.
-    fn armored(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+    fn armored(&mut self, id: ObjectId) -> Result<bool, crate::GenieError>;
 
     /// Object `id`'s weapon range (slot 0x230).
     ///
     /// # Errors
     ///
     /// What the read does not model.
-    fn weapon_range(&mut self, id: i32) -> Result<f32, crate::GenieError>;
+    fn weapon_range(&mut self, id: ObjectId) -> Result<f32, crate::GenieError>;
 
     /// The current target `id` engages: its attacks sum above 0 (slot 0x228) or its unit AI
     /// could work on the unit (slot 0x1b8 with 1).
@@ -181,19 +182,19 @@ pub trait Battlefield {
     /// # Errors
     ///
     /// What the reads do not model.
-    fn engages(&mut self, id: i32) -> Result<bool, crate::GenieError>;
+    fn engages(&mut self, id: ObjectId) -> Result<bool, crate::GenieError>;
 
     /// The unit's quick path to object `id` within `range` (slot 0x3e0).
     ///
     /// # Errors
     ///
     /// What the path does not model.
-    fn quick_path(&mut self, id: i32, range: f32) -> Result<bool, crate::GenieError>;
+    fn quick_path(&mut self, id: ObjectId, range: f32) -> Result<bool, crate::GenieError>;
 
     /// The unit's path to object `id` within `range` (slot 0x3d0).
     ///
     /// # Errors
     ///
     /// What the path does not model.
-    fn path(&mut self, id: i32, range: f32) -> Result<bool, crate::GenieError>;
+    fn path(&mut self, id: ObjectId, range: f32) -> Result<bool, crate::GenieError>;
 }

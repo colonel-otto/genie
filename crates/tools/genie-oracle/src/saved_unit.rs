@@ -4,7 +4,7 @@
 use crate::masters::MasterTable;
 use crate::{
     DefaultStart, build_task, default_task, fly_task, gather_point, group_link, lifecycle, mover,
-    production, saved_actions, saved_sprite, task_at, unit_ai,
+    object_ids, production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
 use genie_core::map::Point;
@@ -27,6 +27,7 @@ pub(super) fn unit(
     paths: &[Path],
     civ: u8,
     masters: Option<&MasterTable>,
+    players: usize,
 ) -> Unit {
     let saved = object.static_part();
     let named = saved.and_then(|s| ObjectId::try_from(s.id).ok());
@@ -48,9 +49,13 @@ pub(super) fn unit(
         .actions()
         .is_some_and(|a| a.entries().next().is_some());
     // an order or action value no order or action holds: the object's first unmodelled part
-    let ((ai, town_bell), ai_read) = match ai_parts(object) {
+    let ((ai, town_bell), ai_read) = match ai_parts(object, id, players) {
         Ok(parts) => (parts, Ok(())),
         Err(e) => ((None, TownBell::default()), Err(e)),
+    };
+    let (lists, lists_read) = match building_lists(object) {
+        Ok(lists) => (lists, Ok(())),
+        Err(e) => (BuildingLists::default(), Err(e)),
     };
     let mut unit = Unit {
         id,
@@ -61,8 +66,8 @@ pub(super) fn unit(
         attackable: s.unit_attackable_flag != 0,
         untargetable: s.unit_targeting_flag == 0,
         under_attack: s.under_attack_value != 0,
-        pasture: s.parent_pasture_id,
-        my_pasture: s.my_pasture_id,
+        pasture: ObjectId::of_field(s.parent_pasture_id),
+        my_pasture: ObjectId::of_field(s.my_pasture_id),
         undeletable: s.deletion_enabled == 0,
         capture_flag: object
             .combat()
@@ -70,8 +75,7 @@ pub(super) fn unit(
         annex_of: object
             .tribe_building_object
             .as_deref()
-            .map(|b| b.mupt_linked_object_references_linked_owner_id)
-            .filter(|&owner| owner != -1),
+            .and_then(|b| ObjectId::of_field(b.mupt_linked_object_references_linked_owner_id)),
         group: group_link(s),
         hp_powerup: object.combat().map_or(HpPowerup::NONE, |c| HpPowerup {
             taken: c.hitpoints_powerup,
@@ -104,22 +108,9 @@ pub(super) fn unit(
             .tribe_building_object
             .as_deref()
             .map_or(0.0, |b| b.livestock_summation),
-        livestock: object
-            .tribe_building_object
-            .as_deref()
-            .map(|b| b.livestock_id.clone())
-            .unwrap_or_default(),
-        pasture_workers: object
-            .tribe_building_object
-            .as_deref()
-            .map(|b| b.pasture_worker_id.iter().map(|&w| w as i32).collect())
-            .unwrap_or_default(),
-        // `attackingUnits` (+0xce0): the unallied takers of a foundation with a stack unit
-        attacking_units: object
-            .tribe_building_object
-            .as_deref()
-            .map(|b| b.unit_id.clone())
-            .unwrap_or_default(),
+        livestock: lists.livestock,
+        pasture_workers: lists.pasture_workers,
+        attacking_units: lists.attacking_units,
         reload_worldtime: object
             .combat()
             .and_then(|c| c.rge_combat_object.reload_worldtime)
@@ -250,7 +241,7 @@ pub(super) fn unit(
         });
         unit.missile = Some(genie_core::combat::missile::Missile {
             max_range: mo.max_range,
-            fired_from: mo.fired_from_id,
+            fired_from: ObjectId::of_field(mo.fired_from_id),
             charge: mo.is_charge_projectile != 0,
             flying: true,
             step,
@@ -258,8 +249,41 @@ pub(super) fn unit(
     }
     let production = production(object).map(|p| unit.production = p);
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.body.put_mover(m));
-    unit.unmodelled_action = ai_read.and(imported).and(production).and(moving).err();
+    unit.unmodelled_action = ai_read
+        .and(lists_read)
+        .and(imported)
+        .and(production)
+        .and(moving)
+        .err();
     unit
+}
+
+/// A saved building's lists of objects (none for another object).
+#[derive(Default)]
+struct BuildingLists {
+    /// The livestock it holds.
+    livestock: Vec<ObjectId>,
+    /// Its pasture's workers.
+    pasture_workers: Vec<ObjectId>,
+    /// `attackingUnits` (+0xce0): the unallied takers of a foundation with a stack unit.
+    attacking_units: Vec<ObjectId>,
+}
+
+/// A saved object's [`BuildingLists`].
+///
+/// # Errors
+///
+/// An entry of −1, which names no object.
+fn building_lists(object: &genie_save::Object) -> Result<BuildingLists, GenieError> {
+    let Some(b) = object.tribe_building_object.as_deref() else {
+        return Ok(BuildingLists::default());
+    };
+    let workers: Vec<i32> = b.pasture_worker_id.iter().map(|&w| w as i32).collect();
+    Ok(BuildingLists {
+        livestock: object_ids(&b.livestock_id)?,
+        pasture_workers: object_ids(&workers)?,
+        attacking_units: object_ids(&b.unit_id)?,
+    })
 }
 
 /// The parts of a saved object that hold its unit AI's order and action values: the unit AI
@@ -268,9 +292,13 @@ pub(super) fn unit(
 /// # Errors
 ///
 /// A value no order or action holds.
-fn ai_parts(object: &genie_save::Object) -> Result<(Option<UnitAi>, TownBell), GenieError> {
+fn ai_parts(
+    object: &genie_save::Object,
+    own: ObjectId,
+    players: usize,
+) -> Result<(Option<UnitAi>, TownBell), GenieError> {
     let bell = object.combat().map(town_bell).transpose()?;
-    Ok((unit_ai(object)?, bell.unwrap_or_default()))
+    Ok((unit_ai(object, own, players)?, bell.unwrap_or_default()))
 }
 
 /// A combat object's town-bell flag and back-to-work records.
@@ -285,20 +313,20 @@ pub(super) fn town_bell(
     Ok(TownBell {
         flag: c.town_bell_flag != 0,
         work: BackToWork {
-            target: c.back_to_work1_town_bell_target_id,
+            target: ObjectId::of_field(c.back_to_work1_town_bell_target_id),
             target_type: c.back_to_work1_town_bell_target_type,
             action: ActionKind::of_field(c.back_to_work1_town_bell_action)?,
-            target2: c.back_to_work1_town_bell_target_id2,
+            target2: ObjectId::of_field(c.back_to_work1_town_bell_target_id2),
             point: Point::new(
                 c.back_to_work1_town_bell_target_x,
                 c.back_to_work1_town_bell_target_y,
             ),
         },
         before_building: BackToWork {
-            target: c.back_to_work2_town_bell_target_id,
+            target: ObjectId::of_field(c.back_to_work2_town_bell_target_id),
             target_type: c.back_to_work2_town_bell_target_type,
             action: ActionKind::of_field(c.back_to_work2_town_bell_action)?,
-            target2: c.back_to_work2_town_bell_target_id2,
+            target2: ObjectId::of_field(c.back_to_work2_town_bell_target_id2),
             point: Point::new(
                 c.back_to_work2_town_bell_target_x,
                 c.back_to_work2_town_bell_target_y,

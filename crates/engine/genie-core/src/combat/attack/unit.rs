@@ -8,7 +8,6 @@ use crate::combat::victims::{KillLeft, file_kill, victim, victim_of};
 use crate::combat::volley::armed;
 use crate::math::rng::Stream;
 use crate::movement::Me;
-use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::teardown::HeadCode;
@@ -111,7 +110,7 @@ impl Unit {
         let mut attack = *self.actions.attack().ok_or(NO_ATTACK)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         let computer =
@@ -125,7 +124,7 @@ impl Unit {
             self.ai.as_ref(),
             (computer, c.w.world_time),
         );
-        let victim = victim(c, ObjectId::field(attack.target))?.ok_or(GenieError::unsupported(
+        let victim = victim(c, attack.target)?.ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
         let own = own.ok_or(crate::world::ATTACKER_MASTER)?;
@@ -138,7 +137,7 @@ impl Unit {
         let code = code?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
-            file_kill(c, self, KillLeft::own(self.id.get(), k))?;
+            file_kill(c, self, KillLeft::own(self.id, k))?;
         }
         Ok(HeadCode::of(code))
     }

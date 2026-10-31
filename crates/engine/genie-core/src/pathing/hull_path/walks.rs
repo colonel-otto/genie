@@ -3,7 +3,9 @@
 
 use crate::GenieError;
 use crate::map::Rect;
+use crate::map::spatial::RecordId;
 use crate::math::fmath::{at_most_or_unordered, maxss, sqrt};
+use crate::objects::ObjectId;
 use crate::pathing::hull_path::node_lists::{NewNode, UnrefusedNode};
 use crate::pathing::hull_path::{
     DIRECTIONS, EXIT_STEP, HALF, HULL_ITERATIONS, HullPather, NUDGE, Node, ONE, Point, SAME_END,
@@ -61,11 +63,11 @@ impl HullPather<'_> {
         &mut self,
         from: Point,
         to: Point,
-        target: Option<i32>,
+        target: Option<ObjectId>,
         path: &mut Waypoints,
     ) -> Result<bool, GenieError> {
         let hits = self.hits(from, to)?;
-        let is_target = |id: i32| target.is_some_and(|t| t == id);
+        let is_target = |id: RecordId| target.is_some_and(|t| id == t);
         let obstacle = match hits[..] {
             [] => {
                 path.push(from);
@@ -121,7 +123,7 @@ impl HullPather<'_> {
             let second = self.hits(p, to)?;
             let fine = match second[..] {
                 [] => true,
-                [h] => target.is_some_and(|t| t == h.id || self.world.annex_of(h.id) == Some(t)),
+                [h] => target.is_some_and(|t| h.id == t || self.world.annex_of(h.id) == Some(t)),
                 _ => false,
             };
             if fine {

@@ -2,6 +2,7 @@
 
 use crate::map::Position;
 use crate::objects::HpPowerup;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::ids::WONDER;
@@ -39,7 +40,7 @@ const NO_DYING_SPRITE: GenieError =
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Unit {
     /// The object's id (`+0x8`), which names it across ticks.
-    pub id: crate::objects::ObjectId,
+    pub id: ObjectId,
     /// `+0x889`: its waits as a builder for an occupied footprint (not saved; 0 at a load).
     #[diff(unsaved)]
     pub footprint_waits: u8,
@@ -78,17 +79,16 @@ pub struct Unit {
     pub untargetable: bool,
     /// `+0x685`, `underAttackValue`: its unit AI keeps attackers (`FUN_14119d2d0`).
     pub under_attack: bool,
-    /// `+0x790`, `parent_pasture_id`: the pasture it is in; `+0x794`, `my_pasture_id`: the one it
-    /// tends. -1 for none.
-    pub pasture: i32,
-    /// `+0x794`, `my_pasture_id`: the pasture it tends, −1 for none.
-    pub my_pasture: i32,
+    /// `+0x790`, `parent_pasture_id`: the pasture it is in.
+    pub pasture: Option<ObjectId>,
+    /// `+0x794`, `my_pasture_id`: the pasture it tends.
+    pub my_pasture: Option<ObjectId>,
     /// `mDeletionEnabled` (`+0x687`, 1 from its constructor) is 0: no delete takes it.
     pub undeletable: bool,
     /// `capture_flag` (`+0x924`).
     pub capture_flag: u8,
     /// An annex's main building (`+0xbb8`, the save's linked owner).
-    pub annex_of: Option<i32>,
+    pub annex_of: Option<ObjectId>,
     /// Its unit group, if any ([`crate::groups::GroupLink`]).
     pub group: crate::groups::GroupLink,
     /// `mHitpointsPowerup` and `mHitpointsMaxPowerup` (`+0xa38`, `+0xa3c`), which the task finder
@@ -128,7 +128,7 @@ pub struct Unit {
     /// leaves takes the last one's place (`FUN_141166450`).
     /// Not saved as a list: a load lists them by each one's `+0x2f0` in the objects' order.
     #[diff(unsaved)]
-    pub garrison: Vec<i32>,
+    pub garrison: Vec<ObjectId>,
     /// A building's `last_garrison_time` (`+0xbe0`): the world time of its last whole second,
     /// on which its garrison heals ([`Unit::building_seconds`]).
     pub garrison_time: u32,
@@ -142,10 +142,10 @@ pub struct Unit {
     pub livestock_summation: f32,
     /// A pasture's livestock (`+0xb78`, saved as `livestockId`): the objects its completion put
     /// on its edges ([`crate::world::World::setup_pasture`]), in the order it made them.
-    pub livestock: Vec<i32>,
+    pub livestock: Vec<ObjectId>,
     /// A pasture's workers (`+0xcb8`, saved as `pastureWorkerId`): the units that tend it
     /// ([`crate::world::World::tend_pasture`]), in the order they came.
-    pub pasture_workers: Vec<i32>,
+    pub pasture_workers: Vec<ObjectId>,
     /// A building's `+0xc54`: the frame its BUILD command chose (`FUN_140e7a400`, the packet's
     /// `+0x1c`), which its standing sprite takes once built; 0 from its constructor and the load.
     #[diff(unsaved)]
@@ -235,7 +235,7 @@ pub struct Unit {
     pub rice: bool,
     /// A building's `+0xcb0` (`FUN_1411c5f70`): the id of the object its completion's stack unit
     /// made ([`crate::world::World::stack_unit`]); None before (the save does not hold it).
-    pub stack_made: Option<i32>,
+    pub stack_made: Option<ObjectId>,
     /// A building's own store (`+0xae0`, `FUN_1411abad0`'s map by attribute): what its storage
     /// entries of mode 16 put in at its completion and take out at its death
     /// (`FUN_1411e6580`).
@@ -260,7 +260,7 @@ pub struct Unit {
     /// that took this foundation (a building below state 2 whose master has a stack unit,
     /// `+0x986`) as their target, once per take, in order ([`Unit::lists_taker`]); its stack
     /// unit's completion tells each of the new object.
-    pub attacking_units: Vec<i32>,
+    pub attacking_units: Vec<ObjectId>,
 }
 
 impl Unit {
@@ -293,7 +293,7 @@ impl Unit {
     ) -> Result<&'a Master, GenieError> {
         object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             table,
         )
     }
@@ -316,7 +316,7 @@ impl Unit {
             Option<&mut crate::pathing::Pathing>,
         ),
     ) -> Result<(), GenieError> {
-        self.body.new_position(self.id.get(), at, places)?;
+        self.body.new_position(self.id, at, places)?;
         Ok(())
     }
 
@@ -330,33 +330,39 @@ impl Unit {
 
 /// A building's annexes among `objects` (`+0xbc0`.., the save's linked object ids), in id order,
 /// as the building made them.
-pub(crate) fn annexes_of<'a>(id: i32, objects: impl IntoIterator<Item = &'a Unit>) -> Vec<i32> {
-    let mut annexes: Vec<i32> = objects
+pub(crate) fn annexes_of<'a>(
+    id: ObjectId,
+    objects: impl IntoIterator<Item = &'a Unit>,
+) -> Vec<ObjectId> {
+    let mut annexes: Vec<ObjectId> = objects
         .into_iter()
         .filter(|u| u.annex_of == Some(id))
-        .map(|u| u.id.get())
+        .map(|u| u.id)
         .collect();
     annexes.sort_unstable();
     annexes
 }
 
 /// The second target's checks at the start of a Gather's or a Hunt's update (`0x140a8e1d0`,
-/// `0x140ac7a00`) on `site` (−1 for none), which the world's table holds (`held`,
+/// `0x140ac7a00`) on `site`, which the world's table holds (`held`,
 /// `FUN_1415417a0`) in `state`: one the table lacks goes (`FUN_140a7a190` with none, with nothing
 /// to let go); one past state 6 is let go (slot 0x180) and goes. The game checks the second
 /// target's absence before the first target's state; the two touch different objects. Returns
 /// the second target after them and the object let go.
 pub(crate) const fn second_target_checked(
-    site: i32,
+    site: Option<ObjectId>,
     held: bool,
     state: Option<u8>,
-) -> (i32, Option<i32>) {
-    if site == -1 || !held {
-        return (-1, None);
+) -> (Option<ObjectId>, Option<ObjectId>) {
+    let Some(site) = site else {
+        return (None, None);
+    };
+    if !held {
+        return (None, None);
     }
     match state {
-        Some(s) if 6 < s => (-1, Some(site)),
-        _ => (site, None),
+        Some(s) if 6 < s => (None, Some(site)),
+        _ => (Some(site), None),
     }
 }
 
@@ -369,7 +375,7 @@ pub(crate) const fn second_target_checked(
 /// No master of its own and none of `master_id` in `table`.
 pub(crate) fn object_master<'a>(
     own: Option<&'a Master>,
-    (id, master_id): (i32, MasterId),
+    (id, master_id): (ObjectId, MasterId),
     table: Option<&'a Masters>,
 ) -> Result<&'a Master, GenieError> {
     own.or_else(|| table?.get(master_id)).ok_or_else(|| {
@@ -394,7 +400,7 @@ pub(crate) const fn loses_actions(life: &Lifecycle) -> bool {
 /// order ([`Unit::taken_out`]): no object has it, so a lookup by id during that time finds the
 /// object itself, never the stand-in (the default unit's id 0 is a real object's, 428491175's
 /// oak 0, which a petard's blast then read as an empty victim and felled).
-pub(crate) const TAKEN_OUT: crate::objects::ObjectId = crate::objects::ObjectId::TAKEN_OUT;
+pub(crate) const TAKEN_OUT: ObjectId = ObjectId::TAKEN_OUT;
 
 /// [`Unit::missile_hits`]'s hit mode 1 (a missed missile): true when it passes the object it
 /// meets (its id, `player`, master type `kind` and blast defence `level`): one of the missile's
@@ -402,14 +408,14 @@ pub(crate) const TAKEN_OUT: crate::objects::ObjectId = crate::objects::ObjectId:
 /// 15 or one of a blast defence below the missile's (`blast_level`).
 pub(crate) fn missed_passes(
     c: &Step<'_>,
-    (id, player, kind, level): (i32, PlayerId, MasterKind, u8),
-    target: i32,
+    (id, player, kind, level): (ObjectId, PlayerId, MasterKind, u8),
+    target: Option<ObjectId>,
     blast_level: u8,
 ) -> bool {
     if player == c.player || kind == MISSILE {
         return true;
     }
-    let other = id != target;
+    let other = Some(id) != target;
     c.w.spatial.allied_with(c.player, player)
         || (other && player == PlayerId::new(0) && TREE < kind)
         || (other && level < blast_level)

@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::master_type::BUILDING;
@@ -23,7 +24,7 @@ impl UnitView<'_, '_> {
         Ok(WorldPicker {
             attacker: &self.attacker,
             seeker,
-            me: self.unit.id.get(),
+            me: self.unit.id,
             player: self.player,
             others: owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             foreign: owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
@@ -42,7 +43,7 @@ impl UnitView<'_, '_> {
     /// `seeker` can attack it.
     pub(super) fn attack_check(
         &self,
-        target: i32,
+        target: ObjectId,
         seeker: &crate::unit_ai::Seeker,
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         let picker = self.picker(Some(*seeker))?;
@@ -54,7 +55,7 @@ impl UnitView<'_, '_> {
     }
 
     /// Whether the unit's view of the world (live objects, owner-first) holds object `id`.
-    pub(super) fn view_holds(&self, id: i32) -> Result<bool, GenieError> {
+    pub(super) fn view_holds(&self, id: ObjectId) -> Result<bool, GenieError> {
         Ok(
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?
                 .get(id)
@@ -77,10 +78,10 @@ impl UnitView<'_, '_> {
         owner: PlayerId,
         u: &Unit,
         m: &crate::objects::masters::Master,
-        attacker: i32,
+        attacker: ObjectId,
     ) -> Result<bool, GenieError> {
         let others = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
-        let find = |id: i32| others.find(id);
+        let find = |id: ObjectId| others.find(id);
         let Some(ai) = u.ai.as_ref() else {
             return Ok(false);
         };
@@ -91,7 +92,7 @@ impl UnitView<'_, '_> {
                     || busy
                     || ai.current_order.is_some()
                     || !ai.orders.is_empty()
-                    || ai.current_target != -1
+                    || ai.current_target.is_some()
                 {
                     return Ok(false);
                 }
@@ -100,7 +101,7 @@ impl UnitView<'_, '_> {
             Some(g) if g.patrols() => true,
             Some(_) => return Ok(false),
         };
-        if let Some((tq, t)) = u.top_target().filter(|&t| t != -1).and_then(find) {
+        if let Some((tq, t)) = u.top_target().and_then(find) {
             let tm = t.master(&self.c.w.masters, tq)?;
             let gap = footprint_gap_squared(u.position(), m.radius, t.position(), tm.radius);
             let in_range =
@@ -124,7 +125,7 @@ impl UnitView<'_, '_> {
             .spatial
             .sight
             .as_ref()
-            .and_then(|v| v.seer(u.id.get()))
+            .and_then(|v| v.seer(u.id))
             .map_or(0, |s| s.capture);
         let me = u.attacker_of(
             ai.ai_type,
@@ -133,7 +134,7 @@ impl UnitView<'_, '_> {
             self.attacker.scenario,
             capture,
         );
-        let target_kind = match find(ai.current_target).filter(|_| ai.current_target != -1) {
+        let target_kind = match ai.current_target.and_then(find) {
             Some((q, o)) => Some(o.master(&self.c.w.masters, q)?.kind),
             None => None,
         };
@@ -158,7 +159,7 @@ impl UnitView<'_, '_> {
         next: MasterId,
     ) -> Result<(), GenieError> {
         let by = Releaser {
-            id: self.unit.id.get(),
+            id: self.unit.id,
             class: Some(own.class),
             player: self.player,
         };
@@ -178,7 +179,7 @@ impl UnitView<'_, '_> {
     /// # Errors
     ///
     /// [`crate::world::lets::take`]'s.
-    pub(crate) fn take(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
+    pub(crate) fn take(&mut self, id: ObjectId, by: Releaser) -> Result<(), GenieError> {
         crate::world::lets::take(self.c, self.unit, id, by)
     }
 
@@ -189,7 +190,7 @@ impl UnitView<'_, '_> {
     /// # Errors
     ///
     /// [`crate::world::lets::release`]'s.
-    pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
+    pub(crate) fn release(&mut self, id: ObjectId, by: Releaser) -> Result<(), GenieError> {
         crate::world::lets::release(self.c, self.unit, id, by)
     }
 
@@ -202,7 +203,7 @@ impl UnitView<'_, '_> {
     /// [`crate::world::lets::torn_down`]'s.
     pub(crate) fn torn_down(
         &mut self,
-        (leaves, releases): (Vec<i32>, Vec<(i32, Releaser)>),
+        (leaves, releases): (Vec<ObjectId>, Vec<(ObjectId, Releaser)>),
     ) -> Result<(), GenieError> {
         crate::world::lets::torn_down(self.c, self.unit, (leaves, releases))
     }

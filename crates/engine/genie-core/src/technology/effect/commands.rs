@@ -2,6 +2,7 @@
 //! its kind for every party ([`Party`]).
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
@@ -80,7 +81,7 @@ impl World {
         &mut self,
         p: PlayerId,
         effect: &[EffectCommand],
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         for c in effect {
             // the technology commands read the third argument's low byte as the mode
@@ -110,7 +111,7 @@ impl World {
         &mut self,
         p: PlayerId,
         effect: &[EffectCommand],
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let mut farms: Option<(f32, f32)> = None;
         for c in effect {
@@ -219,7 +220,7 @@ impl World {
         p: PlayerId,
         party: Party,
         c: &EffectCommand,
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let own = party == Party::Own;
         match c.kind % 10 {

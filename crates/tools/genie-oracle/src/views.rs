@@ -356,6 +356,7 @@ fn unit_ais_of(header: &Header, player: usize, ids: &[i32]) -> Result<String, Er
         let Some(ai) = combat.unit_ai() else {
             continue;
         };
+        let own = genie_core::objects::ObjectId::try_from(s.id).map_err(Error::Unmodelled)?;
         let _ = writeln!(
             out,
             "{} master {} at ({}, {}) state {} unit-AI type {}",
@@ -413,7 +414,7 @@ fn unit_ais_of(header: &Header, player: usize, ids: &[i32]) -> Result<String, Er
             let _ = writeln!(
                 out,
                 "    order {:?}",
-                genie_core::unit_ai::QueuedOrder::from_bytes(order)
+                genie_core::unit_ai::QueuedOrder::from_bytes(order, own, players.len())
             );
         }
     }

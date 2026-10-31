@@ -7,6 +7,7 @@ use crate::construction::build::{
     CASTLE_WONDER_COST, CASTLES_BUILT, Construction, SITE_GONE, STARTED, WONDERS_BUILT,
 };
 use crate::map::spatial::Spatial;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::CASTLE;
@@ -174,7 +175,7 @@ impl Construction {
     ///
     /// A foundation the world does not hold.
     pub(crate) fn begin(
-        id: i32,
+        id: ObjectId,
         c: &mut Self,
         mover: Option<&mut crate::movement::Mover>,
         world: &mut Spatial,

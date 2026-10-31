@@ -32,7 +32,7 @@ impl BuildAction {
         if self.state == CLEAR {
             return self.restart(c, builder);
         }
-        if self.target == -1 {
+        if self.target.is_none() {
             return self.idle(c, builder, reads);
         }
         if reads.class != Some(class::VILLAGER) {
@@ -78,14 +78,14 @@ impl BuildAction {
         builder: &mut Unit,
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
-        if self.target != -1 {
+        if let Some(target) = self.target {
             let s = Self::site_unit(c, reads)?.ok_or(FOREIGN_SITE)?;
             let desolid = s.construction.is_some_and(|k| k.desolid);
-            let placed = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
+            let placed = *c.w.spatial.get_known(target)?.ok_or(SITE_GONE)?;
             if desolid && c.w.spatial.foreign_marks(&placed) {
                 let seen =
                     c.w.spatial
-                        .building_sight(self.target, placed.position, placed.player)
+                        .building_sight(target, placed.position, placed.player)
                         .ok_or(UNSEEN_SITE)?
                         == SEEN;
                 if seen {
@@ -107,7 +107,7 @@ impl BuildAction {
             Some(s) => Some(s.master(&c.w.masters, c.player)?.radius.x()),
             None => None,
         };
-        if self.target != -1
+        if self.target.is_some()
             && let Some(planner) = c.w.pathing.planner(restriction, c.w.spatial.tiles())
         {
             let t = known?.ok_or(SITE_GONE)?;
@@ -139,10 +139,11 @@ impl BuildAction {
     ///
     /// What the removal does not model.
     pub(super) fn remove_marked(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        if let Some((q, _)) = c.w.object(self.target)
+        if let Some(target) = self.target
+            && let Some((q, _)) = c.w.object(target)
             && !c.w.players.player(q)?.computer
         {
-            c.w.remove_building(q, self.target)?;
+            c.w.remove_building(q, target)?;
         }
         Ok(())
     }
@@ -162,8 +163,8 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         self.leave(c, builder)?;
-        if self.target != -1 {
-            let target = std::mem::replace(&mut self.target, -1);
+        if self.target.is_some() {
+            let target = self.target.take();
             crate::world::lets::release(c, builder, target, reads.by)?;
         }
         self.walk_to_point(c, builder)

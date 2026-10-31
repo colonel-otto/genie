@@ -8,6 +8,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Radii;
 use crate::map::{Tile, TileRect};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -24,7 +25,7 @@ use crate::production::spawn::{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Near {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its place.
     pub position: Position,
     /// Its master's radii on the ground and whether its height radius is above 0.

@@ -10,6 +10,7 @@ use crate::{
     tile_lists_from_dump, visibility_differences, watch_at_load,
 };
 use genie_core::commands::Command;
+use genie_core::objects::ObjectId;
 use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::Header;
@@ -75,7 +76,10 @@ fn player_differences(
             report.differences.push((id, d));
         }
         for d in object_differences(player.objects.iter().filter(|u| listed(u)), game) {
-            let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
+            let object = d
+                .split(':')
+                .next()
+                .and_then(|o| o.parse::<i32>().ok().and_then(ObjectId::of_field));
             if !object.is_some_and(|o| frozen.contains(&o)) {
                 report.differences.push((id, d));
             }
@@ -92,7 +96,7 @@ fn player_differences(
 /// A player's stop and its objects' freezes as the report's unsupported entries (with `tick`,
 /// only that update's); returns the objects whose differences are left out: the stopped and the
 /// frozen ones, of any update.
-fn stops(player: &Player, id: u32, tick: Option<u32>, report: &mut TickReport) -> Vec<i32> {
+fn stops(player: &Player, id: u32, tick: Option<u32>, report: &mut TickReport) -> Vec<ObjectId> {
     let now = |t: u32| tick.is_none_or(|n| n == t);
     if let Some((t, _, why)) = player
         .unsupported
@@ -108,7 +112,7 @@ fn stops(player: &Player, id: u32, tick: Option<u32>, report: &mut TickReport) -
         .objects
         .iter()
         .filter(|u| u.stopped)
-        .map(|u| u.id.get())
+        .map(|u| u.id)
         .chain(player.freezes.iter().map(|&(_, o, _)| o))
         .collect()
 }

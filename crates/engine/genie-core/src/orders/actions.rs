@@ -36,7 +36,7 @@ impl World {
     /// # Errors
     ///
     /// [`crate::world::lets::Lets::take`]'s.
-    pub(crate) fn take(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
+    pub(crate) fn take(&mut self, id: ObjectId, by: Releaser) -> Result<(), GenieError> {
         self.with_lets(by.player, |lets, others| lets.take(others, None, id, by))?
     }
 
@@ -53,7 +53,7 @@ impl World {
     /// # Errors
     ///
     /// [`crate::world::lets::Lets::release`]'s.
-    pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
+    pub(crate) fn release(&mut self, id: ObjectId, by: Releaser) -> Result<(), GenieError> {
         self.with_lets(by.player, |lets, others| lets.release(others, None, id, by))?
     }
 
@@ -61,7 +61,7 @@ impl World {
     pub(crate) fn releaser(&self, player: PlayerId, idx: usize) -> Result<Releaser, GenieError> {
         let u = self.players.live(player, idx)?;
         Ok(Releaser {
-            id: u.id.get(),
+            id: u.id,
             class: Some(u.master(&self.masters, player)?.class),
             player,
         })
@@ -82,7 +82,11 @@ impl World {
         (order, action): (Option<OrderKind>, Option<ActionKind>),
     ) -> Result<(), GenieError> {
         let u = &self.players.live(player, idx)?;
-        let Some(target) = u.ai.as_ref().map(|a| a.current_target).filter(|&t| 0 <= t) else {
+        let Some(target) =
+            u.ai.as_ref()
+                .and_then(|a| a.current_target)
+                .filter(|t| !t.is_recyclable())
+        else {
             return Ok(());
         };
         let position = u.moved_vector();
@@ -98,7 +102,7 @@ impl World {
             action,
             time: self.world_time,
             position,
-            target,
+            target: Some(target),
             category: crate::unit_ai::best_target::category(t.life.master_id, class),
             target_position: t.moved_vector(),
         };
@@ -122,7 +126,7 @@ impl World {
             by,
         )?;
         for id in builder_leaves {
-            self.leave_builders(id)?;
+            self.leave_builders(Some(id))?;
         }
         for (id, by) in releases {
             self.release(id, by)?;
@@ -201,9 +205,9 @@ impl World {
         if 0.0 < height {
             let id = self.players.live(player, idx)?.id;
             let annexes =
-                crate::objects::unit::annexes_of(id.get(), &self.players.player(player)?.objects);
+                crate::objects::unit::annexes_of(id, &self.players.player(player)?.objects);
             let (units, _) =
-                crate::construction::gates::gate_units(&mut self.spatial, id.get(), &annexes)?;
+                crate::construction::gates::gate_units(&mut self.spatial, id, &annexes)?;
             for u in units {
                 self.shut_in_gate(u)?;
             }
@@ -215,7 +219,7 @@ impl World {
                     "a shut gate without its moving part",
                 ))?
                 .last_move = now.wrapping_add(1);
-            self.spatial.set_last_move(id.get(), now.wrapping_add(1));
+            self.spatial.set_last_move(id, now.wrapping_add(1));
         }
         Ok(())
     }
@@ -226,7 +230,7 @@ impl World {
     /// object asleep wakes to the end of its player's live list (slots 0x2d8, 0x2d0), one flagged
     /// to sleep drops the flag, and its hit points go to 0. Its place in its player's
     /// special-object list (`+0x30c` bit 0, `FUN_141677380`) is not held.
-    pub(super) fn shut_in_gate(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(super) fn shut_in_gate(&mut self, id: ObjectId) -> Result<(), GenieError> {
         /// The first master type whose slot 0xd8 is `FUN_141211340` (`TRIBE_Combat_Object`).
         const TRIBE_COMBAT: MasterKind = master_type::COMBAT;
         /// The class `FUN_141211340` always spares.
@@ -252,7 +256,7 @@ impl World {
                 let (id, master) = (woken.id, woken.life.master_id);
                 self.players.player_mut(p)?.objects.push(woken);
                 // the wake's remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
-                self.track_relist(p, id.get(), master)?;
+                self.track_relist(p, id, master)?;
                 self.players
                     .player_mut(p)?
                     .objects
@@ -300,7 +304,7 @@ impl World {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
             // class's
             let id = self.players.live(player, idx)?.id;
-            self.track_promote(player, id.get(), old.id, new)?;
+            self.track_promote(player, id, old.id, new)?;
         }
         let owner = self.players.player_mut(player)?;
         for &(kind, amount) in &switched.coming {
@@ -406,25 +410,21 @@ pub(crate) fn switch_master(
                 // inside another (`+0x2f0`) the unit has no tile (`+0x2e8` 0: no sight slots) and
                 // is in no list nor the obstruction manager: its record takes the new master's
                 // values for its way out
-                world.spatial.set_inside_record(id.get(), placed);
+                world.spatial.set_inside_record(id, placed);
                 if let Some(v) = world.spatial.sight.as_mut() {
-                    v.seer_master(id.get(), new, next.line_of_sight);
+                    v.seer_master(id, new, next.line_of_sight);
                 }
             } else {
                 if let Some(o) = placed.obstruction.as_mut() {
                     o.kind = next.obstruction_type;
                     o.class = next.obstruction_class;
                 }
-                world.pathing.removed(id.get());
-                world.spatial.sight_master(
-                    id.get(),
-                    next.radius,
-                    next.class,
-                    new,
-                    next.line_of_sight,
-                )?;
+                world.pathing.removed(id);
+                world
+                    .spatial
+                    .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
                 world.spatial.change_master(id, placed);
-                world.pathing.moved(id.get(), &placed, moving);
+                world.pathing.moved(id, &placed, moving);
             }
         }
         // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new

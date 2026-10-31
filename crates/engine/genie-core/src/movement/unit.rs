@@ -6,7 +6,6 @@ use crate::math::rng::Stream;
 use crate::movement::ASIDE;
 use crate::movement::move_to::{MoveTo, Shows};
 use crate::movement::{GroupSpeed, Me};
-use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{sprite_id, standing};
@@ -51,11 +50,7 @@ impl Unit {
                 (c.w.world_time, group),
             );
             if at != here {
-                mover.new_position(
-                    self.id.get(),
-                    at,
-                    (&mut c.w.spatial, Some(&mut c.w.pathing)),
-                )?;
+                mover.new_position(self.id, at, (&mut c.w.spatial, Some(&mut c.w.pathing)))?;
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {
@@ -89,14 +84,14 @@ impl Unit {
         let Some(g) = groups.get(self.group.id) else {
             return Ok(None);
         };
-        if !g.motion.moving() && g.slot_in_place(self.id.get()) {
+        if !g.motion.moving() && g.slot_in_place(self.id) {
             return Ok(None);
         }
         let master = self.master_in(masters)?;
         if !self.free_for_group(master)? {
             return Ok(None);
         }
-        Ok(Some(match g.member_reason(self.id.get()) {
+        Ok(Some(match g.member_reason(self.id) {
             // A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
             // and none.
             ASIDE => GroupSpeed::Aside,
@@ -152,12 +147,12 @@ impl Unit {
         };
         let target = move_to.target;
         let state = c.w.object_state(target);
-        let mut inbox = Inbox::of(&mut self.ai, self.id.get(), self.life.state);
+        let mut inbox = Inbox::of(&mut self.ai, self.id, self.life.state);
         let code = move_to.check_held(state, &mut inbox)?;
         let releases = code.is_some() && !move_to.quiet;
-        if releases {
+        if releases && let Some(target) = target {
             let by = self.releaser(c)?;
-            crate::world::lets::release(c, self, ObjectId::field(target), by)?;
+            crate::world::lets::release(c, self, target, by)?;
         }
         Ok(code)
     }
@@ -187,7 +182,7 @@ impl Unit {
                 // standing sprite for a null one
                 let master = object_master(
                     self.own_master.as_deref(),
-                    (self.id.get(), self.life.master_id),
+                    (self.id, self.life.master_id),
                     c.w.masters.get(c.player.index()),
                 )
                 .ok();

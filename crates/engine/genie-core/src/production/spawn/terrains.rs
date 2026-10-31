@@ -7,6 +7,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Tile;
 use crate::map::TileRect;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::production::spawn::PlaceMap;
@@ -40,7 +41,7 @@ pub struct BuildSite<'a> {
     pub zones: bool,
     /// The objects the scan passes over (`p12` and, for a building, its annexes, `FUN_14123d090`):
     /// none for BUILD, a reseeding gatherer's old target ([`crate::world::World::reseed`]).
-    pub own: &'a [i32],
+    pub own: &'a [ObjectId],
 }
 
 /// The hill mode's test of a tile of the box (`FUN_141123f80`'s `p7` part, the master's

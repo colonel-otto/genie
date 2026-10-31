@@ -1,6 +1,7 @@
 //! The command enum's issuing player and the lane a failed run stops.
 
 use crate::GenieError;
+use crate::commands::UnloadPick;
 use crate::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GameCommand, GateCommand,
@@ -149,8 +150,7 @@ fn one_of_each(p: u8) -> Vec<Command> {
             player: player_id(p),
             units: unit_list(object_ids(ids.clone())),
             point: Point::new(-1.0, -1.0),
-            flag: 0,
-            unit_type: -1,
+            pick: UnloadPick::of_packet(0, -1),
             sound: false,
         }),
         Command::TransformObject(TransformObjectCommand {

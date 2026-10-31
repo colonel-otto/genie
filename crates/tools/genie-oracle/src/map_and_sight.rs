@@ -129,8 +129,13 @@ impl SavedStep {
         let (width, terrain) = saved_terrain(&header);
         Ok(Self {
             objects,
-            ghosts: header.players().iter().map(saved_ghosts).collect(),
-            seen: saved_sight(&header),
+            ghosts: header
+                .players()
+                .iter()
+                .map(saved_ghosts)
+                .collect::<Result<_, _>>()
+                .map_err(Error::Unmodelled)?,
+            seen: saved_sight(&header).map_err(Error::Unmodelled)?,
             width,
             terrain,
             game: game_state(&header, masters)?,
@@ -159,7 +164,7 @@ pub(super) fn spatial(
         .iter()
         .map(|p| p.world_player().base.unit_diplomacy.clone())
         .collect();
-    let mut sight = saved_sight(header);
+    let mut sight = saved_sight(header)?;
     for (player, section) in PlayerId::each(header.players().len()).zip(header.players()) {
         let all = section.live_objects().chain(section.sleeping_objects());
         for o in all {
@@ -168,6 +173,7 @@ pub(super) fn spatial(
                 continue;
             };
             let master = genie_core::objects::masters::MasterId::try_from(s.master_obj)?;
+            let id = ObjectId::try_from(s.id)?;
             let building = o.tribe_building_object.as_deref();
             // a building's place links its tiles (FUN_1411e6780), an annex's does not, and a
             // foundation made desolid lost them (FUN_1411cf770); so do a combat unit's that does
@@ -194,7 +200,7 @@ pub(super) fn spatial(
                 (false, false) => 0,
             };
             sight.add_seer(
-                s.id,
+                id,
                 Seer {
                     player,
                     master,
@@ -251,12 +257,15 @@ pub(super) fn spatial(
             // an object inside another left its tile's list and the obstruction manager
             // (FUN_1411921d0)
             if s.inside_obj != -1 {
-                out.go_inside(s.id, Position::new(s.t_x, s.t_y, s.t_z));
+                out.go_inside(id, Position::new(s.t_x, s.t_y, s.t_z));
             }
         }
         for ghost in section.objects().doppleganger_objects.objects() {
             if let Some(s) = ghost.static_part() {
-                out.insert_ghost(s.id, Position::new(s.t_x, s.t_y, s.t_z));
+                out.insert_ghost(
+                    ObjectId::try_from(s.id)?,
+                    Position::new(s.t_x, s.t_y, s.t_z),
+                );
             }
         }
     }
@@ -266,7 +275,7 @@ pub(super) fn spatial(
 
 /// What the players see in a save: each player's visible map, the map's unified map and UMV list
 /// and which players are computers; no tile links and no objects' sight.
-pub(super) fn saved_sight(header: &Header) -> Visibility {
+pub(super) fn saved_sight(header: &Header) -> Result<Visibility, genie_core::GenieError> {
     let map = &header.world.base_world.map;
     let n = (map.map_width.max(0) * map.map_height.max(0)) as usize;
     let players = header.players();
@@ -313,15 +322,15 @@ pub(super) fn saved_sight(header: &Header) -> Visibility {
     sight.resources = players
         .iter()
         .map(|p| saved_resources(&p.objects().visible_resource_manager))
-        .collect();
-    sight
+        .collect::<Result<_, _>>()?;
+    Ok(sight)
 }
 
 /// A player's saved `Visible_Resource_Manager` as [`VisibleResources`] holds it.
 pub(super) fn saved_resources(
     m: &genie_save::generated::world::VisibleResourceManager,
-) -> VisibleResources {
-    VisibleResources {
+) -> Result<VisibleResources, genie_core::GenieError> {
+    Ok(VisibleResources {
         capacities: m
             .list_sizes
             .iter()
@@ -335,24 +344,26 @@ pub(super) fn saved_resources(
             .map(|l| {
                 l.visible_resource_rec
                     .iter()
-                    .map(|r| VisibleResource {
-                        id: r.object_id,
-                        distance: r.distance,
-                        zone: r.zone,
-                        x: r.pos_x,
-                        y: r.pos_y,
+                    .map(|r| {
+                        Ok(VisibleResource {
+                            id: ObjectId::try_from(r.object_id)?,
+                            distance: r.distance,
+                            zone: r.zone,
+                            x: r.pos_x,
+                            y: r.pos_y,
+                        })
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, genie_core::GenieError>>()
             })
-            .collect(),
-    }
+            .collect::<Result<_, _>>()?,
+    })
 }
 
 /// The players' visible maps and the unified map of a save, as [`Visibility`] holds them.
 pub fn saved_visibility(save: &[u8]) -> Result<Visibility, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
-    Ok(saved_sight(&header))
+    saved_sight(&header).map_err(Error::Unmodelled)
 }
 
 /// Where player `player`'s sight in `slice` differs from `game`'s: its explored count, each tile's

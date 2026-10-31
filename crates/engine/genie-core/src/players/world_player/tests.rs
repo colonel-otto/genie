@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::map::Tile;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -199,7 +200,7 @@ fn a_mill_s_livestock_makes_food() {
     let p = &mut t.players[1];
     p.objects = vec![mill, other, sheep].into();
     for id in [10, 11, 12] {
-        p.tracker.add(id, key);
+        p.tracker.add(object_id(id), key);
     }
     p.attributes[254] = 15.0;
     p.update_time = 0.5;
@@ -373,12 +374,20 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
     .into();
     // 9 is filed but gone from the world
     for (id, master) in [(5, 109), (9, 109), (6, 109), (7, 444)] {
-        t.players[1].tracker.add(id, key(master));
+        t.players[1].tracker.add(object_id(id), key(master));
     }
-    let all: Vec<Option<i32>> = (0..4)
+    let all: Vec<Option<ObjectId>> = (0..4)
         .map(|n| t.town_centre_at(PlayerId::new(1), n))
         .collect();
-    assert_eq!(all, [Some(5), Some(6), Some(7), None]);
+    assert_eq!(
+        all,
+        [
+            Some(object_id(5)),
+            Some(object_id(6)),
+            Some(object_id(7)),
+            None
+        ]
+    );
     assert_eq!(t.town_centre_at(PlayerId::new(2), 0), None);
 }
 
@@ -405,11 +414,11 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
         object(5, ids::TOWN_CENTRE, 2),
     ]
     .into();
-    t.players[1].tracker.add(5, tc_key);
+    t.players[1].tracker.add(object_id(5), tc_key);
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert!(t.players[1].sudden_death_eliminable);
     assert_eq!(t.players[1].game_status, PLAYING);
-    assert_eq!(t.first_town_centre(PlayerId::new(1)), Some(5));
+    assert_eq!(t.first_town_centre(PlayerId::new(1)), Some(object_id(5)));
     // the town centre falls (state 3): the villager no longer keeps the player
     t.players[1].objects[1].life.state = 3;
     assert_eq!(t.first_town_centre(PlayerId::new(1)), None);
@@ -425,7 +434,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     let mut t2 = world();
     t2.settings.game_mode = 1;
     t2.players[1].tracker.add(
-        7,
+        object_id(7),
         Key {
             master: KING,
             class: Some(class::KING),

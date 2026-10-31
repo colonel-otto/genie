@@ -6,7 +6,7 @@ use crate::GenieError;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::member_gone;
 use crate::groups::update::send::Travel;
-use crate::objects::ObjectId;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::{Place, Work};
 use crate::world::World;
 
@@ -32,10 +32,10 @@ impl World {
     pub(super) fn release_units(
         &mut self,
         group: i32,
-        units: &[i32],
-        target: i32,
+        units: &[ObjectId],
+        target: ObjectId,
     ) -> Result<(), GenieError> {
-        if target == -1 || self.world_object(target).is_none() {
+        if self.world_object(target).is_none() {
             return Ok(());
         }
         for &id in units {
@@ -45,7 +45,12 @@ impl World {
     }
 
     /// [`World::release_units`]' step for the unit `id`.
-    fn release_unit(&mut self, group: i32, id: i32, target: i32) -> Result<(), GenieError> {
+    fn release_unit(
+        &mut self,
+        group: i32,
+        id: ObjectId,
+        target: ObjectId,
+    ) -> Result<(), GenieError> {
         let Some(Place::Live(..)) = self.place(id) else {
             return Ok(());
         };
@@ -61,12 +66,12 @@ impl World {
             g.current_target.disable_retargeting,
             g.current_target.certain_action,
         );
-        if !self.member_idle(id)? && top != -1 && top == g.current_target.target {
+        if !self.member_idle(id)? && top.is_some() && top == g.current_target.target.key() {
             return Ok(());
         }
         let part = self.gate_part(id, target)?;
         if self.groups.held(group)?.command_queue.is_empty() && !self.target_pending(group)? {
-            let (id, part) = (ObjectId::try_from(id)?, ObjectId::of_field(part));
+            let (id, part) = (id, Some(part));
             let _ = self.remove_unit(group, id, part, false)?;
         }
         self.stand_unit(id)?;
@@ -78,7 +83,7 @@ impl World {
         self.give_work(
             id,
             &Work {
-                target: part,
+                target: Some(part),
                 point: at,
                 carry_test: true,
                 filter: certain,
@@ -96,7 +101,7 @@ impl World {
     /// # Errors
     ///
     /// A unit that is no member: the game writes the record before the array.
-    fn clear_own_move(&mut self, group: i32, id: i32) -> Result<(), GenieError> {
+    fn clear_own_move(&mut self, group: i32, id: ObjectId) -> Result<(), GenieError> {
         let record = self
             .groups
             .held_mut(group)?

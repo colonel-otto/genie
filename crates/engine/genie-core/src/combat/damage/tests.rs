@@ -39,10 +39,11 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::test_ids::master_id;
+use crate::test_ids::object_id;
 
 fn sheep() -> Victim {
     Victim {
-        id: 9520,
+        id: object_id(9520),
         hp: 14.0,
         kind: master_type::COMBAT,
         class: class::LIVESTOCK,
@@ -62,7 +63,7 @@ fn sheep() -> Victim {
 
 fn hunter() -> Victim {
     Victim {
-        id: 10029,
+        id: object_id(10029),
         hp: 25.0,
         kind: master_type::COMBAT,
         class: class::VILLAGER,
@@ -70,7 +71,7 @@ fn hunter() -> Victim {
         player: PlayerId::new(1),
         position: Position::new(10.5, 11.0, 0.0),
         source: Attacker {
-            id: 10029,
+            id: object_id(10029),
             kind: master_type::COMBAT,
             class: class::VILLAGER,
             master_id: master_id(592),
@@ -184,14 +185,14 @@ fn a_hunter_strikes_its_sheep_for_twelve() {
     );
     take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
     assert_eq!(sheep.hp, 2.0);
-    assert_eq!(sheep.damaged, [(10029, [10029, 2, 14])]);
+    assert_eq!(sheep.damaged, [(Some(object_id(10029)), [10029, 2, 14])]);
     // the next hit kills it, and Gaia takes a player's livestock
     take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
     assert_eq!(sheep.hp, 0.0);
     assert_eq!(
         sheep.killed,
         Some(Kill {
-            attacker: 10029,
+            attacker: object_id(10029),
             attacker_player: 1,
             attacker_class: class::VILLAGER,
             to_gaia: true
@@ -569,7 +570,7 @@ fn a_retaliation_strikes_the_melee_attacker_first() {
     });
     take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
     assert_eq!((hunter.hp, sheep.hp), (20.0, 11.0));
-    assert_eq!(hunter.damaged, [(9520, [9520, 20, 25])]);
+    assert_eq!(hunter.damaged, [(Some(object_id(9520)), [9520, 20, 25])]);
     hunter.hp = 5.0;
     take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
     // the hunter dies; the sheep loses the least, one hit point
@@ -602,7 +603,7 @@ fn a_blast_s_nan_paths_are_the_game_s() {
     elephant.weapons = vec![(4, 10)];
     let center = elephant.position;
     let enemy = |x: f32, y: f32| Victim {
-        id: 2,
+        id: object_id(2),
         player: PlayerId::new(2),
         position: Position::new(x, y, 0.0),
         blast_defense: 2,
@@ -684,7 +685,7 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
     elephant.source.player = PlayerId::new(1);
     elephant.weapons = vec![(4, 10)];
     let enemy = |id: i32, x: f32| Victim {
-        id,
+        id: object_id(id),
         player: PlayerId::new(2),
         position: Position::new(x, 11.0, 0.0),
         blast_defense: 2,
@@ -700,7 +701,14 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
     let center = elephant.position;
     let mut all = [&mut target, &mut near, &mut far, &mut friend];
     assert_eq!(
-        blast(&mut elephant, center, Some(1), None, &mut all, 1.0),
+        blast(
+            &mut elephant,
+            center,
+            Some(object_id(1)),
+            None,
+            &mut all,
+            1.0
+        ),
         Ok(true)
     );
     assert_eq!(
@@ -724,7 +732,7 @@ fn a_blast_reaches_the_objects_about_its_attacker() {
 /// armor 7; it cost 25 wood, paid.
 fn house() -> Victim {
     Victim {
-        id: 500,
+        id: object_id(500),
         hp: 550.0,
         kind: BUILDING,
         class: class::BUILDING,
@@ -757,7 +765,7 @@ fn a_building_takes_its_damage_and_at_least_its_least_hit() {
     let mut h = house();
     take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
     assert_eq!(h.hp, 547.0);
-    assert_eq!(h.damaged, [(10029, [10029, 547, 550])]);
+    assert_eq!(h.damaged, [(Some(object_id(10029)), [10029, 547, 550])]);
     let b = h.building.as_ref().unwrap();
     assert_eq!((b.damaged_lately, b.struck, b.razed.len()), (60, true, 0));
     // at 1 a hit may do nothing: the least takes 1 more
@@ -813,10 +821,10 @@ fn a_building_without_hit_points_takes_no_hit() {
 fn a_hit_on_an_annex_goes_to_its_main_building() {
     let mut villager = hunter();
     let mut main = Victim {
-        id: 10,
+        id: object_id(10),
         hp: 2400.0,
         building: Some(Building {
-            annexes: vec![11, 12],
+            annexes: vec![object_id(11), object_id(12)],
             cost: 275.0,
             ..Building::default()
         }),
@@ -827,12 +835,12 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
         id,
         hp: 2400.0,
         building: Some(Building {
-            main: Some(10),
+            main: Some(object_id(10)),
             ..Building::default()
         }),
         ..house()
     };
-    let (mut a, mut other) = (annex(11), annex(12));
+    let (mut a, mut other) = (annex(object_id(11)), annex(object_id(12)));
     take(
         &mut a,
         &mut villager,
@@ -845,9 +853,9 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
     assert_eq!((main.hp, a.hp, other.hp), (2398.0, 2398.0, 2398.0));
     assert!(main.building.as_ref().unwrap().struck);
     assert!(!a.building.as_ref().unwrap().struck);
-    assert_eq!(main.damaged, [(10029, [10029, 2398, 550])]);
+    assert_eq!(main.damaged, [(Some(object_id(10029)), [10029, 2398, 550])]);
     assert_eq!(a.damaged, []);
-    let mut alone = annex(11);
+    let mut alone = annex(object_id(11));
     assert_eq!(
         take(&mut alone, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0),
         Err(crate::construction::build::NOT_HELD)
@@ -1006,13 +1014,13 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     mangonel.position = Position::new(10.5, 10.5, 0.0);
     let center = mangonel.position;
     let mut main = Victim {
-        id: 20,
+        id: object_id(20),
         hp: 100.0,
         position: Position::new(11.5, 10.5, 0.0),
         radius: Footprint::new(1.0, 1.0),
         blast_defense: 2,
         building: Some(Building {
-            annexes: vec![21],
+            annexes: vec![object_id(21)],
             blast_taken: 7.0,
             ..Building::default()
         }),
@@ -1020,13 +1028,13 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
     };
     main.source.area_damage = 0.0;
     let mut annex = Victim {
-        id: 21,
+        id: object_id(21),
         hp: 100.0,
         position: Position::new(10.5, 10.5, 0.0),
         radius: Footprint::new(0.5, 0.5),
         blast_defense: 0,
         building: Some(Building {
-            main: Some(20),
+            main: Some(object_id(20)),
             ..Building::default()
         }),
         ..house()
@@ -1036,7 +1044,7 @@ fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
         blast(&mut mangonel, center, None, None, &mut all, 1.0),
         Ok(true)
     );
-    assert_eq!(all.map(|t| t.id), [21, 20]);
+    assert_eq!(all.map(|t| t.id), [object_id(21), object_id(20)]);
     assert_eq!((main.hp, annex.hp), (95.0, 95.0));
     assert_eq!(main.building.as_ref().unwrap().blast_taken, 5.0);
     // each hit posts its damage notify to the main building's unit AI: the annex's
@@ -1057,7 +1065,7 @@ fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
     elephant.source.player = PlayerId::new(1);
     elephant.weapons = vec![(4, 10)];
     let enemy = |id: i32, x: f32, y: f32, tile_place| Victim {
-        id,
+        id: object_id(id),
         tile_place,
         player: PlayerId::new(2),
         position: Position::new(x, y, 0.0),
@@ -1075,7 +1083,10 @@ fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
         blast(&mut elephant, center, None, None, &mut all, 1.0),
         Ok(true)
     );
-    assert_eq!(all.map(|t| t.id), [5, 7, 3]);
+    assert_eq!(
+        all.map(|t| t.id),
+        [object_id(5), object_id(7), object_id(3)]
+    );
 }
 
 /// A hit point powerup that took `taken` of its most `max`.
@@ -1139,9 +1150,9 @@ fn a_blast_keeps_a_building_s_damage_on_it_or_its_main_building() {
     main.blast_defense = 3;
     main.building.as_mut().unwrap().blast_taken = 7.0;
     let mut annex = Victim {
-        id: 501,
+        id: object_id(501),
         building: Some(Building {
-            main: Some(500),
+            main: Some(object_id(500)),
             blast_taken: 2.0,
             ..Building::default()
         }),
@@ -1161,7 +1172,7 @@ fn a_blast_keeps_a_building_s_damage_on_it_or_its_main_building() {
     assert_eq!(ledger_values(&all, 2, None, &a), (0.5, 0, 0.0));
     let mut orphan = Victim {
         building: Some(Building {
-            main: Some(999),
+            main: Some(object_id(999)),
             ..Building::default()
         }),
         ..house()
@@ -1325,7 +1336,7 @@ fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
     assert_eq!((t.hp, t.amount), (0.0, 0.0));
     assert_eq!(
         t.killed.map(|k| (k.attacker, k.attacker_player)),
-        Some((10029, 1))
+        Some((object_id(10029), 1))
     );
     let mut gaia = Victim {
         player: PlayerId::new(0),
@@ -1367,9 +1378,9 @@ fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
     assert_eq!(enemy.hp, 9.0);
     let mut main = house();
     let mut annex = Victim {
-        id: 501,
+        id: object_id(501),
         building: Some(Building {
-            main: Some(500),
+            main: Some(object_id(500)),
             ..Building::default()
         }),
         ..house()
@@ -1404,13 +1415,13 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
         wide: 0.0,
         tiles: blast_tiles(center, 1.0),
         spares_friends: true,
-        exclude: Some(9),
+        exclude: Some(object_id(9)),
         main: None,
         factor: 1.0,
     };
     let weapons = [(4, 10)];
     let enemy = Victim {
-        id: 2,
+        id: object_id(2),
         player: PlayerId::new(2),
         position: Position::new(10.8, 11.0, 0.0),
         blast_defense: 2,
@@ -1433,11 +1444,11 @@ fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
             ..enemy.clone()
         },
         Victim {
-            id: 9,
+            id: object_id(9),
             ..enemy.clone()
         },
         Victim {
-            id: 10029,
+            id: object_id(10029),
             ..enemy.clone()
         },
         Victim {

@@ -32,16 +32,16 @@ impl World {
             _ => None,
         };
         let blasted = match target {
-            Some(t) => self.blasted(&unit, p, t)?,
+            Some(t) => self.blasted(&unit, p, Some(t))?,
             None if blasts_at_death(unit.master(&self.masters, p)?, &unit.life) => {
-                self.blasted(&unit, p, -1)?
+                self.blasted(&unit, p, None)?
             }
             None => Vec::new(),
         };
         let (tick, me) = (self.ticks, unit.id);
         let mut c = Step {
             w: self,
-            me: me.get(),
+            me,
             dt,
             tick,
             turn,
@@ -60,7 +60,7 @@ impl World {
         {
             result = Err(e);
         }
-        self.spatial.set_gait(me.get(), unit.gait());
+        self.spatial.set_gait(me, unit.gait());
         // back to its stand-in's slot, which a removal in the step may have moved
         if let Err(e) = self.put_back_own(p, unit) {
             result = Err(e);

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::commands::Command;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Outcome, Unit};
 use crate::ownership::capture::Captured;
@@ -54,7 +55,7 @@ impl World {
     /// (a unit the world does not hold, none).
     ///
     /// [`Unit::gait`]: crate::objects::unit::Unit::gait
-    pub(crate) fn refresh_gaits(&mut self, ids: impl IntoIterator<Item = i32>) {
+    pub(crate) fn refresh_gaits(&mut self, ids: impl IntoIterator<Item = ObjectId>) {
         for id in ids {
             let gait = self.object(id).and_then(|(_, u)| u.gait());
             self.spatial.set_gait(id, gait);
@@ -77,8 +78,8 @@ impl World {
     pub(super) fn sync_moving(&mut self) {
         for p in &self.players {
             for u in p.objects.iter().chain(&p.sleeping) {
-                self.spatial.set_gait(u.id.get(), u.gait());
-                self.spatial.set_annex(u.id.get(), u.annex_of);
+                self.spatial.set_gait(u.id, u.gait());
+                self.spatial.set_annex(u.id, u.annex_of);
             }
         }
         if self.spatial.relations.is_empty() {
@@ -128,13 +129,13 @@ impl World {
             let unit = player.live(i)?;
             let stopped = player.stopped || unit.stopped;
             if stopped && unit.life.is_alive() {
-                self.spatial.freeze(unit.id.get());
+                self.spatial.freeze(unit.id);
                 i += 1;
                 continue;
             }
-            let (id, master) = (unit.id.get(), unit.life.master_id);
+            let (id, master) = (unit.id, unit.life.master_id);
             let _object =
-                tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master = %master)
+                tracing::trace_span!(target: crate::trace::UPDATE, "object", id = id.get(), master = %master)
                     .entered();
             match self.step_object((p, i), (dt, turn, true), Unit::update) {
                 Ok(s) => i += usize::from(self.file_step(p, s.slot, s.outcome)?),
@@ -189,8 +190,8 @@ impl World {
                     &self.lines,
                     asleep.life.master_id,
                 );
-                player.tracker.remove(asleep.id.get(), k);
-                player.tracker.add(asleep.id.get(), k);
+                player.tracker.remove(asleep.id, k);
+                player.tracker.add(asleep.id, k);
                 player.sleeping.push(asleep);
                 Ok(true)
             }
@@ -198,8 +199,8 @@ impl World {
                 // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its lists' moves
                 // and its new owner's parts
                 let id = player.live(i)?.id;
-                let watched = player.watched.iter().any(|w| w.id == id.get());
-                if let Err(e) = self.building_changes_hands(p, id.get(), new, watched) {
+                let watched = player.watched.iter().any(|w| w.id == id);
+                if let Err(e) = self.building_changes_hands(p, id, new, watched) {
                     crate::trace::player_unsupported(self.ticks, p, &e);
                     let _ = self
                         .players
@@ -265,9 +266,9 @@ impl World {
         for u in &moved {
             let m = u.life.master_id;
             let old = crate::players::tracker::key(self.masters.get(p.index()), &self.lines, m);
-            self.players.player_mut(p)?.tracker.remove(u.id.get(), old);
+            self.players.player_mut(p)?.tracker.remove(u.id, old);
             let k = crate::players::tracker::key(self.masters.get(new.index()), &self.lines, m);
-            self.players.player_mut(new)?.tracker.add(u.id.get(), k);
+            self.players.player_mut(new)?.tracker.add(u.id, k);
         }
         self.players.player_mut(new)?.objects.extend(moved);
         Ok(())
@@ -283,7 +284,7 @@ impl World {
     fn freeze_object(
         &mut self,
         p: PlayerId,
-        (i, id): (usize, i32),
+        (i, id): (usize, ObjectId),
         e: GenieError,
     ) -> Result<(), GenieError> {
         let player = self.players.player_mut(p)?;

@@ -24,7 +24,7 @@ pub(super) struct Aim {
     pub(super) fog_visibility: u8,
     /// The object aimed at (the target, or a building annex's main building), its place and its
     /// master's class.
-    pub(super) aimed: i32,
+    pub(super) aimed: ObjectId,
     pub(super) at: Position,
     pub(super) aimed_class: ClassId,
 }
@@ -36,7 +36,7 @@ impl World {
         &self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         (master, world_time): (&crate::objects::masters::Master, u32),
     ) -> Result<Option<crate::combat::attack::ReadyReads>, GenieError> {
         let u = self.players.live(player, idx)?;
@@ -81,7 +81,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &crate::objects::masters::Task,
         point: Position,
         clears: bool,
@@ -105,7 +105,7 @@ impl World {
         let standing = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
         let me_at = *self
             .spatial
-            .get(self.players.live(player, idx)?.id.get())
+            .get(self.players.live(player, idx)?.id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_at = *self
             .spatial
@@ -159,10 +159,10 @@ impl World {
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
             if let Some(ai) = unit.ai.as_mut() {
-                ai.post(crate::unit_ai::Notify::own(id.get(), kind, p), state)?;
+                ai.post(crate::unit_ai::Notify::own(id, kind, p), state)?;
             }
         }
-        attack.target2 = ObjectId::of_field(target);
+        attack.target2 = Some(target);
         unit.actions.set_attack(Some(attack));
         self.take(target, self.releaser(player, idx)?)?;
         Ok(())
@@ -171,7 +171,7 @@ impl World {
     /// Where an attack task on `target` aims (`FUN_141189b20`): a building annex at its main
     /// building, anything else at itself; with the target's owner, its master's class and fog
     /// visibility, and the aimed object's place and class.
-    pub(super) fn attack_aim(&self, target: i32) -> Result<Aim, GenieError> {
+    pub(super) fn attack_aim(&self, target: ObjectId) -> Result<Aim, GenieError> {
         let (owner, t) = self.object(target).ok_or(GenieError::unsupported(
             "an attack task's target the slice does not hold",
         ))?;
@@ -204,7 +204,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, aim): (i32, &Aim),
+        (target, aim): (ObjectId, &Aim),
         point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -212,7 +212,7 @@ impl World {
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = unit.ai.as_mut() {
             ai.set_action(Some(ActionKind::Attack));
-            ai.set_target(aim.aimed, i32::from(aim.aimed_class.get()), aim.at);
+            ai.set_target(Some(aim.aimed), i32::from(aim.aimed_class.get()), aim.at);
         }
         self.take(target, self.releaser(player, idx)?)?;
         let unit = self.players.live_mut(player, idx)?;
@@ -242,7 +242,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let quarry = self.quarry(player, target)?;
         let engagement = self.engagement(player, idx, target)?;
@@ -299,47 +299,44 @@ impl World {
             }
             // the hunt's slot 0x68 (FUN_140ac7980): FUN_140a7a230 on the new target, which the
             // work command's task finder took below state 3
-            let _ = self.retarget_action(
-                player,
-                idx,
-                ObjectId::field(old.unwrap_or(None)),
-                target,
-                false,
-            )?;
+            let _ = self.retarget_action(player, idx, old.unwrap_or(None), target, false)?;
         }
         Ok(())
     }
 
-    /// An action's slot 0x68 base (`FUN_140a7a230`) for the unit at `idx`: its target `old` (−1
-    /// for none) becomes `new`. The same target changes nothing. A different old target the
+    /// An action's slot 0x68 base (`FUN_140a7a230`) for the unit at `idx`: its target `old`
+    /// becomes `new`. The same target changes nothing. A different old target the
     /// world still holds is let go (slot 0x180, [`World::release`]) unless the action is a
     /// sub-action (`quiet`, `+0x60`); a new target in state 7 or more is not taken, and the
     /// action is left without one; else it is taken (slot 0x178 with the action's type,
-    /// [`World::take`]) unless `quiet`. Returns the action's target id (`+0x30`) after it.
+    /// [`World::take`]) unless `quiet`. Returns the action's target (`+0x30`) after it.
     pub(crate) fn retarget_action(
         &mut self,
         player: PlayerId,
         idx: usize,
-        old: i32,
-        new: i32,
+        old: Option<ObjectId>,
+        new: ObjectId,
         quiet: bool,
-    ) -> Result<i32, GenieError> {
-        if old == new {
+    ) -> Result<Option<ObjectId>, GenieError> {
+        if old == Some(new) {
             return Ok(old);
         }
-        if old != -1 && !quiet && self.object(old).is_some() {
+        if let Some(old) = old
+            && !quiet
+            && self.object(old).is_some()
+        {
             let by = self.releaser(player, idx)?;
             self.release(old, by)?;
         }
         let Some((_, t)) = self.object(new) else {
-            return Ok(-1);
+            return Ok(None);
         };
         if 7 <= t.life.state {
-            return Ok(-1);
+            return Ok(None);
         }
         if !quiet {
             self.take(new, self.releaser(player, idx)?)?;
         }
-        Ok(new)
+        Ok(Some(new))
     }
 }

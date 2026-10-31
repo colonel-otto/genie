@@ -5,6 +5,7 @@ use crate::gathering::hunt::HuntTask;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::orders::gather::HuntOrder;
 use crate::orders::{HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
 use crate::players::PlayerId;
@@ -36,7 +37,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let (_, t) = self.object(target).ok_or(HUNT_TARGET_GONE)?;
         let point = t.position();
@@ -76,7 +77,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         if self.object(target).is_none() {
             return Err(GenieError::unsupported(
@@ -108,7 +109,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &crate::objects::masters::Task,
         point: Position,
         clears: bool,
@@ -122,7 +123,7 @@ impl World {
         let unit = &self.players.live(player, idx)?;
         let builder = unit.master(&self.masters, player)?;
         let to = crate::movement::move_to::WalkTo {
-            id: target,
+            id: Some(target),
             at: t_at,
             gap: crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius),
             state: t_state,
@@ -169,7 +170,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &crate::objects::masters::Task,
     ) -> Result<(crate::construction::repair::RepairAction, i32), GenieError> {
         let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
@@ -182,7 +183,7 @@ impl World {
         let master = unit.master(&self.masters, player)?;
         let move_reads = crate::movement::move_to::MoveToReads::of(unit, master, &self.graphics);
         let to = move_reads
-            .walk_to(self, target)?
+            .walk_to(self, Some(target))?
             .ok_or(REPAIR_TARGET_GONE)?;
         let repair_task = crate::construction::repair::RepairTask::of(task);
         let repair = crate::construction::repair::RepairAction::start(
@@ -203,7 +204,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &crate::objects::masters::Task,
         point: Position,
         clears: bool,
@@ -280,7 +281,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -316,7 +317,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<i32, GenieError> {
         let (tp, t) = self.object(target).ok_or(REPAIR_TARGET_GONE)?;
         let tm = t.master(&self.masters, tp)?;
@@ -332,7 +333,7 @@ impl World {
             .repair()
             .copied()
             .ok_or(NO_REPAIR)?;
-        let same = repair.target == target;
+        let same = repair.target == Some(target);
         let stays = same && (repair.state == 6 || (repair.state == 4 && computer));
         if !stays {
             if !same && repair.counted {
@@ -349,7 +350,7 @@ impl World {
                 &self.graphics,
             );
             let to = move_reads
-                .walk_to(self, target)?
+                .walk_to(self, Some(target))?
                 .ok_or(REPAIR_TARGET_GONE)?;
             let unit = self.players.live_mut(player, idx)?;
             let r = unit.actions.repair_mut().ok_or(NO_REPAIR)?;
@@ -360,7 +361,7 @@ impl World {
             r.target = taken;
             r.walk_again(to, unit.body.mover_mut(), &move_reads)?;
             if counted {
-                self.leave_builders(target)?;
+                self.leave_builders(Some(target))?;
             }
         }
         Ok(class)
@@ -379,7 +380,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         point: Position,
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -409,7 +410,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<i32, GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
             "a Build's foundation the slice does not hold",
@@ -432,7 +433,7 @@ impl World {
             ))?;
         let builder = unit.master(&self.masters, player)?;
         let to = crate::movement::move_to::WalkTo {
-            id: target,
+            id: Some(target),
             at: t_at,
             gap: crate::movement::footprint_gap(unit.position(), builder.radius, t_at, t_radius),
             state: t_state,
@@ -440,7 +441,7 @@ impl World {
         // set_state(4)'s MoveTo to the foundation (FUN_140aa0df0), made before the borrows below
         let move_reads = crate::movement::move_to::MoveToReads::of(unit, builder, &self.graphics);
         let walk = old.task.walk(&move_reads, Some(to))?;
-        if old.target != target {
+        if old.target != Some(target) {
             // the task finder took the new target below state 3, which slot 0x68 keeps
             let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;
             let unit = self.players.live_mut(player, idx)?;
@@ -461,7 +462,7 @@ impl World {
             (unit.actions.take_build(), unit.body.take_mover())
         };
         // FUN_140aaddb0's building: an annex's main building
-        let counted = match self.counted_building(target)? {
+        let counted = match self.counted_building(Some(target))? {
             Some(id) if id != target => self.object_mut(id).map(|(_, b)| b),
             _ => Some(self.players.live_mut(fp, fi)?),
         };
@@ -481,7 +482,7 @@ impl World {
     }
 
     /// The Build's slot 0x68 (`FUN_140ab0300`) of the builder at `idx`, its target `old` and
-    /// whether it is counted among the builders (`added`, `+0x68`), on `new` (−1 for none): a
+    /// whether it is counted among the builders (`added`, `+0x68`), on `new`: a
     /// counted Build of another target leaves the builders ([`World::leave_builders`]) and is no
     /// longer counted; then the base ([`World::retarget_action`]) takes the target. Returns the
     /// Build's target after it.
@@ -489,10 +490,10 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (old, added): (i32, bool),
-        new: i32,
-    ) -> Result<i32, GenieError> {
-        let leaves = old != new && added;
+        (old, added): (Option<ObjectId>, bool),
+        new: ObjectId,
+    ) -> Result<Option<ObjectId>, GenieError> {
+        let leaves = old != Some(new) && added;
         if leaves {
             self.leave_builders(old)?;
         }
@@ -507,8 +508,11 @@ impl World {
     /// `FUN_140aaddb0`: the building a Build on `id` counts its builder in, when the world holds
     /// `id` (live or sleeping, `FUN_1415417a0`): the object itself, or for a building (type 80)
     /// that is an annex (`+0xbb8`) its main building.
-    pub(crate) fn counted_building(&self, id: i32) -> Result<Option<i32>, GenieError> {
-        let Some((p, f)) = self.object(id) else {
+    pub(crate) fn counted_building(
+        &self,
+        id: impl ObjectKey,
+    ) -> Result<Option<ObjectId>, GenieError> {
+        let Some((id, (p, f))) = id.key().and_then(|id| Some((id, self.object(id)?))) else {
             return Ok(None);
         };
         let kind = f.master(&self.masters, p)?.kind;
@@ -524,7 +528,10 @@ impl World {
     /// `FUN_140ad9050`) counts one less (`+0x9e8`: a building's in its construction record, a
     /// unit's its own); none once the world no longer holds `id`. Outside an update
     /// ([`crate::world::lets::Lets::leave_builders`] on the whole world).
-    pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn leave_builders(&mut self, id: impl ObjectKey) -> Result<(), GenieError> {
+        let Some(id) = id.key() else {
+            return Ok(());
+        };
         self.with_lets(PlayerId::GAIA, |lets, others| {
             lets.leave_builders(others, None, id)
         })?

@@ -7,13 +7,14 @@
 
 use genie_core::GenieError;
 use genie_core::groups::{
-    Formation, FormationLine, GroupCommand, GroupOrder, LinePoint, Member, Motion, PointLine, Slot,
-    SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
+    Formation, FormationLine, GroupCommand, GroupOrder, GroupTarget, LinePoint, Member, Motion,
+    PointLine, Slot, SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
 };
 use genie_core::math::fmath::BVector;
+use genie_core::objects::ObjectId;
 use genie_save::generated::world as saved;
 
-use crate::{path_level, vec3};
+use crate::{object_ids, path_level, vec3};
 
 /// Four vectors of a saved 48-byte position (point, forward, up, right).
 fn frame(b: &[u8; 48]) -> [BVector; 4] {
@@ -59,7 +60,7 @@ fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, GenieError
         maximum_velocity_forward: m.maximum_velocity_forward,
         number_wait_delays: m.number_wait_delays,
         // not saved: the constructor's
-        lead: -1,
+        lead: None,
     })
 }
 
@@ -70,7 +71,7 @@ fn formation(f: &saved::Formation) -> Formation {
             .slots
             .iter()
             .map(|s| Slot {
-                unit_id: s.slots_unit_id,
+                unit_id: ObjectId::of_field(s.slots_unit_id),
                 offset: vec3(&s.slots_offset),
                 transform_position: vec3(&s.slots_transform_position),
                 time: s.slots_time,
@@ -116,21 +117,23 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         members: g
             .units
             .iter()
-            .map(|u| Member {
-                id: u.units,
-                specific_move: SpecificMove {
-                    active: u.specific_moves_active,
-                    path_id: u.specific_moves_path_id,
-                    reason: u.specific_moves_reason,
-                    goal: vec3(&u.specific_moves_goal),
-                    timer: u.specific_moves_timer,
-                    consecutive_move_failures: u.specific_moves_consecutive_move_failures,
-                    distance: u.specific_moves_distance,
-                    last_position: vec3(&u.specific_moves_last_position),
-                },
-                seconds_since_attacking: u.seconds_since_attacking,
+            .map(|u| {
+                Ok(Member {
+                    id: ObjectId::try_from(u.units)?,
+                    specific_move: SpecificMove {
+                        active: u.specific_moves_active,
+                        path_id: u.specific_moves_path_id,
+                        reason: u.specific_moves_reason,
+                        goal: vec3(&u.specific_moves_goal),
+                        timer: u.specific_moves_timer,
+                        consecutive_move_failures: u.specific_moves_consecutive_move_failures,
+                        distance: u.specific_moves_distance,
+                        last_position: vec3(&u.specific_moves_last_position),
+                    },
+                    seconds_since_attacking: u.seconds_since_attacking,
+                })
             })
-            .collect(),
+            .collect::<Result<_, GenieError>>()?,
         previous_formation: g.previous_formation.as_deref().map(formation),
         current_formation: g.current_formation.as_deref().map(formation),
         garbage: g.garbage,
@@ -164,22 +167,23 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             .unit_types
             .unit_type_statistic
             .iter()
-            .map(|u| UnitTypeStatistic {
-                formation_category: u.formation_category,
-                units: u.units.clone(),
-                used: u.used,
-                attack_range: u.attack_range,
-                desired_spacing: u.desired_spacing,
-                number_unit_types: u.number_unit_types,
-                unit_types: words(&u.unit_types),
-                unit_type_counts: words(&u.unit_type_counts),
+            .map(|u| {
+                Ok(UnitTypeStatistic {
+                    formation_category: u.formation_category,
+                    units: object_ids(&u.units)?,
+                    used: u.used,
+                    attack_range: u.attack_range,
+                    desired_spacing: u.desired_spacing,
+                    number_unit_types: u.number_unit_types,
+                    unit_types: words(&u.unit_types),
+                    unit_type_counts: words(&u.unit_type_counts),
+                })
             })
-            .collect(),
+            .collect::<Result<_, GenieError>>()?,
         waypoints: g.waypoints.iter().map(vec3).collect(),
         current_command: g.current_command,
         current_target: TargetData {
-            target: t.target,
-            kind: t.type_,
+            target: GroupTarget::of_saved(t.target, t.type_),
             original_position: vec3(&t.original_position),
             range: t.range,
             target_radius: t.target_radius,
@@ -193,7 +197,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             .iter()
             .map(|o| GroupOrder {
                 command: o.new_order_command,
-                target_id: o.new_order_target_id,
+                target_id: ObjectId::of_field(o.new_order_target_id),
                 parm: o.new_order_parm,
                 point: vec3(&o.new_order_point),
                 execute_time: o.new_order_execute_time,
@@ -205,7 +209,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             .iter()
             .map(|c| GroupCommand {
                 command: c.new_command_command,
-                target_id: c.new_command_target_id,
+                target_id: ObjectId::of_field(c.new_command_target_id),
                 range: c.new_command_range,
                 point: vec3(&c.new_command_point),
                 approved: c.new_command_approved,
@@ -213,7 +217,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
                 approved_2: c.new_command_approved_2,
             })
             .collect(),
-        objects: g.obj_id.clone(),
+        objects: object_ids(&g.obj_id)?,
         // unsaved: the next statistics fill it
         sighted: Vec::new(),
         differentiator_id: g.differentiator_id,
@@ -377,7 +381,17 @@ macro_rules! flat_value {
     )*};
 }
 
-flat_value!(f32, i32, u32, i16, u16, u8, genie_core::movement::PathData);
+flat_value!(
+    f32,
+    i32,
+    u32,
+    i16,
+    u16,
+    u8,
+    genie_core::movement::PathData,
+    ObjectId,
+    GroupTarget
+);
 
 impl<T: Flat, const N: usize> Flat for [T; N] {
     fn flat(&self, path: &str, out: &mut Vec<(String, String)>) {
@@ -449,7 +463,7 @@ flat_struct! {
         unit_types, unit_type_counts,
     }
     TargetData {
-        target, kind, original_position, range, target_radius, disable_retargeting,
+        target, original_position, range, target_radius, disable_retargeting,
         certain_action,
     }
     GroupOrder { command, target_id, parm, point, execute_time }
@@ -470,6 +484,7 @@ flat_struct! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::object_id;
 
     fn world(groups: Vec<UnitGroup>) -> UnitGroups {
         UnitGroups {
@@ -484,7 +499,7 @@ mod tests {
             id,
             owner: 1,
             members: vec![Member {
-                id: 31000,
+                id: object_id(31000),
                 ..Member::default()
             }],
             ..UnitGroup::default()

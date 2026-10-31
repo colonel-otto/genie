@@ -177,7 +177,7 @@ pub struct GatherAction {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Resource {
     /// The target.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its place.
     pub position: Position,
     /// Its master's class.
@@ -205,7 +205,7 @@ impl Resource {
     #[must_use]
     pub const fn walk_to(&self) -> crate::movement::move_to::WalkTo {
         crate::movement::move_to::WalkTo {
-            id: self.id,
+            id: Some(self.id),
             at: self.position,
             gap: self.gap,
             state: Some(self.state),

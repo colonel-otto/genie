@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
@@ -34,7 +35,7 @@ impl Unit {
     /// masters and sprites, and the Sprite stream.
     pub(crate) fn stop_with(
         &mut self,
-        (releases, builder_leaves): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>),
+        (releases, builder_leaves): (&mut Vec<(ObjectId, Releaser)>, &mut Vec<ObjectId>),
         by: Releaser,
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
@@ -52,8 +53,8 @@ impl Unit {
     /// run.
     pub(crate) fn tear_down_actions(
         &mut self,
-        releases: &mut Vec<(i32, Releaser)>,
-        builder_leaves: &mut Vec<i32>,
+        releases: &mut Vec<(ObjectId, Releaser)>,
+        builder_leaves: &mut Vec<ObjectId>,
         by: Releaser,
     ) -> Result<(), GenieError> {
         if self.unmodelled_action.is_some() {
@@ -111,8 +112,8 @@ impl Unit {
     /// The unit's stop that the motion step does not model, and the list's deletion's.
     pub(crate) fn clear_own_actions(
         &mut self,
-        releases: &mut Vec<(i32, Releaser)>,
-        builder_leaves: &mut Vec<i32>,
+        releases: &mut Vec<(ObjectId, Releaser)>,
+        builder_leaves: &mut Vec<ObjectId>,
         by: Releaser,
     ) -> Result<(), GenieError> {
         let torn = self.actions.delete_all(&mut self.body, self.life.state)?;
@@ -156,7 +157,7 @@ impl Unit {
             Effect::Stop => self.stop_action(c),
             Effect::CapHumanOrder(cap) => {
                 self.last_human_order = self.last_human_order.min(cap);
-                c.w.spatial.set_gait(self.id.get(), self.gait());
+                c.w.spatial.set_gait(self.id, self.gait());
                 Ok(())
             }
             Effect::Move(_) | Effect::RestorePatrol => {
@@ -202,7 +203,7 @@ impl Unit {
             }
             AiCommand::WorkOn { target, point } => {
                 let work = crate::orders::Work {
-                    target,
+                    target: Some(target),
                     point,
                     carry_test: true,
                     filter: -1,

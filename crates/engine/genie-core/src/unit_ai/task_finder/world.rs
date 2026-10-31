@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::terrain::Terrain;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
@@ -74,7 +75,7 @@ impl Diplomacy for SideWorld<'_> {
 /// sent the unit off (the unit AI's notify 0x216), whose build points are its construction's;
 /// the world never gives its id to another object, so an object without a construction is not
 /// met.
-pub(crate) fn wait_progress(id: i32, others: OthersRef<'_>) -> Option<f32> {
+pub(crate) fn wait_progress(id: ObjectId, others: OthersRef<'_>) -> Option<f32> {
     others
         .get(id)
         .and_then(|u| u.construction.map(|k| k.progress))
@@ -83,7 +84,7 @@ pub(crate) fn wait_progress(id: i32, others: OthersRef<'_>) -> Option<f32> {
 /// The state (`+0x640`) of object `id` among its owner's other objects and the other players'
 /// lists: None when they do not hold it (the unit itself, or one of its owner's sleeping objects:
 /// static objects only, never a drop site, which the callers ask for).
-pub(crate) fn state_of(id: i32, others: OthersRef<'_>) -> Option<u8> {
+pub(crate) fn state_of(id: Option<ObjectId>, others: OthersRef<'_>) -> Option<u8> {
     others.get(id).map(|u| u.life.state)
 }
 
@@ -91,9 +92,9 @@ pub(crate) fn state_of(id: i32, others: OthersRef<'_>) -> Option<u8> {
 /// and `every` the players' masters; an annex stands for its main building (`+0xbb8`), `steps`
 /// times (`World::task_target`'s reading). None when `find` does not hold it.
 pub(crate) fn task_target_with<'a>(
-    id: i32,
+    id: ObjectId,
     steps: usize,
-    find: &impl Fn(i32) -> Option<(PlayerId, &'a Unit)>,
+    find: &impl Fn(ObjectId) -> Option<(PlayerId, &'a Unit)>,
     every: &'a [Masters],
 ) -> Result<Option<TaskTarget<'a>>, GenieError> {
     let mut id = id;
@@ -108,7 +109,7 @@ pub(crate) fn task_target_with<'a>(
     };
     let master = u.master(every, player)?;
     Ok(Some(TaskTarget {
-        id,
+        id: u.id,
         master,
         player,
         state: u.life.state,

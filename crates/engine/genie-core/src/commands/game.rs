@@ -327,6 +327,7 @@ mod tests {
     use crate::objects::masters::class;
     use crate::objects::masters::ids::CASTLE;
     use crate::objects::masters::ids::FISH_TRAP;
+    use crate::test_ids::object_id;
     use crate::test_ids::player_id;
     use crate::world::Player;
 
@@ -388,8 +389,10 @@ mod tests {
             ..Master::default()
         };
         t.masters = vec![Masters::new([]), Masters::new([castle])];
-        t.track_add(PlayerId::new(1), 500, CASTLE).unwrap();
-        t.track_complete(PlayerId::new(1), 500, CASTLE).unwrap();
+        t.track_add(PlayerId::new(1), object_id(500), CASTLE)
+            .unwrap();
+        t.track_complete(PlayerId::new(1), object_id(500), CASTLE)
+            .unwrap();
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(
             t.players[1].pending_debit[attribute::GOLD.index()],

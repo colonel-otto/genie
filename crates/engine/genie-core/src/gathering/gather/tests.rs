@@ -119,7 +119,7 @@ impl Rig {
     ) -> Result<R, GenieError> {
         crate::world::tests::in_update(&mut self.t, (PlayerId::new(1), 0), dt, |u, c| {
             let me = Me {
-                id: u.id.get(),
+                id: u.id,
                 group: -1,
                 action_state: state,
             };
@@ -185,7 +185,7 @@ fn task() -> HuntTask {
 /// 4863.
 fn bush() -> Resource {
     Resource {
-        id: 28222,
+        id: object_id(28222),
         position: Position::new(23.5, 93.5, 0.0),
         class: class::CLASS_7,
         master: master_id(59),
@@ -209,7 +209,7 @@ const fn rate() -> StopRate {
 
 fn target(amount: f32) -> Victim {
     Victim {
-        id: 28222,
+        id: object_id(28222),
         amount,
         state: 2,
         class: class::CLASS_7,
@@ -222,7 +222,7 @@ fn target(amount: f32) -> Victim {
 /// A farm of master 50 (class 49, radii 1.5) at MarvinBlue/426049433's 12557.
 fn farm() -> Resource {
     Resource {
-        id: 12557,
+        id: object_id(12557),
         position: Position::new(112.5, 173.5, 3.0),
         class: class::FARM,
         master: ids::FARM,
@@ -333,7 +333,7 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
     let mover = crate::gathering::hunt::tests::walker();
     let g = GatherAction::new(task(), &farm(), true, rate()).unwrap();
     let to = |state| WalkTo {
-        id: 31,
+        id: Some(object_id(31)),
         at: Position::new(5.0, 6.0, 0.0),
         gap: 0.0,
         state: Some(state),
@@ -371,7 +371,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
     );
     let walks = walks((-1, 0.0));
     let to = WalkTo {
-        id: ObjectId::field(g.target),
+        id: g.target,
         at: Position::new(112.5, 173.5, 3.0),
         gap: 0.0,
         state: Some(2),
@@ -446,7 +446,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
     );
     // a loaded gatherer moved to its own mill carries the load there
     let mill = MoveTarget {
-        id: 500,
+        id: object_id(500),
         player: PlayerId::new(7),
         drop_site: true,
         position: Position::new(12.5, 5.5, 0.0),
@@ -752,7 +752,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
     };
     let state = |g: &GatherAction| g.move_to.map(|m| m.state);
     let house = |workers| Victim {
-        id: 10028,
+        id: object_id(10028),
         position: Position::new(30.0, 88.0, 0.0),
         radius: Footprint::new(1.0, 1.0),
         workers,
@@ -824,7 +824,7 @@ fn a_gatherer_whose_move_to_lost_its_target_walks_back_to_its_point() {
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
     };
     let mut house = Victim {
-        id: 10028,
+        id: object_id(10028),
         position: Position::new(30.0, 88.0, 0.0),
         ..target(10.0)
     };
@@ -908,7 +908,7 @@ fn a_gatherer_facing_its_target_works_it() {
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
     };
     let mut house = Victim {
-        id: 10028,
+        id: object_id(10028),
         position: Position::new(30.0, 88.0, 0.0),
         ..target(10.0)
     };
@@ -982,7 +982,7 @@ fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
     let mut g = waiting(false);
     g.target = Some(object_id(12557));
     let mut farm = Victim {
-        id: 12557,
+        id: object_id(12557),
         amount: 175.0,
         state: 2,
         class: class::FARM,
@@ -1213,7 +1213,7 @@ fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
         );
     }
     let mill = Resource {
-        id: 500,
+        id: object_id(500),
         player: PlayerId::new(7),
         drop_site: true,
         ..bush()

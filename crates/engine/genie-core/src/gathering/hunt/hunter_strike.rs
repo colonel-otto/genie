@@ -40,7 +40,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
@@ -63,7 +63,7 @@ impl Unit {
         let next = next?;
         // the retaliation's kill of the unit itself, which follows its step
         if let Some(k) = self.hit_back(f.own)? {
-            file_kill(c, self, KillLeft::own(self.id.get(), k))?;
+            file_kill(c, self, KillLeft::own(self.id, k))?;
         }
         match next {
             HuntNext::Stay => Ok(()),
@@ -164,12 +164,12 @@ impl Unit {
         {
             return Ok(None);
         }
-        let at = |id| {
+        let at = |id: Option<ObjectId>| {
             c.w.spatial
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
-        let (me_at, them) = (at(self.id.get())?, at(ObjectId::field(action.target))?);
+        let (me_at, them) = (at(Some(self.id))?, at(action.target)?);
         let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
@@ -186,11 +186,11 @@ impl Unit {
         let own = them.player == c.player;
         let drop_site = if !own {
             None
-        } else if action.drop_site != -1 {
-            let site = c.w.spatial.get(action.drop_site);
+        } else if let Some(site_id) = action.drop_site {
+            let site = c.w.spatial.get(site_id);
             site.map(|s| {
                 let d = footprint_gap_squared(them.position, them.radius, s.position, s.radius);
-                (action.drop_site, d)
+                (site_id, d)
             })
         } else {
             if c.w.players.player(c.player)?.computer {
@@ -205,8 +205,8 @@ impl Unit {
                     .map(|d| d.building)
                     .collect();
             nearest_drop_site(others, &sites, them.position)
-                .map(|(id, _)| -> Result<(i32, f32), GenieError> {
-                    let s = at(id)?;
+                .map(|(id, _)| -> Result<(ObjectId, f32), GenieError> {
+                    let s = at(Some(id))?;
                     Ok((
                         id,
                         footprint_gap_squared(them.position, them.radius, s.position, s.radius),
@@ -215,7 +215,7 @@ impl Unit {
                 .transpose()?
         };
         // the animal's top action without a target or a point (slots 0x190, 0x288)
-        let animal = others.get(ObjectId::field(action.target));
+        let animal = others.get(action.target);
         let idle = match animal {
             Some(u) => u.top_action_idle()?,
             None => false,
@@ -239,18 +239,19 @@ impl Unit {
 
 /// The object the hunt's strike reads of the world ([`victim`]): its target, else
 /// its Attack's. A hunt whose start dropped its target (gone or past state 6) and holds no
-/// Attack reads none (state 7's end without a target): a stand-in no object holds.
+/// Attack reads none (state 7's end without a target): a stand-in no object holds
+/// ([`ObjectId::NOBODY`]).
 fn hunt_victim(c: &Step<'_>, action: &HuntAction) -> Result<Victim, GenieError> {
     let target = match action.target {
-        None => action.attack.map_or(-1, |a| ObjectId::field(a.target)),
-        t => ObjectId::field(t),
+        None => action.attack.and_then(|a| a.target),
+        t => t,
     };
     match target {
-        -1 => Ok(Victim {
-            id: -1,
+        None => Ok(Victim {
+            id: ObjectId::NOBODY,
             ..Victim::default()
         }),
-        t => victim(c, t)?.ok_or(GenieError::unsupported(
+        Some(t) => victim(c, t)?.ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         )),
     }

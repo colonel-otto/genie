@@ -76,7 +76,7 @@ impl World {
             let gather = if own {
                 let (target, target_master) = match old {
                     Some(g) if kept => (g.target, g.target_master),
-                    _ => (unit.id.get(), Some(unit.life.master_id)),
+                    _ => (Some(unit.id), Some(unit.life.master_id)),
                 };
                 Some(GatherPoint {
                     state: 1,
@@ -89,7 +89,7 @@ impl World {
             } else {
                 let (target, target_master) = match old {
                     Some(g) if kept => (g.target, g.target_master),
-                    _ => (ObjectId::field(target), target_master),
+                    _ => (target, target_master),
                 };
                 Some(GatherPoint {
                     state: if kept { GatherPoint::KEPT } else { 1 },
@@ -131,7 +131,7 @@ impl World {
                 Some(GatherPoint {
                     state: i32::from(state),
                     point: unit.position(),
-                    target: unit.id.get(),
+                    target: Some(unit.id),
                     target_master: Some(unit.life.master_id),
                 })
             } else {
@@ -157,35 +157,37 @@ impl World {
         target: Option<ObjectId>,
         point: Point,
     ) -> Result<(), GenieError> {
-        let (player, target, [x, y]) = (player.index(), ObjectId::field(target), point.get());
-        let step =
-            |turns: &Self, t: i32, at: Point| -> Result<crate::unit_ai::QueuedOrder, GenieError> {
-                let named = if t == -1 { None } else { turns.object(t) };
-                let (target, owner, class) = match named {
-                    Some((tp, u)) => (
-                        t,
-                        tp.index() as i32,
-                        i32::from(u.master(&turns.masters, tp)?.class.get()),
-                    ),
-                    None => (-1, -1, -1),
-                };
-                Ok(crate::unit_ai::QueuedOrder {
-                    issuer: player as i32,
-                    order: if target < 0 {
-                        OrderKind::Move
-                    } else {
-                        OrderKind::OnTarget
-                    },
-                    priority: -1,
-                    target,
-                    target_owner: owner,
-                    point: at.with_height(-1.0),
-                    range: 0.0,
-                    shown: Point::new(-1.0, -1.0),
-                    ready: false,
-                    target_type: class,
-                })
+        let [x, y] = point.get();
+        let step = |turns: &Self,
+                    t: Option<ObjectId>,
+                    at: Point|
+         -> Result<crate::unit_ai::QueuedOrder, GenieError> {
+            let (target, owner, class) = match turns.object(t) {
+                Some((tp, u)) => (
+                    t,
+                    tp.index() as i32,
+                    i32::from(u.master(&turns.masters, tp)?.class.get()),
+                ),
+                None => (None, -1, -1),
             };
+            Ok(crate::unit_ai::QueuedOrder {
+                issuer: Some(crate::unit_ai::Issuer::Player(player)),
+                // the game tests the id's sign: a recyclable object's is no target
+                order: if target.is_none_or(ObjectId::is_recyclable) {
+                    OrderKind::Move
+                } else {
+                    OrderKind::OnTarget
+                },
+                priority: -1,
+                target,
+                target_owner: owner,
+                point: at.with_height(-1.0),
+                range: 0.0,
+                shown: Point::new(-1.0, -1.0),
+                ready: false,
+                target_type: class,
+            })
+        };
         for &id in ids {
             let Some(crate::orders::Place::Live(p, i)) = self.place(id) else {
                 if self.place(id).is_some() {
@@ -204,11 +206,11 @@ impl World {
             if building
                 && let Some(g) = unit.gather_point
                 && ai.building_orders.is_empty()
-                && g.target != unit.id.get()
+                && g.target != Some(unit.id)
             {
                 // the gather point's own target id stays even when the world lost it
                 let mut first = step(self, g.target, g.point.ground())?;
-                if first.target == -1 && g.target != -1 {
+                if first.target.is_none() && g.target.is_some() {
                     first.target = g.target;
                     first.order = OrderKind::OnTarget;
                 }
@@ -325,7 +327,7 @@ impl World {
                 q.objects
                     .iter()
                     .chain(&q.sleeping)
-                    .any(|u| u.id.get() == building_id)
+                    .any(|u| Some(u.id) == building_id)
             });
             return if elsewhere {
                 Err(GenieError::unsupported(

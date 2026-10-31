@@ -41,6 +41,7 @@ The world runs the update of each group that a player owns, before the player's 
 | [`order.rs`](order.rs) | A group's command (FD-036): `BUnitGroup::command` (`FUN_14100efd0`), which chooses by the task a member has on the target how the group's order runs. |
 | [`place.rs`](place.rs) | A new group's place and facing (FD-036): `SetInitialPosition` (`FUN_141039990`) on the first clear point of a spiral round the centroid (`FUN_141007630`), `SetInitialOrientation` (`FUN_141039680`) and the motion's orientation (`FUN_141049e10`). |
 | [`stats.rs`](stats.rs) | A group's statistics (FD-036): `FUN_14100bcb0`, the centroid, radii, ranges, spacing and speed of the members, the objects their searches list, and the formation's type after a change of members (`FUN_14100b940`). |
+| [`target.rs`](target.rs) | A group's target: an object, none, or a target of another kind. |
 | [`task.rs`](task.rs) | The task a group's member takes on a target (FD-036): the unit's slot 0x130 (`RGE_Action_Object::slot38`, `FUN_14106b8b0`), which `BUnitGroup::command` asks of its first member that can act to choose the command a group's order runs. |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`formation/`](formation/) | A group's formation (FD-036): `BFormation`, its slots and lines, and the layouts that fill them (createColumnLine `FUN_141012280`, ...). |

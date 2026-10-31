@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::construction::build::construction::{completion_counts, hand_storage, lay_foundation};
 use crate::construction::build::{NO_CONSTRUCTION, NOT_HELD, StackUnit, held, show_built};
 use crate::map::spatial::Placed;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -37,7 +38,7 @@ impl crate::world::World {
     /// # Errors
     ///
     /// What the completion does not model, and a building without its master or place.
-    pub(crate) fn complete_building(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn complete_building(&mut self, id: ObjectId) -> Result<(), GenieError> {
         if self.attribute_204() {
             return Err(crate::players::diplomacy::REVEAL_UNITS);
         }
@@ -89,7 +90,7 @@ impl crate::world::World {
     fn completion_storage(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
@@ -110,7 +111,7 @@ impl crate::world::World {
     /// A building the world does not hold.
     fn completion_shown(
         &mut self,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         placed: &Placed,
     ) -> Result<(), GenieError> {
@@ -150,7 +151,7 @@ impl crate::world::World {
     fn completion_stack(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         building: &BuildingMaster,
         placed: &Placed,
@@ -190,7 +191,7 @@ impl crate::world::World {
     fn completion_ground(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         building: &BuildingMaster,
         placed: &Placed,

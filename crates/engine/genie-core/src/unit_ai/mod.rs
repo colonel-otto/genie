@@ -23,6 +23,7 @@ mod attack_orders;
 mod attack_pick;
 mod attack_rules;
 mod attacked;
+mod attackers;
 pub mod best_target;
 mod cared;
 mod damaged;
@@ -31,6 +32,7 @@ mod handle;
 mod idle;
 mod idle_animals;
 mod ids;
+mod issuer;
 mod life;
 mod notifies;
 mod order_kind;
@@ -65,6 +67,7 @@ use self::attack_rules::{
 };
 #[cfg(test)]
 use self::attack_rules::{PATROL_FARTHEST, line_distance};
+pub use self::attackers::Attackers;
 #[cfg(test)]
 pub(crate) use self::cared::cared_classes;
 pub use self::cared::{
@@ -95,11 +98,13 @@ use self::ids::{
 };
 pub use self::ids::{HUMAN_ORDER_CAP, NewObject, factory_type};
 pub(crate) use self::ids::{alert_owner, helper_answers, searches_on_class};
+pub use self::issuer::Issuer;
 pub use self::notifies::Inbox;
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
 pub use self::side::{
-    Gatherable, NO_POINT, Named, OffFootprint, ResourceSearch, TargetFlags, UnitCommand, UnitSide,
+    Gatherable, NO_POINT, Named, NearestAttacker, OffFootprint, ResourceSearch, TargetFlags,
+    UnitCommand, UnitSide,
 };
 pub use self::surroundings::{
     AiMove, Duel, Found, GroupState, Home, Seen, Surroundings, TopTarget, UnitSeen, flood_search,
@@ -112,6 +117,7 @@ use crate::map::Position;
 use crate::math::rng::Well512;
 #[cfg(test)]
 use crate::movement::PathAsk;
+use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use genie_diff::Diff;
 
@@ -119,10 +125,10 @@ use genie_diff::Diff;
 /// `kind`, with three parameters.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Diff)]
 pub struct Notify {
-    /// The object that posts it.
-    pub caller: i32,
+    /// The object that posts it; none for a missile's hit whose shooter is gone (its sender −1).
+    pub caller: Option<ObjectId>,
     /// The object whose unit AI takes it.
-    pub recipient: i32,
+    pub recipient: ObjectId,
     /// The kind (named in [`crate::unit_ai::ai_kinds`]).
     pub kind: i32,
     /// Its three parameters.
@@ -132,9 +138,9 @@ pub struct Notify {
 impl Notify {
     /// The notify an object posts to itself.
     #[must_use]
-    pub const fn own(id: i32, kind: i32, p: [i32; 3]) -> Self {
+    pub const fn own(id: ObjectId, kind: i32, p: [i32; 3]) -> Self {
         Self {
-            caller: id,
+            caller: Some(id),
             recipient: id,
             kind,
             p,
@@ -145,12 +151,12 @@ impl Notify {
     ///
     /// # Errors
     ///
-    /// A record shorter than its fields.
+    /// A record shorter than its fields, or a recipient of −1.
     pub fn from_bytes(b: &[u8; 24]) -> Result<Self, GenieError> {
         let w = |i: usize| le_word(b, i).map(i32::from_le_bytes);
         Ok(Self {
-            caller: w(0)?,
-            recipient: w(4)?,
+            caller: ObjectId::of_field(w(0)?),
+            recipient: ObjectId::try_from(w(4)?)?,
             kind: w(8)?,
             p: [w(12)?, w(16)?, w(20)?],
         })
@@ -277,15 +283,15 @@ pub const fn notify_capacity(ai_type: UnitAiType, count: usize) -> usize {
 /// `+0x20` array) runs once the unit can take it ([`UnitAi::run_orders`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct QueuedOrder {
-    /// `+0x0`: the issuing player.
-    pub issuer: i32,
+    /// `+0x0`: the issuing player or object; none for −1 (a guard's defend order).
+    pub issuer: Option<Issuer>,
     /// `+0x4`: the order (a move, an order on a target, …).
     pub order: OrderKind,
     /// `+0x8`: below 100 it waits while the unit AI has an action.
     pub priority: i32,
     /// `+0xc`, `+0x10`: the target and its owner (−1 for none; "T", "`TOwner`" in the log line of
     /// `FUN_140c55c90`).
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// The target's owner.
     pub target_owner: i32,
     /// `+0x14`..`+0x1c`: the point; `+0x20`: the range.
@@ -315,19 +321,20 @@ fn le_word(b: &[u8], i: usize) -> Result<[u8; 4], GenieError> {
 }
 
 impl QueuedOrder {
-    /// The record as the save holds it (`+0x2d`..`+0x2f` are padding).
+    /// The record as the save holds it (`+0x2d`..`+0x2f` are padding), in the queue of object
+    /// `own` in a world of `players` players ([`Issuer::of_saved`]).
     ///
     /// # Errors
     ///
     /// An order value no order holds ([`OrderKind::try_from`]).
-    pub fn from_bytes(b: &[u8; 52]) -> Result<Self, GenieError> {
+    pub fn from_bytes(b: &[u8; 52], own: ObjectId, players: usize) -> Result<Self, GenieError> {
         let w = |i: usize| le_word(b, i).map(i32::from_le_bytes);
         let f = |i: usize| le_word(b, i).map(f32::from_le_bytes);
         Ok(Self {
-            issuer: w(0)?,
+            issuer: Issuer::of_saved(w(0)?, own, players),
             order: OrderKind::try_from(w(4)?)?,
             priority: w(8)?,
-            target: w(12)?,
+            target: ObjectId::of_field(w(12)?),
             target_owner: w(16)?,
             point: Position::new(f(20)?, f(24)?, f(28)?),
             range: f(32)?,
@@ -364,7 +371,7 @@ pub enum Effect {
     /// without it) and starts it (slot 0x808).
     MoveToObject {
         /// The target.
-        target: i32,
+        target: ObjectId,
         /// The target's state as the AI saw it, which decides whether the `MoveTo` holds it
         /// ([`crate::movement::move_to::holds_object`]).
         state: u8,
@@ -394,20 +401,20 @@ pub enum AiCommand {
     /// `HuntObject`'s unit part (`FUN_140c4e220`), after the AI's stop (slot 0xb0 with 1, the
     /// unit's `stopAction` at once): its hunt command on the target (object slot 0x360,
     /// `FUN_1412151f0`, forced; [`crate::world::World::hunt_command`]).
-    HuntObject(i32),
+    HuntObject(ObjectId),
     /// `GatherObject`'s unit part (slot 0xd0, `FUN_140c4dd50`, forced): the unit's gather command
     /// on the target (object slot 0x368, `FUN_141085030`, forced;
     /// [`crate::world::World::gather_command`]).
-    GatherObject(i32),
+    GatherObject(ObjectId),
     /// `BuildObject`'s unit part (the AI's slot 0xf0, `FUN_140c47d80`): the unit's build command
     /// (slot 0x380) on the foundation ([`crate::world::World::build_command`]); the AI's part,
     /// the build action and the foundation as its target, is its own ([`UnitAi::build_object`]).
-    BuildObject(i32),
+    BuildObject(ObjectId),
     /// The unit's slot 0x7e8 (`FUN_141227190`) on object `target` at `point`, with the
     /// carried-resource test, any task and `+0xa14` 0 ([`crate::world::World::order_work`]).
     WorkOn {
         /// The object.
-        target: i32,
+        target: ObjectId,
         /// Its place.
         point: Position,
     },
@@ -417,9 +424,9 @@ pub enum AiCommand {
     /// ([`crate::world::World::drop_elsewhere`]).
     DropElsewhere {
         /// The drop site.
-        site: i32,
+        site: ObjectId,
         /// The top action's target before the work.
-        back: Option<i32>,
+        back: Option<ObjectId>,
     },
 }
 
@@ -457,8 +464,8 @@ pub struct UnitAi {
     pub order_priority: i32,
     /// `+0x44`, −1 for none.
     pub current_action: Option<ActionKind>,
-    /// `+0x48`, −1 for none.
-    pub current_target: i32,
+    /// `+0x48`.
+    pub current_target: Option<ObjectId>,
     /// `+0x4c`, the target's class (−1 for none), and `+0x50`..`+0x58`, its point.
     pub target_type: i32,
     /// `+0x50`..`+0x58`: the target's point.
@@ -466,15 +473,15 @@ pub struct UnitAi {
     /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
     /// (the constructor's 2).
     pub desired_distance: f32,
-    /// `+0x60`, `DefendTarget`: the object the defend order keeps the unit near (−1 for none).
-    pub defend_target: i32,
+    /// `+0x60`, `DefendTarget`: the object the defend order keeps the unit near.
+    pub defend_target: Option<ObjectId>,
     /// `+0x64`, `+0x68`, `+0x6c`, `+0x70`: the order, action, target and target class before the
     /// current ones.
     pub last_order: Option<OrderKind>,
     /// `+0x68`: the action before the current one.
     pub last_action: Option<ActionKind>,
     /// `+0x6c`: the target before the current one.
-    pub last_target: i32,
+    pub last_target: Option<ObjectId>,
     /// `+0x70`: that target's class.
     pub last_target_type: i32,
     /// `+0x160`.
@@ -549,10 +556,8 @@ pub struct UnitAi {
     /// genie's flag within one update, cleared at its start.
     #[diff(unsaved)]
     pub ordered_on_target: bool,
-    /// `+0xc0`, the attackers (count `+0xc8`): a set of object ids kept sorted
-    /// (`FUN_140b43f30`), which a boar's damage notify adds to and the full update prunes; the
-    /// save's `numberUnits` and `tempInt`.
-    pub attackers: Vec<i32>,
+    /// `+0xc0`, the attackers ([`Attackers`]).
+    pub attackers: Attackers,
     /// The order history (`+0x78`'s list, the newest at `+0xa8` first, count `+0xb8`; the
     /// save's `ohCount` entries): the orders on a target ([`UnitAi::remember_order`]),
     /// `bestUnitToAttack`'s weights by attack category.
@@ -560,11 +565,12 @@ pub struct UnitAi {
     /// The retarget entries (`+0x1d8` count, `+0x1e0` array): targets `bestUnitToAttack` could
     /// not path to, each with the world time until which it ignores them (`FUN_140c42320`); the
     /// full update lets the expired go ([`UnitAi::expire_retries`]).
-    pub retries: Vec<(i32, u32)>,
+    pub retries: Vec<(ObjectId, u32)>,
     /// `+0x1d0`, `mBestUnitToAttackThisUpdate`: what the damage notify's `bestUnitToAttack`
-    /// found this update ([`UnitAi::damaged`]), −1 before one ran (the constructor's, and the
-    /// full update's start); the update's later damage notifies take it.
-    pub best_this_update: i32,
+    /// found this update ([`UnitAi::damaged`]), none before one ran (the constructor's −1, and
+    /// the full update's start) or when it found none; the update's later damage notifies take
+    /// it.
+    pub best_this_update: Option<ObjectId>,
 }
 
 /// An order on a target in a unit AI's history (`FUN_140c42080`, a node of `+0x78`'s list).
@@ -579,7 +585,7 @@ pub struct OrderRecord {
     /// The unit's slot 0x520 then (`mPosition`: where it last moved to).
     pub position: crate::math::game_vector::GameVector,
     /// The target (`mTargetID`).
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// The target's attack category ([`crate::unit_ai::best_target::category`], `mTargetAttackCategory`).
     pub category: i32,
     /// The target's slot 0x520 then (`mTargetPosition`).

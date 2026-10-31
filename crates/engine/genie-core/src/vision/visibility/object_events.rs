@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::vision::registry::UnitUpdate;
@@ -55,7 +56,7 @@ impl Visibility {
     /// Never: the registry is checked before it is updated.
     pub fn combat_sight(
         &mut self,
-        id: i32,
+        id: ObjectId,
         owner: PlayerId,
         at: Position,
         radius: Footprint,
@@ -65,7 +66,7 @@ impl Visibility {
         let Some(s) = self.seers.get(&id).copied() else {
             return Ok(None);
         };
-        if self.registry.is_none() || id < 0 {
+        if self.registry.is_none() || id.is_recyclable() {
             return Ok(None);
         }
         let annex = main.filter(|_| s.state < 7 && s.building.is_some());
@@ -112,8 +113,8 @@ impl Visibility {
     }
 
     /// The registry's part of a combat object's new place (`FUN_14108c320`): its records follow.
-    pub fn registry_moved(&mut self, id: i32, class: ClassId, from: Position, to: Position) {
-        if id < 0 || (from.x() == to.x() && from.y() == to.y()) {
+    pub fn registry_moved(&mut self, id: ObjectId, class: ClassId, from: Position, to: Position) {
+        if id.is_recyclable() || (from.x() == to.x() && from.y() == to.y()) {
             return;
         }
         if let Some(r) = self.registry.as_mut() {
@@ -125,13 +126,13 @@ impl Visibility {
     /// old class and joins those of its new one, with its mask as it was.
     pub fn registry_master(
         &mut self,
-        id: i32,
+        id: ObjectId,
         owner: PlayerId,
         at: Position,
         old: (Footprint, ClassId),
         new: (Footprint, ClassId),
     ) -> Result<(), GenieError> {
-        let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
+        let Some(r) = self.registry.as_mut().filter(|_| !id.is_recyclable()) else {
             return Ok(());
         };
         let mask = r.entry(id).map_or(0, |e| e.mask);
@@ -159,13 +160,13 @@ impl Visibility {
     /// The combat object's destructor (`FUN_141073060`): it leaves every list.
     pub fn registry_leave(
         &mut self,
-        id: i32,
+        id: ObjectId,
         owner: PlayerId,
         at: Position,
         radius: Footprint,
         class: ClassId,
     ) -> Result<(), GenieError> {
-        let Some(r) = self.registry.as_mut().filter(|_| 0 <= id) else {
+        let Some(r) = self.registry.as_mut().filter(|_| !id.is_recyclable()) else {
             return Ok(());
         };
         let mask = r.entry(id).map_or(0, |e| e.mask);
@@ -185,9 +186,9 @@ impl Visibility {
     /// An ownership change's records (`FUN_14120f800`, first of all and whatever the new owner's
     /// masters): an object with an id (`+0x8` not below 0) writes the new owner's id into each of
     /// its records (`+0x8b0`..`+0x8f0`), which keep their place in every list.
-    pub fn records_owner(&mut self, id: i32, new: PlayerId) -> Result<(), GenieError> {
+    pub fn records_owner(&mut self, id: ObjectId, new: PlayerId) -> Result<(), GenieError> {
         match self.registry.as_mut() {
-            Some(r) if 0 <= id => r.owner_changed(id, new),
+            Some(r) if !id.is_recyclable() => r.owner_changed(id, new),
             _ => Ok(()),
         }
     }
@@ -199,7 +200,7 @@ impl Visibility {
     /// owner's).
     pub fn owner_changed(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
         (new, los): (PlayerId, f32),
@@ -226,7 +227,7 @@ impl Visibility {
     /// on a tile corner when its radii add up to an even number.
     pub fn construction_completed(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
     ) -> Result<(), GenieError> {
@@ -246,7 +247,7 @@ impl Visibility {
     /// its footprint comes into sight and its tiles link again.
     pub fn construction_started(
         &mut self,
-        id: i32,
+        id: ObjectId,
         position: Position,
         radius: Footprint,
     ) -> Result<(), GenieError> {

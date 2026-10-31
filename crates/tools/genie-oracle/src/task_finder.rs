@@ -2,6 +2,7 @@
 
 use crate::masters::MasterTable;
 use crate::{Error, work_masters};
+use genie_core::objects::ObjectId;
 use genie_core::players::PlayerId;
 use genie_rec::de;
 
@@ -13,7 +14,7 @@ pub struct FinderWorld {
     /// Every player's masters.
     pub masters: Vec<genie_core::objects::masters::Masters>,
     /// The objects by id.
-    pub objects: std::collections::HashMap<i32, FinderObject>,
+    pub objects: std::collections::HashMap<ObjectId, FinderObject>,
     /// `relation[i]` of each player (`player+0x260`).
     pub relations: Vec<Vec<u8>>,
     /// Every player's attribute 95.
@@ -41,10 +42,10 @@ pub struct FinderObject {
     pub max_hp: f32,
     /// It may be attacked.
     pub attackable: bool,
-    /// The pasture it is in, −1 for none.
-    pub pasture: i32,
+    /// The pasture it is in.
+    pub pasture: Option<ObjectId>,
     /// The main building of an annex (`+0xbb8`), if it is one.
-    pub annex_of: Option<i32>,
+    pub annex_of: Option<ObjectId>,
     /// Its top action's type, if it has one.
     pub top_action: Option<i16>,
     /// Its place.
@@ -88,7 +89,7 @@ impl FinderWorld {
     #[must_use]
     pub fn target_up(
         &self,
-        id: i32,
+        id: ObjectId,
         steps: usize,
     ) -> Option<genie_core::unit_ai::task_finder::TaskTarget<'_>> {
         let mut id = id;
@@ -115,13 +116,13 @@ impl FinderWorld {
 
     /// The finder's target: an annex stands for its main building.
     #[must_use]
-    pub fn target(&self, id: i32) -> Option<genie_core::unit_ai::task_finder::TaskTarget<'_>> {
+    pub fn target(&self, id: ObjectId) -> Option<genie_core::unit_ai::task_finder::TaskTarget<'_>> {
         self.target_up(id, 1)
     }
 
     /// The finder's view of unit `id` as the actor.
     #[must_use]
-    pub fn actor(&self, id: i32) -> Option<genie_core::unit_ai::task_finder::Actor<'_>> {
+    pub fn actor(&self, id: ObjectId) -> Option<genie_core::unit_ai::task_finder::Actor<'_>> {
         let o = self.objects.get(&id)?;
         Some(genie_core::unit_ai::task_finder::Actor {
             id,
@@ -180,12 +181,13 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
 /// The finder's view of every live and sleeping object of the players' `sections`, by id.
 fn finder_objects(
     sections: &[genie_save::PlayerSection<'_>],
-) -> Result<std::collections::HashMap<i32, FinderObject>, Error> {
+) -> Result<std::collections::HashMap<ObjectId, FinderObject>, Error> {
     let mut objects = std::collections::HashMap::new();
     for (player, section) in PlayerId::each(sections.len()).zip(sections) {
         for o in section.live_objects().chain(section.sleeping_objects()) {
             if let Some(s) = o.static_part() {
-                let _ = objects.insert(s.id, finder_object(player, section, (o, s))?);
+                let id = ObjectId::try_from(s.id).map_err(Error::Unmodelled)?;
+                let _ = objects.insert(id, finder_object(player, section, (o, s))?);
             }
         }
     }
@@ -217,12 +219,11 @@ fn finder_object(
         hp: s.hp + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
         max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),
         attackable: s.unit_attackable_flag != 0,
-        pasture: s.parent_pasture_id,
+        pasture: ObjectId::of_field(s.parent_pasture_id),
         annex_of: o
             .tribe_building_object
             .as_deref()
-            .map(|b| b.mupt_linked_object_references_linked_owner_id)
-            .filter(|&owner| owner != -1),
+            .and_then(|b| ObjectId::of_field(b.mupt_linked_object_references_linked_owner_id)),
         top_action: o
             .actions()
             .and_then(|a| a.entries().next())

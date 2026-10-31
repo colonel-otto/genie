@@ -4,15 +4,21 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Rect;
-use crate::map::spatial::{Placed, Spatial, WalkQuery};
+use crate::map::spatial::{Placed, RecordId, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
 use crate::movement::{
     ANNEX_GAP, AfterRequest, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion,
     MoveStats, Mover, Next, Planning, RANGE_FLOOR, Reach, footprint_gap, gate_gap, ground,
     include_kept, moved_far, pause_holds, point_or_zero_of, reach,
 };
+use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use crate::{GenieError, math::fmath};
+
+/// [`Mover::level_gaps`]'s measure: the target with its place (none for a level without one or
+/// a target that is gone), the gap to it, and the gap to it, else to where the top level's path
+/// ends.
+type LevelGaps = (Option<(ObjectId, Placed)>, f32, f32);
 
 /// The speed below which a free group member's speed is not capped by its top speed (slot
 /// 0x5e0).
@@ -56,7 +62,7 @@ pub(super) struct WalkStep<'a> {
     /// Whether the unit's player is a computer.
     pub(super) computer: bool,
     /// The objects the old pather tests even moving.
-    pub(super) include: &'a mut Vec<i32>,
+    pub(super) include: &'a mut Vec<ObjectId>,
     /// The waypoint once it is not left behind (`local_1860`).
     pub(super) walked: &'a mut BVector,
     /// The direction the unit turns to (slot 0x610).
@@ -224,7 +230,7 @@ impl Mover {
     /// its shape goes from the mesh while it moves (slot 185, [`Mover::is_moving`]).
     pub(crate) fn new_position(
         &mut self,
-        id: i32,
+        id: ObjectId,
         at: Position,
         places: (&mut Spatial, Option<&mut Pathing>),
     ) -> Result<(), GenieError> {
@@ -305,22 +311,22 @@ impl Mover {
     pub(super) fn level_gaps(
         &self,
         world: &Spatial,
-        target_id: i32,
+        target_id: Option<ObjectId>,
         ground_radius: Footprint,
-    ) -> Result<(Option<Placed>, f32, f32), GenieError> {
+    ) -> Result<LevelGaps, GenieError> {
         // FUN_1415417a0 on the level's target: none for -1 and for an object that is gone,
         // which then measures as a walk to a point (LAB_1411512df)
         let target = match target_id {
-            -1 => None,
-            id => world.get_known(id)?.copied(),
+            None => None,
+            Some(id) => world.get_known(id)?.map(|&t| (id, t)),
         };
         // the gap to the target, else to where the top level's path ends; a gate's is the
         // least over it and its first two annexes (slot 0x680), each annex's less 0.1
         // (`MINSS`, 0x1411512b8)
-        let gap = target.as_ref().map_or(FAR, |t| {
+        let gap = target.as_ref().map_or(FAR, |(id, t)| {
             let own = footprint_gap(self.position(), ground_radius, t.position, t.radius);
             let near = (self.position(), ground_radius);
-            gate_gap(world, near, (target_id, t), own, |g| g - ANNEX_GAP)
+            gate_gap(world, near, (*id, t), own, |g| g - ANNEX_GAP)
         });
         let to_end = match (&target, self.paths.len()) {
             (Some(_), _) => gap,
@@ -353,7 +359,7 @@ impl Mover {
         plan: Option<&mut Planning<'_>>,
         goal: Goal<'_>,
         plans: &mut u32,
-        include: &[i32],
+        include: &[ObjectId],
     ) -> Result<Next, GenieError> {
         match self.paths[0].state {
             4 | 5 => self.arrived(goal),
@@ -408,7 +414,7 @@ impl Mover {
             };
             let (target, gap, to_end) = self.level_gaps(world, level.target, ground_radius)?;
             let goal = Goal {
-                target: target.as_ref(),
+                target: target.as_ref().map(|(id, t)| (*id, t)),
                 gap,
                 to_end,
             };
@@ -512,7 +518,7 @@ impl Mover {
                 grow,
                 ally_factor: self.stats.min_collision,
                 player,
-                ignore: &[me.id],
+                ignore: &[RecordId::from(me.id)],
             })?;
             if !hits.is_empty() {
                 let avoided =
@@ -538,12 +544,12 @@ impl Mover {
         }
         let level = &self.paths[0];
         match goal.target {
-            Some(t) => {
+            Some((id, t)) => {
                 let range = level.range;
                 let own =
                     footprint_gap(self.position(), ground_radius, t.position, t.radius) - range;
                 let near = (self.position(), ground_radius);
-                let gap = gate_gap(world, near, (level.target, t), own, |g| g - range);
+                let gap = gate_gap(world, near, (id, t), own, |g| g - range);
                 if gap < EPSILON {
                     // in range of the target: the waypoint counts as reached
                     let level = &mut self.paths[0];

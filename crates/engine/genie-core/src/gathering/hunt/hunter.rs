@@ -8,7 +8,6 @@ use crate::combat::victims::readable;
 use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
-use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -35,7 +34,7 @@ impl Unit {
             .map(|h| h.target)
             .filter(|&t| t.is_some())
         {
-            let state = readable(c, ObjectId::field(target))?.map(|(_, u, _)| u.life.state);
+            let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.w.spatial.get(target).is_some() => {
@@ -48,28 +47,25 @@ impl Unit {
             if gone {
                 if state.is_some() {
                     let by = self.releaser(c)?;
-                    crate::world::lets::release(c, self, ObjectId::field(target), by)?;
+                    crate::world::lets::release(c, self, target, by)?;
                 }
                 if let Some(h) = self.actions.hunt_mut() {
-                    h.set_target(-1);
+                    h.set_target(None);
                 }
             }
         }
         if let Some(site) = self.actions.hunt().map(|h| h.carry_to) {
             let held = c.w.spatial.get(site).is_some();
             let (kept, let_go) = second_target_checked(
-                ObjectId::field(site),
+                site,
                 held,
-                state_of(
-                    ObjectId::field(site),
-                    OthersRef::of(&c.w.players, c.player)?,
-                ),
+                state_of(site, OthersRef::of(&c.w.players, c.player)?),
             );
             if let Some(h) = self.actions.hunt_mut() {
-                h.carry_to = ObjectId::of_field(kept);
+                h.carry_to = kept;
             }
             if let Some(t) = let_go {
-                self.hunt_release(c, [t])?;
+                self.hunt_release(c, [Some(t)])?;
             }
         }
         Ok(())
@@ -115,9 +111,10 @@ impl Unit {
         tree_lost: bool,
     ) -> Result<HeadCode, GenieError> {
         use crate::gathering::hunt::{DROP, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
-        let (state, timer, target) = self.actions.hunt().map_or((None, 0.0, -1), |h| {
-            (Some(h.state), h.timer, ObjectId::field(h.target))
-        });
+        let (state, timer, target) = self
+            .actions
+            .hunt()
+            .map_or((None, 0.0, None), |h| (Some(h.state), h.timer, h.target));
         match state {
             Some(DROP) if timer < 0.0 => self.hunt_drop_wait(c)?,
             Some(DROP) => return self.hunt_drop_walk(c, me),
@@ -126,8 +123,8 @@ impl Unit {
             Some(WALK_POINT | WALK_SEARCH) => self.hunt_point_walk(c, me)?,
             Some(SEARCH) => self.hunt_search_wait(c)?,
             Some(IDLE) => self.hunt_idle()?,
-            Some(WALK) if target == -1 && timer < 0.0 => self.hunt_wait_walk(c)?,
-            Some(LEAD) if target == -1 => {
+            Some(WALK) if target.is_none() && timer < 0.0 => self.hunt_wait_walk(c)?,
+            Some(LEAD) if target.is_none() => {
                 // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
                 self.actions.hunt_mut().expect("above").state = SEARCH;
                 self.hunt_set_search(c)?;
@@ -149,7 +146,7 @@ impl Unit {
         if 0.0 <= hunt.timer {
             hunt.timer = 0.0;
             let site = hunt.carry_to.take();
-            self.hunt_release(c, [ObjectId::field(site)])?;
+            self.hunt_release(c, [site])?;
             self.hunt_drop_off(c)?;
         }
         Ok(())
@@ -168,7 +165,7 @@ impl Unit {
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         let me_at =
@@ -179,7 +176,7 @@ impl Unit {
         let site = match c.w.spatial.get_known(hunt.carry_to)? {
             Some(s) => {
                 let actor = Actor {
-                    id: self.id.get(),
+                    id: self.id,
                     master,
                     player: c.player,
                     held: (self.life.attribute_type, self.life.amount),
@@ -229,7 +226,7 @@ impl Unit {
                 // the drop site goes (FUN_140a7a190 with none), then set_state(8)
                 let hunt = self.actions.hunt_mut().ok_or(NO_HUNT)?;
                 let site = hunt.carry_to.take();
-                self.hunt_release(c, [ObjectId::field(site)])?;
+                self.hunt_release(c, [site])?;
                 self.hunt_drop_off(c)?;
             }
             crate::gathering::hunt::Dropped::Idle => {
@@ -265,7 +262,7 @@ impl Unit {
         let mut hunt = *self.actions.hunt().ok_or(NO_HUNT)?;
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         let who = crate::gathering::hunt::PointWalker {

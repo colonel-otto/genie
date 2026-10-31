@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Mover, footprint_gap_squared};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
@@ -43,7 +44,7 @@ impl Unit {
         // sees it ([`crate::vision::visibility::sight_taker`]) when that one has its master
         let mut captured = captured;
         if self.combat
-            && let Some(mask) = c.w.spatial.combat_sight(self.id.get())?
+            && let Some(mask) = c.w.spatial.combat_sight(self.id)?
             && let Some(q) = crate::vision::visibility::sight_taker(
                 mask,
                 c.player,
@@ -137,7 +138,7 @@ impl Unit {
             // a new owner sees the target with its own map
             target: self.ai_target(c, view.player)?,
             under_attack: self.under_attack,
-            id: self.id.get(),
+            id: self.id,
             anim_speed: self.body.anim_speed(),
             action_state: if self.unmodelled_action.is_some() {
                 None
@@ -332,7 +333,7 @@ impl Unit {
         c.w.spatial
             .sight
             .as_ref()
-            .and_then(|v| v.seer(self.id.get()))
+            .and_then(|v| v.seer(self.id))
             .map_or(0, |s| s.capture)
     }
 
@@ -355,7 +356,7 @@ impl Unit {
         // the unit's master: its own (a captured unit's copy), else its owner's
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )
         .ok();
@@ -443,10 +444,10 @@ impl Unit {
         c: &Step<'_>,
         viewer: PlayerId,
     ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
-        match self.ai.as_ref().map(|ai| ai.current_target) {
-            None | Some(-1) => Ok(None),
-            Some(t) if t == self.id.get() => c.w.seen_of(self, c.player, viewer).map(Some),
-            Some(t) => c.w.seen(t, viewer),
+        match self.ai.as_ref().and_then(|ai| ai.current_target) {
+            None => Ok(None),
+            Some(t) if t == self.id => c.w.seen_of(self, c.player, viewer).map(Some),
+            Some(t) => c.w.seen(Some(t), viewer),
         }
     }
 
@@ -473,13 +474,14 @@ impl Unit {
             .notifies
             .iter()
             .filter(|n| n.kind == crate::unit_ai::IN_THE_WAY)
-            .map(|n| n.p[0]);
-        let mut ids: Vec<i32> = ai
+            .map(|n| ObjectId::of_field(n.p[0]));
+        // none (−1) names no object the world holds
+        let mut ids: Vec<ObjectId> = ai
             .attackers
             .iter()
-            .copied()
             .chain(damaged)
             .chain(in_the_way)
+            .flatten()
             .collect();
         ids.sort_unstable();
         ids.dedup();
@@ -497,7 +499,7 @@ impl Unit {
                 owner,
                 combat_level: m.combat_level,
                 state: u.life.state,
-                target: u.ai.as_ref().map(|a| a.current_target),
+                target: u.ai.as_ref().and_then(|a| a.current_target),
                 gap_squared: footprint_gap_squared(
                     self.position(),
                     me.radius,
@@ -528,7 +530,7 @@ impl Unit {
     /// The unit's notifies to itself ([`crate::unit_ai::Inbox`]); an action that walks borrows
     /// its fields beside the unit's body instead.
     pub(crate) const fn inbox(&mut self) -> crate::unit_ai::Inbox<'_> {
-        crate::unit_ai::Inbox::of(&mut self.ai, self.id.get(), self.life.state)
+        crate::unit_ai::Inbox::of(&mut self.ai, self.id, self.life.state)
     }
 
     /// The units in the way the motion step told the unit AI of ([`crate::unit_ai::IN_THE_WAY`],
@@ -545,7 +547,7 @@ impl Unit {
             .map(|m| std::mem::take(&mut m.in_the_way))
             .unwrap_or_default();
         for id in in_the_way {
-            self.post_own(crate::unit_ai::IN_THE_WAY, [id, -1, -1])?;
+            self.post_own(crate::unit_ai::IN_THE_WAY, [id.get(), -1, -1])?;
         }
         Ok(())
     }

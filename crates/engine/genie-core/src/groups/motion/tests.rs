@@ -34,10 +34,10 @@ fn a_top_target_below_minus_one_is_none() {
         vec![0, 0],
         vec![Player::default(), player],
     );
-    assert_eq!(t.top_target_object(&hunter(7)), 7);
-    assert_eq!(t.top_target_object(&hunter(-3)), -1);
-    assert_eq!(t.top_target_object(&hunter(9)), -1);
-    assert_eq!(t.top_target_object(&held(1)), -1);
+    assert_eq!(t.top_target_object(&hunter(7)), Some(object_id(7)));
+    assert_eq!(t.top_target_object(&hunter(-3)), None);
+    assert_eq!(t.top_target_object(&hunter(9)), None);
+    assert_eq!(t.top_target_object(&held(1)), None);
 }
 
 /// `FUN_14104c150` turns only when 1e-7 is below the yaw's size (an ordered compare): a NaN
@@ -371,7 +371,7 @@ impl Fixture {
 fn lead() -> Lead {
     Lead {
         walker: Walker {
-            id: 7,
+            id: object_id(7),
             radius: 0.2,
             restriction: 0,
             mask: 0xff,
@@ -506,7 +506,7 @@ fn grouped(flags: u32) -> Lead {
     Lead {
         group: Some(LeadGroup {
             flags,
-            members: vec![7],
+            members: vec![object_id(7)],
             ..LeadGroup::default()
         }),
         ..lead()
@@ -870,7 +870,7 @@ fn an_arrived_level_hands_over_by_its_link() {
     };
     let mut m = requesting(0, 6.0);
     m.paths[0].flags = 1;
-    m.paths[0].target = 7;
+    m.paths[0].target = Some(object_id(7));
     fx.spatial.insert(object_id(7), target_at(6.0));
     assert!(matches!(fx.pass(&mut m, &lead), Pass::Reached));
     assert_eq!((m.paths[0].waypoint, m.paths[0].state), (1, 2));
@@ -901,20 +901,20 @@ fn what_stands_in_the_way_stops_the_walk() {
         m
     };
     fx.spatial.insert(object_id(9), placed_at(5.0, 5.3));
-    let mut m = walking(9);
+    let mut m = walking(Some(object_id(9)));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Next));
     assert_eq!(m.paths[0].flags & 5, 5);
     // 8 in the way moved at 60
     fx.spatial.set_gait(
-        8,
+        object_id(8),
         Some(Gait {
             last_move: 60,
             ..Gait::default()
         }),
     );
-    fx.spatial.remove(9);
+    fx.spatial.remove(object_id(9));
     fx.spatial.insert(object_id(8), placed_at(5.0, 5.3));
-    let mut m = walking(-1);
+    let mut m = walking(None);
     m.paths.push(level(
         2,
         &[Point::new(5.0, 5.0), Point::new(9.0, 9.0)],
@@ -926,7 +926,7 @@ fn what_stands_in_the_way_stops_the_walk() {
         (m.paths.len(), m.paths[0].level, m.paths[0].state),
         (1, 2, 2)
     );
-    let mut m = walking(-1);
+    let mut m = walking(None);
     m.velocity = BVector::new(0.0, 0.0, 1.0);
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
     assert_eq!(
@@ -934,7 +934,7 @@ fn what_stands_in_the_way_stops_the_walk() {
         (vec![PathData::without_path()], 0.0)
     );
     // one that moved before the level was made: the walk goes on at its top speed
-    let mut m = walking(-1);
+    let mut m = walking(None);
     m.paths[0].created = 70;
     m.maximum_velocity_forward = 1.2;
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Done(true)));
@@ -967,7 +967,7 @@ fn a_walk_in_range_of_its_end_stops() {
     );
     let mut m = requesting(0, 9.0);
     m.paths[0].state = 3;
-    (m.paths[0].range, m.paths[0].target) = (1.5, 7);
+    (m.paths[0].range, m.paths[0].target) = (1.5, Some(object_id(7)));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Reached));
 }
 
@@ -977,7 +977,7 @@ fn a_walk_in_range_of_its_end_stops() {
 #[test]
 fn the_members_centre_pulls_a_group_whose_members_all_act() {
     let mut fx = open_fixture();
-    let walk = |fx: &mut Fixture, members: Vec<Option<(i32, BVector)>>| {
+    let walk = |fx: &mut Fixture, members: Vec<Option<(Option<ObjectId>, BVector)>>| {
         let mut m = requesting(0, 9.0);
         m.paths[0].state = 3;
         m.new_position[0] = BVector::new(5.0, 0.0, 5.0);
@@ -1007,8 +1007,8 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
     let far = walk(
         &mut fx,
         vec![
-            Some((20, BVector::new(15.0, 1.0, 5.0))),
-            Some((20, BVector::new(15.0, 3.0, 5.0))),
+            Some((Some(object_id(20)), BVector::new(15.0, 1.0, 5.0))),
+            Some((Some(object_id(20)), BVector::new(15.0, 3.0, 5.0))),
         ],
     );
     let pulled = |c: f32, own: f32| PULL_SHARE * c + PULL_KEEP * own;
@@ -1019,8 +1019,8 @@ fn the_members_centre_pulls_a_group_whose_members_all_act() {
     let idle = walk(
         &mut fx,
         vec![
-            Some((20, BVector::new(15.0, 1.0, 5.0))),
-            Some((-1, BVector::new(15.0, 3.0, 5.0))),
+            Some((Some(object_id(20)), BVector::new(15.0, 1.0, 5.0))),
+            Some((None, BVector::new(15.0, 3.0, 5.0))),
         ],
     );
     assert_eq!(idle, BVector::new(5.0, 0.0, 5.0));

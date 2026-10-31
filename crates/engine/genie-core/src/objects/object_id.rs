@@ -17,12 +17,11 @@ impl ObjectId {
         self.0
     }
 
-    /// Its value for a routine or a field that does not take the type yet: the marker of the
-    /// migration (FD-001-D23, T9). Each call goes when its callee or its field takes the type,
-    /// and the method goes with [`ObjectId::field`].
+    /// A recyclable master's object (a missile, a ghost), whose id is negative: the game tests
+    /// the sign (`id < 0`) where such an object takes no part (the sight, the pasture).
     #[must_use]
-    pub const fn raw(self) -> i32 {
-        self.0
+    pub const fn is_recyclable(self) -> bool {
+        self.0 < 0
     }
 
     /// The id the world gives the next new object (`mNextObjectId` counts up).
@@ -42,6 +41,11 @@ impl ObjectId {
     /// no object's id, and not [`ObjectId::TAKEN_OUT`] (it stays in its list).
     pub const UNSAVED: Self = Self(i32::MIN + 1);
 
+    /// The stand-in for an object a reader takes a view of where the game reads none (its −1):
+    /// no object's id, so a lookup or write-back by it finds nothing ([`crate::combat::damage::Victim`]
+    /// of a hunt without a target).
+    pub(crate) const NOBODY: Self = Self(i32::MIN + 2);
+
     /// The stand-in a list leaves in the slot of a unit taken out of it
     /// ([`crate::objects::unit::TAKEN_OUT`]): no object's id.
     pub(crate) const TAKEN_OUT: Self = Self(i32::MIN);
@@ -59,7 +63,12 @@ impl ObjectId {
         }
     }
 
-    /// The value of a field that holds −1 for none.
+    /// The value of a field that holds −1 for none, for an outgoing boundary only: a writer of
+    /// a format the game reads (the command codec's encoder), a log line in the game's terms, or
+    /// where the game turns none into −1 and uses the number (a sort key, [`Attackers`]). genie's
+    /// own code keeps the type.
+    ///
+    /// [`Attackers`]: crate::unit_ai::Attackers
     #[must_use]
     pub const fn field(id: Option<Self>) -> i32 {
         match id {
@@ -88,8 +97,8 @@ impl std::fmt::Display for ObjectId {
     }
 }
 
-/// What a lookup by id takes: an id, a field that may hold none, or (until every field is
-/// typed) a raw field of −1 for none. A key that names none finds no object.
+/// What a lookup by id takes: an id, or a field that may hold none. A key that names none finds
+/// no object, as the game's table finds none for −1 (no object's id is −1).
 pub trait ObjectKey: Copy {
     /// The id it names.
     fn key(self) -> Option<ObjectId>;
@@ -104,13 +113,6 @@ impl ObjectKey for ObjectId {
 impl ObjectKey for Option<ObjectId> {
     fn key(self) -> Option<ObjectId> {
         self
-    }
-}
-
-/// A raw field, −1 for none: the fields not yet typed ([`ObjectId::of_field`]).
-impl ObjectKey for i32 {
-    fn key(self) -> Option<ObjectId> {
-        ObjectId::of_field(self)
     }
 }
 
@@ -161,13 +163,6 @@ mod tests {
         assert_eq!(id(7).get(), 7);
     }
 
-    /// The migration's marker gives the id's value.
-    #[test]
-    fn the_marker_gives_the_id_s_value() {
-        assert_eq!(id(7).raw(), 7);
-        assert_eq!(id(-2).raw(), -2);
-    }
-
     /// A map keyed by ids lists them in the order of one keyed by their values: the game hashes
     /// the value (`std::hash<int>`).
     #[test]
@@ -186,8 +181,5 @@ mod tests {
         assert_eq!(id(7).key(), Some(id(7)));
         assert_eq!(Some(id(7)).key(), Some(id(7)));
         assert_eq!(None::<ObjectId>.key(), None);
-        assert_eq!(7.key(), Some(id(7)));
-        assert_eq!((-1).key(), None);
-        assert_eq!((-2).key(), Some(id(-2)));
     }
 }

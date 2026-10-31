@@ -14,6 +14,7 @@ use crate::map::Point;
 use crate::map::Radii;
 use crate::map::{GroundOffset, Offset, Position};
 use crate::math::fmath;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -123,9 +124,9 @@ pub struct MissileAction {
     pub state: u8,
     /// The target (`+0x20`, its id `+0x30`) and the object it was fired from (`+0x28`, `+0x34`),
     /// −1 for none.
-    pub target: i32,
-    /// The object it was fired from (`+0x28`, its id `+0x34`), −1 for none.
-    pub fired_from: i32,
+    pub target: Option<ObjectId>,
+    /// The object it was fired from (`+0x28`, its id `+0x34`).
+    pub fired_from: Option<ObjectId>,
     /// `+0x38`..`+0x40`: the target's place when fired.
     pub point: Position,
     /// `+0x44`: the way flown so far (a straight missile's).
@@ -146,7 +147,7 @@ pub struct MissileAction {
     pub origin: Origin,
     /// `+0x88`: the objects the last step met (not saved: none after a load).
     #[diff(unsaved)]
-    pub met: Vec<i32>,
+    pub met: Vec<ObjectId>,
 }
 
 /// A missile object's own part.
@@ -155,7 +156,7 @@ pub struct Missile {
     /// `+0x990`: how far it flies at most (`max_range`).
     pub max_range: f32,
     /// `+0x998` (`fired_from_id`) and `+0x99c` (`mIsChargeProjectile`).
-    pub fired_from: i32,
+    pub fired_from: Option<ObjectId>,
     /// `+0x99c` (`mIsChargeProjectile`): a charge's projectile.
     pub charge: bool,
     /// `+0x994`: farther than [`LANDING`] from its point; the ground does not stop it.
@@ -350,7 +351,7 @@ impl MissileAction {
         let dz2 = dz * dz;
         let way = fmath::sqrt(dy * dy + dx * dx + dz2);
         self.distance = way;
-        if stats.smart_mode & 1 != 0 && self.target != -1 {
+        if stats.smart_mode & 1 != 0 && self.target.is_some() {
             return Err(GenieError::unsupported(
                 "a smart missile leading its target",
             ));
@@ -480,6 +481,7 @@ mod tests {
     use super::*;
     use crate::objects::masters::ids;
     use crate::test_ids::master_id;
+    use crate::test_ids::object_id;
 
     /// MarvinBlue/426048731's spear -28 (master 509: speed 7, arc −0.06), fired at the deer 9655
     /// in the update that made the save after 3137: 2.80657 to go when `set_state(3)` ran, and its
@@ -495,8 +497,8 @@ mod tests {
         };
         let mut a = MissileAction {
             state: 3,
-            target: 9655,
-            fired_from: 9171,
+            target: Some(object_id(9655)),
+            fired_from: Some(object_id(9171)),
             point: Position::ORIGIN,
             timer: 0.0,
             direction: Offset::ZERO,

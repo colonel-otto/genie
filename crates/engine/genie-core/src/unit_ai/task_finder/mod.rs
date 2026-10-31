@@ -13,6 +13,7 @@
 //! its id + 0x609c), the port compares the decoded values and names the encoded ones.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -36,7 +37,7 @@ const fn special_type(t: i16) -> bool {
 #[derive(Clone, Copy, Debug)]
 pub struct Actor<'a> {
     /// The unit.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its own master (the finder's `param_3`, also when another master's list is searched).
     pub master: &'a Master,
     /// The owner's player id (`+0x718`).
@@ -53,7 +54,7 @@ pub struct Actor<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct TaskTarget<'a> {
     /// The target.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master.
     pub master: &'a Master,
     /// Its player.
@@ -68,8 +69,8 @@ pub struct TaskTarget<'a> {
     pub max_hp: f32,
     /// `+0x68a`, `unit_attackable_flag` (`FUN_141188b10`).
     pub attackable: bool,
-    /// `+0x790`, `parent_pasture_id`: the pasture it is in, -1 for none.
-    pub pasture: i32,
+    /// `+0x790`, `parent_pasture_id`: the pasture it is in, if any.
+    pub pasture: Option<ObjectId>,
     /// The type of the first action in its action list (`+0x880`), if any.
     pub top_action: Option<i16>,
 }
@@ -541,7 +542,7 @@ fn finder_tail<'m>(
         {
             return Ok((filter == 0xd).then_some(task));
         }
-        inside = t.pasture != -1;
+        inside = t.pasture.is_some();
     }
     // LAB_14127bb9f: a villager on livestock (or on what is inside something) takes task 110
     // for class 58; anything else the general search
@@ -563,6 +564,7 @@ mod tests {
     use super::*;
     use crate::objects::masters::MasterKind;
     use crate::test_ids::master_id;
+    use crate::test_ids::object_id;
     use crate::unit_ai::task_finder::target_steps::{
         drop_off_finding, garrison_into, repair_finding,
     };
@@ -602,7 +604,7 @@ mod tests {
 
     fn actor(own: &Master, held: (i16, f32)) -> Actor<'_> {
         Actor {
-            id: 9181,
+            id: object_id(9181),
             master: own,
             player: PlayerId::new(2),
             held,
@@ -613,7 +615,7 @@ mod tests {
 
     fn building(site: &Master, player: PlayerId, state: u8) -> TaskTarget<'_> {
         TaskTarget {
-            id: 10028,
+            id: object_id(10028),
             master: site,
             player,
             state,
@@ -621,7 +623,7 @@ mod tests {
             hp: 550.0,
             max_hp: 550.0,
             attackable: true,
-            pasture: -1,
+            pasture: None,
             top_action: None,
         }
     }
@@ -654,7 +656,7 @@ mod tests {
             ..Master::default()
         };
         let me = |master| Actor {
-            id: 9181,
+            id: object_id(9181),
             player: PlayerId::new(1),
             ..actor(master, (-1, 0.0))
         };
@@ -737,7 +739,7 @@ mod tests {
         }
         // the unit itself: only type 4 takes it
         let itself = TaskTarget {
-            id: 9181,
+            id: object_id(9181),
             ..at(PlayerId::new(1), (-1, 0.0))
         };
         assert!(applies_to(&of(4), &own, &itself));
@@ -942,7 +944,7 @@ mod tests {
     /// A transport of player `player` (object flag 0) in state 2 of class `class`.
     fn transport(ship: &Master, player: PlayerId) -> TaskTarget<'_> {
         TaskTarget {
-            id: 7420,
+            id: object_id(7420),
             hp: 100.0,
             max_hp: 100.0,
             ..building(ship, player, 2)

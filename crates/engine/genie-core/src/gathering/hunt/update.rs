@@ -11,7 +11,6 @@ use crate::gathering::hunt::{
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::GiveUp;
-use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -219,7 +218,7 @@ impl HuntAction {
         r: &HuntReads,
     ) -> Result<(), GenieError> {
         self.no_tree_search(r)?;
-        self.set_target(-1);
+        self.set_target(None);
         let walks = r.walks(&c.w.graphics, unit);
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.set_point_walk(WALK_SEARCH, mover, &walks)
@@ -257,13 +256,11 @@ impl HuntAction {
         let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         self.move_to = None;
         self.state = ATTACK;
-        let (a, arrived) = Attack::start(
-            ObjectId::field(self.target),
-            &herd.engagement,
-            herd.arms,
-            mover,
-            &reads,
-        )?;
+        // the herd is read only on a live target
+        let target = self.target.ok_or(GenieError::unreachable(
+            "a hunt's Attack on its livestock without a target",
+        ))?;
+        let (a, arrived) = Attack::start(target, &herd.engagement, herd.arms, mover, &reads)?;
         if arrived {
             a.arrived_sprite(unit, c.w.streams.get(Stream::Sprite))?;
         }

@@ -7,6 +7,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
@@ -62,7 +63,7 @@ pub fn reach(position: Position, range: f32, map: GridSize) -> (Tile, Tile) {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bystander {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its player (`+0x138`'s `+0x718`).
     pub player: PlayerId,
     /// The hitter's player counts it allied (`FUN_141663d90` with the ally flag).
@@ -86,7 +87,7 @@ pub struct Bystander {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hitter {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master's `area_effect_level` (`+0x830`).
     pub blast_level: u8,
     /// Its place.
@@ -179,7 +180,7 @@ impl World {
             return Ok(());
         }
         let hitter = Hitter {
-            id: unit.id.get(),
+            id: unit.id,
             blast_level: master.blast_level,
             position: unit.position(),
             radius: master.radius,
@@ -216,7 +217,7 @@ impl World {
     /// An object the slice does not hold ([`crate::construction::build::NOT_HELD`]).
     pub(super) fn bystander(
         &self,
-        id: i32,
+        id: ObjectId,
         owner: PlayerId,
     ) -> Result<Option<Bystander>, GenieError> {
         let relations = &self.players.player(owner)?.relations;

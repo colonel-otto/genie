@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{BOX, COLUMN};
 use crate::groups::{Formation, UnitGroup, sub_formation};
+use crate::objects::ObjectId;
 use crate::world::slots::CheckedIndex;
 
 /// A line order that lacks a place up to the list's length: the game reads past the order.
@@ -55,7 +56,7 @@ impl World {
     /// `ClosestUnit` (`FUN_14100e370`) of group `g` to `point`: of the members the world holds
     /// of sub-formation `category` and master `sub_category` (-1 for any) that `used` does not
     /// hold, the one nearest the point (3D, `FUN_14087e980`, where it last moved to), the first
-    /// of equals; -1 for none.
+    /// of equals; none for none.
     ///
     /// # Errors
     ///
@@ -66,10 +67,10 @@ impl World {
         point: BVector,
         category: i32,
         sub_category: i32,
-        used: &[i32],
-    ) -> Result<i32, GenieError> {
+        used: &[Option<ObjectId>],
+    ) -> Result<Option<ObjectId>, GenieError> {
         let mut best = FARTHEST;
-        let mut closest = -1;
+        let mut closest = None;
         for m in &g.members {
             let Some(object) = self.world_object(m.id) else {
                 continue;
@@ -83,7 +84,7 @@ impl World {
             {
                 continue;
             }
-            if used.contains(&m.id) {
+            if used.contains(&Some(m.id)) {
                 continue;
             }
             let at = object.moved_vector().xhy();
@@ -91,7 +92,7 @@ impl World {
                 + (point.x() - at.x()) * (point.x() - at.x())
                 + (point.y() - at.y()) * (point.y() - at.y());
             if d < best {
-                closest = m.id;
+                closest = Some(m.id);
                 best = d;
             }
         }
@@ -100,7 +101,7 @@ impl World {
 
     /// The ground distance from slot place `at` to unit `id`'s (`FUN_14087e560`, its height
     /// zeroed, `sqrt(x² + 0 + y²)`), None for a unit the world does not hold.
-    pub(super) fn slot_distance(&self, at: BVector, id: i32) -> Option<f32> {
+    pub(super) fn slot_distance(&self, at: BVector, id: ObjectId) -> Option<f32> {
         let object = self.world_object(id)?;
         let mut d = sub(at, object.moved_vector().xhy());
         d = d.with_height(0.0);
@@ -148,17 +149,18 @@ impl World {
             .filter(|(_, s)| s.transformed != 0 && s.active != 0)
             .map(|(i, _)| i)
             .collect();
-        let ask = |i: usize, used: &[i32]| {
+        let ask = |i: usize, used: &[Option<ObjectId>]| {
             let (at, category, sub_category) = *asks.checked(i)?;
             self.closest_unit(g, at, category, sub_category, used)
         };
-        let dist = |i: usize, id: i32| self.slot_distance(asks.get(i)?.0, id);
+        let dist = |i: usize, id: ObjectId| self.slot_distance(asks.get(i)?.0, id);
         let pick = Picker {
             ask: &ask,
             dist: &dist,
         };
         // the slots in order
-        let mut used = vec![0i32; USED_UNITS];
+        // zeros, object 0's id, as the game's array starts
+        let mut used = vec![Some(ObjectId::default()); USED_UNITS];
         let (sum_first, found_first, first) = pick.trial(&wanted, &mut used, (0, false))?;
         // the first unit barred from the first slot that finds one
         let (sum_second, found_second, _) = pick.trial(&wanted, &mut used, (1, true))?;
@@ -226,7 +228,7 @@ impl World {
             }
             let slot = formation.slots.checked_mut(c as usize)?;
             slot.position_filled = 1;
-            slot.unit_id = g.members.checked(r as usize)?.id;
+            slot.unit_id = Some(g.members.checked(r as usize)?.id);
         }
         Ok(())
     }
@@ -291,14 +293,14 @@ impl World {
         order: &[i32],
     ) -> Result<(), GenieError> {
         let n = n.min(g.members.len());
-        let mut list: Vec<i32> = Vec::new();
+        let mut list: Vec<Option<ObjectId>> = Vec::new();
         for i in 0..n {
             let s = formation.slot_mut(i)?;
             if s.transformed != 0
                 && s.active != 0
                 && self.world_object(g.members.checked(i)?.id).is_some()
             {
-                list.push(g.members.checked(i)?.id);
+                list.push(Some(g.members.checked(i)?.id));
             }
         }
         for k in 0..list.len() {
@@ -311,7 +313,7 @@ impl World {
                 (s.desired_category, s.desired_sub_category)
             };
             for (u, taken) in list.iter_mut().enumerate() {
-                if *taken == -1 {
+                if taken.is_none() {
                     continue;
                 }
                 let Some(object) = g.members.get(u).and_then(|m| self.world_object(m.id)) else {
@@ -327,9 +329,8 @@ impl World {
                     continue;
                 }
                 let s = formation.slot_mut(at)?;
-                s.unit_id = *taken;
+                s.unit_id = taken.take();
                 s.position_filled = 1;
-                *taken = -1;
                 break;
             }
         }
@@ -427,11 +428,11 @@ impl World {
 /// What [`World::populate_slots`] reads: the unit nearest a slot not in `used`, and its distance.
 struct Picker<'a> {
     ask: &'a AskUnit<'a>,
-    dist: &'a dyn Fn(usize, i32) -> Option<f32>,
+    dist: &'a dyn Fn(usize, ObjectId) -> Option<f32>,
 }
 
 /// The unit nearest a slot, not among those taken.
-type AskUnit<'a> = dyn Fn(usize, &[i32]) -> Result<i32, GenieError> + 'a;
+type AskUnit<'a> = dyn Fn(usize, &[Option<ObjectId>]) -> Result<Option<ObjectId>, GenieError> + 'a;
 
 impl Picker<'_> {
     /// One trial over the `wanted` slots, `used` holding the units taken (`count` of them, the
@@ -440,25 +441,27 @@ impl Picker<'_> {
     fn trial(
         &self,
         wanted: &[usize],
-        used: &mut [i32],
+        used: &mut [Option<ObjectId>],
         (mut count, mut leading): (usize, bool),
-    ) -> Result<(f32, i32, i32), GenieError> {
-        let (mut sum, mut found, mut first) = (0.0f32, 0, -1);
+    ) -> Result<(f32, i32, Option<ObjectId>), GenieError> {
+        let (mut sum, mut found, mut first) = (0.0f32, 0, None);
         for &i in wanted {
-            let id = (self.ask)(i, used.head(count)?)?;
-            let Some(d) = (id != -1).then(|| (self.dist)(i, id)).flatten() else {
+            let Some(id) = (self.ask)(i, used.head(count)?)? else {
+                continue;
+            };
+            let Some(d) = (self.dist)(i, id) else {
                 continue;
             };
             sum += d;
             if leading {
                 leading = false;
-                *used.checked_mut(0)? = id;
+                *used.checked_mut(0)? = Some(id);
             } else {
-                *used.checked_mut(count)? = id;
+                *used.checked_mut(count)? = Some(id);
                 count += 1;
             }
-            if first == -1 {
-                first = id;
+            if first.is_none() {
+                first = Some(id);
             }
             found += 1;
         }
@@ -471,13 +474,13 @@ impl Picker<'_> {
         &self,
         formation: &mut Formation,
         wanted: &[usize],
-        used: &mut [i32],
+        used: &mut [Option<ObjectId>],
         (mut count, mut leading): (usize, bool),
     ) -> Result<(), GenieError> {
         for &i in wanted {
             let id = (self.ask)(i, used.head(count)?)?;
             formation.slots.checked_mut(i)?.unit_id = id;
-            if id != -1 {
+            if id.is_some() {
                 formation.slots.checked_mut(i)?.position_filled = 1;
                 if leading {
                     leading = false;

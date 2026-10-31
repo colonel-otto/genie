@@ -46,6 +46,7 @@ use crate::map::Position;
 #[cfg(test)]
 use crate::math::fmath;
 use crate::objects::HpPowerup;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -126,7 +127,7 @@ const LEAST_HIT_CLASSES: [ClassId; 5] = [
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Victim {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its place in its tile's object list (the map tile's `+0x28`, in the order
     /// `FUN_140f5f0a0` and `FUN_140f5f560` keep), which a blast walks a tile by ([`blast`]).
     pub tile_place: usize,
@@ -196,8 +197,9 @@ pub struct Victim {
     pub armored: Option<Armored>,
     /// The damage notifies (500, `FUN_141082e80`) its hits post to its unit AI, in order (a
     /// blast's hit on an annex and on its main building post two to the main building): the
-    /// attacker, its hit points after (truncated) and its master's hit points.
-    pub damaged: Vec<(i32, [i32; 3])>,
+    /// sender (a missile's shooter, none once it is gone), then the attacker, its hit points
+    /// after (truncated) and its master's hit points.
+    pub damaged: Vec<(Option<ObjectId>, [i32; 3])>,
     /// A hit killed it, for the caller's death handling.
     pub killed: Option<Kill>,
     /// A building's (type 80) part of a hit ([`Building`]); None for other objects.
@@ -209,9 +211,9 @@ pub struct Victim {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Building {
     /// `+0xbb8`: an annex's main building, whose slot 0xe8 takes a hit on the annex.
-    pub main: Option<i32>,
+    pub main: Option<ObjectId>,
     /// `+0xbc0`..`+0xbd8`: its annexes, which take its hit points after each hit.
-    pub annexes: Vec<i32>,
+    pub annexes: Vec<ObjectId>,
     /// `+0xb90` (not saved): the damage the blast under way has done to it ([`blast`]).
     pub blast_taken: f32,
     /// `FUN_140fde380` on its master: of type 70 and up, of class 51 or 54, with a weapon
@@ -253,7 +255,7 @@ pub struct Razed {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Kill {
     /// The object that killed it.
-    pub attacker: i32,
+    pub attacker: ObjectId,
     /// That object's player.
     pub attacker_player: usize,
     /// That object's master's class as the hit saw it (`FUN_141082e80` reads it of the
@@ -328,7 +330,7 @@ pub struct Armored {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Attacker {
     /// The attacking object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master's type, class, id, `combat_ability` and `missile_id`.
     pub kind: MasterKind,
     /// Its master's class.
@@ -373,9 +375,8 @@ pub struct Attacker {
     pub player: PlayerId,
     /// Its master has a task of action type 0x9a (a kill bonus).
     pub kill_bonus_tasks: bool,
-    /// What a missile was fired from (`+0x998`), its damage notify's sender; a missile without
-    /// one is −1.
-    pub fired_from: i32,
+    /// What a missile was fired from (`+0x998`), its damage notify's sender.
+    pub fired_from: Option<ObjectId>,
 }
 
 #[cfg(test)]

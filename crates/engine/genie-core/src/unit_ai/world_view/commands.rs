@@ -8,6 +8,7 @@ use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover, Planning};
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -28,15 +29,15 @@ impl UnitView<'_, '_> {
     /// (`FUN_140ad7fa0`) replaces the unit's actions (slot 0x808): 1; none: 0. The switches and
     /// the Repair are made at once on the unit lent back to its slot ([`RepairOrder`],
     /// [`World::repair_order`]).
-    pub(super) fn repair_command(&mut self, target: i32) -> Result<bool, GenieError> {
+    pub(super) fn repair_command(&mut self, target: ObjectId) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
             self.player,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
         );
-        let find = |id: i32| {
-            if id == unit.id.get() {
+        let find = |id: ObjectId| {
+            if id == unit.id {
                 return Some((player, unit));
             }
             others.find(id)
@@ -72,7 +73,7 @@ impl UnitView<'_, '_> {
             ));
         };
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: switch.unwrap_or(own),
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -126,15 +127,15 @@ impl UnitView<'_, '_> {
     /// its sub-action): 1; none: 0. The switch and the Enter are made at once on the unit lent
     /// back to its slot ([`EnterOrder`], [`World::enter_order`]); the notify its install gives
     /// the unit's own AI waits for the side's return.
-    pub(super) fn enter_command(&mut self, target: i32) -> Result<bool, GenieError> {
+    pub(super) fn enter_command(&mut self, target: ObjectId) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
             self.player,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
         );
-        let find = |id: i32| {
-            if id == unit.id.get() {
+        let find = |id: ObjectId| {
+            if id == unit.id {
                 return Some((player, unit));
             }
             others.find(id)
@@ -160,7 +161,7 @@ impl UnitView<'_, '_> {
             ));
         };
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -237,7 +238,7 @@ impl UnitView<'_, '_> {
             .zones
             .of(map.width(), map.height(), &terrain.kinds, values)?;
         let me = Me {
-            id: unit.id.get(),
+            id: unit.id,
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };

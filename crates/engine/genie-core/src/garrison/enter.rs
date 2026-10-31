@@ -10,6 +10,7 @@ use crate::garrison::{
 use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::MoveToReads;
+use crate::objects::ObjectId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::GARRISON;
@@ -29,7 +30,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &Task,
         point: Position,
         clears: bool,
@@ -68,7 +69,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         forced: bool,
     ) -> Result<bool, GenieError> {
         if self.object(target).is_none() {
@@ -137,7 +138,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &Task,
         under_artifact: bool,
     ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
@@ -155,9 +156,9 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         task: &Task,
-    ) -> Result<(EnterAction, i32, i32), GenieError> {
+    ) -> Result<(EnterAction, ObjectId, i32), GenieError> {
         let (tp, t) = self
             .object(target)
             .ok_or(GenieError::unsupported("an Enter whose building is gone"))?;
@@ -185,7 +186,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         action: EnterAction,
         task: &Task,
     ) -> Result<Option<crate::unit_ai::Notify>, GenieError> {
@@ -204,7 +205,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         mut action: EnterAction,
         task: &Task,
         sub: bool,
@@ -245,7 +246,7 @@ impl World {
                 self.streams.get(crate::math::rng::Stream::Sprite),
             )?;
             return Ok(Some(crate::unit_ai::Notify::own(
-                id.get(),
+                id,
                 crate::unit_ai::ACTION_FAILED,
                 [ActionKind::Enter.value(), 0, 0],
             )));
@@ -276,7 +277,7 @@ impl World {
             }
             Walking::Walk(to) => {
                 self.players.player_mut(player)?.objects[idx].place_enter(action, sub);
-                to.map_or(Ok(()), |to| self.move_transport(target, to))
+                to.map_or(Ok(()), |to| self.move_transport(Some(target), to))
                     .map(|()| None)
             }
         }
@@ -292,7 +293,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
         range: f32,
     ) -> Result<(EnterTarget, WalkStart), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
@@ -353,7 +354,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(Point, u8), GenieError> {
         let id = self.players.player(player)?.objects[idx].id;
         let (tp, t) = self.object(target).ok_or(UNPLACED)?;
@@ -378,7 +379,7 @@ impl World {
     /// that cannot reach it is [`UNREACHED`].
     pub(crate) fn move_transport(
         &mut self,
-        transport: i32,
+        transport: Option<ObjectId>,
         to: Position,
     ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(tp, ti)) = self.place(transport) else {
@@ -401,7 +402,11 @@ impl World {
 
     /// The transport's slot 0x340 (`FUN_141216c50`, [`World::move_aside`]: range 0, forced,
     /// running) to `to`, where it meets an entering unit.
-    pub(crate) fn ship_move(&mut self, ship: i32, to: Position) -> Result<(), GenieError> {
+    pub(crate) fn ship_move(
+        &mut self,
+        ship: Option<ObjectId>,
+        to: Position,
+    ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(p, i)) = self.place(ship) else {
             return Err(UNREACHED);
         };
@@ -421,7 +426,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let inside = self
             .players
@@ -450,7 +455,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);

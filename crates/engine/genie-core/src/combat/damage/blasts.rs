@@ -8,6 +8,7 @@ use crate::combat::damage::{
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -55,9 +56,11 @@ pub(super) fn damage(
         let sender = if src.kind == MISSILE {
             src.source.fired_from
         } else {
-            src.id
+            Some(src.id)
         };
-        t.damaged.push((sender, [src.id, t.hp as i32, master_hp]));
+        // the notify's p1 is the attacker's id (the game's record)
+        t.damaged
+            .push((sender, [src.id.get(), t.hp as i32, master_hp]));
     }
     if t.hp < 1.0 {
         t.hp = 0.0;
@@ -124,8 +127,8 @@ pub(super) fn blast_tiles(center: Position, r: f32) -> (Tile, Tile) {
 pub fn blast(
     attacker: &mut Victim,
     center: Position,
-    exclude: Option<i32>,
-    main: Option<i32>,
+    exclude: Option<ObjectId>,
+    main: Option<ObjectId>,
     targets: &mut [&mut Victim],
     factor: f32,
 ) -> Result<bool, GenieError> {
@@ -177,8 +180,8 @@ pub(super) struct Blast {
     pub(super) wide: f32,
     pub(super) tiles: (Tile, Tile),
     pub(super) spares_friends: bool,
-    pub(super) exclude: Option<i32>,
-    pub(super) main: Option<i32>,
+    pub(super) exclude: Option<ObjectId>,
+    pub(super) main: Option<ObjectId>,
     pub(super) factor: f32,
 }
 

@@ -1,4 +1,5 @@
 use crate::pathing_inputs::{mesh_from_dump, mesh_owners_from_dump};
+use crate::test_ids::object_id;
 
 /// A mesh 2 tiles wide with one shape, its side 1's contact and the tile (1, 0) holding it.
 const MESH: &str = "\
@@ -19,7 +20,7 @@ fn a_mesh_dump_reads_its_shapes_contacts_and_tiles() {
     assert_eq!((contact.at, contact.along), ([10, 11], 12));
     assert_eq!((contact.flag, contact.half), (1, 13));
     assert_eq!(mesh.tiles[1], [0]);
-    assert_eq!(mesh_owners_from_dump(MESH), [(900, 0)]);
+    assert_eq!(mesh_owners_from_dump(MESH), [(object_id(900), 0)]);
 }
 
 /// Without its mesh line, or with a header out of shape, a dump holds no mesh.

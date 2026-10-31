@@ -3,26 +3,26 @@
 use crate::GenieError;
 use crate::map::GridSize;
 use crate::map::Point;
-use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
+use crate::map::Tile;
+use crate::map::spatial::{QUERY_HITS, RecordId, Spatial, TESTED_KINDS};
 use crate::map::{Rect, Segment};
 use crate::objects::masters::class;
 
-/// A record a pather query met (an entry of `FUN_141051900`'s list): an object's (its id) or a
-/// temporary tile record's (`x << 12 | y | 0xf0000000`, `FUN_1410510c0`), with its box
-/// (`+0x20`..`+0x2c`).
+/// A record a pather query met (an entry of `FUN_141051900`'s list): an object's, a temporary
+/// tile record's or a map edge's ([`RecordId`]), with its box (`+0x20`..`+0x2c`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hit {
     /// The record's id (`+0x18`).
-    pub id: i32,
+    pub id: RecordId,
     /// Its box.
     pub bounds: Rect,
 }
 
 /// The id of tile (`x`, `y`)'s temporary record (`FUN_1410510c0`) and of the tile in a pather's
-/// ignore list (`FUN_140f89e40`): `x << 12 | y` with the top four bits set.
+/// ignore list (`FUN_140f89e40`).
 #[must_use]
-pub const fn tile_record_id(x: i32, y: i32) -> i32 {
-    (x << 12) | y | (0xf000_0000_u32 as i32)
+pub const fn tile_record_id(x: i32, y: i32) -> RecordId {
+    RecordId::Tile(Tile::new(x, y))
 }
 
 impl Spatial {
@@ -48,7 +48,7 @@ impl Spatial {
         b: Point,
         buffer: Option<f32>,
         mask: u8,
-        ignore: &[i32],
+        ignore: &[RecordId],
         first: bool,
     ) -> Result<Vec<Hit>, GenieError> {
         const MOST_HITS: usize = 25;
@@ -94,7 +94,7 @@ impl Spatial {
             let kind = if o.kind == 10 { 2 } else { o.kind };
             if !TESTED_KINDS.contains(&kind)
                 || self.gaits.get(&id).is_some_and(|g| g.moving)
-                || ignore.contains(&id)
+                || ignore.contains(&RecordId::from(id))
                 || !self.visits(p, kind, grown)
             {
                 continue;
@@ -114,7 +114,10 @@ impl Spatial {
                     "a pather query meeting a gate (its players' passage, slot 0x678)",
                 ));
             }
-            hits.push(Hit { id, bounds: bx });
+            hits.push(Hit {
+                id: RecordId::from(id),
+                bounds: bx,
+            });
             if first || MOST_HITS <= hits.len() {
                 break;
             }
@@ -130,7 +133,7 @@ impl Spatial {
         b: Point,
         buffer: Option<f32>,
         mask: u8,
-        ignore: &[i32],
+        ignore: &[RecordId],
     ) -> Result<bool, GenieError> {
         Ok(!self
             .pather_query(a, b, buffer, mask, ignore, true)?
@@ -145,7 +148,7 @@ impl Spatial {
         b: Point,
         buffer: Option<f32>,
         mask: u8,
-        ignore: &[i32],
+        ignore: &[RecordId],
     ) -> Result<Vec<Hit>, GenieError> {
         self.pather_query(a, b, buffer, mask, ignore, false)
     }
@@ -175,7 +178,7 @@ impl Spatial {
             let x = cvttss2si(dx * t + x0);
             let y = cvttss2si(dy * t + y0);
             Hit {
-                id: ((x << 12) | y | 0xff00_0000_u32 as i32),
+                id: RecordId::Edge(Tile::new(x, y)),
                 bounds: Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0),
             }
         };
@@ -235,7 +238,7 @@ pub struct SmoothingWalls<'a> {
     pub(super) world: &'a mut Spatial,
     pub(super) radius: f32,
     pub(super) mask: u8,
-    pub(super) ignore: &'a [i32],
+    pub(super) ignore: &'a [RecordId],
     /// Whether a walk was tested.
     pub ran: bool,
 }
@@ -244,7 +247,12 @@ impl<'a> SmoothingWalls<'a> {
     /// The test of a unit `radius` wide (the manager's buffer) whose terrain mask is `mask`,
     /// with the manager's ignore list `ignore`.
     #[must_use]
-    pub const fn new(world: &'a mut Spatial, radius: f32, mask: u8, ignore: &'a [i32]) -> Self {
+    pub const fn new(
+        world: &'a mut Spatial,
+        radius: f32,
+        mask: u8,
+        ignore: &'a [RecordId],
+    ) -> Self {
         Self {
             world,
             radius,

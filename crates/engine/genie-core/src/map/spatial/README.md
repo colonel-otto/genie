@@ -25,6 +25,7 @@ found, as in the game.
 | [`mod.rs`](mod.rs) | Where the world's objects are, as movement reads them: each live object's position, radii and class, and the obstruction record the game keeps for it in its obstruction manager (`DAT_143f0a088`, queried by `FUN_141051900`). |
 | [`objects.rs`](objects.rs) | The objects on the map: their tiles and records, their freezing and the known checks, their moves inside and out, and the segment tests. |
 | [`pather.rs`](pather.rs) | The old short pather's queries, the map's edge records and the segment tests. |
+| [`record_id.rs`](record_id.rs) | The id of an obstruction record and of an entry of a pather's ignore list: an object's, a tile's temporary record's or a map edge's. |
 | [`search.rs`](search.rs) | A position's change, the sight check and the unit AI's searches: the closest object and the best unit to attack. |
 | [`sight.rs`](sight.rs) | The artifact's owner search, an ownership change, vision and sight, ghosts and the standable spots. |
 | [`tests.rs`](tests.rs) | Tests. |

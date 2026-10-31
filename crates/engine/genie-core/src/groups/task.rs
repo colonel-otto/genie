@@ -85,7 +85,7 @@ impl World {
             let Some((_, u)) = self.object(m.id) else {
                 continue;
             };
-            let Some(member) = ObjectId::of_field(m.id) else {
+            let Some(member) = Some(m.id) else {
                 continue;
             };
             if u.life.hp < MEMBER_MIN_HP {
@@ -117,14 +117,14 @@ impl World {
         if member == query.target {
             return Ok(None);
         }
-        let (player, unit) = self.object(member.get()).ok_or_else(|| {
+        let (player, unit) = self.object(member).ok_or_else(|| {
             GenieError::unreachable("a member the group's task search found is not live")
                 .with("member", member.get())
         })?;
         let own = unit.master(&self.masters, player)?;
         let owner = &self.players.player(player)?;
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -135,7 +135,7 @@ impl World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let target = query.target.get();
+        let target = query.target;
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
         let terrain = self.task_terrain(query.point.with_height(0.0));

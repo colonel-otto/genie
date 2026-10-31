@@ -8,13 +8,14 @@ use crate::groups::motion::{
     SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
 use crate::map::Point;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::{
     LongWalker, PathData, TileAsk, long_path_for, short_path_for, tile_plan_for,
 };
+use crate::objects::ObjectId;
 use crate::pathing::tile_path::Path;
 use crate::world::slots::CheckedIndex;
 
@@ -24,7 +25,7 @@ use crate::world::slots::CheckedIndex;
 struct Leg {
     level: u8,
     range: f32,
-    target_id: i32,
+    target_id: Option<ObjectId>,
     waypoint: BVector,
     at: BVector,
     from: Point,
@@ -174,7 +175,7 @@ fn tile_plan(
     let r = tile_plan_for(
         lead.walker,
         leg.from,
-        target.map(|_| leg.target_id),
+        target.and(leg.target_id),
         spatial,
         &mut planning,
         TileAsk {
@@ -295,10 +296,13 @@ fn straight_way(
     leg: &Leg,
     plan: &mut PathSoFar,
 ) -> Result<(), GenieError> {
-    let ignore = lead
+    let ignore: Vec<RecordId> = lead
         .group
         .as_ref()
-        .map_or_else(|| vec![lead.walker.id], |g| g.members.clone());
+        .map_or_else(|| vec![lead.walker.id], |g| g.members.clone())
+        .into_iter()
+        .map(RecordId::from)
+        .collect();
     let hits = spatial.line_query(
         hold(leg.at, spatial.map),
         hold(leg.waypoint, spatial.map),
@@ -342,7 +346,7 @@ fn long_plan(
         spatial,
         lead.computer,
         (leg.waypoint, leg.range),
-        target.map(|t| (leg.target_id, t)),
+        leg.target_id.zip(target),
     )?;
     plan.path = long;
     plan.path.measure();

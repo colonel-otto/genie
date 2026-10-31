@@ -4,9 +4,11 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
+use crate::unit_ai::Issuer;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAiType;
 use crate::unit_ai::{
@@ -31,7 +33,7 @@ impl UnitAi {
     pub(super) fn order_now(
         &mut self,
         order: QueuedOrder,
-        keep_from: Option<i32>,
+        keep_from: Option<ObjectId>,
         place: Option<(Point, Option<ClassId>)>,
         world: Option<(&Surroundings, bool)>,
         ai: &mut Well512,
@@ -41,7 +43,7 @@ impl UnitAi {
             && let Some(current) = self.current_order
         {
             let kept = QueuedOrder {
-                issuer: unit,
+                issuer: Some(Issuer::Object(unit)),
                 order: current,
                 priority: self.order_priority,
                 target: self.current_target,
@@ -90,7 +92,7 @@ impl UnitAi {
     /// `DAT_143f01835`, which nothing writes) cannot run.
     pub(super) fn attack_object(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         any: bool,
         at: &Surroundings,
@@ -106,7 +108,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
-        self.target_at(target, Some(i32::from(class.get())), position);
+        self.target_at(Some(target), Some(i32::from(class.get())), position);
         Ok(true)
     }
 
@@ -120,7 +122,7 @@ impl UnitAi {
     /// conversions: not modelled. Its master's class and its place then.
     pub(super) fn attack_check(
         &self,
-        target: i32,
+        target: ObjectId,
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -166,7 +168,7 @@ impl UnitAi {
     /// queue, or the buffer while it is full. True when the unit attacks.
     pub(super) fn attack_command(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -186,7 +188,7 @@ impl UnitAi {
     /// it hunts or attacks.
     pub(super) fn civilian_attack(
         &mut self,
-        target: i32,
+        target: ObjectId,
         at: &Surroundings,
         side: &mut dyn UnitSide,
         rng: &mut Well512,
@@ -216,12 +218,10 @@ impl UnitAi {
             }
             return;
         }
-        let gone = self.attackers.iter().position(|&id| {
-            at.unit(id)
+        // none (−1) is an object the world does not hold
+        self.attackers.remove_first(|id| {
+            id.and_then(|id| at.unit(id))
                 .is_none_or(|u| 2 < u.state || u.target != Some(at.id))
         });
-        if let Some(i) = gone {
-            let _ = self.attackers.remove(i);
-        }
     }
 }

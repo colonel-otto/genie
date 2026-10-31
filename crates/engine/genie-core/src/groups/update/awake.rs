@@ -97,7 +97,7 @@ impl World {
             && g.flags >> 11 & 1 == 0
         {
             while let Some(&id) = self.groups.held(group)?.objects.first() {
-                if !self.remove_unit(group, ObjectId::try_from(id)?, None, false)? {
+                if !self.remove_unit(group, id, None, false)? {
                     let _ = self.groups.held_mut(group)?.objects.remove(0);
                 }
             }
@@ -117,7 +117,7 @@ impl World {
     pub(super) fn lead_to_target(&mut self, group: i32, far: bool) -> Result<(), GenieError> {
         let lead = self.nearest_to_target(group);
         self.groups.held_mut(group)?.motion.lead = lead;
-        if lead == -1 {
+        if lead.is_none() {
             return Ok(());
         }
         self.motion_update(group, false)?;
@@ -194,7 +194,7 @@ impl World {
     /// [`World::after_motion`]'s members' moves to their slots: an awake group (not
     /// hibernating) clears flags bit 9 and, with a formation holding slots, moves its members to
     /// them ([`World::members_to_slots`]).
-    fn slots_step(&mut self, group: i32, differentiators: &[i32]) -> Result<(), GenieError> {
+    fn slots_step(&mut self, group: i32, differentiators: &[ObjectId]) -> Result<(), GenieError> {
         let g = self.groups.held_mut(group)?;
         if g.hibernating == 0 {
             g.flags &= !0x200;

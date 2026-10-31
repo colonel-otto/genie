@@ -220,7 +220,7 @@ impl ExploreAction {
     fn walk(&mut self, c: &mut Step<'_>, explorer: &mut Unit, me: Me) -> Result<(), GenieError> {
         let master = object_master(
             explorer.own_master.as_deref(),
-            (explorer.id.get(), explorer.life.master_id),
+            (explorer.id, explorer.life.master_id),
             c.w.masters.get(c.player.index()),
         )
         .ok();
@@ -562,7 +562,7 @@ impl Unit {
     fn explore_move<'g>(&self, c: &'g Step<'_>) -> ExploreMove<'g> {
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         );
         master.map_or_else(

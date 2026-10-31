@@ -5,6 +5,7 @@ use crate::combat::attack::{DRAW_SCALE, QUIET_SWINGS};
 use crate::combat::damage::Victim;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::master_type::MISSILE;
@@ -72,7 +73,7 @@ pub(super) fn after_hit(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Struck {
     pub result: u8,
-    pub executed: Option<i32>,
+    pub executed: Option<ObjectId>,
 }
 
 /// `FUN_141084230`: a shield of the target (type 70, [`damage::shield`]) blocks the hit: the
@@ -96,7 +97,7 @@ pub(crate) fn strike(
         let master_hp = i32::from(own.master_hp);
         victim
             .damaged
-            .push((own.id, [own.id, own.hp as i32, master_hp]));
+            .push((Some(own.id), [own.id.get(), own.hp as i32, master_hp]));
         return Ok(Struck {
             result: 2,
             executed: None,

@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
+use crate::test_ids::object_id;
 
 /// A search on an empty mesh toward a point target at `at` within `range` (fixed point), its
 /// start node at the origin with cost 0.
@@ -303,7 +304,7 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
         mask: 6,
     };
     let t = Target {
-        id: 9,
+        id: object_id(9),
         position: Point::new(5.0, 5.0),
         half_size: Footprint::new(0.5, 0.5),
     };

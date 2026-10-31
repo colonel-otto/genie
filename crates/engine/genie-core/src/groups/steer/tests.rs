@@ -8,6 +8,7 @@ use crate::map::Radii;
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -52,7 +53,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
         ai: Some(UnitAi {
             current_order: None,
             current_action: None,
-            current_target: -1,
+            current_target: None,
             ..UnitAi::default()
         }),
         body: crate::objects::layers::Body::new(Position::new(x, y, 0.0), None, Some(mover)),
@@ -68,7 +69,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
 /// A slot of `unit` at (`x`, `y`) on the map, made at the world's time 100.
 fn slot(unit: i32, x: f32, y: f32) -> Slot {
     Slot {
-        unit_id: unit,
+        unit_id: ObjectId::of_field(unit),
         transform_position: BVector::new(x, 0.0, y),
         time: 100,
         ..Slot::default()
@@ -114,7 +115,7 @@ fn world() -> World {
     g.motion.maximum_velocity_forward = 0.9;
     g.members = [10, 11]
         .map(|id| Member {
-            id,
+            id: object_id(id),
             ..Member::default()
         })
         .to_vec();
@@ -163,7 +164,7 @@ fn post(x: f32, y: f32) -> Placed {
 }
 
 fn unit(t: &World, id: i32) -> &Unit {
-    t.object(id).unwrap().1
+    t.object(object_id(id)).unwrap().1
 }
 
 fn mover(t: &World, id: i32) -> &crate::movement::Mover {
@@ -191,8 +192,13 @@ fn a_member_s_own_move_is_set_or_ended() {
         .specific_move
         .consecutive_move_failures = 4;
     assert!(
-        t.set_specific_move(1, 10, (7, 0), (BVector::new(1.0, 2.0, 3.0), 3.0, 2.5))
-            .unwrap()
+        t.set_specific_move(
+            1,
+            object_id(10),
+            (7, 0),
+            (BVector::new(1.0, 2.0, 3.0), 3.0, 2.5)
+        )
+        .unwrap()
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(
@@ -209,8 +215,13 @@ fn a_member_s_own_move_is_set_or_ended() {
         }
     );
     assert!(
-        t.set_specific_move(1, 10, (7, -1), (BVector::from([1.0; 3]), 1.0, 1.0))
-            .unwrap()
+        t.set_specific_move(
+            1,
+            object_id(10),
+            (7, -1),
+            (BVector::from([1.0; 3]), 1.0, 1.0)
+        )
+        .unwrap()
     );
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(
@@ -222,15 +233,15 @@ fn a_member_s_own_move_is_set_or_ended() {
         }
     );
     assert!(
-        !t.set_specific_move(1, 12, (0, 0), (BVector::ZERO, 0.0, 0.0))
+        !t.set_specific_move(1, object_id(12), (0, 0), (BVector::ZERO, 0.0, 0.0))
             .unwrap()
     );
     t.groups.get_mut(1).unwrap().members.push(Member {
-        id: 99,
+        id: object_id(99),
         ..Member::default()
     });
     assert!(
-        !t.set_specific_move(1, 99, (0, 0), (BVector::ZERO, 0.0, 0.0))
+        !t.set_specific_move(1, object_id(99), (0, 0), (BVector::ZERO, 0.0, 0.0))
             .unwrap()
     );
 }
@@ -430,7 +441,7 @@ fn a_due_slot_takes_its_member() {
     assert_eq!(m.forward, BVector::new(1.0, 0.0, 0.0));
     assert_eq!(m.right, BVector::new(0.0, 0.0, -1.0));
     assert_eq!(
-        t.spatial.get(10).unwrap().position,
+        t.spatial.get(object_id(10)).unwrap().position,
         Position::new(10.0, 5.0, 0.0)
     );
     // in state 3 the member only shows standing, its goal left
@@ -463,7 +474,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
     let mut t = world();
     widen(&mut t, 1.2);
     t.spatial.insert(object_id(50), post(7.5, 5.0));
-    t.steer_to_slot(1, 0, 0, &[11]).unwrap();
+    t.steer_to_slot(1, 0, 0, &[object_id(11)]).unwrap();
     let m = mover(&t, 10);
     let walked = &m.paths[0];
     assert_eq!(
@@ -474,7 +485,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
             walked.waypoint,
             walked.target
         ),
-        (1, 0, 3, 1, -1)
+        (1, 0, 3, 1, None)
     );
     assert_eq!(
         walked.points.last().map(|p| p.ground()),
@@ -495,7 +506,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
     // the update's list ignored: clear
     let mut t = world();
     t.spatial.insert(object_id(50), post(7.5, 5.0));
-    assert_eq!(t.steer_to_slot(1, 0, 0, &[50]), Ok(()));
+    assert_eq!(t.steer_to_slot(1, 0, 0, &[object_id(50)]), Ok(()));
 }
 
 /// The way round to a slot a record stands on: the slot fails its position test, so the
@@ -506,7 +517,7 @@ fn a_slot_a_record_holds_takes_a_step_toward_it() {
     let mut t = world();
     widen(&mut t, 1.2);
     t.spatial.insert(object_id(50), post(10.0, 5.0));
-    t.steer_to_slot(1, 0, 0, &[11]).unwrap();
+    t.steer_to_slot(1, 0, 0, &[object_id(11)]).unwrap();
     let m = mover(&t, 10);
     assert_eq!(
         m.paths[0].points.last().map(|p| p.ground()),
@@ -537,7 +548,7 @@ fn the_members_moves_end_wait_or_stop() {
     t.players[1].objects.push(stray);
     let g = t.groups.get_mut(1).unwrap();
     g.members.push(Member {
-        id: 12,
+        id: object_id(12),
         ..Member::default()
     });
     for m in &mut g.members[..2] {
@@ -582,7 +593,7 @@ fn the_members_moves_end_wait_or_stop() {
         distance: 0.0,
         ..SpecificMove::default()
     };
-    assert_eq!(t2.members_to_slots(1, &[50]), Ok(()));
+    assert_eq!(t2.members_to_slots(1, &[object_id(50)]), Ok(()));
     let own = t2.groups.get(1).unwrap().members[1].specific_move;
     assert_eq!((own.active, own.path_id, own.reason), (0, -1, -1));
     assert_eq!(mover(&t2, 11).animated.speed, 0.0);
@@ -596,9 +607,9 @@ fn the_members_moves_end_wait_or_stop() {
 /// radius 0.5.
 fn rounder(at: BVector) -> detour::Rounder<'static> {
     detour::Rounder {
-        id: 10,
+        id: object_id(10),
         walker: crate::movement::Walker {
-            id: 10,
+            id: object_id(10),
             radius: 0.1,
             restriction: 0,
             mask: 2,
@@ -692,7 +703,7 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
         if moving {
             g.motion.velocity = BVector::new(0.0, 0.0, 0.9);
         }
-        t.steer_to_slot(1, 0, 0, &[11]).unwrap();
+        t.steer_to_slot(1, 0, 0, &[object_id(11)]).unwrap();
         t
     };
     let t = run(false);

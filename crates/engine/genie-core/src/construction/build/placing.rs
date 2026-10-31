@@ -10,6 +10,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::map::spatial::Placed;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::WONDER;
@@ -58,7 +59,8 @@ impl BuildAction {
         if !desolid {
             return self.join(c, builder);
         }
-        let placed = *c.w.spatial.get_known(self.target)?.ok_or(SITE_GONE)?;
+        let site = self.target.ok_or(SITE_GONE)?;
+        let placed = *c.w.spatial.get_known(site)?.ok_or(SITE_GONE)?;
         let clearing = ClearingSite {
             player: placed.player,
             master: placed.master,
@@ -73,25 +75,25 @@ impl BuildAction {
             c.w.spatial.drop_record(cl.id);
         }
         c.w.pathing.tiles_changed(c.w.spatial.take_changes());
-        let cleared_ids: Vec<i32> = cleared.iter().map(|cl| cl.id).collect();
-        let occupants = site_occupants(c, self.target, &placed, &cleared_ids, reads)?;
+        let cleared_ids: Vec<ObjectId> = cleared.iter().map(|cl| cl.id).collect();
+        let occupants = site_occupants(c, site, &placed, &cleared_ids, reads)?;
         for cl in cleared {
             c.w.clear_object(cl, true)?;
         }
-        let parts = self.part_tests(c, builder, &cleared_ids, reads)?;
+        let parts = self.part_tests(c, builder, (site, &cleared_ids), reads)?;
         // the foundation's placement test (its master's slot 0x50, FUN_14123aee0): one that may
         // not stay, or follows a part that may not, sends no unit off
-        let own = with_annexes(c, self.target);
+        let own = with_annexes(c, site);
         // the builder lent to its slot, where the tests' scans meet it (FD-045-D32)
         let code = self.lend(c, builder, |w, _, _| w.foundation_code(&placed, true, &own))?;
         let stays = parts.stay && code == 0;
-        let others: Vec<i32> = occupants
+        let others: Vec<ObjectId> = occupants
             .iter()
             .copied()
-            .filter(|&id| id != builder.id.get())
+            .filter(|&id| id != builder.id)
             .collect();
         if stays && !others.is_empty() {
-            c.w.evacuate(self.target, &others)?;
+            c.w.evacuate(site, &others)?;
         }
         if c.w.spatial.foreign_marks(&placed) {
             // FUN_1411d4b80: a human owner's foundation goes (FUN_1411ccbb0), the interface hears
@@ -122,7 +124,7 @@ impl BuildAction {
         if let Some(annex) = self.annex_beneath(c, builder, placed.radius)? {
             // set_state(223) with the annex as the target: the walk off the annex's footprint;
             // the foundation is the target again
-            let site = std::mem::replace(&mut self.target, annex);
+            let site = self.target.replace(annex);
             let walk = self.clear(c, builder);
             self.target = site;
             return walk;
@@ -145,15 +147,15 @@ impl BuildAction {
         &mut self,
         c: &mut Step<'_>,
         builder: &mut Unit,
-        cleared: &[i32],
+        (site, cleared): (ObjectId, &[ObjectId]),
         reads: &BuildReads,
     ) -> Result<PartTests, GenieError> {
         let mut parts = Vec::new();
-        if let Some(main) = c.w.spatial.annex_of(self.target) {
+        if let Some(main) = c.w.spatial.annex_of(site) {
             parts.push(main);
             parts.extend(c.w.spatial.annexes_of(main));
         }
-        parts.extend(c.w.spatial.annexes_of(self.target));
+        parts.extend(c.w.spatial.annexes_of(site));
         let mut tests = PartTests {
             stay: true,
             occupied: false,
@@ -169,9 +171,9 @@ impl BuildAction {
             if code != 0 {
                 tests.stay = false;
             } else if tests.stay {
-                let others: Vec<i32> = site_occupants(c, part, &placed, cleared, reads)?
+                let others: Vec<ObjectId> = site_occupants(c, part, &placed, cleared, reads)?
                     .into_iter()
-                    .filter(|&id| id != builder.id.get())
+                    .filter(|&id| id != builder.id)
                     .collect();
                 if !others.is_empty() {
                     c.w.evacuate(part, &others)?;
@@ -194,9 +196,13 @@ impl BuildAction {
         c: &Step<'_>,
         builder: &Unit,
         radius: Footprint,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let (bx, by) = (builder.position().x(), builder.position().y());
-        for annex in c.w.spatial.annexes_of(self.target) {
+        // a Build without its foundation has no annexes
+        let Some(site) = self.target else {
+            return Ok(None);
+        };
+        for annex in c.w.spatial.annexes_of(site) {
             let placed = c.w.spatial.get_known(annex)?.ok_or(SITE_GONE)?;
             let (ax, ay) = (placed.position.x(), placed.position.y());
             let sized = EPSILON < placed.radius.x() && EPSILON < placed.radius.y();
@@ -244,7 +250,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<(), GenieError> {
         Self::stand(c, builder)?;
-        let target = std::mem::replace(&mut self.target, -1);
+        let target = self.target.take();
         crate::world::lets::release(c, builder, target, reads.by)?;
         self.point = Position::from([-1.0; 3]);
         self.state = HALTED;
@@ -355,7 +361,7 @@ impl BuildAction {
             c.w.spatial
                 .spot_beside(
                     at,
-                    (builder.id.get(), mover.stats.radius.x()),
+                    (builder.id, mover.stats.radius.x()),
                     mover.stats.restriction_mask,
                     site,
                 )?
@@ -379,7 +385,7 @@ struct PartTests {
 
 /// The objects a placement test of building `id` passes over (`p12`): the building and its
 /// annexes, theirs too (`FUN_14123d090`, through the four slots `+0xbc0` to `+0xbe0`).
-fn with_annexes(c: &Step<'_>, id: i32) -> Vec<i32> {
+fn with_annexes(c: &Step<'_>, id: ObjectId) -> Vec<ObjectId> {
     let mut own = vec![id];
     let mut next = 0;
     while let Some(&part) = own.get(next) {
@@ -399,11 +405,11 @@ fn with_annexes(c: &Step<'_>, id: i32) -> Vec<i32> {
 /// [`Spatial::footprint_occupants`]: crate::map::spatial::Spatial::footprint_occupants
 fn site_occupants(
     c: &Step<'_>,
-    site: i32,
+    site: ObjectId,
     placed: &Placed,
-    cleared: &[i32],
+    cleared: &[ObjectId],
     reads: &BuildReads,
-) -> Result<Vec<i32>, GenieError> {
+) -> Result<Vec<ObjectId>, GenieError> {
     let obstructs = !matches!(placed.obstruction_type, 0 | 12);
     Ok(c.w
         .spatial

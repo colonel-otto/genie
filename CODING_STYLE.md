@@ -164,10 +164,12 @@ King, "Parse, don't validate", 2019.)
 - Convert back to a raw number only at an outgoing boundary (a writer, a format that the game
   reads) or inside the type's own arithmetic. Two genie functions never pass a value as a raw
   number and parse it again.
-- Migrate from the boundary inward: first the reader or the codec that makes the value, then
-  its callers. Code that is not migrated yet gets a raw number back through a helper. The
-  helpers are `ObjectId::field` for an `Option` and the marker `ObjectId::raw` for an id. They
-  are temporary. Once a callee or a field takes the type, remove the calls that fed it.
+- Migrate a type in one sweep, from the boundary inward: first the reader or the codec that
+  makes the value, then every field and every function down the call chain. Leave no raw
+  value behind for a later step to convert.
+- `ObjectId::field` gives the game's integer back, −1 for none. Call it only at an outgoing
+  boundary. These are the codec's encoder, a notify's parameters, a report line in the game's
+  terms, and a sort key or sum of the game's integers.
 - Write no `is_valid` function that returns a `bool` for later code to trust. Write a
   constructor that returns the type or an error (`TryFrom`, `of_field`).
 - Put the check into the shape of the type. A required value is `T`, not `Option<T>`. A closed
@@ -212,8 +214,18 @@ fn command(raw: i32) -> Result<(), GenieError> {
   of −1 finds no object, because no object's id is −1 (the world's reusable ids start at
   −2).
 - A lookup by id (`World::object`, `World::place`, `World::world_object`) takes
-  `impl ObjectKey`: an id, an `Option<ObjectId>`, or a raw field that is not migrated yet. A
-  key that names none finds nothing, as the game's table does.
+  `impl ObjectKey`: an id, an `Option<ObjectId>`, a `RecordId` or a `GroupTarget`. A key that
+  names none finds nothing, as the game's table does.
+- A recyclable master's object (a missile, a ghost) has a negative id. Test it with
+  `ObjectId::is_recyclable`, not with `id < 0`.
+- If the game holds two meanings in one integer, make an enum whose variants hold their data:
+  `Issuer` (a player or an object), `GroupTarget` (an object or another kind of target),
+  `RecordId` (an object, a tile or a map edge). Where the game compares or sorts the integer,
+  the enum does too: its `PartialEq` and `Ord` go by the game's value. Its parse from the save
+  and its value for a writer are the only places that see the integer.
+- A list of obstruction records holds `RecordId`, a list of objects holds `ObjectId`. Convert
+  an object list once, where it enters a record query (`RecordId::from`). A function whose
+  callers all pass objects takes `&[ObjectId]` and converts inside.
 - Make a closed set of values an enum and match it whole.
 - Give a public enum of a format crate `#[non_exhaustive]` or an `Unknown(…)` variant. A newer
   game can write a value that the enum does not know yet.
@@ -459,6 +471,9 @@ genie gives the same bits as the game on every host, WebAssembly included.
   `a_step_that_fails_stops_what_follows_it`.
 - Stand in for an unmodelled type, class or action with a value that the game never uses (99),
   not with a real one that is only unported yet.
+- Build a test's newtypes through `test_ids`: `object_id(n)` (a `const fn`, so a constant can
+  name an object), `object_id_list` and `object_ids` for lists, `RecordId::from(object_id(n))`
+  for an object's record. Write none for a field that holds none, never `object_id(-1)`.
 - Compare a ported routine bit for bit with the game's results where they exist: the
   `tests/fixtures/fuzz_*_158041.txt` files and `tests/routines.rs`.
 - Mark a test that takes minutes or gigabytes `#[ignore = "expensive: …"]`.

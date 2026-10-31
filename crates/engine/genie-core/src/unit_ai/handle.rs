@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::master_type::MOVING;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -88,12 +89,12 @@ impl UnitAi {
             // "Target is still visible.": the world holds the target, which its owner sees
             TARGET_MOVED => !at
                 .target
-                .is_some_and(|t| self.current_target != -1 && t.sight == 0xf),
+                .is_some_and(|t| self.current_target.is_some() && t.sight == 0xf),
             SENT_OFF | SENT_OFF_GROUP => {
                 return self.base_notify(n, time, at, computer, ai_rng, side);
             }
             600 => {
-                let _ = self.add_attacker(n.caller);
+                let _ = self.attackers.add(n.caller);
                 side.set_under_attack(true);
                 false
             }
@@ -139,8 +140,8 @@ impl UnitAi {
         })?;
         self.alert(found, at.dt_seconds);
         if found.players < 2
-            && found.id != -1
-            && let Some(u) = side.seen_unit(found.id)?
+            && let Some(id) = found.id
+            && let Some(u) = side.seen_unit(id)?
             && u.owner != at.player
         {
             side.effect_now(Effect::ChangeOwner(u.owner), self, rng)?;
@@ -232,15 +233,13 @@ impl UnitAi {
             }
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set
             NO_LONGER_ON_ME => {
-                if let Ok(i) = self.attackers.binary_search(&n.caller) {
-                    let _ = self.attackers.remove(i);
-                }
+                self.attackers.remove(n.caller);
                 Ok(GO_ON)
             }
             _ => Err(
                 GenieError::unsupported("a notify kind the base handler does not model")
                     .with("notify", format_args!("{:#x}", n.kind))
-                    .with("caller", n.caller),
+                    .with("caller", ObjectId::field(n.caller)),
             ),
         }
     }

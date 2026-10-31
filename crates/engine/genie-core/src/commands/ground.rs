@@ -36,7 +36,11 @@ impl World {
     /// and more of a formation category (`+0x8bc`) would go together to its farthest free spot
     /// (`FUN_1411566b0` with 1, `FUN_1416123a0`'s group move, then 0x21b each), which is not
     /// modelled.
-    pub(crate) fn evacuate(&mut self, foundation: i32, units: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn evacuate(
+        &mut self,
+        foundation: ObjectId,
+        units: &[ObjectId],
+    ) -> Result<(), GenieError> {
         /// The notify's radii are hundredths (`DAT_14330ebcc`).
         const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
         let (site_owner, site) = self.object(foundation).ok_or(GenieError::unsupported(
@@ -46,7 +50,7 @@ impl World {
         let p = [
             (radius.x() * RADIUS_SCALE) as i32,
             (radius.y() * RADIUS_SCALE) as i32,
-            foundation,
+            foundation.get(),
         ];
         let mut together = Vec::new();
         for &id in units {
@@ -105,9 +109,9 @@ impl World {
     /// notify `0x21b` ([`crate::unit_ai::SENT_OFF_GROUP`]).
     pub(crate) fn evacuate_together(
         &mut self,
-        foundation: i32,
+        foundation: ObjectId,
         radius: Footprint,
-        units: &[i32],
+        units: &[ObjectId],
     ) -> Result<(), GenieError> {
         let site_at = self
             .spatial
@@ -124,7 +128,7 @@ impl World {
         ))?;
         let spot = self.spatial.spot_off(
             first.position(),
-            (first.id.get(), mover.stats.radius.x()),
+            (first.id, mover.stats.radius.x()),
             mover.stats.restriction_mask,
             (site_at, radius),
             true,
@@ -134,8 +138,7 @@ impl World {
         };
         let (x, y) = (spot.x(), spot.y());
         // the footprint's units come from the spatial index's raw ids
-        let listed: Vec<Option<ObjectId>> =
-            units.iter().map(|&id| ObjectId::of_field(id)).collect();
+        let listed: Vec<Option<ObjectId>> = units.iter().map(|&id| Some(id)).collect();
         let loose = self.loose_units(&listed)?;
         for id in loose {
             let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
@@ -230,7 +233,7 @@ impl World {
             at,
             trees,
         };
-        let mut looks: BTreeMap<i32, ClearLook> = BTreeMap::new();
+        let mut looks: BTreeMap<ObjectId, ClearLook> = BTreeMap::new();
         for id in clearing_objects(&self.spatial, at) {
             if let Some(look) = self.clear_look(id)? {
                 let _ = looks.insert(id, look);
@@ -266,7 +269,7 @@ impl World {
     }
 
     /// What the footprint clearing reads of object `id` ([`crate::construction::build::ClearLook`]).
-    pub(crate) fn clear_look(&self, id: i32) -> Result<Option<ClearLook>, GenieError> {
+    pub(crate) fn clear_look(&self, id: ObjectId) -> Result<Option<ClearLook>, GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(None);
         };
@@ -337,7 +340,7 @@ impl World {
         };
         self.spatial.insert(id, placed);
         if placed.obstruction.is_some() {
-            self.pathing.moved(id.get(), &placed, false);
+            self.pathing.moved(id, &placed, false);
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if let Some(v) = self.spatial.sight.as_mut() {
@@ -346,7 +349,7 @@ impl World {
                 v.unlink_building(position, made.radius)?;
             }
             v.add_seer(
-                id.get(),
+                id,
                 Seer {
                     player,
                     master: made.id,

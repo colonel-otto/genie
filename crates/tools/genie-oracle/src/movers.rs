@@ -2,10 +2,12 @@
 //! its movement state and its `MoveTo`'s point.
 
 use crate::masters::MasterTable;
+use crate::object_ids;
 use crate::{combat_master, master_facets};
 use genie_core::GenieError;
 use genie_core::map::{Position, Radii};
 use genie_core::math::fmath::BVector;
+use genie_core::objects::ObjectId;
 use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
 };
@@ -121,20 +123,23 @@ pub(super) fn path_level(
         waypoint: d.waypoint,
         state: d.state,
         range: d.range,
-        target: d.target_id,
+        target: ObjectId::of_field(d.target_id),
         pause_time: f32::from_bits(d.pause_time),
         flags: d.flags_m_bits,
         length: path.map_or(0.0, |p| p.path_length_value),
         created: path.map_or(0, |p| p.creation_time_value),
         continue_counter: d.continue_counter,
         repath_time: d.repath_time,
-        ignore: path.map_or_else(Vec::new, |p| {
-            p.data
-                .iter()
-                .take(p.number_ignore_units.max(0) as usize)
-                .map(|&id| id as i32)
-                .collect()
-        }),
+        ignore: path.map_or_else(
+            || Ok(Vec::new()),
+            |p| {
+                p.data
+                    .iter()
+                    .take(p.number_ignore_units.max(0) as usize)
+                    .map(|&id| ObjectId::try_from(id as i32))
+                    .collect()
+            },
+        )?,
         ignored: Vec::new(),
     })
 }
@@ -237,7 +242,8 @@ pub(super) fn mover(
         .rev()
         .map(|d| path_level(d, paths))
         .collect::<Result<Vec<_>, _>>()?;
-    loaded_ignored(&mut levels, &s.temp_int);
+    let ignore_units = object_ids(&s.temp_int)?;
+    loaded_ignored(&mut levels, &ignore_units);
     Ok(Some(Mover {
         animated: genie_core::objects::layers::Animated::new(m.rge_animated_object.current_speed),
         forward: vec3(&m.orientation_forward_value),
@@ -287,7 +293,7 @@ pub(super) fn mover(
             Position::new(f(0), f(8), f(4))
         },
         substitute_count: m.consecutive_substitute_count,
-        ignore_units: s.temp_int.clone(),
+        ignore_units,
         // the save's userDefinedWaypoints, in the game's layout (x, height, y)
         user_waypoints: m.user_defined_waypoints.iter().map(vec3).collect(),
         last_turn: m.turn_towards_time,
@@ -302,7 +308,7 @@ pub(super) fn mover(
 /// A loaded unit's paths' ignore units (`+0x450`), which the save does not hold: a level below
 /// the top whose path was made in the top path's tick took the unit's own (`+0x670`,
 /// `FUN_140f9b7a0` after the short pather).
-pub(super) fn loaded_ignored(levels: &mut [genie_core::movement::PathData], units: &[i32]) {
+pub(super) fn loaded_ignored(levels: &mut [genie_core::movement::PathData], units: &[ObjectId]) {
     let Some((top, below)) = levels.split_last_mut() else {
         return;
     };

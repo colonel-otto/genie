@@ -4,6 +4,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Rect;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -64,7 +65,7 @@ pub struct ClearLook {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cleared {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// It is a wall (class 27): `FUN_1411ccbb0` before its destroy.
     pub wall: bool,
     /// Its record goes in the clearing: its destroy's death part drops it (a unit or a tall
@@ -107,7 +108,7 @@ pub(super) const STUMP_HP: f32 = crate::math::image::build::STUMP_HP;
 pub(crate) fn footprint_clearing(
     world: &Spatial,
     site: &ClearingSite,
-    looks: &BTreeMap<i32, ClearLook>,
+    looks: &BTreeMap<ObjectId, ClearLook>,
 ) -> Result<Vec<Cleared>, GenieError> {
     use crate::math::fmath::below_or_unordered;
     let (rx, ry) = (site.radius.x(), site.radius.y());
@@ -143,7 +144,7 @@ pub(crate) fn footprint_clearing(
 
 /// The objects on [`footprint_clearing`]'s tiles about `at` ([`clearing_tiles`]), in its order:
 /// those it may read the [`ClearLook`] of.
-pub(crate) fn clearing_objects(world: &Spatial, at: Point) -> Vec<i32> {
+pub(crate) fn clearing_objects(world: &Spatial, at: Point) -> Vec<ObjectId> {
     let Some(([x0, x1], [y0, y1])) = clearing_tiles(at, world.map) else {
         return Vec::new();
     };
@@ -190,9 +191,9 @@ pub(super) fn clearing_tiles(at: Point, map: GridSize) -> Option<([i16; 2], [i16
 /// An object the caller does not hold (`looks` holds none).
 pub(super) fn clearing_takes(
     site: &ClearingSite,
-    id: i32,
+    id: ObjectId,
     o: &crate::map::spatial::Placed,
-    looks: &BTreeMap<i32, ClearLook>,
+    looks: &BTreeMap<ObjectId, ClearLook>,
 ) -> Result<Option<Cleared>, GenieError> {
     use crate::math::fmath::below_or_unordered;
     if o.master == site.master {

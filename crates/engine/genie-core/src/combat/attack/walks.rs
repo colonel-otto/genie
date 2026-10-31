@@ -7,7 +7,6 @@ use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveTo, MoveToAction, MoveToReads, SpriteReads, WalkTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
-use crate::objects::ObjectId;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::world::step::Step;
@@ -82,7 +81,7 @@ impl Attack {
             return Err(ATTACK_WITHOUT_TARGET.with("state", self.state));
         }
         let to = WalkTo {
-            id: ObjectId::field(self.target),
+            id: self.target,
             at,
             gap,
             state: None,

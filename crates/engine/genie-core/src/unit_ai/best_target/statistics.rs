@@ -1,6 +1,7 @@
 //! `bestUnitToAttack`'s statistics ([`Statistics`]): the entries, an object's add, the scores,
 //! the ranks and the sort, and the order history's weights.
 
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::best_target::ORDER_WINDOW;
 use crate::world::slots::CheckedIndex;
@@ -30,7 +31,7 @@ pub(super) const FIXED_CLASSES: u64 = 0x0012_0000_0000_0008;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Entry {
     /// `+0`: its id.
-    pub id: i32,
+    pub id: ObjectId,
     /// `+4`: it moves (its slot 0x208 above 0).
     pub moving: bool,
     /// `+5`: its class is one of [`FIXED_CLASSES`].
@@ -62,7 +63,7 @@ pub struct Entry {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Candidate {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its footprints' gap to the unit (`FUN_14118f680`).
     pub distance: f32,
     /// Its attack category (`FUN_140c4c8e0` on it, read where the candidate is made; counted
@@ -112,7 +113,7 @@ pub struct Statistics {
     /// `+0x30`..: the objects per attack category.
     pub by_category: [i32; 12],
     /// `+0x60`, `+0x64`: the closest moving object's distance and id.
-    pub closest_moving: (f32, i32),
+    pub closest_moving: (f32, Option<ObjectId>),
     /// `+0x68`.., count `+0x1668`.
     pub entries: Vec<Entry>,
     /// `+0x166c`..: the entries' order, by rank after the sort.
@@ -121,7 +122,7 @@ pub struct Statistics {
 
 impl Default for Statistics {
     /// `bestUnitToAttack`'s reset of the table: the least values the largest float, the most
-    /// −1, the counts 0, no closest moving object (−1 at the largest float).
+    /// −1, the counts 0, no closest moving object (none at the largest float).
     fn default() -> Self {
         Self {
             distance: Bounds::RESET,
@@ -133,7 +134,7 @@ impl Default for Statistics {
             armed: 0,
             in_reach: 0,
             by_category: [0; 12],
-            closest_moving: (f32::MAX, -1),
+            closest_moving: (f32::MAX, None),
             entries: Vec::new(),
             order: Vec::new(),
         }
@@ -207,7 +208,7 @@ impl Statistics {
         if 0.0 < c.speed {
             e.moving = true;
             if self.closest_moving.0 > c.distance {
-                self.closest_moving = (c.distance, c.id);
+                self.closest_moving = (c.distance, Some(c.id));
             }
             self.moving += 1;
         }
@@ -253,7 +254,7 @@ impl Statistics {
         &mut self,
         weights: &[f32; 12],
         (mode, factor): (i32, i32),
-        armored: &mut dyn FnMut(i32) -> Result<bool, crate::GenieError>,
+        armored: &mut dyn FnMut(ObjectId) -> Result<bool, crate::GenieError>,
     ) -> Result<(), crate::GenieError> {
         let kill_span = self.kill_time.span();
         let distance_span = self.distance.span();

@@ -23,7 +23,7 @@ impl World {
     pub(crate) fn cart_search(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         state: u8,
     ) -> Result<(), GenieError> {
         let Some(idx) = self.players.player(p)?.objects.position_of(id) else {
@@ -38,7 +38,7 @@ impl World {
         else {
             return Ok(());
         };
-        let found = if current == -1 && !self.players.player(p)?.computer {
+        let found = if current.is_none() && !self.players.player(p)?.computer {
             Some(self.cart_find(p, idx)?)
         } else {
             None
@@ -56,8 +56,8 @@ impl World {
                 .live(p, idx)?
                 .ai
                 .as_ref()
-                .map_or(-1, |ai| ai.current_target);
-            if let Some(target) = ObjectId::of_field(target)
+                .and_then(|ai| ai.current_target);
+            if let Some(target) = target
                 && let Some(at) = self.spatial.get(target).map(|o| o.position)
             {
                 self.move_to_object(p, idx, target, at)?;
@@ -87,7 +87,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-    ) -> Result<(i32, Position), GenieError> {
+    ) -> Result<(Option<ObjectId>, Position), GenieError> {
         const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
         let id = self.players.live(p, idx)?.id;
         let current = self
@@ -95,7 +95,7 @@ impl World {
             .live(p, idx)?
             .ai
             .as_ref()
-            .map_or(-1, |ai| ai.current_target);
+            .and_then(|ai| ai.current_target);
         if self.players.live(p, idx)?.body.mover().is_none() {
             return Err(GenieError::unsupported(
                 "a mule cart's search without its movement state (a moving building's setup)",
@@ -148,10 +148,10 @@ impl World {
                     &cart,
                     &mut w,
                     others,
-                    (kind, -1, id.get()),
+                    (kind, -1, Some(id)),
                     (current, 0, crate::unit_ai::NO_POINT),
                 )?;
-                if f != -1 {
+                if let Some(f) = f {
                     found.push(f);
                 }
             }
@@ -161,7 +161,7 @@ impl World {
         let found = result?;
         let cart_master = self.players.live(p, idx)?.master(&self.masters, p)?;
         let at = self.players.live(p, idx)?.position();
-        let mut best: Option<(i32, Position)> = None;
+        let mut best: Option<(ObjectId, Position)> = None;
         let mut best_d = CART_REACH;
         for f in found {
             let Some(o) = self.spatial.get(f) else {
@@ -173,7 +173,7 @@ impl World {
                 best_d = d;
             }
         }
-        Ok(best.unwrap_or((-1, at)))
+        Ok(best.map_or((None, at), |(f, at)| (Some(f), at)))
     }
 
     /// Slot 0x1e8's end: slot 0x140 (`FUN_141070c90`), the work command toward the found
@@ -183,7 +183,7 @@ impl World {
         &mut self,
         p: PlayerId,
         idx: usize,
-        (target, point): (i32, Position),
+        (target, point): (Option<ObjectId>, Position),
     ) -> Result<(), GenieError> {
         let work = crate::orders::Work {
             target,

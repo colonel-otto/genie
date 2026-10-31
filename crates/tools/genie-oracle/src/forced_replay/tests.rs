@@ -5,9 +5,11 @@ use crate::forced_replay::{
     owned_group_differences,
 };
 use crate::setup::slice;
+use crate::test_ids::object_id;
 use genie_core::groups::{UnitGroup, UnitGroups};
 use genie_core::map::Position;
 use genie_core::map::Tile;
+use genie_core::objects::ObjectId;
 use genie_core::vision::ghost::Ghost;
 use genie_core::world::{GameState, World};
 
@@ -19,9 +21,9 @@ fn world() -> World {
 /// A ghost of id `id`.
 fn ghost(id: i32) -> Ghost {
     Ghost {
-        id,
+        id: object_id(id),
         original: None,
-        original_id: id + 100,
+        original_id: ObjectId::of_field(id + 100),
         original_master: None,
         original_owner: 0,
         position: Position::new(1.0, 2.0, 0.0),

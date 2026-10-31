@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -36,10 +37,11 @@ pub(crate) fn farm_bonus(attributes: &[f32]) -> [f32; 3] {
 pub(crate) fn forget_resource(
     spatial: &mut Spatial,
     master: Option<&Master>,
-    id: i32,
+    id: ObjectId,
     position: Position,
 ) -> Result<(), GenieError> {
-    if id < 0 {
+    // a recyclable object (a negative id) is in no resource list
+    if id.is_recyclable() {
         return Ok(());
     }
     if let (Some(m), Some(v)) = (master.filter(|m| m.auto_gather), spatial.sight.as_mut()) {
@@ -68,7 +70,7 @@ pub(crate) fn combat_dies(
     spatial: &mut Spatial,
     pathing: &mut Pathing,
 ) -> Result<(), GenieError> {
-    if u.pasture != -1 || u.my_pasture != -1 {
+    if u.pasture.is_some() || u.my_pasture.is_some() {
         return Err(GenieError::unsupported(
             "a dying unit in a pasture (FUN_141189ca0)",
         ));
@@ -85,11 +87,11 @@ pub(crate) fn combat_dies(
     }
     let desolid = u.construction.is_some_and(|c| c.desolid);
     if master.kind < BUILDING || (!desolid && 0.0 < master.height) {
-        pathing.removed(u.id.get());
-        spatial.drop_record(u.id.get());
+        pathing.removed(u.id);
+        spatial.drop_record(u.id);
     }
     if COMBAT <= master.kind {
-        spatial.set_tall(u.id.get(), false);
+        spatial.set_tall(u.id, false);
     }
     if master.kind == BUILDING
         && u.annex_of.is_none()
@@ -108,7 +110,7 @@ pub(crate) fn combat_dies(
 /// for the castle, 82, and the wonder, 276), nothing for an annex (`+0xbb8`). Each attribute is
 /// held at 0 or more after (slot 0xf0 with 0), the caller's.
 #[must_use]
-pub(crate) fn refund_of(master: &Master, main: Option<i32>) -> Vec<(i16, f32)> {
+pub(crate) fn refund_of(master: &Master, main: Option<ObjectId>) -> Vec<(i16, f32)> {
     let mut cost = 0.0f32;
     for &(resource, amount, paid) in &master.cost {
         if 0 <= resource && paid {
@@ -163,7 +165,7 @@ pub(crate) fn built_death(
     let building = master.building.ok_or(GenieError::unsupported(
         "a dying building of a master without its building part",
     ))?;
-    if computer || u.pasture != -1 || u.my_pasture != -1 || !u.garrison.is_empty() {
+    if computer || u.pasture.is_some() || u.my_pasture.is_some() || !u.garrison.is_empty() {
         return Err(GenieError::unsupported(
             "a dying building of a computer player, with a pasture or units inside",
         ));

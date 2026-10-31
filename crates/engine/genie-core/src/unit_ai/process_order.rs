@@ -4,6 +4,8 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Tile;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
+use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
@@ -175,30 +177,30 @@ impl UnitAi {
     ) -> Result<bool, GenieError> {
         let (at, computer) = world.ok_or(OUTSIDE_ORDER)?;
         let tile = |v: f32| crate::math::conversions::cvttss2si(v);
-        Ok(match o.order {
-            OrderKind::Attack => self.attack_slot(o.target, true, at, side, ai)?,
-            OrderKind::Defend => {
+        // an order on no target (−1): each case's lookup finds nothing, so it takes no order
+        Ok(match (o.order, o.target) {
+            (OrderKind::Attack, Some(t)) => self.attack_slot(t, true, at, side, ai)?,
+            (OrderKind::Defend, target) => {
                 if at.master == DEFENDLESS_MASTER {
                     return Ok(false);
                 }
-                if o.target == -1 {
-                    self.defend_point(o.point.ground(), o.range, true, at)
-                } else {
-                    self.defend_object(o.target, o.range, true, at, side)?
+                match target {
+                    None => self.defend_point(o.point.ground(), o.range, true, at),
+                    Some(t) => self.defend_object(t, o.range, true, at, side)?,
                 }
             }
-            OrderKind::RunAway => self.run_away(true, at, computer, ai, side)?,
-            OrderKind::SeekAndDestroy => {
+            (OrderKind::RunAway, _) => self.run_away(true, at, computer, ai, side)?,
+            (OrderKind::SeekAndDestroy, Some(t)) => {
                 let tiles = Tile::new(tile(o.point.x()), tile(o.point.y()));
-                self.seek_and_destroy(o.target, tiles, true, at, side)?
+                self.seek_and_destroy(t, tiles, true, at, side)?
             }
-            OrderKind::AttackRoundup => self.attack_roundup(o.target, at, side)?,
-            OrderKind::AttackMove => {
-                if o.target != -1
+            (OrderKind::AttackRoundup, Some(t)) => self.attack_roundup(t, at, side)?,
+            (OrderKind::AttackMove, target) => {
+                if let Some(t) = target
                     && matches!(at.class, Some(TREBUCHET_CLASS | TREBUCHET_PACKED_CLASS))
                 {
                     *attack_move = true;
-                    self.attack_slot(o.target, true, at, side, ai)?
+                    self.attack_slot(t, true, at, side, ai)?
                 } else {
                     let m = self.move_to(order_move(o));
                     if let Some(m) = m {
@@ -223,26 +225,31 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let (at, _) = world.ok_or(OUTSIDE_ORDER)?;
-        Ok(match o.order {
-            OrderKind::Build => self.build_object(o.target, true, at, side, rng)?,
-            OrderKind::Heal | OrderKind::Convert | OrderKind::Repair => {
+        // an order on no target (−1): each case's lookup finds nothing, so it takes no order;
+        // the hunt's stops the unit (`hunt_order`)
+        Ok(match (o.order, o.target) {
+            (OrderKind::Build, Some(t)) => self.build_object(t, true, at, side, rng)?,
+            (OrderKind::Heal | OrderKind::Convert | OrderKind::Repair, Some(t)) => {
                 let (action, command) = match o.order {
-                    OrderKind::Heal => (ActionKind::Heal, UnitCommand::Heal(o.target)),
-                    OrderKind::Convert => (ActionKind::Convert, UnitCommand::Convert(o.target)),
-                    _ => (ActionKind::Repair, UnitCommand::Repair(o.target)),
+                    OrderKind::Heal => (ActionKind::Heal, UnitCommand::Heal(t)),
+                    OrderKind::Convert => (ActionKind::Convert, UnitCommand::Convert(t)),
+                    _ => (ActionKind::Repair, UnitCommand::Repair(t)),
                 };
-                self.work_object(o.target, true, (action, command), (at, side))?
+                self.work_object(t, true, (action, command), (at, side))?
             }
-            OrderKind::Gather => self.gather_order(o.target, at, side, rng)?,
-            OrderKind::Hunt | OrderKind::AutoBoarLuring => {
-                let hunts = self.hunt_order(o.target, at, side, rng)?;
+            (OrderKind::Gather, Some(t)) => self.gather_order(t, at, side, rng)?,
+            (OrderKind::Hunt | OrderKind::AutoBoarLuring, target) => {
+                let hunts = self.hunt_order(target, at, side, rng)?;
                 if o.order == OrderKind::AutoBoarLuring {
                     self.set_action(Some(ActionKind::BoarLuring));
                 }
                 hunts
             }
-            OrderKind::Foundation => {
-                let waits = self.wait_for_foundation(o.target, true, side)?;
+            (OrderKind::Foundation, target) => {
+                let waits = match target {
+                    Some(t) => self.wait_for_foundation(t, true, side)?,
+                    None => false,
+                };
                 self.set_action(Some(ActionKind::WaitSolidify));
                 waits
             }
@@ -260,11 +267,12 @@ impl UnitAi {
         rng: &mut Well512,
     ) -> Result<bool, GenieError> {
         let (at, _) = world.ok_or(OUTSIDE_ORDER)?;
-        Ok(match o.order {
-            OrderKind::Follow => self.follow_object(o.target, o.range, true, at, side, rng)?,
-            OrderKind::Transport => self.transport_to(o.point, true, side)?,
-            OrderKind::Enter => self.enter_object(o.target, true, (at, side))?,
-            OrderKind::Unload | OrderKind::UnloadOverWall => {
+        // an order on no target (−1): its lookup finds nothing, so it takes no order
+        Ok(match (o.order, o.target) {
+            (OrderKind::Follow, Some(t)) => self.follow_object(t, o.range, true, at, side, rng)?,
+            (OrderKind::Transport, _) => self.transport_to(o.point, true, side)?,
+            (OrderKind::Enter, Some(t)) => self.enter_object(t, true, (at, side))?,
+            (OrderKind::Unload | OrderKind::UnloadOverWall, _) => {
                 let over_wall = o.order == OrderKind::UnloadOverWall;
                 self.unload_at(o.point.ground(), (true, over_wall), (at, side))?
             }
@@ -299,7 +307,7 @@ impl UnitAi {
             Some(OrderKind::Attack)
         } else if order == Some(OrderKind::Attack) && class == Some(class::MONK) {
             self.leave_patrol_timers(ai);
-            self.current_target = -1;
+            self.current_target = None;
             None
         } else {
             if self.current_order != order {
@@ -358,7 +366,7 @@ impl UnitAi {
     pub(super) fn top_target_in_range(
         at: &Surroundings,
         side: &mut dyn UnitSide,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let Some(t) = Self::top_target_live(at, side)? else {
             return Ok(None);
         };
@@ -370,12 +378,16 @@ impl UnitAi {
 
     /// The object `id` as the world holds it (`FUN_1415417a0`): the unit itself (`at`, its own
     /// target of no one), among the objects the update names ([`Surroundings::unit`]), else as
-    /// the unit's side finds it ([`UnitSide::seen_unit`]); None when the world does not hold it.
+    /// the unit's side finds it ([`UnitSide::seen_unit`]); None when the world does not hold it
+    /// (or for none, as the game's table finds nothing for −1).
     pub(super) fn world_object(
-        id: i32,
+        id: impl ObjectKey,
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<Option<UnitSeen>, GenieError> {
+        let Some(id) = id.key() else {
+            return Ok(None);
+        };
         if id == at.id {
             return Ok(Some(UnitSeen {
                 id,
@@ -411,7 +423,7 @@ impl UnitAi {
     /// stops at the priest's slot 0xa0, which is not either.
     pub(super) fn attack_slot(
         &mut self,
-        target: i32,
+        target: ObjectId,
         any: bool,
         at: &Surroundings,
         side: &mut dyn UnitSide,
@@ -442,11 +454,11 @@ impl UnitAi {
     /// `AttackObject`, `+0x1d5` stays.
     pub(super) fn attack_roundup(
         &mut self,
-        target: i32,
+        target: ObjectId,
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        if self.current_target == target {
+        if self.current_target == Some(target) {
             return Ok(false);
         }
         let Some((class, position)) = self.attack_check(target, false, at, side)? else {
@@ -459,7 +471,7 @@ impl UnitAi {
             return Ok(false);
         }
         self.set_action(Some(ActionKind::Attack));
-        self.target_at(target, Some(i32::from(class.get())), position);
+        self.target_at(Some(target), Some(i32::from(class.get())), position);
         Ok(true)
     }
 }

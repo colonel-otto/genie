@@ -1,4 +1,5 @@
 use crate::map_and_sight::{resource_differences, visibility_differences};
+use crate::test_ids::object_id;
 use genie_core::vision::visibility::{Visibility, VisibleMap, VisibleResource, VisibleResources};
 
 /// A 2 × 2 map, Gaia and one player, each tile counted once and the player's unified bits set.
@@ -10,7 +11,7 @@ fn sight() -> Visibility {
     let resources = || VisibleResources {
         capacities: vec![4],
         lists: vec![vec![VisibleResource {
-            id: 7,
+            id: object_id(7),
             distance: 0.0,
             zone: 0,
             x: 1.5,
@@ -107,6 +108,7 @@ mod spatial {
     };
     use crate::map_and_sight::spatial;
     use crate::masters::TerrainTable;
+    use crate::test_ids::object_id;
     use genie_core::map::Radii;
     use genie_core::map::spatial::Spatial;
     use genie_core::objects::masters::class;
@@ -185,7 +187,7 @@ mod spatial {
     #[test]
     fn a_unit_takes_its_masters_footprint_and_obstruction() {
         let out = placed();
-        let unit = out.get(10).unwrap();
+        let unit = out.get(object_id(10)).unwrap();
         assert_eq!(
             (unit.player, unit.master, unit.class),
             (
@@ -197,8 +199,8 @@ mod spatial {
         assert!(unit.tall);
         let obstruction = unit.obstruction.unwrap();
         assert_eq!((obstruction.kind, obstruction.class), (2, 3));
-        assert_eq!(out.tile_list(1, 1), [10]);
-        let seer = out.sight.as_ref().unwrap().seer(10).unwrap();
+        assert_eq!(out.tile_list(1, 1), [object_id(10)]);
+        let seer = out.sight.as_ref().unwrap().seer(object_id(10)).unwrap();
         assert_eq!(
             (seer.kind, seer.capture, seer.umv),
             (genie_core::objects::masters::master_type::COMBAT, 5, 0)
@@ -213,18 +215,18 @@ mod spatial {
     fn a_building_links_its_tiles_unless_it_was_made_desolid() {
         let out = placed();
         let sight = out.sight.as_ref().unwrap();
-        let standing = sight.seer(11).unwrap();
+        let standing = sight.seer(object_id(11)).unwrap();
         assert_eq!(
             standing.kind,
             genie_core::objects::masters::master_type::BUILDING
         );
         assert!(standing.explored);
         assert!(standing.building.is_some_and(|b| b.built && !b.started));
-        assert!(out.get(11).unwrap().obstruction.is_some());
+        assert!(out.get(object_id(11)).unwrap().obstruction.is_some());
         assert_ne!(sight.link(2, 2).unwrap().0, 0);
-        let desolid = sight.seer(12).unwrap();
+        let desolid = sight.seer(object_id(12)).unwrap();
         assert!(!desolid.explored);
-        assert!(out.get(12).unwrap().obstruction.is_none());
+        assert!(out.get(object_id(12)).unwrap().obstruction.is_none());
         assert_eq!(sight.link(0, 3).unwrap().0, 0);
     }
 
@@ -233,9 +235,9 @@ mod spatial {
     #[test]
     fn inside_masterless_and_ghost_objects() {
         let out = placed();
-        assert!(out.get(13).is_some());
-        assert!(!out.tile_list(2, 2).contains(&13));
-        assert!(out.get(14).is_none());
-        assert!(out.tile_list(3, 3).contains(&20));
+        assert!(out.get(object_id(13)).is_some());
+        assert!(!out.tile_list(2, 2).contains(&object_id(13)));
+        assert!(out.get(object_id(14)).is_none());
+        assert!(out.tile_list(3, 3).contains(&object_id(20)));
     }
 }

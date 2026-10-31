@@ -70,7 +70,7 @@ pub fn old_pather_paths(
         };
         let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius.x());
         let z = turns.spatial.get(id).map_or(0.0, |p| p.position.z());
-        if let Err(e) = turns.spatial.set_position(id.get(), from.with_height(z)) {
+        if let Err(e) = turns.spatial.set_position(id, from.with_height(z)) {
             out.push(Err(e));
             continue;
         }
@@ -82,14 +82,14 @@ pub fn old_pather_paths(
         };
         let mut pather = genie_core::pathing::hull_path::HullPather::new(
             &mut turns.spatial,
-            id.get(),
-            target.get(),
+            id,
+            Some(target),
             mask,
             radius,
         );
         out.push(
             pather
-                .find(from, to, target.get(), range)
+                .find(from, to, Some(target), range)
                 .map(|(r, p)| (r, p.points)),
         );
     }
@@ -110,7 +110,7 @@ pub struct TickReport {
     pub differences: Vec<(u32, String)>,
     /// What the slice could not model: the player, the object (None for the player's stop), the
     /// update and why.
-    pub unsupported: Vec<(u32, Option<i32>, u32, GenieError)>,
+    pub unsupported: Vec<(u32, Option<ObjectId>, u32, GenieError)>,
     /// The players' attributes past the resources that differ, apart from the differences (the
     /// slice does not keep every statistic yet): the player, the attribute, the slice's value
     /// and the game's (their f32 bits).
@@ -352,9 +352,7 @@ pub fn forced_run(
                     ));
                 }
                 for (p, id, why) in turns.force(&game) {
-                    report
-                        .unsupported
-                        .push((p.index() as u32, Some(id), tick, why));
+                    report.unsupported.push((p.index() as u32, id, tick, why));
                 }
                 // a parsed save's state is dropped on the pool: its drop costs the run as much as
                 // its forcing
@@ -377,9 +375,10 @@ pub(super) fn ghost_differences(
     game: &[Vec<genie_core::vision::ghost::Ghost>],
 ) -> Vec<(u32, String)> {
     let key = |g: &genie_core::vision::ghost::Ghost| {
+        // the report's line in the game's terms: the ids as the save holds them
         (
-            g.id,
-            g.original_id,
+            g.id.get(),
+            ObjectId::field(g.original_id),
             g.state,
             g.cant_see,
             g.position.get().map(f32::to_bits),
@@ -527,7 +526,16 @@ pub(super) fn game_state(
         let civ = p.world_player().base.civ_id;
         game.players.push(
             p.live_objects()
-                .map(|o| unit(o, p.objects(), &world.path, civ, masters))
+                .map(|o| {
+                    unit(
+                        o,
+                        p.objects(),
+                        &world.path,
+                        civ,
+                        masters,
+                        header.players().len(),
+                    )
+                })
                 .collect(),
         );
         let attributes = &p.world_player().base.attributes;

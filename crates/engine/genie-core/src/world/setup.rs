@@ -19,7 +19,7 @@ impl World {
     pub(crate) fn take_object_id(&mut self, player: PlayerId, master: MasterId) -> ObjectId {
         let id = self.next_object_id;
         self.next_object_id = id.successor();
-        crate::trace::new_object(self.ticks, player, id.get(), master);
+        crate::trace::new_object(self.ticks, player, id, master);
         id
     }
 
@@ -128,9 +128,9 @@ impl World {
                     && !moving
                     && !desolid
                 {
-                    self.pathing.place_shape(u.id.get(), placed);
+                    self.pathing.place_shape(u.id, placed);
                 }
-                self.pathing.refresh(u.id.get(), placed, moving, m.outline);
+                self.pathing.refresh(u.id, placed, moving, m.outline);
             }
         }
         Ok(())

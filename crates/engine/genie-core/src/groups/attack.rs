@@ -6,7 +6,7 @@ use crate::GenieError;
 use crate::groups::command::MoveTo;
 use crate::groups::group_list::member_gone;
 use crate::groups::stats::weapon_range;
-use crate::groups::{TargetData, UnitGroup, WorldObject};
+use crate::groups::{GroupTarget, TargetData, UnitGroup, WorldObject};
 use crate::math::fmath;
 use crate::math::fmath::{BVector, below_or_unordered};
 use crate::objects::ObjectId;
@@ -82,8 +82,7 @@ impl UnitGroup {
     /// resets in `FUN_14100f7f0`); its range and certain action stay.
     pub(in crate::groups) const fn forget_target_data(&mut self) {
         let t = &mut self.current_target;
-        t.target = -1;
-        t.kind = -1;
+        t.target = GroupTarget::None;
         t.original_position = BVector::ZERO;
         t.target_radius = 0.0;
         t.disable_retargeting = 0;
@@ -114,7 +113,7 @@ impl World {
         let main = self.main_object(target)?;
         let at = self.moved_place_of(main)?;
         let g = self.groups.held(group)?;
-        if g.current_target.target == main
+        if g.current_target.target == GroupTarget::Object(main)
             && g.flags & 0x2_0000 == 0
             && self.members_on_target(g, main)
         {
@@ -141,8 +140,7 @@ impl World {
         self.raise_attack_ranges(group, main)?;
         let target_radius = self.target_radius(main)?;
         self.groups.held_mut(group)?.current_target = TargetData {
-            target: main,
-            kind: 1,
+            target: GroupTarget::Object(main),
             original_position: at,
             range,
             target_radius,
@@ -151,7 +149,7 @@ impl World {
         };
         let moved = self.command_move_to(
             group,
-            main,
+            Some(main),
             at.ground(),
             MoveTo {
                 range,
@@ -173,25 +171,20 @@ impl World {
 
     /// `FUN_141189b20` of `target`: a building's main building (`+0xbb8`) when it has one, else
     /// the object itself.
-    fn main_object(&self, target: ObjectId) -> Result<i32, GenieError> {
-        let (player, unit) = self
-            .object(target)
-            .ok_or_else(|| member_gone(target.get()))?;
+    fn main_object(&self, target: ObjectId) -> Result<ObjectId, GenieError> {
+        let (player, unit) = self.object(target).ok_or_else(|| member_gone(target))?;
         let building = unit.master(&self.masters, player)?.kind == BUILDING;
-        Ok(unit
-            .annex_of
-            .filter(|_| building)
-            .unwrap_or_else(|| target.get()))
+        Ok(unit.annex_of.filter(|_| building).unwrap_or(target))
     }
 
     /// Slot 0x520 (`FUN_14106d530`) of object `id`: where it last moved to ([`moved_place`]).
-    pub(super) fn moved_place_of(&self, id: i32) -> Result<BVector, GenieError> {
+    pub(super) fn moved_place_of(&self, id: ObjectId) -> Result<BVector, GenieError> {
         let (_, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         Ok(moved_place(u))
     }
 
     /// The target master's two radii as one length (`+0xb57`, `+0xb5b`: `sqrt(x² + y²)`).
-    pub(super) fn target_radius(&self, id: i32) -> Result<f32, GenieError> {
+    pub(super) fn target_radius(&self, id: ObjectId) -> Result<f32, GenieError> {
         let (p, u) = self.object(id).ok_or_else(|| member_gone(id))?;
         let r = u.master(&self.masters, p)?.radius;
         Ok(fmath::sqrt(r.x() * r.x() + r.y() * r.y()))
@@ -199,11 +192,11 @@ impl World {
 
     /// Whether every member of `g` the world holds that has a top action's target (slot 0x190,
     /// `FUN_14106d090`) has `main` for it.
-    fn members_on_target(&self, g: &UnitGroup, main: i32) -> bool {
+    fn members_on_target(&self, g: &UnitGroup, main: ObjectId) -> bool {
         g.members.iter().all(|m| {
             self.object(m.id).is_none_or(|(_, u)| {
                 let top = self.top_target_object(u);
-                top == -1 || top == main
+                top.is_none_or(|t| t == main)
             })
         })
     }
@@ -219,7 +212,7 @@ impl World {
     pub(super) fn reach_pass(
         &mut self,
         group: i32,
-        target: i32,
+        target: ObjectId,
         order: AttackOrder,
         range: &mut f32,
     ) -> Result<(), GenieError> {
@@ -227,7 +220,7 @@ impl World {
         let Some(computer) = self.players.get(g.owner as usize).map(|p| p.computer) else {
             return Ok(());
         };
-        let ids: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        let ids: Vec<ObjectId> = g.members.iter().map(|m| m.id).collect();
         for id in ids {
             if self.in_reach_of(id, target, order, range)? {
                 self.send_in_reach(group, id, target, (order, computer))?;
@@ -242,8 +235,8 @@ impl World {
     /// squared. A member the world does not hold is not.
     fn in_reach_of(
         &self,
-        id: i32,
-        target: i32,
+        id: ObjectId,
+        target: ObjectId,
         order: AttackOrder,
         range: &mut f32,
     ) -> Result<bool, GenieError> {
@@ -323,7 +316,7 @@ impl World {
     pub(super) fn refill_special_units(
         &mut self,
         group: i32,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let t = self
             .world_object(target)
@@ -344,7 +337,7 @@ impl World {
             }
         }
         let t_class = self.master(t.player(), t.master_id())?.class;
-        let mut list: Vec<i32> = Vec::new();
+        let mut list: Vec<ObjectId> = Vec::new();
         if BOTH_LISTS_CLASSES.contains(&t_class) {
             take_into(&mut list, &by_master, limit);
             take_into(&mut list, &by_class, limit);
@@ -374,7 +367,7 @@ impl World {
     pub(super) fn raise_attack_ranges(
         &mut self,
         group: i32,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let t = self
             .world_object(target)
@@ -437,7 +430,7 @@ impl World {
 }
 
 /// `ids` join `list` while it holds fewer than `limit` (the refill's `iVar6 <= count` tests).
-fn take_into(list: &mut Vec<i32>, ids: &[i32], limit: usize) {
+fn take_into(list: &mut Vec<ObjectId>, ids: &[ObjectId], limit: usize) {
     let room = limit.saturating_sub(list.len());
     list.extend(ids.iter().take(room));
 }

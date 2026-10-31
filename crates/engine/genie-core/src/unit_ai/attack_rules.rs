@@ -449,7 +449,7 @@ pub(super) fn siege_chooses(me: &Attacker, s: &Seeker, t: &Target) -> bool {
         }
     }
     if SIEGE_BUILDING_MASTERS.contains(&me.master)
-        && s.target != -1
+        && s.target.is_some()
         && s.target_kind == Some(BUILDING)
     {
         return priority == 1 || priority & 0xfc != 0;

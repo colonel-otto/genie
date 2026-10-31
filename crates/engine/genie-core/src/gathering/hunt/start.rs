@@ -41,10 +41,10 @@ pub enum PointWalk {
     /// State 15's walk ended or failed: the hunt is done ([`HuntAction::set_done`]), its target
     /// and second target to release.
     Done {
-        /// The target it let go, −1 for none.
-        target: i32,
-        /// The second target it let go, −1 for none.
-        second: i32,
+        /// The target it let go, if any.
+        target: Option<ObjectId>,
+        /// The second target it let go, if any.
+        second: Option<ObjectId>,
     },
     /// State 11's walk ended or failed: the hunt searches (`set_state(3)`; the caller tells the
     /// unit AI).
@@ -97,8 +97,8 @@ pub struct HuntMove<'a> {
     pub walks: Walks<'a>,
     /// The target is a drop site of the hunter's master.
     pub drops_here: bool,
-    /// The pasture the unit is on (`mMyPastureId`, −1 for none).
-    pub my_pasture: i32,
+    /// The pasture the unit is on (`mMyPastureId`).
+    pub my_pasture: Option<ObjectId>,
     /// The gap to a drop site target.
     pub gap: f32,
 }
@@ -128,14 +128,14 @@ impl HuntAction {
             walks,
         } = start;
         let mut hunt = Self {
-            target: ObjectId::of_field(target.id),
+            target: Some(target.id),
             state: 0,
             point: target.position,
             target_class: Some(target.class),
             task,
             attack: None,
             move_to: None,
-            drop_site: -1,
+            drop_site: None,
             carry_to: None,
             timer: 0.0,
             lead: Lead::NEW,
@@ -162,10 +162,10 @@ impl HuntAction {
         // caller takes and releases it), the point and `+0x68` clear, `set_state(8)`; a hunter
         // carrying nothing does not get there
         if target.player == player && target.drop_site && 0.0 < held.1 {
-            hunt.set_target(-1);
+            hunt.set_target(None);
             hunt.point = Position::from([-1.0; 3]);
             hunt.target_class = None;
-            hunt.carry_to = ObjectId::of_field(target.id);
+            hunt.carry_to = Some(target.id);
             hunt.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok((hunt, false));
         }
@@ -201,7 +201,7 @@ impl HuntAction {
                 OWN_LIVESTOCK_RANGE
             };
             let to = WalkTo {
-                id: target.id,
+                id: Some(target.id),
                 at: target.position,
                 gap: attack.gap,
                 state: Some(target.state),
@@ -255,18 +255,18 @@ impl HuntAction {
             ));
         }
         if target.player == player && drops_here && 0.0 < held {
-            self.set_target(-1);
+            self.set_target(None);
             self.timer = 0.0;
             self.point = Position::from([-1.0; 3]);
-            self.carry_to = ObjectId::of_field(target.id);
+            self.carry_to = Some(target.id);
             self.target_class = Some(target.class);
             self.set_drop(target.position, attack.gap, mover, &walks)?;
             return Ok(Some(false));
         }
-        if target.id == ObjectId::field(self.target) {
+        if Some(target.id) == self.target {
             return Ok(None);
         }
-        self.set_target(target.id);
+        self.set_target(Some(target.id));
         self.target_class = Some(target.class);
         self.carry_to = None;
         self.chase(target, player, attack, arms, mover, &walks)
@@ -297,25 +297,25 @@ impl HuntAction {
         if target.is_none() && self.task.range != 0.0 {
             return Ok(false);
         }
-        if my_pasture != -1 && target.is_none_or(|t| t.id != my_pasture) {
+        if my_pasture.is_some() && target.is_none_or(|t| Some(t.id) != my_pasture) {
             return Err(GenieError::unsupported(
                 "a hunter leaving its pasture (FUN_141189ca0)",
             ));
         }
         if let Some(t) = target.filter(|t| t.player == player && drops_here && 0.0 < held) {
-            if t.id == ObjectId::field(self.carry_to) && self.state == DROP {
+            if Some(t.id) == self.carry_to && self.state == DROP {
                 return Ok(true);
             }
-            self.set_target(-1);
+            self.set_target(None);
             self.point = Position::from([-1.0; 3]);
             self.target_class = Some(t.class);
-            self.carry_to = ObjectId::of_field(t.id);
+            self.carry_to = Some(t.id);
             self.set_drop(t.position, gap, mover, &walks)?;
             return Ok(true);
         }
         self.point = point;
         self.target_class = None;
-        self.set_target(-1);
+        self.set_target(None);
         self.set_point_walk(WALK_POINT, mover, &walks)?;
         Ok(true)
     }
@@ -419,12 +419,12 @@ impl HuntAction {
     /// stands with (slot 0x68 with `FUN_140ac5210`'s, the caller's), the target and the second
     /// target go (slot 0x68 and `FUN_140a7a190` with none: returned in that order for the caller
     /// to release), the point clears and the timer.
-    pub fn set_done(&mut self) -> [i32; 2] {
+    pub fn set_done(&mut self) -> [Option<ObjectId>; 2] {
         self.state = IDLE;
         let target = self.target.take();
         let second = self.carry_to.take();
         self.point = Position::from([-1.0; 3]);
         self.timer = 0.0;
-        [ObjectId::field(target), ObjectId::field(second)]
+        [target, second]
     }
 }

@@ -11,6 +11,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
 use crate::math::conversions::cvttss2si;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
 use crate::world::slots::PlayerSlots;
@@ -286,7 +287,7 @@ impl crate::world::World {
     pub(crate) fn drop_location(
         &mut self,
         (p, i): (PlayerId, usize),
-        id: i32,
+        id: ObjectId,
         made: &crate::objects::masters::Master,
         around: Around,
         zone: u32,
@@ -388,7 +389,7 @@ impl crate::world::World {
     pub(super) fn come_ashore(
         &mut self,
         (p, i): (PlayerId, usize),
-        id: i32,
+        id: ObjectId,
         made: &crate::objects::masters::Master,
         spot: Point,
     ) -> Result<(), GenieError> {
@@ -402,7 +403,7 @@ impl crate::world::World {
         let inner_id = unit.id;
         unit.body
             .base_mut()
-            .inside_at(inner_id.get(), at, &mut self.spatial);
+            .inside_at(inner_id, at, &mut self.spatial);
         self.leave_container((p, i), (up.index(), ui), made, spot.with_height(at.z()))?;
         if let Some(ai) = self.players.player_mut(up)?.objects[ui].ai.as_mut() {
             ai.state_position = spot;

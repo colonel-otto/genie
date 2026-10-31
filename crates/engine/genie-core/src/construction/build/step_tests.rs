@@ -33,9 +33,9 @@ use crate::world::tests::in_update;
 use crate::world::{Player, SEARCH_NEEDED, World};
 
 /// The builder of [`site_world`].
-const BUILDER: i32 = 5;
+const BUILDER: ObjectId = object_id(5);
 /// Its foundation, a house.
-const HOUSE: i32 = 10028;
+const HOUSE: ObjectId = object_id(10028);
 /// The house's place.
 const AT_HOUSE: Position = Position::new(10.5, 10.5, 0.0);
 /// The builder's walking sprite, which its `MoveTo`s show by default, and its standing sprite,
@@ -120,7 +120,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = at;
     let builder = Unit {
-        id: object_id(BUILDER),
+        id: BUILDER,
         body: Body::new(at, None, Some(mover)),
         life: Lifecycle {
             class: Class::Animated,
@@ -132,8 +132,8 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         },
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::CIVILIAN,
-            current_target: -1,
-            last_target: -1,
+            current_target: None,
+            last_target: None,
             ..UnitAi::default()
         }),
         actions: ActionList::default().with_build(Some(build)),
@@ -141,12 +141,12 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
             graphic(WALKING),
             &mut Well512::default(),
         )),
-        pasture: -1,
-        my_pasture: -1,
+        pasture: None,
+        my_pasture: None,
         ..Unit::default()
     };
     let house = Unit {
-        id: object_id(HOUSE),
+        id: HOUSE,
         body: Body::at(AT_HOUSE),
         life: Lifecycle {
             class: Class::Animated,
@@ -157,8 +157,8 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         },
         construction: Some(construction(0.0, 0, true)),
         workers: 1,
-        pasture: -1,
-        my_pasture: -1,
+        pasture: None,
+        my_pasture: None,
         ..Unit::default()
     };
     let mut t = World::new(
@@ -184,15 +184,13 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
         (7, graphic(7)),
     ]);
     t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![0; 400]));
-    t.spatial.insert(
-        object_id(HOUSE),
-        placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE),
-    );
+    t.spatial
+        .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE));
     let me = Placed {
         obstruction_type: 0,
         ..placed(at, 0.2, class, ids::VILLAGER_MALE)
     };
-    t.spatial.insert(object_id(BUILDER), me);
+    t.spatial.insert(BUILDER, me);
     t
 }
 
@@ -203,7 +201,7 @@ fn plan(t: &mut World) {
 }
 
 /// The builder's top action right after its update: its type and target.
-type Top = (Option<i16>, Option<i32>);
+type Top = (Option<i16>, Option<ObjectId>);
 
 /// One update of the builder's Build of `dt` ms (its part of the unit's update,
 /// [`Unit::build_part`]), its code and the builder's top action right after it (the work it
@@ -211,7 +209,7 @@ type Top = (Option<i16>, Option<i32>);
 fn update(t: &mut World, dt: u32) -> Result<(HeadCode, Top), GenieError> {
     in_update(t, (PlayerId::new(1), 0), dt, |u, c| {
         let me = Me {
-            id: u.id.get(),
+            id: u.id,
             group: u.group.id,
             action_state: u.top_action().map_or(0, |a| a.state),
         };
@@ -251,7 +249,7 @@ fn build(t: &World) -> BuildAction {
 }
 
 /// Player 1's object `id`.
-fn own(t: &mut World, id: i32) -> &mut Unit {
+fn own(t: &mut World, id: ObjectId) -> &mut Unit {
     t.players[1].objects.by_id_mut(id).unwrap()
 }
 
@@ -276,11 +274,10 @@ fn house(t: &World) -> (u8, i32, u8) {
 }
 
 /// Moves object `id` of player 1 to `at`, its body and its place on the map.
-fn put(t: &mut World, id: i32, at: Position) {
+fn put(t: &mut World, id: ObjectId, at: Position) {
     own(t, id).place_for_test(at);
     let p = *t.spatial.get(id).unwrap();
-    t.spatial
-        .insert(object_id(id), Placed { position: at, ..p });
+    t.spatial.insert(id, Placed { position: at, ..p });
 }
 
 /// The foundation leaves the world: its list and the map.
@@ -297,7 +294,7 @@ fn remove_house(t: &mut World) {
 /// (`FUN_140ab1b30`, [`BuildAction::retake`]) lowers the main building's count.
 #[test]
 fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
-    const ANNEX: i32 = 10029;
+    const ANNEX: ObjectId = object_id(10029);
     let b = BuildAction {
         state: WAIT,
         move_to: None,
@@ -310,13 +307,13 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     main.construction = Some(construction(1.0, 1, false));
     main.life.hp = 0.5;
     let mut annex = own(&mut t, HOUSE).clone();
-    annex.id = object_id(ANNEX);
+    annex.id = ANNEX;
     annex.annex_of = Some(HOUSE);
     annex.life.hp = 1.0;
     annex.construction = Some(construction(1.0, 0, false));
     t.players[1].objects.push(annex);
     t.spatial.insert(
-        object_id(ANNEX),
+        ANNEX,
         placed(
             Position::new(12.5, 10.5, 0.0),
             1.0,
@@ -412,7 +409,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point() {
     (h.life.state, h.construction) = (7, Some(construction(3.0, 1, false)));
     assert_eq!(code(&mut t, 20), HeadCode::Keeps);
     let b = build(&t);
-    assert_eq!((b.state, b.target, b.added), (WALK_POINT, -1, false));
+    assert_eq!((b.state, b.target, b.added), (WALK_POINT, None, false));
     let walk = b.move_to.unwrap();
     assert_eq!(
         (
@@ -439,7 +436,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point() {
 #[test]
 fn a_builder_without_its_foundation_walks_on_then_waits() {
     let gone = BuildAction {
-        target: -1,
+        target: None,
         move_to: Some(walk_in(MoveTo::Arrived)),
         ..started(HOUSE, AT_HOUSE, 0.8, TASK)
     };
@@ -448,7 +445,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
     let _ = code(&mut t, 20);
     assert_eq!(build(&t).state, IDLE);
     let held = BuildAction {
-        target: -1,
+        target: None,
         move_to: Some(walk_in(MoveTo::Moving)),
         ..started(HOUSE, AT_HOUSE, 0.8, TASK)
     };
@@ -460,7 +457,7 @@ fn a_builder_without_its_foundation_walks_on_then_waits() {
     for end in [Some(MoveTo::Arrived), Some(MoveTo::Failed), None] {
         let w = BuildAction {
             state: WALK_POINT,
-            target: -1,
+            target: None,
             move_to: end.map(|state| MoveToAction {
                 target: None,
                 ..walk_in(state)
@@ -499,7 +496,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
     let walk = b.move_to.unwrap();
     assert_eq!(
         (b.state, b.target, ObjectId::field(walk.target), walk.point),
-        (MOVE, -1, -1, AT_HOUSE)
+        (MOVE, None, -1, AT_HOUSE)
     );
     // the MoveTo ran in the same update
     assert_eq!(walk.state, MoveTo::Arrived);
@@ -511,12 +508,15 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
         on_build(t, |b, c, u, _| {
             b.restart(c, u)?;
             let walk = b.move_to.unwrap();
-            Ok((ObjectId::field(walk.target), walk.point, walk.state))
+            Ok((walk.target, walk.point, walk.state))
         })
         .unwrap()
     };
-    assert_eq!(restarted(&mut t, 0), (HOUSE, AT_HOUSE, MoveTo::Arrived));
-    assert_eq!(restarted(&mut t, 7), (-1, AT_HOUSE, MoveTo::Start));
+    assert_eq!(
+        restarted(&mut t, 0),
+        (Some(HOUSE), AT_HOUSE, MoveTo::Arrived)
+    );
+    assert_eq!(restarted(&mut t, 7), (None, AT_HOUSE, MoveTo::Start));
 }
 
 /// MarvinBlue/426048731 after tick 679: builder 9175 stands on the house foundation 10028's
@@ -525,14 +525,14 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
 #[test]
 fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
     let b = BuildAction {
-        target: HOUSE,
+        target: Some(HOUSE),
         state: WORK,
         move_to: None,
         point: Position::new(-1.0, -1.0, -1.0),
         task: MOVING_TASK,
         added: false,
         timer: 0.0,
-        site: -1,
+        site: None,
     };
     let mut t = site_world(class::VILLAGER, Position::new(30.0, 89.0, 0.0), b);
     t.spatial = Spatial::with_tiles(
@@ -540,7 +540,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
         Tiles::new(40, 120, vec![4; 40 * 120]),
     );
     t.spatial.insert(
-        object_id(HOUSE),
+        HOUSE,
         placed(
             Position::new(30.0, 88.0, 0.0),
             1.0,
@@ -557,7 +557,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
             ids::BUILDER,
         )
     };
-    t.spatial.insert(object_id(BUILDER), me);
+    t.spatial.insert(BUILDER, me);
     own(&mut t, HOUSE).place_for_test(Position::new(30.0, 88.0, 0.0));
     sighted(&mut t);
     let _ = code(&mut t, 20);
@@ -802,8 +802,8 @@ fn stump(t: &mut World) {
             master_id: master_id(349),
             ..Lifecycle::default()
         },
-        pasture: -1,
-        my_pasture: -1,
+        pasture: None,
+        my_pasture: None,
         ..Unit::default()
     });
     t.spatial.insert(
@@ -850,9 +850,12 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
     stump(&mut t);
     sighted(&mut t);
     let _ = code(&mut t, 20);
-    assert_eq!(t.spatial.get(77).map(|p| p.obstruction), Some(None));
+    assert_eq!(
+        t.spatial.get(object_id(77)).map(|p| p.obstruction),
+        Some(None)
+    );
     assert_eq!(t.spatial.tiles().word(10, 10).unwrap() >> 23, 0);
-    let tree = t.players[0].objects.by_id(77).unwrap();
+    let tree = t.players[0].objects.by_id(object_id(77)).unwrap();
     assert_eq!(
         (tree.life.state, tree.life.hp, tree.roo_called),
         (7, 0.0, true)
@@ -880,7 +883,7 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
         let b = build(&t);
         assert_eq!(
             (b.state, b.target, b.point),
-            (HALTED, -1, Position::from([-1.0; 3]))
+            (HALTED, None, Position::from([-1.0; 3]))
         );
         assert_eq!((house(&t).1, house(&t).2), (0, kept), "{computer}");
         assert!(stands(&t));
@@ -915,7 +918,13 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
         let _ = code(&mut t, 20);
         let b = build(&t);
         assert_eq!((b.state, builder(&t).footprint_waits), (state, after));
-        let sent = t.players[1].objects.by_id(6).unwrap().ai.as_ref().unwrap();
+        let sent = t.players[1]
+            .objects
+            .by_id(object_id(6))
+            .unwrap()
+            .ai
+            .as_ref()
+            .unwrap();
         let sent = sent
             .notifies
             .iter()
@@ -924,7 +933,7 @@ fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
         if state == HALTED {
             assert_eq!(
                 (b.target, b.point, house(&t).1),
-                (-1, Position::from([-1.0; 3]), 0)
+                (None, Position::from([-1.0; 3]), 0)
             );
             assert!(stands(&t));
         } else {
@@ -953,14 +962,14 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
         build_time: 20,
         ..construction(20.0, 1, false)
     });
-    h.stack_made = Some(10031);
+    h.stack_made = Some(object_id(10031));
     let v = own(&mut t, BUILDER);
     (v.life.attribute_type, v.life.amount) = (17, 7.0);
     let ai = v.ai.as_mut().unwrap();
     (ai.current_order, ai.current_action) = (Some(OrderKind::Build), Some(ActionKind::Build));
     assert_eq!(code(&mut t, 20), HeadCode::Deletes);
     let b = build(&t);
-    assert_eq!((b.state, b.target, b.added), (DONE, -1, false));
+    assert_eq!((b.state, b.target, b.added), (DONE, None, false));
     let built = (
         crate::unit_ai::PASTURE_BUILT,
         [ActionKind::Build.value(), 10031, 0],
@@ -988,7 +997,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
     let halted = BuildAction {
         state: HALTED,
         move_to: None,
-        target: -1,
+        target: None,
         ..started(HOUSE, Position::ORIGIN, 0.0, TASK)
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), halted);
@@ -996,7 +1005,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
     assert_eq!(build(&t).state, FAILED);
     assert!(stands(&t) && heard(&t).is_empty());
     assert_eq!(code(&mut t, 20), HeadCode::Deletes);
-    assert_eq!((build(&t).state, build(&t).target), (HALTED, -1));
+    assert_eq!((build(&t).state, build(&t).target), (HALTED, None));
     assert_eq!(heard(&t), [failed]);
     // failed with its foundation: the halt lets it go
     let holding = BuildAction {
@@ -1006,7 +1015,7 @@ fn a_halted_build_fails_and_its_failure_removes_it() {
     };
     let mut t = site_world(class::VILLAGER, Position::new(12.0, 10.5, 0.0), holding);
     assert_eq!(code(&mut t, 20), HeadCode::Deletes);
-    assert_eq!((build(&t).state, build(&t).target), (HALTED, -1));
+    assert_eq!((build(&t).state, build(&t).target), (HALTED, None));
     assert_eq!((heard(&t), house(&t).1), (vec![failed], 0));
     // waiting with a target: nothing
     let waiting = BuildAction {
@@ -1054,12 +1063,12 @@ fn a_builder_lets_a_dead_foundation_go() {
             heard(&t) == [SEARCH],
         )
     };
-    assert_eq!(run(ids::HOUSE, 3, 10.0), (IDLE, -1, 1, 0, true));
+    assert_eq!(run(ids::HOUSE, 3, 10.0), (IDLE, None, 1, 0, true));
     // a built one in state 2 ends the work, then finds no more
-    assert_eq!(run(ids::HOUSE, 2, 25.0), (IDLE, -1, 1, 0, true));
+    assert_eq!(run(ids::HOUSE, 2, 25.0), (IDLE, None, 1, 0, true));
     // a dead gate (class 39) not built yet lets go, one built ends the work
-    assert_eq!(run(master_id(1584), 3, 10.0), (IDLE, -1, 1, 0, true));
-    assert_eq!(run(master_id(1584), 3, 25.0), (IDLE, -1, 1, 0, true));
+    assert_eq!(run(master_id(1584), 3, 10.0), (IDLE, None, 1, 0, true));
+    assert_eq!(run(master_id(1584), 3, 25.0), (IDLE, None, 1, 0, true));
 }
 
 /// The end of the work (case 0xdf): a villager works the farm it built (class 49), its unit AI
@@ -1076,7 +1085,7 @@ fn a_villager_works_the_farm_it_built() {
     (h.life.master_id, h.life.state) = (master_id(50), 2);
     let order = |order| QueuedOrder {
         order,
-        target: 99,
+        target: Some(object_id(99)),
         ..QueuedOrder::default()
     };
     let ai = own(&mut t, BUILDER).ai.as_mut().unwrap();
@@ -1108,7 +1117,7 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
     remove_house(&mut t);
     assert_eq!(code(&mut t, 20), HeadCode::Keeps);
     let b = build(&t);
-    assert_eq!((b.state, b.target, b.move_to), (IDLE, -1, None));
+    assert_eq!((b.state, b.target, b.move_to), (IDLE, None, None));
     assert_eq!(heard(&t), [SEARCH]);
 }
 
@@ -1134,8 +1143,8 @@ fn with_mill(t: &mut World) {
     );
     // a done building of its owner's tracker, which the table's search reads
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, master_id(68));
-    t.players[1].tracker.add(300, k);
-    t.players[1].tracker.complete(300, k);
+    t.players[1].tracker.add(object_id(300), k);
+    t.players[1].tracker.complete(object_id(300), k);
     t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: master_id(68),
         worker_class: Some(class::VILLAGER),
@@ -1167,7 +1176,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let mut t = site_world(class::VILLAGER, Position::new(2.5, 2.5, 0.0), b);
     with_mill(&mut t);
     own(&mut t, HOUSE).construction = Some(construction(0.0, 3, true));
-    let mill = |t: &World| t.players[1].objects.by_id(300).unwrap().workers;
+    let mill = |t: &World| t.players[1].objects.by_id(object_id(300)).unwrap().workers;
     let drop = |t: &mut World, search| {
         on_build(t, |b, c, u, reads| {
             b.set_drop(c, u, search, reads.by)?;
@@ -1176,7 +1185,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
         .unwrap()
     };
     let site = |sprite| DropSearch::Site {
-        id: 300,
+        id: object_id(300),
         range: 0.5,
         sprite,
     };
@@ -1190,7 +1199,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
             walk.range,
             walk.state
         ),
-        (DROP, 300, 300, 0.5, MoveTo::Start)
+        (DROP, Some(object_id(300)), 300, 0.5, MoveTo::Start)
     );
     // the drop task's carrying sprite; +0x61 1: it asks again when its target moves
     assert_eq!(
@@ -1199,19 +1208,13 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     );
     assert_eq!(
         (b.added, house(&t).0, b.target, mill(&t)),
-        (false, 2, HOUSE, 1)
+        (false, 2, Some(HOUSE), 1)
     );
     let b = drop(&mut t, DropSearch::Nothing);
     let walk = b.move_to.unwrap();
     assert_eq!(
-        (
-            b.state,
-            b.site,
-            ObjectId::field(walk.target),
-            walk.state,
-            walk.point
-        ),
-        (MOVE, -1, HOUSE, MoveTo::Start, AT_HOUSE)
+        (b.state, b.site, walk.target, walk.state, walk.point),
+        (MOVE, None, Some(HOUSE), MoveTo::Start, AT_HOUSE)
     );
     let no_site = (
         crate::unit_ai::NO_DROP_SITE,
@@ -1231,7 +1234,7 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     assert_eq!((b.state, walk.state), (DROP, MoveTo::Arrived));
     // without one, the Build task's moving sprite
     assert_eq!(walk.sprite.map(|g| g.id), Some(TASK_SPRITE));
-    own(&mut t, BUILDER).actions.build_mut().unwrap().target = -1;
+    own(&mut t, BUILDER).actions.build_mut().unwrap().target = None;
     let lost = drop(&mut t, DropSearch::Empty);
     let walk = lost.move_to.unwrap();
     assert_eq!(
@@ -1242,7 +1245,13 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
             walk.state,
             lost.site
         ),
-        (MOVE, -1, Position::ORIGIN, MoveTo::Start, 300)
+        (
+            MOVE,
+            -1,
+            Position::ORIGIN,
+            MoveTo::Start,
+            Some(object_id(300))
+        )
     );
 }
 
@@ -1258,7 +1267,7 @@ fn at_the_mill(state: MoveTo) -> BuildAction {
             on_target_moved: TargetMoved::AsksAgain,
             ..walk_in(state)
         }),
-        site: 300,
+        site: Some(object_id(300)),
         ..started(HOUSE, AT_HOUSE, 5.0, TASK)
     }
 }
@@ -1274,7 +1283,10 @@ fn drop_world(at: Position, b: BuildAction) -> World {
 
 /// The builder's wood, its player's and the mill's workers.
 fn wood(t: &World) -> (f32, f32, i32) {
-    let mill = t.players[1].objects.by_id(300).map_or(-1, |m| m.workers);
+    let mill = t.players[1]
+        .objects
+        .by_id(object_id(300))
+        .map_or(-1, |m| m.workers);
     (builder(t).life.amount, t.players[1].resources[1], mill)
 }
 
@@ -1286,11 +1298,11 @@ fn wood(t: &World) -> (f32, f32, i32) {
 #[test]
 fn a_builder_at_its_drop_site_gives_its_load_and_walks_back() {
     let mut t = drop_world(Position::new(14.0, 10.5, 0.0), at_the_mill(MoveTo::Arrived));
-    own(&mut t, 300).workers = 1;
+    own(&mut t, object_id(300)).workers = 1;
     let _ = code(&mut t, 250);
     let b = build(&t);
     assert_eq!(wood(&t), (0.0, 10.0, 0));
-    assert_eq!((b.state, b.site, b.target), (MOVE, -1, HOUSE));
+    assert_eq!((b.state, b.site, b.target), (MOVE, None, Some(HOUSE)));
     assert_eq!(walk_state(&t), Some(MoveTo::Start));
     // the MoveTo at its end stays in the list until the next set_state
     let mut t = drop_world(Position::new(13.0, 10.5, 0.0), at_the_mill(MoveTo::Arrived));
@@ -1310,14 +1322,14 @@ fn a_builder_at_its_drop_site_gives_its_load_and_walks_back() {
     let b = build(&t);
     assert_eq!(
         (b.state, b.timer, b.site, walk_state(&t)),
-        (DROP, 0.0, 300, Some(MoveTo::Start))
+        (DROP, 0.0, Some(object_id(300)), Some(MoveTo::Start))
     );
     let mut refused = drop_world(Position::new(14.0, 10.5, 0.0), at_the_mill(MoveTo::Arrived));
-    own(&mut refused, 300).workers = 1;
+    own(&mut refused, object_id(300)).workers = 1;
     refused.drop_sites[0].targets[0].attribute = 2;
     let _ = code(&mut refused, 250);
     let b = build(&refused);
-    assert_eq!((b.state, b.target, b.site), (HALTED, -1, -1));
+    assert_eq!((b.state, b.target, b.site), (HALTED, None, None));
     assert_eq!((wood(&refused), house(&refused).1), ((10.0, 0.0, 0), 0));
     assert!(stands(&refused));
 }
@@ -1335,12 +1347,12 @@ fn a_builder_s_drop_off_without_its_drop_site_searches_again() {
         (b.state, wood(&t).0, heard(&t).len())
     };
     // the drop site in state 3, which the table's search passes over as well
-    let left: fn(&mut World) = |t| own(t, 300).life.state = 3;
+    let left: fn(&mut World) = |t| own(t, object_id(300)).life.state = 3;
     assert_eq!(searched(left, MoveTo::Arrived), (MOVE, 10.0, 1));
     let gone: fn(&mut World) = |t| {
-        let i = t.players[1].objects.position_of(300).unwrap();
+        let i = t.players[1].objects.position_of(object_id(300)).unwrap();
         let _ = t.players[1].objects.take_out(i).unwrap();
-        t.spatial.remove(300);
+        t.spatial.remove(object_id(300));
     };
     assert_eq!(searched(gone, MoveTo::Arrived), (MOVE, 10.0, 1));
     assert_eq!(searched(|_| (), MoveTo::Failed).1, 10.0);
@@ -1355,7 +1367,7 @@ fn a_builder_s_drop_off_without_its_drop_site_searches_again() {
 #[test]
 fn a_builder_without_a_foundation_after_its_drop_off() {
     let lone = |point| BuildAction {
-        target: -1,
+        target: None,
         point,
         ..at_the_mill(MoveTo::Arrived)
     };
@@ -1367,27 +1379,36 @@ fn a_builder_without_a_foundation_after_its_drop_off() {
     let mut t = drop_world(Position::new(14.0, 10.5, 0.0), lone(AT_HOUSE));
     let ai = own(&mut t, BUILDER).ai.as_mut().unwrap();
     ai.current_order = Some(OrderKind::Hunt);
-    ai.orders = vec![order(OrderKind::Hunt, 77), order(OrderKind::Build, 78)];
+    ai.orders = vec![
+        order(OrderKind::Hunt, Some(object_id(77))),
+        order(OrderKind::Build, Some(object_id(78))),
+    ];
     assert_eq!(code(&mut t, 250), HeadCode::Deletes);
     let ai = builder(&t).ai.as_ref().unwrap();
-    assert_eq!(ai.orders, vec![order(OrderKind::Build, 78)]);
+    assert_eq!(
+        ai.orders,
+        vec![order(OrderKind::Build, Some(object_id(78)))]
+    );
     assert_eq!(ai.current_order, None);
     assert_eq!((build(&t).state, wood(&t).1), (DONE, 10.0));
     assert!(stands(&t));
     let mut t = drop_world(Position::new(14.0, 10.5, 0.0), lone(AT_HOUSE));
     let ai = own(&mut t, BUILDER).ai.as_mut().unwrap();
-    ai.orders = vec![order(OrderKind::OnTarget, 77)];
+    ai.orders = vec![order(OrderKind::OnTarget, Some(object_id(77)))];
     assert_eq!(code(&mut t, 250), HeadCode::Keeps);
     assert_eq!(builder(&t).ai.as_ref().unwrap().orders.len(), 0);
     assert_eq!(heard(&t), [SEARCH]);
-    assert_eq!((build(&t).state, build(&t).site), (IDLE, 300));
+    assert_eq!(
+        (build(&t).state, build(&t).site),
+        (IDLE, Some(object_id(300)))
+    );
     assert!(stands(&t));
     let mut t = drop_world(
         Position::new(14.0, 10.5, 0.0),
         lone(Position::new(-1.0, -1.0, -1.0)),
     );
     own(&mut t, BUILDER).ai = None;
-    own(&mut t, 300).workers = 1;
+    own(&mut t, object_id(300)).workers = 1;
     let _ = code(&mut t, 250);
     assert_eq!((build(&t).state, wood(&t).2), (HALTED, 0));
     assert!(stands(&t));
@@ -1415,16 +1436,12 @@ fn a_builder_without_a_foundation_after_its_drop_off() {
 #[test]
 fn a_drop_off_whose_site_went_past_state_6_searches_again() {
     let mut t = drop_world(Position::new(2.5, 2.5, 0.0), at_the_mill(MoveTo::Moving));
-    own(&mut t, 300).life.state = 7;
+    own(&mut t, object_id(300)).life.state = 7;
     let _ = code(&mut t, 250);
     let b = build(&t);
     assert_eq!(
-        (
-            b.move_to.map(|m| ObjectId::field(m.target)),
-            b.state,
-            b.site
-        ),
-        (Some(HOUSE), MOVE, -1)
+        (b.move_to.and_then(|m| m.target), b.state, b.site),
+        (Some(HOUSE), MOVE, None)
     );
     let no_site = (
         crate::unit_ai::NO_DROP_SITE,
@@ -1478,13 +1495,19 @@ fn annex(t: &mut World, at: Position) -> i32 {
         object_id(ANNEX),
         placed(at, 1.0, class::BUILDING, ids::HOUSE),
     );
-    t.spatial.set_annex(ANNEX, Some(HOUSE));
+    t.spatial.set_annex(object_id(ANNEX), Some(HOUSE));
     ANNEX
 }
 
 /// How often villager 6 was sent off (notify 0x216).
 fn sent_off(t: &World) -> usize {
-    let ai = t.players[1].objects.by_id(6).unwrap().ai.as_ref().unwrap();
+    let ai = t.players[1]
+        .objects
+        .by_id(object_id(6))
+        .unwrap()
+        .ai
+        .as_ref()
+        .unwrap();
     ai.notifies
         .iter()
         .filter(|n| n.kind == crate::unit_ai::SENT_OFF)
@@ -1504,7 +1527,7 @@ fn a_foundation_a_building_overlaps_halts_the_build() {
     let b = build(&t);
     assert_eq!(
         (b.state, b.target, b.point),
-        (HALTED, -1, Position::from([-1.0; 3]))
+        (HALTED, None, Position::from([-1.0; 3]))
     );
     assert!(stands(&t));
 }
@@ -1526,9 +1549,9 @@ fn an_annex_s_test_sends_its_units_off_or_halts_the_build() {
         let _ = code(&mut t, 20);
         let b = build(&t);
         if blocked {
-            assert_eq!((b.state, b.target, sent_off(&t)), (HALTED, -1, 0));
+            assert_eq!((b.state, b.target, sent_off(&t)), (HALTED, None, 0));
         } else {
-            assert_eq!((b.state, b.target, sent_off(&t)), (WAIT, HOUSE, 1));
+            assert_eq!((b.state, b.target, sent_off(&t)), (WAIT, Some(HOUSE), 1));
             assert_eq!(builder(&t).footprint_waits, 1);
         }
     }
@@ -1542,10 +1565,8 @@ fn an_annex_s_test_sends_its_units_off_or_halts_the_build() {
 fn a_builder_on_an_annex_walks_off_it() {
     let mut t = site_world(class::VILLAGER, Position::new(12.4, 10.5, 0.0), placing());
     t.spatial = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
-    t.spatial.insert(
-        object_id(HOUSE),
-        placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE),
-    );
+    t.spatial
+        .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE));
     let me = Placed {
         obstruction_type: 5,
         ..placed(
@@ -1555,14 +1576,14 @@ fn a_builder_on_an_annex_walks_off_it() {
             ids::VILLAGER_MALE,
         )
     };
-    t.spatial.insert(object_id(BUILDER), me);
+    t.spatial.insert(BUILDER, me);
     sighted(&mut t);
     let a = annex(&mut t, Position::new(12.5, 10.5, 0.0));
     villager(&mut t, Position::new(10.6, 10.6, 0.0));
     let _ = code(&mut t, 20);
     let b = build(&t);
     let walk = b.move_to.unwrap();
-    assert_eq!((b.state, b.target, sent_off(&t)), (CLEAR, HOUSE, 1));
+    assert_eq!((b.state, b.target, sent_off(&t)), (CLEAR, Some(HOUSE), 1));
     let (x, y) = (walk.point.x(), walk.point.y());
     let off = |c: f32, p: f32| 1.0 < (p - c).abs();
     assert!(

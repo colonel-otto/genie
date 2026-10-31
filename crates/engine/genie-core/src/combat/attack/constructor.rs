@@ -27,9 +27,9 @@ impl Attack {
     /// sprites and frames of `arms`, whether the target is its unit's player's (`+0x9f`); a
     /// unit's own Attack (`+0x60` 0), its `MoveTo` not repathing at once (`+0x61` 0) and running
     /// (slot 0x7d0's sprite).
-    pub(crate) fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
+    pub(crate) fn own(target: ObjectId, e: &Engagement, arms: Arms) -> Self {
         Self {
-            target: ObjectId::of_field(target),
+            target: Some(target),
             target2: None,
             state: 0,
             timer: 0.0,
@@ -63,7 +63,7 @@ impl Attack {
     /// (its Attack's `set_state` 6 or 13 at the start), and readyToAttack's failure before the
     /// start's `set_state(4)` (the unit's `+0x7b8` at 1, as [`Attack::command`] leaves it).
     pub fn start(
-        target: i32,
+        target: ObjectId,
         e: &Engagement,
         arms: Arms,
         mover: &mut Mover,
@@ -121,7 +121,7 @@ impl Attack {
         let e = cmd.engagement;
         let t = *world
             .get_known(cmd.target)?
-            .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
+            .ok_or(crate::combat::attack::TARGET_GONE)?;
         let ground = mover.stats.radius.ground();
         let reach_gap =
             crate::movement::gate_gap(world, (e.position, ground), (cmd.target, &t), e.gap, |g| g);

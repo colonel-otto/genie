@@ -156,14 +156,14 @@ impl World {
                 .as_ref()
                 .is_some_and(|ai| ai.current_action == Some(ActionKind::AutoScout));
             let order = QueuedOrder {
-                issuer: p.index() as i32,
+                issuer: Some(crate::unit_ai::Issuer::Player(p)),
                 order: if scouts {
                     OrderKind::Stop
                 } else {
                     OrderKind::AutoScout
                 },
                 priority: 100,
-                target: -1,
+                target: None,
                 target_owner: -1,
                 point: Position::new(-1.0, -1.0, position.z()),
                 range: 1.0,
@@ -299,8 +299,8 @@ impl World {
     /// computer, `FUN_140e6b250`) go on. An id the world does not hold (`FUN_140e6bad0`, live or
     /// sleeping) or none becomes none (the game's −1). Its own player's object stays. Another player's stays when
     /// the two count each other as allies ([`World::mutual_allies`]) and the command ties it to
-    /// the issuer: `flag` 1 names the issuer (`named`), flags 3 to 6 an object of the issuer's
-    /// (`FUN_1415417a0`). Any other stays only with the setting `+0x1074`
+    /// the issuer: `pick`'s player is the issuer (flag 1), or its object (flags 3 to 6) is the
+    /// issuer's (`FUN_1415417a0`). Any other stays only with the setting `+0x1074`
     /// ([`crate::world::settings::Settings::cheats_enabled`]). A human's command whose ids all
     /// went is refused (None). The packet's size tests are the decoder's, and the world's
     /// `+0xb12` is not held.
@@ -312,8 +312,7 @@ impl World {
         &self,
         player: PlayerId,
         ids: &[Option<ObjectId>],
-        flag: u8,
-        named: i32,
+        pick: crate::commands::UnloadPick,
     ) -> Result<Option<Vec<Option<ObjectId>>>, GenieError> {
         let computer = self.players.player(player)?.computer;
         let mut ids: Vec<Option<ObjectId>> = ids
@@ -323,10 +322,19 @@ impl World {
             .collect();
         let tied = |owner: PlayerId| {
             self.mutual_allies(owner, player)
-                && match flag {
-                    1 => usize::try_from(named) == Ok(player.index()),
-                    3..=6 => self.place(named).is_some_and(|p| p.player() == player),
-                    _ => false,
+                && match pick {
+                    crate::commands::UnloadPick::Player(number) => {
+                        usize::try_from(number) == Ok(player.index())
+                    }
+                    crate::commands::UnloadPick::Object(o)
+                    | crate::commands::UnloadPick::SameMaster(o)
+                    | crate::commands::UnloadPick::AllBut(o)
+                    | crate::commands::UnloadPick::OtherMasters(o) => {
+                        self.place(o).is_some_and(|p| p.player() == player)
+                    }
+                    crate::commands::UnloadPick::All(_)
+                    | crate::commands::UnloadPick::Group(_)
+                    | crate::commands::UnloadPick::Other(..) => false,
                 }
         };
         let mut dropped = 0;

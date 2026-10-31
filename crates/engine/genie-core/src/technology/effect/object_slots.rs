@@ -2,6 +2,7 @@
 //! the combat unit's and the building's.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master, Masters, master_type, player_master};
@@ -36,29 +37,27 @@ impl World {
 
     /// The ids player `p`'s tracker files under class `class` (`FUN_14104f8f0`, key class + 900)
     /// and those pending under it (`FUN_14104f9e0`, key class + 90900), each in the tracker's
-    /// order (a queued unit's place holds −1, which no object has).
+    /// order. A queued unit's place holds −1, which no object has: every reader's lookup passes
+    /// it over, so it is left out ([`tracked_ids`]).
     pub(super) fn tracked_class(
         &self,
         p: PlayerId,
         class: ClassId,
-    ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
+    ) -> Result<(Vec<ObjectId>, Vec<ObjectId>), GenieError> {
         let t = &self.players.player(p)?.tracker;
         let key = i32::from(class.get()) + crate::players::tracker::CLASS_KEY;
         Ok((
-            t.list(key).to_vec(),
-            t.list(key + crate::players::tracker::PENDING).to_vec(),
+            tracked_ids(t.list(key)),
+            tracked_ids(t.list(key + crate::players::tracker::PENDING)),
         ))
     }
 
     /// The ids player `p`'s tracker files as done under key master `key` (`FUN_14104f560`'s list
     /// of one key, whatever the objects' masters), in the tracker's order.
-    pub(super) fn tracked_key(&self, p: PlayerId, key: i16) -> Result<Vec<i32>, GenieError> {
-        Ok(self
-            .players
-            .player(p)?
-            .tracker
-            .list(i32::from(key))
-            .to_vec())
+    pub(super) fn tracked_key(&self, p: PlayerId, key: i16) -> Result<Vec<ObjectId>, GenieError> {
+        Ok(tracked_ids(
+            self.players.player(p)?.tracker.list(i32::from(key)),
+        ))
     }
 
     /// The ids player `p`'s tracker files under master `master` (`FUN_14104f960`), of which
@@ -69,20 +68,17 @@ impl World {
         &self,
         p: PlayerId,
         master: &Master,
-    ) -> Result<(Vec<i32>, Vec<i32>), GenieError> {
+    ) -> Result<(Vec<ObjectId>, Vec<ObjectId>), GenieError> {
         let player = self.players.player(p)?;
-        let of_master = |id: &i32| {
+        let of_master = |id: &ObjectId| {
             player
                 .objects
                 .iter()
                 .chain(&player.sleeping)
-                .any(|u| u.id.get() == *id && u.life.master_id == master.id)
+                .any(|u| u.id == *id && u.life.master_id == master.id)
         };
-        let done: Vec<i32> = player
-            .tracker
-            .list(i32::from(master.id.get()))
-            .iter()
-            .copied()
+        let done: Vec<ObjectId> = tracked_ids(player.tracker.list(i32::from(master.id.get())))
+            .into_iter()
             .filter(of_master)
             .collect();
         let mut pending = Vec::new();
@@ -97,13 +93,19 @@ impl World {
                             .is_some_and(|b| b.head_unit == Some(master.id))
                 })
                 .map_or(master.id, |s| s.id);
-            pending = player
-                .tracker
-                .list(i32::from(key.get()) + crate::players::tracker::PENDING)
-                .to_vec();
+            pending = tracked_ids(
+                player
+                    .tracker
+                    .list(i32::from(key.get()) + crate::players::tracker::PENDING),
+            );
         }
         Ok((done, pending))
     }
+}
+
+/// The objects of a tracker's list, its queued units' places (−1) left out.
+fn tracked_ids(list: &[Option<ObjectId>]) -> Vec<ObjectId> {
+    list.iter().copied().flatten().collect()
 }
 
 impl World {
@@ -113,7 +115,7 @@ impl World {
     /// slot, which reads its master's values before the master changes. Returns whether it ran.
     pub(crate) fn change_object(
         &mut self,
-        id: i32,
+        id: ObjectId,
         change: Change,
         v: f32,
         attribute: u8,
@@ -142,7 +144,7 @@ impl World {
     pub(super) fn change_static(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         change: Change,
         v: f32,
@@ -202,7 +204,7 @@ impl World {
     /// The line of sight's change on object `id` (`FUN_141195a50`'s attribute 1): an object on
     /// the map (its tile `+0x2e8`, which one inside another has not) in state 2 lets its circle go
     /// (slot 0x1d8, its master's line of sight) and takes one of `los` (slot 0x1d0).
-    pub(super) fn sight_again(&mut self, id: i32, los: i32) -> Result<(), GenieError> {
+    pub(super) fn sight_again(&mut self, id: ObjectId, los: i32) -> Result<(), GenieError> {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
@@ -228,7 +230,7 @@ impl World {
     pub(super) fn change_combat(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         change: Change,
         v: f32,
@@ -293,7 +295,7 @@ impl World {
     pub(super) fn change_building(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         change: Change,
         v: f32,

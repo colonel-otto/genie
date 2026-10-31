@@ -484,14 +484,14 @@ fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
         ..TransportAction::new(Position::new(28.0, 89.0, 0.0))
     };
     let me = crate::movement::Me {
-        id: 9177,
+        id: object_id(9177),
         group: -1,
         action_state: SAIL,
     };
     let rig = || {
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         assert_eq!(rig.t.graphics.insert(3, graphic), None);
-        rig.mover_mut().in_the_way = vec![77];
+        rig.mover_mut().in_the_way = vec![object_id(77)];
         rig
     };
     let in_the_way = vec![(crate::unit_ai::IN_THE_WAY, [77, -1, -1])];

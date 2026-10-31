@@ -4,6 +4,7 @@ use crate::map::Point;
 use crate::map::{Tile, TileOffset, TileRect};
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
+use crate::test_ids::object_id;
 use crate::vision::registry::UnitUpdate;
 
 fn world(players: PlayerId) -> Visibility {
@@ -48,7 +49,7 @@ fn resources(lists: usize) -> VisibleResources {
 
 fn rec(id: i32, x: f32, y: f32) -> VisibleResource {
     VisibleResource {
-        id,
+        id: object_id(id),
         x,
         y,
         ..VisibleResource::default()
@@ -113,14 +114,14 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     v.registry = Some(Registry::new(3, 65));
     let mut gaia = unit(PlayerId::new(0), 2.0);
     gaia.capture = 1;
-    v.add_seer(7, gaia);
-    v.add_seer(8, unit(PlayerId::new(0), 2.0));
+    v.add_seer(object_id(7), gaia);
+    v.add_seer(object_id(8), unit(PlayerId::new(0), 2.0));
     let i = 10 * 120 + 10;
     v.unified[i] = 0b011;
     let at = Position::new(10.5, 10.5, 0.0);
     assert_eq!(
         v.combat_sight(
-            7,
+            object_id(7),
             PlayerId::new(0),
             at,
             Footprint::new(0.2, 0.2),
@@ -131,7 +132,7 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     );
     assert_eq!(
         v.combat_sight(
-            7,
+            object_id(7),
             PlayerId::new(0),
             at,
             Footprint::new(0.2, 0.2),
@@ -142,7 +143,7 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
     );
     assert_eq!(
         v.combat_sight(
-            8,
+            object_id(8),
             PlayerId::new(0),
             at,
             Footprint::new(0.2, 0.2),
@@ -152,7 +153,7 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
         Ok(None)
     );
     let r = v.registry.as_ref().unwrap();
-    assert_eq!(r.entry(8).map(|e| e.mask), Some(0b011));
+    assert_eq!(r.entry(object_id(8)).map(|e| e.mask), Some(0b011));
     assert_eq!(r.lists[1][6].len(), 2);
 }
 
@@ -162,9 +163,9 @@ fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
 fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
     let mut v = world(PlayerId::new(3));
     let mut r = Registry::new(3, 65);
-    r.entries.entry(7).or_default().mask = 0b11;
+    r.entries.entry(object_id(7)).or_default().mask = 0b11;
     r.update_unit(UnitUpdate {
-        id: 7,
+        id: object_id(7),
         owner: 0,
         position: Point::new(10.5, 10.5),
         radii: Footprint::new(0.2, 0.2),
@@ -174,8 +175,8 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
     })
     .unwrap();
     v.registry = Some(r);
-    v.records_owner(7, PlayerId::new(2)).unwrap();
-    v.records_owner(-5, PlayerId::new(2)).unwrap();
+    v.records_owner(object_id(7), PlayerId::new(2)).unwrap();
+    v.records_owner(object_id(-5), PlayerId::new(2)).unwrap();
     let r = v.registry.as_ref().unwrap();
     assert_eq!([r.lists[0][6][0].owner, r.lists[1][6][0].owner], [2, 2]);
     assert_eq!(r.lists[2][6].len(), 0);
@@ -189,14 +190,14 @@ fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
 fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     let at = Position::new(10.5, 10.5, 0.0);
     let mut v = world(PlayerId::new(3));
-    v.add_seer(7, unit(PlayerId::new(0), 2.0));
+    v.add_seer(object_id(7), unit(PlayerId::new(0), 2.0));
     let _ = v
-        .sight_on(7, at, Footprint::new(0.2, 0.2), false, false)
+        .sight_on(object_id(7), at, Footprint::new(0.2, 0.2), false, false)
         .unwrap();
     let tile = |x: i32, y: i32| (y * 120 + x) as usize;
     assert_eq!(v.maps[0].counts[tile(12, 10)], 1);
     v.owner_changed(
-        7,
+        object_id(7),
         at,
         Footprint::new(0.2, 0.2),
         (PlayerId::new(1), 3.0),
@@ -206,10 +207,10 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     assert_eq!(v.maps[0].counts[tile(12, 10)], 0);
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[1].counts[tile(14, 10)], -1);
-    let s = v.seer(7).copied().unwrap();
+    let s = v.seer(object_id(7)).copied().unwrap();
     assert_eq!((s.player, s.los), (PlayerId::new(1), 3.0));
     v.owner_changed(
-        7,
+        object_id(7),
         at,
         Footprint::new(0.2, 0.2),
         (PlayerId::new(2), 4.0),
@@ -218,7 +219,7 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
     .unwrap();
     assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
     assert_eq!(v.maps[2].counts[tile(10, 10)], -1);
-    let s = v.seer(7).copied().unwrap();
+    let s = v.seer(object_id(7)).copied().unwrap();
     assert_eq!((s.player, s.los), (PlayerId::new(2), 4.0));
 }
 
@@ -228,10 +229,10 @@ fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
 #[test]
 fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
     let mut r = resources(5);
-    r.add(10, 4, 3.5, 7.5);
-    r.add(11, 4, 1.5, 2.5);
+    r.add(object_id(10), 4, 3.5, 7.5);
+    r.add(object_id(11), 4, 1.5, 2.5);
     assert_eq!(r.capacities[4], 2);
-    r.add(12, 4, 0.5, 0.5);
+    r.add(object_id(12), 4, 0.5, 0.5);
     assert_eq!(r.capacities, [2, 2, 2, 2, 4]);
     assert_eq!(
         r.lists[4],
@@ -239,7 +240,7 @@ fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
     );
     assert!(r.lists[..4].iter().all(Vec::is_empty));
     let mut none = VisibleResources::default();
-    none.add(10, 0, 1.0, 1.0);
+    none.add(object_id(10), 0, 1.0, 1.0);
     assert_eq!(none, VisibleResources::default());
 }
 
@@ -249,15 +250,15 @@ fn a_resource_goes_last_in_its_group_s_list_and_a_full_list_doubles() {
 fn a_removed_resource_s_place_takes_the_last_record() {
     let mut r = resources(5);
     for id in [1, 2, 3] {
-        r.add(id, 0, id as f32, 0.0);
+        r.add(object_id(id), 0, id as f32, 0.0);
     }
-    assert_eq!(r.remove(1, 0), 0);
+    assert_eq!(r.remove(object_id(1), 0), 0);
     assert_eq!(r.lists[0], [rec(3, 3.0, 0.0), rec(2, 2.0, 0.0)]);
-    assert_eq!(r.remove(2, 0), 1);
+    assert_eq!(r.remove(object_id(2), 0), 1);
     assert_eq!(r.lists[0], [rec(3, 3.0, 0.0)]);
-    assert_eq!(r.remove(9, 0), -1);
-    assert_eq!(r.remove(9, 1), 0);
-    assert_eq!(VisibleResources::default().remove(3, 0), -1);
+    assert_eq!(r.remove(object_id(9), 0), -1);
+    assert_eq!(r.remove(object_id(9), 1), 0);
+    assert_eq!(VisibleResources::default().remove(object_id(3), 0), -1);
 }
 
 /// `Get_Closest_Resource` (`FUN_141289000`): the group's record nearest the point (squared,
@@ -266,15 +267,21 @@ fn a_removed_resource_s_place_takes_the_last_record() {
 #[test]
 fn the_closest_resource_skips_the_ids_given_and_keeps_its_distance() {
     let mut r = resources(5);
-    r.add(1, 2, 13.0, 10.0);
-    r.add(2, 2, 10.0, 12.0);
-    r.add(3, 2, 7.0, 10.0);
+    r.add(object_id(1), 2, 13.0, 10.0);
+    r.add(object_id(2), 2, 10.0, 12.0);
+    r.add(object_id(3), 2, 7.0, 10.0);
     assert_eq!(r.closest(10.0, 10.0, 2, &[]), Some(1));
     assert_eq!(r.lists[2][1].distance, 2.0);
-    assert_eq!(r.closest(10.0, 10.0, 2, &[2]), Some(0));
+    assert_eq!(r.closest(10.0, 10.0, 2, &[object_id(2)]), Some(0));
     assert_eq!(r.lists[2][0].distance, 3.0);
-    assert_eq!(r.closest(10.0, 10.0, 2, &[2, 1]), Some(2));
-    assert_eq!(r.closest(10.0, 10.0, 2, &[1, 2, 3]), None);
+    assert_eq!(
+        r.closest(10.0, 10.0, 2, &[object_id(2), object_id(1)]),
+        Some(2)
+    );
+    assert_eq!(
+        r.closest(10.0, 10.0, 2, &[object_id(1), object_id(2), object_id(3)]),
+        None
+    );
     assert_eq!(r.closest(10.0, 10.0, 1, &[]), None);
     assert_eq!(r.closest(10.0, 10.0, 5, &[]), None);
     assert_eq!(r.closest(10.0, 10.0, -1, &[]), None);
@@ -321,10 +328,10 @@ fn a_resource_leaves_the_lists_of_the_players_that_explored_its_tile() {
     let mut v = world(PlayerId::new(3));
     v.resources = vec![resources(5), resources(5), resources(5)];
     for r in &mut v.resources {
-        r.add(7, 1, 20.5, 30.5);
+        r.add(object_id(7), 1, 20.5, 30.5);
     }
     let _ = v.explore(PlayerId::new(2), 20, 30, 0, false).unwrap();
-    v.forget_resource(7, Position::new(20.5, 30.5, 0.0), 1)
+    v.forget_resource(object_id(7), Position::new(20.5, 30.5, 0.0), 1)
         .unwrap();
     assert_eq!(v.resources[2].lists[1], []);
     assert_eq!(v.resources[0].lists[1], [rec(7, 20.5, 30.5)]);
@@ -357,14 +364,14 @@ fn a_sight_counts_its_circle_explored_then_visible_and_leaves_it_explored() {
 #[test]
 fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies() {
     let mut v = world(PlayerId::new(3));
-    v.add_seer(7, unit(PlayerId::new(1), 2.0));
+    v.add_seer(object_id(7), unit(PlayerId::new(1), 2.0));
     let r = Footprint::new(0.5, 0.5);
     let _ = v
-        .sight_on(7, Position::new(5.5, 5.5, 0.0), r, false, false)
+        .sight_on(object_id(7), Position::new(5.5, 5.5, 0.0), r, false, false)
         .unwrap();
     let before = v.maps[1].counts.clone();
     v.moved(
-        7,
+        object_id(7),
         Position::new(5.5, 5.5, 0.0),
         Position::new(5.9, 5.2, 0.0),
         r,
@@ -372,7 +379,7 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
     .unwrap();
     assert_eq!(v.maps[1].counts, before, "the same tile");
     v.moved(
-        7,
+        object_id(7),
         Position::new(5.9, 5.2, 0.0),
         Position::new(6.1, 5.2, 0.0),
         r,
@@ -380,7 +387,7 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
     .unwrap();
     assert_eq!(v.maps[1].counts[v.index(8, 5)], 1);
     assert_eq!(v.maps[1].counts[v.index(3, 5)], 0);
-    v.state_changed(7, Position::new(6.1, 5.2, 0.0), r, 3)
+    v.state_changed(object_id(7), Position::new(6.1, 5.2, 0.0), r, 3)
         .unwrap();
     let seen: Vec<_> = (0..120 * 120)
         .filter(|&i| 0 < v.maps[1].counts[i])
@@ -389,7 +396,7 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
         seen,
         vec![v.index(5, 4), v.index(6, 4), v.index(5, 5), v.index(6, 5)]
     );
-    v.state_changed(7, Position::new(6.1, 5.2, 0.0), r, 7)
+    v.state_changed(object_id(7), Position::new(6.1, 5.2, 0.0), r, 7)
         .unwrap();
     assert!(v.maps[1].counts.iter().all(|&c| c <= 0));
 }
@@ -525,21 +532,26 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
         building: Some(BuildingSight::default()),
         ..unit(PlayerId::new(2), 2.0)
     };
-    v.add_seer(9, site);
+    v.add_seer(object_id(9), site);
     let (at, r) = (Position::new(10.0, 10.0, 0.0), Footprint::new(1.0, 1.0));
     assert_eq!(
-        v.sight_on(9, at, r, false, false).unwrap(),
+        v.sight_on(object_id(9), at, r, false, false).unwrap(),
         0,
         "not started"
     );
-    v.sight_off(9, at, r, true, false).unwrap();
+    v.sight_off(object_id(9), at, r, true, false).unwrap();
     assert!(v.maps[2].counts.iter().all(|&c| c == -1));
-    v.construction_started(9, at, r).unwrap();
+    v.construction_started(object_id(9), at, r).unwrap();
     let seen = |v: &Visibility| (0..120 * 120).filter(|&i| 0 < v.maps[2].counts[i]).count();
     assert_eq!(seen(&v), 4);
-    v.seer_mut(9).unwrap().building.as_mut().unwrap().built = true;
-    v.sight_off(9, at, r, true, false).unwrap();
-    let _ = v.sight_on(9, at, r, false, false).unwrap();
+    v.seer_mut(object_id(9))
+        .unwrap()
+        .building
+        .as_mut()
+        .unwrap()
+        .built = true;
+    v.sight_off(object_id(9), at, r, true, false).unwrap();
+    let _ = v.sight_on(object_id(9), at, r, false, false).unwrap();
     // the table of a tile corner: at LOS 2 a 4 by 4 square around the corner
     assert_eq!(seen(&v), 16);
     assert_eq!(v.maps[2].counts[v.index(8, 9)], 1);

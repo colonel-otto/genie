@@ -12,6 +12,7 @@ use crate::movement::{
     TILE_PATHER, TileAsk, far_waypoint, footprint_gap, ground, ground_line, point_or_zero,
     short_range, too_short,
 };
+use crate::objects::ObjectId;
 use crate::pathing::tile_path::Path;
 
 /// The new level and its path, and what the request's planners found: a path (`local_19d0`),
@@ -47,14 +48,14 @@ impl NewPath {
 /// radius, the level's number, range and target, and whether the unit is a trade cart.
 pub(super) struct Way<'a> {
     pub(super) goal: Goal<'a>,
-    pub(super) include: &'a [i32],
+    pub(super) include: &'a [ObjectId],
     pub(super) position: BVector,
     pub(super) waypoint: BVector,
     pub(super) distance: f32,
     pub(super) radius: f32,
     pub(super) level: u8,
     pub(super) range: f32,
-    pub(super) target_id: i32,
+    pub(super) target_id: Option<ObjectId>,
     pub(super) trade_cart: bool,
 }
 
@@ -163,17 +164,17 @@ impl Mover {
         w: &Way<'_>,
         np: &mut NewPath,
     ) -> Result<(), GenieError> {
-        let target_moves = w.goal.target.is_some_and(|t| 0.0 < t.speed);
+        let target_moves = w.goal.target.is_some_and(|(_, t)| 0.0 < t.speed);
         let target_radius = w
             .goal
             .target
             .filter(|_| !target_moves)
-            .map_or(0.0, |t| t.radius.x());
+            .map_or(0.0, |(_, t)| t.radius.x());
         let ask = TileAsk {
             goal: w.waypoint,
             radii: target_radius + w.radius,
             range: w.range,
-            target: w.goal.target,
+            target: w.goal.target.map(|(_, t)| t),
         };
         let r = self
             .tile_plan(me, world, plan, ask, &mut np.path)?
@@ -211,7 +212,7 @@ impl Mover {
         np: &mut NewPath,
     ) -> Result<u8, GenieError> {
         let line = ground_line(self.moved_at, w.waypoint);
-        let ignore = self.ignore_list(me, world, plan, w.goal.target, w.target_id, line)?;
+        let ignore = self.ignore_list(me, world, plan, w.goal.target, line)?;
         let ask = ShortAsk {
             goal: w.waypoint,
             range: short_range(near, w.range),
@@ -349,7 +350,7 @@ impl Mover {
         let ground_radius = self.stats.radius.ground();
         let far = far_waypoint(
             w.distance,
-            w.goal.target.map(|t| {
+            w.goal.target.map(|(_, t)| {
                 let gap = footprint_gap(self.position(), ground_radius, t.position, t.radius);
                 (gap, t.master)
             }),
@@ -358,7 +359,7 @@ impl Mover {
             return Ok(None);
         }
         np.planned = false;
-        let target = w.goal.target.map(|t| (w.target_id, t));
+        let target = w.goal.target;
         let ask = LongAsk {
             waypoint: w.waypoint,
             way: w.distance,
@@ -391,14 +392,14 @@ impl Mover {
         let target_radius = w
             .goal
             .target
-            .filter(|t| t.speed <= 0.0)
-            .map_or(0.0, |t| t.radius.x());
+            .filter(|(_, t)| t.speed <= 0.0)
+            .map_or(0.0, |(_, t)| t.radius.x());
         let mut other = Path::default();
         let ask = TileAsk {
             goal: w.waypoint,
             radii: target_radius + w.radius,
             range: w.range,
-            target: w.goal.target,
+            target: w.goal.target.map(|(_, t)| t),
         };
         let Some(r) = self.tile_plan(me, world, plan, ask, &mut other)? else {
             return Ok(());

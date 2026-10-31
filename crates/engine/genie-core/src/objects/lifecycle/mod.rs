@@ -9,6 +9,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use genie_diff::Diff;
 
@@ -63,7 +64,7 @@ pub struct Lifecycle {
     /// draws the facet from the Object stream.
     pub death_facets: Option<i16>,
     /// `+0x2f0`: the object it is inside (its `inside_obj`), whose update decides for it.
-    pub inside: Option<i32>,
+    pub inside: Option<ObjectId>,
     /// `+0x643`: the next update moves the object to the sleeping list.
     pub goto_sleep: bool,
     /// The master's id.
@@ -211,6 +212,7 @@ impl Lifecycle {
 mod tests {
     use super::*;
     use crate::test_ids::master_id;
+    use crate::test_ids::object_id;
 
     /// The states after each update until the object leaves, and the update (1-based) it leaves in.
     fn run(mut life: Lifecycle, dt: u32, limit: usize) -> (Vec<u8>, Option<usize>) {
@@ -343,7 +345,7 @@ mod tests {
     fn the_paths_not_modelled_are_unsupported() {
         let cases = [
             Lifecycle {
-                inside: Some(1),
+                inside: Some(object_id(1)),
                 ..dead(Class::Static)
             },
             Lifecycle {

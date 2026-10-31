@@ -3,8 +3,10 @@
 
 use crate::GenieError;
 use crate::map::Rect;
+use crate::map::spatial::RecordId;
 use crate::map::spatial::{Placed, tile_record_id};
 use crate::math::fmath::at_most_or_unordered;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::pathing::hull_path::{HALF, Hull, HullPather, Point, Shape};
 use crate::world::slots::CheckedIndex;
@@ -141,7 +143,8 @@ impl HullPather<'_> {
                 continue;
             }
             // slot 0x5c8 is asked only of an object not ignored
-            let left_out = self.ignore.contains(&id) || world.gait(id).is_some_and(|g| g.moving);
+            let left_out = self.ignore.contains(&RecordId::from(id))
+                || world.gait(id).is_some_and(|g| g.moving);
             if left_out && !self.include.contains(&id) {
                 continue;
             }
@@ -154,7 +157,7 @@ impl HullPather<'_> {
     /// (`FUN_1411d4a30`) answers yes, one of the gates the caller gave
     /// ([`HullPather::with_gates`]), and never for player -1 (`processCliffs`'): its ally test
     /// `FUN_141663dc0` takes no number at or above the player count, unsigned.
-    pub(super) fn passes(&self, id: i32, p: &Placed, player: i32) -> Result<bool, GenieError> {
+    pub(super) fn passes(&self, id: ObjectId, p: &Placed, player: i32) -> Result<bool, GenieError> {
         if p.class != class::GATE || player < 0 {
             return Ok(false);
         }
@@ -168,7 +171,7 @@ impl HullPather<'_> {
     pub(super) fn add_box(
         hulls: &mut Vec<Hull>,
         r: f32,
-        id: i32,
+        id: ObjectId,
         p: &Placed,
         hull: Option<usize>,
     ) -> Result<(), GenieError> {
@@ -181,6 +184,7 @@ impl HullPather<'_> {
             _ => Self::add_shape_to(hulls, bounds.corner0(), bounds.corner1())?,
         };
         let objects = &mut hulls.checked_mut(h)?.objects;
+        let id = RecordId::from(id);
         if !objects.iter().any(|o| o.id == id) {
             objects.push(Shape { bounds, id });
         }

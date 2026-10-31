@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -59,7 +60,7 @@ fn game() -> World {
         ai: Some(UnitAi {
             current_order: None,
             current_action: Some(ActionKind::Make),
-            current_target: -1,
+            current_target: None,
             ..UnitAi::default()
         }),
         production: Some(Production {
@@ -174,7 +175,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         kind4: -1,
     };
     let bush = crate::gathering::gather::Resource {
-        id: -1,
+        id: ObjectId::NOBODY,
         position: Position::new(3.5, 3.5, 0.0),
         class: class::CLASS_7,
         master: master_id(59),
@@ -208,8 +209,8 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let build = add(Unit {
         id: object_id(31),
         actions: ActionList::default().with_build(Some(
-            crate::construction::build::tests::started(
-                -1,
+            crate::construction::build::tests::started_on(
+                None,
                 Position::new(3.5, 3.5, 0.0),
                 1.0,
                 build_task,
@@ -228,7 +229,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         actions: ActionList::default().with_repair(Some(
             crate::construction::repair::RepairAction::start(
                 crate::movement::move_to::WalkTo {
-                    id: -1,
+                    id: None,
                     at: Position::new(3.5, 3.5, 0.0),
                     gap: crate::movement::move_to::NO_TARGET_GAP,
                     state: None,
@@ -317,7 +318,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
         ai: Some(UnitAi {
             current_order: Some(OrderKind::Hunt),
             current_action: Some(ActionKind::Hunt),
-            current_target: -1,
+            current_target: None,
             ..UnitAi::default()
         }),
         actions: ActionList::default().with_hunt(Some(HuntAction {
@@ -336,7 +337,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             },
             attack: None,
             move_to: None,
-            drop_site: -1,
+            drop_site: None,
             carry_to: None,
             timer: 0.0,
             lead: Lead {
@@ -351,7 +352,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     let mut hunter = hunter;
     // game()'s villager master
     hunter.life.master_id = ids::TOWN_CENTRE;
-    hunter.my_pasture = -1;
+    hunter.my_pasture = None;
     t.players[1].objects.push(hunter);
     let idx = t.players[1].objects.len() - 1;
     let mut without_ai = t.clone();

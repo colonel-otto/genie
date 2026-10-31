@@ -10,17 +10,18 @@ use crate::math::fmath::BVector;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
+use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::unit_ai::Search;
 use genie_diff::Diff;
 
-/// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
+/// What a [`Search`] answers: the object picked, if any, and whether the lists it read hold
 /// enemies (the fifth relation list), which sets the alert mode when its query ran (`fresh`; a
 /// search that read the last answer leaves the alert mode as it is).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Found {
-    /// The object picked, −1 for none.
-    pub id: i32,
+    /// The object picked.
+    pub id: Option<ObjectId>,
     /// The lists read hold enemies.
     pub enemies: bool,
     /// The object's place (x, y, z), for the caller's use.
@@ -36,13 +37,13 @@ pub struct Found {
     pub distance: i32,
     /// The retarget entries `bestUnitToAttack`'s failed paths add (`FUN_140c42320`: a target and
     /// the world time until which it is ignored; at most three), the unit AI's.
-    pub retries: [Option<(i32, u32)>; 3],
+    pub retries: [Option<(ObjectId, u32)>; 3],
 }
 
 impl Found {
     /// Nothing found, no enemies.
     pub const NONE: Self = Self {
-        id: -1,
+        id: None,
         enemies: false,
         position: None,
         fresh: true,
@@ -64,8 +65,8 @@ impl Found {
 pub fn flood_search(
     at: Tile,
     r: i32,
-    mut test: impl FnMut(i32, i32) -> Result<Option<i32>, GenieError>,
-) -> Result<Option<i32>, GenieError> {
+    mut test: impl FnMut(i32, i32) -> Result<Option<ObjectId>, GenieError>,
+) -> Result<Option<ObjectId>, GenieError> {
     let (ux, uy) = (at.x(), at.y());
     let mut reached = std::collections::HashSet::from([at]);
     if let Some(id) = test(ux, uy)? {
@@ -181,7 +182,7 @@ pub struct Surroundings {
     /// The unit's `+0x685`, `underAttackValue`.
     pub under_attack: bool,
     /// The unit's id (`+8`), which its attackers' unit AIs must target to stay attackers.
-    pub id: i32,
+    pub id: ObjectId,
     /// The unit's slot 0x1f8 (`FUN_14106a6c0`): its animation speed (`+0x7b8`); None while the
     /// slice does not know it.
     pub anim_speed: Option<f32>,
@@ -235,7 +236,7 @@ pub struct Surroundings {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TopTarget {
     /// `+8`.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its type (`+0xf`).
     pub kind: MasterKind,
     /// Its place.
@@ -250,7 +251,7 @@ pub struct TopTarget {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct LiveTop {
     /// `+8`.
-    pub(super) id: i32,
+    pub(super) id: ObjectId,
     /// Its type (`+0xf`).
     pub(super) kind: MasterKind,
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
@@ -282,7 +283,8 @@ pub struct GroupState {
 impl Surroundings {
     /// The object `id` among [`Surroundings::units`].
     #[must_use]
-    pub fn unit(&self, id: i32) -> Option<&UnitSeen> {
+    pub fn unit(&self, id: impl ObjectKey) -> Option<&UnitSeen> {
+        let id = id.key()?;
         self.units.iter().find(|u| u.id == id)
     }
 }
@@ -291,7 +293,7 @@ impl Surroundings {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct UnitSeen {
     /// `+8`.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master's class.
     pub class: ClassId,
     /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
@@ -300,8 +302,8 @@ pub struct UnitSeen {
     pub combat_level: u8,
     /// `+0x640`.
     pub state: u8,
-    /// Its unit AI's current target (`+0x48`); None without a unit AI.
-    pub target: Option<i32>,
+    /// Its unit AI's current target (`+0x48`); None without a unit AI or a target.
+    pub target: Option<ObjectId>,
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
     pub gap_squared: f32,
     /// Its place.
@@ -313,7 +315,7 @@ pub struct UnitSeen {
     /// Its type (`+0xf`).
     pub kind: MasterKind,
     /// An annex's main building (`+0xbb8`).
-    pub main: Option<i32>,
+    pub main: Option<ObjectId>,
     /// The unit's owner counts its owner as its own or an ally (`FUN_141663d90` with the ally
     /// flag, [`crate::unit_ai::task_finder::allied`]).
     pub allied: bool,

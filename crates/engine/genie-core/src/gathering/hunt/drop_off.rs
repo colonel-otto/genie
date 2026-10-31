@@ -59,7 +59,7 @@ impl HuntAction {
         }
         let range = self.task.range;
         let to = WalkTo {
-            id: ObjectId::field(self.carry_to),
+            id: self.carry_to,
             at: site,
             gap,
             state: None,
@@ -149,17 +149,17 @@ impl HuntAction {
 
     /// Slot 0x68 with none (`FUN_140ac7980`, [`HuntAction::set_target`]): the target goes; the
     /// old target, which the caller releases (slot 0x180).
-    pub const fn let_go(&mut self) -> i32 {
+    pub const fn let_go(&mut self) -> Option<ObjectId> {
         let target = self.target;
-        self.set_target(-1);
-        ObjectId::field(target)
+        self.set_target(None);
+        target
     }
 
     /// Slot 0x68 (`FUN_140ac7980`): the base's change of target (`FUN_140a7a230`, whose release
     /// and take are the caller's), then the lead clears ([`Lead::NEW`]: `moved_sheep` and
     /// `sheep_still_time` 0, the start −1).
-    pub const fn set_target(&mut self, target: i32) {
-        self.target = ObjectId::of_field(target);
+    pub const fn set_target(&mut self, target: Option<ObjectId>) {
+        self.target = target;
         self.lead = Lead::NEW;
     }
 

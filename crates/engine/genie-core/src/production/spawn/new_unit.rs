@@ -6,7 +6,6 @@ use crate::map::Position;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -79,7 +78,7 @@ impl World {
         let toward = match (gather, queue.first()) {
             (None, Some(first)) => Some(first.point.ground()),
             _ => gather
-                .filter(|g| g.target != building.id.get())
+                .filter(|g| g.target != Some(building.id))
                 .map(|g| g.point.ground()),
         };
         if made.moving.is_none() {
@@ -99,7 +98,7 @@ impl World {
         if let Some(ai) = owner.objects[i].ai.as_mut() {
             ai.post(
                 Notify::own(
-                    building_id.get(),
+                    building_id,
                     ACTION_COMPLETED,
                     [ActionKind::Make.value(), 0, 0],
                 ),
@@ -112,7 +111,7 @@ impl World {
             self.hand_queue(p, new, &queue, position.z())?;
         } else if let Some(gather) = gather.filter(|g| g.state == 1) {
             // only a state of 1 sends it (`FUN_140ace9c0`'s `+0xc30 != 1` return)
-            self.gather(p, new, gather, building_id.get(), true, true)?;
+            self.gather(p, new, gather, building_id, true, true)?;
         }
         // FUN_140ace760: the new unit's tasks that spawn more (action type 0x9c)
         let now = self.players.live(p, new)?.life.master_id;
@@ -147,7 +146,9 @@ impl World {
         const RELIC_TYPE: i32 = 0x2a;
         let master = self.players.live(p, new)?.life.master_id;
         for o in queue {
-            let target = (o.target != -1)
+            let target = o
+                .target
+                .is_some()
                 .then(|| self.object(o.target))
                 .flatten()
                 .map(|(tp, t)| (tp, t.life.master_id));
@@ -161,7 +162,7 @@ impl World {
                     && COMBAT <= t_master.kind
                     && t_master.garrison != 0
                     // a queued order's target −1 is a point: it takes nothing in
-                    && ObjectId::of_field(o.target)
+                    && o.target
                         .map_or(Ok(false), |t| self.takes_in(t, p, Some(master)))?
                 {
                     return Err(GenieError::unsupported(
@@ -321,11 +322,11 @@ impl World {
             }),
         };
         self.spatial.insert(id, placed);
-        self.pathing.moved(id.get(), &placed, false);
+        self.pathing.moved(id, &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
         if let Some(v) = self.spatial.sight.as_mut() {
             v.add_seer(
-                id.get(),
+                id,
                 Seer {
                     player: p,
                     master,
@@ -338,7 +339,7 @@ impl World {
                     kind: made.kind,
                 },
             );
-            let _ = v.sight_on(id.get(), position, made.radius, false, false)?;
+            let _ = v.sight_on(id, position, made.radius, false, false)?;
         }
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
@@ -391,8 +392,8 @@ impl World {
                 Some(facets),
             )),
             attackable: true,
-            pasture: -1,
-            my_pasture: -1,
+            pasture: None,
+            my_pasture: None,
             combat: true,
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
             firepower: made.volley_fire,
@@ -405,7 +406,7 @@ impl World {
         });
         let idx = owner.objects.len() - 1;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
-        self.track_add(p, id.get(), master)?;
+        self.track_add(p, id, master)?;
         Ok(idx)
     }
 }

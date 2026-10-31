@@ -2,6 +2,7 @@
 //! terrain and the tile pathfinder's planner.
 
 use genie_core::map::GridSize;
+use genie_core::objects::ObjectId;
 
 use crate::masters::TerrainTable;
 use crate::{Error, live, spatial};
@@ -74,12 +75,15 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
 
 /// The owner of each shape in a mesh dump (its `owner ID SHAPE` lines): the objects' `+0x64c`.
 #[must_use]
-pub fn mesh_owners_from_dump(text: &str) -> Vec<(i32, u32)> {
+pub fn mesh_owners_from_dump(text: &str) -> Vec<(ObjectId, u32)> {
     text.lines()
         .filter_map(|line| {
             let mut w = line.split_whitespace();
             (w.next()? == "owner").then_some(())?;
-            Some((w.next()?.parse().ok()?, w.next()?.parse().ok()?))
+            Some((
+                ObjectId::of_field(w.next()?.parse().ok()?)?,
+                w.next()?.parse().ok()?,
+            ))
         })
         .collect()
 }

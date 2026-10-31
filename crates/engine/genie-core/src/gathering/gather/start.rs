@@ -84,7 +84,7 @@ impl StopRate {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MoveTarget {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its owner.
     pub player: PlayerId,
     /// The gatherer's master drops its loads there (its main building's master for an annex,
@@ -165,7 +165,7 @@ impl GatherAction {
                 (1, 0.0)
             };
         Ok(Self {
-            target: ObjectId::of_field(target.id),
+            target: Some(target.id),
             carry_to: None,
             state: 0,
             point: target.position,
@@ -240,7 +240,7 @@ impl GatherAction {
         if target.player == player && target.drop_site && 0.0 < held.1 {
             self.target = None;
             self.point = Position::from([-1.0; 3]);
-            self.carry_to = ObjectId::of_field(target.id);
+            self.carry_to = Some(target.id);
             return self.set_drop(target.position, target.gap, mover, &walks);
         }
         self.set_walk(target.walk_to(), target.radius, mover, rng, &walks)
@@ -281,7 +281,7 @@ impl GatherAction {
         } = retarget;
         let held = walks.held.1;
         self.worked = false;
-        if target.id == ObjectId::field(self.target) {
+        if Some(target.id) == self.target {
             match self.state {
                 FACE | WORK | 15 => return Ok(true),
                 WALK | 11 if computer => return Ok(true),
@@ -292,13 +292,13 @@ impl GatherAction {
             self.timer = 0.0;
             self.target = None;
             self.point = Position::from([-1.0; 3]);
-            self.carry_to = ObjectId::of_field(target.id);
+            self.carry_to = Some(target.id);
             self.set_drop(target.position, target.gap, mover, &walks)?;
             return Ok(true);
         }
         // slot 0x68 takes the target: its workers count it once it is new
-        let workers = target.workers + i32::from(target.id != ObjectId::field(self.target));
-        self.target = ObjectId::of_field(target.id);
+        let workers = target.workers + i32::from(Some(target.id) != self.target);
+        self.target = Some(target.id);
         self.point = target.position;
         self.target_type = i32::from(target.class.get());
         if farm_stops {
@@ -397,7 +397,7 @@ impl GatherAction {
             ));
         }
         let to = WalkTo {
-            id: ObjectId::field(self.carry_to),
+            id: self.carry_to,
             at: site,
             gap,
             state: None,
@@ -427,11 +427,11 @@ impl GatherAction {
     ) -> Result<(), GenieError> {
         let held = walks.held.1;
         match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
-            Some(t) if t.id == ObjectId::field(self.carry_to) && self.state == DROP => Ok(()),
+            Some(t) if Some(t.id) == self.carry_to && self.state == DROP => Ok(()),
             Some(t) => {
                 self.target = None;
                 self.point = Position::from([-1.0; 3]);
-                self.carry_to = ObjectId::of_field(t.id);
+                self.carry_to = Some(t.id);
                 self.set_drop(t.position, t.gap, mover, walks)
             }
             None => {

@@ -1,7 +1,7 @@
 //! UNLOAD and `GO_BACK_TO_WORK`: the units inside a building or a transport come out.
 
 use crate::GenieError;
-use crate::commands::unload::UnloadCommand;
+use crate::commands::unload::{UnloadCommand, UnloadPick};
 use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::map::Footprint;
 use crate::map::Point;
@@ -52,12 +52,11 @@ impl World {
         let UnloadCommand {
             player,
             point,
-            flag,
-            unit_type,
+            pick,
             sound,
             ..
         } = *u;
-        let Some(checked) = self.unload_check(player, ids, flag, unit_type)? else {
+        let Some(checked) = self.unload_check(player, ids, pick)? else {
             return Ok(());
         };
         // the drop locations' last place across the command's units (FUN_14161f410's locals)
@@ -87,7 +86,7 @@ impl World {
             if let Some((c, kind)) = container
                 && BUILDING <= kind
             {
-                self.leave_building(c, id.raw(), point)?;
+                self.leave_building(c, id, point)?;
                 continue;
             }
             let unit = &self.players.player(player)?.objects[idx];
@@ -96,8 +95,8 @@ impl World {
                 let transport = container
                     .filter(|&(_, kind)| COMBAT <= kind)
                     .map(|(c, _)| c);
-                if flag == 3 || transport.is_some() {
-                    self.drop_out(player, idx, transport, unit_type, &mut last)?;
+                if matches!(pick, UnloadPick::Object(_)) || transport.is_some() {
+                    self.drop_out(player, idx, transport, pick.object(), &mut last)?;
                 } else if master.class == class::SIEGE {
                     return Err(SIEGE_UNLOAD);
                 } else {
@@ -105,7 +104,7 @@ impl World {
                 }
                 continue;
             }
-            self.unload_building(player, idx, point, (flag, unit_type), sound)?;
+            self.unload_building(player, idx, point, pick, sound)?;
         }
         Ok(())
     }
@@ -119,8 +118,8 @@ impl World {
     /// A building outside the live lists, and what [`World::let_out`] does not model.
     pub(super) fn leave_building(
         &mut self,
-        c: i32,
-        id: i32,
+        c: ObjectId,
+        id: ObjectId,
         point: Point,
     ) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(cp, ci)) = self.place(c) else {
@@ -144,7 +143,7 @@ impl World {
     }
 
     /// [`World::unload`] of player `player`'s building `idx`: the units inside it come out from
-    /// the last to come in, those `flag` and `unit_type` pick ([`unload_picks`]), each through
+    /// the last to come in, those `pick` names ([`unload_picks`]), each through
     /// [`World::let_out`] toward `point` (with `sound`), its order queue emptied
     /// (`FUN_140c5e010`) and, a unit (type 70), no longer under the town bell (`+0x9dc`).
     ///
@@ -157,7 +156,7 @@ impl World {
         player: PlayerId,
         idx: usize,
         point: Point,
-        (flag, unit_type): (u8, i32),
+        pick: UnloadPick,
         sound: bool,
     ) -> Result<(), GenieError> {
         let unit = &self.players.player(player)?.objects[idx];
@@ -180,7 +179,7 @@ impl World {
             let Some((up, u)) = self.object(inside) else {
                 continue;
             };
-            if !self.unload_picks(up, u, flag, unit_type)? {
+            if !self.unload_picks(up, u, pick)? {
                 continue;
             }
             let _ = self.let_out(player, idx, inside, point, (None, sound))?;
@@ -214,17 +213,18 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        transport: Option<i32>,
-        named: i32,
+        transport: Option<ObjectId>,
+        named: Option<ObjectId>,
         last: &mut Option<Point>,
     ) -> Result<(), GenieError> {
         let own = self.players.player(player)?.objects[idx].id;
-        let (inner, holder) = match transport {
-            Some(t) => (own.get(), t),
-            None => match self.object(named) {
-                Some((_, o)) if o.life.inside == Some(own.get()) => (named, own.get()),
+        let (inner, holder) = match (transport, named) {
+            (Some(t), _) => (own, t),
+            (None, Some(named)) => match self.object(named) {
+                Some((_, o)) if o.life.inside == Some(own) => (named, own),
                 _ => return Ok(()),
             },
+            (None, None) => return Ok(()),
         };
         let (ip, unit) = self.object(inner).ok_or_else(|| object_gone(inner))?;
         if unit.life.state != 2 {
@@ -251,7 +251,7 @@ impl World {
         let inner_id = unit.id;
         unit.body
             .base_mut()
-            .inside_at(inner_id.get(), at, &mut self.spatial);
+            .inside_at(inner_id, at, &mut self.spatial);
         self.leave_container((hp, hi), (up.index(), ui), &made, spot.with_height(at.z()))?;
         let unit = &mut self.players.player_mut(up)?.objects[ui];
         let place = (unit.position().ground(), Some(made.class));
@@ -298,10 +298,10 @@ impl World {
             point
         };
         let order = crate::unit_ai::QueuedOrder {
-            issuer: player.index() as i32,
+            issuer: Some(crate::unit_ai::Issuer::Player(player)),
             order: OrderKind::Unload,
             priority: 100,
-            target: id.get(),
+            target: Some(id),
             target_owner: player.index() as i32,
             point: to.with_height(0.0),
             range: UNLOAD_RANGE,
@@ -374,7 +374,7 @@ impl World {
     pub(crate) fn back_to_work(
         &mut self,
         from: Option<(PlayerId, usize)>,
-        id: i32,
+        id: ObjectId,
     ) -> Result<bool, GenieError> {
         use crate::orders::town_bell::RecordTarget;
         let (up, ui) = match from {
@@ -387,7 +387,7 @@ impl World {
             },
         };
         let mut bell = self.players.player(up)?.objects[ui].town_bell;
-        let lookup = |t: i32| -> Result<Option<RecordTarget>, GenieError> {
+        let lookup = |t: ObjectId| -> Result<Option<RecordTarget>, GenieError> {
             let Some((op, o)) = self.object(t) else {
                 return Ok(None);
             };
@@ -413,7 +413,7 @@ impl World {
                 [
                     ActionKind::field(record.action),
                     record.target_type,
-                    record.target,
+                    ObjectId::field(record.target),
                 ],
             )?;
         }
@@ -427,46 +427,43 @@ impl World {
         Ok(out)
     }
 
-    /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` (`param`) pick `unit` of player
-    /// `player`, by its master's class and id: flag 0 every unit but class 42; 1 the units of
-    /// player `param`; 2 a group of classes ([`unload_group_takes`]); 3 the object `param`; with
-    /// the object `param` of the world (`FUN_1415417a0`; the unit's player's or none), 4 the units
-    /// of its master (a villager: any villager for a villager), 5 every unit but it and class 42,
-    /// 6 the units not of its master (no villager for a villager, never class 42). Other flags
-    /// pick none.
+    /// `FUN_14118a610`: whether UNLOAD's `pick` takes `unit` of player `player`, by its
+    /// master's class and id ([`UnloadPick`]); with the object of flags 4 to 6 of the world
+    /// (`FUN_1415417a0`; the unit's player's or none), 4 the units of its master (a villager:
+    /// any villager for a villager), 5 every unit but it and class 42, 6 the units not of its
+    /// master (no villager for a villager, never class 42).
     pub(super) fn unload_picks(
         &self,
         player: PlayerId,
         unit: &crate::objects::unit::Unit,
-        flag: u8,
-        param: i32,
+        pick: UnloadPick,
     ) -> Result<bool, GenieError> {
         let id = unit.id;
         let master = unit.master(&self.masters, player)?;
         let class = master.class;
-        // the object `param` names, for flags 4 to 6: its master, and whether it is the unit's
-        // player's (or the world does not hold it)
-        let named = if matches!(flag, 4..=6) {
-            self.object(param)
+        // the object flags 4 to 6 name: its master, and whether it is the unit's player's (or
+        // the world does not hold it)
+        let named = match pick {
+            UnloadPick::SameMaster(o) | UnloadPick::AllBut(o) | UnloadPick::OtherMasters(o) => self
+                .object(o)
                 .map(|(p, o)| o.master(&self.masters, p).map(|m| (p, m)))
-                .transpose()?
-        } else {
-            None
+                .transpose()?,
+            _ => None,
         };
         let same_player = named.is_none_or(|(p, _)| p == player);
         let named = named.map(|(_, m)| m);
-        Ok(match flag {
-            0 => class != WHOLE_SHARE_CLASS,
-            1 => player.index() as i32 == param,
-            2 => unload_group_takes(param, class),
-            3 => id.get() == param,
-            4 => match named.filter(|_| same_player) {
+        Ok(match pick {
+            UnloadPick::All(_) => class != WHOLE_SHARE_CLASS,
+            UnloadPick::Player(number) => player.index() as i32 == number,
+            UnloadPick::Group(group) => unload_group_takes(group, class),
+            UnloadPick::Object(o) => Some(id) == o,
+            UnloadPick::SameMaster(_) => match named.filter(|_| same_player) {
                 Some(m) if m.id == master.id => true,
                 Some(m) => class == class::VILLAGER && m.class == class::VILLAGER,
                 None => false,
             },
-            5 => same_player && id.get() != param && class != WHOLE_SHARE_CLASS,
-            6 => match named.filter(|_| same_player) {
+            UnloadPick::AllBut(o) => same_player && Some(id) != o && class != WHOLE_SHARE_CLASS,
+            UnloadPick::OtherMasters(_) => match named.filter(|_| same_player) {
                 Some(m) if m.id != master.id => {
                     if class == class::VILLAGER {
                         m.class != class::VILLAGER
@@ -476,7 +473,7 @@ impl World {
                 }
                 _ => false,
             },
-            _ => false,
+            UnloadPick::Other(..) => false,
         })
     }
 }

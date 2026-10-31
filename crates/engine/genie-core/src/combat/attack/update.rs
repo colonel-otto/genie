@@ -137,10 +137,7 @@ impl Attack {
         if self.state != KILLED && gone {
             return self.target_died(c, unit, f, r);
         }
-        let t =
-            *c.w.spatial
-                .get_known(self.target)?
-                .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
+        let (_, t) = self.held_target(&c.w.spatial)?;
         if self.state != KILLED
             && (t.position.x() != self.seen.x() || t.position.y() != self.seen.y())
             && let Some(code) = self.target_moved(c, unit, f, r, &t)?
@@ -354,7 +351,7 @@ impl Attack {
         // none), it posts 0x1fb with 600 and 0x202, ends (set_state 1) and returns 2,
         // which keeps it in the list
         let target = self.target.take();
-        let_go(c, unit, ObjectId::field(target))?;
+        let_go(c, unit, target)?;
         unit.post_own(0x1fb, [600, 0, 0x202])?;
         self.finish(unit, c.w.streams.get(Stream::Sprite))?;
         Ok(2)
@@ -422,7 +419,7 @@ impl Attack {
         }
         let target = self.target.take();
         if !self.sub_action {
-            let_go(c, unit, ObjectId::field(target))?;
+            let_go(c, unit, target)?;
         }
         self.finish_in(FAILED, unit, c.w.streams.get(Stream::Sprite))?;
         if !self.sub_action {
@@ -449,15 +446,19 @@ pub(super) fn sees(
 }
 
 /// A unit's own Attack lets its target go (slot 0x68 with none: its slot 0x180) at once
-/// ([`crate::world::lets::release`]); none (−1) lets nothing go.
+/// ([`crate::world::lets::release`]); none lets nothing go.
 ///
 /// # Errors
 ///
 /// The release's.
-pub(super) fn let_go(c: &mut Step<'_>, unit: &mut Unit, target: i32) -> Result<(), GenieError> {
-    if target == -1 {
+pub(super) fn let_go(
+    c: &mut Step<'_>,
+    unit: &mut Unit,
+    target: Option<ObjectId>,
+) -> Result<(), GenieError> {
+    let Some(target) = target else {
         return Ok(());
-    }
+    };
     let by = unit.releaser(c)?;
     crate::world::lets::release(c, unit, target, by)
 }

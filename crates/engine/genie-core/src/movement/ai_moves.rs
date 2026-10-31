@@ -79,7 +79,11 @@ impl Unit {
         &mut self,
         m: AiMove,
         (class, player): (ClassId, PlayerId),
-        (releases, builder_leaves, by): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>, Releaser),
+        (releases, builder_leaves, by): (
+            &mut Vec<(ObjectId, Releaser)>,
+            &mut Vec<ObjectId>,
+            Releaser,
+        ),
         (masters, graphics, sprite_rng): (
             Option<&Masters>,
             &std::collections::BTreeMap<i16, Graphic>,
@@ -266,7 +270,7 @@ impl Unit {
         )? {
             return Ok(PointMove::Declined);
         }
-        Ok(PointMove::Taken(old.map(ObjectId::get)))
+        Ok(PointMove::Taken(old))
     }
 
     /// The Gather's slot 0x40 (its move to the point): the target it had is let go; the
@@ -285,7 +289,7 @@ impl Unit {
         };
         let old = gather.target;
         gather.take_move(None, point, player, mover, &walks)?;
-        Ok(PointMove::Taken(old.map(ObjectId::get)))
+        Ok(PointMove::Taken(old))
     }
 
     /// The Repair's slot 0x40 (`FUN_140ad9700`, [`RepairAction::take_point`]): its point, slot
@@ -303,10 +307,7 @@ impl Unit {
             .repair_mut()
             .ok_or(GenieError::unreachable("a Repair head without its Repair"))?;
         let (old, counted) = repair.take_point(point, self.body.mover_mut(), move_reads)?;
-        Ok(PointMove::Repairs(
-            Some(old).filter(|&t| t != -1),
-            counted.then_some(old),
-        ))
+        Ok(PointMove::Repairs(old, old.filter(|_| counted)))
     }
 
     /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object (in
@@ -318,7 +319,7 @@ impl Unit {
     /// ([`MoveToAction::to_object`]).
     pub(crate) fn move_to_object(
         &mut self,
-        (target, state): (i32, u8),
+        (target, state): (ObjectId, u8),
         range: f32,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
@@ -440,10 +441,10 @@ pub(crate) enum PointMove {
     Declined,
     /// It answered 1: the action walks there itself. The target it let go (slot 0x68 with none),
     /// if any, which the caller releases.
-    Taken(Option<i32>),
+    Taken(Option<ObjectId>),
     /// A Repair answered 1 (`FUN_140ad9700`): it walks to the point; the target it let go, and
     /// the target whose repairers a counted repairer left ([`crate::world::World::leave_builders`]).
-    Repairs(Option<i32>, Option<i32>),
+    Repairs(Option<ObjectId>, Option<ObjectId>),
     /// The Transport answers 1 (`0x140aa3e40`): it sails to the point, which the caller runs
     /// with the map ([`Unit::transport_sail`]).
     Sails,

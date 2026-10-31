@@ -7,6 +7,9 @@ use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionByType, RgeMissileObject, RgeObject,
 };
 
+/// A two-player game's players with Gaia.
+const PLAYERS: usize = 3;
+
 /// An object without a static part is no unit the slice can run.
 #[test]
 fn an_object_without_its_static_part_is_unmodelled() {
@@ -16,6 +19,7 @@ fn an_object_without_its_static_part_is_unmodelled() {
         &[],
         0,
         None,
+        PLAYERS,
     );
     assert_eq!(u.id, ObjectId::UNSAVED);
     assert!(u.unmodelled_action.is_some());
@@ -31,7 +35,14 @@ fn livestock_starts_with_its_artifact() {
         DefaultAction::Type(genie_core::ownership::artifact::ARTIFACT_TYPE),
     );
     let sheep = combat_object(5, 83);
-    let u = unit(&sheep, &PlayerObjects::default(), &[], 0, Some(&table));
+    let u = unit(
+        &sheep,
+        &PlayerObjects::default(),
+        &[],
+        0,
+        Some(&table),
+        PLAYERS,
+    );
     assert_eq!(u.id, object_id(5));
     assert!(u.actions.artifact().is_some() && u.default_artifact);
     assert!(u.default_task.is_none());
@@ -48,6 +59,7 @@ fn without_a_table_the_default_task_is_reported() {
         &[],
         0,
         None,
+        PLAYERS,
     );
     assert!(u.default_task.is_some());
     assert!(u.actions.artifact().is_none());
@@ -68,7 +80,7 @@ fn a_saved_action_the_slice_does_not_model_is_reported() {
         .rge_combat_object
         .rge_action_object
         .actions = action_list(vec![(4, explore)]);
-    let u = unit(&scout, &PlayerObjects::default(), &[], 0, None);
+    let u = unit(&scout, &PlayerObjects::default(), &[], 0, None, PLAYERS);
     assert!(u.unmodelled_action.is_some());
     assert!(u.default_fly.is_none());
 }
@@ -101,9 +113,9 @@ fn a_missile_without_its_action_keeps_flying() {
         })),
         ..genie_save::Object::default()
     };
-    let u = unit(&arrow, &PlayerObjects::default(), &[], 0, None);
+    let u = unit(&arrow, &PlayerObjects::default(), &[], 0, None, PLAYERS);
     let flying = u.missile.unwrap();
-    assert_eq!(flying.fired_from, 900);
+    assert_eq!(flying.fired_from, Some(object_id(900)));
     assert!(flying.flying);
     assert_eq!(flying.step.x().to_bits(), 0.5_f32.to_bits());
     assert_eq!(u.attack_count, 2);
@@ -118,14 +130,14 @@ fn the_back_to_work_actions_import_as_their_kinds() {
     let c = combat_mut(&mut object);
     c.town_bell_flag = 1;
     c.back_to_work1_town_bell_action = 0x261;
-    let u = unit(&object, &PlayerObjects::default(), &[], 0, None);
+    let u = unit(&object, &PlayerObjects::default(), &[], 0, None, PLAYERS);
     assert!(u.town_bell.flag);
     assert_eq!(
         (u.town_bell.work.action, u.town_bell.before_building.action),
         (Some(ActionKind::Gather), None)
     );
     combat_mut(&mut object).back_to_work2_town_bell_action = 0x2c6;
-    let u = unit(&object, &PlayerObjects::default(), &[], 0, None);
+    let u = unit(&object, &PlayerObjects::default(), &[], 0, None, PLAYERS);
     assert_eq!(
         u.unmodelled_action.map(|e| e.kind()),
         Some(genie_core::ErrorKind::InvalidInput)

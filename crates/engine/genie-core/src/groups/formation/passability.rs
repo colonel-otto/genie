@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot};
+use crate::map::spatial::RecordId;
 use crate::map::{GroundOffset, Point, Rect, Tile};
 use crate::world::slots::CheckedIndex;
 
@@ -169,7 +170,7 @@ impl World {
         &self,
         formation: &mut Formation,
         grid: &mut PassGrid,
-        (members, un): (&[i32], Unreachable<'_>),
+        (members, un): (&[RecordId], Unreachable<'_>),
     ) -> Result<(), GenieError> {
         let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
         let (k, grow) = (un.nearest, un.grow);
@@ -297,7 +298,7 @@ impl World {
         let (min_x, min_z, max_x, max_z) = (bounds.x0(), bounds.y0(), bounds.x1(), bounds.y1());
         self.spatial
             .put_tile_records(bounds.corner0(), bounds.corner1(), grow, mask);
-        let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        let members: Vec<RecordId> = g.members.iter().map(|m| RecordId::from(m.id)).collect();
         // the members are the manager's ignore list while the passability runs
         // (FUN_1410562e0, 0x14103b916), which every way out of it clears (0x14103ce93,
         // 0x14103cf93): none after it
@@ -355,7 +356,7 @@ impl World {
         formation: &Formation,
         position: BVector,
         grow: f32,
-        members: &[i32],
+        members: &[RecordId],
     ) -> Result<(Vec<usize>, Vec<usize>), GenieError> {
         let mut reachable = Vec::new();
         let mut unreachable = Vec::new();
@@ -452,7 +453,7 @@ impl World {
         found: Tile,
         unit_at: Point,
         grow: f32,
-        members: &[i32],
+        members: &[RecordId],
     ) -> Result<Option<Tile>, GenieError> {
         let (fx, fy) = (found.x(), found.y());
         let (w, h) = (grid.w, grid.h);

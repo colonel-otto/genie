@@ -4,7 +4,6 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Stream;
-use crate::objects::ObjectId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
 use crate::objects::release::Releaser;
@@ -163,7 +162,7 @@ impl World {
         );
         // the target, then the second target
         let released = [hunt.target, hunt.carry_to];
-        hunt.set_target(-1);
+        hunt.set_target(None);
         hunt.carry_to = None;
         hunt.point = Position::from([-1.0; 3]);
         hunt.timer = 0.0;
@@ -175,15 +174,13 @@ impl World {
                 self.streams.get(Stream::Sprite),
             );
         }
-        if unit.my_pasture != -1 {
+        if unit.my_pasture.is_some() {
             return Err(GenieError::unsupported(
                 "a stopped hunter that tends a pasture",
             ));
         }
-        for t in released {
-            if t.is_some() {
-                self.release(ObjectId::field(t), by)?;
-            }
+        for t in released.into_iter().flatten() {
+            self.release(t, by)?;
         }
         Ok(true)
     }
@@ -255,10 +252,8 @@ impl World {
             &mut unit.sprite,
             self.streams.get(Stream::Sprite),
         )?;
-        for t in released {
-            if t.is_some() {
-                self.release(ObjectId::field(t), by)?;
-            }
+        for t in released.into_iter().flatten() {
+            self.release(t, by)?;
         }
         Ok(())
     }
@@ -279,10 +274,8 @@ impl World {
             self.leave_builders(foundation)?;
         }
         self.standing_sprite(p, idx)?;
-        for t in targets {
-            if t != -1 {
-                self.release(t, by)?;
-            }
+        for t in targets.into_iter().flatten() {
+            self.release(t, by)?;
         }
         Ok(())
     }

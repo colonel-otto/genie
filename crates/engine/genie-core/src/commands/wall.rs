@@ -280,10 +280,10 @@ impl World {
         &mut self,
         w: &BuildWallCommand,
         radius: Footprint,
-    ) -> Result<Vec<(i32, Position)>, GenieError> {
+    ) -> Result<Vec<(ObjectId, Position)>, GenieError> {
         let (player, master) = (w.player, w.master);
         let tile = |[x, y]: [u16; 2]| Tile::new(i32::from(x), i32::from(y));
-        let mut placed: Vec<(i32, Position)> = Vec::new();
+        let mut placed: Vec<(ObjectId, Position)> = Vec::new();
         for (a, b) in segments(tile(w.from), tile(w.to)) {
             for t in tiles(a, b)? {
                 let at = snap(
@@ -351,8 +351,8 @@ impl World {
         &mut self,
         w: &BuildWallCommand,
         id: ObjectId,
-        placed: &[(i32, Position)],
-        (foundation, at): (i32, Position),
+        placed: &[(ObjectId, Position)],
+        (foundation, at): (ObjectId, Position),
     ) -> Result<(), GenieError> {
         let (player, master) = (w.player, w.master);
         let Some(Place::Live(q, idx)) = self.place(id) else {

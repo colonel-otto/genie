@@ -1,10 +1,11 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
 use crate::map::Tile;
+use crate::objects::{ObjectId, ObjectKey};
 
 use crate::map::Point;
 use crate::map::Position;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::{
     Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
@@ -30,7 +31,7 @@ pub(super) struct ReachAsk {
     /// The goal (x, y on the map).
     pub(super) goal: Point,
     /// The target object's id.
-    pub(super) target: Option<i32>,
+    pub(super) target: Option<ObjectId>,
     /// How near the goal counts.
     pub(super) range: f32,
     /// The unit's master's id.
@@ -83,7 +84,6 @@ impl Mover {
         // the target is read where it is tested: the short path below is handed the spatial
         // index, which it writes
         let placed = target_placed(world, target)?;
-        let target_id = target.unwrap_or(-1);
         let target_radius = placed.map_or(0.0, |t| t.radius.x());
         let bonus = placed.is_some_and(|t| t.master == ID_45 || t.class == WIDE_CLASS);
         let mut path = Path::default();
@@ -109,11 +109,11 @@ impl Mover {
             // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
             let height = placed.map_or(0.0, |t| t.position.z());
             let line = (Point::new(x, height_at), Point::new(to.x(), height));
-            let ignore = self.ignore_list(me, world, plan, placed, target_id, line)?;
+            let ignore = self.ignore_list(me, world, plan, target.zip(placed), line)?;
             let ask = ShortAsk {
                 goal,
                 range,
-                target: target_id,
+                target,
                 ignore: &ignore,
                 include: &[],
             };
@@ -242,7 +242,7 @@ impl Mover {
         from: Position,
         goal: Position,
         range: f32,
-        target: i32,
+        target: Option<ObjectId>,
         now: u32,
     ) {
         self.request_path_asked(from, goal, range, target, now, PathAsk::default());
@@ -293,7 +293,7 @@ impl Mover {
         from: Position,
         goal: Position,
         range: f32,
-        target: i32,
+        target: Option<ObjectId>,
         now: u32,
         ask: PathAsk,
     ) {
@@ -411,7 +411,7 @@ impl Mover {
         &self,
         me: &Me,
         player: PlayerId,
-        (id, other): (i32, &Placed),
+        (id, other): (ObjectId, &Placed),
         projected: BVector,
         world: &Spatial,
         now: u32,
@@ -466,7 +466,7 @@ impl Mover {
         &self,
         me: &Me,
         (world, groups): (&Spatial, Option<&crate::groups::UnitGroups>),
-        hits: &[i32],
+        hits: &[RecordId],
         projected: BVector,
         dt: f32,
         (now, computer): (u32, bool),
@@ -477,8 +477,10 @@ impl Mover {
             .ok_or(GenieError::unsupported("a walker without a place"))?
             .player;
         // a hit the world holds no object of (a map edge's record) is passed over
-        let met = |id: i32| -> Result<Option<(i32, &Placed)>, GenieError> {
-            let id = world.annex_of(id).unwrap_or(id);
+        let met = |hit: RecordId| -> Result<Option<(ObjectId, &Placed)>, GenieError> {
+            let Some(id) = world.annex_of(hit).or_else(|| hit.key()) else {
+                return Ok(None);
+            };
             Ok(world.get_known(id)?.map(|p| (id, p)))
         };
         // the walker's group (FUN_14152ff40 on +0x6d0) and its own move's reason there
@@ -492,7 +494,7 @@ impl Mover {
             let Some((id, other)) = met(hit)? else {
                 continue;
             };
-            if 0 <= level.target && id == level.target {
+            if level.targets(id) {
                 target_hit = true;
             }
             if own_move && !KEPT_BY_MEMBERS.contains(&other.class) {
@@ -525,7 +527,7 @@ impl Mover {
                 let Some((id, other)) = met(hit)? else {
                     continue;
                 };
-                if 0 <= level.target && id == level.target {
+                if level.targets(id) {
                     continue;
                 }
                 if (player == PlayerId::GAIA || other.player != PlayerId::GAIA)
@@ -549,7 +551,7 @@ impl Mover {
     /// The pause of unit `id`'s walked level as slot 0x5f0 leaves it: the last this walk gave it
     /// (the game's call writes it at once, a later pass of the same step reads it), else the
     /// world's ([`crate::map::spatial::Gait::pause`]).
-    pub(super) fn pause_of(&self, world: &Spatial, id: i32) -> Option<f32> {
+    pub(super) fn pause_of(&self, world: &Spatial, id: ObjectId) -> Option<f32> {
         self.pauses
             .iter()
             .rev()
@@ -561,7 +563,7 @@ impl Mover {
 
 /// The place of a reach test's target in the spatial index, None without a target. The caller
 /// found the target there, so a missing one is a broken invariant.
-fn target_placed(world: &Spatial, target: Option<i32>) -> Result<Option<&Placed>, GenieError> {
+fn target_placed(world: &Spatial, target: Option<ObjectId>) -> Result<Option<&Placed>, GenieError> {
     target
         .map(|id| {
             world.get(id).ok_or_else(|| {

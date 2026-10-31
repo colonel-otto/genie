@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -163,7 +164,7 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
 /// master keeps none.
 #[test]
 fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
-    let unit = |id, state: u8, inside: Option<i32>| {
+    let unit = |id, state: u8, inside: Option<ObjectId>| {
         let mut u = Unit {
             id,
             body: crate::objects::layers::Body::at(Position::new(5.5, 5.5, 0.0)),
@@ -183,7 +184,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
             objects: vec![
                 unit(object_id(1), 2, None),
                 unit(object_id(2), 7, None),
-                unit(object_id(3), 2, Some(9)),
+                unit(object_id(3), 2, Some(object_id(9))),
             ]
             .into(),
             ..Player::default()
@@ -216,24 +217,28 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         ..Master::default()
     };
     for id in 1..=3 {
-        t.give_record(id, &master);
+        t.give_record(object_id(id), &master);
     }
-    let record = |t: &World, id| t.spatial.get(id).and_then(|p| p.obstruction);
+    let record = |t: &World, id: ObjectId| t.spatial.get(id).and_then(|p| p.obstruction);
     let wall = Some(crate::map::spatial::Obstruction { kind: 2, class: 2 });
     assert_eq!(
-        [record(&t, 1), record(&t, 2), record(&t, 3)],
+        [
+            record(&t, object_id(1)),
+            record(&t, object_id(2)),
+            record(&t, object_id(3))
+        ],
         [wall, None, None]
     );
     // a flat master gives none
-    t.spatial.drop_record(1);
+    t.spatial.drop_record(object_id(1));
     t.give_record(
-        1,
+        object_id(1),
         &Master {
             height: 0.0,
             ..master
         },
     );
-    assert_eq!(record(&t, 1), None);
+    assert_eq!(record(&t, object_id(1)), None);
 }
 
 /// `FUN_1416136f0` (slot 0x1a8) of villagers (0x53) at player 1's town centre: each draws
@@ -269,7 +274,7 @@ fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
     let mut stream = t.streams.get(Stream::Player).clone();
     t.spawn_at(PlayerId::new(1), (Some(VILLAGER), Some(TC)), 2)
         .unwrap();
-    let made: Vec<(MasterId, Option<i32>)> = t.players[1].objects[before..]
+    let made: Vec<(MasterId, Option<ObjectId>)> = t.players[1].objects[before..]
         .iter()
         .map(|u| (u.life.master_id, u.life.inside))
         .collect();
@@ -282,7 +287,7 @@ fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
     };
     let expected = [sex(stream.rand15()), sex(stream.rand15())];
     assert_eq!(made, vec![(expected[0], None), (expected[1], None)]);
-    assert_eq!(t.object(100).unwrap().1.garrison, Vec::<i32>::new());
+    assert_eq!(t.object(object_id(100)).unwrap().1.garrison, Vec::new());
     // a master neither the player nor Gaia has
     let mut t = let_out_world();
     let before = t.players[1].objects.len();
@@ -442,10 +447,10 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
 #[test]
 fn a_change_moves_the_shares_of_the_units_inside_a_building() {
     let mut tower = unit_of(10, master_id(79), 1000.0);
-    tower.garrison = vec![11];
+    tower.garrison = vec![object_id(11)];
     tower.firepower = 2.0;
     let mut archer = unit_of(11, master_id(4), 30.0);
-    archer.life.inside = Some(10);
+    archer.life.inside = Some(object_id(10));
     let player = Player {
         objects: vec![tower, archer].into(),
         ..Player::default()
@@ -481,7 +486,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     main.life.master_id = master_id(30);
     main.construction = Some(built());
     let mut annex = unit_of(21, master_id(31), 50.0);
-    annex.annex_of = Some(20);
+    annex.annex_of = Some(object_id(20));
     annex.construction = Some(built());
     let mut foundation = unit_of(22, master_id(30), 10.0);
     foundation.life.state = 0;
@@ -641,10 +646,10 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             capture: 0,
             kind: master_type::STATIC,
         };
-        v.add_seer(1, seer);
+        v.add_seer(object_id(1), seer);
         let position = Position::new(10.5, 10.5, 0.0);
         let radius = Footprint::new(0.5, 0.5);
-        let _ = v.sight_on(1, position, radius, false, false);
+        let _ = v.sight_on(object_id(1), position, radius, false, false);
         t.spatial.sight = Some(v);
         t.spatial.insert(
             object_id(1),
@@ -669,7 +674,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         let mut t = world();
         let v = t.spatial.sight.as_mut().unwrap();
         v.sight_off(
-            1,
+            object_id(1),
             Position::new(10.5, 10.5, 0.0),
             Footprint::new(0.5, 0.5),
             false,
@@ -677,7 +682,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         )
         .unwrap();
         let _ = v.sight_on_los(
-            1,
+            object_id(1),
             Position::new(10.5, 10.5, 0.0),
             Footprint::new(0.5, 0.5),
             false,
@@ -821,8 +826,8 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         capture: 0,
         kind: master_type::COMBAT,
     };
-    v.add_seer(1, seer);
-    v.add_seer(3, seer);
+    v.add_seer(object_id(1), seer);
+    v.add_seer(object_id(3), seer);
     t.spatial.sight = Some(v);
     let all = [
         a::DYING_GRAPHIC,
@@ -850,10 +855,10 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         c.record,
         crate::map::spatial::Obstruction { kind: 5, class: 2 }
     );
-    let tall = |id| t.spatial.get(id).unwrap().tall;
-    assert_eq!((tall(1), tall(3)), (true, false));
-    let los = |id| t.spatial.sight.as_ref().unwrap().seer(id).unwrap().los;
-    assert_eq!((los(1), los(3)), (6.0, 2.0));
+    let tall = |id: ObjectId| t.spatial.get(id).unwrap().tall;
+    assert_eq!((tall(object_id(1)), tall(object_id(3))), (true, false));
+    let los = |id: ObjectId| t.spatial.sight.as_ref().unwrap().seer(id).unwrap().los;
+    assert_eq!((los(object_id(1)), los(object_id(3))), (6.0, 2.0));
     // a dying sprite below 0 is none
     t.masters[0].get_mut(master_id(4)).unwrap().death_sprite = -1;
     t.master_followers(PlayerId::new(0), master_id(4), a::DYING_GRAPHIC)
@@ -1250,7 +1255,7 @@ fn the_object_kinds_without_an_object_do_nothing() {
         t.do_effect(
             PlayerId::new(0),
             &[attribute(204, 82, -1, 0, 1500.0)],
-            Some(5)
+            Some(object_id(5))
         )
         .is_err()
     );
@@ -1743,7 +1748,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         },
     );
     t.load_trackers().unwrap();
-    let record = |t: &World| t.spatial.get(1).and_then(|p| p.obstruction);
+    let record = |t: &World| t.spatial.get(object_id(1)).and_then(|p| p.obstruction);
     t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 32, 2.0)], None)
         .unwrap();
     assert_eq!(

@@ -205,7 +205,7 @@ impl World {
                 direct: true,
                 keep_flag: false,
             };
-            let _ = self.command_move_to(id, -1, last, leg)?;
+            let _ = self.command_move_to(id, None, last, leg)?;
         }
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {
@@ -229,7 +229,7 @@ impl World {
         master: &crate::objects::masters::Master,
         target: ObjectId,
     ) -> Result<bool, GenieError> {
-        let Some(t) = self.world_object(target.get()) else {
+        let Some(t) = self.world_object(target) else {
             return Ok(true);
         };
         let tm = self.master(t.player(), t.master_id())?;
@@ -406,7 +406,7 @@ impl World {
                 rng,
             );
             ai.set_action(Some(ActionKind::Move));
-            ai.set_target(-1, -1, shown.with_height(z));
+            ai.set_target(None, -1, shown.with_height(z));
         }
         Ok(())
     }

@@ -8,6 +8,7 @@ use crate::combat::damage::{
     effective, elevation_factor, facing_offset, hp_floor, lose, special_charge_ready,
 };
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::WONDER;
@@ -204,10 +205,10 @@ pub(super) const fn attack_effects(src: &Attacker, t: &Victim) -> Result<(), Gen
 
 impl Victim {
     /// What stands in a slice of objects for one a hit has taken out for the time it changes it:
-    /// no object's id.
+    /// no object's id ([`ObjectId::TAKEN_OUT`]).
     pub(super) fn placeholder() -> Self {
         Self {
-            id: -1,
+            id: ObjectId::TAKEN_OUT,
             ..Self::default()
         }
     }

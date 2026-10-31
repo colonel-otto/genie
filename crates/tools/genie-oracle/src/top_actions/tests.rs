@@ -2,6 +2,7 @@
 
 use crate::OTHER_SUB_ACTION;
 use crate::fixtures::{action_list, combat_master, combat_mut, combat_object, with_masters};
+use crate::test_ids::object_id;
 use crate::top_actions::saved_actions;
 use genie_core::GenieError;
 use genie_core::construction::build::BuildTask;
@@ -323,7 +324,10 @@ fn an_artifact_waits_or_walks_to_its_target() {
         .artifact()
         .copied()
         .unwrap();
-    assert_eq!((a.state, a.target, a.move_to, a.goal), (1, -1, None, None));
+    assert_eq!(
+        (a.state, a.target, a.move_to, a.goal),
+        (1, None, None, None)
+    );
     assert!(a.gaia);
     let mut b = base(5);
     b.target_id = 9;
@@ -365,7 +369,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .unwrap();
     assert_eq!(
         a.move_to.map(|m| m.walks_to()),
-        Some(Goal::Target(crate::test_ids::object_id(9)))
+        Some(Goal::Target(object_id(9)))
     );
     // the target's place is its goal however near the origin; an unset place (-1) is none
     let mut near = base(5);
@@ -461,7 +465,7 @@ fn a_missile_flies_with_its_actions_course() {
         .unwrap();
     assert_eq!(
         (m.fired_from, m.max_range.to_bits()),
-        (900, 7.0_f32.to_bits())
+        (Some(object_id(900)), 7.0_f32.to_bits())
     );
     assert!(m.flying && !m.charge);
     // a charge projectile; one at the landing distance has landed
@@ -483,7 +487,7 @@ fn a_missile_flies_with_its_actions_course() {
         .unwrap();
     assert_eq!(
         (action.state, action.fired_from, action.hit_mode),
-        (2, 900, 0)
+        (2, Some(object_id(900)), 0)
     );
     assert_eq!(action.ballistic_velocity.to_bits(), 3.0_f32.to_bits());
     assert_eq!(
@@ -599,7 +603,13 @@ fn a_build_takes_its_task_move_to_and_site() {
     let walk = a.move_to.unwrap();
     assert_eq!(
         (a.target, a.site, walk.target, walk.state, walk.quiet),
-        (30, 31, None, MoveTo::Moving, true)
+        (
+            Some(object_id(30)),
+            Some(object_id(31)),
+            None,
+            MoveTo::Moving,
+            true
+        )
     );
     assert!(a.added);
     assert_eq!(a.task.work_rate.to_bits(), 2.5_f32.to_bits());
@@ -741,7 +751,11 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
         .unwrap();
     assert_eq!(
         (h.target_class, h.drop_site, h.task.id),
-        (Some(class::VILLAGER), 40, TaskId::of_task(0))
+        (
+            Some(class::VILLAGER),
+            Some(object_id(40)),
+            TaskId::of_task(0)
+        )
     );
     assert!(h.lead.moved && h.attack.is_none() && h.move_to.is_none());
     assert_eq!(
@@ -994,7 +1008,10 @@ fn a_wait_solidify_waits_for_its_foundation() {
         .wait_solidify()
         .copied()
         .unwrap();
-    assert_eq!((w.state, w.target, w.task.id), (2, 40, TaskId::of_task(1)));
+    assert_eq!(
+        (w.state, w.target, w.task.id),
+        (2, object_id(40), TaskId::of_task(1))
+    );
     assert_eq!(
         imported(
             WAIT_SOLIDIFY,

@@ -2,6 +2,7 @@
 //! setters and the side effects of allied vision and the farms' food.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
@@ -79,12 +80,12 @@ impl World {
         p: PlayerId,
         after: bool,
     ) -> Result<(), GenieError> {
-        let ids: Vec<i32> = self
+        let ids: Vec<ObjectId> = self
             .players
             .player(p)?
             .objects
             .iter()
-            .map(|u| u.id.get())
+            .map(|u| u.id)
             .collect();
         for id in ids {
             let kind = self

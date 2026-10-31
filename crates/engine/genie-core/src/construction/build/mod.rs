@@ -14,6 +14,7 @@
 
 use self::update::drop_done_orders;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
@@ -74,8 +75,8 @@ const UNSEEN_SITE: GenieError =
 /// The Build action of a builder (`TRIBE_Action_Build`, type 101).
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct BuildAction {
-    /// The foundation's id.
-    pub target: i32,
+    /// The foundation's id; none once it is gone.
+    pub target: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,
     /// Its sub-action list's `MoveTo` (`+0x50`), None for an empty list: to the foundation
@@ -92,8 +93,8 @@ pub struct BuildAction {
     /// `+0x44`, the action's timer: state 222's wait (a second from its `set_state`).
     pub timer: f32,
     /// `+0x28` (its id at `+0x34`), the second target: the drop site of its drop-off (state 8,
-    /// `set_state(8)`'s search), −1 for none.
-    pub site: i32,
+    /// `set_state(8)`'s search).
+    pub site: Option<ObjectId>,
 }
 
 /// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
@@ -330,24 +331,24 @@ mod built_sprite_tests {
 pub(crate) struct BuildReads {
     /// The foundation (the action's target) when the builder's player holds it with its
     /// construction: the update reads and works it through the world.
-    pub(crate) site: Option<i32>,
+    pub(crate) site: Option<ObjectId>,
     /// The foundation's master, when the builder's player holds the foundation.
     pub(crate) built: Option<MasterId>,
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
     /// ([`crate::objects::unit::Unit::stack_made`]).
-    pub(crate) stack_made: Option<i32>,
+    pub(crate) stack_made: Option<ObjectId>,
     /// The state of each foundation its unit AI's queued build orders name (None for one that
     /// is gone).
-    pub(crate) build_targets: Vec<(i32, Option<u8>)>,
+    pub(crate) build_targets: Vec<(Option<ObjectId>, Option<u8>)>,
     /// In state 8, what the drop-off reads of its second target ([`BuildAction::site`]): its
     /// state and [`crate::gathering::hunt::DropOff`]; None when the world does not hold it.
     pub(crate) deposit: Option<(u8, crate::gathering::hunt::DropOff)>,
     /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
     /// no longer holds or whose seen state is above 5 (`FUN_140c5de60`).
-    pub(crate) gone_orders: Vec<i32>,
+    pub(crate) gone_orders: Vec<Option<ObjectId>>,
     /// What the footprint clearing of its `set_state(7)` reads of the objects on the tiles
     /// ([`ClearLook`]) by id; none for one the world does not hold.
-    pub(crate) looks: BTreeMap<i32, ClearLook>,
+    pub(crate) looks: BTreeMap<ObjectId, ClearLook>,
     /// The builder's class (`+0x0a`, decoded).
     pub(crate) class: Option<ClassId>,
     /// Its foundation's master is a drop site for its civ (`FUN_140fde180`) and it carries a
@@ -535,8 +536,8 @@ mod stack_tests {
                 snow: false,
                 sprite_override: false,
             }),
-            pasture: -1,
-            my_pasture: -1,
+            pasture: None,
+            my_pasture: None,
             ..Unit::default()
         };
         let mut t = World::new(
@@ -605,7 +606,7 @@ mod stack_tests {
             *ms = Masters::new(ms.iter().cloned().chain([castle]));
         }
         t.players[1].objects[0].life.master_id = ids::CASTLE;
-        assert_eq!(t.work_building(8759, 1.0), Ok(false));
+        assert_eq!(t.work_building(object_id(8759), 1.0), Ok(false));
         assert_eq!(
             t.players[1].history.events,
             [crate::players::history::Event {
@@ -632,7 +633,7 @@ mod stack_tests {
     #[test]
     fn a_town_centre_foundation_completes_into_the_town_centre_and_its_annexes() {
         let mut t = world();
-        assert_eq!(t.work_building(8759, 1.0), Ok(false));
+        assert_eq!(t.work_building(object_id(8759), 1.0), Ok(false));
         let ids: Vec<(i32, i16, u8)> = t.players[1]
             .objects
             .iter()
@@ -650,9 +651,14 @@ mod stack_tests {
                 (8773, 890, 2),
             ]
         );
-        let at = |id: i32| t.spatial.get(id).unwrap().position;
+        let at = |id: ObjectId| t.spatial.get(id).unwrap().position;
         assert_eq!(
-            [at(8769), at(8770), at(8771), at(8772)],
+            [
+                at(object_id(8769)),
+                at(object_id(8770)),
+                at(object_id(8771)),
+                at(object_id(8772))
+            ],
             [
                 Position::new(55.0, 146.0, 0.0),
                 Position::new(53.5, 147.5, 0.0),
@@ -660,25 +666,34 @@ mod stack_tests {
                 Position::new(53.0, 148.0, 0.0)
             ]
         );
-        let unit = |id: i32| t.players[1].objects.by_id(id).unwrap();
+        let unit = |id: ObjectId| t.players[1].objects.by_id(id).unwrap();
         assert_eq!(
-            [8769, 8770, 8771, 8772, 8773].map(|a| unit(a).annex_of),
-            [Some(8768), Some(8768), Some(8770), Some(8768), Some(8768)]
+            [8769, 8770, 8771, 8772, 8773].map(|a| unit(object_id(a)).annex_of),
+            [
+                Some(object_id(8768)),
+                Some(object_id(8768)),
+                Some(object_id(8770)),
+                Some(object_id(8768)),
+                Some(object_id(8768))
+            ]
         );
         // the tower's unit AI for the town centre, the building's for the annexes
         assert_eq!(
-            unit(8768).ai.as_ref().map(|ai| ai.ai_type),
+            unit(object_id(8768)).ai.as_ref().map(|ai| ai.ai_type),
             Some(UnitAiType::TOWER)
         );
         assert_eq!(
-            unit(8769).ai.as_ref().map(|ai| ai.ai_type),
+            unit(object_id(8769)).ai.as_ref().map(|ai| ai.ai_type),
             Some(UnitAiType::BUILDING)
         );
         // the foundation lacked 0.84 of its 2400 hit points after its last work: the town
         // centre lacks them too
         let lacked = 2400.0 - (2399.0 + (0.01_f32 * 2400.0) / 150.0);
         assert_eq!(
-            (unit(8768).life.hp, unit(8768).store.clone()),
+            (
+                unit(object_id(8768)).life.hp,
+                unit(object_id(8768)).store.clone()
+            ),
             (2400.0 - lacked, vec![(506, 1.0)])
         );
         let attributes = &t.players[1].attributes;
@@ -686,9 +701,9 @@ mod stack_tests {
             (attributes[4], attributes[98], attributes[165]),
             (5.0, 0.0, 0.0)
         );
-        let gone = unit(8759);
+        let gone = unit(object_id(8759));
         assert_eq!((gone.life.hp, gone.roo_called), (0.0, true));
-        assert_eq!(t.spatial.get(8759).unwrap().obstruction, None);
+        assert_eq!(t.spatial.get(object_id(8759)).unwrap().obstruction, None);
     }
 
     /// A new building's record (`FUN_14118c540` from its place): a master without a height (a
@@ -762,7 +777,7 @@ mod stack_tests {
             });
             t.stack_unit(
                 PlayerId::new(1),
-                8759,
+                object_id(8759),
                 StackUnit {
                     master: ids::TOWN_CENTRE,
                     at: Position::new(54.0, 147.0, 0.0),
@@ -770,7 +785,7 @@ mod stack_tests {
                 },
             )
             .unwrap();
-            let gate = t.players[1].objects.by_id(8768).unwrap();
+            let gate = t.players[1].objects.by_id(object_id(8768)).unwrap();
             assert_eq!(gate.gate.map(|g| g.locked), Some(locked));
             let last_move = gate.body.mover().map(|m| m.last_move);
             assert_eq!(
@@ -787,13 +802,13 @@ mod stack_tests {
     #[test]
     fn a_stack_unit_s_completion_reads_the_foundation_s_attacking_units() {
         let mut gone = world();
-        gone.players[1].objects[0].attacking_units = vec![99_999];
-        assert_eq!(gone.work_building(8759, 1.0), Ok(false));
+        gone.players[1].objects[0].attacking_units = vec![object_id(99_999)];
+        assert_eq!(gone.work_building(object_id(8759), 1.0), Ok(false));
         let mut held = world();
         let first = held.players[1].objects[0].id;
-        held.players[1].objects[0].attacking_units = vec![first.get()];
+        held.players[1].objects[0].attacking_units = vec![first];
         assert_eq!(
-            held.work_building(8759, 1.0),
+            held.work_building(object_id(8759), 1.0),
             Err(GenieError::unsupported(
                 "a stack unit's completion with other players' units on it (+0xce0)"
             ))

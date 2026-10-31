@@ -5,9 +5,11 @@
 use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
+use crate::map::spatial::RecordId;
 use crate::map::{GroundOffset, Point};
 use crate::math::fmath::BVector;
 use crate::math::fmath::{self, cross, normalize};
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -154,7 +156,7 @@ impl World {
         let grow = self.spatial.manager_grow();
         let at = centroid.ground();
         self.spatial.put_tile_records(at, at, grow, mask);
-        let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        let members: Vec<RecordId> = g.members.iter().map(|m| RecordId::from(m.id)).collect();
         // the manager's ignore list (FUN_1410562e0 with the group's +0xf0, +0xe4)
         self.spatial.set_manager_ignore(&members);
         let mut spiral = Spiral::from(centroid.ground());
@@ -244,7 +246,7 @@ impl World {
         let m = &g.motion;
         let forward = m.position[1];
         let front = fmath::add(fmath::scale(ahead, forward), m.position[0]);
-        let held: Vec<(i32, BVector)> = g
+        let held: Vec<(ObjectId, BVector)> = g
             .members
             .iter()
             .filter_map(|mb| {
@@ -271,7 +273,7 @@ impl World {
         {
             let master = self.master(lead.player(), lead.master_id())?;
             let mask = self.master_mask(lead.player(), lead.master_id())?;
-            let members: Vec<i32> = g.members.iter().map(|mb| mb.id).collect();
+            let members: Vec<ObjectId> = g.members.iter().map(|mb| mb.id).collect();
             if self.spatial.point_clear_among(
                 lead.id(),
                 centre.ground(),
@@ -291,8 +293,8 @@ impl World {
             g.desired_spacing * FRONT_SHARE
         };
         let through = centre.with_height(0.0);
-        let mut in_front: Vec<(i32, BVector)> = Vec::new();
-        let mut nearest = -1;
+        let mut in_front: Vec<(ObjectId, BVector)> = Vec::new();
+        let mut nearest = None;
         let mut nearest_d = FARTHEST;
         for &(id, p) in &held {
             let q = p.with_height(0.0);
@@ -301,21 +303,21 @@ impl World {
             }
             let d = ground_squared(q, front);
             if d < nearest_d {
-                nearest = id;
+                nearest = Some(id);
                 nearest_d = d;
             }
         }
         // of those in front the one nearest the point ahead: a lone one from the start
         let mut chosen = match in_front.as_slice() {
-            [(id, _)] => *id,
-            _ => -1,
+            [(id, _)] => Some(*id),
+            _ => None,
         };
         let mut beside = FARTHEST;
         let mut chosen_d = FARTHEST;
         for &(id, p) in &in_front {
             let d = ground_squared(p, front);
             if d < chosen_d {
-                chosen = id;
+                chosen = Some(id);
                 beside = (p.y() - centre.y()) * (p.y() - centre.y())
                     + (p.x() - centre.x()) * (p.x() - centre.x());
                 chosen_d = d;
@@ -482,7 +484,7 @@ mod tests {
         g.members = units
             .iter()
             .map(|u| crate::groups::Member {
-                id: u.id.get(),
+                id: u.id,
                 ..crate::groups::Member::default()
             })
             .collect();
@@ -547,7 +549,7 @@ mod tests {
         );
         let mut t = front_world(Vec::new());
         t.groups.groups[0].members = vec![crate::groups::Member {
-            id: 99,
+            id: object_id(99),
             ..crate::groups::Member::default()
         }];
         t.move_position_to_front(1, 100.0).unwrap();
@@ -605,7 +607,7 @@ mod tests {
         let units = vec![lead, unit(11, 10.2, 10.1)];
         let flanked = |t: &mut World| {
             t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
-            t.groups.groups[0].motion.lead = 10;
+            t.groups.groups[0].motion.lead = Some(object_id(10));
         };
         let mut t = front_world(units.clone());
         flanked(&mut t);
@@ -643,7 +645,7 @@ mod tests {
         let flanked = |t: &mut World| {
             t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
             t.groups.groups[0].members.truncate(2);
-            t.groups.groups[0].motion.lead = -2;
+            t.groups.groups[0].motion.lead = Some(object_id(-2));
         };
         let mut missile = unit(-2, 3.0, 3.0);
         missile
@@ -710,7 +712,7 @@ mod tests {
         );
         let mut t = front_world(Vec::new());
         t.groups.groups[0].members = vec![crate::groups::Member {
-            id: 99,
+            id: object_id(99),
             ..crate::groups::Member::default()
         }];
         t.groups.groups[0].motion.position[1] = BVector::new(0.0, 0.0, 1.0);

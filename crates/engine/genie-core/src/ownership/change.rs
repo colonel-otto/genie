@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -58,10 +59,10 @@ impl World {
                 .construction
                 .is_some_and(|c| f32::from(c.build_time) <= c.progress);
         self.players[0].objects.push(unit);
-        self.track_remove(q, id.get(), master_id)?;
-        self.track_add(PlayerId::GAIA, id.get(), master_id)?;
+        self.track_remove(q, id, master_id)?;
+        self.track_add(PlayerId::GAIA, id, master_id)?;
         if built {
-            self.track_complete(PlayerId::GAIA, id.get(), master_id)?;
+            self.track_complete(PlayerId::GAIA, id, master_id)?;
         }
         handed
     }
@@ -104,7 +105,7 @@ impl World {
     pub(crate) fn building_changes_hands(
         &mut self,
         old: PlayerId,
-        id: i32,
+        id: ObjectId,
         new: PlayerId,
         watched: bool,
     ) -> Result<(), GenieError> {
@@ -158,7 +159,7 @@ impl World {
     }
 
     /// A building that changes hands leaves the spatial records and the planners' tiles.
-    fn unrecord(&mut self, id: i32) {
+    fn unrecord(&mut self, id: ObjectId) {
         self.spatial.drop_record(id);
         self.pathing.removed(id);
         self.pathing.tiles_changed(self.spatial.take_changes());
@@ -168,7 +169,7 @@ impl World {
     fn watch_at_place(
         &mut self,
         new: PlayerId,
-        id: i32,
+        id: ObjectId,
         placed: Option<crate::map::spatial::Placed>,
     ) -> Result<(), GenieError> {
         if let Some(p) = placed {
@@ -187,7 +188,7 @@ impl World {
     fn clear_for_hand_over(
         &mut self,
         old: PlayerId,
-        (idx, id): (usize, i32),
+        (idx, id): (usize, ObjectId),
         watched: bool,
     ) -> Result<(), GenieError> {
         self.clear_actions(old, idx)?;
@@ -203,7 +204,7 @@ impl World {
     /// map (slot 0x1d8).
     pub(crate) fn foundation_sight_off(
         &mut self,
-        id: i32,
+        id: ObjectId,
         placed: Option<crate::map::spatial::Placed>,
     ) -> Result<(), GenieError> {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
@@ -216,7 +217,7 @@ impl World {
     /// owner's map (slot 0x1d0).
     pub(crate) fn foundation_sight_on(
         &mut self,
-        id: i32,
+        id: ObjectId,
         placed: Option<crate::map::spatial::Placed>,
     ) -> Result<(), GenieError> {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
@@ -227,7 +228,7 @@ impl World {
 
     /// [`World::building_changes_hands`] below state 3: the building's record and mesh shape of
     /// `master`'s obstruction come again (`FUN_141056460`).
-    pub(crate) fn record_again(&mut self, id: i32, master: &Master) {
+    pub(crate) fn record_again(&mut self, id: ObjectId, master: &Master) {
         let record = crate::map::spatial::Obstruction {
             kind: master.obstruction_type,
             class: master.obstruction_class,
@@ -250,7 +251,7 @@ impl World {
     pub(crate) fn annexes_change_hands(
         &mut self,
         old: PlayerId,
-        id: i32,
+        id: ObjectId,
         new: PlayerId,
     ) -> Result<(), GenieError> {
         for annex in self.spatial.annexes_of(id) {
@@ -287,7 +288,7 @@ impl World {
         old: PlayerId,
         idx: usize,
         new: PlayerId,
-        id: i32,
+        id: ObjectId,
     ) -> Result<PlayerId, GenieError> {
         let mut unit = self.players.player_mut(old)?.objects.take_out(idx)?;
         let changed = change_hands(
@@ -323,7 +324,7 @@ impl World {
     pub(crate) fn built_with_new_owner(
         &mut self,
         owner: PlayerId,
-        id: i32,
+        id: ObjectId,
         master: &Master,
         rice: bool,
     ) -> Result<(), GenieError> {
@@ -352,7 +353,11 @@ impl World {
     /// # Errors
     ///
     /// What the leaving and the destruction do not model.
-    pub(crate) fn garrison_leaves(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn garrison_leaves(
+        &mut self,
+        owner: PlayerId,
+        id: ObjectId,
+    ) -> Result<(), GenieError> {
         let inside = self
             .object(id)
             .map_or_else(Vec::new, |(_, u)| u.garrison.clone());
@@ -447,7 +452,7 @@ pub(crate) fn change_hands(
     spatial: &mut Spatial,
     world_time: u32,
 ) -> Result<bool, GenieError> {
-    spatial.records_owner(u.id.get(), new)?;
+    spatial.records_owner(u.id, new)?;
     let Some(to) = player_master(masters, new, u.life.master_id) else {
         return Ok(false);
     };
@@ -477,7 +482,7 @@ pub(crate) fn change_hands(
     let los = own.line_of_sight;
     u.own_master = Some(own);
     let sees = u.life.state == 2 && u.life.inside.is_none();
-    spatial.change_owner(u.id.get(), new, los, sees)?;
+    spatial.change_owner(u.id, new, los, sees)?;
     if let Some(a) = u.actions.artifact_mut() {
         a.gaia = new == PlayerId::GAIA;
     }

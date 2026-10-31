@@ -79,11 +79,29 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
             Player {
                 objects: p
                     .live_objects()
-                    .map(|o| unit(o, p.objects(), &header.world.base_world.path, civ, masters))
+                    .map(|o| {
+                        unit(
+                            o,
+                            p.objects(),
+                            &header.world.base_world.path,
+                            civ,
+                            masters,
+                            header.players().len(),
+                        )
+                    })
                     .collect(),
                 sleeping: p
                     .sleeping_objects()
-                    .map(|o| unit(o, p.objects(), &header.world.base_world.path, civ, masters))
+                    .map(|o| {
+                        unit(
+                            o,
+                            p.objects(),
+                            &header.world.base_world.path,
+                            civ,
+                            masters,
+                            header.players().len(),
+                        )
+                    })
                     .collect(),
                 computer: false,
                 kind: p.player.type_,
@@ -150,7 +168,8 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                 keep_distance_chance: p.world_player().chance_for_archers_to_maintain_distance,
                 // the load builds the watched lists (World::build_watched)
                 watched: Vec::new(),
-                ghosts: saved_ghosts(p),
+                // the saved ghosts follow once the world stands (a ghost without an id stops it)
+                ghosts: Vec::new(),
                 history: history(&p.world_player().history),
                 // the load files the objects (World::load_trackers, once the masters are in)
                 tracker: genie_core::players::tracker::Tracker::default(),
@@ -190,6 +209,19 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
         Ok((next, reusable)) => {
             turns.next_object_id = next;
             turns.recycling.next_id = reusable;
+        }
+        Err(e) => stop_all(&mut turns, &e),
+    }
+    match header
+        .players()
+        .iter()
+        .map(saved_ghosts)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(ghosts) => {
+            for (player, ghosts) in turns.players.iter_mut().zip(ghosts) {
+                player.ghosts = ghosts;
+            }
         }
         Err(e) => stop_all(&mut turns, &e),
     }
@@ -484,22 +516,26 @@ pub fn history(h: &genie_save::generated::world::History) -> genie_core::players
     }
 }
 
-pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::vision::ghost::Ghost> {
+pub(super) fn saved_ghosts(
+    section: &PlayerSection<'_>,
+) -> Result<Vec<genie_core::vision::ghost::Ghost>, genie_core::GenieError> {
     section
         .objects()
         .doppleganger_objects
         .objects()
         .filter_map(|o| {
-            let s = o.static_part()?;
             let d = o
                 .rge_object
                 .as_deref()?
                 .rge_doppleganger_object
                 .as_deref()?;
-            let original = d.long_val as i32;
-            Some(genie_core::vision::ghost::Ghost {
-                id: s.id,
-                original: (original != -1).then_some(original),
+            Some((o.static_part()?, d))
+        })
+        .map(|(s, d)| {
+            let original = ObjectId::of_field(d.long_val as i32);
+            Ok(genie_core::vision::ghost::Ghost {
+                id: ObjectId::try_from(s.id)?,
+                original,
                 original_id: original,
                 original_master: MasterId::of_data(d.long_val_2 as i16),
                 original_owner: usize::try_from(d.doppled_player).unwrap_or(0),
@@ -526,25 +562,18 @@ pub(super) fn garrison_firepower(turns: &mut World) {
         let Some(masters) = turns.masters.get(p) else {
             continue;
         };
-        let units: Vec<(i32, i32, MasterId, f32)> = player
+        let units: Vec<(ObjectId, ObjectId, MasterId, f32)> = player
             .objects
             .iter()
             .chain(&player.sleeping)
-            .filter_map(|u| {
-                Some((
-                    u.id.get(),
-                    u.life.inside?,
-                    u.life.master_id,
-                    u.reload_powerup,
-                ))
-            })
+            .filter_map(|u| Some((u.id, u.life.inside?, u.life.master_id, u.reload_powerup)))
             .collect();
         for (id, building, master, reload_powerup) in units {
             let Some(b) = player
                 .objects
                 .iter_mut()
                 .chain(&mut player.sleeping)
-                .find(|u| u.id.get() == building)
+                .find(|u| u.id == building)
             else {
                 continue;
             };

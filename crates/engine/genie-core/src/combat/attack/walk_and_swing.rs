@@ -199,7 +199,7 @@ impl Attack {
         // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
         // missile or charge projectile, whose hit is FUN_141081020's melee one
         if ranged || r.volleys {
-            unit.volley(c, Aimed::at(ObjectId::field(self.target), &f.victim))?;
+            unit.volley(c, Aimed::at(self.target, &f.victim))?;
         } else {
             if matches!(
                 f.own.master_id,
@@ -219,7 +219,7 @@ impl Attack {
                 Self::hit(f, &mut c.blasted, r.hit_chance, object)?
             };
             if let Some(target) = executed {
-                unit.post_own(ACTION_EXECUTED, [600, target, 0])?;
+                unit.post_own(ACTION_EXECUTED, [600, target.get(), 0])?;
             }
             write_strike_back(c, unit, &mut f.victim)?;
         }
@@ -316,7 +316,7 @@ impl Attack {
         blasted: &mut [Victim],
         chance: i16,
         object_rng: &mut Well512,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let a = f.own.source;
         if 0.0 < a.area_effect
             && a.weapon_range < damage::BLAST_RANGE
@@ -333,7 +333,7 @@ impl Attack {
         blasted: &mut [Victim],
         chance: i16,
         object_rng: &mut Well512,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let hit = Hit {
             at: f.own.position,
             from_z: Some(f.own.position.z()),
@@ -357,7 +357,7 @@ impl Attack {
         blasted: &mut [Victim],
         chance: i16,
         object_rng: &mut Well512,
-    ) -> Result<Option<i32>, GenieError> {
+    ) -> Result<Option<ObjectId>, GenieError> {
         let (center, target) = (f.own.position, f.victim.id);
         let mut targets: Vec<&mut Victim> = blasted.iter_mut().collect();
         targets.push(&mut f.victim);

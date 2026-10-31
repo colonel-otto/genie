@@ -40,7 +40,7 @@ impl UnitView<'_, '_> {
     /// while the AI runs (its buffer, `FUN_140c55270`) is not modelled.
     pub(crate) fn start_attack_now(
         &mut self,
-        target: i32,
+        target: ObjectId,
         force: bool,
         ai: &UnitAi,
     ) -> Result<crate::unit_ai::Attacked, GenieError> {
@@ -60,7 +60,7 @@ impl UnitView<'_, '_> {
         if unit
             .actions
             .attack()
-            .is_some_and(|a| a.target == ObjectId::of_field(target))
+            .is_some_and(|a| a.target == Some(target))
         {
             if force {
                 self.attack_again(target, &t, master, ai)?;
@@ -75,7 +75,7 @@ impl UnitView<'_, '_> {
             .c
             .w
             .spatial
-            .get(self.unit.id.get())
+            .get(self.unit.id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_master = player_master(&self.c.w.masters, t.player, t.master).ok_or(
             GenieError::unsupported("an attack's target of a master the slice does not have"),
@@ -163,7 +163,9 @@ impl UnitView<'_, '_> {
         )?;
         let target = attack.target;
         unit.actions.set_attack(Some(attack));
-        self.take(ObjectId::field(target), by)?;
+        if let Some(target) = target {
+            self.take(target, by)?;
+        }
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted: Vec::new(),
@@ -176,7 +178,7 @@ impl UnitView<'_, '_> {
     /// class `class`.
     fn attack_clears_actions(&mut self, class: ClassId) -> Result<Releaser, GenieError> {
         let by = Releaser {
-            id: self.unit.id.get(),
+            id: self.unit.id,
             class: Some(class),
             player: self.player,
         };
@@ -195,12 +197,12 @@ impl UnitView<'_, '_> {
     /// clearing the unit's attack count (`+0x900`). Its answer is not read.
     fn attack_again(
         &mut self,
-        target: i32,
+        target: ObjectId,
         t: &Placed,
         master: &crate::objects::masters::Master,
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
-        let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
+        let mark = |id: ObjectId, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
             let u = owner_view(&self.c.w.players, self.c.player, self.new_owner)?
                 .get(id)
                 .ok_or(NOT_HELD)?;
@@ -236,7 +238,7 @@ impl UnitView<'_, '_> {
         let attack = unit.actions.attack_mut().expect("the caller's own Attack");
         let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
         let by = Releaser {
-            id: unit.id.get(),
+            id: unit.id,
             class: Some(master.class),
             player: self.player,
         };
@@ -256,7 +258,7 @@ impl UnitView<'_, '_> {
     /// objects or another player's; None for an object the view does not hold (the owner's
     /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
     /// it does not hold).
-    fn victim_of_target(&self, id: i32) -> Result<Option<Victim>, GenieError> {
+    fn victim_of_target(&self, id: ObjectId) -> Result<Option<Victim>, GenieError> {
         let view = owner_view(&self.c.w.players, self.c.player, self.new_owner)?;
         let Some((q, t)) = view.find(id) else {
             return Ok(None);
@@ -292,7 +294,7 @@ impl UnitView<'_, '_> {
     /// runs).
     fn ready_reads(
         &self,
-        target: i32,
+        target: ObjectId,
         master: &crate::objects::masters::Master,
         ai: &UnitAi,
     ) -> Result<Option<crate::combat::attack::ReadyReads>, GenieError> {

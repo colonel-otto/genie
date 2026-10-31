@@ -41,10 +41,9 @@ impl Unit {
             return Ok(false);
         }
         let site = hunt.carry_to;
-        let found = self.resource_search_from(c, 0, 2, ObjectId::field(site))?;
-        if found == -1 {
+        let Some(found) = self.resource_search_from(c, 0, 2, site)? else {
             return Ok(false);
-        }
+        };
         let (tp, t) =
             OthersRef::of(&c.w.players, c.player)?
                 .find(found)
@@ -83,16 +82,16 @@ impl Unit {
         };
         let master = object_master(
             self.own_master.as_deref(),
-            (self.id.get(), self.life.master_id),
+            (self.id, self.life.master_id),
             c.w.masters.get(c.player.index()),
         )?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
-        let at = |id| {
+        let at = |id: ObjectId| {
             c.w.spatial
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
-        let (me_at, them) = (at(self.id.get())?, at(found)?);
+        let (me_at, them) = (at(self.id)?, at(found)?);
         let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
@@ -130,7 +129,7 @@ impl Unit {
                 )?;
             }
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
-            self.hunt_release(c, [ObjectId::field(old)])?;
+            self.hunt_release(c, [old])?;
             let by = self.releaser(c)?;
             crate::world::lets::take(c, self, found, by)?;
         }

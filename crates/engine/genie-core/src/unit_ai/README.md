@@ -40,6 +40,7 @@ show in checkpoint word 9.
 | [`attack_pick.rs`](attack_pick.rs) | Which object a unit may attack: the attack search, its picks and each type's rules. |
 | [`attack_rules.rs`](attack_rules.rs) | Conversion, neutral targets, patrol reaches and siege: the attack rules of the unit-AI types. |
 | [`attacked.rs`](attacked.rs) | A unit's answers to damage and attackers, to a unit in its way and to being sent off; the explorers' search. |
+| [`attackers.rs`](attackers.rs) | A unit AI's attackers: the sorted set of the objects whose damage it took. |
 | [`cared.rs`](cared.rs) | What each unit-AI type cares for: the classes its searches look for, their radii and its idle timeout. |
 | [`damaged.rs`](damaged.rs) | What the villagers, transports, traders, fishing ships and buildings do when damaged. |
 | [`flight.rs`](flight.rs) | The flight of the hunted animals, the boar and the villagers, and their calls for help. |
@@ -47,6 +48,7 @@ show in checkpoint word 9.
 | [`idle.rs`](idle.rs) | The idle checks of ships, siege, soldiers, units that do not attack and towers. |
 | [`idle_animals.rs`](idle_animals.rs) | The idle checks of the boar, the hunted animals and the lions. |
 | [`ids.rs`](ids.rs) | The orders, actions, timers and reaches the unit AI names, its factory types and stances. |
+| [`issuer.rs`](issuer.rs) | A queued order's issuer: the player whose command gave the order, or the object that queued it. |
 | [`life.rs`](life.rs) | A unit AI's construction, its order and target, its patrol and its moves. |
 | [`mod.rs`](mod.rs) | The unit AI (`UnitAIModule`): what a unit decides by itself. |
 | [`notifies.rs`](notifies.rs) | The notifies' processing: their queue, their acceptance and their buffer. |

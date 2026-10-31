@@ -11,6 +11,7 @@ use crate::movement::{
     STRAIGHT_GROW, TARGET_SHORT_REACH, drop_edge_waypoints, footprint_gap, gate_gap, looping_next,
     point_or_zero_of, remove_point,
 };
+use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use crate::{GenieError, math::fmath};
 
@@ -70,13 +71,11 @@ impl Mover {
             Footprint::new(0.0, 0.0),
         );
         let range = level.range;
-        let mut beyond = goal.target.map_or((back - range) - RANGE_FLOOR, |t| {
+        let mut beyond = goal.target.map_or((back - range) - RANGE_FLOOR, |(id, t)| {
             let own = (footprint_gap(self.position(), ground_radius, t.position, t.radius) - range)
                 - RANGE_FLOOR;
             let near = (self.position(), ground_radius);
-            gate_gap(world, near, (level.target, t), own, |g| {
-                (g - range) - RANGE_FLOOR
-            })
+            gate_gap(world, near, (id, t), own, |g| (g - range) - RANGE_FLOOR)
         });
         if goal.target.is_some() && level.flags & 4 != 0 {
             self.clear_bit_2();
@@ -171,10 +170,9 @@ impl Mover {
     ) -> Result<Next, GenieError> {
         let level = &self.paths[0];
         let created = level.created;
-        let target = level.target;
         let own = world.get(me.id).map(|p| p.player);
         let yields = self.stats.weapon_range == 0.0
-            && goal.target.is_some_and(|t| {
+            && goal.target.is_some_and(|(target, t)| {
                 let moved = world.gait(target).map_or(0, |g| g.last_move);
                 moved > created
                     || (moved == created && (own.is_some_and(|o| o < t.player) || me.id < target))
@@ -233,7 +231,7 @@ impl Mover {
         &self,
         me: &Me,
         p: BVector,
-        target: i32,
+        target: Option<ObjectId>,
         world: &mut Spatial,
     ) -> Result<bool, GenieError> {
         let (rx, ry, rz) = (
@@ -246,7 +244,7 @@ impl Mover {
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
         }
-        let ignore = world.query_ignore(&[me.id, target]);
+        let ignore = world.query_ignore(&[Some(me.id), target]);
         // the query starts at +0x824, where the unit last moved to
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let grow = rx * STRAIGHT_GROW;
@@ -272,7 +270,7 @@ impl Mover {
         &self,
         me: &Me,
         p: BVector,
-        target: i32,
+        target: Option<ObjectId>,
         world: &mut Spatial,
     ) -> Result<bool, GenieError> {
         let (rx, ry, rz) = (
@@ -285,7 +283,7 @@ impl Mover {
         if !(rx <= x && rz <= y && x <= w as f32 - rx && y <= h as f32 - ry) {
             return Ok(false);
         }
-        let ignore = world.query_ignore(&[me.id, target]);
+        let ignore = world.query_ignore(&[Some(me.id), target]);
         // the query starts at +0x824, where the unit last moved to
         let (from, to) = self.query_ends(self.moved_at.vector(), p, world.map);
         let rect = Rect::spanning(from, to);

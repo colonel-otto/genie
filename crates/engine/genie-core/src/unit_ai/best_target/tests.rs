@@ -1,14 +1,17 @@
 use super::*;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::players::PlayerId;
 use crate::test_ids::master_id;
+use crate::test_ids::object_id;
+use crate::test_ids::object_id_list;
 use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
     Candidate {
-        id,
+        id: object_id(id),
         distance,
         category: 1,
         class: class::CLASS_6,
@@ -50,7 +53,7 @@ fn the_statistics_count_bound_and_time_each_object() {
     assert_eq!(st.moving_kill_time, bounds(5.0, f32::MAX));
     assert_eq!((st.others, st.moving, st.armed, st.in_reach), (2, 2, 2, 1));
     assert_eq!(st.by_category[1], 2);
-    assert_eq!(st.closest_moving, (3.0, 1));
+    assert_eq!(st.closest_moving, (3.0, Some(object_id(1))));
     let kill: Vec<f32> = st.entries.iter().map(|e| e.kill_time).collect();
     assert_eq!(kill, [5.0, 5.0, f32::MAX]);
     let fixed: Vec<bool> = st.entries.iter().map(|e| e.fixed).collect();
@@ -92,16 +95,16 @@ fn the_scores_rank_and_sort_the_entries() {
     );
     st.rank(&mut |e| Ok(i32::from(!e.moving))).unwrap();
     st.sort().unwrap();
-    let ids: Vec<i32> = st.order.iter().map(|&i| st.entries[i].id).collect();
-    assert_eq!(ids, [9, 5, 4]);
+    let ids: Vec<ObjectId> = st.order.iter().map(|&i| st.entries[i].id).collect();
+    assert_eq!(ids, [object_id(9), object_id(5), object_id(4)]);
     // equal ranks go to the lower id
     for e in &mut st.entries {
         e.rank = 1.0;
     }
     st.order = vec![0, 1, 2];
     st.sort().unwrap();
-    let ids: Vec<i32> = st.order.iter().map(|&i| st.entries[i].id).collect();
-    assert_eq!(ids, [4, 5, 9]);
+    let ids: Vec<ObjectId> = st.order.iter().map(|&i| st.entries[i].id).collect();
+    assert_eq!(ids, [object_id(4), object_id(5), object_id(9)]);
 }
 
 /// The order history's weights: the younger an order, the more its category weighs; the
@@ -132,10 +135,10 @@ fn the_order_history_weighs_the_last_minute_s_categories() {
 /// the friends' scan, `'n'` the neutral test) and the ones made, in order.
 #[derive(Default)]
 struct Field {
-    things: std::collections::BTreeMap<i32, (Thing, Candidate)>,
-    quick: Vec<i32>,
-    paths: Vec<i32>,
-    asked: Vec<(char, i32)>,
+    things: std::collections::BTreeMap<ObjectId, (Thing, Candidate)>,
+    quick: Vec<ObjectId>,
+    paths: Vec<ObjectId>,
+    asked: Vec<(char, ObjectId)>,
     refused: Vec<char>,
     checked: Vec<char>,
 }
@@ -149,24 +152,24 @@ impl Field {
 }
 
 impl Battlefield for Field {
-    fn thing(&mut self, id: i32) -> Result<Option<Thing>, crate::GenieError> {
+    fn thing(&mut self, id: ObjectId) -> Result<Option<Thing>, crate::GenieError> {
         Ok(self.things.get(&id).map(|t| t.0))
     }
-    fn can_attack(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+    fn can_attack(&mut self, _: ObjectId) -> Result<bool, crate::GenieError> {
         Ok(self.check('a'))
     }
     fn attacks_neutral(&mut self, _: ClassId) -> Result<bool, crate::GenieError> {
         Ok(self.check('n'))
     }
-    fn spares_friends(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+    fn spares_friends(&mut self, _: ObjectId) -> Result<bool, crate::GenieError> {
         Ok(self.check('f'))
     }
-    fn shuns(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+    fn shuns(&mut self, _: ObjectId) -> Result<bool, crate::GenieError> {
         Ok(false)
     }
     fn candidate(
         &mut self,
-        id: i32,
+        id: ObjectId,
         distance: f32,
         category: i32,
     ) -> Result<Candidate, crate::GenieError> {
@@ -176,20 +179,20 @@ impl Battlefield for Field {
             ..self.things[&id].1
         })
     }
-    fn armored(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+    fn armored(&mut self, _: ObjectId) -> Result<bool, crate::GenieError> {
         Ok(false)
     }
-    fn weapon_range(&mut self, _: i32) -> Result<f32, crate::GenieError> {
+    fn weapon_range(&mut self, _: ObjectId) -> Result<f32, crate::GenieError> {
         Ok(0.0)
     }
-    fn engages(&mut self, _: i32) -> Result<bool, crate::GenieError> {
+    fn engages(&mut self, _: ObjectId) -> Result<bool, crate::GenieError> {
         Ok(true)
     }
-    fn quick_path(&mut self, id: i32, _: f32) -> Result<bool, crate::GenieError> {
+    fn quick_path(&mut self, id: ObjectId, _: f32) -> Result<bool, crate::GenieError> {
         self.asked.push(('q', id));
         Ok(self.quick.contains(&id))
     }
-    fn path(&mut self, id: i32, _: f32) -> Result<bool, crate::GenieError> {
+    fn path(&mut self, id: ObjectId, _: f32) -> Result<bool, crate::GenieError> {
         self.asked.push(('p', id));
         Ok(self.paths.contains(&id))
     }
@@ -197,8 +200,8 @@ impl Battlefield for Field {
 
 fn soldier() -> Searcher {
     Searcher {
-        id: 1,
-        target: -1,
+        id: object_id(1),
+        target: None,
         target_types: [-1, -1],
         order: None,
         action: None,
@@ -245,11 +248,17 @@ fn enemy(id: i32, class: ClassId, distance: f32, hp: f32) -> (Thing, Candidate) 
 #[test]
 fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
     let mut field = Field::default();
-    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 3.0, 40.0));
-    let _ = field.things.insert(8, enemy(8, class::CLASS_0, 9.0, 40.0));
-    let _ = field.things.insert(9, enemy(9, class::CLASS_0, 5.0, 10.0));
-    field.quick = vec![9];
-    let lists = [vec![], vec![], vec![], vec![], vec![8, 7, 9]];
+    let _ = field
+        .things
+        .insert(object_id(7), enemy(7, class::CLASS_0, 3.0, 40.0));
+    let _ = field
+        .things
+        .insert(object_id(8), enemy(8, class::CLASS_0, 9.0, 40.0));
+    let _ = field
+        .things
+        .insert(object_id(9), enemy(9, class::CLASS_0, 5.0, 10.0));
+    field.quick = vec![object_id(9)];
+    let lists = [vec![], vec![], vec![], vec![], object_id_list([8, 7, 9])];
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -257,20 +266,26 @@ fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
         ..Ask::default()
     };
     let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 9);
-    assert_eq!(field.asked, [('q', 7), ('q', 9)]);
+    assert_eq!(c.target, Some(object_id(9)));
+    assert_eq!(field.asked, [('q', object_id(7)), ('q', object_id(9))]);
     assert_eq!(c.retries, []);
     // without a quick path the paths follow; 7's fails (a moving object: ignored for 1 s)
     field.quick.clear();
-    field.paths = vec![9];
+    field.paths = vec![object_id(9)];
     field.asked.clear();
     let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 9);
+    assert_eq!(c.target, Some(object_id(9)));
     assert_eq!(
         field.asked,
-        [('q', 7), ('q', 9), ('q', 8), ('p', 7), ('p', 9)]
+        [
+            ('q', object_id(7)),
+            ('q', object_id(9)),
+            ('q', object_id(8)),
+            ('p', object_id(7)),
+            ('p', object_id(9))
+        ]
     );
-    assert_eq!(c.retries, [(7, 11_000)]);
+    assert_eq!(c.retries, [(object_id(7), 11_000)]);
 }
 
 /// Each of the first three whose path fails is ignored for 1 s (a moving object) or 2 s
@@ -279,12 +294,14 @@ fn the_best_unit_to_attack_ranks_then_takes_the_first_quick_path() {
 #[test]
 fn failed_paths_become_retarget_entries() {
     let mut field = Field::default();
-    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 3.0, 40.0));
+    let _ = field
+        .things
+        .insert(object_id(7), enemy(7, class::CLASS_0, 3.0, 40.0));
     let mut still = enemy(9, class::CLASS_0, 5.0, 10.0);
     still.0.speed = 0.0;
     still.1.speed = 0.0;
-    let _ = field.things.insert(9, still);
-    let lists = [vec![], vec![], vec![], vec![], vec![7, 9]];
+    let _ = field.things.insert(object_id(9), still);
+    let lists = [vec![], vec![], vec![], vec![], object_id_list([7, 9])];
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -292,27 +309,27 @@ fn failed_paths_become_retarget_entries() {
         ..Ask::default()
     };
     let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, -1);
+    assert_eq!(c.target, None);
     let mut retries = c.retries;
     retries.sort_unstable();
-    assert_eq!(retries, [(7, 11_000), (9, 12_000)]);
+    assert_eq!(retries, [(object_id(7), 11_000), (object_id(9), 12_000)]);
     let me = Searcher {
-        retries: vec![9],
+        retries: vec![object_id(9)],
         ..soldier()
     };
     field.asked.clear();
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, -1);
-    assert_eq!(field.asked, [('q', 7), ('p', 7)]);
+    assert_eq!(c.target, None);
+    assert_eq!(field.asked, [('q', object_id(7)), ('p', object_id(7))]);
     // with 7 a retarget entry too, the retry walk takes both
     let me = Searcher {
-        retries: vec![9, 7],
+        retries: vec![object_id(9), object_id(7)],
         ..soldier()
     };
-    field.paths = vec![9];
+    field.paths = vec![object_id(9)];
     field.asked.clear();
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 9);
+    assert_eq!(c.target, Some(object_id(9)));
 }
 
 /// The lists' records pass the objects without a unit AI, inside another, dead or allied,
@@ -330,19 +347,19 @@ fn the_lists_pass_over_what_the_unit_may_not_attack() {
     let mut ally = enemy(33, class::CLASS_0, 3.0, 40.0);
     ally.0.allied = true;
     for (id, t) in [(30, no_ai), (31, inside), (32, dead), (33, ally)] {
-        let _ = field.things.insert(id, t);
+        let _ = field.things.insert(object_id(id), t);
     }
     let _ = field
         .things
-        .insert(34, enemy(34, class::CLASS_0, 12.5, 40.0));
+        .insert(object_id(34), enemy(34, class::CLASS_0, 12.5, 40.0));
     let _ = field
         .things
-        .insert(35, enemy(35, class::CLASS_0, 0.1, 40.0));
+        .insert(object_id(35), enemy(35, class::CLASS_0, 0.1, 40.0));
     let _ = field
         .things
-        .insert(36, enemy(36, class::CLASS_0, 11.9, 40.0));
-    field.quick = (30..=36).collect();
-    let lists = [vec![], vec![], vec![], vec![], (30..=36).collect()];
+        .insert(object_id(36), enemy(36, class::CLASS_0, 11.9, 40.0));
+    field.quick = object_id_list(30..=36);
+    let lists = [vec![], vec![], vec![], vec![], object_id_list(30..=36)];
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -354,8 +371,8 @@ fn the_lists_pass_over_what_the_unit_may_not_attack() {
         ..soldier()
     };
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 36);
-    assert_eq!(field.asked, [('q', 36)]);
+    assert_eq!(c.target, Some(object_id(36)));
+    assert_eq!(field.asked, [('q', object_id(36))]);
 }
 
 /// A unit that attacks walls (its last target a wall) and finds only walls and gates takes
@@ -363,10 +380,16 @@ fn the_lists_pass_over_what_the_unit_may_not_attack() {
 #[test]
 fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
     let mut field = Field::default();
-    let _ = field.things.insert(20, enemy(20, class::WALL, 2.0, 100.0));
-    let _ = field.things.insert(21, enemy(21, class::GATE, 4.0, 100.0));
-    let _ = field.things.insert(22, enemy(22, class::GATE, 3.0, 100.0));
-    let lists = [vec![], vec![], vec![], vec![], vec![20, 21, 22]];
+    let _ = field
+        .things
+        .insert(object_id(20), enemy(20, class::WALL, 2.0, 100.0));
+    let _ = field
+        .things
+        .insert(object_id(21), enemy(21, class::GATE, 4.0, 100.0));
+    let _ = field
+        .things
+        .insert(object_id(22), enemy(22, class::GATE, 3.0, 100.0));
+    let lists = [vec![], vec![], vec![], vec![], object_id_list([20, 21, 22])];
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -378,9 +401,9 @@ fn walls_and_gates_count_for_a_unit_that_attacks_walls() {
         ..soldier()
     };
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 22);
+    assert_eq!(c.target, Some(object_id(22)));
     let c = best_unit_to_attack(&soldier(), &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, -1);
+    assert_eq!(c.target, None);
 }
 
 /// `FUN_140c4c8e0`'s switch: the archers' class 0 is 3, but masters 6 and 7 (the crossbowman
@@ -412,14 +435,16 @@ fn the_categories_follow_the_classes_and_their_exceptions() {
 fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
     let mut field = Field::default();
     for (id, d) in [(40, 3.0), (41, 0.1), (42, 4.0)] {
-        let _ = field.things.insert(id, enemy(id, class::CLASS_0, d, 40.0));
+        let _ = field
+            .things
+            .insert(object_id(id), enemy(id, class::CLASS_0, d, 40.0));
     }
     let ask = Ask {
-        extra: vec![40, 41, 42, 43],
+        extra: vec![object_id(40), object_id(41), object_id(42), object_id(43)],
         ..Ask::default()
     };
     let me = Searcher {
-        target: 42,
+        target: Some(object_id(42)),
         min_range: 0.2,
         ..soldier()
     };
@@ -433,10 +458,10 @@ fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
     };
     assert_eq!(
         counted(&me, &mut field),
-        [(40, 3.0), (41, 0.1_f32 + 0.5 + 1.0)]
+        [(object_id(40), 3.0), (object_id(41), 0.1_f32 + 0.5 + 1.0)]
     );
     let still = Searcher { speed: 0.0, ..me };
-    assert_eq!(counted(&still, &mut field), [(40, 3.0)]);
+    assert_eq!(counted(&still, &mut field), [(object_id(40), 3.0)]);
 }
 
 /// A gate answers at once only when nothing but walls and gates counts: with an enemy among
@@ -444,11 +469,17 @@ fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
 #[test]
 fn a_gate_answers_at_once_only_among_walls() {
     let mut field = Field::default();
-    let _ = field.things.insert(20, enemy(20, class::WALL, 2.0, 100.0));
-    let _ = field.things.insert(22, enemy(22, class::GATE, 3.0, 100.0));
-    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 5.0, 40.0));
-    field.quick = vec![7];
-    let lists = [vec![], vec![], vec![], vec![], vec![20, 22, 7]];
+    let _ = field
+        .things
+        .insert(object_id(20), enemy(20, class::WALL, 2.0, 100.0));
+    let _ = field
+        .things
+        .insert(object_id(22), enemy(22, class::GATE, 3.0, 100.0));
+    let _ = field
+        .things
+        .insert(object_id(7), enemy(7, class::CLASS_0, 5.0, 40.0));
+    field.quick = vec![object_id(7)];
+    let lists = [vec![], vec![], vec![], vec![], object_id_list([20, 22, 7])];
     let ask = Ask {
         idle: true,
         paths: 1,
@@ -460,8 +491,8 @@ fn a_gate_answers_at_once_only_among_walls() {
         ..soldier()
     };
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 7);
-    assert!(field.asked.contains(&('q', 7)));
+    assert_eq!(c.target, Some(object_id(7)));
+    assert!(field.asked.contains(&('q', object_id(7))));
 }
 
 /// Outside an idle check the current target answers by its path when it moves and engages
@@ -470,39 +501,46 @@ fn a_gate_answers_at_once_only_among_walls() {
 #[test]
 fn the_current_target_answers_by_its_path_outside_an_idle_check() {
     let mut field = Field::default();
-    let _ = field.things.insert(7, enemy(7, class::CLASS_0, 3.0, 40.0));
-    let _ = field.things.insert(9, enemy(9, class::CLASS_0, 5.0, 40.0));
-    field.paths = vec![7];
-    let lists = [vec![], vec![], vec![], vec![], vec![7, 9]];
+    let _ = field
+        .things
+        .insert(object_id(7), enemy(7, class::CLASS_0, 3.0, 40.0));
+    let _ = field
+        .things
+        .insert(object_id(9), enemy(9, class::CLASS_0, 5.0, 40.0));
+    field.paths = vec![object_id(7)];
+    let lists = [vec![], vec![], vec![], vec![], object_id_list([7, 9])];
     let ask = Ask {
         paths: 1,
         any_class: true,
         ..Ask::default()
     };
     let me = Searcher {
-        target: 7,
+        target: Some(object_id(7)),
         ..soldier()
     };
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!((c.target, &field.asked[..]), (7, &[('p', 7)][..]));
+    assert_eq!(
+        (c.target, &field.asked[..]),
+        (Some(object_id(7)), &[('p', object_id(7))][..])
+    );
     field.asked.clear();
     let at_once = Ask {
         paths: 0,
         ..ask.clone()
     };
     let c = best_unit_to_attack(&me, &at_once, &lists, &mut field).unwrap();
-    assert_eq!((c.target, field.asked.len()), (7, 0));
+    assert_eq!((c.target, field.asked.len()), (Some(object_id(7)), 0));
     field.paths.clear();
-    field.quick = vec![9];
+    field.quick = vec![object_id(9)];
     let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 9);
-    assert_eq!(field.asked[0], ('p', 7));
+    assert_eq!(c.target, Some(object_id(9)));
+    assert_eq!(field.asked[0], ('p', object_id(7)));
     field.asked.clear();
     let idle = Ask { idle: true, ..ask };
-    field.paths = vec![7];
+    field.paths = vec![object_id(7)];
     let c = best_unit_to_attack(&me, &idle, &lists, &mut field).unwrap();
-    assert_eq!(c.target, 9);
-    assert!(!field.asked.contains(&('p', 7)));
+    assert_eq!(c.target, Some(object_id(9)));
+    assert!(!field.asked.contains(&('p', object_id(7))));
 }
 
 /// The world's checks of a candidate ([`may_attack`]), in the game's order: one without a unit
@@ -517,7 +555,7 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
             refused: refused.to_vec(),
             ..Field::default()
         };
-        let pass = may_attack(me, (7, t), kind, &mut field).unwrap();
+        let pass = may_attack(me, (object_id(7), t), kind, &mut field).unwrap();
         (pass, field.checked)
     };
     let me = soldier();

@@ -1,12 +1,13 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
 use crate::map::Tile;
+use crate::objects::ObjectId;
 
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::{
     EPSILON, INCLUDED, NEW_PATHER_RADIUS, PLANS, Planning, footprint_gap, footprint_gap_squared,
@@ -59,15 +60,15 @@ pub(super) fn reach(waypoint: BVector, position: BVector, projected: BVector) ->
 /// moves (its speed, slot 0x208, is not 0, or its master is 42) and its ignore units (`+0x670`).
 #[derive(Clone, Debug)]
 pub(crate) struct LongWalker<'a> {
-    pub(crate) id: i32,
+    pub(crate) id: ObjectId,
     pub(crate) position: Position,
     pub(crate) radius: Footprint,
     pub(crate) mask: u8,
     pub(crate) moves: bool,
-    pub(crate) ignore_units: &'a [i32],
+    pub(crate) ignore_units: &'a [ObjectId],
     /// For a walker in a group the world holds (`+0x6d0`, `FUN_14152ff40`), its group's
     /// differentiator units (`FUN_14100bbe0` with 255, [`crate::groups::UnitGroups::group_units`]).
-    pub(crate) group_units: Option<Vec<i32>>,
+    pub(crate) group_units: Option<Vec<ObjectId>>,
 }
 
 /// The units whose tiles the long pather lowers (`FUN_140f9eb70`'s list for `FUN_140f60440`):
@@ -77,11 +78,10 @@ pub(crate) struct LongWalker<'a> {
 pub(crate) fn lowered_units(
     walker: &LongWalker<'_>,
     world: &Spatial,
-    target: Option<i32>,
-) -> Vec<i32> {
+    target: Option<ObjectId>,
+) -> Vec<ObjectId> {
     /// The list's room for the walker's ignore units (`0xfe < lVar26` breaks).
     const IGNORED: usize = 254;
-    let target_id = target.unwrap_or(-1);
     let own = || {
         std::iter::once(walker.id)
             .chain(
@@ -91,7 +91,7 @@ pub(crate) fn lowered_units(
                     .copied()
                     .filter(|&id| {
                         id != walker.id
-                            && id != target_id
+                            && Some(id) != target
                             && world.get(id).is_some()
                             && world.gait(id).is_some_and(|g| g.waits || g.moving)
                     })
@@ -99,7 +99,7 @@ pub(crate) fn lowered_units(
             )
             .collect()
     };
-    let mut listed: Vec<i32> = walker.group_units.clone().unwrap_or_else(own);
+    let mut listed: Vec<ObjectId> = walker.group_units.clone().unwrap_or_else(own);
     if let Some(id) = target {
         listed.push(id);
     }
@@ -123,7 +123,7 @@ pub(crate) fn long_path_for(
     world: &Spatial,
     computer: bool,
     (to, range): (BVector, f32),
-    target: Option<(i32, &Placed)>,
+    target: Option<(ObjectId, &Placed)>,
 ) -> Result<(bool, Path), GenieError> {
     let long_target = target.map(|(_, t)| {
         let gap2 = footprint_gap_squared(walker.position, walker.radius, t.position, t.radius);
@@ -176,12 +176,12 @@ pub struct ShortAsk<'a> {
     pub goal: BVector,
     /// How near the goal counts.
     pub range: f32,
-    /// The target object (-1 for none).
-    pub target: i32,
+    /// The target object (if any).
+    pub target: Option<ObjectId>,
     /// The objects the pather ignores.
-    pub ignore: &'a [i32],
+    pub ignore: &'a [ObjectId],
     /// The objects the old pather tests even moving.
-    pub include: &'a [i32],
+    pub include: &'a [ObjectId],
 }
 
 /// The tile pathfinder (`FUN_140f7c530`) for `walker` from `from` (x, y on the map) to `to`,
@@ -199,7 +199,7 @@ pub struct ShortAsk<'a> {
 pub(crate) fn tile_plan_for(
     walker: Walker,
     from: Point,
-    level_target: Option<i32>,
+    level_target: Option<ObjectId>,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
     ask: TileAsk<'_>,
@@ -233,6 +233,7 @@ pub(crate) fn tile_plan_for(
     let Some(planner) = plan.pathing.planner(walker.restriction, world.tiles()) else {
         return Ok(None);
     };
+    let ignore: Vec<RecordId> = ignore.into_iter().map(RecordId::from).collect();
     let mut walls = crate::map::spatial::SmoothingWalls::new(world, radius, mask, &ignore);
     let found = planner.plan::<GenieError>(&req, target_box, out, Some(&mut walls))?;
     if walls.ran {
@@ -260,7 +261,7 @@ pub(super) fn may_plan(
 /// x (master `+0x5d8`), terrain restriction (`+0x606`) and that restriction's mask.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Walker {
-    pub(crate) id: i32,
+    pub(crate) id: ObjectId,
     pub(crate) radius: f32,
     pub(crate) restriction: usize,
     pub(crate) mask: u8,
@@ -275,8 +276,8 @@ pub(crate) struct Walker {
 pub(super) fn include_kept(
     world: &Spatial,
     pathing: Option<&mut Pathing>,
-    kept: &[i32],
-    include: &mut Vec<i32>,
+    kept: &[ObjectId],
+    include: &mut Vec<ObjectId>,
 ) -> Result<(), GenieError> {
     let pathing = pathing.ok_or(GenieError::unsupported(
         "a kept hit without the world's mesh",
@@ -312,7 +313,7 @@ pub(super) fn old_pather_for(radius: f32) -> bool {
 }
 
 /// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within
-/// `range` of `target` (-1 for none), `ignore` its ignore list, with no include list and its
+/// `range` of `target`, `ignore` its ignore list, with no include list and its
 /// owner's number for the player ([`short_path_including`]).
 ///
 /// # Errors
@@ -323,8 +324,8 @@ pub(crate) fn short_path_for(
     from: Point,
     world: &mut Spatial,
     plan: &mut Planning<'_>,
-    goal: (BVector, f32, i32),
-    ignore: &[i32],
+    goal: (BVector, f32, Option<ObjectId>),
+    ignore: &[ObjectId],
     out: &mut Path,
 ) -> Result<u8, GenieError> {
     let player = owner_number(world, walker.id);
@@ -341,12 +342,12 @@ pub(crate) fn short_path_for(
 
 /// The owner's number (`+0x718` of the object's player, `+0x138`) the short pather takes for
 /// the gates' passage; -1 for an object the world does not place.
-pub(super) fn owner_number(world: &Spatial, id: i32) -> i32 {
+pub(super) fn owner_number(world: &Spatial, id: ObjectId) -> i32 {
     world.get(id).map_or(-1, |p| i32::from(p.player.get()))
 }
 
 /// The short pather (`FUN_140f9e540`) for `walker` from `from` (x, y on the map) to `to` within
-/// `range` of `target` (-1 for none), `ignore` its ignore list (arguments 6 and 7), `include`
+/// `range` of `target` (the game's -1 for none), `ignore` its ignore list (arguments 6 and 7), `include`
 /// the objects the old pather tests even moving (8 and 9), `player` the owner's number (13).
 /// A start within range of the target (`FUN_14118faf0` less the radius) empties `out` and
 /// returns 0; else `out` empties (`+0x440 = +0x438`) and an end off the map returns 4. A unit
@@ -378,8 +379,8 @@ pub(crate) fn short_path_including(
     } = ask;
     let (x, y) = (from.x(), from.y());
     let target_object = match target {
-        -1 => None,
-        id => world.get_known(id)?.map(|t| short_path::Target {
+        None => None,
+        Some(id) => world.get_known(id)?.map(|t| short_path::Target {
             id,
             position: t.position.ground(),
             half_size: t.radius,

@@ -76,7 +76,7 @@ pub use self::tribute::TributeCommand;
 pub use self::unit_ai_state::UnitAiStateCommand;
 pub use self::unit_order::{UnitOrderAction, UnitOrderCommand};
 pub use self::units::UnitList;
-pub use self::unload::UnloadCommand;
+pub use self::unload::{UnloadCommand, UnloadPick};
 pub use self::unmodelled::UnmodelledCommand;
 pub use self::wall::BuildWallCommand;
 
@@ -94,8 +94,8 @@ pub struct GatherPoint {
     pub state: i32,
     /// The point its trained units walk to.
     pub point: Position,
-    /// The object it is on, −1 for none.
-    pub target: i32,
+    /// The object it is on, if any.
+    pub target: Option<ObjectId>,
     /// The target's master, −1 without a target.
     pub target_master: Option<MasterId>,
 }

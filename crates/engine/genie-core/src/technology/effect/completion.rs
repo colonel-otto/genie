@@ -2,6 +2,7 @@
 //! it, a built building's technologies, the cost modifier and the disable and enable commands.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
@@ -353,7 +354,7 @@ impl World {
         &mut self,
         p: PlayerId,
         tech: i32,
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let count = self.players.player(p)?.techs.len().min(self.techs.len());
         let held = usize::try_from(tech).ok().filter(|&t| t < count);
@@ -415,7 +416,7 @@ impl World {
         master: MasterId,
         enable: u8,
         one: bool,
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         if player_master(&self.masters, p, master).is_none() {
             return Ok(());

@@ -140,7 +140,7 @@ impl World {
     /// The plain object's sight: its seer joins its owner's map and its sight comes on.
     fn seer_comes(
         &mut self,
-        id: i32,
+        id: ObjectId,
         (p, master): (PlayerId, MasterId),
         made: &crate::objects::masters::Master,
         at: Position,
@@ -261,9 +261,9 @@ impl World {
             }),
         };
         self.spatial.insert(id, placed);
-        self.pathing.moved(id.get(), &placed, false);
+        self.pathing.moved(id, &placed, false);
         self.pathing.tiles_changed(self.spatial.take_changes());
-        self.seer_comes(id.get(), (p, master), made, at)?;
+        self.seer_comes(id, (p, master), made, at)?;
         if let Some(e) = self.take_sight_unsupported() {
             return Err(e);
         }
@@ -320,14 +320,14 @@ impl World {
                 moving.map(|stats| Mover::new_object(stats, at, self.world_time, angle, facets)),
             ),
             attackable: true,
-            pasture: -1,
-            my_pasture: -1,
+            pasture: None,
+            my_pasture: None,
             sprite: sprite.filter(|_| facing == Facing::Drawn),
             ..Unit::default()
         });
         let idx = owner.objects.len() - 1;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
-        self.track_add(p, id.get(), master).map(|()| idx)
+        self.track_add(p, id, master).map(|()| idx)
     }
 
     /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player
@@ -346,15 +346,10 @@ impl World {
     ) -> Result<(), GenieError> {
         /// The flare's master (`0x112`, FLARE2).
         const FLARE: MasterId = MasterId::named(274);
-        let target = ObjectId::field(target);
         if self.players.len() < usize::from(players) {
             return Ok(());
         }
-        let at = if target == -1 {
-            None
-        } else {
-            self.spatial.get(target).map(|p| p.position)
-        };
+        let at = self.spatial.get(target).map(|p| p.position);
         let at = at.unwrap_or_else(|| point.with_height(0.0));
         for p in PlayerId::each(usize::from(players)).skip(1) {
             self.remains(p, FLARE, at, None)?;

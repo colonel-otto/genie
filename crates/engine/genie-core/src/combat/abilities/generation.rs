@@ -1,6 +1,7 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
 use crate::combat::abilities::{ONE, Own, WORKING, WORKING_ACTIONS};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
@@ -135,7 +136,7 @@ impl World {
                     // FUN_140a78450: an id below 0 names no object; the target only matters
                     // to an action of the test's at work
                     let works = WORKING_ACTIONS.contains(&a.kind) && a.state == WORKING;
-                    let target = match unit.top_target().filter(|&t| works && 0 <= t) {
+                    let target = match unit.top_target().filter(|t| works && !t.is_recyclable()) {
                         Some(t) => self.work_target(t)?,
                         None => None,
                     };
@@ -153,7 +154,7 @@ impl World {
                 .spatial
                 .sight
                 .as_ref()
-                .and_then(|v| v.seer(unit.id.get()))
+                .and_then(|v| v.seer(unit.id))
                 .and_then(|s| s.building)
                 .is_some_and(|b| b.built);
         if !generates(task, master.kind, master.kind, top, built) {
@@ -186,7 +187,7 @@ impl World {
 
     /// What a generation task's test reads of the object `id` its top action works on, as the
     /// world holds it; None for an object the world does not hold.
-    pub(super) fn work_target(&self, id: i32) -> Result<Option<WorkTarget>, GenieError> {
+    pub(super) fn work_target(&self, id: ObjectId) -> Result<Option<WorkTarget>, GenieError> {
         let Some((q, u)) = self.object(id) else {
             return Ok(None);
         };

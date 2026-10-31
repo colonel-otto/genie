@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
 use crate::objects::masters::{ClassId, Master, master_type, player_master};
@@ -32,7 +33,7 @@ impl World {
         p: PlayerId,
         (from, to): (Option<MasterId>, Option<MasterId>),
         mode: i16,
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         self.all_garrison_volleys(p, false)?;
         if let (Some(from), Some(to)) = (from, to) {
@@ -62,7 +63,7 @@ impl World {
         from: MasterId,
         to: MasterId,
         mode: i16,
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let Some(masters) = self.masters.get(p.index()) else {
             return Ok(());
@@ -108,7 +109,7 @@ impl World {
     /// Mode 2's own part of [`World::upgrade_objects`]: the object `id` gets a master of its own
     /// (a copy of the one it reads) where its kind lets it, takes slot 0x98 to `new` and copies
     /// `new` into its own master.
-    fn upgrade_named(&mut self, p: PlayerId, id: i32, new: &Master) -> Result<(), GenieError> {
+    fn upgrade_named(&mut self, p: PlayerId, id: ObjectId, new: &Master) -> Result<(), GenieError> {
         use crate::technology::upgrade::upgradable;
         if let Some(place) = self.place(id) {
             let u = self.object_at(place)?;
@@ -248,13 +249,13 @@ impl World {
         let attribute =
             |q: &crate::world::Player, i: usize| q.attributes.get(i).copied().unwrap_or(0.0);
         let limit = attribute(self.players.player(p)?, 234) as i32;
-        let buildings: Vec<i32> = self
+        let buildings: Vec<ObjectId> = self
             .players
             .player(p)?
             .objects
             .iter()
             .filter(|u| u.life.master_id == at && u.life.state == 2)
-            .map(|u| u.id.get())
+            .map(|u| u.id)
             .collect();
         for (k, &b) in buildings.iter().enumerate() {
             if 0 < limit && limit <= k as i32 {
@@ -310,7 +311,7 @@ impl World {
     /// master (`FUN_14165ae40`). Without an object only 200 to 202 run.
     pub(super) const fn object_effect(
         c: &EffectCommand,
-        object: Option<i32>,
+        object: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         match (c.kind, object) {
             (kind::OBJECTS_SET..kind::OBJECT_SET, _) | (_, None) => Ok(()),

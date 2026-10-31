@@ -211,7 +211,7 @@ impl World {
                 q.objects
                     .iter()
                     .chain(&q.sleeping)
-                    .any(|v| v.life.inside == Some(id.raw()))
+                    .any(|v| v.life.inside == Some(id))
             })
         };
         let is_building = self
@@ -222,7 +222,7 @@ impl World {
         let mut count = 0;
         for (p, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             for u in player.objects.iter().chain(&player.sleeping) {
-                if u.life.inside != Some(building.raw()) {
+                if u.life.inside != Some(building) {
                     continue;
                 }
                 let kind = u.master(&self.masters, p)?.kind;

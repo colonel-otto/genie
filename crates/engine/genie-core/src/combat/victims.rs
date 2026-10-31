@@ -3,6 +3,8 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Kill, Razed, Victim};
+use crate::objects::ObjectId;
+use crate::objects::ObjectKey;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -24,7 +26,11 @@ impl World {
     /// object the slice holds, live or asleep (the world's table holds both, and a blast walks
     /// the tiles' lists of both), with its relations to the attacker's player and whether its
     /// place is a guess.
-    pub(crate) fn victim(&self, id: i32, attacker: PlayerId) -> Result<Option<Victim>, GenieError> {
+    pub(crate) fn victim(
+        &self,
+        id: impl ObjectKey,
+        attacker: PlayerId,
+    ) -> Result<Option<Victim>, GenieError> {
         let Some((p, u)) = PlayerId::each(self.players.len())
             .zip(&self.players)
             .find_map(|(p, player)| {
@@ -57,7 +63,7 @@ impl World {
     /// counts as unseen.
     pub(crate) fn seen(
         &self,
-        id: i32,
+        id: impl ObjectKey,
         viewer: PlayerId,
     ) -> Result<Option<crate::unit_ai::Seen>, GenieError> {
         for (p, player) in PlayerId::each(self.players.len()).zip(&self.players) {
@@ -117,7 +123,7 @@ impl World {
         &self,
         unit: &Unit,
         p: PlayerId,
-        target: i32,
+        target: Option<ObjectId>,
     ) -> Result<Vec<Victim>, GenieError> {
         let reach = Some(unit.master(&self.masters, p)?.area_effect)
             .filter(|&r| 0.0 < r)
@@ -128,7 +134,7 @@ impl World {
             for (id, o) in self
                 .spatial
                 .objects_within(x - reach, y - reach, x + reach, y + reach)
-                .filter(|&(id, _)| id != unit.id.get() && id != target)
+                .filter(|&(id, _)| id != unit.id && Some(id) != target)
             {
                 let seen = self.victim(id, p)?;
                 near.push(seen.unwrap_or_else(|| Victim {
@@ -140,13 +146,14 @@ impl World {
                 }));
             }
         }
-        let mains: Vec<i32> = std::iter::once(target)
+        let mains: Vec<ObjectId> = target
+            .into_iter()
             .chain(near.iter().map(|v| v.id))
             .filter_map(|id| self.spatial.annex_of(id))
             .collect();
         for m in mains {
-            if m != unit.id.get()
-                && m != target
+            if m != unit.id
+                && Some(m) != target
                 && !near.iter().any(|v| v.id == m)
                 && let Some(v) = self.victim(m, p)?
             {
@@ -162,7 +169,7 @@ impl World {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct KillLeft {
     /// The object.
-    pub(crate) id: i32,
+    pub(crate) id: ObjectId,
     /// A hit killed it ([`World::killed`]).
     pub(crate) kill: Option<Kill>,
     /// What each hit that left it, a building, below 1 hit point counted.
@@ -171,7 +178,7 @@ pub(crate) struct KillLeft {
 
 impl KillLeft {
     /// The updating unit `id`, killed by its target's retaliation (`kill`).
-    pub(crate) const fn own(id: i32, kill: Kill) -> Self {
+    pub(crate) const fn own(id: ObjectId, kill: Kill) -> Self {
         Self {
             id,
             kill: Some(kill),
@@ -184,7 +191,7 @@ impl KillLeft {
 /// one of any list, live or asleep, of a master its owner has.
 pub(crate) fn readable<'o>(
     c: &'o Step<'_>,
-    id: i32,
+    id: impl ObjectKey,
 ) -> Result<Option<(PlayerId, &'o Unit, &'o Master)>, GenieError> {
     let Some((p, u, _)) = c.w.locate(id) else {
         return Ok(None);
@@ -195,7 +202,7 @@ pub(crate) fn readable<'o>(
 
 /// What a hit of the updating unit reads of object `id` ([`World::victim`] from the update):
 /// an object [`readable`] by the hit.
-pub(crate) fn victim(c: &Step<'_>, id: i32) -> Result<Option<Victim>, GenieError> {
+pub(crate) fn victim(c: &Step<'_>, id: impl ObjectKey) -> Result<Option<Victim>, GenieError> {
     let Some((p, u, master)) = readable(c, id)? else {
         return Ok(None);
     };
@@ -473,7 +480,7 @@ impl World {
     ///
     /// An object the slice does not hold, and an attribute whose change the slice does not
     /// model.
-    pub(crate) fn count_kill(&mut self, id: i32, killer: usize) -> Result<(), GenieError> {
+    pub(crate) fn count_kill(&mut self, id: ObjectId, killer: usize) -> Result<(), GenieError> {
         let (q, u) = self
             .object(id)
             .ok_or(crate::construction::build::NOT_HELD)?;

@@ -15,6 +15,7 @@
 use crate::GenieError;
 use crate::math::fmath::BVector;
 use crate::movement::PathData;
+use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
@@ -25,6 +26,7 @@ mod objects;
 pub use self::group_list::{GroupLink, UnitGroups, common_group};
 pub(crate) use self::objects::WorldObject;
 pub use self::objects::sub_formation;
+pub use self::target::GroupTarget;
 
 mod attack;
 mod command;
@@ -40,6 +42,7 @@ mod order;
 mod place;
 mod stats;
 mod steer;
+mod target;
 mod task;
 mod update;
 
@@ -81,7 +84,7 @@ pub struct Motion {
     pub number_wait_delays: i32,
     /// `+0xc4` (not saved): the group's lead unit (-1 from the constructor), which a formation's
     /// transform tests the slots' places with (`FUN_1410465d0`).
-    pub lead: i32,
+    pub lead: Option<ObjectId>,
 }
 
 /// A member's own move (`mSpecificMoves[i]`).
@@ -109,7 +112,7 @@ pub struct SpecificMove {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Member {
     /// The unit's id.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its own move.
     pub specific_move: SpecificMove,
     /// `mSecondsSinceAttacking[i]`.
@@ -120,7 +123,7 @@ pub struct Member {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Slot {
     /// `mUnitID`.
-    pub unit_id: i32,
+    pub unit_id: Option<ObjectId>,
     /// `mOffset`.
     pub offset: BVector,
     /// `mTransformPosition`.
@@ -261,7 +264,7 @@ pub struct UnitTypeStatistic {
     /// `mFormationCategory`.
     pub formation_category: i32,
     /// `mUnits` (as many as `mNumberUnits`).
-    pub units: Vec<i32>,
+    pub units: Vec<ObjectId>,
     /// `mUsed`.
     pub used: u32,
     /// `mAttackRange`.
@@ -279,10 +282,8 @@ pub struct UnitTypeStatistic {
 /// The group's target (`mCurrentTarget`, `FUN_14101c7d0`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TargetData {
-    /// `mTarget`.
-    pub target: i32,
-    /// `mType`.
-    pub kind: i32,
+    /// `mTarget` with its kind `mType`.
+    pub target: GroupTarget,
     /// `mOriginalPosition`.
     pub original_position: BVector,
     /// `mRange`.
@@ -301,7 +302,7 @@ pub struct GroupOrder {
     /// `mCommand`.
     pub command: i32,
     /// `mTargetID`.
-    pub target_id: i32,
+    pub target_id: Option<ObjectId>,
     /// `mParm`.
     pub parm: f32,
     /// `mPoint`.
@@ -316,7 +317,7 @@ pub struct GroupCommand {
     /// `mCommand`.
     pub command: i32,
     /// `mTargetID`.
-    pub target_id: i32,
+    pub target_id: Option<ObjectId>,
     /// `mRange`.
     pub range: f32,
     /// `mPoint`.
@@ -392,11 +393,11 @@ pub struct UnitGroup {
     pub command_queue: Vec<GroupCommand>,
     /// The objects the save lists after the queues (`objCount`, `objId`): the units the group
     /// keeps apart (`+0x458`, size `+0x468`).
-    pub objects: Vec<i32>,
+    pub objects: Vec<ObjectId>,
     /// What the members' searches found (`+0x49c`, at most 70, its count `+0x5b4`; not saved):
     /// the statistics refill it ([`crate::world::World::statistics_only`]), and nothing else in
     /// the game reads or writes it.
-    pub sighted: Vec<i32>,
+    pub sighted: Vec<ObjectId>,
     /// `mDifferentiatorID`.
     pub differentiator_id: i32,
     /// `mSecondsNotUnderAttack`.
@@ -413,7 +414,7 @@ pub struct UnitGroup {
     pub spare_seconds: Vec<f32>,
     /// The special units (`+0x488` its count, `+0x48c` the ids; not saved): the members a group's
     /// command on an attack task lists for the target (`FUN_14100c6c0`, its one writer).
-    pub special_units: Vec<i32>,
+    pub special_units: Vec<ObjectId>,
     /// `+0x13d` (not saved; the constructor's 1): the group's last command was not queued
     /// (`BUnitGroup::command` sets it), so its next move empties the command queue first;
     /// `checkQueuedOrders` (`FUN_14100d460`) clears it.
@@ -441,7 +442,7 @@ impl Motion {
             maximum_yaw_per_second_stationary: f32::MAX,
             paths: vec![PathData::without_path()],
             flags: 3,
-            lead: -1,
+            lead: None,
             ..Self::default()
         }
     }
@@ -482,11 +483,7 @@ impl UnitGroup {
             state: -1,
             flags: 0x100,
             current_command: -1,
-            current_target: TargetData {
-                target: -1,
-                kind: -1,
-                ..TargetData::default()
-            },
+            current_target: TargetData::default(),
             differentiator_id: -1,
             replaces_queue: 1,
             ..Self::default()
@@ -516,7 +513,7 @@ impl UnitGroup {
     /// Unit `id`'s place among the members (`FUN_1410175f0`: its index in `+0xf0`), −1 when it is
     /// not one.
     #[must_use]
-    pub fn index_of(&self, id: i32) -> i32 {
+    pub fn index_of(&self, id: ObjectId) -> i32 {
         self.members
             .iter()
             .position(|m| m.id == id)
@@ -527,7 +524,7 @@ impl UnitGroup {
     /// `FUN_141017590`: unit `id`'s own move's reason (`mReason`, the `+8` of its record in
     /// `+0xf8`), −1 when it is not a member.
     #[must_use]
-    pub fn member_reason(&self, id: i32) -> i32 {
+    pub fn member_reason(&self, id: ObjectId) -> i32 {
         self.members
             .iter()
             .find(|m| m.id == id)
@@ -537,10 +534,10 @@ impl UnitGroup {
     /// `FUN_1410177f0`: unit `id` is in its place, its first slot (`mUnitID`) in the current
     /// formation (`+0x128`) in state 3 (`+0x2c`); not without such a slot or formation.
     #[must_use]
-    pub fn slot_in_place(&self, id: i32) -> bool {
+    pub fn slot_in_place(&self, id: ObjectId) -> bool {
         self.current_formation
             .as_ref()
-            .and_then(|f| f.slots.iter().find(|s| s.unit_id == id))
+            .and_then(|f| f.slots.iter().find(|s| s.unit_id == Some(id)))
             .is_some_and(|s| s.state == 3)
     }
 }

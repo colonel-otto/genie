@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::BVector;
 use crate::movement::Me;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
@@ -51,7 +52,7 @@ impl Unit {
     pub(crate) fn repair_reads(
         &self,
         c: &Step<'_>,
-        target: i32,
+        target: Option<ObjectId>,
     ) -> Result<RepairReads, GenieError> {
         let own = repair_master(&c.w.masters, c.player, self)?;
         let (repairee, counted_in) =
@@ -131,7 +132,7 @@ impl Unit {
         c: &Step<'_>,
         others: OthersRef<'_>,
     ) -> Result<Option<crate::unit_ai::TopTarget>, GenieError> {
-        let Some(id) = self.top_target().filter(|&t| t != -1) else {
+        let Some(id) = self.top_target() else {
             return Ok(None);
         };
         let Some((owner, u)) = others.find(id) else {
@@ -186,10 +187,10 @@ fn repair_master(every: &[Masters], q: PlayerId, u: &Unit) -> Result<Master, Gen
 fn repairee_of(
     c: &Step<'_>,
     others: OthersRef<'_>,
-    target: i32,
+    target: Option<ObjectId>,
 ) -> Result<(Option<Repairee>, CountedIn), GenieError> {
-    let held = |id: i32| others.find(id);
-    let Some((q, t)) = held(target).filter(|_| target != -1) else {
+    let held = |id: ObjectId| others.find(id);
+    let Some((target, (q, t))) = target.and_then(|id| Some((id, held(id)?))) else {
         return Ok((None, None));
     };
     let tm = repair_master(&c.w.masters, q, t)?;
@@ -229,13 +230,15 @@ fn repairee_of(
 /// lacks, and an attribute the player has not got.
 pub(crate) fn repair_target(
     c: &mut Step<'_>,
-    target: i32,
+    target: Option<ObjectId>,
     amount: f32,
 ) -> Result<(u8, MasterKind), GenieError> {
     let player = c.player;
     let mut set = Vec::new();
     let others = OthersRef::of(&c.w.players, player)?;
-    if let Some((q, t)) = others.find(target).filter(|_| target != -1) {
+    if let Some(target) = target
+        && let Some((q, t)) = others.find(target)
+    {
         let tm = repair_master(&c.w.masters, q, t)?;
         for id in reached_ids(&c.w.spatial, t, target, tm.kind == BUILDING) {
             let Some(o) = others.find(id) else {
@@ -281,7 +284,7 @@ pub(crate) fn repair_target(
 
 /// The objects a repair of `target` (`t`) reaches, in order: the target; for a building, an
 /// annex's main building, then the main building's annexes by id, the target left out.
-fn reached_ids(spatial: &Spatial, t: &Unit, target: i32, building: bool) -> Vec<i32> {
+fn reached_ids(spatial: &Spatial, t: &Unit, target: ObjectId, building: bool) -> Vec<ObjectId> {
     let mut ids = vec![target];
     if building {
         let head = t.annex_of.unwrap_or(target);
@@ -302,7 +305,7 @@ fn repaired(
     c: &Step<'_>,
     others: OthersRef<'_>,
     (oq, o): (PlayerId, &Unit),
-    id: i32,
+    id: ObjectId,
 ) -> Result<crate::construction::repair::Repaired, GenieError> {
     let om = repair_master(&c.w.masters, oq, o)?;
     let attributes: &[f32] = if oq == c.player {

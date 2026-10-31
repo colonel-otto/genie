@@ -5,6 +5,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -27,7 +28,7 @@ impl Unit {
     pub(crate) fn more_work(
         &self,
         c: &mut Step<'_>,
-        building: i32,
+        building: ObjectId,
         built: MasterId,
     ) -> Result<Option<crate::orders::Work>, GenieError> {
         use crate::gathering::gather_search::{self, Candidate};
@@ -69,7 +70,7 @@ impl Unit {
             .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
         let (player, me_id, every) = (c.player, self.id, &c.w.masters);
-        let candidate = |id: i32, owner: PlayerId, u: &Self, position: Position| {
+        let candidate = |id: ObjectId, owner: PlayerId, u: &Self, position: Position| {
             let m = u.master(every, owner)?;
             Ok(Candidate {
                 id,
@@ -87,13 +88,13 @@ impl Unit {
                 gather_group: m.gather_group,
             })
         };
-        let me = candidate(me_id.get(), player, self, self.position())?;
+        let me = candidate(me_id, player, self, self.position())?;
         let spatial: &Spatial = &c.w.spatial;
         let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
             spatial
                 .objects_on(x, y)
                 .map(|(id, p)| {
-                    if id == me_id.get() {
+                    if id == me_id {
                         return Ok(me);
                     }
                     let (owner, u) = others.find(id).ok_or(GenieError::unsupported(
@@ -124,11 +125,9 @@ impl Unit {
         let (kind, cap) = gather_search::gather_group(found.attribute);
         let target = self.resource_search(c, kind, cap)?;
         let spatial: &Spatial = &c.w.spatial;
-        let target = if target != -1 && spatial.get(target).is_some() {
-            target
-        } else {
-            found.id
-        };
+        let target = target
+            .filter(|&t| spatial.get(t).is_some())
+            .unwrap_or(found.id);
         let point = spatial
             .get(target)
             .ok_or(GenieError::unsupported(
@@ -136,7 +135,7 @@ impl Unit {
             ))?
             .position;
         Ok(Some(crate::orders::Work {
-            target,
+            target: Some(target),
             point,
             carry_test: false,
             filter: -1,

@@ -245,7 +245,7 @@ pub fn ask_walk(
     if ask.ends_in_range && squared <= range * range {
         return Ok((Some(MoveTo::Arrived), None));
     }
-    mover.request_path_asked(here, point, range, ObjectId::field(target), now, ask);
+    mover.request_path_asked(here, point, range, target, now, ask);
     if let Some(mut shown) = shown {
         shown.show(walk.body.move_stats_mut());
     }
@@ -523,7 +523,7 @@ mod tests {
         };
         let mut ai = None;
         let mut update = |m: &mut MoveToAction| {
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
             // the house 10028 stands (state 2)
             m.sub_update(
                 &mut rig.walk(4),
@@ -621,7 +621,7 @@ mod tests {
                 ..MoveToAction::sub_in(MoveTo::Moving)
             };
             let mut ai = Some(crate::unit_ai::UnitAi::default());
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
             let code = m.sub_update(
                 &mut rig.walk(4),
                 PathAsk::default(),
@@ -683,7 +683,7 @@ mod tests {
                 current_action: Some(crate::unit_ai::ActionKind::Move),
                 ..crate::unit_ai::UnitAi::default()
             });
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
             let code = m.check_held(state, &mut inbox).unwrap();
             let posted: Vec<(i32, [i32; 3])> = ai.map_or(vec![], |ai| {
                 ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
@@ -706,7 +706,7 @@ mod tests {
             ..MoveToAction::sub_in(MoveTo::Moving)
         };
         let mut ai = None;
-        let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+        let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
         let ask = PathAsk::default();
         let code = m.sub_update(
             &mut rig.walk(4),
@@ -750,7 +750,7 @@ mod tests {
                 current_action: Some(crate::unit_ai::ActionKind::Move),
                 ..crate::unit_ai::UnitAi::default()
             });
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, 9177, 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
             let code = m
                 .sub_update(
                     &mut rig.walk(4),
@@ -831,7 +831,7 @@ mod tests {
             let mut walk = Walk {
                 body: &mut mover,
                 me: Me {
-                    id: 9177,
+                    id: object_id(9177),
                     group: -1,
                     action_state: 4,
                 },

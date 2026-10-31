@@ -10,6 +10,7 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Point;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
@@ -40,7 +41,7 @@ pub const CLASSES: usize = 65;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Record {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its distance (`FLT_MAX` in the lists; a query's copy holds its own).
     pub distance: f32,
     /// The owner's id (`player+0x718`).
@@ -70,7 +71,7 @@ pub struct Entry {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UnitUpdate {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// The owner's id (`player+0x718`).
     pub owner: u8,
     /// Its place (x, y).
@@ -117,7 +118,7 @@ pub struct Registry {
     /// `lists[player][class]`: the records.
     pub lists: Vec<Vec<Vec<Record>>>,
     /// Each object's entry.
-    pub entries: BTreeMap<i32, Entry>,
+    pub entries: BTreeMap<ObjectId, Entry>,
 }
 
 impl Registry {
@@ -134,7 +135,7 @@ impl Registry {
 
     /// The object `id`'s entry, if it has one.
     #[must_use]
-    pub fn entry(&self, id: i32) -> Option<&Entry> {
+    pub fn entry(&self, id: ObjectId) -> Option<&Entry> {
         self.entries.get(&id)
     }
 
@@ -222,7 +223,7 @@ impl Registry {
     }
 
     /// An ownership change (`FUN_14120f800`): the object's records take the new owner's id.
-    pub fn owner_changed(&mut self, id: i32, owner: PlayerId) -> Result<(), GenieError> {
+    pub fn owner_changed(&mut self, id: ObjectId, owner: PlayerId) -> Result<(), GenieError> {
         let Some(e) = self.entries.get(&id).copied() else {
             return Ok(());
         };
@@ -243,7 +244,7 @@ impl Registry {
     }
 
     /// The combat object's new place (`FUN_14108c320`): its records in every list follow.
-    pub fn moved(&mut self, id: i32, class: ClassId, at: Point) {
+    pub fn moved(&mut self, id: ObjectId, class: ClassId, at: Point) {
         let (x, y) = (at.x(), at.y());
         let Some(e) = self.entries.get(&id).copied() else {
             return;
@@ -352,6 +353,7 @@ impl Registry {
 mod tests {
     use super::*;
     use crate::objects::masters::class;
+    use crate::test_ids::object_id;
 
     fn registry() -> Registry {
         Registry::new(3, 65)
@@ -362,7 +364,7 @@ mod tests {
         let mut r = registry();
         for id in [1, 2, 3] {
             r.update_unit(UnitUpdate {
-                id,
+                id: object_id(id),
                 owner: 1,
                 position: Point::new(id as f32, 5.0),
                 radii: Footprint::new(0.2, 0.2),
@@ -374,13 +376,13 @@ mod tests {
         }
         assert_eq!(
             r.lists[0][4].iter().map(|x| x.id).collect::<Vec<_>>(),
-            [1, 2, 3]
+            [object_id(1), object_id(2), object_id(3)]
         );
         assert_eq!(r.lists[2][4].len(), 3);
         assert_eq!(r.lists[1][4], Vec::<Record>::new());
         // 1 leaves player 0's sight: 3 takes its place
         r.update_unit(UnitUpdate {
-            id: 1,
+            id: object_id(1),
             owner: 1,
             position: Point::new(1.0, 5.0),
             radii: Footprint::new(0.2, 0.2),
@@ -391,12 +393,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             r.lists[0][4].iter().map(|x| x.id).collect::<Vec<_>>(),
-            [3, 2]
+            [object_id(3), object_id(2)]
         );
-        assert_eq!(r.entry(3).unwrap().slots[0], Some(0));
-        assert_eq!(r.entry(1).unwrap().slots[0], None);
-        assert_eq!(r.entry(1).unwrap().slots[2], Some(0));
-        r.moved(3, class::VILLAGER, Point::new(7.0, 7.0));
+        assert_eq!(r.entry(object_id(3)).unwrap().slots[0], Some(0));
+        assert_eq!(r.entry(object_id(1)).unwrap().slots[0], None);
+        assert_eq!(r.entry(object_id(1)).unwrap().slots[2], Some(0));
+        r.moved(object_id(3), class::VILLAGER, Point::new(7.0, 7.0));
         assert_eq!((r.lists[0][4][0].x, r.lists[2][4][2].y), (7.0, 7.0));
     }
 
@@ -404,7 +406,7 @@ mod tests {
     fn a_query_finds_the_records_within_its_rounded_box_by_relation() {
         let mut r = registry();
         r.update_unit(UnitUpdate {
-            id: 1,
+            id: object_id(1),
             owner: 1,
             position: Point::new(12.0, 10.0),
             radii: Footprint::new(0.2, 0.2),
@@ -414,7 +416,7 @@ mod tests {
         })
         .unwrap();
         r.update_unit(UnitUpdate {
-            id: 2,
+            id: object_id(2),
             owner: 2,
             position: Point::new(10.0, 13.5),
             radii: Footprint::new(0.2, 0.2),
@@ -424,7 +426,7 @@ mod tests {
         })
         .unwrap();
         r.update_unit(UnitUpdate {
-            id: 3,
+            id: object_id(3),
             owner: 2,
             position: Point::new(13.0, 13.0),
             radii: Footprint::new(0.2, 0.2),
@@ -434,7 +436,7 @@ mod tests {
         })
         .unwrap();
         r.update_unit(UnitUpdate {
-            id: 4,
+            id: object_id(4),
             owner: 0,
             position: Point::new(10.5, 10.5),
             radii: Footprint::new(0.2, 0.2),
@@ -459,8 +461,14 @@ mod tests {
             .unwrap();
         // 1 is 1.8 off along x, 2 is 3.3 off along y (beyond 3.2), 3 is at the corner and beyond
         // the rounding
-        assert_eq!(found[4].iter().map(|x| x.id).collect::<Vec<_>>(), [1]);
-        assert_eq!(found[1].iter().map(|x| x.id).collect::<Vec<_>>(), [4]);
+        assert_eq!(
+            found[4].iter().map(|x| x.id).collect::<Vec<_>>(),
+            [object_id(1)]
+        );
+        assert_eq!(
+            found[1].iter().map(|x| x.id).collect::<Vec<_>>(),
+            [object_id(4)]
+        );
         // the edge distances, the overlap along y included: (1.8, -0.2)
         assert!((found[4][0].distance - (1.8f32 * 1.8 + 0.04).sqrt()).abs() < 1e-6);
         assert_eq!(
@@ -483,7 +491,7 @@ mod tests {
     fn a_query_caps_its_radius_at_44() {
         let mut r = registry();
         r.update_unit(UnitUpdate {
-            id: 1,
+            id: object_id(1),
             owner: 1,
             position: Point::new(53.5, 10.0),
             radii: Footprint::new(0.2, 0.2),
@@ -493,7 +501,7 @@ mod tests {
         })
         .unwrap();
         r.update_unit(UnitUpdate {
-            id: 2,
+            id: object_id(2),
             owner: 1,
             position: Point::new(60.0, 10.0),
             radii: Footprint::new(0.2, 0.2),
@@ -516,14 +524,17 @@ mod tests {
             .unwrap()
             .unwrap();
         // the box reaches 44.2 along x: 1's edge is 43.3 off, 2's 49.8
-        assert_eq!(found[4].iter().map(|x| x.id).collect::<Vec<_>>(), [1]);
+        assert_eq!(
+            found[4].iter().map(|x| x.id).collect::<Vec<_>>(),
+            [object_id(1)]
+        );
     }
 
     #[test]
     fn a_query_keeps_a_wide_object_whose_centre_lies_beyond_the_radius() {
         let mut r = registry();
         r.update_unit(UnitUpdate {
-            id: 1,
+            id: object_id(1),
             owner: 1,
             position: Point::new(15.0, 10.0),
             radii: Footprint::new(2.0, 2.0),
@@ -547,6 +558,9 @@ mod tests {
             .unwrap();
         // the centre is 5 off, beyond 3.2, but the edge is 3 off: the 7-tile margin keeps it in
         // the box
-        assert_eq!(found[4].iter().map(|x| x.id).collect::<Vec<_>>(), [1]);
+        assert_eq!(
+            found[4].iter().map(|x| x.id).collect::<Vec<_>>(),
+            [object_id(1)]
+        );
     }
 }

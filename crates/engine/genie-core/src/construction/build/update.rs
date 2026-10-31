@@ -9,6 +9,7 @@ use crate::construction::build::{
 use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -43,7 +44,7 @@ impl BuildAction {
             task,
             added: false,
             timer: 0.0,
-            site: -1,
+            site: None,
         })
     }
 
@@ -52,7 +53,7 @@ impl BuildAction {
     #[must_use]
     pub(super) const fn restarted(
         &self,
-        target: i32,
+        target: Option<ObjectId>,
         at: Position,
         move_to: Option<MoveToAction>,
     ) -> Self {
@@ -89,7 +90,7 @@ impl BuildAction {
         reads: &BuildReads,
     ) -> Result<HeadCode, GenieError> {
         // state 3 without a target: the update does nothing (0x140ab0370's default case)
-        if self.state == IDLE && self.target == -1 {
+        if self.state == IDLE && self.target.is_none() {
             return Ok(HeadCode::Keeps);
         }
         if self.lost_foundation(c, reads) {
@@ -98,8 +99,8 @@ impl BuildAction {
         }
         // the second target's id names no object of the world: FUN_140a7a190 with none, whose
         // release finds nothing to call
-        if self.site != -1 && c.w.spatial.get(self.site).is_none() {
-            self.site = -1;
+        if self.site.is_some() && c.w.spatial.get(self.site).is_none() {
+            self.site = None;
         }
         if reads.site.is_some() {
             if self.pasture_built(c, builder, reads)? {
@@ -121,11 +122,11 @@ impl BuildAction {
     /// it); then a Build in state 2 or 8 goes on, any other waits (true: the caller's
     /// `set_state(3)`, and the update returns 0).
     fn lost_foundation(&mut self, c: &Step<'_>, reads: &BuildReads) -> bool {
-        if self.target == -1 || reads.site.is_some() || c.w.spatial.get(self.target).is_some() {
+        if self.target.is_none() || reads.site.is_some() || c.w.spatial.get(self.target).is_some() {
             return false;
         }
         self.added = false;
-        self.target = -1;
+        self.target = None;
         !matches!(self.state, 2 | 8)
     }
 
@@ -160,13 +161,14 @@ impl BuildAction {
             crate::unit_ai::PASTURE_BUILT,
             [
                 crate::unit_ai::ActionKind::Build.value(),
-                reads.stack_made.unwrap_or(0),
+                // the notify's record holds the stack unit's id, 0 for none
+                reads.stack_made.map_or(0, ObjectId::get),
                 0,
             ],
         )?;
         self.uncount(c)?;
-        if self.target != -1 {
-            let target = std::mem::replace(&mut self.target, -1);
+        if self.target.is_some() {
+            let target = self.target.take();
             crate::world::lets::release(c, builder, target, reads.by)?;
         }
         let (kind, amount) = (builder.life.attribute_type, builder.life.amount);
@@ -205,7 +207,7 @@ impl BuildAction {
             return self.finish(c, builder, reads);
         }
         self.restart(c, builder)?;
-        let target = std::mem::replace(&mut self.target, -1);
+        let target = self.target.take();
         crate::world::lets::release(c, builder, target, reads.by)?;
         Ok(())
     }
@@ -372,15 +374,15 @@ impl BuildAction {
 /// others' states are as the update started (`build_targets`, None for one that is gone).
 pub(super) fn drop_done_orders(
     ai: &mut UnitAi,
-    site: Option<(i32, u8)>,
-    build_targets: &[(i32, Option<u8>)],
+    site: Option<(ObjectId, u8)>,
+    build_targets: &[(Option<ObjectId>, Option<u8>)],
 ) {
     ai.orders.retain(|o| {
         if o.order != OrderKind::Build {
             return true;
         }
         let state = match site {
-            Some((id, state)) if id == o.target => Some(state),
+            Some((id, state)) if Some(id) == o.target => Some(state),
             _ => build_targets
                 .iter()
                 .find(|&&(id, _)| id == o.target)

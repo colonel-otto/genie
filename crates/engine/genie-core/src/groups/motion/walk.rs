@@ -8,9 +8,10 @@ use crate::groups::motion::{
 };
 use crate::map::Footprint;
 use crate::map::Position;
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::{Planning, footprint_gap};
+use crate::objects::ObjectKey;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -79,10 +80,13 @@ fn way_blocked(
     at: BVector,
     next: BVector,
 ) -> Result<Option<Pass>, GenieError> {
-    let ignore = match lead.group.as_ref() {
+    let ignore: Vec<RecordId> = match lead.group.as_ref() {
         Some(g) if !g.differentiator_units.is_empty() => g.differentiator_units.clone(),
         _ => vec![lead.walker.id],
-    };
+    }
+    .into_iter()
+    .map(RecordId::from)
+    .collect();
     let hits = spatial.line_query(
         hold(at, spatial.map),
         hold(next, spatial.map),
@@ -108,7 +112,11 @@ fn way_blocked(
 /// The hits the world places, but those the walked level or the top level ignores: whether
 /// one is the walked level's target, and how many moved (their gait's last move) after the
 /// level was made.
-fn weigh_hits(motion: &Motion, spatial: &Spatial, hits: &[i32]) -> Result<(bool, u32), GenieError> {
+fn weigh_hits(
+    motion: &Motion,
+    spatial: &Spatial,
+    hits: &[RecordId],
+) -> Result<(bool, u32), GenieError> {
     let level = motion.paths.checked(0)?;
     let top_ignore = motion
         .paths
@@ -118,16 +126,16 @@ fn weigh_hits(motion: &Motion, spatial: &Spatial, hits: &[i32]) -> Result<(bool,
     let mut on_target = false;
     let mut newer = 0;
     for &hit in hits {
-        if spatial.get(hit).is_none() {
+        let Some(id) = hit.key().filter(|&id| spatial.get(id).is_some()) else {
+            continue;
+        };
+        if level.ignore.contains(&id) || top_ignore.contains(&id) {
             continue;
         }
-        if level.ignore.contains(&hit) || top_ignore.contains(&hit) {
-            continue;
-        }
-        if 0 <= level.target && hit == level.target {
+        if level.targets(id) {
             on_target = true;
         }
-        let last_move = spatial.gait(hit).map_or(0, |g| g.last_move);
+        let last_move = spatial.gait(id).map_or(0, |g| g.last_move);
         if level.created < last_move {
             newer += 1;
         }
@@ -220,7 +228,7 @@ fn pull_to_members(motion: &mut Motion, group: &GroupView) {
     let all_acting = group
         .members
         .iter()
-        .all(|m| m.is_some_and(|(target, _)| target != -1));
+        .all(|m| m.is_some_and(|(target, _)| target.is_some()));
     if !all_acting {
         return;
     }

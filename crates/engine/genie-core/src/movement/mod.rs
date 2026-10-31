@@ -21,6 +21,7 @@ use crate::map::Position;
 use crate::map::Radii;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, BVector};
+use crate::objects::ObjectId;
 use crate::objects::layers::Animated;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -130,8 +131,8 @@ pub struct PathData {
     pub state: i32,
     /// `+0x2c`: how near the target counts as there.
     pub range: f32,
-    /// `+0x30`: the target object's id, −1 for a point.
-    pub target: i32,
+    /// `+0x30`: the target object's id, none for a point.
+    pub target: Option<ObjectId>,
     /// `+0x34`, in seconds.
     pub pause_time: f32,
     /// `+0x3c`: bit 0 a waypoint was reached, bit 1 it was the waypoint itself, bit 3 the tile
@@ -149,13 +150,13 @@ pub struct PathData {
     /// The path's hash set of ignored units (`+0x18`, `FUN_140f96120`), which the save writes as
     /// `numberIgnoreUnits` and the ids after it (`0x140f98f00`); empty in this game (the probe
     /// `path_sets.py`).
-    pub ignore: Vec<i32>,
+    pub ignore: Vec<ObjectId>,
     /// The path's ignore units (`+0x450`, the ids from `+0x454`), which the walk's avoidance reads
     /// (`FUN_140f98d20`): a short path made in the tick its top path was made takes the unit's
     /// own (`+0x670`, `FUN_140f9b7a0`). The save does not hold them: a loaded path takes them
     /// back by that rule (the oracle's import).
     #[diff(unsaved)]
-    pub ignored: Vec<i32>,
+    pub ignored: Vec<ObjectId>,
 }
 
 /// What movement reads of the unit's master.
@@ -249,7 +250,7 @@ pub struct Mover {
     /// The unit's ignore list (`+0x670`, count `+0x678`; the save's `numberUnits` and `tempInt`
     /// of the static part): the other units of an order to several (`FUN_14118c790`), which the
     /// short pather ignores for a top path made this update. A stop empties it.
-    pub ignore_units: Vec<i32>,
+    pub ignore_units: Vec<ObjectId>,
     /// The unit's own waypoints (`+0x7f0`, count `+0x7fc`; the save's `userDefinedWaypoints`),
     /// in the game's layout (x, height, y): a patrol's points before its last (slot 0x448,
     /// [`Mover::add_user_waypoint`]), which the next path request walks through and empties
@@ -262,11 +263,11 @@ pub struct Mover {
     pub angle: f32,
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
-    pub pauses: Vec<(i32, f32)>,
+    pub pauses: Vec<(ObjectId, f32)>,
     /// The kept hits its walk met of the walked level's target's master, of a player neither
     /// counts an ally: the motion step tells the unit AI of each (its slot 0x38 with
     /// [`crate::unit_ai::IN_THE_WAY`] and the hit's id), which the caller passes on.
-    pub in_the_way: Vec<i32>,
+    pub in_the_way: Vec<ObjectId>,
     /// The facets of the unit's current sprite (`+0x140` -> `+0xa`, and its sequence flag bit
     /// 1), which the yaw and the facing read: the sprite the slice holds as the unit's update
     /// starts ([`crate::objects::unit::Unit`]'s), or a new unit's standing sprite; None for neither (the
@@ -280,7 +281,7 @@ pub struct Mover {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Me {
     /// The unit.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its top action's state (slot 0x2b0, `RGE_Action_Object::actionState`; 0 without one),
     /// which the short pather's ignore list reads: an action that walks after changing its state
     /// sets its own.
@@ -395,6 +396,12 @@ const NEW_PATHER_RADIUS: f32 = crate::math::image::movement::NEW_PATHER_RADIUS;
 const INCLUDED: usize = 0x100;
 
 impl PathData {
+    /// Whether the level's target is object `id`, as the walk tests a hit (`0 <= target &&
+    /// id == target`): a recyclable object's id is no level's target there.
+    pub(crate) fn targets(&self, id: ObjectId) -> bool {
+        self.target.is_some_and(|t| !t.is_recyclable() && t == id)
+    }
+
     /// A new level (`FUN_140f8f670`) with a new path (`FUN_14152eea0`, flags 6, made `now`).
     pub(crate) const fn new(now: u32) -> Self {
         Self {
@@ -406,7 +413,7 @@ impl PathData {
             waypoint: 0,
             state: 0,
             range: 0.0,
-            target: -1,
+            target: None,
             pause_time: 0.0,
             flags: 0,
             length: 0.0,
@@ -431,7 +438,7 @@ impl PathData {
             waypoint: 0,
             state: 0,
             range: 0.0,
-            target: -1,
+            target: None,
             pause_time: 0.0,
             flags: 0,
             length: 0.0,
@@ -492,7 +499,7 @@ fn pause_holds(level: &mut PathData, dt: f32) -> bool {
 pub(crate) fn gate_gap(
     world: &Spatial,
     (at, radius): (Position, Footprint),
-    (id, target): (i32, &Placed),
+    (id, target): (ObjectId, &Placed),
     own: f32,
     annex: impl Fn(f32) -> f32,
 ) -> f32 {
@@ -546,7 +553,7 @@ const fn looping_next(level: &mut PathData, index: i32) -> i32 {
 fn pause_rank(
     me: &Me,
     (player, computer): (PlayerId, bool),
-    (id, other): (i32, &Placed),
+    (id, other): (ObjectId, &Placed),
     world: &Spatial,
     groups: Option<&crate::groups::UnitGroups>,
 ) -> Option<bool> {

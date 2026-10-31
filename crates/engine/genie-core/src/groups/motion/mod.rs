@@ -9,6 +9,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{self, BVector};
 use crate::movement::Walker;
+use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use crate::world::World;
 use crate::world::slots::CheckedIndex;
@@ -69,7 +70,7 @@ pub(crate) struct Lead {
     /// Its master has a footprint and a height (`FUN_141194060` with 1): the short pather serves it.
     pub(crate) solid: bool,
     /// Its ignore units (`+0x670`).
-    pub(crate) ignore_units: Vec<i32>,
+    pub(crate) ignore_units: Vec<ObjectId>,
     /// Its owner's index and whether that is a computer player (`FUN_141659cf0`).
     pub(crate) player: PlayerId,
     pub(crate) computer: bool,
@@ -83,11 +84,11 @@ pub(crate) struct LeadGroup {
     /// `mGroupFlags`: bit 11 marks a patrol.
     pub(crate) flags: u32,
     /// The members (`+0xf0`).
-    pub(crate) members: Vec<i32>,
+    pub(crate) members: Vec<ObjectId>,
     /// The differentiator groups' members, at most 128 (`FUN_14100bbe0` with `0x80`).
-    pub(crate) differentiator_units: Vec<i32>,
+    pub(crate) differentiator_units: Vec<ObjectId>,
     /// The same, at most 255, as the long pather lowers them.
-    pub(crate) lowered: Vec<i32>,
+    pub(crate) lowered: Vec<ObjectId>,
 }
 
 impl LeadGroup {
@@ -98,11 +99,10 @@ impl LeadGroup {
 
 impl World {
     /// Slot 0x280 (`FUN_141082d60`): the id of the object the unit's top action targets
-    /// (`FUN_140a78450`: an id above -1 that the world holds), else -1.
-    pub(crate) fn top_target_object(&self, u: &crate::objects::unit::Unit) -> i32 {
+    /// (`FUN_140a78450`: an id above -1 that the world holds), else none.
+    pub(crate) fn top_target_object(&self, u: &crate::objects::unit::Unit) -> Option<ObjectId> {
         u.top_target()
-            .filter(|&t| -1 < t && self.object(t).is_some())
-            .unwrap_or(-1)
+            .filter(|&t| !t.is_recyclable() && self.object(t).is_some())
     }
 }
 
@@ -113,7 +113,7 @@ impl World {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct GroupView {
     pub(crate) computer: bool,
-    pub(crate) members: Vec<Option<(i32, BVector)>>,
+    pub(crate) members: Vec<Option<(Option<ObjectId>, BVector)>>,
 }
 
 impl Motion {
@@ -241,7 +241,8 @@ impl World {
     }
 
     /// What `BMotion` reads of the lead `id` (a unit with movement state), None without one.
-    fn lead_view(&self, id: i32) -> Option<Lead> {
+    fn lead_view(&self, id: Option<ObjectId>) -> Option<Lead> {
+        let id = id?;
         let (p, u) = self.object(id)?;
         let mover = u.body.mover()?;
         let group = self.groups.get(u.group.id).map(|g| LeadGroup {

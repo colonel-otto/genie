@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectId;
 use crate::pathing::mesh::{Mesh, ONE};
 use crate::pathing::short_path::{
     Ctx, FixedPoint, Goal, NONE, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
@@ -75,7 +76,7 @@ pub struct ShortPath {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Target {
     /// The target.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its place.
     pub position: Point,
     /// Its master's half sizes (`+0x5d8`, `+0x5dc`).
@@ -87,7 +88,7 @@ pub struct Target {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Listed {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its shape in the mesh (`+0x64c`), if it has one.
     pub shape: Option<u32>,
 }

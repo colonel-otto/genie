@@ -7,6 +7,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{BLOCKED, Spatial};
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -27,7 +28,7 @@ impl Spatial {
     /// game takes it never. A frozen unit that counts and may have moved onto the tiles fails it.
     pub fn artifact_owner(
         &self,
-        me: i32,
+        me: ObjectId,
         players: &[crate::world::player::Player],
     ) -> Result<Option<PlayerId>, GenieError> {
         const KEPT: [ClassId; 16] = [
@@ -176,7 +177,7 @@ impl Spatial {
     }
 
     /// An ownership change's records ([`Visibility::records_owner`]), which come first.
-    pub fn records_owner(&mut self, id: i32, new: PlayerId) -> Result<(), GenieError> {
+    pub fn records_owner(&mut self, id: ObjectId, new: PlayerId) -> Result<(), GenieError> {
         self.sight
             .as_mut()
             .map_or(Ok(()), |v| v.records_owner(id, new))
@@ -187,7 +188,7 @@ impl Spatial {
     /// new owner's map with `los` ([`Visibility::owner_changed`]).
     pub fn change_owner(
         &mut self,
-        id: i32,
+        id: ObjectId,
         new: PlayerId,
         los: f32,
         sees: bool,
@@ -267,7 +268,7 @@ impl Spatial {
     /// when neither: a ghost of it on its tile that the player is not among the blind of decides
     /// then (0xf), which the world does not hold. Without the players' sight: 0.
     #[must_use]
-    pub fn building_sight(&self, id: i32, position: Position, player: PlayerId) -> Option<u8> {
+    pub fn building_sight(&self, id: ObjectId, position: Position, player: PlayerId) -> Option<u8> {
         use crate::math::conversions::cvttss2si;
         let Some(v) = self.sight.as_ref() else {
             return Some(0);
@@ -372,7 +373,7 @@ impl Spatial {
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
     /// main building's place and UMV entry. The changed mask of an object others take over by
     /// seeing it is the answer.
-    pub fn combat_sight(&mut self, id: i32) -> Result<Option<u64>, GenieError> {
+    pub fn combat_sight(&mut self, id: ObjectId) -> Result<Option<u64>, GenieError> {
         let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) else {
             return Ok(None);
         };
@@ -384,7 +385,7 @@ impl Spatial {
     }
 
     /// The object's `set_state` to `state` ([`Visibility::state_changed`]).
-    pub fn sight_state(&mut self, id: i32, state: u8) -> Result<(), GenieError> {
+    pub fn sight_state(&mut self, id: ObjectId, state: u8) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.state_changed(id, p.position, p.radius, state)?;
         }
@@ -397,7 +398,7 @@ impl Spatial {
     /// object's new radii and class.
     pub fn sight_master(
         &mut self,
-        id: i32,
+        id: ObjectId,
         radius: Footprint,
         class: ClassId,
         master: MasterId,
@@ -428,7 +429,7 @@ impl Spatial {
     /// the ghost counts as not tall.
     ///
     /// [`Tiles`]: crate::map::spatial::Tiles
-    pub fn insert_ghost(&mut self, id: i32, position: Position) {
+    pub fn insert_ghost(&mut self, id: ObjectId, position: Position) {
         if let Some(i) = self.tiles.tile_of(position) {
             let objects = &self.objects;
             self.tiles.append(i, id, |o| Self::is_tall(objects, o));
@@ -437,7 +438,7 @@ impl Spatial {
 
     /// A ghost leaves its tile's list (its last object takes its place) and the tile's tall count
     /// is redone (`FUN_140f5f560`).
-    pub fn remove_ghost(&mut self, id: i32, position: Position) {
+    pub fn remove_ghost(&mut self, id: ObjectId, position: Position) {
         if let Some(i) = self.tiles.tile_of(position) {
             let objects = &self.objects;
             self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
@@ -450,8 +451,8 @@ impl Spatial {
     /// does (the same ids, in any order), with the slice's list; those keep the slice's.
     pub fn force_tile_lists(
         &mut self,
-        lists: &[(i32, i32, Vec<i32>)],
-    ) -> Vec<(i32, i32, Vec<i32>)> {
+        lists: &[(i32, i32, Vec<ObjectId>)],
+    ) -> Vec<(i32, i32, Vec<ObjectId>)> {
         let mut differ = Vec::new();
         for (x, y, ids) in lists {
             let Some(tile) = self
@@ -499,7 +500,7 @@ impl Spatial {
         x: i32,
         y: i32,
         mask: u8,
-        me: i32,
+        me: ObjectId,
         radius_x: f32,
     ) -> Result<bool, GenieError> {
         let (Some(word), Some(tall)) = (self.tiles.word(x, y), self.tiles.tall(x, y)) else {
@@ -523,7 +524,7 @@ impl Spatial {
     pub fn spot_beside(
         &mut self,
         from: Position,
-        me: (i32, f32),
+        me: (ObjectId, f32),
         mask: u8,
         site: (Position, Footprint),
     ) -> Result<Option<Point>, GenieError> {

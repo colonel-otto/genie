@@ -12,6 +12,7 @@ use crate::movement::move_to::{
     GiveUp, MoveDefaults, MoveToAction, MoveToReads, SpriteReads, WalkTo,
 };
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
@@ -50,7 +51,7 @@ pub(crate) const SIEGE_UNLOAD: GenieError =
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct EnterAction {
     /// The building or transport (`+0x20`, its id `+0x30`).
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// The action state (`+0x18`).
     pub state: u8,
     /// Its `MoveTo` sub-action to the target: quiet, within [`EnterAction::walk_range`], with
@@ -135,9 +136,9 @@ impl EnterAction {
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting_point
     #[must_use]
-    pub const fn new(target: i32, point: Position, task: &Task) -> Self {
+    pub const fn new(target: ObjectId, point: Position, task: &Task) -> Self {
         Self {
-            target,
+            target: Some(target),
             state: WALK,
             move_to: None,
             point,
@@ -224,7 +225,7 @@ impl EnterAction {
         self.move_to = Some(MoveToAction {
             state,
             point: Position::ORIGIN,
-            target: crate::objects::ObjectId::of_field(self.target),
+            target: self.target,
             range: self.range,
             sprite: None,
             quiet: true,

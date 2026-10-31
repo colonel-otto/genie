@@ -13,6 +13,7 @@ use crate::math::conversions::cvttss2si_64;
 use crate::math::fmath::at_most_or_unordered;
 use crate::math::image::group::EPSILON;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
@@ -55,8 +56,8 @@ impl World {
     pub(in crate::groups) fn send_in_reach(
         &mut self,
         group: i32,
-        id: i32,
-        target: i32,
+        id: ObjectId,
+        target: ObjectId,
         (order, computer): (AttackOrder, bool),
     ) -> Result<(), GenieError> {
         let part = self.gate_part(id, target)?;
@@ -68,7 +69,7 @@ impl World {
         self.give_work(
             id,
             &Work {
-                target: part,
+                target: Some(part),
                 point: at,
                 carry_test: true,
                 filter: order.filter,
@@ -97,7 +98,7 @@ impl World {
     /// # Errors
     ///
     /// What the stop does not model.
-    pub(super) fn stand_unit(&mut self, id: i32) -> Result<(), GenieError> {
+    pub(super) fn stand_unit(&mut self, id: ObjectId) -> Result<(), GenieError> {
         if let Some((_, u)) = self.object_mut(id)
             && let Some(mover) = u.body.mover_mut()
         {
@@ -117,8 +118,8 @@ impl World {
     /// A unit or a part the world does not hold, and what the speed does not model.
     pub(in crate::groups) fn set_travel_timer(
         &mut self,
-        id: i32,
-        part: i32,
+        id: ObjectId,
+        part: ObjectId,
         rule: Travel,
     ) -> Result<(), GenieError> {
         let (unit, part) = self
@@ -157,7 +158,11 @@ impl World {
     /// # Errors
     ///
     /// A unit or a target the world does not hold, and a master it lacks.
-    pub(in crate::groups) fn gate_part(&self, id: i32, target: i32) -> Result<i32, GenieError> {
+    pub(in crate::groups) fn gate_part(
+        &self,
+        id: ObjectId,
+        target: ObjectId,
+    ) -> Result<ObjectId, GenieError> {
         let (unit, t) = self
             .world_object(id)
             .zip(self.world_object(target))

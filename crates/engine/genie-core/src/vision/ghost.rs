@@ -51,7 +51,7 @@ pub enum Cell {
     Tile(usize),
     /// A building's own visibility mask (`+0x8f8`, the registry's), for one of type 50 and up
     /// with its footprint's UMV entry (`+0x904`).
-    Mask(i32),
+    Mask(ObjectId),
 }
 
 /// An entry of a player's watched list (32 bytes): the object, what it follows and the visible
@@ -59,7 +59,7 @@ pub enum Cell {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Watched {
     /// The object (`+0x18`, and its pointer `+0`).
-    pub id: i32,
+    pub id: ObjectId,
     /// What it follows (`+8`).
     pub cell: Cell,
     /// The bits last seen (`+0x10`).
@@ -70,7 +70,7 @@ pub struct Watched {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Original {
     /// Its id (`+8`).
-    pub id: i32,
+    pub id: ObjectId,
     /// Its owner (`+0x138`'s `+0x718`).
     pub owner: PlayerId,
     /// Its state (`+0x640`).
@@ -83,11 +83,11 @@ pub(crate) struct Original {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Ghost {
     /// Its id (a reusable one, negative).
-    pub id: i32,
+    pub id: ObjectId,
     /// The object it shows while that one has not left (`+0x7c0`).
-    pub original: Option<i32>,
+    pub original: Option<ObjectId>,
     /// The original's id (`+0x7f8`, the save's `long_val`), −1 once it is gone.
-    pub original_id: i32,
+    pub original_id: Option<ObjectId>,
     /// The original's master (`+0x7d0`), while it is known.
     pub original_master: Option<MasterId>,
     /// The original's owner (`+0x7d8`, the save's `doppled_player`).
@@ -163,7 +163,7 @@ impl World {
     pub(crate) fn watch(
         &mut self,
         owner: PlayerId,
-        id: i32,
+        id: ObjectId,
         x: i32,
         y: i32,
     ) -> Result<bool, GenieError> {
@@ -212,7 +212,7 @@ impl World {
 
     /// `FUN_141091310`: the watched list of player `owner` lets object `id` go (the last entry
     /// takes its place).
-    pub(crate) fn unwatch(&mut self, owner: PlayerId, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn unwatch(&mut self, owner: PlayerId, id: ObjectId) -> Result<(), GenieError> {
         let list = &mut self.players.player_mut(owner)?.watched;
         if let Some(k) = list.iter().position(|w| w.id == id) {
             let _ = list.swap_remove(k);
@@ -222,13 +222,18 @@ impl World {
 
     /// `FUN_1411cc980`: a building its owner watches: not of class 51 or 54, not desolid
     /// (`+0xc60`), not an annex (`+0xbb8`, but a gate's), not master 1808.
-    fn watches_building(&self, p: PlayerId, id: i32) -> Result<bool, GenieError> {
+    fn watches_building(&self, p: PlayerId, id: ObjectId) -> Result<bool, GenieError> {
         self.watches_building_at(p, id, true)
     }
 
     /// [`World::watches_building`], with the annex link made (`linked`) or, during a load before
     /// the rehook, not yet: then an annex passes too.
-    fn watches_building_at(&self, p: PlayerId, id: i32, linked: bool) -> Result<bool, GenieError> {
+    fn watches_building_at(
+        &self,
+        p: PlayerId,
+        id: ObjectId,
+        linked: bool,
+    ) -> Result<bool, GenieError> {
         let Some((_, u)) = self.object(id) else {
             return Ok(false);
         };
@@ -243,7 +248,7 @@ impl World {
 
     /// A building whose construction started (`FUN_1411e5670`): its owner watches it
     /// ([`World::watches_building`]).
-    pub(crate) fn watch_started(&mut self, p: PlayerId, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn watch_started(&mut self, p: PlayerId, id: ObjectId) -> Result<(), GenieError> {
         if !self.watches_building(p, id)? {
             return Ok(());
         }
@@ -266,24 +271,24 @@ impl World {
     pub fn build_watched(&mut self) -> Result<(), GenieError> {
         // each id's object as [`World::object`] finds it (the first player in order, its live list
         // before its sleeping list), looked up once: the loop changes only the watched lists
-        let mut first: std::collections::HashMap<i32, (PlayerId, bool, usize)> =
+        let mut first: std::collections::HashMap<ObjectId, (PlayerId, bool, usize)> =
             std::collections::HashMap::new();
         for (q, player) in PlayerId::each(self.players.len()).zip(&self.players) {
             for (sleeping, list) in [(false, &player.objects), (true, &player.sleeping)] {
                 for (k, u) in list.iter().enumerate() {
-                    let _ = first.entry(u.id.get()).or_insert((q, sleeping, k));
+                    let _ = first.entry(u.id).or_insert((q, sleeping, k));
                 }
             }
         }
         for p in PlayerId::each(self.players.len()) {
             self.players.player_mut(p)?.watched.clear();
-            let ids: Vec<i32> = self
+            let ids: Vec<ObjectId> = self
                 .players
                 .player(p)?
                 .objects
                 .iter()
                 .chain(&self.players.player(p)?.sleeping)
-                .map(|u| u.id.get())
+                .map(|u| u.id)
                 .collect();
             for id in ids {
                 let Some(&(q, sleeping, k)) = first.get(&id) else {
@@ -312,10 +317,10 @@ impl World {
             for list in [false, true] {
                 let held = self.players.player(p)?;
                 let objects = if list { &held.sleeping } else { &held.objects };
-                let mut annexes: Vec<i32> = Vec::new();
+                let mut annexes: Vec<ObjectId> = Vec::new();
                 for u in objects.iter().filter(|u| u.annex_of.is_some()) {
                     if u.master(&self.masters, p)?.class != class::GATE {
-                        annexes.push(u.id.get());
+                        annexes.push(u.id);
                     }
                 }
                 for id in annexes {
@@ -331,7 +336,11 @@ impl World {
     /// player who explored its tile but does not see it, Gaia aside, gets a ghost of it
     /// ([`World::make_ghost`]), in the players' order; the first bit past the players ends it.
     /// Then its owner's list watches it at its tile ([`World::watch`]).
-    pub(crate) fn ghosts_at_death(&mut self, _owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn ghosts_at_death(
+        &mut self,
+        _owner: usize,
+        id: ObjectId,
+    ) -> Result<(), GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
@@ -342,7 +351,7 @@ impl World {
             master: u.life.master_id,
         };
         let position = u.position();
-        if id < 0 || u.master(&self.masters, p)?.ghost_on_death != LEAVES_GHOSTS {
+        if id.is_recyclable() || u.master(&self.masters, p)?.ghost_on_death != LEAVES_GHOSTS {
             return Ok(());
         }
         let pair = Self::tile_at(position);
@@ -406,9 +415,9 @@ impl World {
         };
         let gone = 6 < original.state;
         let mut ghost = Ghost {
-            id: id.get(),
+            id,
             original: (!gone).then_some(original.id),
-            original_id: if gone { -1 } else { original.id },
+            original_id: if gone { None } else { Some(original.id) },
             original_master: Some(original.master),
             original_owner: original.owner.index(),
             position: at,
@@ -419,7 +428,7 @@ impl World {
             seen: false,
             state: 2,
         };
-        self.spatial.insert_ghost(id.get(), at);
+        self.spatial.insert_ghost(id, at);
         self.check_twins(viewer, &mut ghost)?;
         self.players.player_mut(viewer)?.ghosts.push(ghost);
         Ok(())
@@ -491,7 +500,7 @@ impl World {
                 }
                 self.spatial.remove_ghost(g.id, g.position);
                 if self.master(p, GHOST_MASTER)?.recyclable {
-                    self.recycling.ghosts.push(ObjectId::try_from(g.id)?);
+                    self.recycling.ghosts.push(g.id);
                 }
                 continue;
             }
@@ -505,16 +514,16 @@ impl World {
         &mut self,
         p: PlayerId,
         k: usize,
-        original: Option<i32>,
+        original: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let live = original.is_some_and(|o| self.object(o).is_some_and(|(_, u)| u.life.state < 7));
         let g = self.players.player_mut(p)?.ghosts.checked_mut(k)?;
         if original.is_none() {
-            g.original_id = -1;
+            g.original_id = None;
         } else if !live {
             g.original = None;
             g.original_master = None;
-            g.original_id = -1;
+            g.original_id = None;
         }
         Ok(())
     }
@@ -741,7 +750,7 @@ mod tests {
             .push(object(9, HOUSE, 2, Position::new(2.5, 1.5, 0.0)));
         let mut sight = Visibility::new(4, 4, Vec::new(), vec![0; 16], Vec::new(), 0, Vec::new());
         sight.add_seer(
-            9,
+            object_id(9),
             Seer {
                 player: PlayerId::new(1),
                 master: HOUSE,
@@ -770,25 +779,25 @@ mod tests {
         // object of type 50 and up with +0x904
         let mut t = world(true);
         set_tile(&mut t, 2, 1, 0x0000_0002_0000_0002 | (1 << 30));
-        assert_eq!(t.watch(PlayerId::new(1), 9, 2, 1), Ok(true));
+        assert_eq!(t.watch(PlayerId::new(1), object_id(9), 2, 1), Ok(true));
         assert_eq!(
             t.players[1].watched,
             [Watched {
-                id: 9,
-                cell: Cell::Mask(9),
+                id: object_id(9),
+                cell: Cell::Mask(object_id(9)),
                 bits: 0x0000_0002_0000_0002,
             }]
         );
         // a second watch and another owner's object are refused
-        assert_eq!(t.watch(PlayerId::new(1), 9, 2, 1), Ok(false));
-        assert_eq!(t.watch(PlayerId::new(1), 5, 1, 2), Ok(false));
+        assert_eq!(t.watch(PlayerId::new(1), object_id(9), 2, 1), Ok(false));
+        assert_eq!(t.watch(PlayerId::new(1), object_id(5), 1, 2), Ok(false));
         // the mine (type 30) follows its tile
         set_tile(&mut t, 1, 2, 0x0000_0001_0000_0000);
-        assert_eq!(t.watch(PlayerId::new(0), 5, 1, 2), Ok(true));
+        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
         assert_eq!(
             t.players[0].watched,
             [Watched {
-                id: 5,
+                id: object_id(5),
                 cell: Cell::Tile(9),
                 bits: 0x0000_0001_0000_0000,
             }]
@@ -804,11 +813,14 @@ mod tests {
         set_tile(&mut t, 1, 2, 0x0000_000f_0000_0002);
         t.recycling.ghosts = vec![object_id(-3)];
         t.players[0].objects[0].life.state = 3;
-        assert_eq!(t.ghosts_at_death(0, 5), Ok(()));
+        assert_eq!(t.ghosts_at_death(0, object_id(5)), Ok(()));
         assert!(t.players[0].ghosts.is_empty() && t.players[1].ghosts.is_empty());
         // a computer viewer gets its ghost as any other (the notify is the watched list's)
         let g = t.players[2].ghosts[0];
-        assert_eq!((g.id, g.original, g.original_id), (-3, Some(5), 5));
+        assert_eq!(
+            (g.id, g.original, g.original_id),
+            (object_id(-3), Some(object_id(5)), Some(object_id(5)))
+        );
         assert_eq!((g.original_owner, g.original_master), (0, Some(MINE)));
         assert_eq!(
             (g.tile, g.state, g.cant_see, g.footprint),
@@ -818,7 +830,7 @@ mod tests {
         assert_eq!(
             t.players[0].watched,
             [Watched {
-                id: 5,
+                id: object_id(5),
                 cell: Cell::Tile(9),
                 bits: 0x0000_000f_0000_0002,
             }]
@@ -827,12 +839,12 @@ mod tests {
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0004_0000_0000);
         t.players[0].objects[0].life.master_id = TREE;
-        assert_eq!(t.ghosts_at_death(0, 5), Ok(()));
+        assert_eq!(t.ghosts_at_death(0, object_id(5)), Ok(()));
         assert!(t.players[2].ghosts.is_empty() && t.players[0].watched.is_empty());
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0004_0000_0000);
         t.players[0].objects[0].id = object_id(-5);
-        assert_eq!(t.ghosts_at_death(0, -5), Ok(()));
+        assert_eq!(t.ghosts_at_death(0, object_id(-5)), Ok(()));
         assert!(t.players[2].ghosts.is_empty() && t.players[0].watched.is_empty());
     }
 
@@ -840,7 +852,7 @@ mod tests {
     fn a_ghost_takes_a_pooled_id_a_reusable_one_or_for_a_master_not_recyclable_a_new_one() {
         // FUN_1410cfe80: the pool's head, else FUN_1411a45a0's id by the master's +0x680
         let original = Original {
-            id: 9,
+            id: object_id(9),
             owner: PlayerId::new(1),
             state: 2,
             master: HOUSE,
@@ -853,8 +865,8 @@ mod tests {
             .unwrap();
         t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), original)
             .unwrap();
-        let ids: Vec<i32> = t.players[2].ghosts.iter().map(|g| g.id).collect();
-        assert_eq!(ids, [-6, -4, -10]);
+        let ids: Vec<ObjectId> = t.players[2].ghosts.iter().map(|g| g.id).collect();
+        assert_eq!(ids, [object_id(-6), object_id(-4), object_id(-10)]);
         assert_eq!(t.recycling.next_id, object_id(-11));
         // each new one destroyed the viewer's twin before it
         let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
@@ -865,7 +877,7 @@ mod tests {
         t.recycling.ghosts = vec![object_id(-4)];
         t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), original)
             .unwrap();
-        assert_eq!(t.players[2].ghosts[0].id, 100);
+        assert_eq!(t.players[2].ghosts[0].id, object_id(100));
         assert_eq!((t.next_object_id.get(), t.recycling.ghosts.len()), (101, 1));
         // an original past state 6 is forgotten, its master kept
         let mut t = world(true);
@@ -878,7 +890,7 @@ mod tests {
         let g = t.players[2].ghosts[0];
         assert_eq!(
             (g.original, g.original_id, g.original_master),
-            (None, -1, Some(HOUSE))
+            (None, None, Some(HOUSE))
         );
     }
 
@@ -900,19 +912,54 @@ mod tests {
             seen: false,
             state,
         };
-        t.players[1].ghosts = vec![twin(-20, 9, Position::new(2.1, 1.9, 0.0), 2)];
+        t.players[1].ghosts = vec![twin(
+            object_id(-20),
+            Some(object_id(9)),
+            Position::new(2.1, 1.9, 0.0),
+            2,
+        )];
         t.players[2].ghosts = vec![
-            twin(-21, 9, Position::new(2.9, 1.1, 0.0), 2),
-            twin(-22, 9, Position::new(3.0, 1.5, 0.0), 2),
-            twin(-23, 8, Position::new(2.5, 1.5, 0.0), 2),
-            twin(-24, 9, Position::new(2.5, 1.5, 0.0), 7),
+            twin(
+                object_id(-21),
+                Some(object_id(9)),
+                Position::new(2.9, 1.1, 0.0),
+                2,
+            ),
+            twin(
+                object_id(-22),
+                Some(object_id(9)),
+                Position::new(3.0, 1.5, 0.0),
+                2,
+            ),
+            twin(
+                object_id(-23),
+                Some(object_id(8)),
+                Position::new(2.5, 1.5, 0.0),
+                2,
+            ),
+            twin(
+                object_id(-24),
+                Some(object_id(9)),
+                Position::new(2.5, 1.5, 0.0),
+                7,
+            ),
             // the tile list holds a ghost by its place, whatever its +0x7dc/+0x7e0 say
             Ghost {
                 tile: Tile::new(0, 3),
-                ..twin(-25, 9, Position::new(2.2, 1.2, 0.0), 2)
+                ..twin(
+                    object_id(-25),
+                    Some(object_id(9)),
+                    Position::new(2.2, 1.2, 0.0),
+                    2,
+                )
             },
         ];
-        let mut ghost = twin(-30, 9, Position::new(2.5, 1.5, 0.0), 2);
+        let mut ghost = twin(
+            object_id(-30),
+            Some(object_id(9)),
+            Position::new(2.5, 1.5, 0.0),
+            2,
+        );
         t.check_twins(PlayerId::new(2), &mut ghost).unwrap();
         // the viewer's own twins on the tile are destroyed
         let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
@@ -928,9 +975,9 @@ mod tests {
         // FUN_141090000: a null +0x7c0 sets only +0x7f8 = -1, +0x7d0 stays
         let mut t = world(false);
         let ghost = Ghost {
-            id: 100,
+            id: object_id(100),
             original: None,
-            original_id: 9,
+            original_id: Some(object_id(9)),
             original_master: Some(HOUSE),
             original_owner: 1,
             position: Position::new(2.5, 1.5, 0.0),
@@ -944,9 +991,9 @@ mod tests {
         t.players[2].ghosts = vec![ghost];
         t.update_ghosts(PlayerId::new(2)).unwrap();
         let g = t.players[2].ghosts[0];
-        assert_eq!((g.original_id, g.original_master), (-1, Some(HOUSE)));
+        assert_eq!((g.original_id, g.original_master), (None, Some(HOUSE)));
         // an original past state 6 takes its master with it
-        t.players[2].ghosts[0].original = Some(9);
+        t.players[2].ghosts[0].original = Some(object_id(9));
         t.players[1].objects[0].life.state = 7;
         t.update_ghosts(PlayerId::new(2)).unwrap();
         assert_eq!(t.players[2].ghosts[0].original_master, None);
@@ -966,9 +1013,9 @@ mod tests {
     /// `footprint` (0 for none), its bits 0.
     fn house_ghost(footprint: u8) -> Ghost {
         Ghost {
-            id: 100,
-            original: Some(9),
-            original_id: 9,
+            id: object_id(100),
+            original: Some(object_id(9)),
+            original_id: Some(object_id(9)),
             original_master: Some(HOUSE),
             original_owner: 1,
             position: Position::new(2.5, 1.5, 0.0),
@@ -1057,7 +1104,7 @@ mod tests {
         }];
         let mut registry = crate::vision::registry::Registry::default();
         let _ = registry.entries.insert(
-            9,
+            object_id(9),
             crate::vision::registry::Entry {
                 mask: 1 << 1,
                 ..crate::vision::registry::Entry::default()
@@ -1085,7 +1132,7 @@ mod tests {
         // FUN_1410905e0: lost = ((old ^ new) & old) >> 1, from player 1, not the list's player
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0007);
-        assert_eq!(t.watch(PlayerId::new(0), 5, 1, 2), Ok(true));
+        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0001);
         t.watch_pass(PlayerId::new(0)).unwrap();
         assert_eq!(t.players[1].ghosts.len(), 1);
@@ -1095,14 +1142,14 @@ mod tests {
         let mut t = world(true);
         t.players[2].computer = true;
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0005);
-        assert_eq!(t.watch(PlayerId::new(0), 5, 1, 2), Ok(true));
+        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0001);
         assert!(t.watch_pass(PlayerId::new(0)).is_err());
         assert_eq!(t.players[2].ghosts.len(), 1);
         // an entry whose object is gone leaves the list
         let mut t = world(true);
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0007);
-        assert_eq!(t.watch(PlayerId::new(0), 5, 1, 2), Ok(true));
+        assert_eq!(t.watch(PlayerId::new(0), object_id(5), 1, 2), Ok(true));
         t.players[0].objects.clear();
         set_tile(&mut t, 1, 2, 0x0000_0007_0000_0001);
         t.watch_pass(PlayerId::new(0)).unwrap();
@@ -1153,9 +1200,9 @@ mod tests {
         // building 12, master 1808's 13, a desolid foundation 14 in the sleeping list
         t.players[0].objects[0].life.state = 3;
         let mut g = object(10, master_id(88), 2, Position::new(2.5, 2.5, 0.0));
-        g.annex_of = Some(9);
+        g.annex_of = Some(object_id(9));
         let mut a = object(11, master_id(89), 2, Position::new(3.5, 2.5, 0.0));
-        a.annex_of = Some(9);
+        a.annex_of = Some(object_id(9));
         t.players[1].objects.extend([
             g,
             a,
@@ -1182,13 +1229,13 @@ mod tests {
                 .map(|w| w.id)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(ids(&t, 0), [5]);
-        assert_eq!(ids(&t, 1), [9, 10]);
+        assert_eq!(ids(&t, 0), [object_id(5)]);
+        assert_eq!(ids(&t, 1), [object_id(9), object_id(10)]);
         // the house follows its mask (its UMV entry), the gate its tile
-        assert_eq!(t.players[1].watched[0].cell, Cell::Mask(9));
+        assert_eq!(t.players[1].watched[0].cell, Cell::Mask(object_id(9)));
         assert_eq!(t.players[1].watched[1].cell, Cell::Tile(2 * 4 + 2));
         // a building in the game, its annex linked, is not watched as an annex
-        assert!(!t.watches_building(PlayerId::new(1), 11).unwrap());
-        assert!(t.watches_building(PlayerId::new(1), 10).unwrap());
+        assert!(!t.watches_building(PlayerId::new(1), object_id(11)).unwrap());
+        assert!(t.watches_building(PlayerId::new(1), object_id(10)).unwrap());
     }
 }

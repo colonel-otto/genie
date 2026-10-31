@@ -81,7 +81,7 @@ impl Unit {
             {
                 // the ghosts of the death (FUN_14118e990), the object lent to the world
                 let (p, id) = (c.player, self.id);
-                c.lend(self, |w| w.ghosts_at_death(p.index(), id.get()))?;
+                c.lend(self, |w| w.ghosts_at_death(p.index(), id))?;
             }
         }
         self.annexes_follow(c, before, after)?;
@@ -115,7 +115,7 @@ impl Unit {
             && !(before == 4 && after == 5)
             && self.master(&c.w.masters, c.player)?.kind == BUILDING
         {
-            for annex in c.w.spatial.annexes_of(self.id.get()) {
+            for annex in c.w.spatial.annexes_of(self.id) {
                 if let Some((q, _)) = c.w.object(annex) {
                     c.lend(self, |w| w.set_state(q, annex, after))?;
                 }
@@ -137,19 +137,14 @@ impl Unit {
             return Ok(());
         }
         if before <= 2 && 3 <= after {
-            c.w.spatial.sight_state(self.id.get(), 3)?;
+            c.w.spatial.sight_state(self.id, 3)?;
         }
         if after != 3 {
-            c.w.spatial.sight_state(self.id.get(), after)?;
+            c.w.spatial.sight_state(self.id, after)?;
         }
         if before < 4 && 6 < after {
             let master = self.master(&c.w.masters, c.player)?;
-            forget_resource(
-                &mut c.w.spatial,
-                Some(master),
-                self.id.get(),
-                self.position(),
-            )?;
+            forget_resource(&mut c.w.spatial, Some(master), self.id, self.position())?;
         }
         Ok(())
     }

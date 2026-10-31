@@ -11,6 +11,7 @@ use crate::map::Point;
 use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::movement::explore::WANTS_POINT;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::players::ai_module::search::RING_SLACK;
 use crate::players::ai_module::{AiModule, SearchUnit};
@@ -57,10 +58,12 @@ impl UnitView<'_, '_> {
         match heard? {
             Heard::Nothing => Ok(()),
             Heard::Task(t) => alert_owner(true).map_err(|e| {
-                e.with("tasks explorer", n.caller)
+                e.with("tasks explorer", ObjectId::field(n.caller))
                     .with("to", format_args!("({}, {})", t.x(), t.y()))
             }),
-            Heard::Detask => alert_owner(true).map_err(|e| e.with("detasks explorer", n.caller)),
+            Heard::Detask => {
+                alert_owner(true).map_err(|e| e.with("detasks explorer", ObjectId::field(n.caller)))
+            }
         }
     }
 
@@ -96,7 +99,7 @@ impl UnitView<'_, '_> {
             let alive = module
                 .info
                 .explorer
-                .is_some_and(|e| e == id || view.find(e.get()).is_some());
+                .is_some_and(|e| e == id || view.find(e).is_some());
             let centre = match town_centre_unit(view)? {
                 Some(u) => {
                     let sight = u.master(&self.c.w.masters, self.player)?.line_of_sight;

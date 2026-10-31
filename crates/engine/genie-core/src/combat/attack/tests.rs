@@ -162,7 +162,7 @@ fn a_stop_ends_the_attack_and_the_unit_stands() {
 /// An object of class 9 in state 2 at `x` on the line y = 10, radii 0.2.
 fn mark(id: i32, x: f32) -> Mark {
     Mark {
-        id,
+        id: object_id(id),
         kind: master_type::COMBAT,
         class: class::PREY,
         state: 2,
@@ -199,7 +199,7 @@ fn an_attack_keeps_its_own_target_and_sees_it_again_out_of_its_moving_states() {
     }
     for state in [1, 2, 3, 13] {
         let mut a = own_attack(7, state, 0.0);
-        let w = a.work(Some(deer), None, &LION, |id| id == 7);
+        let w = a.work(Some(deer), None, &LION, |id| id == object_id(7));
         assert_eq!(
             w,
             Worked {
@@ -289,7 +289,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         ..mark(30, 11.0)
     };
     let main = Mark {
-        id: 31,
+        id: object_id(31),
         position: Position::new(12.0, 10.0, 0.0),
         radius: Footprint::new(1.5, 1.5),
         ..annex
@@ -299,14 +299,14 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         ..LION
     };
     let mut a = own_attack(30, 6, 0.0);
-    let w = a.work(Some(annex), Some(main), &mangonel, |id| id == 31);
+    let w = a.work(Some(annex), Some(main), &mangonel, |id| id == object_id(31));
     assert_eq!(
         w,
         Worked {
             kept: true,
             clears_count: true,
-            lets_go: Some(30),
-            takes: Some(31),
+            lets_go: Some(object_id(30)),
+            takes: Some(object_id(31)),
         }
     );
     assert_eq!((a.target, a.seen), (Some(object_id(31)), main.position));
@@ -338,7 +338,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
     let w = a.work(Some(annex), Some(dying), &mangonel, |_| true);
     assert_eq!(
         (w.lets_go, w.takes, ObjectId::field(a.target)),
-        (Some(30), None, -1)
+        (Some(object_id(30)), None, -1)
     );
     // class 60: slot 0x68 returns at once; the seen point still follows
     let mut a = own_attack(7, 1, 0.0);
@@ -364,7 +364,7 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
         a.set_target(None),
         Worked {
             clears_count: true,
-            lets_go: Some(7),
+            lets_go: Some(object_id(7)),
             ..Worked::default()
         }
     );
@@ -486,7 +486,7 @@ pub(crate) fn reads() -> AttackReads {
 /// The soldier 1 of player 1 as a combat object: type 70, class 6.
 pub(crate) fn soldier() -> Victim {
     Victim {
-        id: 1,
+        id: object_id(1),
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         player: PlayerId::new(1),
@@ -528,7 +528,7 @@ impl Rig {
     pub(crate) fn on_the_path(victim: Victim) -> Self {
         let t = crate::movement::tests::path_world(Player::default());
         let own = Victim {
-            id: 9177,
+            id: object_id(9177),
             ..soldier()
         };
         Self::with_unit(t, victim, own)
@@ -654,7 +654,7 @@ impl Rig {
 /// The soldier's [`Me`] in action state `state`.
 const fn me(id: i32, state: u8) -> Me {
     Me {
-        id,
+        id: object_id(id),
         group: -1,
         action_state: state,
     }
@@ -664,7 +664,7 @@ const fn me(id: i32, state: u8) -> Me {
 /// of level 2) with its `building` part.
 fn struck_building(id: i32, at: Position, building: damage::Building) -> Victim {
     Victim {
-        id,
+        id: object_id(id),
         hp: 100.0,
         kind: BUILDING,
         class: class::BUILDING,
@@ -693,7 +693,7 @@ fn a_strike_on_an_annex_hits_its_main_building() {
         21,
         Position::new(10.5, 10.0, 0.0),
         damage::Building {
-            main: Some(20),
+            main: Some(object_id(20)),
             ..damage::Building::default()
         },
     );
@@ -701,17 +701,17 @@ fn a_strike_on_an_annex_hits_its_main_building() {
         20,
         Position::new(11.5, 10.0, 0.0),
         damage::Building {
-            annexes: vec![21],
+            annexes: vec![object_id(21)],
             ..damage::Building::default()
         },
     )];
     let mut own = Victim {
-        id: 1,
+        id: object_id(1),
         kind: master_type::COMBAT,
         class: class::CLASS_6,
         player: PlayerId::new(1),
         source: damage::Attacker {
-            id: 1,
+            id: object_id(1),
             kind: master_type::COMBAT,
             class: class::CLASS_6,
             missile: None,
@@ -752,13 +752,13 @@ fn a_building_s_relic_raises_its_missile_s_hit() {
             damage::Building::default(),
         );
         let mut own = Victim {
-            id: 1,
+            id: object_id(1),
             kind: BUILDING,
             class: class::TOWER,
             player: PlayerId::new(1),
             position: Position::new(8.0, 10.0, 2.0),
             source: damage::Attacker {
-                id: 1,
+                id: object_id(1),
                 kind: BUILDING,
                 class: class::TOWER,
                 missile: Some(ids::FARM),
@@ -802,7 +802,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
         20,
         Position::new(10.5, 10.0, 0.0),
         damage::Building {
-            annexes: vec![21],
+            annexes: vec![object_id(21)],
             ..damage::Building::default()
         },
     )];
@@ -811,7 +811,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
             21,
             Position::new(10.2, 10.0, 0.0),
             damage::Building {
-                main: Some(20),
+                main: Some(object_id(20)),
                 ..damage::Building::default()
             },
         ),
@@ -819,7 +819,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
             position: Position::new(10.0, 10.0, 0.0),
             weapons: vec![(4, 10)],
             source: damage::Attacker {
-                id: 1,
+                id: object_id(1),
                 kind: master_type::COMBAT,
                 class: class::CLASS_6,
                 missile: None,
@@ -833,7 +833,7 @@ fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
         },
     };
     let executed = Attack::hit(&mut f, &mut blasted, 100, &mut Well512::default()).unwrap();
-    assert_eq!(executed, Some(21));
+    assert_eq!(executed, Some(object_id(21)));
     assert_eq!((blasted[0].hp, f.victim.hp), (90.0, 90.0));
     assert_eq!(
         blasted[0].building.as_ref().map(|b| b.blast_taken),
@@ -858,10 +858,16 @@ fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
     };
     assert_eq!(blast_so_far(&building(None, 3.0), &[]), Ok(3.0));
     let main = building(None, 5.0);
-    let main = Victim { id: 20, ..main };
-    assert_eq!(blast_so_far(&building(Some(20), 3.0), &[main]), Ok(5.0));
+    let main = Victim {
+        id: object_id(20),
+        ..main
+    };
     assert_eq!(
-        blast_so_far(&building(Some(20), 3.0), &[]),
+        blast_so_far(&building(Some(object_id(20)), 3.0), &[main]),
+        Ok(5.0)
+    );
+    assert_eq!(
+        blast_so_far(&building(Some(object_id(20)), 3.0), &[]),
         Err(crate::construction::build::NOT_HELD)
     );
     let unit = Victim {
@@ -910,7 +916,7 @@ fn soldier_attack(target: i32, range: f32, min: f32, point: Position) -> Attack 
 fn ready_to_attack_under_the_least_range_posts_0x1fe_and_waits_or_fails() {
     let at = Position::new(11.0, 10.0, 0.0);
     let target = || Victim {
-        id: 7,
+        id: object_id(7),
         position: at,
         ..Victim::default()
     };
@@ -950,7 +956,7 @@ fn ready_to_attack_out_of_reach_follows_or_fails() {
     let at = Position::new(15.0, 10.0, 0.0);
     for (speed, can_move, follows) in [(0.8, true, true), (0.0, true, false), (0.8, false, false)] {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             position: at,
             ..Victim::default()
         };
@@ -981,11 +987,11 @@ fn an_attack_on_a_target_out_of_sight_fails() {
         let mut rig = Rig::on_the_path(Victim::default()).holding(77, PlayerId::new(1));
         (rig.f.own.class, rig.r.ai_type, rig.r.queue_empty) = (class, ai_type, queue_empty);
         let ai = rig.unit_mut().ai.as_mut().unwrap();
-        ai.current_target = 77;
+        ai.current_target = Some(object_id(77));
         ai.home = Some(crate::unit_ai::Home::default());
         let code = rig.run(100, |c, u, f, r| a.out_of_sight(c, u, f, r));
         let ai = rig.unit().ai.as_ref().unwrap();
-        let (forgot, home) = (ai.current_target == -1, ai.home.unwrap().go_home);
+        let (forgot, home) = (ai.current_target.is_none(), ai.home.unwrap().go_home);
         let let_go = rig.workers(77, PlayerId::new(1)) == Some(0);
         (code, let_go, forgot, home, rig.posted())
     };
@@ -1033,7 +1039,7 @@ fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
         let mut world = world_with(7, PlayerId::new(2), class::CLASS_6, at);
         world.sight = Some(sight(false));
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             player: PlayerId::new(2),
             position: at,
             ..Victim::default()
@@ -1087,7 +1093,7 @@ fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
         let mut world = world_with(7, PlayerId::new(2), class::CLASS_6, now_at);
         world.sight = Some(sight(seen));
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             state: 2,
             player: PlayerId::new(2),
             position: now_at,
@@ -1135,7 +1141,7 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
         let mut world = world_with(7, PlayerId::new(2), class::CLASS_6, at);
         world.sight = Some(sight(seen));
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             state: 2,
             player: PlayerId::new(2),
             position: at,
@@ -1190,7 +1196,7 @@ fn ready_to_attack_s_at_once_test_and_its_nan_paths() {
     let at = Position::new(11.0, 10.0, 0.0);
     let run = |point: Position, skip: bool, range: f32, timer: f32| {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             position: at,
             ..Victim::default()
         };
@@ -1239,7 +1245,7 @@ fn an_attack_in_a_state_without_a_case_returns_0() {
     let at = Position::new(11.0, 10.0, 0.0);
     for state in [0, 3, 8, 9, 10, 12, 14] {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             state: 2,
             position: at,
             ..Victim::default()
@@ -1269,7 +1275,7 @@ fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
     let run =
         |class: ClassId, allied: bool, same_owner: bool, player: PlayerId, sub_action: bool| {
             let victim = Victim {
-                id: 7,
+                id: object_id(7),
                 state: 2,
                 class,
                 player: PlayerId::new(1),
@@ -1322,7 +1328,7 @@ fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
 fn a_sub_action_s_attack_after_its_kill_posts_0x1fb_and_returns_5() {
     let at = Position::new(11.0, 10.0, 0.0);
     let victim = Victim {
-        id: 7,
+        id: object_id(7),
         state: 3,
         position: at,
         ..Victim::default()
@@ -1351,7 +1357,7 @@ fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
     let at = Position::new(11.0, 10.0, 0.0);
     let run = |unit_class: ClassId, tree_state: u8| {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             class: class::TREE,
             state: tree_state,
             position: at,
@@ -1384,7 +1390,7 @@ fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
 fn a_swing_that_fails_its_interrupt_check_stays_failed() {
     let at = Position::new(15.0, 10.0, 0.0);
     let victim = Victim {
-        id: 7,
+        id: object_id(7),
         state: 2,
         position: at,
         ..Victim::default()
@@ -1575,7 +1581,7 @@ fn own_start(
     mover: &mut Mover,
 ) -> Result<Started, GenieError> {
     let cmd = AttackCommand {
-        target: 7,
+        target: object_id(7),
         engagement: e,
         arms,
         visible,
@@ -1759,10 +1765,10 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
                 object_id(id),
                 crate::map::spatial::Placed {
                     position: Position::new(x, 10.0, 0.0),
-                    ..*world.get(7).unwrap()
+                    ..*world.get(object_id(7)).unwrap()
                 },
             );
-            world.set_annex(id, Some(7));
+            world.set_annex(object_id(id), Some(object_id(7)));
         }
         world
     };
@@ -1802,7 +1808,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
     assert_eq!((c.ready, c.failed), (false, true));
     // an update's readyToAttack the same way
     let victim = Victim {
-        id: 7,
+        id: object_id(7),
         position: gate_at,
         ..Victim::default()
     };
@@ -1829,7 +1835,7 @@ fn the_ready_start_swings_at_once_when_its_timer_ran_out() {
     };
     let ready = |timer: f32| {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             position: at,
             ..Victim::default()
         };
@@ -1870,7 +1876,7 @@ fn a_swing_with_a_second_sprite_draws_which_one_it_shows() {
     let sprite = |id: i16| Graphic { id, ..STANDING };
     let swing = |object: Well512, sprites: SwingSprites| {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             position: at,
             ..Victim::default()
         };
@@ -1931,7 +1937,7 @@ fn ready_to_attack_s_leash_fails_a_target_too_far_from_the_unit_ai_s_point() {
         (Point::new(f32::NAN, 10.0), true),
     ] {
         let victim = Victim {
-            id: 7,
+            id: object_id(7),
             position: at,
             ..Victim::default()
         };
@@ -1989,7 +1995,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         ..UnitAi::default()
     });
     in_update(&mut t, (PlayerId::new(1), 2), 50, |u, c| {
-        let code = u.attack_part(c, me(700), None)?;
+        let code = u.attack_part(c, me(object_id(700)), None)?;
         u.end_head_update(c, code)
     })
     .unwrap();
@@ -2013,7 +2019,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         .actions
         .set_attack(Some(own_attack(77, 1, 0.0)));
     let r = in_update(&mut t, (PlayerId::new(1), 0), 50, |u, c| {
-        let code = u.attack_part(c, me(9175), None)?;
+        let code = u.attack_part(c, me(object_id(9175)), None)?;
         u.end_head_update(c, code)
     });
     assert_eq!(
@@ -2061,7 +2067,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
     a.state = SWING;
     a.swing = 1.0;
     let deer = Victim {
-        id: 50,
+        id: object_id(50),
         hp: 5.0,
         position: Position::new(13.0, 10.0, 0.0),
         radius: Footprint::new(0.2, 0.2),
@@ -2071,7 +2077,7 @@ fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
     let mut f = Fight {
         victim: deer,
         own: Victim {
-            id: 123,
+            id: object_id(123),
             ..soldier()
         },
     };
@@ -2146,11 +2152,11 @@ fn a_swing_s_unmodelled_parts_fail_and_a_killing_hit_ends_it() {
     (a.pending, a.state) = (true, SWING);
     let mut f = Fight {
         victim: Victim {
-            id: 50,
+            id: object_id(50),
             ..Victim::default()
         },
         own: Victim {
-            id: 123,
+            id: object_id(123),
             ..soldier()
         },
     };
@@ -2458,7 +2464,7 @@ fn on_target(
     let mut world = world_with(7, player, class, at);
     world.sight = Some(sight(seen));
     let victim = Victim {
-        id: 7,
+        id: object_id(7),
         state,
         class,
         player,
@@ -2530,7 +2536,7 @@ fn an_attack_on_a_moved_target_follows_waits_or_fails() {
         let (mut rig, mut a) = on_target(moved, seen, (state, false));
         a.seen = Position::new(12.0, 10.0, 0.0);
         rig.f.own.player = own_player;
-        let t = *rig.t.spatial.get(7).unwrap();
+        let t = *rig.t.spatial.get(object_id(7)).unwrap();
         let code = rig
             .run(20, |c, u, f, r| a.target_moved(c, u, f, r, &t))
             .unwrap();
@@ -2699,12 +2705,12 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
     let lost = |order: AiOrder, set: fn(&mut Rig)| {
         let (mut rig, mut a) = on_target(dead, true, (READY, false));
         rig.r.ai_order = order;
-        rig.unit_mut().ai.as_mut().unwrap().current_target = 7;
+        rig.unit_mut().ai.as_mut().unwrap().current_target = Some(object_id(7));
         set(&mut rig);
         let code = rig
             .run(20, |c, u, f, r| a.lost(c, u, f, r))
             .map_err(|e| e.reason().to_owned());
-        let forgot = rig.unit().ai.as_ref().unwrap().current_target == -1;
+        let forgot = rig.unit().ai.as_ref().unwrap().current_target.is_none();
         (
             code,
             rig.posted(),

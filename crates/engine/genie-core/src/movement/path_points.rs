@@ -8,6 +8,7 @@ use crate::math::fmath;
 use crate::math::fmath::BVector;
 use crate::math::rng::Well512;
 use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
+use crate::objects::ObjectId;
 use crate::pathing::Pathing;
 use crate::pathing::tile_path::Path;
 
@@ -91,8 +92,8 @@ pub(super) const STUCK_PAUSE: f32 = crate::math::image::movement::STUCK_PAUSE;
 ///
 /// [`Mover::avoid`]: crate::movement::Mover::avoid
 pub(super) struct Avoided {
-    pub(super) kept: Vec<i32>,
-    pub(super) pauses: Vec<(i32, f32)>,
+    pub(super) kept: Vec<ObjectId>,
+    pub(super) pauses: Vec<(ObjectId, f32)>,
     /// The step hit only the walked level's target: the waypoint counts as reached.
     pub(super) at_target: bool,
 }
@@ -203,7 +204,7 @@ pub(super) fn split(path: &mut Path, i: i32) {
 /// (`fVar40`).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Goal<'w> {
-    pub(super) target: Option<&'w Placed>,
+    pub(super) target: Option<(ObjectId, &'w Placed)>,
     pub(super) gap: f32,
     pub(super) to_end: f32,
 }

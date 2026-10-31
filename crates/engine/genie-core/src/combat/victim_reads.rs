@@ -24,9 +24,9 @@ pub(crate) fn victim_in(
     let mut v = victim_of(u, master, attributes, p, spatial.terrain.as_ref(), mode_680);
     v.allied = [dip.allied(attacker, p, true), dip.allied(p, attacker, true)];
     v.uncertain = spatial.get(u.id).is_none_or(|o| o.unknown.is_some());
-    v.tile_place = spatial.tile_place(u.id.get());
+    v.tile_place = spatial.tile_place(u.id);
     if let Some(b) = v.building.as_mut() {
-        b.annexes = spatial.annexes_of(u.id.get());
+        b.annexes = spatial.annexes_of(u.id);
     }
     v
 }
@@ -67,7 +67,7 @@ pub(crate) fn victim_of(
     };
     let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
     Victim {
-        id: u.id.get(),
+        id: u.id,
         // the caller's, which holds the tile lists
         tile_place: 0,
         hp: u.life.hp,
@@ -96,7 +96,7 @@ pub(crate) fn victim_of(
         uncertain: false,
         inside: u.life.inside.is_some(),
         source: crate::combat::damage::Attacker {
-            id: u.id.get(),
+            id: u.id,
             kind,
             class: master.class,
             master_id: master.id,
@@ -116,7 +116,7 @@ pub(crate) fn victim_of(
             mode_680,
             player: p,
             kill_bonus_tasks: tasks(0x9a),
-            fired_from: u.missile.as_ref().map_or(-1, |m| m.fired_from),
+            fired_from: u.missile.as_ref().and_then(|m| m.fired_from),
         },
         weapons: master.weapons.clone(),
         master_hp: master.hit_points,

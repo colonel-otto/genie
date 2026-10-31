@@ -26,7 +26,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        target: i32,
+        target: ObjectId,
     ) -> Result<(), GenieError> {
         let by = self.releaser(player, idx)?;
         let unit = &self.players.live(player, idx)?;
@@ -48,7 +48,7 @@ impl World {
         // what its MoveTo's constructor (FUN_140aa0df0) reads of the unit and the target
         let reads = unit.move_to_reads(&self.masters, player, &self.graphics)?;
         let to = reads
-            .walk_to(self, target)?
+            .walk_to(self, Some(target))?
             .ok_or(crate::construction::build::NOT_HELD)?;
         let to = crate::movement::move_to::WalkTo { at, ..to };
         let unit = self.players.live_mut(player, idx)?;
@@ -87,8 +87,8 @@ impl World {
     pub(crate) fn lead_herd(
         &mut self,
         p: PlayerId,
-        sheep: i32,
-        site: i32,
+        sheep: ObjectId,
+        site: ObjectId,
     ) -> Result<(), GenieError> {
         self.send_to_site(p, sheep, site)?;
         let mut listed = Vec::new();
@@ -104,9 +104,9 @@ impl World {
     pub(super) fn herd_from(
         &mut self,
         p: PlayerId,
-        sheep: i32,
-        site: i32,
-        listed: &mut Vec<i32>,
+        sheep: ObjectId,
+        site: ObjectId,
+        listed: &mut Vec<ObjectId>,
     ) -> Result<(), GenieError> {
         listed.push(sheep);
         if HERD_MOST <= listed.len() {
@@ -159,8 +159,8 @@ impl World {
     pub(super) fn send_to_site(
         &mut self,
         p: PlayerId,
-        sheep: i32,
-        site: i32,
+        sheep: ObjectId,
+        site: ObjectId,
     ) -> Result<(), GenieError> {
         let Some(Place::Live(q, idx)) = self.place(sheep) else {
             return Err(GenieError::unsupported(
@@ -171,7 +171,7 @@ impl World {
             return Err(GenieError::unsupported("a led animal of another player"));
         }
         // the hunt's drop site is a raw field yet
-        let (site, point) = ObjectId::of_field(site)
+        let (site, point) = Some(site)
             .and_then(|id| self.spatial.get(id).map(|s| (id, s.position)))
             .ok_or(GenieError::unsupported("a drop site without a place"))?;
         self.move_to_object(p, idx, site, point)
@@ -270,26 +270,18 @@ impl World {
         let unit = self.players.live(p, idx)?;
         let top = if asks { unit.top_action_kind() } else { None };
         let found = match top {
-            Some(crate::gathering::gather::GATHER) => unit.actions.gather().map(|g| {
-                (
-                    DropOffBy::Gather,
-                    ObjectId::field(g.target),
-                    g.point,
-                    g.task.resource,
-                )
-            }),
+            Some(crate::gathering::gather::GATHER) => unit
+                .actions
+                .gather()
+                .map(|g| (DropOffBy::Gather, g.target, g.point, g.task.resource)),
             Some(action_type::BUILD) => unit
                 .actions
                 .build()
                 .map(|b| (DropOffBy::Build, b.target, b.point, b.task.resource)),
-            Some(HUNT) => unit.actions.hunt().map(|h| {
-                (
-                    DropOffBy::Hunt,
-                    ObjectId::field(h.target),
-                    h.point,
-                    h.task.resource,
-                )
-            }),
+            Some(HUNT) => unit
+                .actions
+                .hunt()
+                .map(|h| (DropOffBy::Hunt, h.target, h.point, h.task.resource)),
             _ => None,
         };
         let Some((by, target, point, resource)) = found else {
@@ -302,7 +294,7 @@ impl World {
                 unit.life.attribute_type,
                 self.players.player(p)?.attributes.len(),
             ),
-            unaimed: way_back && target == -1 && point.x() == NO_POINT && point.y() == NO_POINT,
+            unaimed: way_back && target.is_none() && point.x() == NO_POINT && point.y() == NO_POINT,
         }))
     }
 

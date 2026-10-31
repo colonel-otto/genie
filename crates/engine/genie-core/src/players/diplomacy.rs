@@ -15,6 +15,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
+use crate::objects::ObjectId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MARKET;
 use crate::objects::masters::master_type;
@@ -172,7 +173,7 @@ impl World {
         let mut i = 0;
         while i < self.players.player(p)?.objects.len() {
             let id = self.players.live(p, i)?.id;
-            self.notify_of_relation(p, id.get(), q, relation)?;
+            self.notify_of_relation(p, id, q, relation)?;
             i += 1;
         }
         Ok(())
@@ -194,7 +195,7 @@ impl World {
     pub(crate) fn notify_of_relation(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         q: PlayerId,
         relation: u8,
     ) -> Result<(), GenieError> {
@@ -240,9 +241,9 @@ impl World {
     fn leave_foreign_holder(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         q: PlayerId,
-        inside: Option<i32>,
+        inside: Option<ObjectId>,
     ) -> Result<(), GenieError> {
         let Some(holder) = inside else {
             return Ok(());
@@ -272,12 +273,14 @@ impl World {
     fn market_tells(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         q: PlayerId,
         position: Position,
     ) -> Result<(), GenieError> {
         if self.players.player(p)?.computer
-            || i32::from(q.get()) == id
+            // the game compares the other player's number with the market's id (`+0x8`,
+            // FUN_1411d50e0's `param_2 != param_1[1]`): its slip, kept
+            || i32::from(q.get()) == id.get()
             || !self.players.player(q)?.computer
         {
             return Ok(());
@@ -297,9 +300,9 @@ impl World {
     fn let_out_foreign(
         &mut self,
         p: PlayerId,
-        id: i32,
+        id: ObjectId,
         q: PlayerId,
-        garrison: &[i32],
+        garrison: &[ObjectId],
     ) -> Result<(), GenieError> {
         let bi = self.live_index(p, id)?;
         for &g in garrison.iter().rev() {
@@ -313,7 +316,7 @@ impl World {
     }
 
     /// The index of object `id` in player `p`'s live list.
-    fn live_index(&self, p: PlayerId, id: i32) -> Result<usize, GenieError> {
+    fn live_index(&self, p: PlayerId, id: ObjectId) -> Result<usize, GenieError> {
         self.players
             .player(p)?
             .objects

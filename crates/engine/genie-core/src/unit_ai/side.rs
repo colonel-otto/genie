@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::players::PlayerId;
@@ -32,7 +33,12 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the command does not model.
-    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, GenieError>;
+    fn attack(
+        &mut self,
+        target: ObjectId,
+        force: bool,
+        ai: &UnitAi,
+    ) -> Result<Attacked, GenieError>;
 
     /// The unit's `+0x685`, `underAttackValue`, becomes `value` (`FUN_14119d2d0`).
     fn set_under_attack(&mut self, value: bool);
@@ -85,7 +91,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// A side without its unit.
-    fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
+    fn table_drop_site(&mut self) -> Result<Option<ObjectId>, GenieError> {
         Err(WITHOUT_UNIT)
     }
 
@@ -95,7 +101,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// A side without its unit, and what the task search does not model.
-    fn builds(&self, _foundation: i32) -> Result<bool, GenieError> {
+    fn builds(&self, _foundation: ObjectId) -> Result<bool, GenieError> {
         Err(WITHOUT_UNIT)
     }
 
@@ -110,7 +116,7 @@ pub trait UnitSide {
     /// [`can_attack`]: crate::unit_ai::can_attack
     fn may_attack(
         &mut self,
-        target: i32,
+        target: ObjectId,
         seeker: &Seeker,
     ) -> Result<Option<(ClassId, Position)>, GenieError>;
 
@@ -159,12 +165,12 @@ pub trait UnitSide {
     /// the waypoint of its top level (`+0x24`); None without one.
     fn patrol_information(&self) -> Option<(PatrolPath, i32)>;
 
-    /// The builder's search for another foundation (`FUN_140c1c7c0`): −1 for none.
+    /// The builder's search for another foundation (`FUN_140c1c7c0`), None when it finds none.
     ///
     /// # Errors
     ///
     /// What the search does not model.
-    fn foundation_search(&mut self) -> Result<i32, GenieError> {
+    fn foundation_search(&mut self) -> Result<Option<ObjectId>, GenieError> {
         Err(GenieError::unsupported(
             "a builder's search without the world",
         ))
@@ -175,7 +181,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the reach test does not model.
-    fn reaches(&mut self, _target: i32, _range: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, _target: ObjectId, _range: f32) -> Result<bool, GenieError> {
         Err(GenieError::unsupported("a reach test without the world"))
     }
 
@@ -187,7 +193,7 @@ pub trait UnitSide {
     /// What the spot's search does not model.
     fn off_footprint(
         &mut self,
-        _site: i32,
+        _site: ObjectId,
         _radius: Footprint,
     ) -> Result<OffFootprint, GenieError> {
         Err(GenieError::unsupported(
@@ -219,7 +225,7 @@ pub trait UnitSide {
     /// A helper that passes them ([`helper_answers`]).
     ///
     /// [`helper_answers`]: crate::unit_ai::helper_answers
-    fn call_for_help(&mut self, _attacker: i32) -> Result<(), GenieError> {
+    fn call_for_help(&mut self, _attacker: ObjectId) -> Result<(), GenieError> {
         Err(GenieError::unsupported("a call for help without the world"))
     }
 
@@ -229,7 +235,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn seen_unit(&mut self, _id: i32) -> Result<Option<UnitSeen>, GenieError> {
+    fn seen_unit(&mut self, _id: ObjectId) -> Result<Option<UnitSeen>, GenieError> {
         Err(GenieError::unsupported(
             "an object's look without the world",
         ))
@@ -241,7 +247,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the side does not hold, and a side without the world.
-    fn duel(&mut self, _other: i32) -> Result<Duel, GenieError> {
+    fn duel(&mut self, _other: ObjectId) -> Result<Duel, GenieError> {
         Err(GenieError::missing_data("a duel without the world"))
     }
 
@@ -252,7 +258,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the side does not hold, and a side without the world.
-    fn harmless(&mut self, _attacker: i32) -> Result<bool, GenieError> {
+    fn harmless(&mut self, _attacker: ObjectId) -> Result<bool, GenieError> {
         Err(GenieError::missing_data(
             "an attacker's shown values without the world",
         ))
@@ -260,13 +266,12 @@ pub trait UnitSide {
 
     /// The attacker of object `target` nearest to it (its unit AI's slot 0x78, `FUN_140c48610`:
     /// of its attackers in their order, those the world holds, the least footprint gap,
-    /// `FUN_14118f680`, the first of a tie), −1 for none; None when `target` holds no unit AI
-    /// ([`UnitAi::defend_misc`]).
+    /// `FUN_14118f680`, the first of a tie; [`NearestAttacker`], [`UnitAi::defend_misc`]).
     ///
     /// # Errors
     ///
     /// A side without the world.
-    fn defended_attacker(&mut self, _target: i32) -> Result<Option<i32>, GenieError> {
+    fn defended_attacker(&mut self, _target: ObjectId) -> Result<NearestAttacker, GenieError> {
         Err(GenieError::missing_data(
             "a defended unit's attackers without the world",
         ))
@@ -308,7 +313,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// What the task search does not model.
-    fn wait_solidify(&mut self, _target: i32) -> Result<bool, GenieError> {
+    fn wait_solidify(&mut self, _target: ObjectId) -> Result<bool, GenieError> {
         Err(GenieError::unsupported(
             "a wait for a foundation without the world",
         ))
@@ -323,7 +328,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+    fn top_target_now(&mut self) -> Result<Option<ObjectId>, GenieError> {
         Ok(None)
     }
 
@@ -334,7 +339,7 @@ pub trait UnitSide {
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn target_flags(&mut self, _id: i32) -> Result<Option<TargetFlags>, GenieError> {
+    fn target_flags(&mut self, _id: ObjectId) -> Result<Option<TargetFlags>, GenieError> {
         Ok(None)
     }
 
@@ -367,6 +372,18 @@ pub trait UnitSide {
 pub(super) const WITHOUT_UNIT: GenieError =
     GenieError::unsupported("a unit AI's call on its unit from a side without it");
 
+/// What a defend target's unit AI names as its nearest attacker ([`UnitSide::defended_attacker`]):
+/// the defender attacks it, or with none runs its idle check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NearestAttacker {
+    /// The world does not hold the target, or it has no unit AI: no slot 0x78 to ask.
+    NoUnitAi,
+    /// Its unit AI holds no attacker the world holds (slot 0x78's −1).
+    NoAttacker,
+    /// The attacker nearest to it.
+    Attacker(ObjectId),
+}
+
 /// A unit command the slice holds no action for ([`UnitSide::command`]).
 pub(crate) const UNMODELLED_COMMAND: GenieError = GenieError::unsupported(
     "a unit command the slice does not model (heal, conversion, enter, transport, unload)",
@@ -377,13 +394,13 @@ pub(crate) const UNMODELLED_COMMAND: GenieError = GenieError::unsupported(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UnitCommand {
     /// The heal of an object (slot 0x108, `FUN_141214040`), forced.
-    Heal(i32),
+    Heal(ObjectId),
     /// The conversion of an object (slot 0x370, `FUN_141210510`), forced.
-    Convert(i32),
+    Convert(ObjectId),
     /// The repair of an object (slot 0x378, `FUN_141217c00`), forced.
-    Repair(i32),
+    Repair(ObjectId),
     /// The enter into an object (slot 0x3a0), forced.
-    Enter(i32),
+    Enter(ObjectId),
     /// The transport to a point (slot 0x3b8, `FUN_14108ce60`), forced.
     Transport(Position),
     /// The unload at a point at the unit's height (slot 0x3a8, `FUN_14108d050`), or over a wall
@@ -406,8 +423,8 @@ pub struct TargetFlags {
     pub kind: MasterKind,
     /// `capture_flag` (`+0x924`, `FUN_14107cc90`).
     pub capture: u8,
-    /// `+0x790`, `parent_pasture_id`: the pasture it is in, −1 for none.
-    pub pasture: i32,
+    /// `+0x790`, `parent_pasture_id`: the pasture it is in.
+    pub pasture: Option<ObjectId>,
     /// `+0x689`, `mUnitTargetingFlag`, is 0 (`FUN_141188bb0`).
     pub untargetable: bool,
     /// `+0x68a`, `unit_attackable_flag` (`FUN_141188b10`).
@@ -422,10 +439,10 @@ pub struct ResourceSearch {
     pub kind: u8,
     /// Fewer workers than this (`param_4`; −1 any).
     pub cap: i32,
-    /// The drop site the search starts from (`param_3`; −1 none).
-    pub site: i32,
+    /// The drop site the search starts from (`param_3`).
+    pub site: Option<ObjectId>,
     /// The unit AI's current target (`+0x48`), which the search passes over.
-    pub current: i32,
+    pub current: Option<ObjectId>,
     /// The point the search starts from without a site (`param_7`, `param_8`; (−1, −1) for the
     /// unit's place).
     pub point: Point,
@@ -441,7 +458,7 @@ pub const NO_POINT: Point = Point::new(-1.0, -1.0);
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Gatherable {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its place.
     pub position: Position,
     /// Its master's class, or the target type the hunter took (a class or a master).
@@ -453,7 +470,7 @@ pub struct Gatherable {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Named {
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
     /// Its master.
     pub master: i32,
     /// Its owner.
@@ -476,7 +493,7 @@ pub struct OffFootprint {
     /// Its owner is a computer player (`FUN_141659cf0`).
     pub computer: bool,
     /// Its owner's id.
-    pub player: i32,
+    pub player: PlayerId,
     /// The foundation, while the world holds it.
     pub site: Option<Named>,
     /// The target of its current action (`FUN_140a986f0`, `FUN_140a78450`).
@@ -488,7 +505,7 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
         self(search)
     }
 
-    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+    fn attack(&mut self, _: ObjectId, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
         Err(GenieError::unsupported(
             "a unit AI's attack without its unit",
         ))
@@ -498,7 +515,7 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
 
     fn may_attack(
         &mut self,
-        _: i32,
+        _: ObjectId,
         _: &Seeker,
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(GenieError::unsupported("an attack test without the world"))

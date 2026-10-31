@@ -10,6 +10,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::msvc;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -20,7 +21,7 @@ use crate::unit_ai::task_finder::DropSite;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Candidate {
     /// `+8`.
-    pub id: i32,
+    pub id: ObjectId,
     /// The owner.
     pub player: PlayerId,
     /// Its master's class (`+0x410`, decoded).
@@ -33,8 +34,8 @@ pub struct Candidate {
     pub workers: i32,
     /// x, y, z.
     pub position: Position,
-    /// `+0x790`, `parent_pasture_id` (−1 for none).
-    pub pasture: i32,
+    /// `+0x790`, `parent_pasture_id`.
+    pub pasture: Option<ObjectId>,
     /// `+0x689` is 0 ([`crate::objects::unit::Unit::untargetable`]).
     pub untargetable: bool,
     /// `+0x308`, `attribute_type_held`.
@@ -236,9 +237,9 @@ pub struct Seeker {
     /// `+0x640`.
     pub state: u8,
     /// Its unit AI's current target (`+0x48`), which the search passes over.
-    pub current_target: i32,
+    pub current_target: Option<ObjectId>,
     /// `+0x794`, `my_pasture_id`.
-    pub my_pasture: i32,
+    pub my_pasture: Option<ObjectId>,
     /// `param_6`: below this state the unit finds nothing (2 for the unit AIs' searches, 0 for
     /// a mule cart's).
     pub min_state: u8,
@@ -289,7 +290,7 @@ pub type Passable<'a, W> = dyn Fn(&W, i32, i32) -> bool + 'a;
 /// See [`Explored`].
 pub type ObjectsOn<'a, W> = dyn Fn(&W, i32, i32) -> Result<Vec<Candidate>, GenieError> + 'a;
 /// See [`Explored`].
-pub type Reaches<'a, W> = dyn FnMut(&mut W, i32) -> Result<bool, GenieError> + 'a;
+pub type Reaches<'a, W> = dyn FnMut(&mut W, ObjectId) -> Result<bool, GenieError> + 'a;
 
 /// What [`closest_resource`] and [`closest_resource_at`] read of the world `W` (`FUN_140c49760`'s
 /// arguments past the unit, the site and the kind).
@@ -342,7 +343,7 @@ pub fn closest_resource<W>(
     kind: u8,
     max_workers: i32,
     reads: ResourceWorld<'_, W>,
-) -> Result<i32, GenieError> {
+) -> Result<Option<ObjectId>, GenieError> {
     closest_resource_at(seeker, None, kind, max_workers, reads).map(|(id, _)| id)
 }
 
@@ -371,7 +372,7 @@ pub fn closest_resource_at<W>(
     kind: u8,
     max_workers: i32,
     reads: ResourceWorld<'_, W>,
-) -> Result<(i32, Option<i32>), GenieError> {
+) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
     /// The fallback's steps before it has one (`1000000`).
     const NO_STEPS: i32 = 1_000_000;
     const TILE_CENTRE: f32 = crate::math::image::gather_search::TILE_CENTRE;
@@ -384,9 +385,9 @@ pub fn closest_resource_at<W>(
         reach,
     } = reads;
     if seeker.state < seeker.min_state {
-        return Ok((-1, None));
+        return Ok((None, None));
     }
-    if seeker.my_pasture != -1 {
+    if seeker.my_pasture.is_some() {
         return Err(GenieError::unsupported(
             "a resource search by a unit with a pasture of its own",
         ));
@@ -418,7 +419,7 @@ pub fn closest_resource_at<W>(
     } else {
         max_workers
     };
-    let (mut fallback, mut fallback_steps, mut fallback_d, mut tested) = (-1, NO_STEPS, 0, 0);
+    let (mut fallback, mut fallback_steps, mut fallback_d, mut tested) = (None, NO_STEPS, 0, 0);
     for pass in passes {
         let (ox, oy) = (half - pass.origin.x(), half - pass.origin.y());
         let mut seen = vec![false; (side * side) as usize];
@@ -447,15 +448,15 @@ pub fn closest_resource_at<W>(
                 continue;
             };
             tested += 1;
-            if o.id == seeker.current_target {
+            if Some(o.id) == seeker.current_target {
                 continue;
             }
             if o.workers < cap {
                 if reach(world, o.id)? {
-                    return Ok((o.id, Some(d)));
+                    return Ok((Some(o.id), Some(d)));
                 }
             } else if steps < fallback_steps && reach(world, o.id)? {
-                fallback = o.id;
+                fallback = Some(o.id);
                 fallback_steps = steps;
                 fallback_d = d;
             }
@@ -464,11 +465,11 @@ pub fn closest_resource_at<W>(
                 break;
             }
         }
-        if fallback != -1 {
+        if fallback.is_some() {
             return Ok((fallback, Some(fallback_d)));
         }
     }
-    Ok((-1, None))
+    Ok((None, None))
 }
 
 /// [`closest_resource_at`]'s passes: from a footprint site its footprint's tiles the unit can
@@ -611,7 +612,7 @@ fn pass_distance(origin: Tile, x: i32, y: i32) -> i32 {
 /// targetable whose master gathers by itself as `kind` with some amount held; with none, the
 /// last object when it is neither in a pasture nor targetable.
 fn first_resource(on_tile: &[Candidate], kind: u8) -> Result<Option<Candidate>, GenieError> {
-    let open = |o: &Candidate| o.pasture != -1 || !o.untargetable;
+    let open = |o: &Candidate| o.pasture.is_some() || !o.untargetable;
     let found: Vec<&Candidate> = on_tile
         .iter()
         .filter(|o| open(o) && o.auto_gather && o.gather_group == kind && 0.0 < o.amount)
@@ -655,18 +656,19 @@ pub const fn gather_group(attribute: i16) -> (u8, i32) {
 mod tests {
     use super::*;
     use crate::test_ids::master_id;
+    use crate::test_ids::object_id;
     use crate::unit_ai::task_finder::DropTarget;
 
     fn tree(id: i32, x: f32, y: f32) -> Candidate {
         Candidate {
-            id,
+            id: object_id(id),
             player: PlayerId::new(0),
             class: class::TREE,
             master: master_id(349),
             state: 2,
             workers: 0,
             position: Position::new(x, y, 0.0),
-            pasture: -1,
+            pasture: None,
             untargetable: false,
             attribute: 1,
             amount: 100.0,
@@ -730,7 +732,7 @@ mod tests {
                 .collect())
         };
         let found = more_work(Some(&entry), &b, GridSize::new(40, 40), None, &objects).unwrap();
-        assert_eq!(found.map(|o| o.id), Some(4));
+        assert_eq!(found.map(|o| o.id), Some(object_id(4)));
         let mut off = lumber_camp();
         off.auto_work = false;
         assert_eq!(
@@ -767,7 +769,7 @@ mod tests {
         };
         // the wood (2 tiles) is nearer than the gold (4 tiles): it takes over
         let found = more_work(Some(&entry), &b, GridSize::new(40, 40), None, &objects).unwrap();
-        assert_eq!(found.map(|o| o.id), Some(8));
+        assert_eq!(found.map(|o| o.id), Some(object_id(8)));
     }
 
     /// `FUN_1415cc4e0` walks a tile's objects in its list's order (`+0x28` up to the count
@@ -795,8 +797,8 @@ mod tests {
                 .unwrap()
                 .map(|o| o.id)
         };
-        assert_eq!(listed(9, 3), Some(9));
-        assert_eq!(listed(3, 9), Some(3));
+        assert_eq!(listed(9, 3), Some(object_id(9)));
+        assert_eq!(listed(3, 9), Some(object_id(3)));
     }
 
     #[test]
@@ -806,8 +808,8 @@ mod tests {
             position: Position::new(10.2, 10.7, 0.0),
             line_of_sight: 4.0,
             state: 2,
-            current_target: -1,
-            my_pasture: -1,
+            current_target: None,
+            my_pasture: None,
             min_state: 2,
         };
         // trees at (12, 10) and (8, 11): the second is nearer the unit's place
@@ -842,10 +844,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!((found, asked), (2, vec![2]));
+        assert_eq!((found, asked), (Some(object_id(2)), vec![object_id(2)]));
         // with the tree as the unit AI's target, the other one
         let busy = Seeker {
-            current_target: 2,
+            current_target: Some(object_id(2)),
             ..seeker
         };
         let found = closest_resource(
@@ -862,7 +864,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(found, 1);
+        assert_eq!(found, Some(object_id(1)));
     }
 
     #[test]
@@ -872,8 +874,8 @@ mod tests {
             position: Position::new(10.2, 10.7, 0.0),
             line_of_sight: 4.0,
             state: 2,
-            current_target: -1,
-            my_pasture: -1,
+            current_target: None,
+            my_pasture: None,
             min_state: 2,
         };
         // a 2x2 site at (14, 10): its own tiles are blocked
@@ -916,22 +918,25 @@ mod tests {
         // a tree by the unit and one by the site: without the site the unit's, with it the site's
         // (3 from the site's tile)
         let trees = [tree(1, 8.5, 11.5), tree(2, 17.5, 10.5)];
-        assert_eq!(search(&trees, None).0, 1);
-        assert_eq!(search(&trees, Some(&site)), (2, Some(3)));
+        assert_eq!(search(&trees, None).0, Some(object_id(1)));
+        assert_eq!(search(&trees, Some(&site)), (Some(object_id(2)), Some(3)));
         // the site's tile outside the unit's zone: one pass from the site's tile alone, which is
         // blocked, so nothing
         let apart = SearchSite {
             footprint: false,
             ..site
         };
-        assert_eq!(search(&trees, Some(&apart)), (-1, None));
+        assert_eq!(search(&trees, Some(&apart)), (None, None));
         // nothing within the site's line of sight plus 10 of it: the second pass from the unit
         // finds the tree 8 columns and a row off (its distance from the unit's tile)
         let blind = SearchSite {
             line_of_sight: 0.0,
             ..site
         };
-        assert_eq!(search(&[tree(3, 2.5, 11.5)], Some(&blind)), (3, Some(9)));
+        assert_eq!(
+            search(&[tree(3, 2.5, 11.5)], Some(&blind)),
+            (Some(object_id(3)), Some(9))
+        );
     }
 
     /// The searching unit of `closest_resource_at`'s tests: at (10.2, 10.7), line of sight 4
@@ -941,8 +946,8 @@ mod tests {
         position: Position::new(10.2, 10.7, 0.0),
         line_of_sight: 4.0,
         state: 2,
-        current_target: -1,
-        my_pasture: -1,
+        current_target: None,
+        my_pasture: None,
         min_state: 2,
     };
 
@@ -954,8 +959,8 @@ mod tests {
         trees: &[Candidate],
         max_workers: i32,
         explored: &Explored<'_, ()>,
-        reach: &[i32],
-    ) -> Result<(i32, Option<i32>), GenieError> {
+        reach: &[ObjectId],
+    ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
         let objects = |(): &(), x: i32, y: i32| {
             Ok(trees
                 .iter()
@@ -984,15 +989,15 @@ mod tests {
         let trees = [tree(1, 12.5, 10.5)];
         let low = Seeker { state: 1, ..SEEKER };
         assert_eq!(
-            search_trees(&low, &trees, 2, &|&(), _, _| Ok(true), &[1]),
-            Ok((-1, None))
+            search_trees(&low, &trees, 2, &|&(), _, _| Ok(true), &[object_id(1)]),
+            Ok((None, None))
         );
         let tending = Seeker {
-            my_pasture: 50,
+            my_pasture: Some(object_id(50)),
             ..SEEKER
         };
         assert_eq!(
-            search_trees(&tending, &trees, 2, &|&(), _, _| Ok(true), &[1]),
+            search_trees(&tending, &trees, 2, &|&(), _, _| Ok(true), &[object_id(1)]),
             Err(GenieError::unsupported(
                 "a resource search by a unit with a pasture of its own"
             ))
@@ -1010,21 +1015,24 @@ mod tests {
         let all = |&(): &(), _, _| Ok(true);
         // at most 2 workers: past the full one to the free one
         assert_eq!(
-            search_trees(&SEEKER, &both, 2, &all, &[1, 2]),
-            Ok((2, Some(5)))
+            search_trees(&SEEKER, &both, 2, &all, &[object_id(1), object_id(2)]),
+            Ok((Some(object_id(2)), Some(5)))
         );
         // no cap: the full one first
         assert_eq!(
-            search_trees(&SEEKER, &both, -1, &all, &[1, 2]),
-            Ok((1, Some(2)))
+            search_trees(&SEEKER, &both, -1, &all, &[object_id(1), object_id(2)]),
+            Ok((Some(object_id(1)), Some(2)))
         );
         // only the full one: the pass ends with it as the fallback
         assert_eq!(
-            search_trees(&SEEKER, &[full], 2, &all, &[1]),
-            Ok((1, Some(2)))
+            search_trees(&SEEKER, &[full], 2, &all, &[object_id(1)]),
+            Ok((Some(object_id(1)), Some(2)))
         );
         // a fallback must be reachable
-        assert_eq!(search_trees(&SEEKER, &[full], 2, &all, &[]), Ok((-1, None)));
+        assert_eq!(
+            search_trees(&SEEKER, &[full], 2, &all, &[]),
+            Ok((None, None))
+        );
     }
 
     #[test]
@@ -1032,8 +1040,8 @@ mod tests {
         let both = [tree(1, 12.5, 10.5), tree(2, 15.5, 10.5)];
         let dark = |&(): &(), x, y| Ok((x, y) != (12, 10));
         assert_eq!(
-            search_trees(&SEEKER, &both, 2, &dark, &[1, 2]),
-            Ok((2, Some(5)))
+            search_trees(&SEEKER, &both, 2, &dark, &[object_id(1), object_id(2)]),
+            Ok((Some(object_id(2)), Some(5)))
         );
     }
 
@@ -1049,12 +1057,12 @@ mod tests {
         let with = |n: usize| {
             let mut trees: Vec<Candidate> = near[..n].to_vec();
             trees.push(far);
-            search_trees(&SEEKER, &trees, 2, &|&(), _, _| Ok(true), &[99])
+            search_trees(&SEEKER, &trees, 2, &|&(), _, _| Ok(true), &[object_id(99)])
         };
         // 30 tested: the 31st is the far one, taken
-        assert_eq!(with(30), Ok((99, Some(8))));
+        assert_eq!(with(30), Ok((Some(object_id(99)), Some(8))));
         // 31 tested: the pass ends without one
-        assert_eq!(with(31), Ok((-1, None)));
+        assert_eq!(with(31), Ok((None, None)));
     }
 
     #[test]

@@ -13,6 +13,7 @@
 
 use crate::GenieError;
 use crate::map::Position;
+use crate::objects::ObjectId;
 use crate::objects::masters::Task;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
@@ -40,7 +41,7 @@ pub struct WaitSolidify {
     /// `+0x48`: the task slot 0x820 found on the foundation, whatever its action type.
     pub task: Task,
     /// `+0x68`: the foundation's id.
-    pub target: i32,
+    pub target: ObjectId,
 }
 
 impl WaitSolidify {
@@ -48,7 +49,7 @@ impl WaitSolidify {
     /// leaves the target unset), the task, the type 0x9a, the foundation's id and state
     /// [`WAITING`].
     #[must_use]
-    pub const fn new(task: Task, target: i32) -> Self {
+    pub const fn new(task: Task, target: ObjectId) -> Self {
         Self {
             state: WAITING,
             task,
@@ -76,15 +77,15 @@ impl UnitView<'_, '_> {
     /// the task the unit's slot 0x820 finds on `target` (any action type, with the master switch)
     /// gives the wait, made at once on the unit lent back to its slot
     /// ([`crate::world::World::wait_for_foundation`]); false without one.
-    pub(crate) fn start_wait_now(&mut self, target: i32) -> Result<bool, GenieError> {
+    pub(crate) fn start_wait_now(&mut self, target: ObjectId) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (
             self.player,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?,
             owner_view(&self.c.w.players, self.c.player, self.new_owner)?.players(),
         );
-        let find = |id: i32| {
-            if id == unit.id.get() {
+        let find = |id: ObjectId| {
+            if id == unit.id {
                 return Some((player, unit));
             }
             others.find(id)
@@ -103,7 +104,7 @@ impl UnitView<'_, '_> {
             .ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = unit.master(&self.c.w.masters, self.player)?;
         let actor = Actor {
-            id: unit.id.get(),
+            id: unit.id,
             master: own,
             player,
             held: (unit.life.attribute_type, unit.life.amount),
@@ -146,6 +147,7 @@ impl UnitView<'_, '_> {
 mod tests {
     use super::*;
     use crate::objects::masters::TaskId;
+    use crate::test_ids::object_id;
 
     fn task() -> Task {
         Task {
@@ -157,15 +159,18 @@ mod tests {
 
     #[test]
     fn a_new_wait_holds_its_task_and_foundation_in_state_10() {
-        let w = WaitSolidify::new(task(), 8123);
-        assert_eq!((w.state, w.task, w.target), (WAITING, task(), 8123));
+        let w = WaitSolidify::new(task(), object_id(8123));
+        assert_eq!(
+            (w.state, w.task, w.target),
+            (WAITING, task(), object_id(8123))
+        );
         assert_eq!(WAITING, 10);
         assert_eq!(WAIT_SOLIDIFY, 0x9a);
     }
 
     #[test]
     fn the_wait_ends_once_the_foundation_is_past_a_hundredth_or_gone() {
-        let w = WaitSolidify::new(task(), 8123);
+        let w = WaitSolidify::new(task(), object_id(8123));
         assert!(w.update(None), "a foundation the world does not hold");
         assert!(!w.update(Some(0.0)));
         // 0.01f32 widens to 0.009999999776…, at most the double 0.01
@@ -178,13 +183,13 @@ mod tests {
 
     #[test]
     fn its_set_state_sets_the_state_alone() {
-        let mut w = WaitSolidify::new(task(), 8123);
+        let mut w = WaitSolidify::new(task(), object_id(8123));
         w.set_state(2);
         assert_eq!(
             w,
             WaitSolidify {
                 state: 2,
-                ..WaitSolidify::new(task(), 8123)
+                ..WaitSolidify::new(task(), object_id(8123))
             }
         );
     }

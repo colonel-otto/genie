@@ -3,6 +3,7 @@
 //! out of the action list, and the work, which runs on the world with the builder lent: the
 //! foundation's work, its starts and its completion.
 
+use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use std::collections::BTreeMap;
 
@@ -49,7 +50,7 @@ impl Unit {
         c: &Step<'_>,
         others: OthersRef<'_>,
         action: BuildAction,
-    ) -> Result<BTreeMap<i32, ClearLook>, GenieError> {
+    ) -> Result<BTreeMap<ObjectId, ClearLook>, GenieError> {
         let mut looks = BTreeMap::new();
         if let Some(f) = Some(action)
             .filter(|b| matches!(b.state, 6 | 222))
@@ -62,7 +63,7 @@ impl Unit {
                 c.w.spatial
                     .objects_within(fx - reach, fy - reach, fx + reach, fy + reach)
             {
-                let (owner, u) = if id == self.id.get() {
+                let (owner, u) = if id == self.id {
                     (c.player, self)
                 } else if let Some(found) = others.find(id) {
                     found
@@ -87,19 +88,20 @@ impl Unit {
         let foundation = others.own(target);
         let site = foundation
             .filter(|u| u.construction.is_some())
-            .map(|u| u.id.get());
+            .map(|u| u.id);
         let built = foundation.map(|u| u.life.master_id);
         let stack_made = foundation.and_then(|u| u.stack_made);
-        let build_targets: Vec<(i32, Option<u8>)> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
-            ai.orders
-                .iter()
-                .filter(|o| o.order == OrderKind::Build)
-                .map(|o| {
-                    let state = others.own(o.target).map(|u| u.life.state);
-                    (o.target, state)
-                })
-                .collect()
-        });
+        let build_targets: Vec<(Option<ObjectId>, Option<u8>)> =
+            self.ai.as_ref().map_or_else(Vec::new, |ai| {
+                ai.orders
+                    .iter()
+                    .filter(|o| o.order == OrderKind::Build)
+                    .map(|o| {
+                        let state = others.own(o.target).map(|u| u.life.state);
+                        (o.target, state)
+                    })
+                    .collect()
+            });
         let (deposit, gone_orders) = if action.state == DROP {
             (
                 self.build_deposit(c, others, action.site)?,
@@ -132,9 +134,9 @@ impl Unit {
         &self,
         c: &Step<'_>,
         others: OthersRef<'_>,
-        site: i32,
+        site: Option<ObjectId>,
     ) -> Result<Option<(u8, DropOff)>, GenieError> {
-        let Some(s) = c.w.spatial.get(site).filter(|_| site != -1) else {
+        let Some(s) = c.w.spatial.get(site).filter(|_| site.is_some()) else {
             return Ok(None);
         };
         let me_at =
@@ -143,7 +145,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a builder without a place"))?;
         let master = self.master(&c.w.masters, c.player)?;
         let actor = Actor {
-            id: self.id.get(),
+            id: self.id,
             master,
             player: c.player,
             held: (self.life.attribute_type, self.life.amount),
@@ -173,8 +175,8 @@ impl Unit {
 
     /// State 8: the targets of the unit AI's orders that a drop-off drops, gone from the world
     /// or past state 5 as the player sees them.
-    fn gone_drop_orders(&self, spatial: &Spatial) -> Vec<i32> {
-        let gone = |t: i32| match spatial.get(t) {
+    fn gone_drop_orders(&self, spatial: &Spatial) -> Vec<Option<ObjectId>> {
+        let gone = |t: Option<ObjectId>| match spatial.get(t) {
             None => true,
             Some(_) => spatial
                 .sight
@@ -233,7 +235,9 @@ impl BuildAction {
         builder: &mut Unit,
         rate: f32,
     ) -> Result<bool, GenieError> {
-        let target = self.target;
+        let target = self
+            .target
+            .ok_or(crate::construction::build::world_side::NOT_HELD)?;
         self.lend(c, builder, |w, _, _| w.work_building(target, rate))
     }
 }

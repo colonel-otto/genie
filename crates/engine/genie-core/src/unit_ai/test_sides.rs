@@ -8,10 +8,12 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Well512;
+use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::{
-    AiCommand, Attacked, Duel, Effect, Found, Gatherable, OffFootprint, PatrolPath, ResourceSearch,
-    Search, Seeker, Surroundings, TargetFlags, UnitAi, UnitCommand, UnitSeen, UnitSide,
+    AiCommand, Attacked, Duel, Effect, Found, Gatherable, NearestAttacker, OffFootprint,
+    PatrolPath, ResourceSearch, Search, Seeker, Surroundings, TargetFlags, UnitAi, UnitCommand,
+    UnitSeen, UnitSide,
 };
 
 /// What calls leave of the unit's top action's target ([`top_after`]).
@@ -22,7 +24,7 @@ enum TopLeft {
     /// A stop, or an action without an object.
     NoObject,
     /// An action on the object.
-    On(i32),
+    On(ObjectId),
 }
 
 /// What the calls `fx` leave of the unit's top action, the last that replaces its actions
@@ -69,7 +71,7 @@ impl UnitSide for Vec<Effect> {
         Err(NO_WORLD)
     }
 
-    fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+    fn attack(&mut self, _: ObjectId, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
         Err(NO_WORLD)
     }
 
@@ -88,7 +90,7 @@ impl UnitSide for Vec<Effect> {
         Ok(true)
     }
 
-    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+    fn top_target_now(&mut self) -> Result<Option<ObjectId>, GenieError> {
         Ok(match top_after(self) {
             TopLeft::On(target) => Some(target),
             TopLeft::NoObject | TopLeft::Untouched => None,
@@ -97,7 +99,7 @@ impl UnitSide for Vec<Effect> {
 
     fn may_attack(
         &mut self,
-        _: i32,
+        _: ObjectId,
         _: &Seeker,
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         Err(NO_WORLD)
@@ -129,7 +131,7 @@ pub(super) struct With<'s> {
     fx: &'s mut Vec<Effect>,
     busy: bool,
     interruptible: bool,
-    top: Option<i32>,
+    top: Option<ObjectId>,
     commanded: bool,
 }
 
@@ -166,7 +168,12 @@ impl UnitSide for With<'_> {
         self.side.closest(search)
     }
 
-    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, GenieError> {
+    fn attack(
+        &mut self,
+        target: ObjectId,
+        force: bool,
+        ai: &UnitAi,
+    ) -> Result<Attacked, GenieError> {
         let attacked = self.side.attack(target, force, ai)?;
         self.commanded |= attacked.attacks;
         Ok(attacked)
@@ -189,17 +196,17 @@ impl UnitSide for With<'_> {
         Ok(self.interruptible || self.fx.contains(&Effect::Stop))
     }
 
-    fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
+    fn table_drop_site(&mut self) -> Result<Option<ObjectId>, GenieError> {
         self.side.table_drop_site()
     }
 
-    fn builds(&self, foundation: i32) -> Result<bool, GenieError> {
+    fn builds(&self, foundation: ObjectId) -> Result<bool, GenieError> {
         self.side.builds(foundation)
     }
 
     fn may_attack(
         &mut self,
-        target: i32,
+        target: ObjectId,
         seeker: &Seeker,
     ) -> Result<Option<(ClassId, Position)>, GenieError> {
         self.side.may_attack(target, seeker)
@@ -225,15 +232,19 @@ impl UnitSide for With<'_> {
         self.side.patrol_information()
     }
 
-    fn foundation_search(&mut self) -> Result<i32, GenieError> {
+    fn foundation_search(&mut self) -> Result<Option<ObjectId>, GenieError> {
         self.side.foundation_search()
     }
 
-    fn reaches(&mut self, target: i32, range: f32) -> Result<bool, GenieError> {
+    fn reaches(&mut self, target: ObjectId, range: f32) -> Result<bool, GenieError> {
         self.side.reaches(target, range)
     }
 
-    fn off_footprint(&mut self, site: i32, radius: Footprint) -> Result<OffFootprint, GenieError> {
+    fn off_footprint(
+        &mut self,
+        site: ObjectId,
+        radius: Footprint,
+    ) -> Result<OffFootprint, GenieError> {
         self.side.off_footprint(site, radius)
     }
 
@@ -241,23 +252,23 @@ impl UnitSide for With<'_> {
         self.side.can_stand(point)
     }
 
-    fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
+    fn call_for_help(&mut self, attacker: ObjectId) -> Result<(), GenieError> {
         self.side.call_for_help(attacker)
     }
 
-    fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
+    fn seen_unit(&mut self, id: ObjectId) -> Result<Option<UnitSeen>, GenieError> {
         self.side.seen_unit(id)
     }
 
-    fn duel(&mut self, other: i32) -> Result<Duel, GenieError> {
+    fn duel(&mut self, other: ObjectId) -> Result<Duel, GenieError> {
         self.side.duel(other)
     }
 
-    fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
+    fn harmless(&mut self, attacker: ObjectId) -> Result<bool, GenieError> {
         self.side.harmless(attacker)
     }
 
-    fn defended_attacker(&mut self, target: i32) -> Result<Option<i32>, GenieError> {
+    fn defended_attacker(&mut self, target: ObjectId) -> Result<NearestAttacker, GenieError> {
         self.side.defended_attacker(target)
     }
 
@@ -272,13 +283,13 @@ impl UnitSide for With<'_> {
         self.side.master_class(player, master)
     }
 
-    fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
+    fn wait_solidify(&mut self, target: ObjectId) -> Result<bool, GenieError> {
         let waits = self.side.wait_solidify(target)?;
         self.commanded |= waits;
         Ok(waits)
     }
 
-    fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+    fn top_target_now(&mut self) -> Result<Option<ObjectId>, GenieError> {
         match top_after(self.fx) {
             TopLeft::On(target) => Ok(Some(target)),
             TopLeft::NoObject => Ok(None),
@@ -286,7 +297,7 @@ impl UnitSide for With<'_> {
         }
     }
 
-    fn target_flags(&mut self, id: i32) -> Result<Option<TargetFlags>, GenieError> {
+    fn target_flags(&mut self, id: ObjectId) -> Result<Option<TargetFlags>, GenieError> {
         self.side.target_flags(id)
     }
 

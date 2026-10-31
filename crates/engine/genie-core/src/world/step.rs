@@ -5,6 +5,7 @@ use crate::combat::damage::Victim;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::Walk;
 use crate::movement::{Me, Planning};
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -19,7 +20,7 @@ pub(crate) struct Step<'a> {
     /// the updating object itself goes to this `Step` for after the step.
     pub(crate) w: &'a mut World,
     /// The updating object's id.
-    pub(crate) me: i32,
+    pub(crate) me: ObjectId,
     /// The tick's dt in milliseconds (`world+0x164`; in seconds, [`seconds`]).
     ///
     /// [`seconds`]: crate::objects::lifecycle::seconds

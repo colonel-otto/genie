@@ -3,11 +3,12 @@
 
 use crate::map::GridSize;
 use crate::map::Point;
-use crate::map::spatial::Spatial;
+use crate::map::spatial::{RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::{
     ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity,
 };
+use crate::objects::ObjectKey;
 use crate::players::PlayerId;
 use crate::{GenieError, math::fmath};
 
@@ -27,7 +28,7 @@ impl Mover {
         &mut self,
         me: &Me,
         world: &Spatial,
-        hits: &[i32],
+        hits: &[RecordId],
         computer: bool,
     ) -> Result<Next, GenieError> {
         let level = &self.paths[0];
@@ -36,8 +37,10 @@ impl Mover {
             .ok_or(GenieError::unsupported("a walker without a place"))?
             .player;
         for &hit in hits {
-            let id = world.annex_of(hit).unwrap_or(hit);
-            if 0 <= level.target && id == level.target {
+            let Some(id) = world.annex_of(hit).or_else(|| hit.key()) else {
+                continue;
+            };
+            if level.targets(id) {
                 continue;
             }
             let Some(other) = world.get_known(id)? else {
@@ -63,8 +66,11 @@ impl Mover {
             }
             // a hit that neither counts the other an ally, of the walked level's target's
             // master, notifies the walker's unit AI (0x215)
-            if !allied && !world.allied_with(other.player, player) && 0 <= level.target {
-                let target = world.get(level.target).map(|t| t.master);
+            if !allied
+                && !world.allied_with(other.player, player)
+                && let Some(t) = level.target.filter(|t| !t.is_recyclable())
+            {
+                let target = world.get(t).map(|t| t.master);
                 if target.is_some_and(|m| m == other.master) {
                     self.in_the_way.push(id);
                 }

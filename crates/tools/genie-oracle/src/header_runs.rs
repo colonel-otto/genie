@@ -2,7 +2,7 @@
 //! blocks after each tick and the header's slice.
 
 use crate::masters::MasterTable;
-use crate::{Decoder, Error, Frame, frames, hunted_origins, listed, player_state, slice};
+use crate::{Decoder, Error, Frame, frames, hunted_origins, listed, player_totals, slice};
 use genie_core::GenieError;
 use genie_core::commands::Command;
 use genie_core::objects::unit::Unit;
@@ -137,7 +137,7 @@ pub fn simulate_word9(
 /// created included) and each object's master, position, state, held amount, top action and
 /// retarget timer.
 pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32; 11] {
-    let mut state = player_state(section, id);
+    let mut state = player_totals(section, id);
     state.resources = simulated.resources;
     state.sleeping_count = simulated.sleeping.len() as u32;
     state.live = simulated
@@ -145,7 +145,7 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
         .iter()
         .filter(|unit| listed(unit))
         .map(|unit| ObjectState {
-            id: unit.id.get(),
+            id: unit.id,
             main_id: unit.life.master_id.get(),
             state: unit.life.state,
             amount_held: unit.life.amount,

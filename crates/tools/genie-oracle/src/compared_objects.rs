@@ -43,7 +43,7 @@ pub(crate) fn header_objects(
     let paths = &header.world.base_world.path;
     Ok(section
         .live_objects()
-        .map(|o| unit(o, section.objects(), paths, civ, masters))
+        .map(|o| unit(o, section.objects(), paths, civ, masters, sections.len()))
         .filter(listed)
         .collect())
 }

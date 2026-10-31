@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::combat::attack::{
     Attack, AttackReads, Fight, Ground, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE,
-    READY, Readiness, SHORT_RANGE_GAP, face_target, move_reads,
+    READY, Readiness, SHORT_RANGE_GAP, TARGET_GONE, face_target, move_reads,
 };
 use crate::map::Position;
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
 use crate::objects::ObjectId;
@@ -91,10 +92,7 @@ impl Attack {
         r: &AttackReads,
         skip_ready: bool,
     ) -> Result<Readiness, GenieError> {
-        let t = *g
-            .map
-            .get_known(self.target)?
-            .ok_or(GenieError::unsupported("an Attack whose target is gone"))?;
+        let (target, t) = self.held_target(g.map)?;
         let speed = unit
             .body
             .mover()
@@ -134,13 +132,7 @@ impl Attack {
             return self.fail(unit, g.sprite_rng);
         }
         // a gate's reach is to the nearest of it and its first two parts (slot 0x680, MINSS)
-        let gap = crate::movement::gate_gap(
-            g.map,
-            (at, ground),
-            (ObjectId::field(self.target), &t),
-            gap,
-            |g| g,
-        );
+        let gap = crate::movement::gate_gap(g.map, (at, ground), (target, &t), gap, |g| g);
         if self.reach() < gap {
             if !self.sub_action {
                 g.post(unit, 0x1fd, [0; 3])?;
@@ -155,6 +147,17 @@ impl Attack {
         }
         self.point = t.position;
         self.face(unit, t.position, f, r)
+    }
+
+    /// The target and its place on `map`.
+    ///
+    /// # Errors
+    ///
+    /// [`TARGET_GONE`] for none or a target the map does not hold.
+    pub(super) fn held_target(&self, map: &Spatial) -> Result<(ObjectId, Placed), GenieError> {
+        let target = self.target.ok_or(TARGET_GONE)?;
+        let t = map.get_known(target)?.ok_or(TARGET_GONE)?;
+        Ok((target, *t))
     }
 
     /// readyToAttack's ready-at-once test: the target stands on the attack's point
@@ -227,11 +230,7 @@ pub(super) fn in_range(near: f32, range: f32, min_range: f32) -> bool {
 /// # Errors
 ///
 /// A tile the map's sight does not hold.
-pub(super) fn target_unseen(
-    world: &crate::map::spatial::Spatial,
-    f: &Fight,
-    t: &crate::map::spatial::Placed,
-) -> Result<bool, GenieError> {
+pub(super) fn target_unseen(world: &Spatial, f: &Fight, t: &Placed) -> Result<bool, GenieError> {
     let (tx, ty) = (t.position.x() as i32, t.position.y() as i32);
     Ok(t.player != PlayerId::GAIA
         && !world.sees_tile(f.own.player, tx, ty)
