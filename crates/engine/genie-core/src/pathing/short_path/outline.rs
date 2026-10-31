@@ -5,8 +5,8 @@ use crate::GenieError;
 use crate::pathing::mesh::Mesh;
 use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
-    Corner, Emit, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
-    contact_point, corner_emits, in_box, inside, shrunk_corner,
+    Corner, Emit, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, WalkDir, cheb,
+    clamp_to_box, contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
 use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
@@ -473,7 +473,7 @@ impl Search<'_> {
         loop {
             if cb < cf {
                 let vv = *v.checked(bi as usize)?;
-                self.walk_new_corner(&walk, &poly, (bi, bi - 1), cb, (1, bi, 0))?;
+                self.walk_new_corner(&walk, &poly, (bi, bi - 1), cb, (WalkDir::Backward, bi, 0))?;
                 let w = *v.checked((bi - 1) as usize)?;
                 let dx = vv[0] - w[0];
                 self.foot_test(Foot {
@@ -483,7 +483,7 @@ impl Search<'_> {
                     x_extent: dx,
                     low: bi - 1,
                     high: 0,
-                    dir: 1,
+                    dir: WalkDir::Backward,
                     start_cost: cb,
                     parent,
                 })?;
@@ -491,7 +491,13 @@ impl Search<'_> {
                 bi -= 1;
             } else {
                 let vv = *v.checked(fi as usize)?;
-                self.walk_new_corner(&walk, &poly, (fi, (n - 1 + fi) % n), cf, (0, 0, fi))?;
+                self.walk_new_corner(
+                    &walk,
+                    &poly,
+                    (fi, (n - 1 + fi) % n),
+                    cf,
+                    (WalkDir::Forward, 0, fi),
+                )?;
                 fi += 1;
                 let w = *v.checked(fi as usize)?;
                 let dx = vv[0] - w[0];
@@ -502,7 +508,7 @@ impl Search<'_> {
                     x_extent: dx,
                     low: 0,
                     high: fi,
-                    dir: 0,
+                    dir: WalkDir::Forward,
                     start_cost: cf,
                     parent,
                 })?;
@@ -536,7 +542,7 @@ impl Search<'_> {
             x_extent: dxb,
             low: last as u32,
             high: 0,
-            dir: 1,
+            dir: WalkDir::Backward,
             start_cost: g0,
             parent: walk.parent,
         })?;
@@ -547,7 +553,7 @@ impl Search<'_> {
             x_extent: dxf,
             low: 0,
             high: 0,
-            dir: 0,
+            dir: WalkDir::Forward,
             start_cost: g0,
             parent: walk.parent,
         })?;
@@ -572,7 +578,7 @@ impl Search<'_> {
         poly: &Poly,
         (at, before): (u32, u32),
         g: i32,
-        (dir, lo, hi): (u8, u32, u32),
+        (dir, lo, hi): (WalkDir, u32, u32),
     ) -> Result<(), GenieError> {
         let vv = *poly.vertices.checked(at as usize)?;
         let sp = *poly.sides.checked(before as usize)?;

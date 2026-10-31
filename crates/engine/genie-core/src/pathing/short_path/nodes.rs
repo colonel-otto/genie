@@ -2,7 +2,9 @@
 //! the clip to the box.
 
 use crate::GenieError;
-use crate::pathing::short_path::{FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search, Token};
+use crate::pathing::short_path::{
+    FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search, Token, WalkDir,
+};
 use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
 
@@ -13,8 +15,8 @@ pub(super) struct Corner {
     pub(super) cost: i32,
     /// The node it was reached from.
     pub(super) parent: u32,
-    /// The walk's direction round the polygon (0 forward, 1 backward).
-    pub(super) dir: u8,
+    /// The walk's direction round the polygon.
+    pub(super) dir: WalkDir,
     /// The first vertex of the walked run.
     pub(super) low: u32,
     /// The last vertex of the walked run.
@@ -41,8 +43,8 @@ pub(super) struct Foot {
     pub(super) low: u32,
     /// The last vertex of the walked run.
     pub(super) high: u32,
-    /// The walk's direction round the polygon (0 forward, 1 backward).
-    pub(super) dir: u8,
+    /// The walk's direction round the polygon.
+    pub(super) dir: WalkDir,
     /// The cost at the edge's start.
     pub(super) start_cost: i32,
     /// The node it was reached from.

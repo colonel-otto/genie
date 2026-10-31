@@ -222,12 +222,22 @@ enum Kind {
     /// it covers, its polygon and what the corner emits its ray with (none for a goal
     /// candidate, which never opens: the game's token 5 or −1 and sides 0 or 0xff).
     Corner {
-        dir: u8,
+        dir: WalkDir,
         lo: u32,
         hi: u32,
         poly: u32,
         emit: Option<Emit>,
     },
+}
+
+/// The direction of a walk round a polygon's vertices (a corner node's, a goal candidate's):
+/// forward (0) or backward (1), the way the path back reads the vertices it covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WalkDir {
+    /// 0: forward, to the higher vertices.
+    Forward,
+    /// 1: backward, to the lower vertices.
+    Backward,
 }
 
 /// What an open corner node emits its ray with (`FUN_140fa3bc0`): the token the ray ignores

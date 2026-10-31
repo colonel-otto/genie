@@ -47,7 +47,7 @@ fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() 
         s.goal_test(Corner {
             cost: 5 * ONE,
             parent: 0,
-            dir: 0,
+            dir: WalkDir::Forward,
             low: 0,
             high: 0,
             poly: 0,
@@ -61,7 +61,7 @@ fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() 
         !s.goal_test(Corner {
             cost: 6 * ONE,
             parent: 0,
-            dir: 0,
+            dir: WalkDir::Forward,
             low: 0,
             high: 0,
             poly: 0,
@@ -75,7 +75,7 @@ fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() 
         !s.goal_test(Corner {
             cost: ONE,
             parent: 0,
-            dir: 0,
+            dir: WalkDir::Forward,
             low: 0,
             high: 0,
             poly: 0,
@@ -100,7 +100,7 @@ fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
         x_extent: 0,
         low: 0,
         high: 0,
-        dir: 0,
+        dir: WalkDir::Forward,
         start_cost: ONE,
         parent: 0,
     })
@@ -113,7 +113,7 @@ fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
         x_extent: 1,
         low: 0,
         high: 0,
-        dir: 0,
+        dir: WalkDir::Forward,
         start_cost: ONE,
         parent: 0,
     })

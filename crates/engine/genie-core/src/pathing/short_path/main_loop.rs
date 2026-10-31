@@ -4,7 +4,7 @@ use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
     Callback, Corner, Ctx, Emit, FixedPoint, Hit, Kind, NONE, NUDGES, Node,
     OPEN_CORNER_WITHOUT_EMIT, Poly, RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT,
-    UNSET, cheb, corner_emits, float_distance, in_box, isqrt, through_float,
+    UNSET, WalkDir, cheb, corner_emits, float_distance, in_box, isqrt, through_float,
 };
 use crate::pathing::{ShapeId, ShapeSide};
 use crate::world::slots::CheckedIndex;
@@ -105,10 +105,10 @@ impl Search<'_> {
             let forward = (gf <= gb && alive_f) || !alive_b;
             let poly = self.polys.checked(pi as usize)?.clone();
             if forward {
-                self.rewalk_corner(&walk, &poly, (fv, gf), (0, e, fv))?;
+                self.rewalk_corner(&walk, &poly, (fv, gf), (WalkDir::Forward, e, fv))?;
                 (fv, gf, alive_f) = self.rewalk_advance(&walk, &poly, (fv, gf), true)?;
             } else {
-                self.rewalk_corner(&walk, &poly, (bv, gb), (1, bv, next0))?;
+                self.rewalk_corner(&walk, &poly, (bv, gb), (WalkDir::Backward, bv, next0))?;
                 (bv, gb, alive_b) = self.rewalk_advance(&walk, &poly, (bv, gb), false)?;
             }
         }
@@ -122,7 +122,7 @@ impl Search<'_> {
         walk: &Rewalk,
         poly: &Poly,
         (at, g): (u32, i32),
-        (dir, lo, hi): (u8, u32, u32),
+        (dir, lo, hi): (WalkDir, u32, u32),
     ) -> Result<(), GenieError> {
         let m = walk.count;
         let v = *poly.vertices.checked(at as usize)?;
@@ -246,7 +246,7 @@ impl Search<'_> {
         }
         let g = n.g.wrapping_add(float_distance(p, t));
         let kind = Kind::Corner {
-            dir: 0,
+            dir: WalkDir::Forward,
             lo: NONE,
             hi: NONE,
             poly: NONE,
@@ -347,7 +347,7 @@ impl Search<'_> {
                     pts.push(node.at);
                     let v = &self.polys.checked(poly as usize)?.vertices;
                     let n = v.len() as u32;
-                    if dir == 1 {
+                    if dir == WalkDir::Backward {
                         let mut k = lo;
                         while k != hi {
                             pts.push(*v.checked(k as usize)?);
