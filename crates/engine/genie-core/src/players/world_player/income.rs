@@ -5,9 +5,10 @@ use crate::GenieError;
 use crate::math::fmath::at_most_or_unordered;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
+use crate::players::PlayerType;
 use crate::players::attribute::{self, AttributeId, RESOURCES};
 use crate::players::world_player::{
-    COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
+    EARLY_SCOUTING_MS, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
 };
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -122,7 +123,7 @@ impl World {
             player.attributes.checked_mut(k)?
         };
         *value += amount;
-        if player.kind == COMPUTER_TYPE && kind.is_resource() {
+        if player.kind == PlayerType::COMPUTER && kind.is_resource() {
             let pct = *player.escrow_percentage.checked(k)?;
             if !at_most_or_unordered(amount, 0.0) && !at_most_or_unordered(pct, 0.0) {
                 *player.escrow.checked_mut(k)? += pct * amount;
@@ -181,7 +182,7 @@ impl World {
     /// run, reads it too, and the player's update ends with the list emptied (`FUN_141661030`).
     /// Gaia's update has no tail.
     pub fn world_player_tail(&mut self, p: PlayerId) -> Result<(), GenieError> {
-        if self.players.player(p)?.kind == GAIA_TYPE || self.spatial.scout_map(p).is_none() {
+        if self.players.player(p)?.kind == PlayerType::GAIA || self.spatial.scout_map(p).is_none() {
             return Ok(());
         }
         let Some(tiles) = self

@@ -50,6 +50,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::change::change_hands;
+use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::attack_category;
@@ -8954,7 +8955,11 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
                     objects: vec![live(500)].into(),
                     attributes: vec![0.0; 300],
                     computer,
-                    kind: if computer { 3 } else { 1 },
+                    kind: if computer {
+                        PlayerType::COMPUTER
+                    } else {
+                        PlayerType::HUMAN
+                    },
                     ..Player::default()
                 },
                 Player {
@@ -10672,9 +10677,12 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
             PlayerId::new(0),
             vec![0; 3],
             vec![
-                player(2, vec![unit(object_id(50), master_id(126))].into()),
                 player(
-                    1,
+                    PlayerType::GAIA,
+                    vec![unit(object_id(50), master_id(126))].into(),
+                ),
+                player(
+                    PlayerType::HUMAN,
                     vec![
                         unit(object_id(40), VILLAGER_MALE),
                         unit(object_id(41), VILLAGER_MALE),
@@ -10715,22 +10723,22 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
     };
     let counts = |t: &World| [226, 227, 228, 229].map(|i| t.players[1].attributes[i]);
     // Gaia's wolf: an animal, Gaia's type
-    let mut t = world(1);
+    let mut t = world(PlayerType::HUMAN);
     t.killed(PlayerId::new(1), 0, by(object_id(50), 0, class::PREY))
         .unwrap();
     assert_eq!(counts(&t), [1.0, 1.0, 0.0, 0.0]);
     // the archers of a human, a computer and the editor's phantom
     for (kind, seen) in [
-        (1, [0.0, 0.0, 0.0, 1.0]),
-        (3, [0.0, 0.0, 1.0, 0.0]),
-        (0, [0.0; 4]),
+        (PlayerType::HUMAN, [0.0, 0.0, 0.0, 1.0]),
+        (PlayerType::COMPUTER, [0.0, 0.0, 1.0, 0.0]),
+        (PlayerType::PHANTOM, [0.0; 4]),
     ] {
         let mut t = world(kind);
         t.killed(PlayerId::new(1), 1, by(object_id(60), 2, class::CLASS_0))
             .unwrap();
         assert_eq!(counts(&t), seen);
     }
-    let mut t = world(1);
+    let mut t = world(PlayerType::HUMAN);
     t.killed(PlayerId::new(1), 0, by(object_id(99), 2, class::PREDATOR))
         .unwrap();
     assert_eq!(counts(&t), [0.0, 1.0, 0.0, 1.0]);

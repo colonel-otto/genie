@@ -11,6 +11,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
@@ -460,9 +461,9 @@ impl World {
                     .add_attribute(attribute::VILLAGER_KILLED_BY_ANIMAL, 1.0)?;
             }
             let by_kind = match self.players[ap].kind {
-                1 => Some(attribute::VILLAGER_KILLED_BY_TYPE_1),
-                2 => Some(attribute::VILLAGER_KILLED_BY_TYPE_2),
-                3 => Some(attribute::VILLAGER_KILLED_BY_TYPE_3),
+                PlayerType::HUMAN => Some(attribute::VILLAGER_KILLED_BY_TYPE_1),
+                PlayerType::GAIA => Some(attribute::VILLAGER_KILLED_BY_TYPE_2),
+                PlayerType::COMPUTER => Some(attribute::VILLAGER_KILLED_BY_TYPE_3),
                 _ => None,
             };
             if let Some(kind) = by_kind {

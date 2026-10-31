@@ -12,6 +12,7 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
+use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
@@ -30,7 +31,7 @@ fn attributes() -> Vec<f32> {
 /// the game (the defeat check passes it by).
 fn human() -> Player {
     Player {
-        kind: HUMAN_TYPE,
+        kind: PlayerType::HUMAN,
         attributes: attributes(),
         relations: vec![1, 0, 3, 3],
         victory_times: VictoryTimes {
@@ -44,7 +45,7 @@ fn human() -> Player {
 /// Gaia and three humans, at world time 10 s, one second's update ahead.
 fn world() -> World {
     let gaia = Player {
-        kind: GAIA_TYPE,
+        kind: PlayerType::GAIA,
         attributes: attributes(),
         ..Player::default()
     };
@@ -218,7 +219,7 @@ fn a_mill_s_livestock_makes_food() {
 #[test]
 fn the_income_fills_a_computer_s_escrow_and_goes_to_mutual_allies() {
     let mut t = world();
-    t.players[1].kind = COMPUTER_TYPE;
+    t.players[1].kind = PlayerType::COMPUTER;
     t.players[1].escrow_percentage = [0.5, 0.0, 0.0, 0.0];
     t.add_resource(PlayerId::new(1), attribute::FOOD, 10.0, 1, true)
         .unwrap();

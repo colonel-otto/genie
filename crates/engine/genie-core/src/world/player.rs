@@ -75,7 +75,7 @@ pub struct Player {
     pub computer: bool,
     /// `player+0x10`, the player's type (the save's class byte): 1 human, 2 Gaia, 3 computer
     /// (0 the scenario editor's phantom).
-    pub kind: u8,
+    pub kind: crate::players::PlayerType,
     /// Food, wood, stone and gold (the player's attributes 0 to 3).
     pub resources: [f32; 4],
     /// Attribute 195, the construction rate modifier, which builders' work reads.

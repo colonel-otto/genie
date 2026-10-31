@@ -15,6 +15,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::DOPPELGANGER;
 use crate::players::PlayerId;
+use crate::players::PlayerType;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -232,7 +233,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
             },
         ]);
     }
-    t.players[1].kind = 1;
+    t.players[1].kind = PlayerType::HUMAN;
     t.players[1].ghosts = vec![crate::vision::ghost::Ghost {
         id: object_id(-2),
         original: None,

@@ -91,7 +91,7 @@ fn the_slice_takes_the_worlds_and_the_players_fields() {
     assert_eq!(turns.recycling.next_id, object_id(-5));
     assert_eq!(turns.teams[..2], [0, 2]);
     let p = &turns.players[1];
-    assert_eq!((p.civ, p.kind), (3, 1));
+    assert_eq!((p.civ, p.kind), (3, genie_core::players::PlayerType::HUMAN));
     assert_eq!(
         p.resources.map(f32::to_bits),
         [200.0_f32, 150.0, 100.0, 50.0].map(f32::to_bits)

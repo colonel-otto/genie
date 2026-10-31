@@ -9,9 +9,11 @@ pub mod game_status;
 pub mod history;
 pub mod market;
 mod player_id;
+mod player_type;
 pub mod tracker;
 pub mod treason;
 pub mod tribute;
 pub mod world_player;
 
 pub use self::player_id::PlayerId;
+pub use self::player_type::PlayerType;

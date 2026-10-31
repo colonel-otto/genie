@@ -105,7 +105,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                     })
                     .collect(),
                 computer: false,
-                kind: p.player.type_,
+                kind: genie_core::players::PlayerType::from(p.player.type_),
                 resources: [resource(0), resource(1), resource(2), resource(3)],
                 construction_rate: resource(CONSTRUCTION_RATE),
                 attributes: attributes.clone(),

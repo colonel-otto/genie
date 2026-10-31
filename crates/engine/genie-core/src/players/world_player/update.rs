@@ -5,11 +5,11 @@ use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::objects::masters::ids::WONDER;
 use crate::players::PlayerId;
+use crate::players::PlayerType;
 use crate::players::attribute;
 use crate::players::world_player::{
-    ALIVE_STORE_MODE, BUILDING_CLASS, COMPUTER_TYPE, GAIA_TYPE, HUMAN_TYPE, KING, PACKED_CLASS,
-    PERCENT, POPULATION_STORAGE, SECOND, TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS, get,
-    set,
+    ALIVE_STORE_MODE, BUILDING_CLASS, KING, PACKED_CLASS, PERCENT, POPULATION_STORAGE, SECOND,
+    TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS, get, set,
 };
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -27,7 +27,7 @@ impl World {
     pub fn update_world_player(&mut self, p: PlayerId) -> Result<(), GenieError> {
         let dt = self.dt_seconds;
         let player = self.players.player_mut(p)?;
-        if player.kind == GAIA_TYPE {
+        if player.kind == PlayerType::GAIA {
             player.gaia_update_time += dt;
             return Ok(());
         }
@@ -78,7 +78,7 @@ impl World {
         if !at_most_or_unordered(0.0, get(&player.attributes, attribute::KILL_RATIO)) {
             set(&mut player.attributes, attribute::KILL_RATIO, 0.0);
         }
-        if !matches!(player.kind, HUMAN_TYPE | COMPUTER_TYPE) {
+        if !matches!(player.kind, PlayerType::HUMAN | PlayerType::COMPUTER) {
             return Ok(());
         }
         self.defeat_check(p)?;
