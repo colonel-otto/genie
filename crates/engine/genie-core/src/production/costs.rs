@@ -8,6 +8,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::{Master, Masters};
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::technology::ResearchState;
 use crate::technology::TechId;
 
 /// `FUN_141630530`: a queued unit's refund. For a master of type 70 and up each of its cost
@@ -88,7 +89,10 @@ pub fn refund_tech(
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
     use crate::math::conversions::cvttss2si;
-    if !matches!(state.state, 2 | 4) {
+    if !matches!(
+        state.state,
+        ResearchState::Researching | ResearchState::Queued
+    ) {
         return Ok(false);
     }
     let modifier = if crate::technology::is_age(tech) {
@@ -109,7 +113,7 @@ pub fn refund_tech(
         let held = attributes.get(attribute)?;
         attributes.set(attribute, held + v)?;
     }
-    state.state = 1;
+    state.state = ResearchState::Available;
     state.research_done = 0.0;
     Ok(true)
 }

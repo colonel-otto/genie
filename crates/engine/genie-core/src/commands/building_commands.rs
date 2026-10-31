@@ -12,6 +12,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::orders::tech_outside;
 use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
+use crate::technology::ResearchState;
 use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
@@ -322,7 +323,7 @@ impl World {
         }
         // a technology that is not available (state 1) and may not be queued again is
         // researchable only when it is linked (`FUN_140f39e80`): no building takes it
-        if state.state != 1 && !repeatable {
+        if state.state != ResearchState::Available && !repeatable {
             return Ok(());
         }
         let Some(i) = owner.objects.position_of(building_id) else {

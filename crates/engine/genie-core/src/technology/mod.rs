@@ -15,6 +15,7 @@ use crate::world::slots::CheckedIndex;
 
 pub mod effect;
 mod effect_command;
+mod research_state;
 mod tech_id;
 mod tech_type;
 pub mod upgrade;
@@ -22,6 +23,7 @@ pub mod upgrade;
 pub use self::effect_command::{
     CostEdit, CostUnits, EffectCommand, ObjectsKind, Party, ResourceChange,
 };
+pub use self::research_state::ResearchState;
 pub use self::tech_id::TechId;
 pub use self::tech_type::TechType;
 
@@ -40,9 +42,6 @@ const SCALED_BY_38: TechId = TechId::SCALED_BY_38;
 const ATTRIBUTE_38: AttributeId = AttributeId::numbered(38);
 /// The resource a cost the player cannot meet takes the rest from (`+0x18`: gold).
 const GOLD: AttributeId = attribute::GOLD;
-/// A researched technology's state (3), which a disable command keeps (`FUN_1413cdb00`) and the
-/// player's tree counts.
-pub(crate) const RESEARCHED: i16 = 3;
 
 /// How a group of the game's `linkedTechs.json` links its technologies: the `+4` byte of the
 /// record the game settings' table (`FUN_140f39f40`) holds for each of them.
@@ -150,8 +149,8 @@ pub struct Location {
 pub struct TechState {
     /// `+0x0`: the research's work done.
     pub research_done: f32,
-    /// `+0x4`: 1 when it may be researched, 4 once queued (−1 and 0 never).
-    pub state: i16,
+    /// `+0x4`: its state.
+    pub state: ResearchState,
     /// `+0x6`: added to the `.dat`'s amounts.
     pub cost_adj: [i16; 3],
     /// `+0xc`.
@@ -222,7 +221,10 @@ impl TechState {
         (modifier, scale): (f32, i16),
     ) -> Result<[(Option<AttributeId>, f32); 3], GenieError> {
         let mut out = [(None, 0.0); 3];
-        if !matches!(self.state, 2 | 4) {
+        if !matches!(
+            self.state,
+            ResearchState::Researching | ResearchState::Queued
+        ) {
             return Ok(out);
         }
         for (j, slot) in out.iter_mut().enumerate() {
@@ -376,8 +378,11 @@ impl TechState {
         attribute: &dyn Fn(AttributeId) -> Result<f32, GenieError>,
     ) -> Result<bool, GenieError> {
         let shared = def.kind == TechType::SHARED;
-        if self.state != 1
-            && (!repeat || self.state == -1 || self.state == 0 || !self.allow_multiple)
+        if self.state != ResearchState::Available
+            && (!repeat
+                || self.state == ResearchState::Disabled
+                || self.state == ResearchState::Unavailable
+                || !self.allow_multiple)
             && !shared
         {
             return Ok(false);
@@ -438,7 +443,7 @@ impl TechState {
                 "a research of the shared kind (FUN_1411c49a0)",
             ));
         }
-        self.state = 4;
+        self.state = ResearchState::Queued;
         self.building_master = Some(building);
         Ok(true)
     }
@@ -489,7 +494,7 @@ mod tests {
     /// Loom (22) as player 2 of MarvinBlue/426048731 holds it before its RESEARCH in 3842.
     fn loom() -> (TechState, TechDef) {
         let state = TechState {
-            state: 1,
+            state: ResearchState::Available,
             allow_multiple: true,
             overrides: [(-1, None, -2); 3],
             research_cap: -1,
@@ -546,7 +551,10 @@ mod tests {
             Ok(true)
         );
         assert_eq!(held.0, [79.956_116, 157.05705, 200.0, 50.0]);
-        assert_eq!((s.state, s.building_master), (4, Some(master_id(109))));
+        assert_eq!(
+            (s.state, s.building_master),
+            (ResearchState::Queued, Some(master_id(109)))
+        );
         // queued, it may not be researched again
         assert_eq!(
             s.pay(&d, (0.0, 1), false, ids::TOWN_CENTRE, &mut held),

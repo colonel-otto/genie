@@ -6,6 +6,7 @@ use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::players::attribute::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeTech, MakeTechState, Making};
+use crate::technology::ResearchState;
 use crate::technology::TechId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
@@ -104,8 +105,8 @@ impl World {
         let times = state.times_researched;
         let owner = self.players.player_mut(p)?;
         let state = &mut owner.techs[t];
-        if state.state != 2 && (repeatable || shared) {
-            state.state = 2;
+        if state.state != ResearchState::Researching && (repeatable || shared) {
+            state.state = ResearchState::Researching;
         }
         let mut progress = r.progress + rate * dt_seconds;
         if 0xff < times {
@@ -160,7 +161,7 @@ impl World {
         let owner = self.players.player(p)?;
         let state = &owner.techs[t];
         let def = &self.techs[t];
-        if state.state == 2 || repeat {
+        if state.state == ResearchState::Researching || repeat {
             let mut time = def
                 .locations
                 .iter()
@@ -270,7 +271,7 @@ impl World {
         let state = &owner.techs[t];
         if def.kind == crate::technology::TechType::SHARED {
             let state = &mut self.players.player_mut(p)?.techs[t];
-            state.state = 1;
+            state.state = ResearchState::Available;
             state.times_researched = 0;
             state.pending = 0;
             return Ok(());
@@ -302,12 +303,12 @@ impl World {
             state.times_researched = state.times_researched.wrapping_add(1);
             state.pending = state.pending.wrapping_sub(1);
             state.state = if i32::from(state.times_researched) < i32::from(cap) && !once {
-                1
+                ResearchState::Available
             } else {
-                3
+                ResearchState::Researched
             };
         } else {
-            state.state = 1;
+            state.state = ResearchState::Available;
         }
         Ok(())
     }

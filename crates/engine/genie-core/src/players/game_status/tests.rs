@@ -25,6 +25,7 @@ use crate::players::relation_row;
 use crate::production::{
     Entry, MakeObj, MakeObjState, MakeTech, MakeTechState, Making, Production, Queue,
 };
+use crate::technology::ResearchState;
 use crate::test_ids::costs;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
@@ -627,7 +628,7 @@ fn researching(progress: f32) -> World {
     tc.disabled_techs = vec![tech_id(22), tech_id(5)];
     let mut techs = vec![TechState::default(); 23];
     techs[22] = TechState {
-        state: 2,
+        state: ResearchState::Researching,
         allow_multiple: true,
         pending: 3,
         research_done: progress,
@@ -674,7 +675,10 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
     let p = &t.players[1];
     assert_eq!(p.resources[3], 150.0);
     let s = &p.techs[22];
-    assert_eq!((s.state, s.pending, s.research_done), (1, 0, 0.0));
+    assert_eq!(
+        (s.state, s.pending, s.research_done),
+        (ResearchState::Available, 0, 0.0)
+    );
     let tc = &p.objects[0];
     assert_eq!(tc.store, [(attribute::WOOD, 20.0)]);
     let production = tc.production.as_ref().unwrap();
@@ -689,7 +693,7 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
     let p = &t.players[1];
     assert_eq!(
         (p.resources[3], p.techs[22].state, p.techs[22].pending),
-        (50.0, 1, 2)
+        (50.0, ResearchState::Available, 2)
     );
     let production = p.objects[0].production.as_ref().unwrap();
     assert_eq!(production.queue.slots[0].count, 2);
@@ -710,7 +714,7 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
     let s = &p.techs[22];
     assert_eq!(
         (s.state, s.times_researched, s.pending, s.research_done),
-        (1, 1, -1, 30.0)
+        (ResearchState::Available, 1, -1, 30.0)
     );
     let production = p.objects[0].production.as_ref().unwrap();
     assert_eq!((production.queue.count, production.queue.changes), (0, 1));
@@ -720,7 +724,10 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
     (s.stack, s.research_cap) = (true, 5);
     t.cancel_queue(PlayerId::new(1), 0).unwrap();
     let s = &t.players[1].techs[22];
-    assert_eq!((s.state, s.times_researched, s.pending), (1, 0, 0));
+    assert_eq!(
+        (s.state, s.times_researched, s.pending),
+        (ResearchState::Available, 0, 0)
+    );
 }
 
 /// `0x140ad2a20` after a research completes: attribute 269 (the Spanish's 300, cut by

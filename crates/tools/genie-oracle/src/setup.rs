@@ -15,9 +15,13 @@ use genie_core::world::{Player, World};
 use genie_save::{Header, PlayerSection};
 
 /// A player's saved state of one technology (`Tech_Player_Tree`).
+///
+/// # Errors
+///
+/// A saved state that names none.
 pub(super) fn tech_state(
     t: &genie_save::generated::world::TechPlayerTree,
-) -> genie_core::technology::TechState {
+) -> Result<genie_core::technology::TechState, genie_core::GenieError> {
     let o = |j: usize| {
         t.cost_override.get(j).map_or((-1, None, -2), |e| {
             (
@@ -27,9 +31,9 @@ pub(super) fn tech_state(
             )
         })
     };
-    genie_core::technology::TechState {
+    Ok(genie_core::technology::TechState {
         research_done: t.research_done,
-        state: t.state,
+        state: genie_core::technology::ResearchState::of_int(t.state)?,
         cost_adj: [0, 1, 2].map(|j| t.cost_adj.get(j).copied().unwrap_or(0)),
         times_researched: t.tech_player_tree_times_researched as i16,
         allow_multiple: t.tech_player_tree_allow_multiple_research != 0,
@@ -51,7 +55,7 @@ pub(super) fn tech_state(
                 adjustment: f32::from_bits(l.location_research_adjustment),
             })
             .collect(),
-    }
+    })
 }
 
 /// The slice set up from the header save: every player's live objects in their saved order, and
@@ -69,6 +73,23 @@ pub(super) fn tech_state(
 /// [`simulate_word9`]: crate::header_runs::simulate_word9
 pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     let victory = &header.world.base_world.victory_conditions;
+    // a technology state that names none stops every player once the world stands
+    let (mut techs, tech_error) = match header
+        .players()
+        .iter()
+        .map(|p| {
+            p.world_player()
+                .tech_tree
+                .tech_player_tree
+                .iter()
+                .map(tech_state)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(techs) => (techs, None),
+        Err(e) => (Vec::new(), Some(e)),
+    };
     let players = header
         .players()
         .iter()
@@ -145,13 +166,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                     column_to_line_distance: p.world_player().base.column_to_line_distance,
                 },
                 pending_debit: p.world_player().base.pending_debit,
-                techs: p
-                    .world_player()
-                    .tech_tree
-                    .tech_player_tree
-                    .iter()
-                    .map(tech_state)
-                    .collect(),
+                techs: techs.get_mut(i).map(std::mem::take).unwrap_or_default(),
                 unsupported: None,
                 freezes: Vec::new(),
                 stopped: false,
@@ -218,6 +233,9 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
             turns.recycling.next_id = reusable;
         }
         Err(e) => stop_all(&mut turns, &e),
+    }
+    if let Some(e) = tech_error {
+        stop_all(&mut turns, &e);
     }
     match header
         .players()

@@ -550,7 +550,8 @@ pub(super) fn game_state(
             base.resigned & 2 == 0 && base.resigned != 0,
         ));
         let techs = &p.world_player().tech_tree.tech_player_tree;
-        game.techs.push(techs.iter().map(tech_state).collect());
+        game.techs
+            .push(techs.iter().map(tech_state).collect::<Result<_, _>>()?);
     }
     Ok(game)
 }

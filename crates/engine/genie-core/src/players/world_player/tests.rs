@@ -19,7 +19,7 @@ use crate::players::attribute;
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::relation_row;
 use crate::players::tracker::Key;
-use crate::technology::RESEARCHED;
+use crate::technology::ResearchState;
 use crate::test_ids::master_id;
 use crate::test_ids::object_id;
 use crate::vision::visibility::{Visibility, VisibleMap};
@@ -645,10 +645,10 @@ fn the_upgradable_count_follows_the_tech_tree() {
     t.masters[1].get_mut(master_id(74)).unwrap().available = true;
     // 75: its link had, its technology not researched
     assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 1);
-    t.players[1].techs[150].state = RESEARCHED;
+    t.players[1].techs[150].state = ResearchState::Researched;
     assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 2);
     // the Feudal Age out of reach puts 75 out
-    t.players[1].techs[101].state = -1;
+    t.players[1].techs[101].state = ResearchState::Disabled;
     assert_eq!(t.upgradable_count(PlayerId::new(1), master_id(12)), 1);
 }
 

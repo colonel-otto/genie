@@ -459,6 +459,7 @@ mod tests {
     use crate::objects::masters::master_type;
     use crate::players::attribute;
     use crate::players::attribute::AttributeId;
+    use crate::technology::ResearchState;
     use crate::test_ids::costs;
     use crate::test_ids::master_id;
     use crate::test_ids::opt_master;
@@ -730,25 +731,25 @@ mod tests {
             let r = refund_tech(state, &def, tech, &mut held);
             (r, held.0[0], held.0[1])
         };
-        let mut s = state(2);
+        let mut s = state(ResearchState::Researching);
         assert_eq!(refunded(&mut s, tech_id(22), 0.0), (Ok(true), 90.0, 0.0));
-        assert_eq!((s.state, s.research_done), (1, 0.0));
-        let mut s = state(4);
+        assert_eq!((s.state, s.research_done), (ResearchState::Available, 0.0));
+        let mut s = state(ResearchState::Queued);
         assert_eq!(refunded(&mut s, tech_id(22), 0.75), (Ok(true), 67.0, 0.0));
-        let mut s = state(4);
+        let mut s = state(ResearchState::Queued);
         assert_eq!(refunded(&mut s, tech_id(101), 0.75), (Ok(true), 90.0, 0.0));
         // the scaled amount wraps at 16 bits: 40000 is -25536
         let mut s = TechState {
             cost_adj: [19_900, 0, 0],
-            ..state(2)
+            ..state(ResearchState::Researching)
         };
         assert_eq!(
             refunded(&mut s, tech_id(22), 2.0),
             (Ok(true), -25_536.0, 0.0)
         );
-        let mut s = state(3);
+        let mut s = state(ResearchState::Researched);
         assert_eq!(refunded(&mut s, tech_id(22), 0.0), (Ok(false), 0.0, 0.0));
-        assert_eq!((s.state, s.research_done), (3, 7.5));
+        assert_eq!((s.state, s.research_done), (ResearchState::Researched, 7.5));
     }
 
     /// `FUN_141630530` gives back what the entry paid of each paid cost (the last pair naming

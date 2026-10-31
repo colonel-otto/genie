@@ -70,6 +70,7 @@ use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
 use crate::players::relations;
 use crate::players::tracker::ListKey;
+use crate::technology::ResearchState;
 use crate::test_ids::attack_category;
 use crate::test_ids::carrying;
 use crate::test_ids::class_id;
@@ -8206,7 +8207,7 @@ fn a_research_of_castle_age_queues_it_but_in_game_mode_16() {
         t.techs = vec![TechDef::default(); 0x67];
         let mut techs = vec![TechState::default(); 0x67];
         techs[0x66] = TechState {
-            state: 1,
+            state: ResearchState::Available,
             research_cap: -1,
             building_master: None,
             locations: vec![Location {
@@ -8253,7 +8254,7 @@ fn research_world() -> World {
     };
     let mut techs = vec![TechState::default(); 6];
     techs[5] = TechState {
-        state: 1,
+        state: ResearchState::Available,
         research_cap: -1,
         building_master: None,
         overrides: [(0, None, -2), (0, None, 0), (0, None, 0)],
@@ -8312,7 +8313,10 @@ fn a_research_queues_at_an_alive_location_after_its_costs_come_off_the_debit() {
         research_listed(&mut t, &research_at(5, -1)).unwrap();
         (queued(&t), t.players[0].pending_debit[0])
     };
-    assert_eq!(refused(&|t| t.players[0].techs[5].state = 2), (0, -50.0));
+    assert_eq!(
+        refused(&|t| t.players[0].techs[5].state = ResearchState::Researching),
+        (0, -50.0)
+    );
     assert_eq!(
         refused(&|t| t.players[0].objects[0].id = object_id(8)),
         (0, -50.0)
@@ -8346,7 +8350,7 @@ fn a_queued_research_starts_at_the_buildings_master() {
         (r.state, r.progress),
         (crate::production::MakeTechState::Researching, 0.0)
     );
-    assert_eq!(t.players[0].techs[5].state, 2);
+    assert_eq!(t.players[0].techs[5].state, ResearchState::Researching);
     assert_eq!(t.players[0].techs[5].building_master, Some(master));
 }
 
@@ -17394,7 +17398,7 @@ fn a_completion_s_parts_reach_their_owner() {
         }
         t.techs = vec![TechDef::default()];
         t.players[1].techs = vec![TechState {
-            state: 1,
+            state: ResearchState::Available,
             research_cap: -1,
             building_master: None,
             ..TechState::default()
@@ -17406,7 +17410,7 @@ fn a_completion_s_parts_reach_their_owner() {
     };
     let (t, r) = completed(|b| b.tech = Some(tech_id(0)));
     assert_eq!(r, Ok(()));
-    assert_eq!(t.players[1].techs[0].state, 3);
+    assert_eq!(t.players[1].techs[0].state, ResearchState::Researched);
     let (t, r) = completed(|b| b.disappears_when_built = true);
     assert_eq!(r, Ok(()));
     let house = &t.players[1].objects[1].life;
@@ -17453,7 +17457,7 @@ fn a_built_building_s_death_reaches_its_owner_within_its_update() {
         }
         t.techs = vec![TechDef::default()];
         t.players[1].techs = vec![TechState {
-            state: 3,
+            state: ResearchState::Researched,
             ..TechState::default()
         }];
         let owner = &mut t.players[1];
@@ -17472,7 +17476,7 @@ fn a_built_building_s_death_reaches_its_owner_within_its_update() {
             unit.life.state = ObjectState::Dying;
             unit.died(c, ObjectState::Alive)?;
             let a = &c.w.players[1].attributes;
-            let withdrawn = c.w.players[1].techs[0].state != 3;
+            let withdrawn = c.w.players[1].techs[0].state != ResearchState::Researched;
             Ok((watches(c.w, 1, 10028), [a[134], a[98], a[165]], withdrawn))
         })
         .map_err(|e| e.reason().to_owned())

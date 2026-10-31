@@ -10,7 +10,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::RESEARCH_SPENT;
 use crate::players::attribute::TECHS_RESEARCHED;
-use crate::technology::RESEARCHED;
+use crate::technology::ResearchState;
 use crate::technology::TechId;
 use crate::technology::effect::{ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D};
 use crate::technology::{EffectCommand, ObjectsKind, Party};
@@ -44,7 +44,7 @@ impl World {
         let (tech, t) = (t, t.index());
         let def = self.techs.checked(t)?.clone();
         let state = &self.players.player(p)?.techs.checked(t)?;
-        if !(0..=2).contains(&state.state) {
+        if !(ResearchState::Unavailable..=ResearchState::Researching).contains(&state.state) {
             return Ok(false);
         }
         if def.costs[0].attribute == Some(crate::players::attribute::RELICS_HELD) {
@@ -53,7 +53,7 @@ impl World {
             ));
         }
         self.research_effect_known(p, tech)?;
-        self.players.player_mut(p)?.techs.checked_mut(t)?.state = 3;
+        self.players.player_mut(p)?.techs.checked_mut(t)?.state = ResearchState::Researched;
         self.do_effect(p, &def.effect, None)?;
         self.update_dependents(p, tech)?;
         let owner = &self.players.player(p)?;
@@ -170,10 +170,10 @@ impl World {
         if owner.techs.len() <= t {
             return Ok(());
         }
-        if owner.techs.checked(t)?.state <= 0 {
+        if owner.techs.checked(t)?.state <= ResearchState::Unavailable {
             return Ok(());
         }
-        self.players.player_mut(p)?.techs.checked_mut(t)?.state = 0;
+        self.players.player_mut(p)?.techs.checked_mut(t)?.state = ResearchState::Unavailable;
         self.update_dependents(p, tech)
     }
 
@@ -227,8 +227,8 @@ impl World {
             return Ok(counted);
         };
         match state.state {
-            0 | 1 => {}
-            2 => {
+            ResearchState::Unavailable | ResearchState::Available => {}
+            ResearchState::Researching => {
                 counted += 1;
                 return Ok(counted);
             }
@@ -238,7 +238,7 @@ impl World {
             return Ok(counted);
         }
         if self.dependent_disabled(def, civ)? {
-            self.players.player_mut(p)?.techs.checked_mut(d)?.state = -1;
+            self.players.player_mut(p)?.techs.checked_mut(d)?.state = ResearchState::Disabled;
             return Ok(counted);
         }
         counted += 1;
@@ -246,12 +246,17 @@ impl World {
         let met = def
             .required
             .iter()
-            .filter(|&&r| 0 <= r && techs.get(r as usize).is_some_and(|s| s.state == 3))
+            .filter(|&&r| {
+                0 <= r
+                    && techs
+                        .get(r as usize)
+                        .is_some_and(|s| s.state == ResearchState::Researched)
+            })
             .count() as i16;
         let state = self.players.player_mut(p)?.techs.checked_mut(d)?;
         if met < def.required_count {
-            if 0 < state.state {
-                state.state = 0;
+            if ResearchState::Unavailable < state.state {
+                state.state = ResearchState::Unavailable;
             }
             return Ok(counted);
         }
@@ -309,8 +314,8 @@ impl World {
             }
         }
         let state = self.players.player_mut(p)?.techs.checked_mut(d)?;
-        if state.state < 1 {
-            state.state = 1;
+        if state.state < ResearchState::Available {
+            state.state = ResearchState::Available;
         }
         Ok(counted)
     }
@@ -392,10 +397,10 @@ impl World {
                 return;
             };
             if def.kind == crate::technology::TechType::REENABLED {
-                state.state = 1;
+                state.state = ResearchState::Available;
             // A researched technology's state, which a disable command keeps (`FUN_1413cdb00`).
-            } else if state.state != RESEARCHED {
-                state.state = -1;
+            } else if state.state != ResearchState::Researched {
+                state.state = ResearchState::Disabled;
             }
         };
         // FUN_1413cdb00 takes the id's low 16 bits (MOVZX EDX, BX in FUN_14163a500)

@@ -12,7 +12,7 @@ use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::tracker::ListKey;
 use crate::players::world_player::{AGES, TOWN_CENTRES, TreeQuery, full_tree_civ, get};
-use crate::technology::RESEARCHED;
+use crate::technology::ResearchState;
 use crate::world::World;
 
 impl World {
@@ -139,7 +139,7 @@ impl World {
                 .and_then(|t| player.techs.get(t))
                 .map(|t| t.state)
         };
-        let ages_out = AGES.map(|t| state(t) == Some(-1));
+        let ages_out = AGES.map(|t| state(t) == Some(ResearchState::Disabled));
         let unique = self
             .tech_tree
             .unique_units
@@ -148,7 +148,7 @@ impl World {
             .flatten()
             .map_or(-1, |u| match state(u.elite_tech) {
                 // A technology's state once researched.
-                Some(RESEARCHED) => u.elite,
+                Some(ResearchState::Researched) => u.elite,
                 Some(_) => u.unit,
                 None => -1,
             });
@@ -181,7 +181,7 @@ impl World {
                 .map(|l| l.available);
             if had.is_none_or(|a| a) {
                 let tech = self.tech_tree.tech(&q);
-                if state(tech).is_none_or(|s| s == RESEARCHED) {
+                if state(tech).is_none_or(|s| s == ResearchState::Researched) {
                     count = count.wrapping_add(1);
                 }
             }

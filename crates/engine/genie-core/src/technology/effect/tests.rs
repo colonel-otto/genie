@@ -18,6 +18,7 @@ use crate::players::CivId;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::technology::ResearchState;
 use crate::test_ids::costs;
 use crate::test_ids::group_id;
 use crate::test_ids::master_id;
@@ -1033,7 +1034,7 @@ fn the_resource_commands_side_effects() {
 fn barracks_tech() -> World {
     use crate::technology::{Location, TechDef, TechState};
     let state = TechState {
-        state: 1,
+        state: ResearchState::Available,
         research_done: 20.0,
         locations: vec![Location {
             building: Some(master_id(12)),
@@ -1071,12 +1072,12 @@ fn the_research_time_modifier_changes_the_adjustment_and_may_complete() {
         .unwrap();
     // (0.8 − 1) × 30 − 0.5 = −6.5, truncated −6, plus 4
     assert_eq!(t.players[0].techs[0].locations[0].adjustment, -2.0);
-    assert_eq!(t.players[0].techs[0].state, 1);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Available);
     // set to 20: the adjustment −10, and 20 seconds are done
     t.do_effect(PlayerId::new(0), &[attribute(b'g', 0, -1, 0, 20.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].locations[0].adjustment, -10.0);
-    assert_eq!(t.players[0].techs[0].state, 3);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Researched);
 }
 
 /// Kind 8 (`FUN_1415c3f20`'s technology change): a cost mode changes a cost (0x4002: add to
@@ -1118,18 +1119,18 @@ fn a_technology_change_reaches_its_costs_locations_and_state() {
     assert_eq!((s.locations[1].building, s.locations[1].button), (None, 9));
     t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 0.0)], None)
         .unwrap();
-    assert_eq!(t.players[0].techs[0].state, -1);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Disabled);
     t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 2.0)], None)
         .unwrap();
     assert_eq!(
         (t.players[0].techs[0].state, t.players[0].techs[0].enabled),
-        (1, true)
+        (ResearchState::Available, true)
     );
     // state 3 completes it (its first location has a building and a button: it counts);
     // once researched, again gives its effect and counts whatever its location
     t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 3.0)], None)
         .unwrap();
-    assert_eq!(t.players[0].techs[0].state, 3);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Researched);
     assert_eq!(t.players[0].attributes[0x15], 1.0);
     t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 3.0)], None)
         .unwrap();
@@ -1166,11 +1167,11 @@ fn a_technology_change_s_location_stacking_and_effect_override() {
     assert_eq!([at(0), at(1)], [(3, 0.0), (9, 5.0)]);
     t.do_effect(PlayerId::new(0), &[attribute(8, 0, 12, -1, 1.0)], None)
         .unwrap();
-    assert_eq!(t.players[0].techs[0].state, 0);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Unavailable);
     t.do_effect(PlayerId::new(0), &[attribute(8, 0, 18, -1, 7.0)], None)
         .unwrap();
     assert_eq!(t.players[0].techs[0].effect_override, 7);
-    t.players[0].techs[0].state = 3;
+    t.players[0].techs[0].state = ResearchState::Researched;
     assert!(
         t.do_effect(PlayerId::new(0), &[attribute(8, 0, 18, -1, 8.0)], None)
             .is_err()
@@ -1324,7 +1325,7 @@ fn the_enable_command_sets_available_unless_disabled() {
 fn a_research_whose_effect_needs_its_building_stops() {
     use crate::technology::{TechDef, TechState};
     let state = TechState {
-        state: 2,
+        state: ResearchState::Researching,
         building_master: None,
         ..TechState::default()
     };
@@ -1348,7 +1349,7 @@ fn a_research_whose_effect_needs_its_building_stops() {
         t.complete_research(PlayerId::new(0), tech_id(0), None)
             .is_err()
     );
-    assert_eq!(t.players[0].techs[0].state, 2);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Researching);
     t.players[0].techs[1].effect_override = 9;
     assert!(
         t.complete_research(PlayerId::new(0), tech_id(1), None)
@@ -1367,7 +1368,7 @@ fn a_research_whose_effect_needs_its_building_stops() {
 fn an_age_adds_its_event_to_the_history() {
     use crate::technology::{TechDef, TechState};
     let state = TechState {
-        state: 2,
+        state: ResearchState::Researching,
         building_master: None,
         ..TechState::default()
     };
@@ -1395,7 +1396,7 @@ fn an_age_adds_its_event_to_the_history() {
         t.complete_research(PlayerId::new(0), tech_id(102), None),
         Ok(true)
     );
-    assert_eq!(t.players[0].techs[102].state, 3);
+    assert_eq!(t.players[0].techs[102].state, ResearchState::Researched);
     assert_eq!(
         t.players[0].history.events,
         [crate::players::history::Event {
@@ -1436,7 +1437,7 @@ fn a_dependent_technology_done_already_completes_with_its_requirement() {
         t.complete_research(PlayerId::new(0), tech_id(0), None),
         Ok(true)
     );
-    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state.get()).collect();
     assert_eq!(states, [3, 3, 3, 0]);
 }
 
@@ -1475,7 +1476,7 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
         t.players[0]
             .techs
             .iter()
-            .map(|s| s.state)
+            .map(|s| s.state.get())
             .collect::<Vec<i16>>()
     };
     assert_eq!(states(false), [3, 1, 1, -1, 1]);
@@ -1489,12 +1490,17 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
 #[test]
 fn the_technology_commands_disable_and_adjust_costs() {
     use crate::technology::{Cost, TechDef, TechState};
-    let state = |s: i16| TechState {
+    let state = |s: ResearchState| TechState {
         state: s,
         ..TechState::default()
     };
     let player = Player {
-        techs: vec![state(1), state(3), state(0), state(1)],
+        techs: vec![
+            state(ResearchState::Available),
+            state(ResearchState::Researched),
+            state(ResearchState::Unavailable),
+            state(ResearchState::Available),
+        ],
         ..Player::default()
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
@@ -1532,7 +1538,7 @@ fn the_technology_commands_disable_and_adjust_costs() {
         )
         .unwrap();
     }
-    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state.get()).collect();
     assert_eq!(states, [-1, 3, 1, 1]);
     // gold of technology 0 costs 10 more; food set to 100; every paid cost scaled by 0.5
     t.do_effect(PlayerId::new(0), &[command(b'e', 0, 3, 1, 10.0)], None)
@@ -1555,12 +1561,16 @@ fn the_technology_commands_disable_and_adjust_costs() {
 #[test]
 fn the_disable_command_reads_its_id_s_low_16_bits() {
     use crate::technology::{TechDef, TechState};
-    let state = |s: i16| TechState {
+    let state = |s: ResearchState| TechState {
         state: s,
         ..TechState::default()
     };
     let player = Player {
-        techs: vec![state(0), state(0), state(0)],
+        techs: vec![
+            state(ResearchState::Unavailable),
+            state(ResearchState::Unavailable),
+            state(ResearchState::Unavailable),
+        ],
         ..Player::default()
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
@@ -1568,11 +1578,11 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
     let disable = |d: f32| EffectCommand::of_data(b'f', -1, -1, -1, d).unwrap();
     t.do_effect(PlayerId::new(0), &[disable(65538.0)], None)
         .unwrap();
-    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state.get()).collect();
     assert_eq!(states, [0, 0, -1]);
     t.do_effect(PlayerId::new(0), &[disable(65535.0)], None)
         .unwrap();
-    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
+    let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state.get()).collect();
     assert_eq!(states, [-1, -1, -1]);
 }
 
@@ -1628,7 +1638,7 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         ]
         .into(),
         techs: vec![TechState {
-            state: 3,
+            state: ResearchState::Researched,
             ..TechState::default()
         }],
         ..Player::default()
@@ -1640,11 +1650,11 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
     }];
     t.withdraw_tech(PlayerId::new(0), master_id(1640), tech_id(0))
         .unwrap();
-    assert_eq!(t.players[0].techs[0].state, 3);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Researched);
     t.players[0].objects.truncate(1);
     t.withdraw_tech(PlayerId::new(0), master_id(1640), tech_id(0))
         .unwrap();
-    assert_eq!(t.players[0].techs[0].state, 0);
+    assert_eq!(t.players[0].techs[0].state, ResearchState::Unavailable);
 }
 
 /// The sprite part of `FUN_141614f40` after a change of the standing sprite (attribute 71) of

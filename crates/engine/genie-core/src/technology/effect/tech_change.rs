@@ -6,7 +6,7 @@ use crate::players::PlayerId;
 use crate::players::attribute::AttributeId;
 use crate::players::attribute::RESEARCH_SPENT;
 use crate::players::attribute::TECHS_RESEARCHED;
-use crate::technology::RESEARCHED;
+use crate::technology::ResearchState;
 use crate::technology::TechId;
 use crate::technology::effect::{ONE, ROUND};
 use crate::world::World;
@@ -156,7 +156,7 @@ impl World {
             18 => {
                 let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
                 state.effect_override = short;
-                if state.state == RESEARCHED {
+                if state.state == ResearchState::Researched {
                     return Err(GenieError::unsupported(
                         "a researched technology's new effect (the world's effect table)",
                     ));
@@ -200,11 +200,11 @@ impl World {
         let (tech, t) = (t, t.index());
         let state = self.players.player_mut(p)?.techs.checked_mut(t)?;
         if v == 0.0 {
-            state.state = -1;
+            state.state = ResearchState::Disabled;
         } else if v == STATE_UNAVAILABLE {
-            state.state = 0;
+            state.state = ResearchState::Unavailable;
         } else if v == STATE_AVAILABLE {
-            state.state = 1;
+            state.state = ResearchState::Available;
             state.enabled = true;
         } else if v == STATE_RESEARCHED {
             let _ = self.force_research(p, tech)?;
@@ -218,7 +218,9 @@ impl World {
     /// listed costs) whatever its location, its state left.
     pub(super) fn force_research(&mut self, p: PlayerId, t: TechId) -> Result<bool, GenieError> {
         let (tech, t) = (t, t.index());
-        if (0..=2).contains(&self.players.player(p)?.techs.checked(t)?.state) {
+        if (ResearchState::Unavailable..=ResearchState::Researching)
+            .contains(&self.players.player(p)?.techs.checked(t)?.state)
+        {
             return self.complete_research(p, tech, None);
         }
         let def = self.techs.checked(t)?.clone();
@@ -310,7 +312,7 @@ impl World {
                 _ => short(v) + entry.adjustment,
             };
             entry.adjustment = adjustment;
-            let done = state.state == 1
+            let done = state.state == ResearchState::Available
                 && adjustment + time <= state.research_done
                 && (mode != 0 || v != NO_TIME);
             if done {

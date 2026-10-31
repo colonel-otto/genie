@@ -12,6 +12,7 @@ use crate::players::attribute::QUEUED;
 use crate::players::game_status::{ONE_UNIT_AGE, ONE_UNIT_MODE};
 use crate::players::tracker::Key;
 use crate::production::{Making, refund, refund_research};
+use crate::technology::ResearchState;
 use crate::technology::TechId;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -103,7 +104,7 @@ impl World {
         let owner = self.players.player_mut(p)?;
         refund_research(&e.costs, count, owner)?;
         let state = owner.techs.checked_mut(t)?;
-        state.state = 1;
+        state.state = ResearchState::Available;
         state.research_done = 0.0;
         let building = owner.objects.checked_mut(idx)?;
         if let Some(def) = self.techs.get(t) {

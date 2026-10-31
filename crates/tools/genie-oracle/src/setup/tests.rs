@@ -6,7 +6,8 @@ use crate::setup::{slice, wonder_time};
 use crate::test_ids::action_type;
 use crate::test_ids::object_id;
 use genie_core::players::PlayerId;
-use genie_save::generated::world::{Action, Object, RgeAction, TribeActionWonder};
+use genie_core::technology::ResearchState;
+use genie_save::generated::world::{Action, Object, RgeAction, TechPlayerTree, TribeActionWonder};
 
 /// A wonder whose action is in state `state` with the timer `timer`.
 fn wonder(id: i32, state: u8, timer: f32) -> Object {
@@ -128,6 +129,30 @@ fn a_resign_is_not_a_drop() {
     human_mut(&mut player).base.resigned = 1;
     let turns = slice(&header(vec![gaia(Vec::new()), player]), None);
     assert!(turns.players[1].resigned && !turns.players[1].dropped);
+}
+
+/// A saved technology state reads as its state (4, queued); one that names none (5) stops
+/// every player.
+#[test]
+fn a_technology_state_of_none_stops_every_player() {
+    let with = |state: i16| {
+        let mut player = human(Vec::new());
+        human_mut(&mut player).tech_tree.tech_player_tree = vec![TechPlayerTree {
+            state,
+            ..TechPlayerTree::default()
+        }];
+        slice(&header(vec![gaia(Vec::new()), player]), None)
+    };
+    let turns = with(4);
+    assert_eq!(turns.players[1].techs[0].state, ResearchState::Queued);
+    assert!(!turns.players[1].stopped);
+    let turns = with(5);
+    assert!(
+        turns
+            .players
+            .iter()
+            .all(|p| p.stopped && p.unsupported.is_some())
+    );
 }
 
 /// With the master table, the slice takes its tables and builds every player's masters.

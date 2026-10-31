@@ -11,6 +11,7 @@ use crate::players::attribute::QUEUED;
 use crate::production::{
     MakeObj, MakeObjState, MakeTech, MakeTechState, Making, housed, population,
 };
+use crate::technology::ResearchState;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::unit_ai::NotifyKind;
@@ -252,7 +253,7 @@ impl World {
         }
         let master = owner.objects[i].life.master_id;
         let state = &mut self.players.player_mut(p)?.techs[t];
-        state.state = 2;
+        state.state = ResearchState::Researching;
         state.building_master = Some(master);
         r.state = MakeTechState::Researching;
         r.progress = 0.0;
