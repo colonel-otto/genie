@@ -53,6 +53,12 @@ impl Tile {
         Self([self.0[0] + by.dx(), self.0[1] + by.dy()])
     }
 
+    /// The point at its low corner: x and y as floats.
+    #[must_use]
+    pub const fn corner(self) -> crate::map::Point {
+        crate::map::Point::new(self.0[0] as f32, self.0[1] as f32)
+    }
+
     /// The tile a routine on shorts reads (`FUN_140f690e0`'s): x and y cut to their low 16 bits,
     /// signed.
     #[must_use]
@@ -215,6 +221,7 @@ mod tests {
         assert_eq!((o.dx(), o.dy()), (5, 6));
         // a routine on shorts reads the low 16 bits, signed
         assert_eq!(t.short(), t);
+        assert_eq!(t.corner(), crate::map::Point::new(3.0, -4.0));
         assert_eq!(Tile::new(0x1_0005, 0x8000).short(), Tile::new(5, -0x8000));
     }
 

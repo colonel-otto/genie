@@ -42,7 +42,7 @@ pub const RING_SLACK: f32 = crate::math::image::group::CATCH_UP_SPAN;
 /// What the search asks of the world beyond [`Area`].
 pub trait SearchArea: Area {
     /// The player sees the tile now (`FUN_141285350` gives 0xf).
-    fn visible_now(&self, x: i32, y: i32) -> bool;
+    fn visible_now(&self, tile: Tile) -> bool;
 }
 
 /// What the search reads of the explorer.
@@ -72,9 +72,9 @@ fn differs(a: f32, b: f32) -> bool {
 }
 
 impl InfoModule {
-    /// The byte of tile (`x`, `y`) (`+0x105c8`).
-    fn cell(&self, x: i32, y: i32) -> Result<u8, GenieError> {
-        self.path_map.get(x, y).ok_or(OFF_THE_GRID)
+    /// The byte of `tile` (`+0x105c8`).
+    fn cell(&self, tile: Tile) -> Result<u8, GenieError> {
+        self.path_map.get(tile).ok_or(OFF_THE_GRID)
     }
 
     /// `FUN_140b90270` ("tileUncovered"): the tile is on the map and neither unexplored (-1) nor
@@ -87,7 +87,7 @@ impl InfoModule {
         if x < 0 || y < 0 || self.width <= x || self.height <= y {
             return Ok(false);
         }
-        let cell = self.cell(x, y)?;
+        let cell = self.cell(Tile::new(x, y))?;
         Ok(cell != UNEXPLORED && cell != DEAD_END)
     }
 
@@ -182,27 +182,26 @@ impl InfoModule {
         let mut queue = vec![first];
         let mut i = 0;
         while let Some(&t) = queue.get(i) {
-            let (x, y) = (t.x(), t.y());
             i += 1;
-            let cell = self.cell(x, y)?;
+            let cell = self.cell(t)?;
             // a civilian takes a tile no search touched, another unit any that is not explored
             let wanted = if unit.civilian {
                 cell == UNEXPLORED
             } else {
                 cell != EXPLORED
             };
-            if area.visible_now(x, y) || !wanted {
+            if area.visible_now(t) || !wanted {
                 push_neighbours(&mut queue, &mut visited, t, map);
                 continue;
             }
-            if area.zone(x, y).byte() != own || !area.clear(x, y)? {
+            if area.zone(t).byte() != own || !area.clear(t)? {
                 continue;
             }
-            if area.reaches(x, y)? {
-                self.path_map.set(x, y, EXPLORED);
+            if area.reaches(t)? {
+                self.path_map.set(t, EXPLORED);
                 return Ok(Flood::Found(t));
             }
-            self.path_map.set(x, y, PUNTED);
+            self.path_map.set(t, PUNTED);
             if differs(start.x(), unit.position.x()) || differs(start.y(), unit.position.y()) {
                 return Ok(Flood::Again);
             }
@@ -248,13 +247,14 @@ impl InfoModule {
     ) -> Result<(), GenieError> {
         for y in 0..map.height() {
             for x in 0..map.width() {
-                let cell = self.cell(x, y)?;
+                let tile = Tile::new(x, y);
+                let cell = self.cell(tile)?;
                 if cell != UNEXPLORED
                     && cell != DEAD_END
-                    && area.zone(x, y).byte() == own
-                    && !area.visible_now(x, y)
+                    && area.zone(tile).byte() == own
+                    && !area.visible_now(tile)
                 {
-                    self.path_map.set(x, y, DEAD_END);
+                    self.path_map.set(tile, DEAD_END);
                 }
             }
         }

@@ -682,11 +682,17 @@ fn the_scout_map_takes_the_new_tiles() {
     t.world_time = 4999;
     t.world_player_tail(PlayerId::new(1)).unwrap();
     let m = t.spatial.scout_map(PlayerId::new(1)).unwrap();
-    assert_eq!((m.get(0, 0), m.get(1, 0)), (Some(1), Some(0)));
+    assert_eq!(
+        (m.get(Tile::new(0, 0)), m.get(Tile::new(1, 0))),
+        (Some(1), Some(0))
+    );
     t.world_time = 5000;
     t.world_player_tail(PlayerId::new(1)).unwrap();
     assert_eq!(
-        t.spatial.scout_map(PlayerId::new(1)).unwrap().get(1, 0),
+        t.spatial
+            .scout_map(PlayerId::new(1))
+            .unwrap()
+            .get(Tile::new(1, 0)),
         Some(1)
     );
 }

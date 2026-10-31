@@ -414,7 +414,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         let found = crate::movement::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
         // the point found is marked in the scout map (FUN_140f4d5e0 with 1)
         if let Some(t) = found {
-            self.c.w.spatial.scout(player, t.x(), t.y());
+            self.c.w.spatial.scout(player, t);
         }
         Ok(found)
     }
@@ -429,7 +429,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
         for y in 0..h {
             for x in 0..w {
                 if self.c.w.spatial.scout_sight(self.player, Tile::new(x, y)) == Some(0xf) {
-                    m.set(x, y, 1);
+                    m.set(Tile::new(x, y), 1);
                 }
             }
         }

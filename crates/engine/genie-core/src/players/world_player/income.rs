@@ -205,7 +205,7 @@ impl World {
             let seen = self.spatial.scout_sight(p, Tile::new(x, y)) == Some(0xf);
             if (self.world_time < EARLY_SCOUTING_MS && seen) || EARLY_SCOUTING_MS <= self.world_time
             {
-                self.spatial.scout(p, x, y);
+                self.spatial.scout(p, Tile::new(x, y));
             }
         }
         Ok(())

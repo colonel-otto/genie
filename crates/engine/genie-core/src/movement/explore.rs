@@ -271,22 +271,24 @@ impl InfluenceMap {
         }
     }
 
-    fn index(&self, x: i32, y: i32) -> Option<usize> {
-        let (dx, dy) = (x - self.origin.x(), y - self.origin.y());
-        (0 <= dx && 0 <= dy && dx < self.size.width() && dy < self.size.height())
-            .then(|| (dy * self.size.width() + dx) as usize)
+    /// `tile`'s cell, counted from the map's origin; none off the map.
+    const fn index(&self, tile: Tile) -> Option<usize> {
+        self.size.index(Tile::new(
+            tile.x() - self.origin.x(),
+            tile.y() - self.origin.y(),
+        ))
     }
 
-    /// The byte of tile (`x`, `y`), None off the map (`FUN_140c4b130` reads it unchecked).
+    /// The byte of `tile`, None off the map (`FUN_140c4b130` reads it unchecked).
     #[must_use]
-    pub fn get(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).map(|i| self.cells[i])
+    pub fn get(&self, tile: Tile) -> Option<u8> {
+        self.index(tile).and_then(|i| self.cells.get(i).copied())
     }
 
-    /// `FUN_140f4d5e0`: tile (`x`, `y`) takes `value`; one off the map is let be.
-    pub fn set(&mut self, x: i32, y: i32, value: u8) {
-        if let Some(i) = self.index(x, y) {
-            self.cells[i] = value;
+    /// `FUN_140f4d5e0`: `tile` takes `value`; one off the map is let be.
+    pub fn set(&mut self, tile: Tile, value: u8) {
+        if let Some(cell) = self.index(tile).and_then(|i| self.cells.get_mut(i)) {
+            *cell = value;
         }
     }
 }
@@ -307,22 +309,22 @@ const AROUND: [TileOffset; 8] = TileOffset::table([
     [-1, 0],
 ]);
 
-/// What the search asks of a point (x, y, whole tiles on the map's grid).
+/// What the search asks of a tile of the map's grid.
 pub trait Area {
     /// The player saw the tile or sees it (`FUN_141285350` not 0).
-    fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError>;
+    fn explored(&self, tile: Tile) -> Result<bool, GenieError>;
     /// The tile's zone for the unit's restriction (`FUN_1411958c0`), and the unit's own
     /// (`FUN_14118eea0`).
-    fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId;
+    fn zone(&mut self, tile: Tile) -> crate::pathing::zones::ZoneId;
     /// The unit's own zone (`FUN_14118eea0`).
     fn own_zone(&mut self) -> crate::pathing::zones::ZoneId;
     /// The unit could stand at the point (slot 0x278, [`crate::map::spatial::Spatial::point_clear`]).
-    fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError>;
+    fn clear(&mut self, tile: Tile) -> Result<bool, GenieError>;
     /// The unit reaches the point within its line of sight less a tile (slot 0x3d8,
     /// [`crate::movement::Mover::reaches`]).
-    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError>;
+    fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError>;
     /// The gap from the unit's footprint to the point (`FUN_14118faf0`).
-    fn distance(&self, x: i32, y: i32) -> f32;
+    fn distance(&self, tile: Tile) -> f32;
 }
 
 /// `FUN_140c65490`: the closest point the unit may explore around its player's first town centre
@@ -346,20 +348,17 @@ pub fn unexplored_area(
     let mut best: Option<(Tile, f32)> = None;
     for ring in RINGS {
         for a in AROUND {
-            let (x, y) = (cx + a.dx() * ring, cy + a.dy() * ring);
-            if x < 0 || y < 0 || map.width() <= x || map.height() <= y {
-                continue;
-            }
-            if area.explored(x, y)? {
+            let tile = Tile::new(cx + a.dx() * ring, cy + a.dy() * ring);
+            if !map.holds(tile) || area.explored(tile)? {
                 continue;
             }
             // the zones' low bytes only (`CMP byte ptr [RSP+0x48],AL` at 0x140c65812)
-            if area.zone(x, y).byte() != own.byte() || !area.clear(x, y)? || !area.reaches(x, y)? {
+            if area.zone(tile).byte() != own.byte() || !area.clear(tile)? || !area.reaches(tile)? {
                 continue;
             }
-            let d = area.distance(x, y);
+            let d = area.distance(tile);
             if best.is_none_or(|(_, b)| d < b) {
-                best = Some((Tile::new(x, y), d));
+                best = Some((tile, d));
             }
         }
     }
@@ -427,7 +426,8 @@ pub fn closest_undiscovered(
     let mut best: Option<(Tile, i32)> = None;
     for y in y0..=y1 {
         for x in x0..=x1 {
-            if area.explored(x, y)? || area.zone(x, y) != own || !area.clear(x, y)? {
+            let tile = Tile::new(x, y);
+            if area.explored(tile)? || area.zone(tile) != own || !area.clear(tile)? {
                 continue;
             }
             let mut d = (y - ty) * (y - ty) + (x - tx) * (x - tx);
@@ -435,12 +435,12 @@ pub fn closest_undiscovered(
                 d += (y - py as i32) * (y - py as i32) + (x - px as i32) * (x - px as i32);
             }
             if best.is_none_or(|(_, b)| d < slack + b) {
-                best = Some((Tile::new(x, y), d));
+                best = Some((tile, d));
             }
         }
     }
     match best {
-        Some((t, _)) if area.reaches(t.x(), t.y())? => Ok(Some(t)),
+        Some((t, _)) if area.reaches(t)? => Ok(Some(t)),
         _ => Ok(None),
     }
 }
@@ -489,11 +489,11 @@ pub fn beyond_sight(
         edge.extend((y0 + 1..=y1).filter(|&y| on_y(y)).map(|y| Tile::new(x0, y)));
     }
     ai.shuffle(&mut edge);
-    let counts = |area: &mut dyn Area, x: i32, y: i32| -> Result<bool, GenieError> {
-        Ok(area.zone(x, y) == own && area.clear(x, y)? && area.reaches(x, y)?)
+    let counts = |area: &mut dyn Area, tile: Tile| -> Result<bool, GenieError> {
+        Ok(area.zone(tile) == own && area.clear(tile)? && area.reaches(tile)?)
     };
     for &t in &edge {
-        if !area.explored(t.x(), t.y())? && counts(area, t.x(), t.y())? {
+        if !area.explored(t)? && counts(area, t)? {
             return Ok(Some(t));
         }
     }
@@ -501,19 +501,15 @@ pub fn beyond_sight(
     let mut queue = vec![Tile::new(ux, uy)];
     let mut i = 0;
     while let Some(&t) = queue.get(i) {
-        let (x, y) = (t.x(), t.y());
         i += 1;
-        if !area.explored(x, y)? {
-            if counts(area, x, y)? {
+        if !area.explored(t)? {
+            if counts(area, t)? {
                 return Ok(Some(t));
             }
             continue;
         }
         for n in t.beside() {
-            if !on_x(n.x()) || !on_y(n.y()) {
-                continue;
-            }
-            if let Some(s) = seen.get_mut((n.y() * w + n.x()) as usize)
+            if let Some(s) = map.index(n).and_then(|c| seen.get_mut(c))
                 && !*s
             {
                 *s = true;
@@ -701,13 +697,20 @@ mod tests {
     fn an_influence_map_holds_a_byte_per_tile_from_its_reference_point() {
         let mut m = InfluenceMap::new(GridSize::new(SCOUT_MAP_SIZE, SCOUT_MAP_SIZE), 0);
         assert_eq!(
-            (m.get(0, 0), m.get(479, 479), m.get(480, 0)),
+            (
+                m.get(Tile::new(0, 0)),
+                m.get(Tile::new(479, 479)),
+                m.get(Tile::new(480, 0))
+            ),
             (Some(0), Some(0), None)
         );
-        m.set(12, 34, 1);
-        m.set(-1, 3, 1);
-        m.set(3, 480, 1);
-        assert_eq!((m.get(12, 34), m.get(34, 12)), (Some(1), Some(0)));
+        m.set(Tile::new(12, 34), 1);
+        m.set(Tile::new(-1, 3), 1);
+        m.set(Tile::new(3, 480), 1);
+        assert_eq!(
+            (m.get(Tile::new(12, 34)), m.get(Tile::new(34, 12))),
+            (Some(1), Some(0))
+        );
         assert_eq!(m.cells.iter().map(|&c| u32::from(c)).sum::<u32>(), 1);
         // a reference point shifts the grid
         let shifted = InfluenceMap {
@@ -715,7 +718,11 @@ mod tests {
             ..InfluenceMap::new(GridSize::new(4, 4), 7)
         };
         assert_eq!(
-            (shifted.get(10, 20), shifted.get(9, 20), shifted.get(13, 23)),
+            (
+                shifted.get(Tile::new(10, 20)),
+                shifted.get(Tile::new(9, 20)),
+                shifted.get(Tile::new(13, 23))
+            ),
             (Some(7), None, Some(7))
         );
     }
@@ -774,23 +781,23 @@ mod tests {
     }
 
     impl Area for Open {
-        fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
-            Ok(self.explored.contains(&[x, y]))
+        fn explored(&self, tile: Tile) -> Result<bool, GenieError> {
+            Ok(self.explored.contains(&tile.get()))
         }
-        fn zone(&mut self, _: i32, _: i32) -> crate::pathing::zones::ZoneId {
+        fn zone(&mut self, _: Tile) -> crate::pathing::zones::ZoneId {
             crate::pathing::zones::ZoneId::new(1)
         }
         fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
             crate::pathing::zones::ZoneId::new(1)
         }
-        fn clear(&mut self, _: i32, _: i32) -> Result<bool, GenieError> {
+        fn clear(&mut self, _: Tile) -> Result<bool, GenieError> {
             Ok(true)
         }
-        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-            Ok(!self.unreachable.contains(&[x, y]))
+        fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError> {
+            Ok(!self.unreachable.contains(&tile.get()))
         }
-        fn distance(&self, x: i32, y: i32) -> f32 {
-            let (dx, dy) = ((x - 20) as f32, (y - 92) as f32);
+        fn distance(&self, tile: Tile) -> f32 {
+            let (dx, dy) = ((tile.x() - 20) as f32, (tile.y() - 92) as f32);
             crate::math::fmath::sqrt(dx * dx + dy * dy)
         }
     }
@@ -871,23 +878,23 @@ mod tests {
     }
 
     impl Area for Zoned {
-        fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
-            self.open.explored(x, y)
+        fn explored(&self, tile: Tile) -> Result<bool, GenieError> {
+            self.open.explored(tile)
         }
-        fn zone(&mut self, _: i32, _: i32) -> crate::pathing::zones::ZoneId {
+        fn zone(&mut self, _: Tile) -> crate::pathing::zones::ZoneId {
             crate::pathing::zones::ZoneId::new(self.zone)
         }
         fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
             crate::pathing::zones::ZoneId::new(1)
         }
-        fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-            self.open.clear(x, y)
+        fn clear(&mut self, tile: Tile) -> Result<bool, GenieError> {
+            self.open.clear(tile)
         }
-        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-            self.open.reaches(x, y)
+        fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError> {
+            self.open.reaches(tile)
         }
-        fn distance(&self, x: i32, y: i32) -> f32 {
-            self.open.distance(x, y)
+        fn distance(&self, tile: Tile) -> f32 {
+            self.open.distance(tile)
         }
     }
 
@@ -923,22 +930,22 @@ mod tests {
     }
 
     impl Area for Patch {
-        fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
-            Ok(!self.unexplored.contains(&[x, y]))
+        fn explored(&self, tile: Tile) -> Result<bool, GenieError> {
+            Ok(!self.unexplored.contains(&tile.get()))
         }
-        fn zone(&mut self, _: i32, _: i32) -> crate::pathing::zones::ZoneId {
+        fn zone(&mut self, _: Tile) -> crate::pathing::zones::ZoneId {
             crate::pathing::zones::ZoneId::new(1)
         }
         fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
             crate::pathing::zones::ZoneId::new(1)
         }
-        fn clear(&mut self, _: i32, _: i32) -> Result<bool, GenieError> {
+        fn clear(&mut self, _: Tile) -> Result<bool, GenieError> {
             Ok(true)
         }
-        fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-            Ok(!self.unreachable.contains(&[x, y]))
+        fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError> {
+            Ok(!self.unreachable.contains(&tile.get()))
         }
-        fn distance(&self, _: i32, _: i32) -> f32 {
+        fn distance(&self, _: Tile) -> f32 {
             0.0
         }
     }

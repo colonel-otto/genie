@@ -32,8 +32,8 @@ fn module() -> AiModule {
 fn an_explored_tile_on_the_map_writes_zero_into_the_path_map() {
     let mut m = module();
     m.explored_tile(2, 1);
-    assert_eq!(m.info.path_map.get(2, 1), Some(0));
-    assert_eq!(m.info.path_map.get(1, 1), Some(0xff));
+    assert_eq!(m.info.path_map.get(Tile::new(2, 1)), Some(0));
+    assert_eq!(m.info.path_map.get(Tile::new(1, 1)), Some(0xff));
 }
 
 #[test]
@@ -107,11 +107,19 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     t.ai.set(PlayerId::new(1), m);
     assert!(t.take_sight_unsupported().is_none());
     assert_eq!(
-        t.ai.get(PlayerId::new(1)).unwrap().info.path_map.get(3, 2),
+        t.ai.get(PlayerId::new(1))
+            .unwrap()
+            .info
+            .path_map
+            .get(Tile::new(3, 2)),
         Some(0)
     );
     assert_eq!(
-        t.ai.get(PlayerId::new(1)).unwrap().info.path_map.get(5, 5),
+        t.ai.get(PlayerId::new(1))
+            .unwrap()
+            .info
+            .path_map
+            .get(Tile::new(5, 5)),
         Some(0xff)
     );
 }
@@ -139,12 +147,12 @@ impl Grid {
 }
 
 impl Area for Grid {
-    fn explored(&self, _: i32, _: i32) -> Result<bool, GenieError> {
+    fn explored(&self, _: Tile) -> Result<bool, GenieError> {
         Ok(false)
     }
-    fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId {
+    fn zone(&mut self, tile: Tile) -> crate::pathing::zones::ZoneId {
         // the byte past the zone's own one is not read
-        crate::pathing::zones::ZoneId::new(if self.other_zone.contains(&[x, y]) {
+        crate::pathing::zones::ZoneId::new(if self.other_zone.contains(&tile.get()) {
             0x108
         } else {
             0x207
@@ -153,21 +161,21 @@ impl Area for Grid {
     fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
         crate::pathing::zones::ZoneId::new(0x307)
     }
-    fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-        Ok(!self.blocked.contains(&[x, y]))
+    fn clear(&mut self, tile: Tile) -> Result<bool, GenieError> {
+        Ok(!self.blocked.contains(&tile.get()))
     }
-    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-        Ok(!self.unreachable.contains(&[x, y]))
+    fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError> {
+        Ok(!self.unreachable.contains(&tile.get()))
     }
-    fn distance(&self, _: i32, _: i32) -> f32 {
+    fn distance(&self, _: Tile) -> f32 {
         0.0
     }
 }
 
 impl SearchArea for Grid {
-    fn visible_now(&self, x: i32, y: i32) -> bool {
-        self.visits.borrow_mut().push([x, y]);
-        self.seen.contains(&[x, y])
+    fn visible_now(&self, tile: Tile) -> bool {
+        self.visits.borrow_mut().push(tile.get());
+        self.seen.contains(&tile.get())
     }
 }
 
@@ -195,8 +203,8 @@ fn info(size: i32, fill: u8) -> InfoModule {
 #[test]
 fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
     let mut m = info(6, EXPLORED);
-    m.path_map.set(3, 0, UNEXPLORED);
-    m.path_map.set(0, 3, UNEXPLORED);
+    m.path_map.set(Tile::new(3, 0), UNEXPLORED);
+    m.path_map.set(Tile::new(0, 3), UNEXPLORED);
     let mut area = Grid::new(6);
     let mut rng = Well512::default();
     let picked = m
@@ -208,7 +216,7 @@ fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
         )
         .unwrap();
     assert_eq!(picked, Some(Tile::new(3, 0)));
-    assert_eq!(m.path_map.get(3, 0), Some(EXPLORED));
+    assert_eq!(m.path_map.get(Tile::new(3, 0)), Some(EXPLORED));
 }
 
 /// Another unit takes a tile that is not explored: a punted tile (1) counts for it, not for a
@@ -216,7 +224,7 @@ fn a_civilians_flood_picks_the_first_tile_no_search_touched() {
 #[test]
 fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
     let mut m = info(6, EXPLORED);
-    m.path_map.set(2, 0, PUNTED);
+    m.path_map.set(Tile::new(2, 0), PUNTED);
     let mut rng = Well512::default();
     let picked = m
         .closest_unexplored_tile(
@@ -228,7 +236,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
         .unwrap();
     assert_eq!(picked, Some(Tile::new(2, 0)));
     let mut civilian = info(6, EXPLORED);
-    civilian.path_map.set(2, 0, PUNTED);
+    civilian.path_map.set(Tile::new(2, 0), PUNTED);
     let none = civilian
         .closest_unexplored_tile(
             &unit(true),
@@ -246,7 +254,7 @@ fn another_units_flood_takes_a_punted_tile_a_civilian_passes() {
 fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
     let row = |zone: Option<[i32; 2]>, blocked: Option<[i32; 2]>| {
         let mut m = info(4, EXPLORED);
-        m.path_map.set(3, 0, UNEXPLORED);
+        m.path_map.set(Tile::new(3, 0), UNEXPLORED);
         let mut area = Grid::new(4);
         area.seen = vec![[0, 0], [1, 0]];
         area.other_zone.extend(zone);
@@ -265,7 +273,7 @@ fn a_seen_tile_is_passed_through_but_another_zone_ends_the_branch() {
     assert_eq!(row(None, Some([3, 0])), None);
     // a wanted tile in another zone ends the branch; an unwanted one does not
     let mut m = info(4, EXPLORED);
-    m.path_map.set(3, 0, UNEXPLORED);
+    m.path_map.set(Tile::new(3, 0), UNEXPLORED);
     let mut area = Grid::new(4);
     area.other_zone = vec![[2, 0]];
     let mut rng = Well512::default();
@@ -305,8 +313,8 @@ fn the_start_tile_is_met_twice() {
 #[test]
 fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
     let mut m = info(6, EXPLORED);
-    m.path_map.set(2, 2, UNEXPLORED);
-    m.path_map.set(5, 5, UNEXPLORED);
+    m.path_map.set(Tile::new(2, 2), UNEXPLORED);
+    m.path_map.set(Tile::new(5, 5), UNEXPLORED);
     let mut area = Grid::new(6);
     area.unreachable = vec![[2, 2]];
     let mut rng = Well512::default();
@@ -320,9 +328,9 @@ fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
             (GridSize::new(6, 6), &mut rng),
         )
         .unwrap();
-    assert_eq!(m.path_map.get(2, 2), Some(PUNTED));
+    assert_eq!(m.path_map.get(Tile::new(2, 2)), Some(PUNTED));
     assert_eq!(picked, Some(Tile::new(5, 5)));
-    assert_eq!(m.path_map.get(5, 5), Some(EXPLORED));
+    assert_eq!(m.path_map.get(Tile::new(5, 5)), Some(EXPLORED));
 }
 
 /// A search that already starts at the unit's place punts to a corner of the best quadrant: 16
@@ -330,7 +338,7 @@ fn an_unreachable_tile_is_punted_and_the_search_starts_from_the_unit() {
 #[test]
 fn a_punt_from_the_units_place_picks_a_corner_of_the_lowest_scored_quadrant() {
     let mut m = info(8, EXPLORED);
-    m.path_map.set(4, 4, UNEXPLORED);
+    m.path_map.set(Tile::new(4, 4), UNEXPLORED);
     // quadrant 6 (column 1, row 2) scores far below the others
     for (i, q) in m.quadrants.iter_mut().enumerate() {
         q[0] = if i == 6 { 0 } else { 1000 };
@@ -368,8 +376,8 @@ fn a_punt_from_the_units_place_picks_a_corner_of_the_lowest_scored_quadrant() {
 #[test]
 fn an_exhausted_flood_marks_the_dead_ends() {
     let mut m = info(3, EXPLORED);
-    m.path_map.set(1, 1, PUNTED);
-    m.path_map.set(2, 2, UNEXPLORED);
+    m.path_map.set(Tile::new(1, 1), PUNTED);
+    m.path_map.set(Tile::new(2, 2), UNEXPLORED);
     let mut area = Grid::new(3);
     area.seen = vec![[0, 1]];
     area.other_zone = vec![[1, 0]];
@@ -385,19 +393,19 @@ fn an_exhausted_flood_marks_the_dead_ends() {
         .unwrap();
     assert_eq!(picked, None);
     // (0, 1) is seen, (1, 0) lies in another zone, (2, 2) was never searched
-    assert_eq!(m.path_map.get(0, 1), Some(EXPLORED));
-    assert_eq!(m.path_map.get(1, 0), Some(EXPLORED));
-    assert_eq!(m.path_map.get(2, 2), Some(UNEXPLORED));
-    assert_eq!(m.path_map.get(0, 0), Some(DEAD_END));
-    assert_eq!(m.path_map.get(1, 1), Some(DEAD_END));
+    assert_eq!(m.path_map.get(Tile::new(0, 1)), Some(EXPLORED));
+    assert_eq!(m.path_map.get(Tile::new(1, 0)), Some(EXPLORED));
+    assert_eq!(m.path_map.get(Tile::new(2, 2)), Some(UNEXPLORED));
+    assert_eq!(m.path_map.get(Tile::new(0, 0)), Some(DEAD_END));
+    assert_eq!(m.path_map.get(Tile::new(1, 1)), Some(DEAD_END));
 }
 
 #[test]
 fn tile_uncovered_is_false_off_the_map_and_for_unexplored_and_dead_ends() {
     let mut m = info(3, EXPLORED);
-    m.path_map.set(0, 0, UNEXPLORED);
-    m.path_map.set(1, 0, DEAD_END);
-    m.path_map.set(2, 0, PUNTED);
+    m.path_map.set(Tile::new(0, 0), UNEXPLORED);
+    m.path_map.set(Tile::new(1, 0), DEAD_END);
+    m.path_map.set(Tile::new(2, 0), PUNTED);
     assert!(!m.tile_uncovered(0, 0).unwrap());
     assert!(!m.tile_uncovered(1, 0).unwrap());
     assert!(m.tile_uncovered(2, 0).unwrap());

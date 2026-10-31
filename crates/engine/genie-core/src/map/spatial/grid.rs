@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Point;
+use crate::map::Tile;
 use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, RecordId, Spatial, record_meets_segment, tile_record_id,
 };
@@ -191,10 +192,10 @@ impl Spatial {
         let _ = self.scout_maps.insert(player, map);
     }
 
-    /// Tile (`x`, `y`) of player `player`'s scout map, if it has one, takes 1 (`FUN_140f4d5e0`).
-    pub fn scout(&mut self, player: PlayerId, x: i32, y: i32) {
+    /// `tile` of player `player`'s scout map, if it has one, takes 1 (`FUN_140f4d5e0`).
+    pub fn scout(&mut self, player: PlayerId, tile: Tile) {
         if let Some(m) = self.scout_maps.get_mut(&player) {
-            m.set(x, y, 1);
+            m.set(tile, 1);
         }
     }
 

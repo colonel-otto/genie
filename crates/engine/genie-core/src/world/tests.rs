@@ -18204,7 +18204,7 @@ fn explorer_world(open: &[[i32; 2]], slots: Vec<i32>) -> World {
     t.players[1].computer = true;
     let mut path_map = crate::movement::explore::InfluenceMap::new(GridSize::new(120, 120), 0);
     for &[x, y] in open {
-        path_map.set(x, y, 0xff);
+        path_map.set(Tile::new(x, y), 0xff);
     }
     t.ai.set(
         PlayerId::new(1),
@@ -18256,7 +18256,7 @@ fn a_computer_players_ai_tasks_its_explorer_to_the_unexplored_tile() {
     assert!(said.contains("(28, 80)"), "{said}");
     let info = &t.ai.get(PlayerId::new(1)).unwrap().info;
     assert_eq!(info.explorer, ObjectId::of_field(9175));
-    assert_eq!(info.path_map.get(28, 80), Some(0));
+    assert_eq!(info.path_map.get(Tile::new(28, 80)), Some(0));
     // the rings' other points wait for the next notify
     assert_eq!(info.search.len(), 30);
 }

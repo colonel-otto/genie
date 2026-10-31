@@ -1,6 +1,7 @@
 //! The explored-tile hook (`WorldPlayer` slot 0x88, `FUN_1416397b0`): a computer player's map
 //! tells its AI module of a tile it explored for the first time.
 
+use crate::map::Tile;
 use crate::players::ai_module::AiModule;
 use crate::vision::visibility::Visibility;
 use crate::world::World;
@@ -10,7 +11,7 @@ impl AiModule {
     pub fn explored_tile(&mut self, x: i32, y: i32) {
         let info = &mut self.info;
         if 0 <= x && x < info.width && 0 <= y && y < info.height {
-            info.path_map.set(x, y, 0);
+            info.path_map.set(Tile::new(x, y), 0);
         }
     }
 }

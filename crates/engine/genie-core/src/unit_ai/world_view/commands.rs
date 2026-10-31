@@ -3,7 +3,6 @@
 use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::GridSize;
-use crate::map::Point;
 use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
@@ -292,8 +291,8 @@ pub(crate) fn town_centre_unit(units: OthersRef<'_>) -> Result<Option<&Unit>, Ge
 }
 
 impl crate::players::ai_module::SearchArea for ScoutArea<'_> {
-    fn visible_now(&self, x: i32, y: i32) -> bool {
-        self.spatial.scout_sight(self.player, Tile::new(x, y)) == Some(0xf)
+    fn visible_now(&self, tile: Tile) -> bool {
+        self.spatial.scout_sight(self.player, tile) == Some(0xf)
     }
 }
 
@@ -314,20 +313,20 @@ pub(crate) struct ScoutArea<'a> {
 }
 
 impl crate::movement::explore::Area for ScoutArea<'_> {
-    fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
+    fn explored(&self, tile: Tile) -> Result<bool, GenieError> {
         if self.scouted {
             return self
                 .spatial
                 .scout_map(self.player)
-                .and_then(|m| m.get(x, y))
+                .and_then(|m| m.get(tile))
                 .map(|v| v == 1)
                 .ok_or(GenieError::unsupported("a tile off the player's scout map"));
         }
-        self.spatial.explored(self.player, Tile::new(x, y))
+        self.spatial.explored(self.player, tile)
     }
 
-    fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId {
-        self.zones.zone(Tile::new(x, y))
+    fn zone(&mut self, tile: Tile) -> crate::pathing::zones::ZoneId {
+        self.zones.zone(tile)
     }
 
     fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
@@ -335,18 +334,14 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
         self.zones.zone(Tile::new(x as i32, y as i32))
     }
 
-    fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
+    fn clear(&mut self, tile: Tile) -> Result<bool, GenieError> {
         let mask = self.mover.stats.restriction_mask;
-        self.spatial.point_clear(
-            self.me.id,
-            Point::new(x as f32, y as f32),
-            self.radius.x(),
-            mask,
-        )
+        self.spatial
+            .point_clear(self.me.id, tile.corner(), self.radius.x(), mask)
     }
 
-    fn reaches(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
-        let to = Point::new(x as f32, y as f32);
+    fn reaches(&mut self, tile: Tile) -> Result<bool, GenieError> {
+        let to = tile.corner();
         self.mover.reaches(
             &self.me,
             self.spatial,
@@ -358,13 +353,13 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
     }
 
     /// `FUN_14118faf0`: the gap from the footprint on each axis (at least 0), then its length.
-    fn distance(&self, x: i32, y: i32) -> f32 {
+    fn distance(&self, tile: Tile) -> f32 {
         let gap = |d: f32, r: f32| {
             let g = d.abs() - r;
             if g <= 0.0 { 0.0 } else { g }
         };
-        let gx = gap(x as f32 - self.mover.position().x(), self.radius.x());
-        let gy = gap(y as f32 - self.mover.position().y(), self.radius.y());
+        let gx = gap(tile.x() as f32 - self.mover.position().x(), self.radius.x());
+        let gy = gap(tile.y() as f32 - self.mover.position().y(), self.radius.y());
         crate::math::fmath::sqrt(gy * gy + gx * gx)
     }
 }
