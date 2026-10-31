@@ -630,7 +630,7 @@ fn damage_share(hp: f32, hit_points: i16, class: ClassId) -> Result<u8, GenieErr
 pub(crate) fn nearest_table_site(
     (table, civ, tracker): (
         &[crate::unit_ai::task_finder::DropSite],
-        u8,
+        crate::players::CivId,
         &crate::players::tracker::Tracker,
     ),
     (at, held, class): (Point, Option<AttributeId>, ClassId),

@@ -61,7 +61,7 @@ pub struct TechTree {
 #[derive(Clone, Copy, Debug)]
 pub struct TreeQuery<'a> {
     /// The civilisation index.
-    pub civ: i32,
+    pub civ: crate::players::CivId,
     /// The building's master.
     pub building: i32,
     /// The unit's master.
@@ -71,7 +71,7 @@ pub struct TreeQuery<'a> {
     /// The game's options: the full tech tree and the last age.
     pub settings: &'a crate::world::settings::Settings,
     /// The civilisation the full tech tree falls back to (`FUN_140c7e6f0`).
-    pub fallback: i32,
+    pub fallback: crate::players::CivId,
 }
 
 /// What [`TechTree::find`] answers.
@@ -96,7 +96,7 @@ impl TechTree {
     pub(super) fn find(&self, q: &TreeQuery<'_>) -> Found<'_> {
         let mut civ = q.civ;
         loop {
-            let Some(buildings) = usize::try_from(civ).ok().and_then(|c| self.civs.get(c)) else {
+            let Some(buildings) = self.civs.get(civ.index()) else {
                 return Found::NoCiv;
             };
             if let Some(b) = buildings.iter().find(|b| b.id == q.building) {

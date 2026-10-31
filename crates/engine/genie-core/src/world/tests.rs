@@ -53,6 +53,7 @@ use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::change::change_hands;
+use crate::players::CivId;
 use crate::players::PlayerType;
 use crate::players::Relation;
 use crate::players::attribute;
@@ -1640,10 +1641,10 @@ fn a_human_build_with_a_target_places_nothing_and_a_house_keeps_its_sprite_overr
         let foundation = t.players[1].objects.last().unwrap();
         foundation.construction.as_ref().unwrap().sprite_override
     };
-    assert!(overridden(12, 0x2c9));
-    assert!(!overridden(12, 0x2cf));
-    assert!(!overridden(11, 0x2c9));
-    assert!(!overridden(12, -1));
+    assert!(overridden(CivId::new(12), 0x2c9));
+    assert!(!overridden(CivId::new(12), 0x2cf));
+    assert!(!overridden(CivId::new(11), 0x2c9));
+    assert!(!overridden(CivId::new(12), -1));
 }
 
 #[test]
@@ -1948,7 +1949,7 @@ fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_grou
             player: PlayerId::new(1),
             held: carrying(None, 0.0),
             attribute_95: 0.0,
-            civ: 0,
+            civ: CivId::new(0),
         };
         task_search(masters, &actor, &site, &site, None, None, &world)
             .unwrap()
@@ -12885,7 +12886,7 @@ fn on_side<R>(
             computer: false,
             construction_rate: 1.0,
             new_owner: None,
-            civ: 0,
+            civ: CivId::new(0),
             ai_settings: AiSettings::default(),
         };
         Ok(f(&mut side))

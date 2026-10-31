@@ -118,7 +118,7 @@ impl<'a> Foreign<'a> {
 pub(crate) struct OwnerView {
     pub(crate) player: PlayerId,
     pub(crate) new_owner: Option<PlayerId>,
-    pub(crate) civ: u8,
+    pub(crate) civ: crate::players::CivId,
     pub(crate) construction_rate: f32,
     pub(crate) ai_settings: crate::world::player::AiSettings,
 }
@@ -201,7 +201,7 @@ pub(crate) struct UnitView<'u, 's> {
     /// The player that took the unit over in its update ([`changed_view`]).
     pub(crate) new_owner: Option<PlayerId>,
     /// The owner's civ.
-    pub(crate) civ: u8,
+    pub(crate) civ: crate::players::CivId,
     /// The owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
 }

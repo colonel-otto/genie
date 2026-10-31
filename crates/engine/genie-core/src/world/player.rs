@@ -87,7 +87,7 @@ pub struct Player {
     /// generation tasks made and did not give yet ([`crate::combat::abilities::store`]).
     pub generated: Vec<f32>,
     /// The civ (`player+0x738`), which drop sites read.
-    pub civ: u8,
+    pub civ: crate::players::CivId,
     /// `relation[i]` (`player+0x260`): how the player stands to player i.
     pub relations: Vec<crate::players::Relation>,
     /// The sleeping objects, in their list's order: they are not updated; a unit's work on one

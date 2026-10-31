@@ -117,7 +117,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
                     .iter()
                     .map(|&b| f32::from_bits(b))
                     .collect(),
-                civ,
+                civ: genie_core::players::CivId::new(civ),
                 relations: p
                     .world_player()
                     .base

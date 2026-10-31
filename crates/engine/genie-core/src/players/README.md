@@ -24,6 +24,7 @@ A player has more than its objects. This folder holds the rest:
 | File | What it holds |
 | --- | --- |
 | [`attribute.rs`](attribute.rs) | The indices of the player's attributes (`player+0x8`'s array of `f32`): the one definition of the attributes the engine reads and writes by number. |
+| [`civ_id.rs`](civ_id.rs) | A civilisation's number. |
 | [`diplomacy.rs`](diplomacy.rs) | A player's diplomacy change (the world player's slot 0x30, `FUN_141639690`, which GAME's sub-command 0 runs): its stance toward another player (`diplomacy[i]`, `+0xe12`), the relation it makes (`relation[i]`, `+0x260`) and what its queries make of that player's objects (`unit_diplomacy[i]`, `+0x278`); its objects hear of it (slot 0x120: units inside a building or siege tower of a player no longer allied leave it); the players' sight masks and tile lists are made again; then the world's teams (`FUN_1415e23f0`) and the units the players reveal (`FUN_14152bcb0`). |
 | [`history.rs`](history.rs) | The player's history (`TRIBE_History_Info`, TribeHistoryInfo.cpp; player `+0xdb8`, saved with the player): a population entry each history period and a list of events, newest first. |
 | [`market.rs`](market.rs) | The market: the world's commodity prices (`+0x868`..`+0x8a0`, saved) and the two commands that trade at them, `TRIBE_COMMAND_SELL_COMMODITY` (0x7a, `FUN_141639310`) and `TRIBE_COMMAND_BUY_COMMODITY` (0x7b, `FUN_141618390`). |

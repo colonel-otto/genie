@@ -97,7 +97,7 @@ pub struct TechDef {
     pub required_count: i16,
     /// `+0x26`: the civ it belongs to (below 1 every civ's); `+0x28`: the game modes it is for
     /// (0 every one, `FUN_1413cf2f0`).
-    pub civ: i16,
+    pub civ: Option<crate::players::CivId>,
     /// `+0x28`: the game modes it is for (0 and 1 every one, `FUN_1413cf2f0`).
     pub mode: i16,
     /// `+0x70`: where it is researched, the building's master and the seconds it takes.

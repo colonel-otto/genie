@@ -12,6 +12,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{CostSlot, Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::CivId;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
@@ -1446,13 +1447,13 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
     let def = |required: i16, civ: i16, mode: i16| TechDef {
         required: [required, -1, -1, -1, -1, -1],
         required_count: i16::from(required != -1),
-        civ,
+        civ: CivId::of_tech(civ).unwrap(),
         mode,
         ..TechDef::default()
     };
     let states = |full_tech_tree: bool| {
         let player = Player {
-            civ: 5,
+            civ: CivId::new(5),
             techs: vec![TechState::default(); 5],
             ..Player::default()
         };

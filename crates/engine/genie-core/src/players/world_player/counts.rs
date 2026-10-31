@@ -125,11 +125,7 @@ impl World {
         };
         let full = self.settings.full_tech_tree;
         let fallback = full_tree_civ(self.mode_680);
-        let civ = if full {
-            fallback
-        } else {
-            i32::from(player.civ)
-        };
+        let civ = if full { fallback } else { player.civ };
         let state = |t: i32| {
             usize::try_from(t)
                 .ok()
@@ -140,7 +136,7 @@ impl World {
         let unique = self
             .tech_tree
             .unique_units
-            .get(usize::from(player.civ))
+            .get(player.civ.index())
             .copied()
             .flatten()
             .map_or(-1, |u| match state(u.elite_tech) {

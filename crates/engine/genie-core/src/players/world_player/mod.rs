@@ -73,12 +73,12 @@ const UNKEPT_HIGH: ClassMask = ClassMask::new(0x1402_04a0_0038_4006, 61);
 const AGES: [i32; 3] = [101, 102, 103];
 /// `FUN_140c7e6f0`: the civilisation the full tech tree reads, by the game's tagged value at
 /// `+0x680` ([`crate::world::World::mode_680`]): 18 for 1, 59 for 2, else 0.
-const fn full_tree_civ(mode_680: i32) -> i32 {
-    match mode_680 {
+const fn full_tree_civ(mode_680: i32) -> crate::players::CivId {
+    crate::players::CivId::new(match mode_680 {
         1 => 0x12,
         2 => 0x3b,
         _ => 0,
-    }
+    })
 }
 /// The resource storage that keeps its player (`0x14163b86b`): attribute 11 …
 const POPULATION_STORAGE: AttributeId = crate::players::attribute::POPULATION;

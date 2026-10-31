@@ -192,7 +192,7 @@ impl World {
         tech: TechId,
     ) -> Result<(), GenieError> {
         let mut counted = 0;
-        let civ = i16::from(self.players.player(p)?.civ);
+        let civ = self.players.player(p)?.civ;
         for d in 0..self.techs.len() {
             counted += self.update_dependent(p, civ, (d, tech))?;
         }
@@ -214,7 +214,7 @@ impl World {
     fn update_dependent(
         &mut self,
         p: PlayerId,
-        civ: i16,
+        civ: crate::players::CivId,
         (d, t): (usize, TechId),
     ) -> Result<i32, GenieError> {
         let mut counted = 0;
@@ -263,16 +263,14 @@ impl World {
     fn dependent_disabled(
         &self,
         def: &crate::technology::TechDef,
-        civ: i16,
+        civ: crate::players::CivId,
     ) -> Result<bool, GenieError> {
         // another civ's: −1; the civ's own too under the full tech tree (the option +0x63)
         // unless of mode 1
-        let other_civ = if def.civ < 1 {
-            false
-        } else if def.civ == civ {
-            self.settings.full_tech_tree && def.mode != 1
-        } else {
-            true
+        let other_civ = match def.civ {
+            None => false,
+            Some(own) if own == civ => self.settings.full_tech_tree && def.mode != 1,
+            Some(_) => true,
         };
         Ok(other_civ || !self.settings.tech_mode_allows(def.mode)?)
     }

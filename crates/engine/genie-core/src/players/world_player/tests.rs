@@ -11,6 +11,7 @@ use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::objects::unit::Unit;
+use crate::players::CivId;
 use crate::players::PlayerId;
 use crate::players::PlayerType;
 use crate::players::attribute;
@@ -546,24 +547,27 @@ fn the_tech_tree_answers_by_civilisation_building_and_unit() {
         unit,
         ages_out,
         settings: &settings,
-        fallback: 0,
+        fallback: CivId::new(0),
     };
     let none = [false; 3];
-    assert!(tree.has(&q(0, 12, 74, none)));
+    assert!(tree.has(&q(CivId::new(0), 12, 74, none)));
     assert_eq!(
         (
-            tree.link(&q(0, 12, 74, none)),
-            tree.tech(&q(0, 12, 74, none))
+            tree.link(&q(CivId::new(0), 12, 74, none)),
+            tree.tech(&q(CivId::new(0), 12, 74, none))
         ),
         (75, 87)
     );
-    assert!(!tree.has(&q(0, 12, 4, none)));
-    assert_eq!(tree.link(&q(0, 12, 4, none)), -1);
-    assert!(!tree.has(&q(0, 87, 4, none)));
-    assert_eq!(tree.link(&q(5, 12, 74, none)), 0);
+    assert!(!tree.has(&q(CivId::new(0), 12, 4, none)));
+    assert_eq!(tree.link(&q(CivId::new(0), 12, 4, none)), -1);
+    assert!(!tree.has(&q(CivId::new(0), 87, 4, none)));
+    assert_eq!(tree.link(&q(CivId::new(5), 12, 74, none)), 0);
     // the Castle Age out of reach
-    assert!(!tree.has(&q(0, 12, 93, [false, true, false])));
-    assert_eq!(tree.tech(&q(0, 12, 93, [false, true, false])), 0);
+    assert!(!tree.has(&q(CivId::new(0), 12, 93, [false, true, false])));
+    assert_eq!(
+        tree.tech(&q(CivId::new(0), 12, 93, [false, true, false])),
+        0
+    );
     // the last age 3: age 3 is out
     let early = crate::world::settings::Settings {
         ending_age: 3,
@@ -571,7 +575,7 @@ fn the_tech_tree_answers_by_civilisation_building_and_unit() {
     };
     let late = TreeQuery {
         settings: &early,
-        ..q(0, 12, 93, none)
+        ..q(CivId::new(0), 12, 93, none)
     };
     assert!(!tree.has(&late));
     // the full tech tree: civilisation 1 lacks the barracks, the fallback 0 has it
@@ -581,11 +585,11 @@ fn the_tech_tree_answers_by_civilisation_building_and_unit() {
     };
     let fell = TreeQuery {
         settings: &full,
-        ..q(1, 12, 74, none)
+        ..q(CivId::new(1), 12, 74, none)
     };
     assert!(tree.has(&fell));
     assert_eq!(tree.link(&fell), 75);
-    assert!(!tree.has(&q(1, 12, 74, none)));
+    assert!(!tree.has(&q(CivId::new(1), 12, 74, none)));
 }
 
 /// `FUN_141610470`'s count: a master trained at the building counts when the tree has it,
@@ -607,7 +611,7 @@ fn the_upgradable_count_follows_the_tech_tree() {
         master(master_id(12), master_type::BUILDING, class::BUILDING),
     ]);
     t.masters = vec![masters; 4];
-    t.players[1].civ = 0;
+    t.players[1].civ = CivId::new(0);
     t.players[1].techs = vec![crate::technology::TechState::default(); 200];
     t.tech_tree = TechTree {
         civs: vec![vec![TreeBuilding {

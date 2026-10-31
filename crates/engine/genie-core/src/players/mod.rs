@@ -4,6 +4,7 @@
 
 pub mod ai_module;
 pub mod attribute;
+mod civ_id;
 pub mod diplomacy;
 pub mod game_status;
 pub mod history;
@@ -19,6 +20,7 @@ pub mod tribute;
 mod unit_relation;
 pub mod world_player;
 
+pub use self::civ_id::CivId;
 pub use self::player_id::PlayerId;
 pub use self::player_type::PlayerType;
 pub use self::query_relation::QueryRelation;

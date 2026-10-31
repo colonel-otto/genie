@@ -190,7 +190,7 @@ pub fn drop_sites(
                     .collect(),
                 civs: list(e, "target_civs")
                     .into_iter()
-                    .map(|c| c as u8)
+                    .map(|c| genie_core::players::CivId::new(c as u8))
                     .collect(),
                 auto_work: e.get("auto_work").and_then(serde_json::Value::as_bool) != Some(false),
                 targets,

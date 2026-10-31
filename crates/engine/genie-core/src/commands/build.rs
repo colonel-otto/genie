@@ -91,8 +91,8 @@ impl BuildCommand {
     /// The sprite override the handler gives the foundation (`FUN_141189e70`): the packet's
     /// `+0x18` for a house (master 70) of civ 12 when it is 0x2c9 to 0x2ce, else −1.
     #[must_use]
-    pub fn sprite_override_of(&self, civ: u8) -> i32 {
-        const CIV: u8 = 0xc;
+    pub fn sprite_override_of(&self, civ: crate::players::CivId) -> i32 {
+        const CIV: crate::players::CivId = crate::players::CivId::new(0xc);
         let kept = self.sprite_override.wrapping_sub(0x2c9).cast_unsigned() <= 5;
         if self.sprite_override != -1 && kept && self.master == HOUSE && civ == CIV {
             self.sprite_override

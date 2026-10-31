@@ -99,7 +99,11 @@ fn the_actor_reads_its_player_s_attribute_95_and_civ() {
     let actor = w.actor(object_id(10)).unwrap();
     assert_eq!(
         (actor.id, actor.player, actor.civ),
-        (object_id(10), PlayerId::new(1), 4)
+        (
+            object_id(10),
+            PlayerId::new(1),
+            genie_core::players::CivId::new(4)
+        )
     );
     assert_eq!(actor.attribute_95.to_bits(), 1.5_f32.to_bits());
     assert!(w.actor(object_id(99)).is_none());

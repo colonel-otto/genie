@@ -273,27 +273,18 @@ fn tech_def(
     dat: &DatFile,
     t: &genie_dat::de::Tech,
 ) -> Result<genie_core::technology::TechDef, GenieError> {
-    let [c0, c1, c2] = t.resource_costs.each_ref();
-    let cost = |j: usize| -> Result<genie_core::technology::Cost, GenieError> {
-        let c = [c0, c1, c2][j];
-        Ok(genie_core::technology::Cost {
-            attribute: AttributeId::of_field(c.kind)?,
-            amount: c.amount,
-            paid: c.flag,
-        })
-    };
     let effect = usize::try_from(t.effect_id)
         .ok()
         .and_then(|e| dat.effects.get(e))
         .map_or_else(|| Ok(Vec::new()), effect_commands)?;
     Ok(genie_core::technology::TechDef {
-        costs: [cost(0)?, cost(1)?, cost(2)?],
+        costs: tech_costs(t)?,
         kind: genie_core::technology::TechType::from(t.kind),
         effect_id: t.effect_id,
         effect,
         required: t.required_techs,
         required_count: t.required_tech_count,
-        civ: t.civ,
+        civ: genie_core::players::CivId::of_tech(t.civ)?,
         mode: t.full_tech_mode,
         locations: t
             .research_locations
@@ -301,6 +292,19 @@ fn tech_def(
             .map(|l| (l.location_id, l.queue_time))
             .collect(),
     })
+}
+
+/// A technology's three costs: each its resource, amount and whether it is paid.
+fn tech_costs(t: &genie_dat::de::Tech) -> Result<[genie_core::technology::Cost; 3], GenieError> {
+    let [c0, c1, c2] = t.resource_costs.each_ref();
+    let cost = |c: &genie_dat::de::ResearchResourceCost| -> Result<_, GenieError> {
+        Ok(genie_core::technology::Cost {
+            attribute: AttributeId::of_field(c.kind)?,
+            amount: c.amount,
+            paid: c.flag,
+        })
+    };
+    Ok([cost(c0)?, cost(c1)?, cost(c2)?])
 }
 
 /// The technologies ([`tech_def`]) and the effect table ([`effect_commands`]), by id.

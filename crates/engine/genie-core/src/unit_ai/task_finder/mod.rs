@@ -52,7 +52,7 @@ pub struct Actor<'a> {
     /// The owner's attribute 95 (`+0x2f8`), which some monk tasks read.
     pub attribute_95: f32,
     /// The owner's civ (`FUN_140e879e0` of `player+0x738`), which drop sites read.
-    pub civ: u8,
+    pub civ: crate::players::CivId,
 }
 
 /// What the finder reads of a target object.
@@ -136,7 +136,7 @@ pub struct DropSite {
     /// The unit masters that drop there (empty: all).
     pub workers: Vec<MasterId>,
     /// The civs it is for (empty: all).
-    pub civs: Vec<u8>,
+    pub civs: Vec<crate::players::CivId>,
     /// `+8`, `auto_work` (1 when the key is missing): a builder whose building completes looks
     /// for more work around it (`FUN_1415cc4e0`).
     pub auto_work: bool,
@@ -185,7 +185,7 @@ pub fn drop_site(
     table: &[DropSite],
     building: MasterId,
     class: ClassId,
-    civ: u8,
+    civ: crate::players::CivId,
 ) -> Option<&DropSite> {
     table.iter().find(|e| {
         (e.civs.is_empty() || e.civs.contains(&civ))
@@ -224,7 +224,7 @@ pub fn table_drop_buildings(
     table: &[DropSite],
     kind: Option<AttributeId>,
     class: Option<ClassId>,
-    civ: u8,
+    civ: crate::players::CivId,
 ) -> Vec<MasterId> {
     table
         .iter()
@@ -571,6 +571,7 @@ fn finder_tail<'m>(
 mod tests {
     use super::*;
     use crate::objects::masters::MasterKind;
+    use crate::players::CivId;
     use crate::players::attribute;
     use crate::players::attribute::AttributeId;
     use crate::test_ids::carrying;
@@ -620,7 +621,7 @@ mod tests {
             player: PlayerId::new(2),
             held,
             attribute_95: 0.0,
-            civ: 1,
+            civ: CivId::new(1),
         }
     }
 
@@ -781,7 +782,7 @@ mod tests {
         let entry = |building, class, types: Vec<AttributeId>, civs: Vec<u8>, attribute| DropSite {
             building,
             worker_class: class,
-            civs,
+            civs: civs.into_iter().map(CivId::new).collect(),
             resource_types: types,
             targets: vec![DropTarget {
                 class: class::TREE,
@@ -831,24 +832,39 @@ mod tests {
             ),
         ];
         assert_eq!(
-            table_drop_buildings(&table, Some(attribute::WOOD), Some(class::VILLAGER), 1),
+            table_drop_buildings(
+                &table,
+                Some(attribute::WOOD),
+                Some(class::VILLAGER),
+                CivId::new(1)
+            ),
             [ids::TOWN_CENTRE, master_id(562)]
         );
         assert_eq!(
-            table_drop_buildings(&table, Some(attribute::WOOD), Some(class::VILLAGER), 17),
+            table_drop_buildings(
+                &table,
+                Some(attribute::WOOD),
+                Some(class::VILLAGER),
+                CivId::new(17)
+            ),
             [ids::TOWN_CENTRE, master_id(562), master_id(1754)]
         );
         // a kind of 4 or more by the targets' attribute types; −1 is not a basic resource
         assert_eq!(
-            table_drop_buildings(&table, Some(attribute::MEAT), Some(class::VILLAGER), 1),
+            table_drop_buildings(
+                &table,
+                Some(attribute::MEAT),
+                Some(class::VILLAGER),
+                CivId::new(1)
+            ),
             [ids::TOWN_CENTRE]
         );
         assert_eq!(
-            table_drop_buildings(&table, Some(AttributeId::numbered(17)), None, 1),
+            table_drop_buildings(&table, Some(AttributeId::numbered(17)), None, CivId::new(1)),
             [ids::ID_45]
         );
         assert_eq!(
-            table_drop_buildings(&table, None, Some(class::VILLAGER), 1),
+            table_drop_buildings(&table, None, Some(class::VILLAGER), CivId::new(1)),
             Vec::<MasterId>::new()
         );
     }

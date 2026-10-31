@@ -137,7 +137,9 @@ impl FinderWorld {
                 .get(o.player.index())
                 .copied()
                 .unwrap_or(0.0),
-            civ: self.civs.get(o.player.index()).copied().unwrap_or(0),
+            civ: genie_core::players::CivId::new(
+                self.civs.get(o.player.index()).copied().unwrap_or(0),
+            ),
         })
     }
 }

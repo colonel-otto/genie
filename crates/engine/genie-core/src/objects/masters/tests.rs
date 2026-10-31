@@ -3,6 +3,7 @@ use crate::map::Radii;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::objects::masters::class;
+use crate::players::CivId;
 use crate::players::PlayerId;
 use crate::players::attribute as player_attribute;
 use crate::test_ids::carrying;
@@ -1210,7 +1211,7 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             player: PlayerId::new(2),
             held: carrying(None, 0.0),
             attribute_95: 0.0,
-            civ: 1,
+            civ: CivId::new(1),
         };
         let on = crate::unit_ai::task_finder::TaskOn {
             target: Some(&site),
@@ -1276,7 +1277,7 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
             player: PlayerId::new(2),
             held: carrying(None, 0.0),
             attribute_95: 0.0,
-            civ: 1,
+            civ: CivId::new(1),
         };
         let on = crate::unit_ai::task_finder::TaskOn {
             target: Some(&site),
