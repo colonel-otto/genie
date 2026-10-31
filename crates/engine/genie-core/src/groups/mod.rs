@@ -21,10 +21,12 @@ use crate::objects::masters::ActionType;
 use crate::players::PlayerId;
 use crate::world::slots::CheckedIndex;
 
+mod formation_kind;
 mod group_id;
 mod group_list;
 mod objects;
 
+pub use self::formation_kind::FormationKind;
 pub use self::group_id::GroupId;
 pub use self::group_list::{GroupLink, UnitGroups, common_group};
 pub(crate) use self::objects::WorldObject;
@@ -168,7 +170,7 @@ pub struct FormationLine {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Formation {
     /// `mType`.
-    pub kind: i32,
+    pub kind: FormationKind,
     /// `mSlots` (as many as `mNumberSlots`).
     pub slots: Vec<Slot>,
     /// `mNumberTransformedSlots`.
@@ -352,8 +354,8 @@ pub struct UnitGroup {
     pub current_formation: Option<Formation>,
     /// The word the save writes after the formations (`garbage`).
     pub garbage: u32,
-    /// `mFormationLockedType`.
-    pub formation_locked_type: i32,
+    /// `mFormationLockedType`: none for the constructor's −1; a horde (0) is no lock either.
+    pub formation_locked_type: Option<FormationKind>,
     /// `mGroupFlags`.
     pub flags: u32,
     /// `mCentroid`.

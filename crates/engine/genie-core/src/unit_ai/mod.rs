@@ -117,6 +117,7 @@ pub use self::surroundings::{
 };
 use self::surroundings::{LiveTop, PATROL_TURN_REACH, SINGLE_VOLLEY, group_lets_idle};
 pub use self::target_type::OrderTargetType;
+use crate::groups::FormationKind;
 use crate::map::Point;
 use crate::map::Position;
 #[cfg(test)]
@@ -470,7 +471,7 @@ pub struct UnitAi {
     pub stance: u8,
     /// `+0x1d4`, `mFormationType`: the formation the unit's group last took for it, which its
     /// next group's type counts (`FUN_14100b940`).
-    pub formation_type: u8,
+    pub formation_type: FormationKind,
     /// `+0x1ac`, `+0x1b0`, `state_position`: where a unit with an order last updated, which a
     /// stance's leash measures from.
     pub state_position: Point,

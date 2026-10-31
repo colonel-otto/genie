@@ -4,8 +4,8 @@
 //! (`FUN_14103fd00`) makes them.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
-use crate::groups::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, BVector};
 use crate::objects::ObjectId;
@@ -76,7 +76,11 @@ pub(crate) fn slots_by_place(
     for s in formation.every_slot_mut() {
         s.active = 0;
     }
-    formation.kind = if user_defined { USER_DEFINED } else { HORDE };
+    formation.kind = if user_defined {
+        FormationKind::USER_DEFINED
+    } else {
+        FormationKind::HORDE
+    };
     formation.maximum_width = -1;
     formation.maximum_depth = -1;
     formation.number_lines = 0;
@@ -207,7 +211,7 @@ pub(crate) fn phalanx_slots(
     for s in formation.every_slot_mut() {
         s.active = 0;
     }
-    formation.kind = PHALANX;
+    formation.kind = FormationKind::PHALANX;
     formation.use_slots(0);
     formation.transform_type = 0;
     formation.maximum_width = lines;
@@ -522,7 +526,7 @@ pub(crate) fn box_slots(
         formation.use_slots(used);
     }
     formation.number_lines = 0;
-    formation.kind = BOX;
+    formation.kind = FormationKind::BOX;
     formation.transform_type = 1;
     // CVTTSS2SI at 0x141012147 (a NaN or out of range width is i32::MIN)
     let width = crate::math::conversions::cvttss2si(max_x - min_x);
@@ -682,7 +686,7 @@ mod tests {
                 f.maximum_depth,
                 f.number_lines
             ),
-            (HORDE, 3, -1, -1, 0)
+            (FormationKind::HORDE, 3, -1, -1, 0)
         );
         assert_eq!(f.slots.len(), 3);
         let s = &f.slots[0];
@@ -726,7 +730,7 @@ mod tests {
             Some(place(9, 20.0, 10.0, 3)),
         ];
         assert!(slots_by_place(&mut f, &g, &members, true, 640).unwrap());
-        assert_eq!((f.kind, f.transform_type), (USER_DEFINED, 1));
+        assert_eq!((f.kind, f.transform_type), (FormationKind::USER_DEFINED, 1));
         let offsets: Vec<BVector> = f.slots.iter().map(|s| s.offset).collect();
         assert_eq!(
             offsets,
@@ -920,12 +924,12 @@ mod tests {
                 (Some(object_id(12)), BVector::new(5.5, 0.0, 6.5), 3, 1),
             ]
         );
-        assert_eq!((f.kind, f.transform_type), (HORDE, 3));
+        assert_eq!((f.kind, f.transform_type), (FormationKind::HORDE, 3));
         let mut f = Formation::new();
         assert!(t.create_udf(&mut f, &g).unwrap());
         assert_eq!(
             (f.kind, f.transform_type, f.slots[3].unit_id),
-            (USER_DEFINED, 1, Some(object_id(12)))
+            (FormationKind::USER_DEFINED, 1, Some(object_id(12)))
         );
     }
 
@@ -951,7 +955,7 @@ mod tests {
                 f.maximum_depth,
                 f.number_lines
             ),
-            (PHALANX, 0, 3, 3, 3)
+            (FormationKind::PHALANX, 0, 3, 3, 3)
         );
         let slots: Vec<(BVector, i32, i32)> = f
             .slots
@@ -1117,7 +1121,7 @@ mod tests {
         assert!(box_slots(&mut f, &g, 5).unwrap());
         assert_eq!(
             (f.kind, f.transform_type, f.maximum_width, f.maximum_depth),
-            (BOX, 1, 4, 4)
+            (FormationKind::BOX, 1, 4, 4)
         );
         let slots: Vec<(BVector, i32)> = f
             .slots

@@ -132,7 +132,7 @@ pub(super) fn unit_ai(
         last_retarget_time: ai.last_retarget_time,
         retarget_timer: ai.randomized_retarget_timer,
         stance: ai.state_value,
-        formation_type: ai.formation_type,
+        formation_type: genie_core::groups::FormationKind::of_byte(ai.formation_type),
         state_position: Point::new(ai.state_position_xvalue, ai.state_position_yvalue),
         retarget_disabled: ai.disable_retargeting,
         alert_mode: ai.alert_mode_value != 0,

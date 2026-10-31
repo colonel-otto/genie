@@ -175,7 +175,7 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
         Packet::FormFormation(c) => Command::FormFormation(FormFormationCommand {
             player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            formation: c.formation,
+            formation: genie_core::groups::FormationKind::from(c.formation),
         }),
         Packet::SetGatherState(c) => Command::SetGatherState(SetGatherStateCommand {
             player: PlayerId::from(c.commp_id),

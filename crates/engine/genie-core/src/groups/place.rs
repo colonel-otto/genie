@@ -3,6 +3,7 @@
 //! (`FUN_141039680`) and the motion's orientation (`FUN_141049e10`).
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
@@ -267,7 +268,7 @@ impl World {
         };
         // the lead's slot 0x270: an object that does not move (a ghost found by the lead -1)
         // stands nowhere (`FUN_141071e30`)
-        if g.formation_locked_type == crate::groups::formation::FLANKED
+        if g.formation_locked_type == Some(FormationKind::FLANKED)
             && let Some(lead) = self
                 .lead_object(m)
                 .filter(crate::groups::WorldObject::moves)
@@ -288,7 +289,7 @@ impl World {
                 return Ok(());
             }
         }
-        let limit = if g.formation_locked_type == crate::groups::formation::STAGGERED {
+        let limit = if g.formation_locked_type == Some(FormationKind::STAGGERED) {
             g.desired_spacing
         } else {
             g.desired_spacing * FRONT_SHARE
@@ -574,7 +575,7 @@ mod tests {
     fn a_staggered_lock_takes_the_whole_spacing() {
         let units = vec![unit(11, 13.0, 11.5), unit(12, 19.0, 13.0)];
         let mut t = front_world(units.clone());
-        t.groups.groups[0].formation_locked_type = crate::groups::formation::STAGGERED;
+        t.groups.groups[0].formation_locked_type = Some(FormationKind::STAGGERED);
         t.move_position_to_front(group_id(1), 100.0).unwrap();
         assert_eq!(placed(&t).0, BVector::new(13.0, 0.0, 11.5));
         let mut t = front_world(units);
@@ -613,7 +614,7 @@ mod tests {
         lead.body.put_mover(Some(mover));
         let units = vec![lead, unit(11, 10.2, 10.1)];
         let flanked = |t: &mut World| {
-            t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
+            t.groups.groups[0].formation_locked_type = Some(FormationKind::FLANKED);
             t.groups.groups[0].motion.lead = Some(object_id(10));
         };
         let mut t = front_world(units.clone());
@@ -650,7 +651,7 @@ mod tests {
     fn a_flanked_group_tests_the_world_s_object_of_its_lead_id() {
         let units = vec![unit(10, 15.0, 10.5), unit(11, 10.2, 10.1)];
         let flanked = |t: &mut World| {
-            t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
+            t.groups.groups[0].formation_locked_type = Some(FormationKind::FLANKED);
             t.groups.groups[0].members.truncate(2);
             t.groups.groups[0].motion.lead = Some(object_id(-2));
         };

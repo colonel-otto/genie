@@ -1,4 +1,5 @@
 use super::*;
+use crate::groups::FormationKind;
 use crate::groups::GroupTarget;
 use crate::map::Footprint;
 use crate::map::GridSize;
@@ -424,7 +425,7 @@ fn a_slot_takes_the_unit_nearest_its_transform_position() {
 /// or no column before, the slots take the closest units or none.
 #[test]
 fn a_line_after_a_column_fills_from_its_middle_out() {
-    let run = |width: usize, transformed: i32, previous: i32| {
+    let run = |width: usize, transformed: i32, previous: FormationKind| {
         let units: Vec<(i32, i16, f32, f32)> = (0..width)
             .map(|i| (10 + i as i32, 4, i as f32, 0.0))
             .collect();
@@ -434,7 +435,7 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
         t.groups.groups[0].previous_formation = Some(column);
         let g = t.groups.get(group_id(1)).unwrap().clone();
         let mut f = Formation::new();
-        f.kind = LINE;
+        f.kind = FormationKind::LINE;
         f.maximum_width = width as i32;
         f.maximum_depth = 1;
         f.number_transformed_slots = transformed;
@@ -445,7 +446,7 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
         f.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
     };
     assert_eq!(
-        run(3, 3, COLUMN),
+        run(3, 3, FormationKind::COLUMN),
         [
             Some(object_id(11)),
             Some(object_id(10)),
@@ -453,7 +454,7 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
         ]
     );
     assert_eq!(
-        run(4, 4, COLUMN),
+        run(4, 4, FormationKind::COLUMN),
         [
             Some(object_id(11)),
             Some(object_id(12)),
@@ -463,14 +464,14 @@ fn a_line_after_a_column_fills_from_its_middle_out() {
     );
     // part-transformed: each slot its closest
     assert_eq!(
-        run(3, 2, COLUMN),
+        run(3, 2, FormationKind::COLUMN),
         [
             Some(object_id(10)),
             Some(object_id(11)),
             Some(object_id(12))
         ]
     );
-    assert_eq!(run(3, 3, LINE), [None, None, None]);
+    assert_eq!(run(3, 3, FormationKind::LINE), [None, None, None]);
 }
 
 /// `FUN_14103a1f0`'s group (1), target (2) and horde (3) transforms of every slot of the
@@ -805,7 +806,7 @@ fn one_statistic(t: &mut World, units: &[ObjectId]) {
 /// (10, 11, 12); each as its slots and `lay_units` with that flag.
 #[test]
 fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
-    let run = |previous: i32| {
+    let run = |previous: FormationKind| {
         let mut t = slot_world(
             &[(10, 4, 5.5, 5.5), (11, 4, 5.5, 6.5), (12, 4, 5.5, 7.5)],
             &[],
@@ -823,13 +824,13 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
         );
         let mut parts = Formation::new();
         assert!(column_line_slots(&mut parts, &g, false, (false, false), t.world_time).unwrap());
-        t.lay_units(&mut parts, group_id(1), previous == COLUMN)
+        t.lay_units(&mut parts, group_id(1), previous == FormationKind::COLUMN)
             .unwrap();
         assert_eq!(whole, parts);
         whole.slots.iter().map(|s| s.unit_id).collect::<Vec<_>>()
     };
     assert_eq!(
-        run(COLUMN),
+        run(FormationKind::COLUMN),
         [
             Some(object_id(11)),
             Some(object_id(10)),
@@ -837,7 +838,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
         ]
     );
     assert_eq!(
-        run(LINE),
+        run(FormationKind::LINE),
         [
             Some(object_id(10)),
             Some(object_id(11)),
@@ -914,7 +915,7 @@ fn type_world(paths: Vec<PathData>) -> World {
     t
 }
 
-fn own(t: &World) -> i32 {
+fn own(t: &World) -> FormationKind {
     t.own_formation_type(t.groups.get(group_id(1)).unwrap())
         .unwrap()
 }
@@ -948,7 +949,7 @@ fn the_last_high_level_waypoint_is_the_top_levels_last_point() {
 /// the column-to-line distance.
 #[test]
 fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
-    assert_eq!(own(&type_world(Vec::new())), LINE);
+    assert_eq!(own(&type_world(Vec::new())), FormationKind::LINE);
     let walked = level(&[BVector::ZERO, BVector::new(1.0, 0.0, 0.0)], 0, 0);
     let path_to = |x: f32, waypoint: i32, flags: u32| {
         vec![
@@ -956,28 +957,28 @@ fn a_group_chooses_a_column_far_along_its_path_and_a_line_near_its_end() {
             level(&[BVector::ZERO, BVector::new(x, 9.0, 0.0)], waypoint, flags),
         ]
     };
-    assert_eq!(own(&type_world(path_to(30.0, 0, 0))), COLUMN);
-    assert_eq!(own(&type_world(path_to(30.0, 1, 1))), COLUMN);
-    assert_eq!(own(&type_world(path_to(30.0, 1, 0))), COLUMN);
-    assert_eq!(own(&type_world(path_to(8.0, 1, 0))), LINE);
+    assert_eq!(own(&type_world(path_to(30.0, 0, 0))), FormationKind::COLUMN);
+    assert_eq!(own(&type_world(path_to(30.0, 1, 1))), FormationKind::COLUMN);
+    assert_eq!(own(&type_world(path_to(30.0, 1, 0))), FormationKind::COLUMN);
+    assert_eq!(own(&type_world(path_to(8.0, 1, 0))), FormationKind::LINE);
     // a column (whose type the game tests first) turns to a line within 10 too; at 12 it
     // stays one until a target's radius and range lengthen 5 past 12
     let mut t = type_world(path_to(8.0, 1, 0));
     let mut column = Formation::new();
-    column.kind = COLUMN;
+    column.kind = FormationKind::COLUMN;
     t.groups.groups[0].current_formation = Some(column);
-    assert_eq!(own(&t), LINE);
+    assert_eq!(own(&t), FormationKind::LINE);
     t.groups.groups[0].motion.paths = path_to(12.0, 1, 0);
-    assert_eq!(own(&t), COLUMN);
+    assert_eq!(own(&t), FormationKind::COLUMN);
     let g = &mut t.groups.groups[0];
     g.current_target.target = GroupTarget::of_saved(3, -1);
     g.current_target.target_radius = 5.0;
     g.current_target.range = 2.5;
-    assert_eq!(own(&t), LINE);
+    assert_eq!(own(&t), FormationKind::LINE);
     // a lone level measures its own path; one point measures to the origin
     let mut t = type_world(vec![level(&[BVector::new(30.0, 0.0, 0.0)], 0, 0)]);
     t.groups.groups[0].motion.position[0] = BVector::new(40.0, 0.0, 0.0);
-    assert_eq!(own(&t), COLUMN);
+    assert_eq!(own(&t), FormationKind::COLUMN);
 }
 
 /// Flags bit 2 (`MinAutoDistanceLock`) choose a line, horde units only a horde; given a
@@ -991,20 +992,34 @@ fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
     ];
     let mut t = type_world(far);
     t.groups.groups[0].flags |= 4;
-    assert_eq!(own(&t), LINE);
+    assert_eq!(own(&t), FormationKind::LINE);
     t.masters[1] = crate::objects::masters::Masters::new([crate::objects::masters::Master {
         id: master_id(4),
         kind: master_type::COMBAT,
         ..crate::objects::masters::Master::default()
     }]);
-    assert_eq!(own(&t), HORDE);
+    assert_eq!(own(&t), FormationKind::HORDE);
     let g = t.groups.get(group_id(1)).unwrap().clone();
-    assert_eq!(t.formation_type(&g, BOX).unwrap(), BOX);
+    assert_eq!(
+        t.formation_type(&g, Some(FormationKind::BOX)).unwrap(),
+        FormationKind::BOX
+    );
     let mut locked = g;
-    locked.formation_locked_type = STAGGERED;
-    assert_eq!(t.formation_type(&locked, -1).unwrap(), STAGGERED);
-    locked.formation_locked_type = 0;
-    assert_eq!(t.formation_type(&locked, -1).unwrap(), HORDE);
+    locked.formation_locked_type = Some(FormationKind::STAGGERED);
+    assert_eq!(
+        t.formation_type(&locked, None).unwrap(),
+        FormationKind::STAGGERED
+    );
+    locked.formation_locked_type = Some(FormationKind::HORDE);
+    assert_eq!(
+        t.formation_type(&locked, None).unwrap(),
+        FormationKind::HORDE
+    );
+    locked.formation_locked_type = None;
+    assert_eq!(
+        t.formation_type(&locked, None).unwrap(),
+        FormationKind::HORDE
+    );
 }
 
 /// createColumnLine's sizes: a line at least twice as wide as it is deep, a column the other
@@ -1055,7 +1070,10 @@ fn a_line_of_two_unit_types_alternates_its_slots() {
     let g = group_of(3, 10, 1.0, &[(4, 5), (24, 5)]);
     let mut f = Formation::new();
     assert!(column_line_slots(&mut f, &g, false, (false, false), 77).unwrap());
-    assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (LINE, 5, 2));
+    assert_eq!(
+        (f.kind, f.maximum_width, f.maximum_depth),
+        (FormationKind::LINE, 5, 2)
+    );
     assert_eq!(f.slots.len(), 10);
     assert_eq!(f.slots[0].offset, BVector::new(0.0, 0.0, -2.0));
     assert_eq!(f.slots[4].offset, BVector::new(0.0, 0.0, 2.0));
@@ -1079,18 +1097,21 @@ fn a_staggered_line_shifts_its_lines_and_a_flanked_one_parts_them() {
     };
     let mut f = Formation::new();
     assert!(column_line_slots(&mut f, &g, false, (true, false), 0).unwrap());
-    assert_eq!(f.kind, STAGGERED);
+    assert_eq!(f.kind, FormationKind::STAGGERED);
     assert_eq!(offsets(&f, 0), [-3.5, -1.5, 0.5, 2.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.5, -2.5, -0.5, 1.5, 3.5]);
     assert_eq!(f.lines[1].distance_back, 2.0);
     let mut f = Formation::new();
     assert!(column_line_slots(&mut f, &g, false, (false, true), 0).unwrap());
-    assert_eq!(f.kind, FLANKED);
+    assert_eq!(f.kind, FormationKind::FLANKED);
     assert_eq!(offsets(&f, 0), [-4.5, -3.5, 2.5, 3.5, 4.5]);
     assert_eq!(offsets(&f, 1), [-4.0, -3.0, 2.0, 3.0, 4.0]);
     let mut f = Formation::new();
     assert!(column_line_slots(&mut f, &g, true, (false, false), 0).unwrap());
-    assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (COLUMN, 2, 5));
+    assert_eq!(
+        (f.kind, f.maximum_width, f.maximum_depth),
+        (FormationKind::COLUMN, 2, 5)
+    );
     assert!(!column_line_slots(&mut f, &UnitGroup::default(), false, (false, false), 0).unwrap());
 }
 

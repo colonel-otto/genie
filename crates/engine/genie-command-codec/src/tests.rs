@@ -11,6 +11,7 @@ use genie_core::commands::{
     TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
     UnloadPick, UnmodelledCommand, Waypoints,
 };
+use genie_core::groups::FormationKind;
 use genie_core::map::Point;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::MasterId;
@@ -359,7 +360,7 @@ fn the_unit_lists_keep_their_counted_ids() {
         Command::FormFormation(FormFormationCommand {
             player: player_id(3),
             units: unit_list(object_ids([37, 38])),
-            formation: 7,
+            formation: FormationKind::STAGGERED,
         })
     );
     let gather = packets::SetGatherState {

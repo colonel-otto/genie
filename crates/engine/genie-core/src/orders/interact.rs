@@ -1,6 +1,7 @@
 //! An interact order's unit, an order on a target, MOVE and its groups.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::{CommandArgs, GroupId};
 use crate::map::Point;
 use crate::math::rng::Stream;
@@ -435,7 +436,7 @@ impl World {
                 g.differentiator_id = commands;
             }
             if order.lock_line {
-                self.lock_formation(id, crate::groups::formation::LINE)?;
+                self.lock_formation(id, FormationKind::LINE)?;
             }
             // a queued order's new group first takes its first unit's target, not queued and
             // direct

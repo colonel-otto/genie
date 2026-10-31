@@ -139,7 +139,7 @@ fn listed(command: &Command) -> Result<Packet, GenieError> {
             commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
-            formation: c.formation,
+            formation: c.formation.get(),
             ids: ids(&c.units.ids, packets::FormFormation::FIXED)?,
         }),
         Command::SetGatherState(c) => Packet::SetGatherState(packets::SetGatherState {

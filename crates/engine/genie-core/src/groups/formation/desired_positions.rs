@@ -2,10 +2,9 @@
 //! along, a slot's place and the point back from the front.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
-use crate::groups::formation::{
-    BOX, COLUMN, EPSILON, FLANKED, HORDE, LINE, PHALANX, STAGGERED, USER_DEFINED,
-};
+use crate::groups::formation::EPSILON;
 use crate::groups::group_list::NO_FORMATION;
 use crate::groups::{Formation, UnitGroup};
 use crate::map::GridSize;
@@ -65,9 +64,12 @@ impl World {
     /// # Errors
     ///
     /// A member of a master the slice does not have.
-    pub fn own_formation_type(&self, g: &UnitGroup) -> Result<i32, GenieError> {
-        let current = g.current_formation.as_ref().map_or(HORDE, |f| f.kind);
-        let mut kind = LINE;
+    pub fn own_formation_type(&self, g: &UnitGroup) -> Result<FormationKind, GenieError> {
+        let current = g
+            .current_formation
+            .as_ref()
+            .map_or(FormationKind::HORDE, |f| f.kind);
+        let mut kind = FormationKind::LINE;
         if let Some(path) = measured_path(&g.motion.paths) {
             let end = if 1 < path.points.len() {
                 *path.points.checked(path.points.len() - 1)?
@@ -91,45 +93,48 @@ impl World {
                 crate::math::fmath::sqrt(d.x() * d.x() + d.height() * d.height() + d.y() * d.y());
             let patrol = top_path(&g.motion.paths).is_some_and(|p| p.path_flags & 1 != 0);
             if on_last_high_level_waypoint(&g.motion.paths) && !patrol {
-                if (current != COLUMN || column_to_line <= remaining)
-                    && (current == COLUMN || min_column <= remaining)
+                if (current != FormationKind::COLUMN || column_to_line <= remaining)
+                    && (current == FormationKind::COLUMN || min_column <= remaining)
                     && min_column < remaining
                     && column_to_line < remaining
                 {
-                    kind = COLUMN;
+                    kind = FormationKind::COLUMN;
                 }
             } else {
-                kind = COLUMN;
+                kind = FormationKind::COLUMN;
             }
         }
         if g.flags & 4 != 0 {
-            kind = LINE;
+            kind = FormationKind::LINE;
         }
         if self.horde_units_only(g)? {
-            kind = HORDE;
+            kind = FormationKind::HORDE;
         }
         Ok(kind)
     }
 
     /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) lays group `g` out in for the type
-    /// `given`: the given one, else (-1) the group's lock (`mFormationLockedType`), or with a
-    /// lock of -1 or 0 its own choice ([`World::own_formation_type`]).
+    /// `given`: the given one, else (none, the game's −1) the group's lock
+    /// (`mFormationLockedType`), or without a lock (−1) or with a horde's (0) its own choice
+    /// ([`World::own_formation_type`]).
     ///
     /// # Errors
     ///
     /// As [`World::own_formation_type`].
-    pub fn formation_type(&self, g: &UnitGroup, given: i32) -> Result<i32, GenieError> {
-        Ok(if given != -1 {
-            given
-        } else if matches!(g.formation_locked_type, -1 | 0) {
-            self.own_formation_type(g)?
-        } else {
-            g.formation_locked_type
+    pub fn formation_type(
+        &self,
+        g: &UnitGroup,
+        given: Option<FormationKind>,
+    ) -> Result<FormationKind, GenieError> {
+        Ok(match (given, g.formation_locked_type) {
+            (Some(given), _) => given,
+            (None, None | Some(FormationKind::HORDE)) => self.own_formation_type(g)?,
+            (None, Some(locked)) => locked,
         })
     }
 
-    /// `UpdateDesiredPositions` (`FUN_14103fd00`) of group `group` with the type `given` (-1 for
-    /// none): nothing without members. A group without a formation gets an empty one
+    /// `UpdateDesiredPositions` (`FUN_14103fd00`) of group `group` with the type `given` (none for
+    /// the game's −1): nothing without members. A group without a formation gets an empty one
     /// ([`Formation::new`]); the type is [`World::formation_type`]'s. A type other
     /// than the formation's, or a given one, makes the formation the previous one and a new one
     /// the current. A formation not yet of the type with a slot per member is laid out: a line,
@@ -155,15 +160,18 @@ impl World {
     pub fn update_desired_positions(
         &mut self,
         group: GroupId,
-        given: i32,
+        given: Option<FormationKind>,
     ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         if g.members.is_empty() {
             return Ok(());
         }
         let kind = self.formation_type(g, given)?;
-        let current_kind = g.current_formation.as_ref().map_or(HORDE, |f| f.kind);
-        let renew = current_kind != kind || given != -1;
+        let current_kind = g
+            .current_formation
+            .as_ref()
+            .map_or(FormationKind::HORDE, |f| f.kind);
+        let renew = current_kind != kind || given.is_some();
         let laid_out = !renew
             && g.current_formation
                 .as_ref()
@@ -178,24 +186,33 @@ impl World {
         }
         let mut f = g.current_formation.take().ok_or(NO_FORMATION)?;
         let result = match kind {
-            LINE | STAGGERED | FLANKED | COLUMN if !laid_out => self
-                .create_column_line(
+            FormationKind::LINE
+            | FormationKind::STAGGERED
+            | FormationKind::FLANKED
+            | FormationKind::COLUMN
+                if !laid_out =>
+            {
+                self.create_column_line(
                     &mut f,
                     group,
-                    kind == COLUMN,
-                    (kind == STAGGERED, kind == FLANKED),
+                    kind == FormationKind::COLUMN,
+                    (
+                        kind == FormationKind::STAGGERED,
+                        kind == FormationKind::FLANKED,
+                    ),
                 )
-                .map(|_| ()),
-            PHALANX if !laid_out => self.create_phalanx(&mut f, group).map(|_| ()),
-            BOX if !laid_out => self.create_box(&mut f, group).map(|_| ()),
+                .map(|_| ())
+            }
+            FormationKind::PHALANX if !laid_out => self.create_phalanx(&mut f, group).map(|_| ()),
+            FormationKind::BOX if !laid_out => self.create_box(&mut f, group).map(|_| ()),
             // true: the group has members; the transform after (`LAB_141040abf`)
-            HORDE if !laid_out => self
+            FormationKind::HORDE if !laid_out => self
                 .groups
                 .held(group)
                 .and_then(|g| self.create_horde(&mut f, g))
                 .and_then(|_| self.formation_transform(&mut f, group, false))
                 .map(|_| ()),
-            USER_DEFINED if !laid_out => self
+            FormationKind::USER_DEFINED if !laid_out => self
                 .groups
                 .held(group)
                 .and_then(|g| self.create_udf(&mut f, g))

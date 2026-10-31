@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::CommandArgs;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::attack::AttackOrder;
 use crate::groups::group_list::member_gone;
@@ -287,11 +288,11 @@ impl World {
                 length.is_none_or(|l| crate::math::fmath::below_or_unordered(min_column as f32, l));
             self.update_desired_positions(
                 group,
-                if column {
-                    crate::groups::formation::COLUMN
+                Some(if column {
+                    FormationKind::COLUMN
                 } else {
-                    crate::groups::formation::LINE
-                },
+                    FormationKind::LINE
+                }),
             )?;
         }
         let g = self.groups.held_mut(group)?;

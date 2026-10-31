@@ -2,6 +2,7 @@
 //! lock to the formation the command names.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::objects::ObjectId;
 use crate::orders::{LISTED, Place, set_differentiator_groups};
@@ -37,7 +38,7 @@ impl World {
         &mut self,
         player: PlayerId,
         ids: &[Option<ObjectId>],
-        formation: i32,
+        formation: FormationKind,
     ) -> Result<(), GenieError> {
         let Some(units) = self.command_check(player, ids)? else {
             return Ok(());

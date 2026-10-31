@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::groups::FormationKind;
 use crate::players::PlayerId;
 use crate::world::World;
 
@@ -15,7 +16,7 @@ pub struct FormFormationCommand {
     /// The units.
     pub units: UnitList,
     /// `+0x8`: the formation type the groups lock to.
-    pub formation: i32,
+    pub formation: FormationKind,
 }
 
 impl FormFormationCommand {

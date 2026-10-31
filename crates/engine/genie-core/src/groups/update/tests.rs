@@ -1,3 +1,4 @@
+use crate::groups::FormationKind;
 use crate::groups::{GroupTarget, Member, UnitGroup, UnitGroups};
 use crate::map::Footprint;
 use crate::map::GridSize;
@@ -783,7 +784,7 @@ fn the_relayout_follows_the_count_and_the_spacing() {
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.current_command = 9;
     g.current_formation = Some(crate::groups::Formation {
-        kind: 6,
+        kind: FormationKind::TYPE_6,
         ..crate::groups::Formation::default()
     });
     set(&mut t, 0, 6.0);
@@ -935,7 +936,7 @@ fn a_standing_group_s_move_ends_or_goes_on() {
     g.current_command = 1;
     g.motion.flags = 0;
     g.current_formation = Some(crate::groups::Formation {
-        kind: 1,
+        kind: FormationKind::COLUMN,
         slots: vec![slot(Some(object_id(10)), 3), slot(Some(object_id(11)), 3)],
         ..crate::groups::Formation::default()
     });
@@ -955,7 +956,7 @@ fn a_standing_group_s_move_ends_or_goes_on() {
     g.current_command = 1;
     g.motion.flags = 0;
     g.current_formation = Some(crate::groups::Formation {
-        kind: 1,
+        kind: FormationKind::COLUMN,
         slots: vec![slot(Some(object_id(10)), 0)],
         ..crate::groups::Formation::default()
     });
@@ -1200,7 +1201,7 @@ fn an_idle_group_goes() {
     g.current_command = -1;
     g.flags = 0;
     g.current_formation = Some(crate::groups::Formation {
-        kind: 1,
+        kind: FormationKind::COLUMN,
         slots: vec![crate::groups::Slot {
             state: 3,
             ..crate::groups::Slot::default()
@@ -1611,7 +1612,7 @@ fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
         };
         let g = t.groups.get_mut(group_id(1)).unwrap();
         g.current_formation = Some(crate::groups::Formation {
-            kind: 2,
+            kind: FormationKind::LINE,
             transform_type: 1,
             transform_orientation: BVector::new(0.0, 0.0, 1.0),
             slots: vec![slot(1.0), slot(2.0), slot(3.0)],

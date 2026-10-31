@@ -1,6 +1,7 @@
 //! A unit AI's construction, its order and target, its patrol and its moves.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
@@ -162,7 +163,7 @@ impl UnitAi {
             retarget_timer,
             stance: 3,
             // the constructor's word at +0x1d4 (0x140c2e080)
-            formation_type: 0,
+            formation_type: FormationKind::HORDE,
             // the object's place
             state_position: position.ground(),
             retarget_disabled: 0,

@@ -2,8 +2,8 @@
 //! population in order and a line after a column.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
-use crate::groups::formation::{BOX, COLUMN};
 use crate::groups::{Formation, UnitGroup, sub_formation};
 use crate::objects::ObjectId;
 use crate::world::slots::CheckedIndex;
@@ -359,8 +359,9 @@ impl World {
         let previous_column = g
             .previous_formation
             .as_ref()
-            .is_some_and(|p| p.kind == COLUMN);
-        if matches!(formation.kind, COLUMN | BOX) || !previous_column {
+            .is_some_and(|p| p.kind == FormationKind::COLUMN);
+        if matches!(formation.kind, FormationKind::COLUMN | FormationKind::BOX) || !previous_column
+        {
             return Ok(());
         }
         let width = formation.maximum_width;

@@ -28,23 +28,6 @@ use crate::movement::PathData;
 #[cfg(test)]
 use crate::world::World;
 
-/// The formation types (`mType`; the log names of `FUN_14103fd00`).
-pub const HORDE: i32 = 0;
-/// A column (`FUN_141012280` with a column ratio).
-pub const COLUMN: i32 = 1;
-/// A line (`FUN_141012280` with a line ratio).
-pub const LINE: i32 = 2;
-/// A phalanx (`FUN_1410147b0`).
-pub const PHALANX: i32 = 3;
-/// A box (`FUN_141011a00`).
-pub const BOX: i32 = 4;
-/// A user defined formation (`FUN_141014f60`).
-pub const USER_DEFINED: i32 = 5;
-/// A staggered line (`FUN_141012280` staggered).
-pub const STAGGERED: i32 = 7;
-/// A flanking formation (`FUN_141012280` flanked).
-pub const FLANKED: i32 = 8;
-
 /// The sub-formations a layout goes through (`FUN_141012280`'s `0..=5`).
 const CATEGORIES: i32 = 6;
 /// A flanked line's slots move apart by this less the line's share of the depth

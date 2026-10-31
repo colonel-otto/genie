@@ -2,6 +2,7 @@
 //! the lines' ranges and the relayout.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::UnitGroup;
 use crate::groups::group_list::{NO_FORMATION, member_gone};
@@ -65,7 +66,7 @@ impl World {
         let horde = g
             .current_formation
             .as_ref()
-            .is_some_and(|f| f.kind == crate::groups::formation::HORDE);
+            .is_some_and(|f| f.kind == FormationKind::HORDE);
         if (g.motion.flags & 2 != 0 && g.flags & 0x400 == 0 && !horde) || g.flags & 0x8000 != 0 {
             self.set_initial_position(group)?;
             self.groups.held_mut(group)?.flags &= !0x8000;
@@ -186,7 +187,7 @@ impl World {
             return Err(OTHER_COMMANDS);
         }
         if relayout {
-            self.update_desired_positions(group, -1)?;
+            self.update_desired_positions(group, None)?;
         }
         self.slots_step(group, &differentiators)?;
         self.update_end_steps(group)
@@ -249,7 +250,7 @@ impl World {
             } else {
                 self.move_position_to_front(group, FRONT_AHEAD)?;
             }
-            self.update_desired_positions(group, -1)?;
+            self.update_desired_positions(group, None)?;
             if let Some(mut f) = self.groups.held_mut(group)?.current_formation.take() {
                 f.clear_units();
                 let g = self.groups.held(group)?.clone();
@@ -386,7 +387,9 @@ impl World {
         let (mut relayout, mut refill) = (false, false);
         if count != g.members.len() {
             if g.current_command == ATTACK
-                && g.current_formation.as_ref().is_some_and(|f| f.kind == 6)
+                && g.current_formation
+                    .as_ref()
+                    .is_some_and(|f| f.kind == FormationKind::TYPE_6)
             {
                 refill = true;
             } else if crate::math::fmath::at_most_or_unordered(g.total_spacing, RELAYOUT_SPACING) {

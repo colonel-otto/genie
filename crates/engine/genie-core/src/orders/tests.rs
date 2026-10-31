@@ -1,5 +1,6 @@
 use super::*;
 use crate::commands::UnloadPick;
+use crate::groups::FormationKind;
 use crate::groups::GroupTarget;
 use crate::map::Footprint;
 use crate::map::GridSize;
@@ -3294,21 +3295,35 @@ fn a_formation_of_soldiers_makes_one_group_locked_to_its_type() {
         (13, 4, Point::new(22.0, 20.0)),
     ];
     let mut t = searchable(patrollers(&units, &[]));
-    t.form_formation(player_id(1), &object_ids([11, 12, 13]), 5)
-        .unwrap();
+    t.form_formation(
+        player_id(1),
+        &object_ids([11, 12, 13]),
+        FormationKind::USER_DEFINED,
+    )
+    .unwrap();
     let g = &t.groups.groups;
     assert_eq!(g.len(), 1);
     let ids: Vec<ObjectId> = g[0].members.iter().map(|m| m.id).collect();
     assert_eq!(ids, [object_id(11), object_id(12), object_id(13)]);
-    assert_eq!(g[0].formation_locked_type, 5);
+    assert_eq!(
+        g[0].formation_locked_type,
+        Some(FormationKind::USER_DEFINED)
+    );
     assert_eq!(g[0].differentiator_id, 0);
     assert_eq!(g[0].differentiator_groups, [g[0].id]);
     assert_eq!(t.groups.commands, 1);
     // the same units again: their group takes the command without a new one
-    t.form_formation(player_id(1), &object_ids([11, 12, 13]), 6)
-        .unwrap();
+    t.form_formation(
+        player_id(1),
+        &object_ids([11, 12, 13]),
+        FormationKind::TYPE_6,
+    )
+    .unwrap();
     assert_eq!(t.groups.groups.len(), 1);
-    assert_eq!(t.groups.groups[0].formation_locked_type, 6);
+    assert_eq!(
+        t.groups.groups[0].formation_locked_type,
+        Some(FormationKind::TYPE_6)
+    );
     assert_eq!(t.groups.groups[0].differentiator_id, 1);
     assert_eq!(t.groups.commands, 2);
 }
@@ -3331,8 +3346,12 @@ fn a_formation_stops_the_units_that_march_and_ignores_gone_ones() {
         u.ai.as_mut().unwrap().current_order = order;
         u.body.mover_mut().unwrap().ignore_units = vec![object_id(99)];
     }
-    t.form_formation(player_id(1), &object_ids([11, 12]), 5)
-        .unwrap();
+    t.form_formation(
+        player_id(1),
+        &object_ids([11, 12]),
+        FormationKind::USER_DEFINED,
+    )
+    .unwrap();
     let marched = &t.players[1].objects[0];
     assert_eq!(marched.body.mover().unwrap().ignore_units, []);
     assert_ne!(
@@ -3343,8 +3362,12 @@ fn a_formation_stops_the_units_that_march_and_ignores_gone_ones() {
     assert_eq!(other.body.mover().unwrap().ignore_units, [object_id(99)]);
     // all gone: refused
     let before = t.groups.commands;
-    t.form_formation(player_id(1), &object_ids([70, 71]), 5)
-        .unwrap();
+    t.form_formation(
+        player_id(1),
+        &object_ids([70, 71]),
+        FormationKind::USER_DEFINED,
+    )
+    .unwrap();
     assert_eq!(t.groups.commands, before);
 }
 

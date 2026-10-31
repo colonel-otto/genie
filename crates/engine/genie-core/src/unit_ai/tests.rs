@@ -4070,7 +4070,7 @@ fn a_new_building_unit_ai_draws_its_three_timers() {
             last_retarget_time: a % 500,
             retarget_timer: 750 + c % 500,
             stance: 0,
-            formation_type: 0,
+            formation_type: FormationKind::HORDE,
             state_position: Point::new(30.0, 88.0),
             retarget_disabled: 0,
             alert_mode: false,

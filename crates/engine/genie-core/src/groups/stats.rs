@@ -3,6 +3,7 @@
 //! change of members (`FUN_14100b940`).
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
 use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
@@ -272,10 +273,12 @@ impl World {
             .collect();
         let mut counts = [0i32; 9];
         for &id in &ids {
-            if let Some(ai) = self.object(id).and_then(|(_, u)| u.ai.as_ref())
-                && ai.formation_type < 9
+            if let Some(vote) = self
+                .object(id)
+                .and_then(|(_, u)| u.ai.as_ref())
+                .and_then(|ai| ai.formation_type.vote())
             {
-                *counts.checked_mut(ai.formation_type as usize)? += 1;
+                *counts.checked_mut(vote)? += 1;
             }
         }
         let mut best = 0;
@@ -285,17 +288,17 @@ impl World {
             }
         }
         if 3 <= best {
-            return self.lock_formation(group, best as i32);
+            return self.lock_formation(group, FormationKind::of_vote(best));
         }
         if let Some(g) = self.groups.get_mut(group) {
-            g.formation_locked_type = 0;
+            g.formation_locked_type = Some(FormationKind::HORDE);
         }
-        self.update_desired_positions(group, -1)?;
-        self.stances_state(group, 0)?;
+        self.update_desired_positions(group, None)?;
+        self.stances_state(group, FormationKind::HORDE)?;
         // FUN_1415417a0 finds sleeping members too
         for &id in &ids {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.formation_type = 0;
+                ai.formation_type = FormationKind::HORDE;
             }
         }
         Ok(())
@@ -316,7 +319,11 @@ impl World {
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, from a
     /// caller that holds it.
-    pub fn lock_formation(&mut self, group: GroupId, kind: i32) -> Result<(), GenieError> {
+    pub fn lock_formation(
+        &mut self,
+        group: GroupId,
+        kind: FormationKind,
+    ) -> Result<(), GenieError> {
         let g = self.groups.held(group)?;
         // the spacing is read again for every member held (0x14102500a): the first whose
         // radius gives one above it sets it, and every later member finds it set
@@ -334,11 +341,15 @@ impl World {
             }
         }
         self.groups.held_mut(group)?.desired_spacing = spacing;
-        let own_choice = matches!(kind, 1 | 2);
-        let locked = if own_choice { 0 } else { kind };
-        self.groups.held_mut(group)?.formation_locked_type = locked;
-        self.update_desired_positions(group, if own_choice { -1 } else { kind })?;
-        self.stances_state(group, locked as u8)?;
+        let own_choice = matches!(kind, FormationKind::COLUMN | FormationKind::LINE);
+        let locked = if own_choice {
+            FormationKind::HORDE
+        } else {
+            kind
+        };
+        self.groups.held_mut(group)?.formation_locked_type = Some(locked);
+        self.update_desired_positions(group, (!own_choice).then_some(kind))?;
+        self.stances_state(group, locked)?;
         Ok(())
     }
 
@@ -346,7 +357,11 @@ impl World {
     /// (`+0x1a9`: 0 aggressive, 1 defensive, 2 stand ground, 3 no attack; on equal counts the
     /// lower), 0 without members whose unit AI the world holds; each such member's formation
     /// type (`+0x1d4`) becomes `formation_type`.
-    pub fn stances_state(&mut self, group: GroupId, formation_type: u8) -> Result<(), GenieError> {
+    pub fn stances_state(
+        &mut self,
+        group: GroupId,
+        formation_type: FormationKind,
+    ) -> Result<(), GenieError> {
         let Some(g) = self.groups.get(group) else {
             return Ok(());
         };
@@ -374,7 +389,7 @@ impl World {
         // FUN_1415417a0 finds sleeping members too
         for &id in &ids {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.formation_type = formation_type;
+                ai.formation_type = formation_type.unit_byte();
             }
         }
         Ok(())
@@ -562,7 +577,8 @@ impl World {
         };
         let mut d = crate::math::fmath::sub(view.at, slot.transform_position);
         d = d.with_height(0.0);
-        let limit = if f.kind == 7 || !crate::math::fmath::below_or_unordered(largest, WIDE_RADIUS)
+        let limit = if f.kind == FormationKind::STAGGERED
+            || !crate::math::fmath::below_or_unordered(largest, WIDE_RADIUS)
         {
             FAR_WIDE
         } else {
@@ -1053,7 +1069,7 @@ mod tests {
             .current_formation
             .as_mut()
             .unwrap()
-            .kind = 7;
+            .kind = FormationKind::STAGGERED;
         let _ = t.statistics_only(group_id(1), true).unwrap();
         assert_eq!(ids(&t), [object_id(11), object_id(10)]);
         let mut t = world(2.5, [10, 11]);

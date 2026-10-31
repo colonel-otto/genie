@@ -424,6 +424,7 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    use crate::groups::FormationKind;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::map::Footprint;
     use crate::map::Position;
@@ -698,14 +699,15 @@ mod tests {
         }
         let asleep = t.players[1].objects.remove(2).unwrap();
         t.players[1].sleeping.push(asleep);
-        t.stances_state(group_id(1), 5).unwrap();
+        t.stances_state(group_id(1), FormationKind::USER_DEFINED)
+            .unwrap();
         assert_eq!(
             t.players[1].sleeping[0].ai.as_ref().unwrap().formation_type,
-            5
+            FormationKind::USER_DEFINED
         );
         assert_eq!(
             t.players[1].objects[0].ai.as_ref().unwrap().formation_type,
-            5
+            FormationKind::USER_DEFINED
         );
     }
 
@@ -724,7 +726,7 @@ mod tests {
             }
         }
         t.groups.get_mut(group_id(1)).unwrap().desired_spacing = 0.0;
-        let _ = t.lock_formation(group_id(1), crate::groups::formation::LINE);
+        let _ = t.lock_formation(group_id(1), FormationKind::LINE);
         let spacing = t.groups.get(group_id(1)).unwrap().desired_spacing;
         assert_eq!(spacing, 0.2 * crate::math::image::group::SPACING_FACTOR);
     }

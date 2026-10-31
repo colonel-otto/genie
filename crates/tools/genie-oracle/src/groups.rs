@@ -7,8 +7,9 @@
 
 use genie_core::GenieError;
 use genie_core::groups::{
-    Formation, FormationLine, GroupCommand, GroupId, GroupOrder, GroupTarget, LinePoint, Member,
-    Motion, PointLine, Slot, SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
+    Formation, FormationKind, FormationLine, GroupCommand, GroupId, GroupOrder, GroupTarget,
+    LinePoint, Member, Motion, PointLine, Slot, SpecificMove, TargetData, UnitGroup, UnitGroups,
+    UnitTypeStatistic,
 };
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
@@ -67,7 +68,7 @@ fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, GenieError
 
 fn formation(f: &saved::Formation) -> Formation {
     Formation {
-        kind: f.type_,
+        kind: FormationKind::from(f.type_),
         slots: f
             .slots
             .iter()
@@ -138,7 +139,7 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
         previous_formation: g.previous_formation.as_deref().map(formation),
         current_formation: g.current_formation.as_deref().map(formation),
         garbage: g.garbage,
-        formation_locked_type: g.formation_locked_type,
+        formation_locked_type: FormationKind::of_field(g.formation_locked_type),
         flags: g.group_flags_m_bits,
         centroid: vec3(&g.centroid),
         desired_height: g.desired_height,
@@ -397,7 +398,8 @@ flat_value!(
     ObjectId,
     GroupId,
     GroupTarget,
-    ActionType
+    ActionType,
+    FormationKind
 );
 
 impl<T: Flat, const N: usize> Flat for [T; N] {

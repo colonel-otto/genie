@@ -1,10 +1,9 @@
 //! createColumnLine (`FUN_141012280`): the sizes and the slots of its sub-formations.
 
 use crate::GenieError;
+use crate::groups::FormationKind;
 use crate::groups::GroupId;
-use crate::groups::formation::{
-    CATEGORIES, COLUMN, EPSILON, FLANK_SPACING, FLANKED, LINE, STAGGER_SHARE, STAGGERED, TWO,
-};
+use crate::groups::formation::{CATEGORIES, EPSILON, FLANK_SPACING, STAGGER_SHARE, TWO};
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::conversions::cvttss2si;
@@ -110,13 +109,13 @@ pub(crate) fn column_line_slots(
         s.active = 0;
     }
     formation.kind = if column {
-        COLUMN
+        FormationKind::COLUMN
     } else if flanked {
-        FLANKED
+        FormationKind::FLANKED
     } else if staggered {
-        STAGGERED
+        FormationKind::STAGGERED
     } else {
-        LINE
+        FormationKind::LINE
     };
     formation.transform_type = 0;
     formation.maximum_width = max_width;
@@ -450,10 +449,13 @@ impl World {
         if !column_line_slots(formation, g, column, staggered_flanked, self.world_time)? {
             return Ok(false);
         }
-        let after_column = matches!(formation.kind, LINE | STAGGERED | FLANKED)
-            && g.previous_formation
-                .as_ref()
-                .is_some_and(|p| p.kind == COLUMN);
+        let after_column = matches!(
+            formation.kind,
+            FormationKind::LINE | FormationKind::STAGGERED | FormationKind::FLANKED
+        ) && g
+            .previous_formation
+            .as_ref()
+            .is_some_and(|p| p.kind == FormationKind::COLUMN);
         self.lay_units(formation, group, after_column)?;
         Ok(true)
     }

@@ -234,7 +234,7 @@ fn a_new_group_holds_the_constructor_s_values() {
     );
     assert_eq!((g.previous_formation, g.current_formation), (None, None));
     assert!(g.members.is_empty() && g.unit_types.is_empty() && g.command_queue.is_empty());
-    assert_eq!((g.formation_locked_type, g.desired_spacing), (0, 0.0));
+    assert_eq!((g.formation_locked_type, g.desired_spacing), (None, 0.0));
     assert_eq!(g.motion, Motion::new());
 }
 
