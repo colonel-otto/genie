@@ -879,8 +879,7 @@ fn waters(t: &mut World) {
         forest: false,
     };
     t.spatial.terrain = Some(crate::map::terrain::Terrain::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         tiles,
         vec![kind(0), kind(1), kind(0x21)],
         Vec::new(),

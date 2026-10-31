@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::construction::build::{Construction, SITE_GONE, STARTED};
+use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
@@ -75,7 +76,11 @@ pub(super) fn lay_foundation(
         "a completion without the map's terrain",
     ))?;
     let (x, y) = (placed.position.x(), placed.position.y());
-    if !c.snow && 0 <= x as i32 && 0 <= y as i32 && terrain.snow_under(x as i32, y as i32)? {
+    if !c.snow
+        && 0 <= x as i32
+        && 0 <= y as i32
+        && terrain.snow_under(Tile::new(x as i32, y as i32))?
+    {
         c.snow = true;
     }
     if 0 <= building.foundation_terrain {

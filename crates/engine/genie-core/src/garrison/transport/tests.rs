@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, SpriteReads};
 use crate::objects::ObjectState;
 use crate::test_ids::object_id;
@@ -8,7 +9,7 @@ use crate::unit_ai::NotifyKind;
 /// A map of zones by column (the tile's x over 10) and terrain flags by a closure; the shore
 /// point the planner gives, recorded.
 struct Coast {
-    flags: fn(i16, i16) -> u8,
+    flags: fn(Tile) -> u8,
     near: bool,
     shore: Option<Point>,
     asked: Vec<(Point, Point)>,
@@ -27,8 +28,8 @@ impl Shore for Coast {
         Ok(self.near)
     }
 
-    fn flags(&self, x: i16, y: i16) -> u8 {
-        (self.flags)(x, y)
+    fn flags(&self, tile: Tile) -> u8 {
+        (self.flags)(tile)
     }
 
     fn shore_point(&mut self, from: Point, to: Point) -> Option<Point> {
@@ -39,7 +40,7 @@ impl Shore for Coast {
 
 fn coast(near: bool) -> Coast {
     Coast {
-        flags: |x, _| if 20 <= x { LAND_FLAGS } else { 1 },
+        flags: |t| if 20 <= t.x() { LAND_FLAGS } else { 1 },
         near,
         shore: None,
         asked: Vec::new(),
@@ -337,8 +338,8 @@ fn the_shore_search_looks_about_the_footprint_for_the_point_s_zone_or_land() {
     assert!(t.next_to_shore(&east, &mut c).unwrap());
     // the box stays on the map: a ship at the west edge reads no tile below 0
     let mut c = Coast {
-        flags: |x, y| {
-            assert!(0 <= x && 0 <= y, "({x}, {y})");
+        flags: |t| {
+            assert!(0 <= t.x() && 0 <= t.y(), "{t:?}");
             0
         },
         ..coast(true)
@@ -371,7 +372,7 @@ fn an_unload_out_of_reach_or_beside_no_shore_tells_the_owner_unless_over_water()
     // owner, over water it waits silently
     assert!(alerts(&unloading(), &s, &mut coast(true)));
     let mut wet = coast(true);
-    wet.flags = |_, _| 1;
+    wet.flags = |_| 1;
     assert!(!alerts(&unloading(), &s, &mut wet));
     let (r, Left { stands, .. }) = run(&mut unloading(), &s, &mut wet);
     assert_eq!((r, stands), (Ok(Updated::Code(0)), true));
@@ -603,7 +604,12 @@ fn terrain(size: i32, fill: u8, tiles: &[([i16; 2], u8)]) -> crate::map::terrain
         shown: true,
         ..crate::map::terrain::TerrainKind::default()
     };
-    crate::map::terrain::Terrain::new(size, size, kinds, vec![shown; 24], Vec::new())
+    crate::map::terrain::Terrain::new(
+        crate::map::GridSize::new(size, size),
+        kinds,
+        vec![shown; 24],
+        Vec::new(),
+    )
 }
 
 /// The tile of the retry's `n`th draw (from 1) about (20, 20) from [`rng`]'s seed `seed`.

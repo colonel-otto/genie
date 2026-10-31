@@ -514,8 +514,7 @@ pub(crate) fn placeable_on(t: &mut World, map: GridSize) {
     let n = (w * h) as usize;
     t.spatial.map = GridSize::new(w, h);
     let mut terrain = crate::map::terrain::Terrain::new(
-        w,
-        h,
+        GridSize::new(w, h),
         vec![(0, 255, -1); n],
         vec![
             crate::map::terrain::TerrainKind {
@@ -14531,8 +14530,7 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
     let mut t = World::new(0, 29910, PlayerId::new(1), vec![0; 2], players);
     t.spatial = Spatial::new(GridSize::new(40, 40));
     let mut terrain = crate::map::terrain::Terrain::new(
-        40,
-        40,
+        GridSize::new(40, 40),
         vec![(0, 0, -1); 40 * 40],
         vec![crate::map::terrain::TerrainKind {
             shown: true,

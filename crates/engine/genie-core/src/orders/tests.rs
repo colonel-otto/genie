@@ -3788,8 +3788,7 @@ fn searchable(mut t: World) -> World {
         forest: false,
     };
     s.terrain = Some(crate::map::terrain::Terrain::new(
-        60,
-        60,
+        GridSize::new(60, 60),
         vec![(0, 255, -1); 3600],
         vec![kind],
         vec![vec![1.0]],

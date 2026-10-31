@@ -9,8 +9,10 @@
 
 use crate::GenieError;
 use crate::map::Footprint;
+use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::TerrainMask;
+use crate::map::Tile;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -64,8 +66,7 @@ pub const fn is_farm_terrain(t: u8) -> bool {
 /// The map's terrain and the `.dat`'s terrain records.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Terrain {
-    width: i32,
-    height: i32,
+    size: GridSize,
     /// Per tile, row by row: the terrain (`+0x9`), the terrain to restore (`+0xa`, 255 for none)
     /// and the layer (`+0xc`, −1 for none).
     pub kinds: Vec<u8>,
@@ -227,15 +228,13 @@ impl Terrain {
     /// The map's terrain from its tiles, the terrain table and the restrictions.
     #[must_use]
     pub fn new(
-        width: i32,
-        height: i32,
+        size: GridSize,
         tiles: Vec<(u8, u8, i16)>,
         terrains: Vec<TerrainKind>,
         restrictions: Vec<Vec<f32>>,
     ) -> Self {
         Self {
-            width,
-            height,
+            size,
             kinds: tiles.iter().map(|t| t.0).collect(),
             restore: tiles.iter().map(|t| t.1).collect(),
             layers: tiles.iter().map(|t| t.2).collect(),
@@ -251,21 +250,23 @@ impl Terrain {
     pub fn set_elevations(&mut self, elevations: Vec<u8>) {
         self.elevations = elevations;
         let at = |x: i32, y: i32, own: u8| {
-            self.index(x, y)
+            self.size
+                .index(Tile::new(x, y))
                 .and_then(|i| self.elevations.get(i).copied())
                 .unwrap_or(own)
         };
         let mut shapes = Vec::with_capacity(self.elevations.len());
-        for y in 0..self.height {
-            for x in 0..self.width {
+        for y in 0..self.size.height() {
+            for x in 0..self.size.width() {
                 let Some(e) = self
-                    .index(x, y)
+                    .size
+                    .index(Tile::new(x, y))
                     .and_then(|i| self.elevations.get(i).copied())
                 else {
                     shapes.push(0);
                     continue;
                 };
-                let (w_last, h_last) = (self.width - 1, self.height - 1);
+                let (w_last, h_last) = (self.size.width() - 1, self.size.height() - 1);
                 // FUN_140f69470's reads: a neighbour past the map's edge is the tile itself
                 let n = if 0 < y { at(x, y - 1, e) } else { e };
                 let east = if x < w_last { at(x + 1, y, e) } else { e };
@@ -297,15 +298,18 @@ impl Terrain {
         self.shapes = shapes;
     }
 
-    fn index(&self, x: i32, y: i32) -> Option<usize> {
-        (0 <= x && x < self.width && 0 <= y && y < self.height)
-            .then(|| (y * self.width + x) as usize)
+    /// The map's size in tiles.
+    #[must_use]
+    pub const fn size(&self) -> GridSize {
+        self.size
     }
 
     /// A tile's terrain (the map tile's `+0x9`), None off the map.
     #[must_use]
-    pub fn kind(&self, x: i32, y: i32) -> Option<u8> {
-        self.index(x, y).and_then(|i| self.kinds.get(i).copied())
+    pub fn kind(&self, tile: Tile) -> Option<u8> {
+        self.size
+            .index(tile)
+            .and_then(|i| self.kinds.get(i).copied())
     }
 
     /// The ground's height under (`x`, `y`) on the map (the static `new_position`'s,
@@ -314,7 +318,8 @@ impl Terrain {
     pub fn ground(&self, x: f32, y: f32) -> Result<f32, GenieError> {
         let (tx, ty) = (x as i32, y as i32);
         let i = self
-            .index(tx, ty)
+            .size
+            .index(Tile::new(tx, ty))
             .filter(|&i| i < self.elevations.len() && i < self.shapes.len())
             .ok_or(GenieError::unsupported(
                 "the ground's height where the elevations are not known",
@@ -323,13 +328,13 @@ impl Terrain {
         Ok(f32::from(*self.elevations.checked(i)?) + slope_share(*self.shapes.checked(i)?, fx, fy))
     }
 
-    /// The terrain defense of an object on tile (`x`, `y`) whose master has `defense_terrain_bonus`
+    /// The terrain defense of an object on `tile` whose master has `defense_terrain_bonus`
     /// `bonus` (`FUN_141082530`): the restriction's value (`world+0x788`) for the tile's terrain
     /// to restore, else its terrain (the tile's `+0xa`, else `+0x9`); 0 counts as 1, and an
     /// object off the tiles has 1. None for a restriction or terrain the data has not got.
     #[must_use]
-    pub fn defense(&self, bonus: i16, x: i32, y: i32) -> Option<f32> {
-        let Some(i) = self.index(x, y) else {
+    pub fn defense(&self, bonus: i16, tile: Tile) -> Option<f32> {
+        let Some(i) = self.size.index(tile) else {
             return Some(1.0);
         };
         let t = match *self.restore.get(i)? {
@@ -360,12 +365,13 @@ impl Terrain {
     }
 
     /// `FUN_1413fbee0` (`FUN_1413fbf30` on a place's tile) with `FUN_1413fc0f0`: the terrain a map
-    /// read sees on tile (`x`, `y`) (terrain 0 off the map) has the terrain table's bit 4 (the
-    /// `.dat`'s `is_water` 16: a wet beach, where land units and ships meet).
+    /// read sees on `tile` (terrain 0 off the map) has the terrain table's bit 4 (the `.dat`'s
+    /// `is_water` 16: a wet beach, where land units and ships meet).
     #[must_use]
-    pub fn beach(&self, x: i32, y: i32) -> bool {
+    pub fn beach(&self, tile: Tile) -> bool {
         let t = self
-            .index(x, y)
+            .size
+            .index(tile)
             .and_then(|i| self.kinds.get(i))
             .map_or(0, |&k| self.seen(k));
         self.terrains
@@ -374,12 +380,12 @@ impl Terrain {
     }
 
     /// `FUN_1413fbee0`: the terrain table's flags (the `.dat`'s `is_water` byte) of the terrain a
-    /// map read sees on tile (`x`, `y`) (`FUN_140f690e0` on shorts: terrain 0 off the map, or
-    /// for a terrain beyond the records or hidden); none for a terrain the records lack. Bits 0 to 2 are water (`FUN_1413fc2b0`), bits 3 and 4
-    /// land (`FUN_1413fc270`).
+    /// map read sees on `tile` (`FUN_140f690e0` on shorts, [`Tile::short`]: terrain 0 off the
+    /// map, or for a terrain beyond the records or hidden); none for a terrain the records lack.
+    /// Bits 0 to 2 are water (`FUN_1413fc2b0`), bits 3 and 4 land (`FUN_1413fc270`).
     #[must_use]
-    pub fn flags_at(&self, x: i16, y: i16) -> u8 {
-        let t = self.read(x, y);
+    pub fn flags_at(&self, tile: Tile) -> u8 {
+        let t = self.read(tile);
         self.terrains.get(usize::from(t)).map_or(0, |k| k.flags)
     }
 
@@ -393,30 +399,30 @@ impl Terrain {
         if x == -1.0 || y == -1.0 {
             return None;
         }
-        let tile = |v: f32| crate::math::conversions::cvttss2si(v) as i16;
-        let (tx, ty) = (tile(x), tile(y));
-        let inside =
-            0 <= tx && i32::from(tx) < self.width && 0 <= ty && i32::from(ty) < self.height;
-        inside.then(|| self.read(tx, ty))
+        let short = |v: f32| i32::from(crate::math::conversions::cvttss2si(v) as i16);
+        let tile = Tile::new(short(x), short(y));
+        self.size.holds(tile).then(|| self.read(tile))
     }
 
-    /// `FUN_140f690e0`: the terrain a map read sees on tile (`x`, `y`): terrain 0 off the map, or
-    /// for a terrain beyond the records or hidden.
+    /// `FUN_140f690e0`: the terrain a map read sees on `tile` (its x and y shorts,
+    /// [`Tile::short`]): terrain 0 off the map, or for a terrain beyond the records or hidden.
     #[must_use]
-    pub fn read(&self, x: i16, y: i16) -> u8 {
-        self.index(i32::from(x), i32::from(y))
+    pub fn read(&self, tile: Tile) -> u8 {
+        self.size
+            .index(tile)
             .and_then(|i| self.kinds.get(i))
             .map_or(0, |&k| self.seen(k))
     }
 
-    /// The snow check of a completed building on tile (`x`, `y`) (`FUN_1411dbb70`'s "pick snow"):
+    /// The snow check of a completed building on `tile` (`FUN_1411dbb70`'s "pick snow"):
     /// the tile's terrain (`FUN_1413fbee0`) or its layer read as a terrain (`FUN_1413fbf90`, the
     /// layer's low byte) is snow. Its decal (`FUN_1413b7bf0`, which may draw from the Object
     /// stream between a push and a pop of its state, `FUN_140811270`/`FUN_140811210`) is not
     /// held.
-    pub fn snow_under(&self, x: i32, y: i32) -> Result<bool, GenieError> {
+    pub fn snow_under(&self, tile: Tile) -> Result<bool, GenieError> {
         let i = self
-            .index(x, y)
+            .size
+            .index(tile)
             .ok_or(GenieError::unsupported("a building off the map's tiles"))?;
         let kind = self.seen(*self.kinds.checked(i)?);
         let layer = self.seen(*self.layers.checked(i)? as u8);
@@ -463,7 +469,7 @@ impl Terrain {
         if y1 < y0 {
             std::mem::swap(&mut y0, &mut y1);
         }
-        let (w, h) = (self.width - 1, self.height - 1);
+        let (w, h) = (self.size.width() - 1, self.size.height() - 1);
         if x0 > w || y0 > h || x1 < 0 || y1 < 0 {
             return Err(GenieError::unsupported("a foundation terrain off the map"));
         }
@@ -494,7 +500,7 @@ impl Terrain {
             || f.class == CLASS_14;
         for ty in y0..=y1 {
             for tx in x0..=x1 {
-                let i = self.index(tx, ty).ok_or(TILE_OFF_MAP)?;
+                let i = self.size.index(Tile::new(tx, ty)).ok_or(TILE_OFF_MAP)?;
                 let t = *self.kinds.checked(i)?;
                 if let Some(values) = bonus.as_ref() {
                     let v = values.get(usize::from(t)).copied().unwrap_or(0.0);
@@ -543,8 +549,7 @@ mod tests {
         ];
         terrains[32].flags = 0xa0;
         Terrain {
-            width: 2,
-            height: n as i32 / 2,
+            size: GridSize::new(2, n as i32 / 2),
             kinds,
             restore: vec![255; n],
             layers,
@@ -564,12 +569,12 @@ mod tests {
         t.restrictions[2][1] = 1.25;
         t.restrictions[2][3] = 0.75;
         t.restore[3] = 1;
-        assert_eq!(t.defense(2, 1, 0), Some(1.25));
-        assert_eq!(t.defense(2, 0, 0), Some(1.0));
-        assert_eq!(t.defense(2, 1, 1), Some(1.25));
-        assert_eq!(t.defense(2, 5, 5), Some(1.0));
-        assert_eq!(t.defense(9, 1, 0), None);
-        assert_eq!(t.defense(-1, 1, 0), None);
+        assert_eq!(t.defense(2, Tile::new(1, 0)), Some(1.25));
+        assert_eq!(t.defense(2, Tile::new(0, 0)), Some(1.0));
+        assert_eq!(t.defense(2, Tile::new(1, 1)), Some(1.25));
+        assert_eq!(t.defense(2, Tile::new(5, 5)), Some(1.0));
+        assert_eq!(t.defense(9, Tile::new(1, 0)), None);
+        assert_eq!(t.defense(-1, Tile::new(1, 0)), None);
     }
 
     /// `FUN_1411a8ba0`'s terrain at a point: x or y exactly −1 reads none, a NaN reads tile 0
@@ -615,17 +620,31 @@ mod tests {
         t.terrains[1].flags = 1;
         t.terrains[2].flags = 0x10;
         t.terrains[3].shown = false;
-        assert_eq!([t.flags_at(0, 0), t.flags_at(1, 0)], [1, 0x10]);
-        assert_eq!([t.flags_at(0, 1), t.flags_at(1, 1)], [8, 8]);
         assert_eq!(
-            [t.read(0, 0), t.read(0, 1), t.read(1, 1), t.read(5, 5)],
+            [t.flags_at(Tile::new(0, 0)), t.flags_at(Tile::new(1, 0))],
+            [1, 0x10]
+        );
+        assert_eq!(
+            [t.flags_at(Tile::new(0, 1)), t.flags_at(Tile::new(1, 1))],
+            [8, 8]
+        );
+        assert_eq!(
+            [
+                t.read(Tile::new(0, 0)),
+                t.read(Tile::new(0, 1)),
+                t.read(Tile::new(1, 1)),
+                t.read(Tile::new(5, 5))
+            ],
             [1, 0, 0, 0]
         );
         // off the map: terrain 0
-        assert_eq!([t.flags_at(-1, 0), t.flags_at(2, 0)], [8, 8]);
+        assert_eq!(
+            [t.flags_at(Tile::new(-1, 0)), t.flags_at(Tile::new(2, 0))],
+            [8, 8]
+        );
         // without terrain 0's record, none
         t.terrains.clear();
-        assert_eq!(t.flags_at(0, 1), 0);
+        assert_eq!(t.flags_at(Tile::new(0, 1)), 0);
     }
 
     #[test]
@@ -689,8 +708,8 @@ mod tests {
     #[test]
     fn a_house_completed_on_snow_leaves_terrain_6_under_a_snow_layer() {
         let mut t = map(vec![32, 32, 32, 9], vec![-1, -1, -1, 32]);
-        assert!(t.snow_under(0, 0).unwrap());
-        assert!(t.snow_under(1, 1).unwrap());
+        assert!(t.snow_under(Tile::new(0, 0)).unwrap());
+        assert!(t.snow_under(Tile::new(1, 1)).unwrap());
         t.cover(&Foundation {
             position: Position::new(1.0, 1.0, 0.0),
             clearance: Footprint::new(1.0, 1.0),
@@ -714,8 +733,7 @@ mod tests {
     #[test]
     fn the_town_centre_s_foundation_leaves_its_gap() {
         let mut t = map(vec![0; 2 * 4], vec![-1; 2 * 4]);
-        t.width = 4;
-        t.height = 4;
+        t.size = GridSize::new(4, 4);
         t.kinds = vec![0; 16];
         t.layers = vec![-1; 16];
         t.restore = vec![255; 16];
@@ -745,7 +763,7 @@ mod tests {
     #[test]
     fn foundation_27_covers_grass_but_not_a_terrain_outside_its_list() {
         let mut t = map(vec![0, 2, 9, 47], vec![-1, -1, -1, -1]);
-        assert!(!t.snow_under(0, 0).unwrap());
+        assert!(!t.snow_under(Tile::new(0, 0)).unwrap());
         t.cover(&Foundation {
             position: Position::new(1.0, 1.0, 0.0),
             clearance: Footprint::new(1.0, 1.0),

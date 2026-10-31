@@ -18,6 +18,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::movement::move_to::{MoveDefaults, MoveToAction, MoveToReads};
 use crate::objects::masters::ActionType;
 use crate::objects::sprite::Graphic;
@@ -134,8 +135,9 @@ pub trait Shore {
     ///
     /// A map the caller cannot read.
     fn near(&mut self, zone: u8, reach: f32) -> Result<bool, GenieError>;
-    /// The terrain table's flags of tile (`x`, `y`) ([`crate::map::terrain::Terrain::flags_at`]).
-    fn flags(&self, x: i16, y: i16) -> u8;
+    /// The terrain table's flags of `tile`, its x and y shorts
+    /// ([`crate::map::terrain::Terrain::flags_at`]).
+    fn flags(&self, tile: Tile) -> u8;
     /// `FUN_140f7c390` with the planner of the unit's restriction (`FUN_140f7cb30`, none without
     /// a master): the last point of the planner's path from `from` to `to` whose tile has an edge
     /// ([`crate::pathing::tile_path::Planner::last_open_point`]); None without a planner or such a point.

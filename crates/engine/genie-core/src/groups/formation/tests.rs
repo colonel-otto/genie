@@ -102,8 +102,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         },
     ];
     t.spatial.terrain = Some(Terrain::new(
-        20,
-        20,
+        GridSize::new(20, 20),
         vec![(0, 255, -1); 400],
         kinds,
         vec![vec![1.0, 0.0]],
@@ -609,8 +608,7 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
             forest: false,
         };
         t.spatial.terrain = Some(Terrain::new(
-            20,
-            20,
+            GridSize::new(20, 20),
             vec![(0, 255, -1); 400],
             vec![kind(1), kind(8)],
             vec![vec![1.0, 0.0], vec![0.0, 1.0]],

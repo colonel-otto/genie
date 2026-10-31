@@ -2,6 +2,8 @@
 //! ([`crate::map::Position`]) and an object's radii ([`crate::map::Footprint`]).
 
 use crate::map::Position;
+use crate::map::Tile;
+use crate::math::conversions::cvttss2si;
 
 /// An axis of the ground: a routine that runs along either one names it, not a number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,6 +86,13 @@ impl Point {
     pub const fn with_height(self, z: f32) -> Position {
         Position::new(self.0[0], self.0[1], z)
     }
+
+    /// The tile it lies in, x and y each cut toward zero by `CVTTSS2SI` (a NaN or a value past
+    /// 32 bits is `i32::MIN`).
+    #[must_use]
+    pub fn tile(self) -> Tile {
+        Tile::new(cvttss2si(self.0[0]), cvttss2si(self.0[1]))
+    }
 }
 
 impl From<[f32; 2]> for Point {
@@ -101,7 +110,7 @@ impl genie_diff::Diff for Point {
 
 #[cfg(test)]
 mod tests {
-    use crate::map::{Axis, Point, Position};
+    use crate::map::{Axis, Point, Position, Tile};
 
     /// A point's x and y keep their bits, and a height makes it a place.
     #[test]
@@ -119,6 +128,17 @@ mod tests {
             Position::new(1.0, 2.0, 3.0)
         );
         assert_eq!(Position::new(1.0, 2.0, 3.0).ground(), Point::new(1.0, 2.0));
+    }
+
+    /// A point's tile cuts x and y toward zero; a NaN or a value past 32 bits is `i32::MIN`.
+    #[test]
+    fn a_point_s_tile_cuts_toward_zero() {
+        assert_eq!(Point::new(3.9, -0.5).tile(), Tile::new(3, 0));
+        assert_eq!(Point::new(-1.5, 7.0).tile(), Tile::new(-1, 7));
+        assert_eq!(
+            Point::new(f32::NAN, 3e9).tile(),
+            Tile::new(i32::MIN, i32::MIN)
+        );
     }
 
     /// A point's component along an axis is its x or its y, and setting it changes only that.

@@ -42,7 +42,7 @@ pub(crate) fn retry_point(
         at = Point::new(x, y);
         let (tx, ty) = (cvttss2si(x), cvttss2si(y));
         if 0 <= tx && 0 <= ty && tx < w && ty < h {
-            seen = terrain.read(tx as i16, ty as i16);
+            seen = terrain.read(Tile::new(tx, ty).short());
         }
         if left <= 0 {
             left = tries - 2;
@@ -262,8 +262,8 @@ impl Shore for MapShore<'_> {
         }))
     }
 
-    fn flags(&self, x: i16, y: i16) -> u8 {
-        self.terrain.flags_at(x, y)
+    fn flags(&self, tile: Tile) -> u8 {
+        self.terrain.flags_at(tile)
     }
 
     fn shore_point(&mut self, from: Point, to: Point) -> Option<Point> {

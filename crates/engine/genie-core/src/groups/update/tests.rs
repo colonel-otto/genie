@@ -1530,8 +1530,7 @@ fn grounded() -> World {
         forest: false,
     }];
     t.spatial.terrain = Some(Terrain::new(
-        8,
-        8,
+        GridSize::new(8, 8),
         vec![(0, 255, -1); 64],
         kinds,
         vec![vec![1.0]],

@@ -2,6 +2,7 @@
 
 use crate::combat::damage::{ElevationBonus, Victim};
 use crate::combat::victims::{is_trebuchet, paid_cost};
+use crate::map::Tile;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
@@ -61,8 +62,7 @@ pub(crate) fn victim_of(
         terrain.and_then(|t| {
             t.defense(
                 master.terrain_bonus,
-                u.position().x() as i32,
-                u.position().y() as i32,
+                Tile::new(u.position().x() as i32, u.position().y() as i32),
             )
         })
     };

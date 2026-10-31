@@ -37,8 +37,7 @@ pub(super) fn map_terrain(
         })
         .collect();
     let mut t = genie_core::map::terrain::Terrain::new(
-        map.map_width,
-        map.map_height,
+        GridSize::new(map.map_width, map.map_height),
         tiles,
         terrain.kinds().to_vec(),
         terrain.passable().to_vec(),

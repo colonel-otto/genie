@@ -9,7 +9,9 @@ use crate::garrison::transport::{
 };
 use crate::map::Footprint;
 use crate::map::GridSize;
+use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
@@ -311,7 +313,7 @@ impl TransportAction {
                         return Ok(Updated::Unload);
                     }
                     let over_water = x != NONE
-                        && shore.flags(cvttss2si(x) as i16, cvttss2si(y) as i16) & WATER_FLAGS != 0;
+                        && shore.flags(Point::new(x, y).tile().short()) & WATER_FLAGS != 0;
                     cannot_unload = !over_water;
                 }
                 let changed = self.unloaded(ship, shore)?;
@@ -436,7 +438,7 @@ impl TransportAction {
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let found = match zone {
-                    None => shore.flags(tx as i16, ty as i16) & LAND_FLAGS != 0,
+                    None => shore.flags(Tile::new(tx, ty).short()) & LAND_FLAGS != 0,
                     Some(z) => shore.zone(tx, ty)? == z,
                 };
                 if found {

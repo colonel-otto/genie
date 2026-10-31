@@ -698,8 +698,7 @@ fn small_map() -> Spatial {
         forest: false,
     };
     world.terrain = Some(Terrain::new(
-        4,
-        4,
+        GridSize::new(4, 4),
         vec![(0, 255, -1); 16],
         vec![kind; 40],
         vec![vec![0.0; 40]; 5],
@@ -734,8 +733,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     ];
     kinds[32].flags = 0xa0;
     world.terrain = Some(Terrain::new(
-        4,
-        4,
+        GridSize::new(4, 4),
         vec![(32, 255, -1); 16],
         kinds,
         vec![vec![0.0; 40]; 5],

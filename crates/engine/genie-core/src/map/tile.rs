@@ -53,6 +53,13 @@ impl Tile {
         Self([self.0[0] + by.dx(), self.0[1] + by.dy()])
     }
 
+    /// The tile a routine on shorts reads (`FUN_140f690e0`'s): x and y cut to their low 16 bits,
+    /// signed.
+    #[must_use]
+    pub const fn short(self) -> Self {
+        Self([self.0[0] as i16 as i32, self.0[1] as i16 as i32])
+    }
+
     /// The tile `by` stepped to this one from: its x less the step's, its y less the step's.
     #[must_use]
     pub const fn stepped_back(self, by: TileOffset) -> Self {
@@ -206,6 +213,9 @@ mod tests {
         );
         let o = TileOffset::new(5, 6);
         assert_eq!((o.dx(), o.dy()), (5, 6));
+        // a routine on shorts reads the low 16 bits, signed
+        assert_eq!(t.short(), t);
+        assert_eq!(Tile::new(0x1_0005, 0x8000).short(), Tile::new(5, -0x8000));
     }
 
     /// A tile box holds the tiles between its corners, the corners included.

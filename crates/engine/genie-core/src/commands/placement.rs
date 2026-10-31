@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -21,8 +22,8 @@ impl World {
         if master != FARM {
             return master;
         }
-        let (x, y) = (position.x() as i32, position.y() as i32);
-        let terrain = self.spatial.terrain.as_ref().and_then(|t| t.kind(x, y));
+        let tile = Tile::new(position.x() as i32, position.y() as i32);
+        let terrain = self.spatial.terrain.as_ref().and_then(|t| t.kind(tile));
         match terrain {
             Some(54 | 55 | 63..=67) => RICE_FARM,
             _ => master,

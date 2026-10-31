@@ -281,7 +281,7 @@ fn shore_or_beach(
         return Ok((Point::new(x + HALF_TILE, y + HALF_TILE), 1));
     }
     let terrain = spatial.terrain.as_ref();
-    if terrain.is_some_and(|tr| tr.beach(cvttss2si(ux), cvttss2si(uy))) {
+    if terrain.is_some_and(|tr| tr.beach(unit.1.ground().tile())) {
         return Ok((
             Point::new((ux + HALF_TILE).floor(), (uy + HALF_TILE).floor()),
             1,
@@ -323,7 +323,7 @@ fn shore(
             .terrain
             .as_ref()
             .ok_or(crate::pathing::zones::NO_TERRAIN)?;
-        if !terrain.beach(x, y) {
+        if !terrain.beach(tile) {
             continue;
         }
         let zone = if x < 0 || y < 0 {

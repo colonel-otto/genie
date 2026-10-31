@@ -578,8 +578,7 @@ mod stack_tests {
             Tiles::new(200, 200, vec![0; 200 * 200]),
         );
         t.spatial.terrain = Some(crate::map::terrain::Terrain::new(
-            200,
-            200,
+            GridSize::new(200, 200),
             vec![(0, 255, -1); 200 * 200],
             vec![
                 crate::map::terrain::TerrainKind {

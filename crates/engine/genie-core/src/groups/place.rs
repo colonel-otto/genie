@@ -468,8 +468,7 @@ mod tests {
             forest: false,
         };
         t.spatial.terrain = Some(Terrain::new(
-            20,
-            20,
+            GridSize::new(20, 20),
             vec![(0, 255, -1); 400],
             vec![kind],
             vec![vec![1.0]],

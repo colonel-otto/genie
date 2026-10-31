@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::construction::build::Construction;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::HpPowerup;
@@ -202,11 +203,12 @@ impl World {
             && -1 < tx
             && -1 < ty
             && terrain
-                .map(|t| t.snow_under(tx, ty))
+                .map(|t| t.snow_under(Tile::new(tx, ty)))
                 .transpose()?
                 .unwrap_or(false);
         // +0xcd0 (FUN_141188db0): mangrove or rice terrain under its place
-        let rice = terrain.is_some_and(|t| matches!(t.kind(tx, ty), Some(54 | 55 | 63..=67)));
+        let rice =
+            terrain.is_some_and(|t| matches!(t.kind(Tile::new(tx, ty)), Some(54 | 55 | 63..=67)));
         let foundation = !matches!(made.class, class::CLASS_51 | class::CLASS_54)
             && !matches!(master, ids::ID_357 | ids::ID_1188)
             && building.head_unit.is_none();

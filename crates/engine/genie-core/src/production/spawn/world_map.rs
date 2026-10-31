@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::map::GridSize;
+use crate::map::Tile;
 use crate::objects::masters::master_type::RGE_COMBAT;
 use crate::players::PlayerId;
 use crate::production::spawn::{Near, PlaceMap};
@@ -44,7 +45,7 @@ impl PlaceMap for WorldMap<'_> {
             .ok_or(GenieError::unsupported(
                 "a placement test without the map's terrain",
             ))?;
-        t.kind(x, y).ok_or(GenieError::unsupported(
+        t.kind(Tile::new(x, y)).ok_or(GenieError::unsupported(
             "a placement test off the map's tiles",
         ))
     }
@@ -135,9 +136,12 @@ impl PlaceMap for WorldMap<'_> {
                     hp: unit.life.hp,
                     outline: master.outline.with_height(master.outline_height),
                     forest_tile: t.spatial.terrain.as_ref().is_some_and(|ter| {
-                        ter.kind(placed.position.x() as i32, placed.position.y() as i32)
-                            .and_then(|k| ter.terrains.get(usize::from(k)))
-                            .is_some_and(|k| k.forest)
+                        ter.kind(Tile::new(
+                            placed.position.x() as i32,
+                            placed.position.y() as i32,
+                        ))
+                        .and_then(|k| ter.terrains.get(usize::from(k)))
+                        .is_some_and(|k| k.forest)
                     }),
                 })
             })

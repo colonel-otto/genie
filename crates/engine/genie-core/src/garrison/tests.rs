@@ -1463,8 +1463,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
     let n = (w * h) as usize;
     t.spatial = crate::map::spatial::Spatial::new(GridSize::new(w, h));
     let mut terrain = crate::map::terrain::Terrain::new(
-        w,
-        h,
+        GridSize::new(w, h),
         vec![(0, 255, -1); n],
         vec![
             crate::map::terrain::TerrainKind {
@@ -2257,8 +2256,7 @@ fn shore_world(at: Point, ship: Point) -> World {
         forest: false,
     };
     let mut terrain = crate::map::terrain::Terrain::new(
-        40,
-        40,
+        GridSize::new(40, 40),
         tiles,
         vec![kind(0x20), kind(0x10), kind(1)],
         vec![vec![1.0, 1.0, 1.0]],
@@ -2521,8 +2519,7 @@ fn coast_world(ship: Point) -> World {
     };
     let restrictions = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
     let mut terrain = crate::map::terrain::Terrain::new(
-        30,
-        20,
+        GridSize::new(30, 20),
         tiles,
         vec![kind(8), kind(1)],
         restrictions.clone(),
