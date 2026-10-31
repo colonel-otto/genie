@@ -46,8 +46,6 @@ const MODE_WITHOUT_0X26D: i32 = 11;
 const TECH_COST: u8 = b'e';
 const TECH_DISABLE: u8 = b'f';
 const TECH_TIME: u8 = b'g';
-/// The technology type that a disable command makes available instead (`FUN_1413cdb00`: 0x21).
-const REENABLED_KIND: i16 = 0x21;
 
 /// The `RGE_Effects` command kinds the base (`FUN_140ec2ac0`) switches on: the player's own (0 to
 /// 8), the same for its mutual allies (10 to 18), enemies (20 to 28), neutrals (30 to 38) and Gaia

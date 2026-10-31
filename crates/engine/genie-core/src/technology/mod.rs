@@ -15,9 +15,11 @@ use crate::world::slots::CheckedIndex;
 
 pub mod effect;
 mod tech_id;
+mod tech_type;
 pub mod upgrade;
 
 pub use self::tech_id::TechId;
+pub use self::tech_type::TechType;
 
 /// The age technologies (`FUN_1413cc3c0`: 101 to 103), whose costs the research cost modifier
 /// leaves alone.
@@ -37,8 +39,6 @@ const GOLD: AttributeId = attribute::GOLD;
 /// A researched technology's state (3), which a disable command keeps (`FUN_1413cdb00`) and the
 /// player's tree counts.
 pub(crate) const RESEARCHED: i16 = 3;
-/// The technology type whose research the buildings that may do it share (`FUN_1413d1020`).
-pub const SHARED_KIND: i16 = 0x20;
 
 /// How a group of the game's `linkedTechs.json` links its technologies: the `+4` byte of the
 /// record the game settings' table (`FUN_140f39f40`) holds for each of them.
@@ -81,8 +81,8 @@ pub struct Cost {
 pub struct TechDef {
     /// `+0x2a`, `+0x30`, `+0x36`: the cost entries' attributes, amounts and paid flags.
     pub costs: [Cost; 3],
-    /// `+0x3c`, the technology's type ([`SHARED_KIND`]).
-    pub kind: i16,
+    /// `+0x3c`, the technology's type.
+    pub kind: TechType,
     /// Its effect (`+0x3a`) and the effect's commands (the world's effect table `+0x128`).
     pub effect_id: i16,
     /// The effect's commands.
@@ -378,7 +378,7 @@ impl TechState {
         repeat: bool,
         attribute: &dyn Fn(AttributeId) -> Result<f32, GenieError>,
     ) -> Result<bool, GenieError> {
-        let shared = def.kind == SHARED_KIND;
+        let shared = def.kind == TechType::SHARED;
         if self.state != 1
             && (!repeat || self.state == -1 || self.state == 0 || !self.allow_multiple)
             && !shared
@@ -436,7 +436,7 @@ impl TechState {
                 attributes.set(attr, 0.0)?;
             }
         }
-        if def.kind == SHARED_KIND {
+        if def.kind == TechType::SHARED {
             return Err(GenieError::unsupported(
                 "a research of the shared kind (FUN_1411c49a0)",
             ));
@@ -451,7 +451,7 @@ impl TechState {
     /// below 0x100 under the player's `+0x648`, `many`).
     #[must_use]
     pub fn repeatable(&self, def: &TechDef, many: bool) -> bool {
-        if def.kind == SHARED_KIND || !self.allow_multiple {
+        if def.kind == TechType::SHARED || !self.allow_multiple {
             return false;
         }
         let done = i32::from(self.pending) + i32::from(self.times_researched);

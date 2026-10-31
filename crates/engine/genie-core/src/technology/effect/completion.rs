@@ -13,7 +13,7 @@ use crate::technology::EffectCommand;
 use crate::technology::RESEARCHED;
 use crate::technology::TechId;
 use crate::technology::effect::{
-    ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, TECH_DISABLE, kind,
+    ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, TECH_DISABLE, kind,
 };
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
@@ -100,7 +100,7 @@ impl World {
             usize::try_from(crate::math::conversions::cvttss2si(c.d))
                 .ok()
                 .and_then(|d| self.techs.get(d))
-                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
+                .is_some_and(|d| d.kind == crate::technology::TechType::SHARED)
         };
         let reaches_object = def.effect.iter().any(|c| match c.kind {
             kind::ENABLE => c.c == 1,
@@ -208,7 +208,7 @@ impl World {
     ) -> Result<i32, GenieError> {
         let mut counted = 0;
         let def = self.techs.checked(d)?;
-        if !def.required.contains(&t.get()) || def.kind == crate::technology::SHARED_KIND {
+        if !def.required.contains(&t.get()) || def.kind == crate::technology::TechType::SHARED {
             return Ok(counted);
         }
         let Some(state) = self.players.player(p)?.techs.get(d) else {
@@ -362,7 +362,7 @@ impl World {
         if held.is_some_and(|t| {
             self.techs
                 .get(t)
-                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
+                .is_some_and(|d| d.kind == crate::technology::TechType::SHARED)
         }) {
             let building = match object.and_then(|id| self.object(id)) {
                 Some((q, u)) => u.master(&self.masters, q)?.kind == master_type::BUILDING,
@@ -381,7 +381,7 @@ impl World {
             let (Some(def), Some(state)) = (defs.get(t), states.get_mut(t)) else {
                 return;
             };
-            if def.kind == REENABLED_KIND {
+            if def.kind == crate::technology::TechType::REENABLED {
                 state.state = 1;
             // A researched technology's state, which a disable command keeps (`FUN_1413cdb00`).
             } else if state.state != RESEARCHED {

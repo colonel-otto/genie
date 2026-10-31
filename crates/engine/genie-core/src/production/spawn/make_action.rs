@@ -179,7 +179,7 @@ impl World {
             && self
                 .techs
                 .get(tech.index())
-                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
+                .is_some_and(|d| d.kind == crate::technology::TechType::SHARED)
             && tech.index() < self.players.player(p)?.techs.len()
             && let Some(production) = self.players.live_mut(p, i)?.production.as_mut()
         {

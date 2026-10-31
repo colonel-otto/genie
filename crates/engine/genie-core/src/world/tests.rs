@@ -8230,7 +8230,7 @@ fn a_research_s_unmodelled_parts_fail() {
         "a technology the data file has not got"
     );
     assert_eq!(
-        fails(&|t| t.techs[5].kind = crate::technology::SHARED_KIND),
+        fails(&|t| t.techs[5].kind = crate::technology::TechType::SHARED),
         "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)"
     );
     assert_eq!(

@@ -308,7 +308,7 @@ impl World {
         let owner = self.players.player(player)?;
         let state = &owner.techs[tech];
         let repeatable = state.repeatable(def, false);
-        if def.kind == crate::technology::SHARED_KIND {
+        if def.kind == crate::technology::TechType::SHARED {
             return Err(GenieError::unsupported(
                 "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
             ));

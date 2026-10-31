@@ -93,7 +93,7 @@ impl World {
         let rate = building.work_rate_powerup + self.master(p, master)?.work_rate;
         let state = &owner.techs[t];
         let repeatable = state.repeatable(def, false);
-        let shared = def.kind == crate::technology::SHARED_KIND;
+        let shared = def.kind == crate::technology::TechType::SHARED;
         let time_modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
         let location = state
             .location(master)
@@ -268,7 +268,7 @@ impl World {
         let def = &self.techs[t];
         let owner = self.players.player(p)?;
         let state = &owner.techs[t];
-        if def.kind == crate::technology::SHARED_KIND {
+        if def.kind == crate::technology::TechType::SHARED {
             let state = &mut self.players.player_mut(p)?.techs[t];
             state.state = 1;
             state.times_researched = 0;

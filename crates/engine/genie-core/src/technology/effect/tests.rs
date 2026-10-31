@@ -1506,7 +1506,7 @@ fn the_technology_commands_disable_and_adjust_costs() {
         ..Player::default()
     };
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
-    let kind = |k: i16| TechDef {
+    let kind = |k: crate::technology::TechType| TechDef {
         kind: k,
         costs: [
             Cost {
@@ -1524,10 +1524,10 @@ fn the_technology_commands_disable_and_adjust_costs() {
         ..TechDef::default()
     };
     t.techs = vec![
-        kind(0),
-        kind(0),
-        kind(0x21),
-        kind(crate::technology::SHARED_KIND),
+        kind(crate::technology::TechType::default()),
+        kind(crate::technology::TechType::default()),
+        kind(crate::technology::TechType::REENABLED),
+        kind(crate::technology::TechType::SHARED),
     ];
     let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| EffectCommand { kind, a, b, c, d };
     for tech in 0..4 {

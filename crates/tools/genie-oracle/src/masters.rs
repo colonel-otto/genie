@@ -286,7 +286,7 @@ fn tech_def(
         .map_or_else(Vec::new, effect_commands);
     Ok(genie_core::technology::TechDef {
         costs: [cost(0)?, cost(1)?, cost(2)?],
-        kind: t.kind,
+        kind: genie_core::technology::TechType::from(t.kind),
         effect_id: t.effect_id,
         effect,
         required: t.required_techs,
