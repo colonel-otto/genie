@@ -26,7 +26,6 @@ use crate::objects::masters::master_type;
 use crate::objects::masters::{MasterId, ids};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
 use crate::players::PlayerId;
 use crate::players::Relation;
 use crate::players::attribute::AttributeId;
@@ -237,7 +236,7 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     );
     assert_eq!(
         (far.state, far.move_to.map(|m| m.state)),
-        (WALK, Some(MoveTo::Start))
+        (EnterState::Walk, Some(MoveTo::Start))
     );
     // within ARRIVED of its footprint the MoveTo starts arrived (state 1)
     let mut close = EnterAction::new(
@@ -473,7 +472,10 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     assert_eq!(ship_goal(&t), Some(Position::new(5.5, 17.5, 0.0)));
     let e = enter_of(&t);
-    assert_eq!((e.state, e.point), (WALK, Position::new(5.5, 17.5, 0.0)));
+    assert_eq!(
+        (e.state, e.point),
+        (EnterState::Walk, Position::new(5.5, 17.5, 0.0))
+    );
     // within half a tile on each axis it does not walk again, and a NaN is not off: code 1
     // out of reach waits (set_state(2))
     for y in [30.0, f32::NAN] {
@@ -485,7 +487,7 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
         assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
         assert_eq!(ship_goal(&t), None);
         let e = enter_of(&t);
-        assert_eq!((e.state, e.timer, e.move_to), (WAIT, 1.0, None));
+        assert_eq!((e.state, e.timer, e.move_to), (EnterState::Wait, 1.0, None));
     }
     // a transport that cannot reach the point (where it last moved to is off the map):
     // set_state(13), not modelled
@@ -519,7 +521,7 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     let e = enter_of(&t);
     assert_eq!(
         (e.state, e.move_to.map(|m| (m.state, m.wait.timer))),
-        (WALK, Some((MoveTo::Waiting, 0.5)))
+        (EnterState::Walk, Some((MoveTo::Waiting, 0.5)))
     );
     let v = t.object_mut(object_id(1000)).unwrap().1;
     v.actions
@@ -557,7 +559,7 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
         t.object(object_id(200)).unwrap().1.garrison,
         [object_id(1000)]
     );
-    assert_eq!((enter_of(&t).state, completed(&t)), (DONE, 2));
+    assert_eq!((enter_of(&t).state, completed(&t)), (EnterState::Done, 2));
     // without the walk again, code 1 in reach enters once
     let mut t = entering(
         Point::new(5.5, 29.5),
@@ -569,7 +571,7 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
         t.object(object_id(1000)).unwrap().1.life.inside,
         Some(object_id(200))
     );
-    assert_eq!((enter_of(&t).state, completed(&t)), (DONE, 1));
+    assert_eq!((enter_of(&t).state, completed(&t)), (EnterState::Done, 1));
 }
 
 #[test]
@@ -587,7 +589,7 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     let e = enter_of(&t);
     assert_eq!(
         (e.retry, e.move_to.map(|m| m.state), e.state),
-        (false, Some(MoveTo::Start), WALK)
+        (false, Some(MoveTo::Start), EnterState::Walk)
     );
     let v = t.object_mut(object_id(1000)).unwrap().1;
     v.actions
@@ -599,15 +601,18 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
         .state = MoveTo::Failed;
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
-    assert_eq!((e.state, e.move_to, e.timer), (WAIT, None, 1.0));
+    assert_eq!((e.state, e.move_to, e.timer), (EnterState::Wait, None, 1.0));
     // the wait counts down by dt (0.5): at 0 it walks again
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
-    assert_eq!((enter_of(&t).state, enter_of(&t).timer), (WAIT, 0.5));
+    assert_eq!(
+        (enter_of(&t).state, enter_of(&t).timer),
+        (EnterState::Wait, 0.5)
+    );
     assert_eq!(enter_update(&mut t, 500), Ok(HeadCode::Keeps));
     let e = enter_of(&t);
     assert_eq!(
         (e.state, e.move_to.map(|m| m.state)),
-        (WALK, Some(MoveTo::Start))
+        (EnterState::Walk, Some(MoveTo::Start))
     );
 }
 
@@ -2348,7 +2353,7 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
         (
             Some(object_id(200)),
             Position::new(5.5, 17.5, 0.0),
-            WALK,
+            EnterState::Walk,
             Some(MoveTo::Start)
         )
     );
@@ -3100,7 +3105,7 @@ fn a_villager_beside_a_ship_enters_it_at_once() {
     let v = t.object(object_id(1000)).unwrap().1;
     assert_eq!(v.life.inside, Some(object_id(200)));
     assert_eq!(v.position().ground(), Point::new(5.5, 20.5));
-    assert_eq!(v.actions.enter().map(|e| e.state), Some(DONE));
+    assert_eq!(v.actions.enter().map(|e| e.state), Some(EnterState::Done));
     assert!(!v.town_bell.flag);
     assert_eq!(
         v.town_bell.work,

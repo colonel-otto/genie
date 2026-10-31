@@ -962,9 +962,8 @@ fn enter(b: RgeAction) -> Action {
 
 #[test]
 fn an_enter_takes_its_task_and_retry() {
-    use genie_core::garrison::ENTER;
-    use genie_core::orders::action_state::DONE;
-    let mut b = base(DONE);
+    use genie_core::garrison::{ENTER, EnterState};
+    let mut b = base(EnterState::Done.get());
     b.short_val = 1;
     let e = imported(ENTER, enter(with_sub(b.clone(), MOVE_TO, move_to(4, 0.5))))
         .unwrap()
@@ -975,7 +974,7 @@ fn an_enter_takes_its_task_and_retry() {
     let m = e.move_to.unwrap();
     assert_eq!(
         (e.state, m.state, m.quiet, e.task_class),
-        (DONE, MoveTo::Moving, true, Some(class_id(3)))
+        (EnterState::Done, MoveTo::Moving, true, Some(class_id(3)))
     );
     assert!(e.retry);
     assert_eq!((e.range.to_bits(), m.wait.state), (2.0_f32.to_bits(), 2));
@@ -996,7 +995,7 @@ fn an_enter_takes_its_task_and_retry() {
         GenieError::unsupported("a saved Enter in a state the slice does not model")
     );
     assert_eq!(
-        imported(ENTER, explore(base(DONE))).unwrap_err(),
+        imported(ENTER, explore(base(EnterState::Done.get()))).unwrap_err(),
         GenieError::unsupported("a saved Enter without its own part")
     );
 }

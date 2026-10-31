@@ -2,6 +2,7 @@
 //! transport's move.
 
 use crate::GenieError;
+use crate::garrison::EnterState;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{
     ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, UNPLACED, UNREACHED, WalkStart, Walking,
@@ -15,7 +16,6 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::GARRISON;
-use crate::orders::action_state::FAILED;
 use crate::orders::object_gone;
 use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
@@ -237,7 +237,7 @@ impl World {
             // set_state(13): the unit takes its master's standing sprite (slot 0x68 with
             // `+0x470`) and, its `+0x60` 0 in a new Enter, posts notify 0x1f9 with the enter's
             // action value to its unit AI; the update returns 3 then
-            action.state = FAILED;
+            action.state = EnterState::Failed;
             let masters = self.masters.get(player.index());
             let unit = &mut self.players.player_mut(player)?.objects[idx];
             unit.place_enter(action, sub);

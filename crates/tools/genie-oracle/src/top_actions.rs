@@ -425,7 +425,7 @@ fn import_repair(
 /// The Enter (3): its task's range, class and moving sprite, its `MoveTo` and its retry.
 fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Result<(), GenieError> {
     use genie_core::garrison::EnterAction;
-    use genie_core::orders::action_state::{DONE, FAILED};
+    use genie_core::garrison::EnterState;
     let base = saved.base;
     let first_time = saved
         .action
@@ -442,15 +442,21 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
     let move_to = sub
         .map(|s| saved_move_to(s, saved.graphics, true))
         .transpose()?;
-    if !matches!(base.state, DONE | 2 | 4 | FAILED) {
-        return Err(GenieError::unsupported(
+    let state = EnterState::of_byte(base.state)
+        .ok()
+        .filter(|s| {
+            matches!(
+                s,
+                EnterState::Done | EnterState::Wait | EnterState::Walk | EnterState::Failed
+            )
+        })
+        .ok_or(GenieError::unsupported(
             "a saved Enter in a state the slice does not model",
-        ));
-    }
+        ))?;
     let task = saved.task(task_at)?;
     unit.actions.set_enter(Some(EnterAction {
         target: ObjectId::of_field(base.target_id),
-        state: base.state,
+        state,
         move_to,
         point: saved.point(),
         range: task.work_range,

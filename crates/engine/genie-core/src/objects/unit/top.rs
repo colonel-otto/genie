@@ -198,7 +198,7 @@ impl Unit {
             Action::Artifact(a) => walking(a.move_to.map(|m| m.state)).or_else(|| {
                 a.enter.map(|e| TopAction {
                     kind: crate::garrison::ENTER,
-                    state: e.state,
+                    state: e.state.get(),
                 })
             }),
             Action::Hunt(h) => h

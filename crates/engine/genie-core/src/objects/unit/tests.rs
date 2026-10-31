@@ -398,7 +398,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
         of(Action::Artifact(artifact)),
         Some(TopAction {
             kind: crate::garrison::ENTER,
-            state: enter.state,
+            state: enter.state.get(),
         })
     );
     enter = enter.walking(MoveTo::Moving);

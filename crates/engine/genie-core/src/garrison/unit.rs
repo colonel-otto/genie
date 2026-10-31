@@ -1,6 +1,7 @@
 //! A unit entering a building or a transport, and the transport's sail.
 
 use crate::GenieError;
+use crate::garrison::EnterState;
 use crate::gathering::gather::unit::give_load;
 use crate::map::Footprint;
 use crate::map::Position;
@@ -19,7 +20,6 @@ use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::objects::unit::object_master;
-use crate::orders::action_state::DONE;
 use crate::pathing::Pathing;
 use crate::players::PlayerId;
 use crate::players::attribute;
@@ -273,7 +273,7 @@ impl Unit {
         {
             m.stop()?;
         }
-        enter.state = DONE;
+        enter.state = EnterState::Done;
         self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         self.post_own(
             crate::unit_ai::NotifyKind::ACTION_FAILED,

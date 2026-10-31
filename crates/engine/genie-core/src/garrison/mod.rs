@@ -10,6 +10,7 @@
 use crate::GenieError;
 
 mod enter;
+mod enter_state;
 mod firepower;
 mod let_out;
 mod meeting;
@@ -20,6 +21,7 @@ pub(crate) mod unit;
 mod unload;
 mod walk_in;
 
+pub use self::enter_state::EnterState;
 use self::firepower::WHOLE_SHARE_CLASS;
 pub use self::firepower::{attack_rate, firepower, share};
 use self::meeting::{ENTER_NEAR, HALF_TILE, UNPLACED};
@@ -37,7 +39,6 @@ use self::unload::unload_group_takes;
 pub use self::walk_in::{ENTER, EnterAction, EnterTarget, WalkStart, Walking};
 pub(crate) use self::walk_in::{EnterReads, NO_SPEED, SIEGE_UNLOAD};
 #[cfg(test)]
-use self::walk_in::{WAIT, WALK};
 #[cfg(test)]
 use crate::movement::move_to::MoveTo;
 #[cfg(test)]

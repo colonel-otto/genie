@@ -2,6 +2,7 @@
 //! and its update.
 
 use crate::GenieError;
+use crate::garrison::EnterState;
 use crate::garrison::meeting::Meeting;
 use crate::garrison::{ENTER_NEAR, HALF_TILE};
 use crate::map::Position;
@@ -21,8 +22,6 @@ use crate::objects::masters::Task;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use genie_diff::Diff;
@@ -34,8 +33,6 @@ pub const ENTER: ActionType = ActionType::named(3);
 /// (`FUN_140a87320` case 11: a quiet `MoveTo` to the meeting point), which is not modelled.
 const ENTER_TARGET_DIED: GenieError =
     GenieError::unsupported("an Enter whose building died or is not allied (state 11)");
-pub(super) const WAIT: u8 = 2;
-pub(super) const WALK: u8 = 4;
 /// `set_state(2)`'s wait before the Enter walks again, in seconds (`FUN_140a87320`, the constant
 /// `0x3f800000` it stores).
 pub(super) const WAIT_SECONDS: f32 = 1.0;
@@ -56,7 +53,7 @@ pub struct EnterAction {
     /// The building or transport (`+0x20`, its id `+0x30`).
     pub target: Option<ObjectId>,
     /// The action state (`+0x18`).
-    pub state: u8,
+    pub state: EnterState,
     /// Its `MoveTo` sub-action to the target: quiet, within [`EnterAction::walk_range`], with
     /// the sprite [`EnterAction::move_shown`] gives ([`EnterAction::walk_again`]).
     pub move_to: Option<MoveToAction>,
@@ -142,7 +139,7 @@ impl EnterAction {
     pub const fn new(target: ObjectId, point: Position, task: &Task) -> Self {
         Self {
             target: Some(target),
-            state: WALK,
+            state: EnterState::Walk,
             move_to: None,
             point,
             range: task.work_range,
@@ -180,7 +177,7 @@ impl EnterAction {
         reads: &MoveToReads<'_>,
     ) -> Result<Walking, GenieError> {
         self.move_to = None;
-        self.state = WALK;
+        self.state = EnterState::Walk;
         if t.in_reach {
             return Ok(Walking::Enter);
         }
@@ -252,7 +249,7 @@ impl EnterAction {
     /// The sprite's.
     pub(super) fn wait(&mut self, c: &mut Step<'_>, unit: &mut Unit) -> Result<(), GenieError> {
         self.move_to = None;
-        self.state = WAIT;
+        self.state = EnterState::Wait;
         self.timer = WAIT_SECONDS;
         unit.shows_standing_sprite(
             c.w.masters.get(c.player.index()),
@@ -310,15 +307,17 @@ impl EnterAction {
             // The Enter action's states the slice models: 1 done (inside), 2 waiting to try again, 4
             // walking to the target.
             // The failed Enter (`set_state(13)`), whose update returns 3.
-            DONE | FAILED => return Ok(HeadCode::Deletes),
-            WAIT => {
+            EnterState::Done | EnterState::Failed => return Ok(HeadCode::Deletes),
+            EnterState::Wait => {
                 self.timer -= seconds(c.dt);
                 if self.timer <= 0.0 {
                     let _ = self.again(c, unit, &t, reads)?;
                 }
             }
-            WALK => self.walk_on(c, unit, me, &t, reads)?,
-            _ => return Err(GenieError::unsupported("an Enter state not modelled")),
+            EnterState::Walk => self.walk_on(c, unit, me, &t, reads)?,
+            EnterState::WalkPoint => {
+                return Err(GenieError::unsupported("an Enter state not modelled"));
+            }
         }
         Ok(HeadCode::Keeps)
     }

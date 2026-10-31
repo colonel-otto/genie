@@ -58,8 +58,6 @@ use crate::objects::object_list::ObjectList;
 use crate::objects::release::{Releaser, released};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, loses_actions};
-use crate::orders::action_state::DONE;
-use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
 use crate::ownership::artifact::ArtifactState;
 use crate::ownership::change::change_hands;
@@ -5518,7 +5516,10 @@ fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
         .enter()
         .copied()
         .expect("the Enter");
-    assert_eq!((first.target, first.state), (Some(object_id(10028)), 4));
+    assert_eq!(
+        (first.target, first.state),
+        (Some(object_id(10028)), crate::garrison::EnterState::Walk)
+    );
     t.players[1].objects[0].actions.enter_mut().unwrap().timer = 7.0;
     assert_eq!(
         t.enter_command(PlayerId::new(1), 0, object_id(10028), false),
@@ -5560,7 +5561,10 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
         Ok(true)
     );
     let v = &t.players[1].objects[0];
-    assert_eq!(v.actions.enter().map(|e| e.state), Some(FAILED));
+    assert_eq!(
+        v.actions.enter().map(|e| e.state),
+        Some(crate::garrison::EnterState::Failed)
+    );
     assert_eq!(
         v.ai.as_ref().unwrap().notifies,
         [Notify::own(
@@ -5590,7 +5594,10 @@ fn the_unit_ai_s_enter_from_inside_tells_its_ai_as_the_side_returns() {
     );
     assert_eq!(
         seen.map(|(s, ai)| (s, ai.map(|ai| ai.notifies))),
-        Ok(((true, Some(FAILED)), Some(vec![failed])))
+        Ok((
+            (true, Some(crate::garrison::EnterState::Failed)),
+            Some(vec![failed])
+        ))
     );
 }
 
@@ -5690,7 +5697,7 @@ fn an_enter_s_move_to_shows_its_sprite_as_it_starts() {
         // waiting at its end: the update's walk again makes the MoveTo with its sprite, the
         // next update starts it and shows the sprite
         v.actions.set_enter(Some(crate::garrison::EnterAction {
-            state: 2,
+            state: crate::garrison::EnterState::Wait,
             timer: 0.0,
             moving,
             ..crate::garrison::EnterAction::new(
@@ -5895,7 +5902,7 @@ fn an_entered_enter_of_a_unit_let_out_goes_at_its_update() {
         Position::new(30.0, 88.0, 0.0),
         &crate::garrison::tests::enter_task(0.5, class::BUILDING),
     );
-    e.state = DONE;
+    e.state = crate::garrison::EnterState::Done;
     t.players[1].objects[0].actions.set_enter(Some(e));
     t.tick(50);
     t.tick(50);
@@ -9322,7 +9329,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         .actions
         .set_enter(Some(crate::garrison::EnterAction {
             target: Some(object_id(9150)),
-            state: 3,
+            state: crate::garrison::EnterState::Wait,
             move_to: None,
             point: Position::new(20.0, 20.0, 0.0),
             range: 0.0,
