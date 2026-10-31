@@ -870,8 +870,8 @@ fn gather(b: RgeAction) -> Action {
 /// A Gather takes its stops and task; a `MoveTo` without a target walks to its point.
 #[test]
 fn a_gather_takes_its_stops_and_move_to() {
-    use genie_core::gathering::gather::{GATHER, WALK, WORK};
-    let g = imported(GATHER, gather(base(WORK)))
+    use genie_core::gathering::gather::{GATHER, GatherState};
+    let g = imported(GATHER, gather(base(GatherState::Work.get())))
         .unwrap()
         .actions
         .gather()
@@ -889,7 +889,11 @@ fn a_gather_takes_its_stops_and_move_to() {
     assert_eq!(g.farm.x().to_bits(), 3.0_f32.to_bits());
     let g = imported(
         GATHER,
-        gather(with_sub(base(WALK), MOVE_TO, move_to(4, 0.75))),
+        gather(with_sub(
+            base(GatherState::Walk.get()),
+            MOVE_TO,
+            move_to(4, 0.75),
+        )),
     )
     .unwrap()
     .actions
@@ -911,7 +915,7 @@ fn a_gather_takes_its_stops_and_move_to() {
         imported(
             GATHER,
             gather(with_sub(
-                base(WALK),
+                base(GatherState::Walk.get()),
                 genie_core::movement::explore::EXPLORE,
                 explore(base(3))
             ))
@@ -924,7 +928,7 @@ fn a_gather_takes_its_stops_and_move_to() {
         GenieError::unsupported("a saved Gather in a state the slice does not model")
     );
     assert_eq!(
-        imported(GATHER, explore(base(WORK))).unwrap_err(),
+        imported(GATHER, explore(base(GatherState::Work.get()))).unwrap_err(),
         GenieError::unsupported("a saved Gather without its own part")
     );
 }

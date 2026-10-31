@@ -1,6 +1,7 @@
 use super::*;
 use crate::combat::attack::AttackState;
 use crate::construction::repair::RepairState;
+use crate::gathering::gather::GatherState;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
@@ -310,7 +311,10 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let kind = crate::ownership::artifact::ARTIFACT_TYPE;
     assert_eq!(t.halt_other(PlayerId::new(1), artifact, kind), Ok(true));
     let objects = &t.players[1].objects;
-    assert_eq!(objects[gather].actions.gather().map(|g| g.state), Some(2));
+    assert_eq!(
+        objects[gather].actions.gather().map(|g| g.state),
+        Some(GatherState::Idle)
+    );
     assert_eq!(objects[build].actions.build().map(|b| b.state), Some(2));
     assert_eq!(
         objects[repair].actions.repair().map(|r| r.state),

@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::gathering::drop_sites::{Seeker, drop_site_search};
+use crate::gathering::gather::GatherState;
 use crate::gathering::gather::{GatherRetarget, Walks};
 use crate::map::Position;
 use crate::map::spatial::Spatial;
@@ -134,7 +135,7 @@ impl Unit {
         let shows = self.idle_sprite(c)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");
         gather.tear_down(self.body.mover_mut())?;
-        gather.state = crate::gathering::gather::IDLE;
+        gather.state = GatherState::Idle;
         gather.timer = 0.0;
         gather.target = None;
         gather.carry_to = None;
@@ -328,7 +329,7 @@ impl Unit {
         }
         let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, state) = (gather.carry_to, gather.state);
-        let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
+        let (site, gap) = self.drop_site(&mut c, others, carry_to, state.get())?;
         let at = c
             .spatial
             .get_known(site)?

@@ -27,6 +27,7 @@ use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use genie_diff::Diff;
 
+mod gather_state;
 mod point_walks;
 mod start;
 pub(crate) mod unit;
@@ -34,6 +35,7 @@ mod update;
 mod walks;
 mod work;
 
+pub use self::gather_state::GatherState;
 pub use self::point_walks::waits_for_a_farm;
 pub use self::start::{
     GatherRetarget, GatherStart, MoveTarget, StopRate, productivity_of, stop_point,
@@ -48,30 +50,6 @@ use crate::gathering::hunt::Dropped;
 
 /// The Gather action's type, which word 9 adds.
 pub const GATHER: ActionType = ActionType::named(5);
-
-/// State 4: walking to the target.
-pub const WALK: u8 = 4;
-/// State 6: facing it.
-pub const FACE: u8 = 6;
-/// State 7: gathering from it.
-pub const WORK: u8 = 7;
-/// State 8: taking the load to its drop site.
-pub const DROP: u8 = 8;
-/// State 2: idle, without a target, a drop site or a point; its update does nothing.
-pub const IDLE: u8 = 2;
-/// State 15: walking to the point the unit was moved to (slot 0x40).
-pub const MOVED: u8 = 15;
-/// State 3: without a target or a load, it asks the unit AI for another (notify 0x202) and asks
-/// again every 10 seconds.
-pub const SEARCH: u8 = 3;
-/// State 11: walking to its point, to search from there (a farm another farmer works).
-pub const WALK_BACK: u8 = 11;
-/// State 0xf2: a farmer walking back to where it gathered (`mGatherX`, `mGatherY`) to reseed
-/// its farm there ([`Next::Reseed`]).
-pub const RESEED_WALK: u8 = 0xf2;
-/// State 0xf3: a farmer without its farm (or at one another farmer works) waits a second, its
-/// unit AI asked for another ([`Next::Search`]).
-pub const FARM_WAIT: u8 = 0xf3;
 
 /// `set_state(3)`'s timer: the search asks again once it counted up to 0 (`0xc1200000`, an
 /// immediate in `0x140a8cd40`).
@@ -141,7 +119,7 @@ pub struct GatherAction {
     /// −1 for none.
     pub carry_to: Option<ObjectId>,
     /// The action state (`+0x18`), which word 9 adds.
-    pub state: u8,
+    pub state: GatherState,
     /// `+0x38`..`+0x40`: where the target stood.
     pub point: Position,
     /// `+0x44`: the state's timer.

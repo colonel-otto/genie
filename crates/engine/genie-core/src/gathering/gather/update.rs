@@ -3,10 +3,10 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::gathering::gather::GatherState;
 use crate::gathering::gather::{
-    FACE, FARM_WAIT, GatherAction, GatherReads, IDLE, MOVED, Next, REGATHERED, RESEED_WALK, SEARCH,
-    SEARCH_WAIT, STOP_FARMS, StopRate, WAIT_GAP, WAIT_WORKERS, WALK, WALK_BACK, WORK,
-    waits_for_a_farm,
+    GatherAction, GatherReads, Next, REGATHERED, SEARCH_WAIT, STOP_FARMS, StopRate, WAIT_GAP,
+    WAIT_WORKERS, waits_for_a_farm,
 };
 use crate::gathering::hunt::walk_sprite;
 use crate::math::rng::Stream;
@@ -18,7 +18,6 @@ use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
 use crate::players::attribute::AttributeId;
 use crate::world::step::Step;
 
@@ -108,23 +107,25 @@ impl GatherAction {
         }
         let dt = seconds(c.dt);
         match self.state {
-            DONE => return Ok(Next::Done),
-            IDLE => return Ok(Next::Stay),
-            MOVED => return self.update_moved(c, unit, me, r),
-            WALK_BACK => return self.update_walk_back(c, unit, me, r),
-            FARM_WAIT => return self.update_farm_wait(c, unit, target.as_deref(), r),
-            RESEED_WALK => return self.update_reseed_walk(c, unit, me, target.as_deref(), r),
-            SEARCH => return Ok(self.update_search(dt)),
+            GatherState::Done => return Ok(Next::Done),
+            GatherState::Idle => return Ok(Next::Stay),
+            GatherState::Moved => return self.update_moved(c, unit, me, r),
+            GatherState::WalkBack => return self.update_walk_back(c, unit, me, r),
+            GatherState::FarmWait => return self.update_farm_wait(c, unit, target.as_deref(), r),
+            GatherState::ReseedWalk => {
+                return self.update_reseed_walk(c, unit, me, target.as_deref(), r);
+            }
+            GatherState::Search => return Ok(self.update_search(dt)),
             _ => {}
         }
         let Some(target) = target.filter(|_| self.target.is_some()) else {
             return self.update_without_target(c, unit, r);
         };
         match self.state {
-            WALK if self.timer < 0.0 => self.update_walk_wait(c, unit, target, dt, r),
-            WALK => self.update_walk(c, unit, me, target, r),
-            FACE => self.update_face(c, unit, target, r),
-            WORK => self.update_work(c, unit, target, r),
+            GatherState::Walk if self.timer < 0.0 => self.update_walk_wait(c, unit, target, dt, r),
+            GatherState::Walk => self.update_walk(c, unit, me, target, r),
+            GatherState::Face => self.update_face(c, unit, target, r),
+            GatherState::Work => self.update_work(c, unit, target, r),
             _ => Err(GenieError::unsupported(
                 "a Gather action in a state the slice does not model",
             )),
@@ -153,7 +154,10 @@ impl GatherAction {
         unit: &mut Unit,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        if !matches!(self.state, WALK | FACE | WORK) {
+        if !matches!(
+            self.state,
+            GatherState::Walk | GatherState::Face | GatherState::Work
+        ) {
             return Err(GenieError::unsupported(
                 "a Gather action in a state the slice does not model",
             ));
@@ -343,7 +347,7 @@ impl GatherAction {
         mut me: Me,
         r: &GatherReads,
     ) -> Result<u8, GenieError> {
-        me.action_state = self.state;
+        me.action_state = self.state.get();
         let state = self.move_to.as_ref().map(|m| m.state);
         // the computer player's test is not held: its villagers would fail at once
         let how = ListUpdate {

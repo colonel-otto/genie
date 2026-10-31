@@ -142,10 +142,7 @@ pub(super) fn import_gather(
     task_at: TaskAt<'_>,
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
-    use genie_core::gathering::gather::{
-        DROP, FACE, GatherAction, IDLE, MOVED, SEARCH, WALK, WALK_BACK, WORK,
-    };
-    use genie_core::orders::action_state::DONE;
+    use genie_core::gathering::gather::{GatherAction, GatherState};
     let base = saved.base;
     let part = saved
         .action
@@ -155,19 +152,30 @@ pub(super) fn import_gather(
         .ok_or(GenieError::unsupported(
             "a saved Gather without its own part",
         ))?;
-    if !matches!(
-        base.state,
-        WALK | FACE | WORK | DROP | DONE | IDLE | MOVED | SEARCH | WALK_BACK
-    ) {
-        return Err(GenieError::unsupported(
+    let state = GatherState::of_byte(base.state)
+        .ok()
+        .filter(|s| {
+            matches!(
+                s,
+                GatherState::Walk
+                    | GatherState::Face
+                    | GatherState::Work
+                    | GatherState::Drop
+                    | GatherState::Done
+                    | GatherState::Idle
+                    | GatherState::Moved
+                    | GatherState::Search
+                    | GatherState::WalkBack
+            )
+        })
+        .ok_or(GenieError::unsupported(
             "a saved Gather in a state the slice does not model",
-        ));
-    }
+        ))?;
     let task = hunt_task(&saved.task(task_at)?);
     let mut gather = GatherAction {
         target: ObjectId::of_field(base.target_id),
         carry_to: ObjectId::of_field(base.target2_id),
-        state: base.state,
+        state,
         point: saved.point(),
         timer: base.timer,
         task,
@@ -178,7 +186,7 @@ pub(super) fn import_gather(
         time_at_stop: part.time_at_current_stop,
         last_stop: Point::new(part.last_stop_x, part.last_stop_y),
         // `+0x80` is not saved: set_state(7) set it
-        worked: base.state == WORK,
+        worked: state == GatherState::Work,
         farm: Point::new(part.farm_x, part.farm_y),
         gather_at: Point::new(part.gather_x, part.gather_y),
         move_to: None,

@@ -3,10 +3,11 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::gathering::gather::GatherState;
 use crate::gathering::gather::update::{QUIET_CODE, UNMOVING};
 use crate::gathering::gather::{
-    FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, IDLE, NO_GATHER_POINT,
-    Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK, Walks,
+    FARM_WAIT_TIME, FARM_WAITERS, GatherAction, GatherReads, NO_GATHER_POINT, Next, SEARCH_WAIT,
+    STOP_FARMS, TRAP_WAITERS, Walks,
 };
 use crate::map::Position;
 use crate::math::rng::Well512;
@@ -22,7 +23,6 @@ use crate::objects::masters::class;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
-use crate::orders::action_state::DONE;
 use crate::world::step::Step;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_class` waits for
@@ -66,7 +66,7 @@ impl GatherAction {
         mover: &mut Mover,
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
-        self.walk_to_point(WALK_BACK, radius, mover, walks)
+        self.walk_to_point(GatherState::WalkBack, radius, mover, walks)
     }
 
     /// `set_state(0xf2)` (`0x140a8cd40` case 0xf2): the point takes `mGatherX`, `mGatherY`
@@ -86,7 +86,7 @@ impl GatherAction {
         if x != NO_GATHER_POINT {
             self.point = self.point.with_x(x).with_y(y);
         }
-        self.walk_to_point(RESEED_WALK, radius, mover, walks)
+        self.walk_to_point(GatherState::ReseedWalk, radius, mover, walks)
     }
 
     /// `set_state` in `state` 11 or 0xf2 (case 0xb's walk): the sub-actions go, the timer
@@ -94,7 +94,7 @@ impl GatherAction {
     /// ([`GatherAction::move_to_point`], `+0x61` left 0).
     pub(super) fn walk_to_point(
         &mut self,
-        state: u8,
+        state: GatherState,
         radius: f32,
         mover: &mut Mover,
         walks: &Walks<'_>,
@@ -134,7 +134,7 @@ impl GatherAction {
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
         self.tear_down(unit.body.mover_mut())?;
-        self.state = FARM_WAIT;
+        self.state = GatherState::FarmWait;
         self.timer = FARM_WAIT_TIME;
         Self::show(c, unit, self.stand_sprite(unit, r));
         Ok(Next::Search)
@@ -241,10 +241,10 @@ impl GatherAction {
         }
         if arrived && computer {
             // State 1: done; its update returns 1 and the action list removes it.
-            self.state = DONE;
+            self.state = GatherState::Done;
             return Ok([None; 2]);
         }
-        self.state = IDLE;
+        self.state = GatherState::Idle;
         let released = [self.target, self.carry_to];
         self.target = None;
         self.carry_to = None;
@@ -262,7 +262,7 @@ impl GatherAction {
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
         self.tear_down(unit.body.mover_mut())?;
-        self.state = SEARCH;
+        self.state = GatherState::Search;
         self.timer = SEARCH_WAIT;
         Self::show(c, unit, self.stand_sprite(unit, r));
         Ok(Next::Search)
@@ -270,7 +270,7 @@ impl GatherAction {
 
     /// `set_state(1)` (case 1): the timer clears and the unit stands.
     pub(super) fn set_done(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
-        self.state = DONE;
+        self.state = GatherState::Done;
         self.timer = 0.0;
         Self::show(c, unit, self.stand_sprite(unit, r));
     }

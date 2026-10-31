@@ -2,10 +2,11 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::gathering::gather::GatherState;
 use crate::gathering::gather::update::QUIET_CODE;
 use crate::gathering::gather::{
-    DROP_REACH, FACE, GatherAction, GatherReads, LAST_BIT, Next, REGATHERED, REMAINDER,
-    SPECIAL_TARGETS, WAIT_SHIFT, WORK,
+    DROP_REACH, GatherAction, GatherReads, LAST_BIT, Next, REGATHERED, REMAINDER, SPECIAL_TARGETS,
+    WAIT_SHIFT,
 };
 use crate::gathering::hunt::Dropped;
 use crate::math::rng::Stream;
@@ -31,7 +32,7 @@ impl GatherAction {
         target: &Victim,
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
-        self.state = FACE;
+        self.state = GatherState::Face;
         // another player's farm is the gatherer's to take (FUN_141185360, FUN_1411858f0)
         if target.class == class::FARM && target.player != c.player {
             return Err(GenieError::unsupported(
@@ -74,7 +75,7 @@ impl GatherAction {
     /// carries). The unit takes the working sprite (slot 0x68; the standing one for none); the
     /// gathering sound (slot 0x4c0) is not held.
     pub(super) fn set_work(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
-        self.state = WORK;
+        self.state = GatherState::Work;
         self.worked = true;
         self.timer = 0.0;
         if !r.farm_stops {

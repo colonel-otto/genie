@@ -117,7 +117,8 @@ impl World {
         )?;
         let new = [gather.target, gather.carry_to];
         // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
-        let waits = gather.state == crate::gathering::gather::WALK_BACK && new[0].is_none();
+        let waits =
+            gather.state == crate::gathering::gather::GatherState::WalkBack && new[0].is_none();
         self.exchange_gather_targets(old, new, by)?;
         if waits && old[0] != Some(target) {
             self.take(target, by)?;

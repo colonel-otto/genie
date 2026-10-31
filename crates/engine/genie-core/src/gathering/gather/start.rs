@@ -2,9 +2,10 @@
 //! the idle and the halt; a farm's stops and their productivity.
 
 use crate::GenieError;
+use crate::gathering::gather::GatherState;
 use crate::gathering::gather::{
-    DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_STOPS, GatherAction, GatherReads, IDLE, MOVED, Resource,
-    SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, Walks,
+    DEFAULT_PRODUCTIVITY, FARM_STOPS, GatherAction, GatherReads, Resource, SPECIAL_TARGETS,
+    STOP_CENTRE, STOP_DRAWS, STOP_FARMS, Walks,
 };
 use crate::gathering::hunt::HuntTask;
 use crate::map::Footprint;
@@ -165,7 +166,7 @@ impl GatherAction {
         Ok(Self {
             target: Some(target.id),
             carry_to: None,
-            state: 0,
+            state: GatherState::New,
             point: target.position,
             timer: 0.0,
             task,
@@ -281,8 +282,8 @@ impl GatherAction {
         self.worked = false;
         if Some(target.id) == self.target {
             match self.state {
-                FACE | WORK | 15 => return Ok(true),
-                WALK | 11 if computer => return Ok(true),
+                GatherState::Face | GatherState::Work | GatherState::Moved => return Ok(true),
+                GatherState::Walk | GatherState::WalkBack if computer => return Ok(true),
                 _ => {}
             }
         }
@@ -348,7 +349,7 @@ impl GatherAction {
     ) -> Result<(), GenieError> {
         let position = to.at;
         self.tear_down(Some(mover))?;
-        self.state = WALK;
+        self.state = GatherState::Walk;
         self.timer = 0.0;
         if self.target.is_none() {
             return Err(GenieError::unsupported(
@@ -387,7 +388,7 @@ impl GatherAction {
         walks: &Walks<'_>,
     ) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
-        self.state = DROP;
+        self.state = GatherState::Drop;
         self.current_stop = 0;
         if self.carry_to.is_none() {
             return Err(GenieError::unsupported(
@@ -425,7 +426,7 @@ impl GatherAction {
     ) -> Result<(), GenieError> {
         let held = walks.held.amount;
         match target.filter(|t| t.player == player && t.drop_site && 0.0 < held) {
-            Some(t) if Some(t.id) == self.carry_to && self.state == DROP => Ok(()),
+            Some(t) if Some(t.id) == self.carry_to && self.state == GatherState::Drop => Ok(()),
             Some(t) => {
                 self.target = None;
                 self.point = Position::from([-1.0; 3]);
@@ -449,7 +450,7 @@ impl GatherAction {
     /// A sprite the table lacks.
     pub fn set_moved(&mut self, mover: &mut Mover, walks: &Walks<'_>) -> Result<(), GenieError> {
         self.tear_down(Some(mover))?;
-        self.state = MOVED;
+        self.state = GatherState::Moved;
         self.timer = 0.0;
         if self.target.is_some() {
             return Err(GenieError::unsupported(
@@ -465,7 +466,7 @@ impl GatherAction {
     /// the target and the second target go (slot 0x68, `FUN_140a7a190` with none; the caller
     /// lets them go) and the point is −1.
     pub(super) fn set_idle(&mut self, c: &mut Step<'_>, unit: &mut Unit, r: &GatherReads) {
-        self.state = IDLE;
+        self.state = GatherState::Idle;
         self.timer = 0.0;
         Self::show(c, unit, self.stand_sprite(unit, r));
         self.target = None;
@@ -491,7 +492,7 @@ impl GatherAction {
     ) -> Result<[Option<ObjectId>; 2], GenieError> {
         let mut mover = mover;
         self.tear_down(mover.as_deref_mut())?;
-        self.state = IDLE;
+        self.state = GatherState::Idle;
         self.timer = 0.0;
         if let Some(s) = stand {
             new_sprite(sprite, mover.map(|m| &mut m.stats), s, rng);

@@ -53,7 +53,7 @@ impl Unit {
         self.gather_check_targets(c, by)?;
         let gather = *self.actions.gather().ok_or(NO_GATHER)?;
         let reads = self.gather_reads(c, &gather)?;
-        if gather.state == crate::gathering::gather::DROP {
+        if gather.state == crate::gathering::gather::GatherState::Drop {
             return self.gather_drop_update(c, me, gather, &reads, by);
         }
         self.gather_work_update(c, me, gather, &reads, by)
@@ -385,7 +385,7 @@ impl Unit {
                 groups: &c.w.groups,
             };
             // the notify's record holds the drop site's id, 0 for none
-            self.drop_site_from(&mut w, others, state, false)?
+            self.drop_site_from(&mut w, others, state.get(), false)?
                 .map_or(0, ObjectId::get)
         } else {
             -1
