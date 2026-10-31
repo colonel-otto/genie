@@ -3,6 +3,7 @@
 
 use genie_core::map::GridSize;
 use genie_core::objects::ObjectId;
+use genie_core::pathing::ShapeId;
 
 use crate::masters::TerrainTable;
 use crate::{Error, live, spatial};
@@ -27,7 +28,7 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
                 let width = words.get(2)?.parse().ok()?;
                 let free = u32::from_str_radix(words.get(6)?.trim_start_matches("0x"), 16).ok()?;
                 let mut m = Mesh::new(width);
-                m.free = free;
+                m.free = ShapeId::of_link(free as i32);
                 mesh = Some(m);
             }
             Some("shape") => {
@@ -49,7 +50,7 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
                     .map(|w| u32::from_str_radix(w, 16).ok())
                     .collect::<Option<_>>()?;
                 m.sides.last_mut()?[side].push(Contact {
-                    other: w[0],
+                    other: ShapeId::new(w[0]),
                     side: w[1],
                     at: [w[2] as i32, w[3] as i32],
                     along: w[4] as i32,
@@ -64,7 +65,7 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
                 *m.tiles.get_mut((y * m.width + x) as usize)? = words
                     .get(3..)?
                     .iter()
-                    .map(|w| w.parse().ok())
+                    .map(|w| w.parse().ok().map(ShapeId::new))
                     .collect::<Option<_>>()?;
             }
             _ => {}
@@ -75,14 +76,14 @@ pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
 
 /// The owner of each shape in a mesh dump (its `owner ID SHAPE` lines): the objects' `+0x64c`.
 #[must_use]
-pub fn mesh_owners_from_dump(text: &str) -> Vec<(ObjectId, u32)> {
+pub fn mesh_owners_from_dump(text: &str) -> Vec<(ObjectId, ShapeId)> {
     text.lines()
         .filter_map(|line| {
             let mut w = line.split_whitespace();
             (w.next()? == "owner").then_some(())?;
             Some((
                 ObjectId::of_field(w.next()?.parse().ok()?)?,
-                w.next()?.parse().ok()?,
+                ShapeId::new(w.next()?.parse().ok()?),
             ))
         })
         .collect()

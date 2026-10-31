@@ -282,7 +282,7 @@ fn a_start_deep_in_blocked_terrain_is_blocked_unless_in_range() {
     // tiles inside row 5's, beyond twice the radius from its sides
     assert!(pather.start_blocked(&mut mesh, &blocked, &q).unwrap());
     let n = mesh.shapes.len() as u32;
-    assert!(0 < n && (0..n).all(|id| !mesh.is_shape(id)));
+    assert!(0 < n && (0..n).all(|id| !mesh.is_shape(ShapeId::new(id))));
     assert!(!pather.start_blocked(&mut mesh, &free, &q).unwrap());
     q.range = 3.0;
     assert!(!pather.start_blocked(&mut mesh, &blocked, &q).unwrap());
@@ -332,7 +332,7 @@ fn the_entry_s_float_tests_take_the_game_s_nan_paths() {
 fn around(walls: &[[f32; 4]], from: Point, to: Point, ignored: bool) -> (u8, Vec<Point>) {
     let fixed = |v: f32| (v * ONE as f32) as i32;
     let mut mesh = Mesh::new(32);
-    let ids: Vec<u32> = walls
+    let ids: Vec<ShapeId> = walls
         .iter()
         .map(|w| mesh.add([fixed(w[0]), fixed(w[1]), fixed(w[2]), fixed(w[3])]))
         .collect();
@@ -494,7 +494,7 @@ fn square(run: bool) -> Poly {
     Poly {
         vertices,
         sides,
-        shapes: vec![NONE; n],
+        shapes: vec![None; n],
         costs: vec![0; n],
         flag: false,
     }
@@ -511,7 +511,9 @@ fn the_edge_holding_a_point_is_the_first_vertex_of_its_side_s_run() {
         [0, 0, 4 * ONE, 4 * ONE],
         [3 * ONE, 3 * ONE, 6 * ONE, 6 * ONE],
     ];
-    let edge = |poly: &Poly, p: FixedPoint, side| Search::edge_holding(poly, p, side, &mesh, 0, 0);
+    let edge = |poly: &Poly, p: FixedPoint, side| {
+        Search::edge_holding(poly, p, side, &mesh, Some(ShapeId::new(0)), 0)
+    };
     let poly = square(false);
     assert_eq!(edge(&poly, [2 * ONE, 0], 0), Some(0));
     assert_eq!(edge(&poly, [4 * ONE, 2 * ONE], 1), Some(1));
@@ -523,7 +525,7 @@ fn the_edge_holding_a_point_is_the_first_vertex_of_its_side_s_run() {
     assert_eq!(edge(&run, [3 * ONE, 0], 0), Some(0));
     assert_eq!(edge(&run, [4 * ONE, 2 * ONE], 1), Some(2));
     assert_eq!(
-        Search::edge_holding(&poly, [2 * ONE, 0], 0, &mesh, NONE, 0),
+        Search::edge_holding(&poly, [2 * ONE, 0], 0, &mesh, None, 0),
         None
     );
     let empty = Poly {
@@ -535,7 +537,7 @@ fn the_edge_holding_a_point_is_the_first_vertex_of_its_side_s_run() {
     };
     assert_eq!(edge(&empty, [2 * ONE, 0], 0), None);
     let mut corner = square(false);
-    corner.shapes[2] = 1;
+    corner.shapes[2] = Some(ShapeId::new(1));
     assert_eq!(edge(&corner, [4 * ONE, 4 * ONE], 0), Some(2));
 }
 
@@ -551,13 +553,15 @@ fn a_vertex_holds_a_point_in_its_shape_s_overlap_with_the_other() {
         [5 * ONE, 5 * ONE, 8 * ONE, 8 * ONE],
     ];
     let p = [3 * ONE, 3 * ONE];
-    let held = |vc: FixedPoint, vs, d| Search::vertex_in_overlap(&mesh, (p, vc, vs), 0, d);
-    assert!(held(p, 1, 0));
-    assert!(held(p, 1, ONE / 2));
-    assert!(!held([3 * ONE, 2 * ONE], 1, 0));
-    assert!(!held(p, NONE, 0));
-    assert!(!held(p, 2, 0));
-    assert!(!held(p, 1, ONE));
+    let held = |vc: FixedPoint, vs: Option<u32>, d| {
+        Search::vertex_in_overlap(&mesh, (p, vc, vs.map(ShapeId::new)), ShapeId::new(0), d)
+    };
+    assert!(held(p, Some(1), 0));
+    assert!(held(p, Some(1), ONE / 2));
+    assert!(!held([3 * ONE, 2 * ONE], Some(1), 0));
+    assert!(!held(p, None, 0));
+    assert!(!held(p, Some(2), 0));
+    assert!(!held(p, Some(1), ONE));
 }
 
 /// `FUN_140fa77b0`'s edge test on each side: the point on the edge's line between its ends;
@@ -652,12 +656,13 @@ fn the_start_s_scan_reads_each_corner_tile_once_and_skips_ignored_shapes() {
     let mut one = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     one.goal.r = ONE;
     for k in 0..4 {
-        one.escape_side(p, 0, (0, k), 4 * i64::from(ONE)).unwrap();
+        one.escape_side(p, 0, (ShapeId::new(0), k), 4 * i64::from(ONE))
+            .unwrap();
     }
     let tiles = [(2, 1), (6, 1), (6, 5), (2, 5)];
     let holding = tiles
         .iter()
-        .filter(|&&(x, y)| mesh.tiles[y * 16 + x].contains(&0))
+        .filter(|&&(x, y)| mesh.tiles[y * 16 + x].contains(&ShapeId::new(0)))
         .count();
     assert!(0 < holding);
     assert_eq!(s.open.len(), holding * one.open.len());
@@ -676,10 +681,14 @@ fn the_start_s_scan_reads_each_corner_tile_once_and_skips_ignored_shapes() {
 #[test]
 fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
     let mesh = shape_at_2_2();
-    let side = |shape, side| Kind::Side { shape, side };
+    let side = |shape, side| Kind::Side {
+        shape: ShapeId::new(shape),
+        side,
+    };
     let rr2 = 4 * i64::from(ONE);
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2).unwrap();
+    s.escape_side([4 * ONE, 3 * ONE], 0, (ShapeId::new(0), 0), rr2)
+        .unwrap();
     let mut got = opened(&s);
     got.sort_by_key(|&(at, _, _)| at);
     assert_eq!(got.len(), 3);
@@ -694,17 +703,20 @@ fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
         assert!((g - 2 * ONE).abs() <= 2, "{g}");
     }
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 1), rr2).unwrap();
+    s.escape_side([4 * ONE, 3 * ONE], 0, (ShapeId::new(0), 1), rr2)
+        .unwrap();
     assert_eq!(
         opened(&s),
         vec![([6 * ONE, 3 * ONE], 2 * ONE, side(0, 1)); 3]
     );
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 2), rr2).unwrap();
+    s.escape_side([4 * ONE, 3 * ONE], 0, (ShapeId::new(0), 2), rr2)
+        .unwrap();
     assert_eq!(opened(&s), vec![]);
     // from (3, 3) the corner (2, 2) lies √2 away
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([3 * ONE, 3 * ONE], 0, (0, 0), rr2).unwrap();
+    s.escape_side([3 * ONE, 3 * ONE], 0, (ShapeId::new(0), 0), rr2)
+        .unwrap();
     assert!(
         opened(&s)
             .iter()
@@ -714,7 +726,8 @@ fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
     let mut mesh = shape_at_2_2();
     let _ = mesh.add([5 * ONE, 0, 9 * ONE, 3 * ONE]);
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2).unwrap();
+    s.escape_side([4 * ONE, 3 * ONE], 0, (ShapeId::new(0), 0), rr2)
+        .unwrap();
     let got = opened(&s);
     assert_eq!(got.len(), 3);
     assert!(got.iter().all(|&(at, _, _)| at[0] <= 5 * ONE));
@@ -733,11 +746,15 @@ fn the_start_s_foot_on_a_side_lies_between_its_corners_in_the_box_and_free() {
             shrunk_corner(r, [1, 2, 2, 3][k as usize], 0),
         )
     };
-    let side = |side| Kind::Side { shape: 0, side };
+    let side = |side| Kind::Side {
+        shape: ShapeId::new(0),
+        side,
+    };
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     let p = [3 * ONE, 5 * ONE / 2];
     for k in 0..4 {
-        s.escape_foot(p, 0, (0, k), corners(k)).unwrap();
+        s.escape_foot(p, 0, (ShapeId::new(0), k), corners(k))
+            .unwrap();
     }
     let mut got = opened(&s);
     got.sort_by_key(|&(_, g, _)| g);
@@ -751,17 +768,19 @@ fn the_start_s_foot_on_a_side_lies_between_its_corners_in_the_box_and_free() {
         ]
     );
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
-    s.escape_foot([2 * ONE, 5 * ONE / 2], 0, (0, 0), corners(0))
+    s.escape_foot([2 * ONE, 5 * ONE / 2], 0, (ShapeId::new(0), 0), corners(0))
         .unwrap();
-    s.escape_foot([3 * ONE, 6 * ONE], 0, (0, 1), corners(1))
+    s.escape_foot([3 * ONE, 6 * ONE], 0, (ShapeId::new(0), 1), corners(1))
         .unwrap();
     assert_eq!(opened(&s), vec![]);
     s.bounds = [0, 0, 64 * ONE, ONE];
-    s.escape_foot(p, 0, (0, 0), corners(0)).unwrap();
+    s.escape_foot(p, 0, (ShapeId::new(0), 0), corners(0))
+        .unwrap();
     let mut held = shape_at_2_2();
     let _ = held.add([0, 0, 4 * ONE, 4 * ONE]);
     let mut t = search_toward(&held, [12 * ONE, 12 * ONE], 0);
-    t.escape_foot(p, 0, (0, 0), corners(0)).unwrap();
+    t.escape_foot(p, 0, (ShapeId::new(0), 0), corners(0))
+        .unwrap();
     assert_eq!((opened(&s), opened(&t)), (vec![], vec![]));
 }
 
@@ -775,7 +794,7 @@ fn a_side_s_contacts_become_candidates_when_wide_free_and_near() {
     let _ = mesh.add([5 * ONE, 0, 9 * ONE, 3 * ONE]);
     let _ = mesh.add([4 * ONE, 2 * ONE, 7 * ONE, 4 * ONE]);
     let contact = |other, side, at: FixedPoint, half| Contact {
-        other,
+        other: ShapeId::new(other),
         side,
         at,
         along: at[0],
@@ -796,9 +815,17 @@ fn a_side_s_contacts_become_candidates_when_wide_free_and_near() {
     let ignore = [false, false, false, true];
     let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
     s.ctx.ignore = &ignore;
-    s.escape_contacts([4 * ONE, 3 * ONE], 0, (0, 0), 4 * i64::from(ONE))
-        .unwrap();
-    let side = Kind::Side { shape: 0, side: 0 };
+    s.escape_contacts(
+        [4 * ONE, 3 * ONE],
+        0,
+        (ShapeId::new(0), 0),
+        4 * i64::from(ONE),
+    )
+    .unwrap();
+    let side = Kind::Side {
+        shape: ShapeId::new(0),
+        side: 0,
+    };
     // 3/4 and 1 tile off: 5/4 tiles
     let mut got = opened(&s);
     got.sort_by_key(|&(_, g, _)| g);

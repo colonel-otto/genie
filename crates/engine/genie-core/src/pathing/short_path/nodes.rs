@@ -2,6 +2,7 @@
 //! the clip to the box.
 
 use crate::GenieError;
+use crate::pathing::ShapeId;
 use crate::pathing::short_path::{FixedPoint, Kind, NONE, Node, RECT_HEURISTIC, Search};
 use crate::world::slots::CheckedIndex;
 
@@ -190,7 +191,14 @@ impl Search<'_> {
         self.open.insert(at, n);
     }
 
-    pub(super) fn side_node(&mut self, g: i32, parent: u32, shape: u32, side: u8, at: FixedPoint) {
+    pub(super) fn side_node(
+        &mut self,
+        g: i32,
+        parent: u32,
+        shape: ShapeId,
+        side: u8,
+        at: FixedPoint,
+    ) {
         let n = self.add(g, parent, at, Kind::Side { shape, side });
         self.push(n);
     }

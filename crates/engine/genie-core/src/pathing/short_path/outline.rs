@@ -2,9 +2,10 @@
 //! walk of a new polygon.
 
 use crate::GenieError;
+use crate::pathing::ShapeId;
 use crate::pathing::mesh::Mesh;
 use crate::pathing::short_path::{
-    Corner, FixedPoint, Foot, Kind, NONE, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
+    Corner, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
     contact_point, corner_emits, in_box, inside, shrunk_corner,
 };
 use crate::world::slots::CheckedIndex;
@@ -23,8 +24,8 @@ pub(super) struct Traced {
     pub(super) start_side: u32,
     /// The side the vertex is on.
     pub(super) side: u8,
-    /// The shape it lies on.
-    pub(super) shape: u32,
+    /// The shape it lies on, none on the bounds' border.
+    pub(super) shape: Option<ShapeId>,
     /// The turns so far (4 a full one).
     pub(super) winding: i32,
 }
@@ -88,16 +89,16 @@ impl Search<'_> {
     }
 
     /// `FUN_140fa9630`: the trace left the bounds: walk the bounds' border from `pos` in the turn
-    /// the side gives, to the first shape side the sweep meets (0) or the border's corner (1).
+    /// the side gives, to the first shape side the sweep meets (0, its shape) or the border's
+    /// corner (1, none).
     pub(super) fn border_walk(
         &self,
         pos: &mut FixedPoint,
         first: &mut FixedPoint,
         side: &mut u32,
-        shape: &mut u32,
         u: &mut i32,
         steps: i32,
-    ) -> Result<i32, GenieError> {
+    ) -> Result<Option<ShapeId>, GenieError> {
         let b = self.bounds;
         let w = side.wrapping_sub(1) & 3;
         let (target, dir) = match w {
@@ -113,19 +114,17 @@ impl Search<'_> {
                 *first = target;
             }
             *u = u_new;
-            *shape = NONE;
             *side = w;
             *pos = target;
-            return Ok(1);
+            return Ok(None);
         };
         if steps == 0 {
             *first = hp;
         }
         *u = u_new;
-        *shape = hid;
         *side = u32::from(hs);
         *pos = hp;
-        Ok(0)
+        Ok(Some(hid))
     }
 
     /// `FUN_140fa8fa0`: trace the outline of the cluster of touching shapes from shape `shape0`'s
@@ -134,7 +133,7 @@ impl Search<'_> {
     /// where it leaves them. 0 when the outline closes, 1 after 2,000 steps.
     pub(super) fn trace(
         &self,
-        shape0: u32,
+        shape0: ShapeId,
         s0: u32,
         start: Option<FixedPoint>,
         poly: &mut Poly,
@@ -150,12 +149,12 @@ impl Search<'_> {
         let mut side = s0;
         let mut pos = match start {
             Some(p) => p,
-            None => shrunk_corner(*mesh.shapes.checked(shape as usize)?, s0, d),
+            None => shrunk_corner(*mesh.shapes.checked(shape.index())?, s0, d),
         };
         let mut u = Self::along(pos, s0);
         let mut first = pos;
         'segment: loop {
-            let contacts = mesh.sides.checked(shape as usize)?.checked(side as usize)?;
+            let contacts = mesh.sides.checked(shape.index())?.checked(side as usize)?;
             let next_side;
             if let Some(k) = self.nearest_contact(contacts, side, u) {
                 let c = *contacts.checked(k)?;
@@ -172,7 +171,7 @@ impl Search<'_> {
                 shape = c.other;
             } else {
                 next_side = (side + 1) & 3;
-                let corner = shrunk_corner(*mesh.shapes.checked(shape as usize)?, next_side, d);
+                let corner = shrunk_corner(*mesh.shapes.checked(shape.index())?, next_side, d);
                 if steps == 0 {
                     first = corner;
                 }
@@ -186,6 +185,8 @@ impl Search<'_> {
                 winding += 1;
                 side = next_side;
             }
+            // the vertices' shape: the walk's, none on the border's corners
+            let mut on = Some(shape);
             let mut wp = wprev;
             loop {
                 steps += 1;
@@ -210,7 +211,7 @@ impl Search<'_> {
                             vertical,
                             start_side: s0,
                             side: side as u8,
-                            shape,
+                            shape: on,
                             winding: wp,
                         },
                     ) {
@@ -221,9 +222,9 @@ impl Search<'_> {
                         wprev = winding;
                         continue 'segment;
                     }
-                    let r = self
-                        .border_walk(&mut pos, &mut first, &mut side, &mut shape, &mut u, steps)?;
-                    if r == 0 {
+                    on = self.border_walk(&mut pos, &mut first, &mut side, &mut u, steps)?;
+                    if let Some(met) = on {
+                        shape = met;
                         break;
                     }
                     wp -= 1;
@@ -290,12 +291,10 @@ impl Search<'_> {
         p: FixedPoint,
         side: u32,
         mesh: &Mesh,
-        shape: u32,
+        shape: Option<ShapeId>,
         d: i32,
     ) -> Option<u32> {
-        if shape == NONE {
-            return None;
-        }
+        let shape = shape?;
         let n = poly.vertices.len() as u32;
         if n == 0 {
             return None;
@@ -344,17 +343,15 @@ impl Search<'_> {
     /// `d` on every side.
     pub(super) fn vertex_in_overlap(
         mesh: &Mesh,
-        (p, vc, vs): (FixedPoint, FixedPoint, u32),
-        shape: u32,
+        (p, vc, vs): (FixedPoint, FixedPoint, Option<ShapeId>),
+        shape: ShapeId,
         d: i32,
     ) -> bool {
-        if p != vc || vs == NONE {
+        let Some(vs) = vs.filter(|_| p == vc) else {
             return false;
-        }
-        let (Some(&sr), Some(&vr)) = (
-            mesh.shapes.get(shape as usize),
-            mesh.shapes.get(vs as usize),
-        ) else {
+        };
+        let (Some(&sr), Some(&vr)) = (mesh.shapes.get(shape.index()), mesh.shapes.get(vs.index()))
+        else {
             return false;
         };
         let y1 = if sr[3] - d < vr[3] - d {
@@ -572,7 +569,7 @@ impl Search<'_> {
             poly: walk.poly,
             point: vv,
         })? && sp != sn
-            && sh != NONE
+            && sh.is_some()
             && let Some(token) = corner_emits(sp, sn, vv, self.goal.at)
         {
             let kind = Kind::Corner {

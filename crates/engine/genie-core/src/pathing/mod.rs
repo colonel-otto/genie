@@ -24,9 +24,12 @@ use crate::pathing::tile_path::Planner;
 use crate::players::PlayerId;
 use std::collections::BTreeMap;
 
+pub use self::shape_id::ShapeId;
+
 pub mod hull_path;
 pub mod long_path;
 pub mod mesh;
+mod shape_id;
 pub mod short_path;
 pub mod tile_path;
 pub mod zones;
@@ -53,9 +56,9 @@ pub struct Pathing {
     /// The mesh, None until the slice has the game's.
     mesh: Option<Mesh>,
     /// Each object's shape (`+0x64c`).
-    shapes: BTreeMap<ObjectId, u32>,
+    shapes: BTreeMap<ObjectId, ShapeId>,
     /// The temporary shapes of the motion step under way (its `local_1688`).
-    temporary: Vec<u32>,
+    temporary: Vec<ShapeId>,
     /// The short pather.
     pub pather: Pather,
     /// The ignore list the tile planner's smoothing hands the obstruction manager
@@ -212,7 +215,7 @@ impl Pathing {
     }
 
     /// The game's mesh and each object's shape in it, at the tick the slice starts from.
-    pub fn set_mesh(&mut self, mesh: Mesh, shapes: impl IntoIterator<Item = (ObjectId, u32)>) {
+    pub fn set_mesh(&mut self, mesh: Mesh, shapes: impl IntoIterator<Item = (ObjectId, ShapeId)>) {
         self.mesh = Some(mesh);
         self.shapes = shapes.into_iter().collect();
     }
@@ -230,7 +233,7 @@ impl Pathing {
 
     /// An object's shape in the mesh.
     #[must_use]
-    pub fn shape(&self, id: ObjectId) -> Option<u32> {
+    pub fn shape(&self, id: ObjectId) -> Option<ShapeId> {
         self.shapes.get(&id).copied()
     }
 
@@ -601,7 +604,7 @@ mod tests {
             (106.53662f32 * 4_194_304.0) as i32 - 838_860 - 0x20_0000
         );
         assert_eq!(
-            p.mesh().unwrap().shapes[s as usize],
+            p.mesh().unwrap().shapes[s.index()],
             [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
         );
         // moving, it has none; without a record, none either
@@ -619,7 +622,7 @@ mod tests {
         p.set_mesh(Mesh::new(120), []);
         p.moved(object_id(9175), &villager(30.0, 89.0), false);
         let s = p.shape(object_id(9175)).unwrap();
-        assert_eq!(p.mesh().unwrap().shapes[s as usize], {
+        assert_eq!(p.mesh().unwrap().shapes[s.index()], {
             let r = shape_rect(&villager(30.0, 89.0));
             [r[0] & !1, r[1] & !1, (r[2] + 1) & !1, (r[3] + 1) & !1]
         });

@@ -6,6 +6,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
+use crate::pathing::ShapeId;
 use crate::pathing::mesh::{Mesh, ONE};
 use crate::pathing::short_path::{
     Ctx, FixedPoint, Goal, NONE, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
@@ -90,7 +91,7 @@ pub struct Listed {
     /// The object.
     pub id: ObjectId,
     /// Its shape in the mesh (`+0x64c`), if it has one.
-    pub shape: Option<u32>,
+    pub shape: Option<ShapeId>,
 }
 
 /// A call of the short pather in the game's own terms (`FUN_140f9e540`, the short branch): the
@@ -129,7 +130,7 @@ pub enum Entry {
         /// The query.
         query: Query,
         /// The shapes it ignores.
-        ignore: Vec<u32>,
+        ignore: Vec<ShapeId>,
     },
 }
 
@@ -207,7 +208,7 @@ pub fn to_path(points: &[FixedPoint]) -> crate::pathing::tile_path::Path {
 /// of each call by `FUN_140f9d2b0`) and the flag per ignored shape (`+0xd8`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Pather {
-    pub(super) temp: Vec<u32>,
+    pub(super) temp: Vec<ShapeId>,
     pub(super) ignore: Vec<bool>,
 }
 
@@ -274,17 +275,17 @@ impl Pather {
         mesh: &mut Mesh,
         words: &dyn Fn(u32, u32) -> u64,
         q: &Query,
-        ignore: &[u32],
+        ignore: &[ShapeId],
     ) -> Result<ShortPath, GenieError> {
         if self.ignore.len() < mesh.shapes.len() {
             self.ignore.resize(mesh.shapes.len(), false);
         }
         for &id in ignore {
-            *self.ignore.checked_mut(id as usize)? = true;
+            *self.ignore.checked_mut(id.index())? = true;
         }
         let result = self.core(mesh, words, &q.fixed());
         for &id in ignore {
-            if let Some(f) = self.ignore.get_mut(id as usize) {
+            if let Some(f) = self.ignore.get_mut(id.index()) {
                 *f = false;
             }
         }

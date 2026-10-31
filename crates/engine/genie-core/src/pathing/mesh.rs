@@ -11,22 +11,21 @@
 //! exactly: a freed slot links the next free one through its first word, last in first out; the
 //! tile lists and contact lists keep their order of insertion.
 
+use crate::pathing::ShapeId;
 use std::collections::HashSet;
 
 /// One tile in fixed point.
 pub const ONE: i32 = 0x40_0000;
-/// No free slot (`mesh + 0x60`).
-const NONE: u32 = u32::MAX;
 
 /// A shape: x0, y0, x1, y1.
 pub type Rect = [i32; 4];
 
 /// A contact on a shape's side (28 bytes): where the outline that walks the side meets another
 /// shape and goes on along one of its sides.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Contact {
     /// w0: the other shape.
-    pub other: u32,
+    pub other: ShapeId,
     /// w1: the side of the other shape the outline goes on along.
     pub side: u32,
     /// w2, w3: the junction.
@@ -48,11 +47,11 @@ pub struct Mesh {
     /// `mesh[3..5]`: each slot's four sides (side s runs from corner s to corner s + 1).
     pub sides: Vec<[Vec<Contact>; 4]>,
     /// `mesh[6]`: per tile, row by row, the ids of the shapes over it.
-    pub tiles: Vec<Vec<u32>>,
+    pub tiles: Vec<Vec<ShapeId>>,
     /// `mesh + 0x38`: the map's width in tiles (the map is square).
     pub width: u32,
-    /// `mesh + 0x60`: the first free slot.
-    pub free: u32,
+    /// `mesh + 0x60`: the first free slot (−1 none).
+    pub free: Option<ShapeId>,
 }
 
 /// Corner `k` of a rectangle (`FUN_14087c6b0`): 0 = (x0, y0), 1 = (x1, y0), 2 = (x1, y1),
@@ -199,39 +198,41 @@ impl Mesh {
             sides: Vec::new(),
             tiles: vec![Vec::new(); (width * width) as usize],
             width,
-            free: NONE,
+            free: None,
         }
     }
 
     /// Whether slot `id` holds a shape (a free slot is all zero past its link).
     #[must_use]
-    pub fn is_shape(&self, id: u32) -> bool {
+    pub fn is_shape(&self, id: ShapeId) -> bool {
         self.shapes
-            .get(id as usize)
+            .get(id.index())
             .is_some_and(|r| r[1] != 0 || r[2] != 0 || r[3] != 0)
     }
 
     /// `FUN_140fdb8d0`: a new shape, rounded to even units, in the first free slot or a new one;
     /// the contacts of each corner of its overlap with every shape it overlaps, met tile by tile
     /// in the tiles' order. Returns its id.
-    pub fn add(&mut self, rect: Rect) -> u32 {
+    pub fn add(&mut self, rect: Rect) -> ShapeId {
         let n = [
             rect[0] & !1,
             rect[1] & !1,
             rect[2].wrapping_add(1) & !1,
             rect[3].wrapping_add(1) & !1,
         ];
-        let id = if self.free == NONE {
-            self.shapes.push(n);
-            self.sides.push(Default::default());
-            (self.shapes.len() - 1) as u32
-        } else {
-            let id = self.free;
-            self.free = self.shapes.get(id as usize).map_or(NONE, |s| s[0] as u32);
-            if let Some(slot) = self.shapes.get_mut(id as usize) {
+        let id = if let Some(id) = self.free {
+            self.free = self
+                .shapes
+                .get(id.index())
+                .and_then(|s| ShapeId::of_link(s[0]));
+            if let Some(slot) = self.shapes.get_mut(id.index()) {
                 *slot = n;
             }
             id
+        } else {
+            self.shapes.push(n);
+            self.sides.push(Default::default());
+            ShapeId::new((self.shapes.len() - 1) as u32)
         };
         let (tx0, ty0, tx1, ty1) = tile_range(n, self.width);
         let mut visited = HashSet::new();
@@ -255,8 +256,8 @@ impl Mesh {
 
     /// The contacts between an existing shape `o` and the new shape `n`: one per corner of their
     /// overlap that lies on both outlines.
-    fn touch(&mut self, o: u32, n: u32) {
-        let (Some(&or), Some(&nr)) = (self.shapes.get(o as usize), self.shapes.get(n as usize))
+    fn touch(&mut self, o: ShapeId, n: ShapeId) {
+        let (Some(&or), Some(&nr)) = (self.shapes.get(o.index()), self.shapes.get(n.index()))
         else {
             return;
         };
@@ -289,8 +290,8 @@ impl Mesh {
                     continue;
                 };
                 let (Some(&a), Some(&b)) = (
-                    self.shapes.get(other as usize),
-                    self.shapes.get(owner as usize),
+                    self.shapes.get(other.index()),
+                    self.shapes.get(owner.index()),
                 ) else {
                     continue;
                 };
@@ -340,10 +341,10 @@ impl Mesh {
     }
 
     /// A contact goes last on side `side` of shape `owner`.
-    fn contact(&mut self, (owner, side): (u32, u32), contact: Contact) {
+    fn contact(&mut self, (owner, side): (ShapeId, u32), contact: Contact) {
         if let Some(list) = self
             .sides
-            .get_mut(owner as usize)
+            .get_mut(owner.index())
             .and_then(|s| s.get_mut(side as usize))
         {
             list.push(contact);
@@ -352,8 +353,8 @@ impl Mesh {
 
     /// `FUN_140fdc250`: the shape's contacts leave every shape over its tiles, its id leaves the
     /// tiles; the last slot is dropped, any other becomes the first free one.
-    pub fn remove(&mut self, id: u32) {
-        let Some(&r) = self.shapes.get(id as usize) else {
+    pub fn remove(&mut self, id: ShapeId) {
+        let Some(&r) = self.shapes.get(id.index()) else {
             return;
         };
         let (tx0, ty0, tx1, ty1) = tile_range(r, self.width);
@@ -364,7 +365,7 @@ impl Mesh {
                 let mut k = 0;
                 while let Some(&s) = self.tiles.get(t).and_then(|list| list.get(k)) {
                     if visited.insert(s)
-                        && let Some(sides) = self.sides.get_mut(s as usize)
+                        && let Some(sides) = self.sides.get_mut(s.index())
                     {
                         for side in sides {
                             side.retain(|c| c.other != id);
@@ -379,24 +380,24 @@ impl Mesh {
                 }
             }
         }
-        if id as usize == self.shapes.len() - 1 {
+        if id.index() == self.shapes.len() - 1 {
             let _ = self.shapes.pop();
             let _ = self.sides.pop();
         } else {
-            if let Some(slot) = self.shapes.get_mut(id as usize) {
-                *slot = [self.free as i32, 0, 0, 0];
+            if let Some(slot) = self.shapes.get_mut(id.index()) {
+                *slot = [ShapeId::link(self.free), 0, 0, 0];
             }
-            for side in self.sides.get_mut(id as usize).into_iter().flatten() {
+            for side in self.sides.get_mut(id.index()).into_iter().flatten() {
                 side.clear();
             }
-            self.free = id;
+            self.free = Some(id);
         }
     }
 
     /// `FUN_140fdc730`: the shape moved: removed and added again when the new box differs from
     /// the stored one (compared before rounding, so an odd box always differs). Returns its id.
-    pub fn replace(&mut self, id: u32, rect: Rect) -> u32 {
-        if self.shapes.get(id as usize) == Some(&rect) {
+    pub fn replace(&mut self, id: ShapeId, rect: Rect) -> ShapeId {
+        if self.shapes.get(id.index()) == Some(&rect) {
             return id;
         }
         self.remove(id);
@@ -416,10 +417,10 @@ mod tests {
     fn a_shape_is_rounded_to_even_units_and_listed_on_its_tiles() {
         let mut m = Mesh::new(8);
         let id = m.add([ONE + 1, ONE + 3, 2 * ONE + 1, 3 * ONE - 2]);
-        assert_eq!(id, 0);
+        assert_eq!(id, ShapeId::new(0));
         assert_eq!(m.shapes[0], [ONE, ONE + 2, 2 * ONE + 2, 3 * ONE - 2]);
         // x from tile 1 to tile 2 (the high edge 2 + 2 units), y from 1 to 2
-        let on = |x: u32, y: u32| m.tiles[(y * 8 + x) as usize].contains(&0);
+        let on = |x: u32, y: u32| m.tiles[(y * 8 + x) as usize].contains(&id);
         assert!(on(1, 1) && on(2, 1) && on(1, 2) && on(2, 2));
         assert!(!on(3, 1) && !on(1, 3));
     }
@@ -435,7 +436,7 @@ mod tests {
         let b = m.add(rect(at(94.5, 43.5), at(96.5, 45.5)));
         // the game's contact on the left shape's bottom: `3f 3 17a00000 b200000 17a00000 0 200000`
         assert_eq!(
-            m.sides[a as usize][0],
+            m.sides[a.index()][0],
             [Contact {
                 other: b,
                 side: 3,
@@ -447,25 +448,25 @@ mod tests {
         );
         // removing the second shape clears every contact with it
         m.remove(b);
-        assert_eq!(m.sides[a as usize].iter().map(Vec::len).sum::<usize>(), 0);
+        assert_eq!(m.sides[a.index()].iter().map(Vec::len).sum::<usize>(), 0);
         assert_eq!(m.shapes.len(), 1);
     }
 
     #[test]
     fn a_freed_slot_is_reused_last_in_first_out() {
         let mut m = Mesh::new(16);
-        let ids: Vec<u32> = (0..4).map(|i| m.add(tile_box(2 * i, 0, 1, 1))).collect();
+        let ids: Vec<ShapeId> = (0..4).map(|i| m.add(tile_box(2 * i, 0, 1, 1))).collect();
         m.remove(ids[1]);
         m.remove(ids[2]);
-        assert_eq!(m.free, 2);
+        assert_eq!(m.free, Some(ids[2]));
         assert_eq!(m.shapes[2], [1, 0, 0, 0]);
-        assert_eq!(m.add(tile_box(10, 10, 1, 1)), 2);
-        assert_eq!(m.add(tile_box(12, 10, 1, 1)), 1);
-        assert_eq!(m.free, NONE);
+        assert_eq!(m.add(tile_box(10, 10, 1, 1)), ids[2]);
+        assert_eq!(m.add(tile_box(12, 10, 1, 1)), ids[1]);
+        assert_eq!(m.free, None);
         // the last slot is dropped, not freed
-        m.remove(3);
+        m.remove(ids[3]);
         assert_eq!(m.shapes.len(), 3);
-        assert_eq!(m.free, NONE);
+        assert_eq!(m.free, None);
     }
 
     #[test]
@@ -475,6 +476,6 @@ mod tests {
         assert_eq!(m.replace(a, tile_box(1, 1, 1, 1)), a);
         let odd = [ONE + 1, ONE, 2 * ONE, 2 * ONE];
         assert_eq!(m.replace(a, odd), a);
-        assert_eq!(m.shapes[a as usize], [ONE, ONE, 2 * ONE, 2 * ONE]);
+        assert_eq!(m.shapes[a.index()], [ONE, ONE, 2 * ONE, 2 * ONE]);
     }
 }

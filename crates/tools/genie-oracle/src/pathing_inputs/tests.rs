@@ -1,5 +1,6 @@
 use crate::pathing_inputs::{mesh_from_dump, mesh_owners_from_dump};
 use crate::test_ids::object_id;
+use genie_core::pathing::ShapeId;
 
 /// A mesh 2 tiles wide with one shape, its side 1's contact and the tile (1, 0) holding it.
 const MESH: &str = "\
@@ -13,14 +14,19 @@ owner 900 0
 #[test]
 fn a_mesh_dump_reads_its_shapes_contacts_and_tiles() {
     let mesh = mesh_from_dump(MESH).unwrap();
-    assert_eq!((mesh.width, mesh.free), (2, 0x10));
+    assert_eq!((mesh.width, mesh.free), (2, Some(ShapeId::new(0x10))));
     assert_eq!(mesh.shapes, [[1, 2, 3, 4]]);
     let contact = &mesh.sides[0][1][0];
-    assert_eq!((contact.other, contact.side), (5, 2));
+    assert_eq!((contact.other, contact.side), (ShapeId::new(5), 2));
     assert_eq!((contact.at, contact.along), ([10, 11], 12));
     assert_eq!((contact.flag, contact.half), (1, 13));
-    assert_eq!(mesh.tiles[1], [0]);
-    assert_eq!(mesh_owners_from_dump(MESH), [(object_id(900), 0)]);
+    assert_eq!(mesh.tiles[1], [ShapeId::new(0)]);
+    assert_eq!(
+        mesh_owners_from_dump(MESH),
+        [(object_id(900), ShapeId::new(0))]
+    );
+    let none = mesh_from_dump("mesh width 2 shapes 0 free 0xffffffff\n").unwrap();
+    assert_eq!(none.free, None);
 }
 
 /// Without its mesh line, or with a header out of shape, a dump holds no mesh.

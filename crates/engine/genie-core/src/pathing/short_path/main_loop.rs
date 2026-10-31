@@ -1,9 +1,10 @@
 //! The search's run: its main loop and a popped node's expansion by its type.
 
+use crate::pathing::ShapeId;
 use crate::pathing::short_path::{
-    Callback, Corner, Ctx, FixedPoint, Hit, Kind, NONE, NUDGES, Node, Poly, RECT_HEURISTIC, Search,
-    ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box,
-    isqrt, through_float,
+    Callback, Corner, Ctx, FixedPoint, HIT_WITHOUT_SHAPE, Hit, Kind, NONE, NUDGES, Node, Poly,
+    RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits,
+    float_distance, in_box, isqrt, through_float,
 };
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -22,7 +23,7 @@ impl Search<'_> {
     pub(super) fn side_expand(
         &mut self,
         n: Node,
-        shape: u32,
+        shape: ShapeId,
         side: u8,
     ) -> Result<Option<ShortPath>, GenieError> {
         let p = n.at;
@@ -33,7 +34,7 @@ impl Search<'_> {
                 p,
                 u32::from(side),
                 self.ctx.mesh,
-                shape,
+                Some(shape),
                 d,
             ) else {
                 continue;
@@ -138,7 +139,7 @@ impl Search<'_> {
                 point: v,
             })?
             && sp != sn
-            && sh != NONE
+            && sh.is_some()
             && let Some(token) = corner_emits(sp, sn, v, self.goal.at)
         {
             let kind = Kind::Corner {
@@ -210,7 +211,7 @@ impl Search<'_> {
             return Ok(());
         }
         let mut hit = Hit {
-            shape: NONE,
+            shape: None,
             side: 0,
         };
         let mut k =
@@ -252,10 +253,10 @@ impl Search<'_> {
         }
         if k == 1 {
             let mut h = Self::at_fraction(p, t, frac);
-            self.settle(&mut h, &mut hit)?;
+            let shape = self.settle(&mut h, hit)?;
             if h != p {
                 let g = n.g.wrapping_add(float_distance(p, h));
-                self.side_node(g, n.idx, hit.shape, hit.side, h);
+                self.side_node(g, n.idx, shape, hit.side, h);
             }
             return Ok(());
         }
@@ -436,7 +437,7 @@ impl Search<'_> {
                 let t = range_point(self.goal.range, p, self.goal.at)?;
                 let mut frac = T_START;
                 let mut hit = Hit {
-                    shape: NONE,
+                    shape: None,
                     side: 0,
                 };
                 let mut token = self.token;
@@ -454,9 +455,9 @@ impl Search<'_> {
                     2 => self.touch_from(n, p, t, frac, hit)?,
                     _ => {
                         let mut h = Self::at_fraction(p, t, frac);
-                        self.settle(&mut h, &mut hit)?;
+                        let shape = self.settle(&mut h, hit)?;
                         let g = n.g.wrapping_add(float_distance(p, h));
-                        self.side_node(g, n.idx, hit.shape, hit.side, h);
+                        self.side_node(g, n.idx, shape, hit.side, h);
                     }
                 }
             }
@@ -504,7 +505,8 @@ impl Search<'_> {
             }
             frac -= 0x6_6666;
         }
-        let r = *self.ctx.mesh.shapes.checked(hit.shape as usize)?;
+        let touched = hit.shape.ok_or(HIT_WITHOUT_SHAPE)?;
+        let r = *self.ctx.mesh.shapes.checked(touched.index())?;
         let centre = [
             r[0].wrapping_add(
                 (((i64::from(r[2] - r[0]) * 0x40_0000)

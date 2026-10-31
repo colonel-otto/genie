@@ -2,6 +2,7 @@
 //! axis sweeps and the sight test.
 
 use crate::GenieError;
+use crate::pathing::ShapeId;
 use crate::pathing::mesh::{ONE, Rect};
 use crate::pathing::short_path::{
     Callback, Ctx, FixedPoint, Hit, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
@@ -14,7 +15,7 @@ pub(super) struct RayTile<'a> {
     /// The callback over the tile's shapes.
     pub(super) callback: Callback,
     /// The tile's shapes.
-    pub(super) list: &'a [u32],
+    pub(super) list: &'a [ShapeId],
     /// The ray's start.
     pub(super) start: FixedPoint,
     /// The ray's end.
@@ -28,20 +29,20 @@ pub(super) struct RayTile<'a> {
 }
 
 impl Ctx<'_> {
-    pub(super) fn ignored(&self, id: u32) -> bool {
-        self.ignore.get(id as usize).copied().unwrap_or(false)
+    pub(super) fn ignored(&self, id: ShapeId) -> bool {
+        self.ignore.get(id.index()).copied().unwrap_or(false)
     }
 
-    pub(super) fn tile(&self, tx: i32, ty: i32) -> Result<&[u32], GenieError> {
+    pub(super) fn tile(&self, tx: i32, ty: i32) -> Result<&[ShapeId], GenieError> {
         let i = (ty.wrapping_mul(self.mesh.width as i32).wrapping_add(tx)) as u32 as usize;
         Ok(self.mesh.tiles.checked(i)?)
     }
 
     /// `FUN_140fa3dc0`: the first shape of `p`'s tile, not ignored, strictly holding `p` (shrunk).
-    pub(super) fn holder(&self, p: FixedPoint) -> Result<Option<u32>, GenieError> {
+    pub(super) fn holder(&self, p: FixedPoint) -> Result<Option<ShapeId>, GenieError> {
         for &id in self.tile(tile_of(p[0]), tile_of(p[1]))? {
             if !self.ignored(id)
-                && strictly_inside(*self.mesh.shapes.checked(id as usize)?, p, self.d)
+                && strictly_inside(*self.mesh.shapes.checked(id.index())?, p, self.d)
             {
                 return Ok(Some(id));
             }
@@ -54,13 +55,13 @@ impl Ctx<'_> {
     pub(super) fn holder_but(
         &self,
         p: FixedPoint,
-        excl: u32,
+        excl: ShapeId,
         d: i32,
-    ) -> Result<Option<u32>, GenieError> {
+    ) -> Result<Option<ShapeId>, GenieError> {
         for &id in self.tile(tile_of(p[0]), tile_of(p[1]))? {
             if id != excl
                 && !self.ignored(id)
-                && inside(*self.mesh.shapes.checked(id as usize)?, p, d)
+                && inside(*self.mesh.shapes.checked(id.index())?, p, d)
             {
                 return Ok(Some(id));
             }
@@ -102,7 +103,7 @@ impl Ctx<'_> {
             if self.ignored(id) {
                 continue;
             }
-            let r = *self.mesh.shapes.checked(id as usize)?;
+            let r = *self.mesh.shapes.checked(id.index())?;
             let shrunk = [r[0] + d, r[1] + d, r[2] - d, r[3] - d];
             match cb {
                 Callback::Corner => {
@@ -113,7 +114,7 @@ impl Ctx<'_> {
                         continue;
                     }
                     let k = if k == 3 {
-                        let own = id.wrapping_add(4);
+                        let own = id.get().wrapping_add(4);
                         if u32::from(side) == *token || own == *token {
                             *token = own;
                             continue;
@@ -125,7 +126,7 @@ impl Ctx<'_> {
                     result = k;
                     hit.side = side;
                     *t = tt;
-                    hit.shape = id;
+                    hit.shape = Some(id);
                 }
                 Callback::Box | Callback::Sight => {
                     let clip = [
@@ -142,7 +143,7 @@ impl Ctx<'_> {
                     let k = ray_rect(a, b, shrunk, &mut tt, &mut side);
                     if k != 0 {
                         result = if k == 3 { 2 } else { k };
-                        hit.shape = id;
+                        hit.shape = Some(id);
                         hit.side = side;
                         *t = tt;
                     }
@@ -287,12 +288,12 @@ impl Ctx<'_> {
         let mut end = to;
         let mut out = Sweep::default();
         let visit =
-            |list: &[u32], end: &mut FixedPoint, out: &mut Sweep| -> Result<(), GenieError> {
+            |list: &[ShapeId], end: &mut FixedPoint, out: &mut Sweep| -> Result<(), GenieError> {
                 for &id in list {
                     if self.ignored(id) {
                         continue;
                     }
-                    let r = *self.mesh.shapes.checked(id as usize)?;
+                    let r = *self.mesh.shapes.checked(id.index())?;
                     let Some((hp, side)) = Self::axis_hit(from, *end, r, d, dir) else {
                         continue;
                     };

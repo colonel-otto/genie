@@ -7,6 +7,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use crate::pathing::ShapeId;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 
 mod call;
@@ -90,8 +91,8 @@ const fn inside(r: Rect, [x, y]: FixedPoint, k: i32) -> bool {
 /// A hit of the raycast or a sweep: the shape and its side.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Hit {
-    /// The shape hit.
-    pub shape: u32,
+    /// The shape hit (none before the ray hits one: the game's -1).
+    pub shape: Option<ShapeId>,
     /// Its side.
     pub side: u8,
 }
@@ -105,7 +106,7 @@ const COUNT_WITHOUT_HIT: GenieError =
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Sweep {
     found: bool,
-    shape: Option<u32>,
+    shape: Option<ShapeId>,
     point: Option<FixedPoint>,
     side: Option<u8>,
 }
@@ -113,7 +114,7 @@ struct Sweep {
 impl Sweep {
     /// The counted shape with the last hit's side and point: a sweep that counts a shape has
     /// written a point and a side by then (the hit that counts writes them first).
-    const fn counted(&self) -> Result<Option<(u32, u8, FixedPoint)>, GenieError> {
+    const fn counted(&self) -> Result<Option<(ShapeId, u8, FixedPoint)>, GenieError> {
         if !self.found {
             return Ok(None);
         }
@@ -155,8 +156,12 @@ const UNSET: i32 = -0x40_0000;
 const TRACE_STEPS: i32 = 2000;
 /// `DAT_143cc1f60`: the four unit directions (x, y) of a type-3 node's nudges.
 const NUDGES: [FixedPoint; 4] = [[0, ONE], [ONE, 0], [0, -ONE], [-ONE, 0]];
-/// No shape, node or polygon.
+/// No node or polygon.
 const NONE: u32 = u32::MAX;
+/// A hit that counted without naming its shape: the raycast names the shape of every hit it
+/// counts.
+const HIT_WITHOUT_SHAPE: GenieError =
+    GenieError::unreachable("a ray's counted hit that names no shape");
 
 /// The goal of a search (`local_148`): its point, the unit's radius, the target's half sizes,
 /// their sums and the range.
@@ -207,7 +212,7 @@ enum Kind {
     /// 1: a waypoint.
     Waypoint,
     /// 2: a point on a shape's side.
-    Side { shape: u32, side: u8 },
+    Side { shape: ShapeId, side: u8 },
     /// 3: a polygon corner or a terminal node: the walk's direction (1 backward), the vertices
     /// it covers, its polygon, the callback A token and the sides around the corner.
     Corner {
@@ -237,7 +242,8 @@ struct Node {
 struct Poly {
     vertices: Vec<FixedPoint>,
     sides: Vec<u8>,
-    shapes: Vec<u32>,
+    /// Each vertex's shape, none for a vertex on the bounds' border.
+    shapes: Vec<Option<ShapeId>>,
     costs: Vec<i32>,
     flag: bool,
 }

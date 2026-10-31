@@ -1,9 +1,10 @@
 //! The start's node, the hits' points and the two legs of an L.
 
+use crate::pathing::ShapeId;
 use crate::pathing::mesh::ONE;
 use crate::pathing::short_path::{
-    FixedPoint, Hit, Kind, NONE, Node, Search, TO_FIXED, TO_FLOAT, contact_point, in_box,
-    shrunk_corner, snap_to_side, strictly_inside, through_float, tile_of,
+    FixedPoint, HIT_WITHOUT_SHAPE, Hit, Kind, NONE, Node, Search, TO_FIXED, TO_FLOAT,
+    contact_point, in_box, shrunk_corner, snap_to_side, strictly_inside, through_float, tile_of,
 };
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -108,11 +109,11 @@ impl Search<'_> {
         &mut self,
         p: FixedPoint,
         root: u32,
-        (id, k): (u32, u32),
+        (id, k): (ShapeId, u32),
         rr2: i64,
     ) -> Result<(), GenieError> {
         let d = self.ctx.d;
-        let r = *self.ctx.mesh.shapes.checked(id as usize)?;
+        let r = *self.ctx.mesh.shapes.checked(id.index())?;
         let [px, py] = p;
         let a = shrunk_corner(r, SIDE_CORNERS.checked(k as usize)?.0, d);
         let e = shrunk_corner(r, SIDE_CORNERS.checked(k as usize)?.1, d);
@@ -169,7 +170,7 @@ impl Search<'_> {
         &mut self,
         [px, py]: FixedPoint,
         root: u32,
-        (id, k): (u32, u32),
+        (id, k): (ShapeId, u32),
         (a, e): (FixedPoint, FixedPoint),
     ) -> Result<(), GenieError> {
         let side = k as u8;
@@ -198,14 +199,14 @@ impl Search<'_> {
         &mut self,
         [px, py]: FixedPoint,
         root: u32,
-        (id, k): (u32, u32),
+        (id, k): (ShapeId, u32),
         rr2: i64,
     ) -> Result<(), GenieError> {
         let mesh = self.ctx.mesh;
         let d = self.ctx.d;
         let b = self.bounds;
         let side = k as u8;
-        for &c in mesh.sides.checked(id as usize)?.checked(k as usize)? {
+        for &c in mesh.sides.checked(id.index())?.checked(k as usize)? {
             if (d >= c.half) || self.ctx.ignored(c.other) {
                 continue;
             }
@@ -221,7 +222,7 @@ impl Search<'_> {
                     2 => nudged[1] -= 1,
                     _ => nudged[0] -= 1,
                 }
-                if !strictly_inside(*mesh.shapes.checked(c.other as usize)?, nudged, d) {
+                if !strictly_inside(*mesh.shapes.checked(c.other.index())?, nudged, d) {
                     continue;
                 }
             }
@@ -252,20 +253,22 @@ impl Search<'_> {
     /// tile that still holds it, until none does (`LAB_140fa7102`, `LAB_140fa5f50`, unbounded as
     /// the game's). It ends: a holder holds the point strictly inside, so the snap keeps the other
     /// coordinate and moves this one past the holder's side, always the same way (side 0 and 3
-    /// lower, 1 and 2 higher); no shape holds it again, and the mesh has finitely many.
-    pub(super) fn settle(&self, h: &mut FixedPoint, hit: &mut Hit) -> Result<(), GenieError> {
+    /// lower, 1 and 2 higher); no shape holds it again, and the mesh has finitely many. Returns
+    /// the shape the point settled on.
+    pub(super) fn settle(&self, h: &mut FixedPoint, hit: Hit) -> Result<ShapeId, GenieError> {
         let d = self.ctx.d;
+        let mut shape = hit.shape.ok_or(HIT_WITHOUT_SHAPE)?;
         snap_to_side(
             h,
-            *self.ctx.mesh.shapes.checked(hit.shape as usize)?,
+            *self.ctx.mesh.shapes.checked(shape.index())?,
             hit.side,
             d,
         );
         while let Some(id) = self.ctx.holder(*h)? {
-            snap_to_side(h, *self.ctx.mesh.shapes.checked(id as usize)?, hit.side, d);
-            hit.shape = id;
+            snap_to_side(h, *self.ctx.mesh.shapes.checked(id.index())?, hit.side, d);
+            shape = id;
         }
-        Ok(())
+        Ok(shape)
     }
 
     /// `FUN_140fa2b20`: the two legs of an L toward `c` from node `b`, the first along direction
