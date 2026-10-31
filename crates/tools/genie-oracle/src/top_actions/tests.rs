@@ -549,7 +549,7 @@ fn a_farms_make_takes_its_timers_and_task() {
 
 #[test]
 fn a_birds_fly_takes_its_home_and_move_to() {
-    use genie_core::movement::fly::FLY;
+    use genie_core::movement::fly::{FLY, FlyState};
     let bird = |b: RgeAction| by_type(|t| t.rge_action_bird = Some(Box::new(b)));
     let f = imported(FLY, bird(base(3)))
         .unwrap()
@@ -559,7 +559,7 @@ fn a_birds_fly_takes_its_home_and_move_to() {
         .unwrap();
     assert_eq!(
         (f.state, f.move_to, f.task.id),
-        (3, None, TaskId::of_task(8))
+        (FlyState::Choosing, None, TaskId::of_task(8))
     );
     assert_eq!(
         f.home.get().map(f32::to_bits),

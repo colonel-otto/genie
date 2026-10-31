@@ -345,7 +345,7 @@ fn import_fly(
         .map(|s| saved_move_to(s, saved.graphics, false))
         .transpose()?;
     unit.actions.set_fly(Some(Fly {
-        state: base.state,
+        state: genie_core::movement::fly::FlyState::of_byte(base.state)?,
         timer: base.timer,
         move_to,
         home: Point::new(base.target_x, base.target_y),

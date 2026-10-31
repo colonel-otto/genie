@@ -33,6 +33,7 @@ use crate::math::fmath::BVector;
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
+use crate::movement::fly::FlyState;
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
@@ -9279,7 +9280,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     assert_eq!(t.players[1].objects[3].workers, 0);
     let bird = &mut t.players[1].objects[1];
     bird.actions.set_fly(Some(Fly {
-        state: 3,
+        state: FlyState::Choosing,
         timer: 1.0,
         move_to: Some(MoveToAction {
             state: MoveTo::Moving,
@@ -15648,7 +15649,7 @@ fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
     };
     let v = &mut t.players[1].objects[0];
     v.actions.set_fly(Some(Fly {
-        state: 4,
+        state: FlyState::Flying,
         timer: 2.0,
         move_to: Some(MoveToAction {
             state: move_to,
@@ -15682,7 +15683,7 @@ fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
     let (r, fly, heard) = flown(MoveTo::Failed, |_| ());
     assert_eq!(r, Ok(()));
     let fly = fly.unwrap();
-    assert_eq!((fly.state, fly.move_to), (2, None));
+    assert_eq!((fly.state, fly.move_to), (FlyState::Resting, None));
     assert_eq!(fly.timer, 2.0 - seconds(50) + 2.0);
     assert_eq!(
         heard,

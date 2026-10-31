@@ -35,6 +35,7 @@ pub(crate) mod ai_moves;
 pub mod explore;
 mod explore_state;
 pub mod fly;
+mod fly_state;
 mod long_walk;
 pub mod move_to;
 mod new_path;
