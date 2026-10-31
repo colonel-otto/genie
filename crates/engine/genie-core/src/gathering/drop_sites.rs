@@ -255,6 +255,7 @@ mod tests {
     use crate::objects::actions::ActionList;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::masters::Master;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::TaskId;
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
@@ -334,7 +335,7 @@ mod tests {
             class,
             player: PlayerId::new(1),
             master: ids::FARM,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 0.0,

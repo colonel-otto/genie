@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Rect;
 use crate::map::spatial::{RecordId, Spatial, WalkQuery};
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
 use crate::objects::{ObjectId, ObjectKey};
@@ -140,11 +141,10 @@ impl World {
                     continue;
                 }
                 let id = self.players.live(q, i)?.id;
-                if self
-                    .spatial
-                    .get(id)
-                    .is_some_and(|g| g.obstruction.is_some_and(|o| o.kind == 10))
-                {
+                if self.spatial.get(id).is_some_and(|g| {
+                    g.obstruction
+                        .is_some_and(|o| o.kind == ObstructionType::TYPE_10)
+                }) {
                     return Err(GenieError::unsupported(
                         "a gate of obstruction kind 10 opens (FUN_140f65580)",
                     ));

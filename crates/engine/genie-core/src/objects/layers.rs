@@ -314,6 +314,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::spatial::Placed;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
     use crate::objects::masters::ids;
     use crate::players::PlayerId;
@@ -334,7 +335,7 @@ mod tests {
                 class: class::VILLAGER,
                 player: PlayerId::new(1),
                 master: ids::VILLAGER_MALE,
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,

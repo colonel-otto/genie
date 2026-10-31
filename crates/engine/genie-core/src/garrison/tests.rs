@@ -13,6 +13,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
@@ -790,7 +791,7 @@ fn walled_map(
         class: class::CLASS_0,
         player: PlayerId::new(1),
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: false,
         speed: 0.0,
@@ -1461,12 +1462,15 @@ pub(crate) fn sized_world(w: i32, h: i32) -> World {
             class: class::TOWER,
             player: PlayerId::new(1),
             master: TC,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::map::spatial::Obstruction { kind: 2, class: 2 }),
+            obstruction: Some(crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            }),
         },
     );
     t
@@ -1536,7 +1540,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -1600,7 +1604,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
         class: class::VILLAGER,
         player: PlayerId::new(1),
         master: VILLAGER,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -1707,7 +1711,7 @@ pub(crate) fn inside_tc(t: &mut World, p: PlayerId, id: i32, m: MasterId) {
             class: class::VILLAGER,
             player: p,
             master: m,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -1894,7 +1898,7 @@ pub(crate) fn walker(t: &mut World, p: PlayerId, id: i32, m: MasterId, at: Point
             class: class::VILLAGER,
             player: p,
             master: m,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.8,
@@ -1924,12 +1928,15 @@ pub(crate) fn building_at(
             class: class::TOWER,
             player: PlayerId::new(1),
             master: m,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::map::spatial::Obstruction { kind: 2, class: 2 }),
+            obstruction: Some(crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            }),
         },
     );
 }
@@ -2089,7 +2096,7 @@ fn ship_at(t: &mut World, at: Point) {
             class: class::TRANSPORT,
             player: PlayerId::new(1),
             master: SHIP,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 1.0,

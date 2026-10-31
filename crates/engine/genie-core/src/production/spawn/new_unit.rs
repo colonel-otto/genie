@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MONASTERY;
 use crate::objects::masters::master_type::COMBAT;
@@ -319,10 +320,12 @@ impl World {
             tall: made.tall,
             speed: moving.speed,
             unknown: None,
-            obstruction: (made.obstruction_type != 0 && solid).then_some(Obstruction {
-                kind: made.obstruction_type,
-                class: made.obstruction_class,
-            }),
+            obstruction: (made.obstruction_type != ObstructionType::NONE && solid).then_some(
+                Obstruction {
+                    kind: made.obstruction_type,
+                    class: made.obstruction_class,
+                },
+            ),
         };
         self.spatial.insert(id, placed);
         self.pathing.moved(id, &placed, false);

@@ -198,7 +198,10 @@ mod spatial {
         );
         assert!(unit.tall);
         let obstruction = unit.obstruction.unwrap();
-        assert_eq!((obstruction.kind, obstruction.class), (2, 3));
+        assert_eq!(
+            (obstruction.kind, obstruction.class),
+            (genie_core::objects::masters::ObstructionType::TYPE_2, 3)
+        );
         assert_eq!(out.tile_list(1, 1), [object_id(10)]);
         let seer = out.sight.as_ref().unwrap().seer(object_id(10)).unwrap();
         assert_eq!(

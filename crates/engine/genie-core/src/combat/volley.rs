@@ -15,6 +15,7 @@ use crate::objects::lifecycle::static_storage;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
@@ -426,7 +427,7 @@ impl Unit {
             tall: made.tall,
             speed: mover.stats.speed,
             unknown: None,
-            obstruction: (made.obstruction_type != 0 && solid).then_some(
+            obstruction: (made.obstruction_type != ObstructionType::NONE && solid).then_some(
                 crate::map::spatial::Obstruction {
                     kind: made.obstruction_type,
                     class: made.obstruction_class,

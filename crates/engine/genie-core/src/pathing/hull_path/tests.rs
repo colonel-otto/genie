@@ -6,6 +6,7 @@ use crate::map::Rect;
 use crate::map::Tile;
 use crate::map::spatial::{Obstruction, Tiles};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::pathing::hull_path::rounds::Rounds;
@@ -171,11 +172,11 @@ fn a_ray_meets_the_nearest_box_side_toward_it() {
     assert_eq!((at.y(), k, side), (5.0, 1, 0));
 }
 
-fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
+fn placed(x: f32, y: f32, r: f32, kind: ObstructionType) -> Placed {
     Placed {
         position: Position::new(x, y, 0.0),
         radius: Footprint::new(r, r),
-        class: if kind == 5 {
+        class: if kind == ObstructionType::CIRCLE {
             class::VILLAGER
         } else {
             class::PREDATOR
@@ -195,9 +196,18 @@ fn placed(x: f32, y: f32, r: f32, kind: u8) -> Placed {
 fn the_quick_path_goes_around_one_square_obstruction() {
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
     // a villager, a tree in its way and its target past the tree
-    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
-    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
-    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(2.0, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(48),
+        placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
+    w.insert(
+        object_id(9149),
+        placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut pather = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
     let (result, path) = pather
         .find(
@@ -267,9 +277,18 @@ fn a_hull_crossing_only_the_other_s_last_tested_side_merges() {
 #[test]
 fn a_unit_s_short_reach_is_its_old_short_path_s_length() {
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
-    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
-    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
-    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(2.0, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(48),
+        placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
+    w.insert(
+        object_id(9149),
+        placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut mover = crate::gathering::hunt::tests::walker().placed(Position::new(2.0, 5.5, 0.0));
     mover.stats.radius = Radii::new(0.2, 0.2, 0.2);
     mover.stats.restriction_mask = 6;
@@ -807,7 +826,7 @@ fn tall(x: f32, y: f32, r: f32, class: ClassId) -> Placed {
         class,
         player: PlayerId::new(1),
         master: ids::ID_0,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -1211,9 +1230,18 @@ fn a_path_skips_the_parents_its_nodes_see_past() {
 #[test]
 fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     let mut w = open_world();
-    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
-    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
-    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(2.0, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(48),
+        placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
+    w.insert(
+        object_id(9149),
+        placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let by = 5.5 - 0.7 * SQRT_2;
     let length = quick_reach_from(
         &mut w,
@@ -1247,7 +1275,10 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
     // a target the world does not hold
     assert!(!quick_reach(&mut w, object_id(9171), Some(object_id(777)), 6, 0.2, 0.1).unwrap());
     // a second obstruction in the way: the quick path is blocked (3)
-    w.insert(object_id(49), placed(7.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(49),
+        placed(7.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     assert_eq!(
         quick_reach_from(
             &mut w,
@@ -1269,7 +1300,10 @@ fn a_unit_s_quick_reach_is_its_quick_path_alone() {
 #[test]
 fn a_new_pather_holds_the_constructor_s_state() {
     let mut w = open_world();
-    w.insert(object_id(9171), placed(2.0, 5.5, 0.2, 5));
+    w.insert(
+        object_id(9171),
+        placed(2.0, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
     let p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
     assert_eq!(ITERATION_CAP, 0x40);
     assert_eq!(
@@ -1402,8 +1436,14 @@ fn walled(wall_x: usize, unit: Point) -> Spatial {
         0,
         Vec::new(),
     ));
-    w.insert(object_id(9171), placed(unit.x(), unit.y(), 0.2, 5));
-    w.insert(object_id(9149), placed(12.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(unit.x(), unit.y(), 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(9149),
+        placed(12.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     w
 }
 
@@ -1461,7 +1501,10 @@ fn the_hull_search_goes_around_a_wall_to_the_target() {
 #[test]
 fn a_start_inside_a_hull_leaves_it_by_its_exit_paths() {
     let mut w = walled(8, Point::new(4.9, 5.5));
-    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(48),
+        placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
     let (result, path) = p
         .find(
@@ -1716,9 +1759,18 @@ fn a_walk_into_a_hull_keeps_its_entrances_and_their_sides() {
 #[test]
 fn a_goal_at_the_map_s_edge_needs_its_target_on_it() {
     let mut w = open_world();
-    w.insert(object_id(9171), placed(15.0, 5.5, 0.2, 5));
-    w.insert(object_id(9149), placed(19.9, 5.5, 0.5, 2));
-    w.insert(object_id(9150), placed(20.5, 7.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(15.0, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(9149),
+        placed(19.9, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
+    w.insert(
+        object_id(9150),
+        placed(20.5, 7.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
     let (result, path) = p
         .find(
@@ -1839,8 +1891,14 @@ fn a_node_beyond_the_area_grows_it_once() {
         0,
         Vec::new(),
     ));
-    w.insert(object_id(9171), placed(5.0, 5.5, 0.2, 5));
-    w.insert(object_id(9149), placed(8.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(5.0, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(9149),
+        placed(8.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut p = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
     let (result, path) = p
         .find(
@@ -1878,10 +1936,10 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
     classes[3 * 20 + 3] = 1;
     classes[7 * 20 + 7] = 1;
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, classes));
-    w.insert(object_id(1), placed(3.5, 3.5, 0.5, 2));
-    w.insert(object_id(2), placed(5.5, 5.5, 0.5, 2));
-    w.insert(object_id(3), placed(3.5, 3.6, 0.5, 2));
-    w.insert(object_id(4), placed(7.5, 7.5, 0.4, 2));
+    w.insert(object_id(1), placed(3.5, 3.5, 0.5, ObstructionType::TYPE_2));
+    w.insert(object_id(2), placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2));
+    w.insert(object_id(3), placed(3.5, 3.6, 0.5, ObstructionType::TYPE_2));
+    w.insert(object_id(4), placed(7.5, 7.5, 0.4, ObstructionType::TYPE_2));
     let p = HullPather::for_list(
         &mut w,
         &[
@@ -1966,7 +2024,10 @@ fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
 #[test]
 fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
     let mut w = walled(6, Point::new(2.0, 5.5));
-    w.insert(object_id(48), placed(10.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(48),
+        placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut p = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.2, 1);
     let (result, path) = p
         .find(Point::new(2.0, 5.5), Point::new(10.6, 5.5), None, 0.0)
@@ -1989,7 +2050,10 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
         (1, Some(&Point::new(10.6, 5.5)))
     );
     // a second object holding the goal
-    w.insert(object_id(49), placed(11.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(49),
+        placed(11.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut r = HullPather::for_list(&mut w, &[object_id(9171)], 6, 0.2, 1);
     assert!(
         r.find(Point::new(2.0, 5.5), Point::new(11.0, 5.5), None, 0.0)
@@ -2004,8 +2068,14 @@ fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
 #[test]
 fn an_included_moving_unit_blocks_the_line_tests() {
     let mut w = open_world();
-    w.insert(object_id(9171), placed(2.0, 5.5, 0.6, 5));
-    w.insert(object_id(50), placed(6.0, 5.5, 0.3, 5));
+    w.insert(
+        object_id(9171),
+        placed(2.0, 5.5, 0.6, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(50),
+        placed(6.0, 5.5, 0.3, ObstructionType::CIRCLE),
+    );
     w.set_gait(
         object_id(50),
         Some(crate::map::spatial::Gait {
@@ -2121,8 +2191,14 @@ fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
 #[test]
 fn a_unit_within_range_needs_no_path() {
     let mut w = Spatial::with_tiles(GridSize::new(20, 20), Tiles::new(20, 20, vec![4; 400]));
-    w.insert(object_id(9171), placed(9.75, 5.5, 0.2, 5));
-    w.insert(object_id(9149), placed(10.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(9171),
+        placed(9.75, 5.5, 0.2, ObstructionType::CIRCLE),
+    );
+    w.insert(
+        object_id(9149),
+        placed(10.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut pather = HullPather::new(&mut w, object_id(9171), Some(object_id(9149)), 6, 0.2);
     let (result, path) = pather
         .find(
@@ -2358,7 +2434,10 @@ fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
 #[test]
 fn a_goal_in_the_start_s_hull_is_walked_to_within_it() {
     let mut w = walled(8, Point::new(4.9, 5.5));
-    w.insert(object_id(48), placed(5.5, 5.5, 0.5, 2));
+    w.insert(
+        object_id(48),
+        placed(5.5, 5.5, 0.5, ObstructionType::TYPE_2),
+    );
     let mut p = HullPather::new(&mut w, object_id(9171), None, 6, 0.2);
     let side = Point::new(4.799_9, 5.499_899);
     let (result, path) = p

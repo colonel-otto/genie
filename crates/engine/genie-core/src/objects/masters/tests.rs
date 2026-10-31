@@ -26,7 +26,7 @@ fn master(id: MasterId, task_by_group: u8, tasks: Vec<Task>) -> Master {
         task_by_group,
         radius: Footprint::new(0.2, 0.2),
         tall: true,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tasks,
         cost: costs(&[]),
@@ -48,7 +48,7 @@ fn house() -> Master {
         task_by_group: 0,
         radius: Footprint::new(1.0, 1.0),
         tall: true,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tasks: vec![],
         cost: costs(&[(player_attribute::WOOD, 25, true)]),
@@ -247,7 +247,7 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
         ),
         (
             a::OBSTRUCTION_TYPE,
-            |m| f32::from(m.obstruction_type),
+            |m| f32::from(m.obstruction_type.get()),
             [3.0, 3.0, 3.0],
         ),
         (
@@ -327,7 +327,10 @@ fn each_static_attribute_sets_adds_and_multiplies_its_field() {
     m.set_attribute(a::TRAIT_PIECE, 2.0, &world(false));
     m.set_attribute(a::OBSTRUCTION_TYPE, 4.0, &world(false));
     m.set_attribute(a::AVAILABLE_UNIT_FLAG, 0.0, &world(false));
-    assert_eq!((m.object_flags, m.obstruction_type), (0x2_1234, 0));
+    assert_eq!(
+        (m.object_flags, m.obstruction_type),
+        (0x2_1234, ObstructionType::NONE)
+    );
     assert!(!m.available);
 }
 
@@ -642,9 +645,9 @@ fn the_static_setters_truncate_as_the_game_does() {
     m.set_attribute(attribute::TRAIT_PIECE, 3.0, &world(false));
     assert_eq!(m.object_flags, 0x0003_5678);
     m.set_attribute(attribute::OBSTRUCTION_TYPE, 5.0, &world(false));
-    assert_eq!(m.obstruction_type, 5);
+    assert_eq!(m.obstruction_type, ObstructionType::CIRCLE);
     m.set_attribute(attribute::OBSTRUCTION_TYPE, 4.0, &world(false));
-    assert_eq!(m.obstruction_type, 0);
+    assert_eq!(m.obstruction_type, ObstructionType::NONE);
     // "Can Be Built On" writes the blast defense level; its multiply does not round
     m.set_attribute(attribute::CAN_BE_BUILT_ON, 3.0, &world(false));
     m.multiply_attribute(attribute::BLAST_DEFENSE_LEVEL, 1.9, &world(false));

@@ -8,6 +8,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -1096,7 +1097,7 @@ fn a_member_s_own_move_walks_its_path() {
             class: class::CLASS_6,
             player: PlayerId::new(1),
             master: master_id(4),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 0.8,
@@ -1537,7 +1538,7 @@ fn grounded() -> World {
                     class: class::CLASS_6,
                     player: p,
                     master: master_id(4),
-                    obstruction_type: 0,
+                    obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: true,
                     speed: 0.0,
@@ -1724,7 +1725,7 @@ fn register(t: &mut World) {
                     class: m.class,
                     player: p,
                     master: m.id,
-                    obstruction_type: 0,
+                    obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: false,
                     speed: 0.0,

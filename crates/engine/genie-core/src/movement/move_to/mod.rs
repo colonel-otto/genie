@@ -490,6 +490,7 @@ pub fn target_left(
 mod tests {
     use super::*;
     use crate::map::spatial::Placed;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
     use crate::players::PlayerId;
     use crate::test_ids::master_id;
@@ -587,7 +588,7 @@ mod tests {
             class: class::PREDATOR,
             player: PlayerId::new(1),
             master: master_id(594),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,

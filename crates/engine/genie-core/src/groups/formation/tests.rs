@@ -7,6 +7,7 @@ use crate::map::Rect;
 use crate::map::Tile;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -109,12 +110,15 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
                 class: class::CLASS_6,
                 player: PlayerId::new(1),
                 master: u.life.master_id,
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
                 unknown: None,
-                obstruction: Some(Obstruction { kind: 5, class: 2 }),
+                obstruction: Some(Obstruction {
+                    kind: ObstructionType::CIRCLE,
+                    class: 2,
+                }),
             },
         );
     }

@@ -4,6 +4,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -203,7 +204,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
                 class: class::CLASS_0,
                 player: PlayerId::new(0),
                 master: ids::HOUSE,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
@@ -215,7 +216,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     let master = Master {
         id: ids::HOUSE,
         height: 2.0,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         obstruction_class: 2,
         ..Master::default()
     };
@@ -223,7 +224,10 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         t.give_record(object_id(id), &master);
     }
     let record = |t: &World, id: ObjectId| t.spatial.get(id).and_then(|p| p.obstruction);
-    let wall = Some(crate::map::spatial::Obstruction { kind: 2, class: 2 });
+    let wall = Some(crate::map::spatial::Obstruction {
+        kind: ObstructionType::TYPE_2,
+        class: 2,
+    });
     assert_eq!(
         [
             record(&t, object_id(1)),
@@ -372,7 +376,10 @@ fn built() -> crate::construction::build::Construction {
         builders: 0,
         hit_points: 1,
         build_time: 1,
-        record: crate::map::spatial::Obstruction { kind: 0, class: 0 },
+        record: crate::map::spatial::Obstruction {
+            kind: ObstructionType::NONE,
+            class: 0,
+        },
         snow: false,
         sprite_override: false,
     }
@@ -670,7 +677,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
                 class: class::CLASS_11,
                 player: PlayerId::new(0),
                 master: ids::FARM,
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
                 speed: 0.0,
@@ -796,7 +803,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     let mut t = World::new(0, 0, PlayerId::new(0), vec![0], vec![player]);
     let mut m = combat(master_id(4), class::CLASS_6, 60);
     (m.death_sprite, m.death_spawns) = (7, [Some(master_id(0)), Some(master_id(9))]);
-    (m.build_time, m.obstruction_type, m.obstruction_class) = (33, 5, 2);
+    (m.build_time, m.obstruction_type, m.obstruction_class) = (33, ObstructionType::CIRCLE, 2);
     (m.line_of_sight, m.tall) = (6.0, true);
     t.masters = vec![Masters::new([m, combat(master_id(5), class::CLASS_6, 60)])];
     for id in [1, 3] {
@@ -808,7 +815,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
                 class: class::CLASS_6,
                 player: PlayerId::new(0),
                 master: master_id(4),
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
                 speed: 0.0,
@@ -864,7 +871,10 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     assert_eq!(c.build_time, 33);
     assert_eq!(
         c.record,
-        crate::map::spatial::Obstruction { kind: 5, class: 2 }
+        crate::map::spatial::Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2
+        }
     );
     let tall = |id: ObjectId| t.spatial.get(id).unwrap().tall;
     assert_eq!((tall(object_id(1)), tall(object_id(3))), (true, false));
@@ -1743,7 +1753,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             class: class::BUILDING,
             hit_points: 550,
             radius: Footprint::new(0.5, 0.5),
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             obstruction_class: 2,
             ..Master::default()
         },
@@ -1757,7 +1767,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
             class: class::BUILDING,
             player: PlayerId::new(0),
             master: ids::HOUSE,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -1771,13 +1781,19 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
         .unwrap();
     assert_eq!(
         record(&t),
-        Some(crate::map::spatial::Obstruction { kind: 2, class: 2 })
+        Some(crate::map::spatial::Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2
+        })
     );
     t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 78, 3.0)], None)
         .unwrap();
     assert_eq!(
         record(&t),
-        Some(crate::map::spatial::Obstruction { kind: 3, class: 2 })
+        Some(crate::map::spatial::Obstruction {
+            kind: ObstructionType::TYPE_3,
+            class: 2
+        })
     );
     t.do_effect(PlayerId::new(0), &[attribute(0, 70, -1, 32, 0.0)], None)
         .unwrap();

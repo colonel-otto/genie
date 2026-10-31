@@ -31,9 +31,9 @@ pub use self::task_id::TaskId;
 pub use self::values::AttributeWorld;
 pub(crate) use self::values::cost_resource;
 use self::values::{
-    MISSILE_SPEED_CAP, PERCENT, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short, add_sprite,
-    class_amount, handicapped, id_of, insert_damage_graphic, insert_train_location, low8, low16,
-    multiply_short, resize_damage_graphics, resize_train_locations, select_entry, set_sprite,
+    MISSILE_SPEED_CAP, PERCENT, ROUND, SPEED_CAP, add_short, add_sprite, class_amount, handicapped,
+    id_of, insert_damage_graphic, insert_train_location, low8, low16, multiply_short,
+    resize_damage_graphics, resize_train_locations, select_entry, set_sprite,
 };
 #[cfg(test)]
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
@@ -236,7 +236,7 @@ pub struct Master {
     /// which a placement test reads.
     pub terrain_restriction: i16,
     /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
-    pub obstruction_type: u8,
+    pub obstruction_type: ObstructionType,
     /// `can_be_built_on` (`+0x5e9`): a new building deletes an object of it off its footprint.
     pub buildable_on: u8,
     /// `obstruction_class` (`+0x652`).
@@ -582,6 +582,7 @@ pub mod ids;
 mod master_id;
 mod master_kind;
 pub mod master_type;
+mod obstruction_type;
 
 pub use self::action_type::ActionType;
 pub use self::attribute::MasterAttribute;
@@ -589,6 +590,7 @@ pub use self::class_id::ClassId;
 pub use self::gather_group::GatherGroup;
 pub use self::master_id::MasterId;
 pub use self::master_kind::MasterKind;
+pub use self::obstruction_type::ObstructionType;
 
 #[cfg(test)]
 mod tests;

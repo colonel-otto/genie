@@ -488,6 +488,7 @@ impl crate::world::World {
 mod tests {
     use super::*;
     use crate::objects::lines::UnitLine;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{BuildingMaster, Master};
@@ -766,7 +767,10 @@ mod tests {
                     builders: 0,
                     hit_points: 2400,
                     build_time: 150,
-                    record: crate::map::spatial::Obstruction { kind: 0, class: 0 },
+                    record: crate::map::spatial::Obstruction {
+                        kind: ObstructionType::NONE,
+                        class: 0,
+                    },
                     snow: false,
                     sprite_override: false,
                 }),

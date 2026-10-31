@@ -121,12 +121,7 @@ impl World {
                 let moving = u.body.mover().is_some_and(Mover::is_moving);
                 let desolid = u.construction.is_some_and(|c| c.desolid);
                 let kind = m.obstruction_type;
-                if placed.tall
-                    && kind != 0
-                    && kind != 12
-                    && m.obstruction_class != 0
-                    && !moving
-                    && !desolid
+                if placed.tall && kind.recorded() && m.obstruction_class != 0 && !moving && !desolid
                 {
                     self.pathing.place_shape(u.id, placed);
                 }

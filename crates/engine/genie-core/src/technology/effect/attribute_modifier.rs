@@ -7,6 +7,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::{AttributeWorld, Master, master_type, player_master};
 use crate::players::PlayerId;
 use crate::technology::effect::{CAPPED, Change, OBJECT_GONE, has_actions, within_table};
@@ -316,7 +317,8 @@ impl World {
             let unrecorded = match attribute {
                 // a char compare of the new type with the object's master's
                 a::OBSTRUCTION_TYPE => {
-                    crate::math::conversions::cvttss2si(v) as u8 != master.obstruction_type
+                    ObstructionType::from(crate::math::conversions::cvttss2si(v) as u8)
+                        != master.obstruction_type
                 }
                 a::SIZE_Z => true,
                 _ => false,

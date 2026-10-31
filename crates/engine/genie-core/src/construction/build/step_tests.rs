@@ -4,6 +4,7 @@
 use crate::map::GridSize;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
+use crate::objects::masters::ObstructionType;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::carrying;
@@ -81,7 +82,7 @@ const fn placed(at: Position, r: f32, class: ClassId, master: MasterId) -> Place
         class,
         player: PlayerId::new(1),
         master,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -98,7 +99,10 @@ const fn construction(progress: f32, builders: u8, desolid: bool) -> Constructio
         builders,
         hit_points: 550,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     }
@@ -193,7 +197,7 @@ fn site_world(class: ClassId, at: Position, build: BuildAction) -> World {
     t.spatial
         .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE));
     let me = Placed {
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         ..placed(at, 0.2, class, ids::VILLAGER_MALE)
     };
     t.spatial.insert(BUILDER, me);
@@ -564,7 +568,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
         ),
     );
     let me = Placed {
-        obstruction_type: 5,
+        obstruction_type: ObstructionType::CIRCLE,
         ..placed(
             Position::new(30.0, 89.0, 0.0),
             0.2,
@@ -825,7 +829,10 @@ fn stump(t: &mut World) {
         object_id(77),
         Placed {
             player: PlayerId::new(0),
-            obstruction: Some(Obstruction { kind: 2, class: 0 }),
+            obstruction: Some(Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 0,
+            }),
             ..placed(
                 Position::new(10.2, 10.2, 0.0),
                 0.5,
@@ -1574,7 +1581,7 @@ fn a_builder_on_an_annex_walks_off_it() {
     t.spatial
         .insert(HOUSE, placed(AT_HOUSE, 1.0, class::BUILDING, ids::HOUSE));
     let me = Placed {
-        obstruction_type: 5,
+        obstruction_type: ObstructionType::CIRCLE,
         ..placed(
             Position::new(12.4, 10.5, 0.0),
             0.2,

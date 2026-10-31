@@ -9,6 +9,7 @@ use crate::objects::ObjectId;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -206,7 +207,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         class: class::BUILDING,
         player: PlayerId::new(0),
         master,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -259,7 +260,10 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             builders: 1,
             hit_points: 550,
             build_time: 25,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -767,7 +771,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -1371,7 +1375,10 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
             builders: 0,
             hit_points: 100,
             build_time: 10,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -1886,7 +1893,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
             class: class::CLASS_6,
             player: PlayerId::new(1),
             master: master_id(4),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 0.0,
@@ -1949,7 +1956,10 @@ fn switched_in_the_open(
             tall: false,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::map::spatial::Obstruction { kind: 5, class: 2 }),
+            obstruction: Some(crate::map::spatial::Obstruction {
+                kind: ObstructionType::CIRCLE,
+                class: 2,
+            }),
         },
     );
     let mut pathing = crate::pathing::Pathing::default();
@@ -2011,7 +2021,7 @@ fn switch_masters() -> (Master, Master) {
             (Some(AttributeId::numbered(14)), 1.0, 16),
         ],
         volley_fire: 3.0,
-        obstruction_type: 3,
+        obstruction_type: ObstructionType::TYPE_3,
         obstruction_class: 1,
         ..Master::default()
     };
@@ -2071,11 +2081,18 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(11));
     assert_eq!(
         (record.master, record.radius, record.obstruction_type),
-        (master_id(5), Footprint::new(0.3, 0.3), 3)
+        (
+            master_id(5),
+            Footprint::new(0.3, 0.3),
+            ObstructionType::TYPE_3
+        )
     );
     assert_eq!(
         record.obstruction,
-        Some(crate::map::spatial::Obstruction { kind: 3, class: 1 })
+        Some(crate::map::spatial::Obstruction {
+            kind: ObstructionType::TYPE_3,
+            class: 1
+        })
     );
     let hp = |hp| {
         let (_, u, _) = switched_in_the_open(unit(hp, 1), &old, &next, &[10, 11]).unwrap();
@@ -2306,7 +2323,7 @@ fn followers() -> World {
             class: class::CLASS_6,
             player: PlayerId::new(2),
             master: master_id(5),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 0.0,
@@ -2427,7 +2444,10 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         builders: 2,
         hit_points: 100,
         build_time: 10,
-        record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+        record: crate::map::spatial::Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -2598,7 +2618,10 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             builders,
             hit_points: 100,
             build_time: 10,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -2850,7 +2873,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         class: class::LIVESTOCK,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: false,
         speed: 0.8,
@@ -2983,7 +3006,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
                 class,
                 player: PlayerId::from(player),
                 master: master_id(4),
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
                 speed: 0.0,

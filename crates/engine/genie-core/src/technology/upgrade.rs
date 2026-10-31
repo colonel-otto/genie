@@ -678,6 +678,7 @@ mod tests {
     use crate::map::Position;
     use crate::objects::ObjectId;
     use crate::objects::lifecycle::Held;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::action_type;
     use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
     use crate::objects::masters::{MasterId, ids};
@@ -1380,7 +1381,7 @@ mod tests {
                     class: class::CLASS_6,
                     player: PlayerId::new(0),
                     master: master_id(4),
-                    obstruction_type: 0,
+                    obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: true,
                     speed: 0.0,

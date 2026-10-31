@@ -8,6 +8,7 @@ use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, W
 use crate::objects::ObjectId;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::objects::unit::Unit;
@@ -60,7 +61,7 @@ fn on_map(
         class,
         player: PlayerId::new(1),
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: buildable,
         tall: false,
         speed: 0.0,
@@ -330,7 +331,10 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
         builders: 1,
         hit_points: 480,
         build_time: 15,
-        record: Obstruction { kind: 0, class: 0 },
+        record: Obstruction {
+            kind: ObstructionType::NONE,
+            class: 0,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -483,7 +487,7 @@ fn house() -> crate::map::spatial::Placed {
         class: class::BUILDING,
         player: PlayerId::new(2),
         master: ids::HOUSE,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -585,7 +589,10 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
         builders: 2,
         hit_points: 25,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -758,7 +765,10 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         builders: 2,
         hit_points: 550,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -812,7 +822,10 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             builders: 1,
             hit_points: 100,
             build_time: 100,
-            record: Obstruction { kind: 2, class: 2 },
+            record: Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         };
@@ -898,7 +911,10 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
         builders: 1,
         hit_points: 550,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -951,7 +967,10 @@ fn the_work_starts_the_desolid_annexes_first() {
         builders: 1,
         hit_points: 550,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -1036,7 +1055,10 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
         builders: 1,
         hit_points: 550,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };
@@ -1069,7 +1091,10 @@ fn an_annex_s_work_goes_to_its_main_building() {
         builders: 1,
         hit_points: 550,
         build_time: 25,
-        record: Obstruction { kind: 2, class: 2 },
+        record: Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     };

@@ -9,6 +9,7 @@ use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::objects::ObjectId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -155,12 +156,15 @@ fn post(x: f32, y: f32) -> Placed {
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
         unknown: None,
-        obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        obstruction: Some(Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2,
+        }),
     }
 }
 

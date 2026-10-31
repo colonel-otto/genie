@@ -577,6 +577,7 @@ mod tests {
     use super::*;
     use crate::construction::build::Construction;
     use crate::map::spatial::Obstruction;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::ids;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
@@ -598,7 +599,10 @@ mod tests {
                 builders: 0,
                 hit_points: 550,
                 build_time: 25,
-                record: Obstruction { kind: 2, class: 0 },
+                record: Obstruction {
+                    kind: ObstructionType::TYPE_2,
+                    class: 0,
+                },
                 snow: false,
                 sprite_override: false,
             }),
@@ -760,6 +764,7 @@ mod clearing_tests {
     use crate::map::Position;
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::masters::{MasterId, ids};
@@ -841,7 +846,7 @@ mod clearing_tests {
                 radius: Footprint::new(0.5, 0.5),
                 height: 1.0,
                 tall: true,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 1,
                 ..Master::default()
             },
@@ -898,8 +903,11 @@ mod clearing_tests {
             for u in all {
                 let m = ms.get(u.life.master_id).expect("a test master");
                 let mut at = placed(&u, m, p);
-                if m.obstruction_type == 2 {
-                    at.obstruction = Some(crate::map::spatial::Obstruction { kind: 2, class: 0 });
+                if m.obstruction_type == ObstructionType::TYPE_2 {
+                    at.obstruction = Some(crate::map::spatial::Obstruction {
+                        kind: ObstructionType::TYPE_2,
+                        class: 0,
+                    });
                 }
                 t.spatial.insert(u.id, at);
             }

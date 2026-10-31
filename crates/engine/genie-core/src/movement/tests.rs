@@ -7,6 +7,7 @@ use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::ID_45;
@@ -224,12 +225,15 @@ fn drop_off_world(class: u8, near: &[(i32, Point, f32, ClassId, PlayerId)]) -> S
         class,
         player,
         master: master_id(class.get()),
-        obstruction_type: 5,
+        obstruction_type: ObstructionType::CIRCLE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
         unknown: None,
-        obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        obstruction: Some(Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2,
+        }),
     };
     w.insert(
         object_id(9177),
@@ -454,12 +458,15 @@ fn walled(radius: f32) -> Spatial {
             class: class::VILLAGER,
             player: PlayerId::new(2),
             master: ids::ID_0,
-            obstruction_type: 5,
+            obstruction_type: ObstructionType::CIRCLE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(Obstruction { kind: 5, class: 2 }),
+            obstruction: Some(Obstruction {
+                kind: ObstructionType::CIRCLE,
+                class: 2,
+            }),
         },
     );
     w
@@ -747,12 +754,15 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
-        obstruction_type: 5,
+        obstruction_type: ObstructionType::CIRCLE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
         unknown: None,
-        obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        obstruction: Some(Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2,
+        }),
     };
     w.insert(object_id(9171), unit(4.5, 0.6));
     w.insert(object_id(50), unit(6.5, 0.3));
@@ -839,12 +849,15 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
             class: class::VILLAGER,
             player: PlayerId::new(2),
             master: ids::VILLAGER_MALE,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.8,
             unknown: None,
-            obstruction: Some(Obstruction { kind: 5, class: 2 }),
+            obstruction: Some(Obstruction {
+                kind: ObstructionType::CIRCLE,
+                class: 2,
+            }),
         },
     );
     let mut pathing = Pathing::default();
@@ -1159,12 +1172,15 @@ fn a_gate_s_gap_is_the_least_over_it_and_its_annexes() {
         class,
         player: PlayerId::new(1),
         master: ids::ID_0,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
         unknown: None,
-        obstruction: Some(Obstruction { kind: 2, class: 1 }),
+        obstruction: Some(Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 1,
+        }),
     };
     world.insert(object_id(100), wall(10.0, class::GATE));
     world.insert(object_id(101), wall(12.0, class::WALL));
@@ -1411,12 +1427,15 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
             class: class::TREE,
             player: PlayerId::new(0),
             master: ids::ID_0,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(Obstruction { kind: 2, class: 1 }),
+            obstruction: Some(Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 1,
+            }),
         },
     );
     assert_eq!(m.look_ahead(&me, &mut w), Ok(false));
@@ -1495,12 +1514,15 @@ pub(crate) fn world() -> Spatial {
         class: class::VILLAGER,
         player: PlayerId::new(2),
         master: ids::ID_0,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
         unknown: None,
-        obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        obstruction: Some(Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2,
+        }),
     };
     s.insert(object_id(9175), unit(30.0, 89.0));
     s.insert(object_id(9177), unit(28.0, 89.0));
@@ -1512,7 +1534,7 @@ pub(crate) fn world() -> Spatial {
             class: class::BUILDING,
             player: PlayerId::new(2),
             master: ids::ID_0,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -1613,12 +1635,15 @@ fn a_long_path_ends_before_its_first_walled_stretch() {
         class,
         player: PlayerId::new(1),
         master: master_id(72),
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed,
         unknown: None,
-        obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        obstruction: Some(Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2,
+        }),
     };
     let walled = |soldier: bool, block: Option<Placed>| {
         let mut world = tiled_world(vec![4; 120 * 120]);
@@ -2128,7 +2153,7 @@ fn a_top_level_short_of_its_moved_target_arrives() {
             class: class::CLASS_6,
             player: target_player,
             master: master_id(74),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 1.0,
@@ -2221,12 +2246,15 @@ fn a_next_waypoint_an_object_stands_on_goes() {
             class: class::BUILDING,
             player: PlayerId::new(2),
             master: ids::HOUSE,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(Obstruction { kind: 2, class: 2 }),
+            obstruction: Some(Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            }),
         },
     );
     let me = Me {

@@ -4,8 +4,9 @@ use crate::GenieError;
 use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Tile;
-use crate::map::spatial::{QUERY_HITS, RecordId, Spatial, TESTED_KINDS};
+use crate::map::spatial::{QUERY_HITS, RecordId, Spatial};
 use crate::map::{Rect, Segment};
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 
 /// A record a pather query met (an entry of `FUN_141051900`'s list): an object's, a temporary
@@ -69,7 +70,7 @@ impl Spatial {
         }
         self.check_known_records(grown)?;
         let walk = Segment { from: a, to: b };
-        let meets = |kind: u8, bx: Rect| {
+        let meets = |kind: ObstructionType, bx: Rect| {
             walk_box.overlaps(bx.grown(g)) && record_meets_segment(kind, bx, g, walk)
         };
         let level = self.grid.level(0);
@@ -79,7 +80,7 @@ impl Spatial {
             let bx = Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
             if self.visits_cell(level, x >> shift, y >> shift, grown)
                 && !ignore.contains(&id)
-                && meets(3, bx)
+                && meets(ObstructionType::TYPE_3, bx)
             {
                 hits.push(Hit { id, bounds: bx });
                 if first || MOST_HITS <= hits.len() {
@@ -91,8 +92,8 @@ impl Spatial {
             let Some(o) = p.obstruction else {
                 continue;
             };
-            let kind = if o.kind == 10 { 2 } else { o.kind };
-            if !TESTED_KINDS.contains(&kind)
+            let kind = o.kind.filed();
+            if !kind.tested()
                 || self.gaits.get(&id).is_some_and(|g| g.moving)
                 || ignore.contains(&RecordId::from(id))
                 || !self.visits(p, kind, grown)
@@ -103,7 +104,7 @@ impl Spatial {
             if !meets(kind, bx) {
                 continue;
             }
-            if kind == 11 {
+            if kind == ObstructionType::TYPE_11 {
                 return Err(GenieError::unsupported(
                     "a pather query meeting a record of kind 11 (its own radii)",
                 ));
@@ -338,8 +339,8 @@ pub(super) fn box_meets_segment(b: Rect, r: f32, walk: Segment) -> bool {
 /// A record's test against the walk by its kind (`FUN_141051e00`, `FUN_141052800`): a circle's
 /// (kind 5, `FUN_141051630` and `FUN_141053130`) reads its box as it stands for the inside tests;
 /// the others' (kinds 2, 3, 11, 13) order it ([`box_meets_segment`]).
-pub(super) fn record_meets_segment(kind: u8, b: Rect, r: f32, walk: Segment) -> bool {
-    if kind == 5 {
+pub(super) fn record_meets_segment(kind: ObstructionType, b: Rect, r: f32, walk: Segment) -> bool {
+    if kind == ObstructionType::CIRCLE {
         segment_meets_box(b, r, walk, b)
     } else {
         box_meets_segment(b, r, walk)

@@ -7,6 +7,7 @@ use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
+use genie_core::objects::masters::ObstructionType;
 use genie_core::players::PlayerId;
 use genie_core::vision::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
@@ -234,10 +235,11 @@ pub(super) fn spatial(
                 .as_deref()
                 .is_some_and(|b| b.desolid_flag != 0);
             let solid = m.radius.sized() && !desolid;
-            let obstruction = (m.obstruction_type != 0 && solid).then_some(Obstruction {
-                kind: m.obstruction_type,
-                class: m.obstruction_class,
-            });
+            let obstruction =
+                (m.obstruction_type != ObstructionType::NONE && solid).then_some(Obstruction {
+                    kind: m.obstruction_type,
+                    class: m.obstruction_class,
+                });
             out.insert(
                 ObjectId::try_from(s.id)?,
                 Placed {

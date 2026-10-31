@@ -415,6 +415,7 @@ mod stack_tests {
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{BuildingMaster, Masters};
     use crate::objects::unit::Unit;
@@ -429,7 +430,7 @@ mod stack_tests {
     /// time `bt`, hit points `hp`, an annex of `head`, with `annexes` at their offsets.
     fn building(
         id: i16,
-        (r, z, kind): (f32, f32, u8),
+        (r, z, kind): (f32, f32, ObstructionType),
         (bt, hp): (i16, i16),
         head: i16,
         annexes: &[(i16, GroundOffset)],
@@ -472,14 +473,20 @@ mod stack_tests {
     /// 16; a volley missile: the tower's unit AI), 618 (tall), 619 (its own annexes 1649 and
     /// 2160), 620, 1649 and 890 (class 27, hit points −1, tall).
     fn masters() -> Masters {
-        let mut foundation = building(621, (2.0, 4.0, 2), (150, 2400), -1, &[]);
+        let mut foundation = building(
+            621,
+            (2.0, 4.0, ObstructionType::TYPE_2),
+            (150, 2400),
+            -1,
+            &[],
+        );
         if let Some(b) = foundation.building.as_mut() {
             b.stack_unit = Some(ids::TOWN_CENTRE);
             b.disappears_when_built = true;
         }
         let mut tc = building(
             109,
-            (2.0, 0.0, 0),
+            (2.0, 0.0, ObstructionType::NONE),
             (100, 2400),
             621,
             &[
@@ -495,15 +502,27 @@ mod stack_tests {
             (None, 0.0, 0),
         ];
         tc.volley_missile = Some(master_id(54));
-        let mut empty = building(890, (0.0, 4.0, 5), (-10, -1), 109, &[]);
+        let mut empty = building(
+            890,
+            (0.0, 4.0, ObstructionType::CIRCLE),
+            (-10, -1),
+            109,
+            &[],
+        );
         empty.class = class::WALL;
         Masters::new([
             foundation,
             tc,
-            building(618, (1.0, 3.0, 2), (100, 2400), 621, &[]),
+            building(
+                618,
+                (1.0, 3.0, ObstructionType::TYPE_2),
+                (100, 2400),
+                621,
+                &[],
+            ),
             building(
                 619,
-                (1.5, 0.0, 0),
+                (1.5, 0.0, ObstructionType::NONE),
                 (100, 2400),
                 621,
                 &[
@@ -511,8 +530,14 @@ mod stack_tests {
                     (2160, GroundOffset::ZERO),
                 ],
             ),
-            building(620, (1.0, 0.0, 0), (100, 2400), 621, &[]),
-            building(1649, (0.0, 0.0, 0), (0, 1), 619, &[]),
+            building(
+                620,
+                (1.0, 0.0, ObstructionType::NONE),
+                (100, 2400),
+                621,
+                &[],
+            ),
+            building(1649, (0.0, 0.0, ObstructionType::NONE), (0, 1), 619, &[]),
             empty,
         ])
     }
@@ -537,7 +562,10 @@ mod stack_tests {
                 builders: 1,
                 hit_points: 2400,
                 build_time: 150,
-                record: Obstruction { kind: 2, class: 2 },
+                record: Obstruction {
+                    kind: ObstructionType::TYPE_2,
+                    class: 2,
+                },
                 snow: false,
                 sprite_override: false,
             }),
@@ -585,12 +613,15 @@ mod stack_tests {
                 class: class::BUILDING,
                 player: PlayerId::new(1),
                 master: ids::TOWN_CENTRE_621,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
                 unknown: None,
-                obstruction: Some(Obstruction { kind: 2, class: 2 }),
+                obstruction: Some(Obstruction {
+                    kind: ObstructionType::TYPE_2,
+                    class: 2,
+                }),
             },
         );
         t.next_object_id = object_id(8768);
@@ -607,7 +638,13 @@ mod stack_tests {
         t.world_time = 912_000;
         t.players[1].history.add_entry(0, 3.0, 0.0);
         for ms in &mut t.masters {
-            let castle = building(82, (2.0, 4.0, 2), (150, 2400), -1, &[]);
+            let castle = building(
+                82,
+                (2.0, 4.0, ObstructionType::TYPE_2),
+                (150, 2400),
+                -1,
+                &[],
+            );
             *ms = Masters::new(ms.iter().cloned().chain([castle]));
         }
         t.players[1].objects[0].life.master_id = ids::CASTLE;
@@ -716,12 +753,12 @@ mod stack_tests {
     /// and class would give one; with a height it does (431153923's builder, update 412).
     #[test]
     fn a_new_building_without_a_height_gets_no_record() {
-        for (height, record) in [(0.0, None), (1.0, Some((5, 2)))] {
+        for (height, record) in [(0.0, None), (1.0, Some((ObstructionType::CIRCLE, 2)))] {
             let mut t = world();
             for ms in &mut t.masters {
                 let m = ms.get_mut(ids::TOWN_CENTRE).unwrap();
                 m.build_time = 0;
-                m.obstruction_type = 5;
+                m.obstruction_type = ObstructionType::CIRCLE;
                 m.obstruction_class = 2;
                 m.height = height;
                 m.building.as_mut().unwrap().annexes = [None; 4];

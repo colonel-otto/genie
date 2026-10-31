@@ -2,10 +2,11 @@
 
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::{
-    AttributeWorld, MISSILE_SPEED_CAP, Master, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short,
-    add_sprite, attribute, insert_damage_graphic, low8, low16, master_type, multiply_short,
-    resize_damage_graphics, select_entry, set_sprite,
+    AttributeWorld, MISSILE_SPEED_CAP, Master, ROUND, SPEED_CAP, add_short, add_sprite, attribute,
+    insert_damage_graphic, low8, low16, master_type, multiply_short, resize_damage_graphics,
+    select_entry, set_sprite,
 };
 
 impl Master {
@@ -46,13 +47,7 @@ impl Master {
                 self.set_static_sprite(attribute, v, world);
             }
             a::OBSTRUCTION_TYPE => {
-                // FUN_141125ae0: its table holds 14 types; a byte past them reads the routine's
-                // stack (the game's undefined read, which no .dat effect reaches): kept
-                let t = low8(v);
-                self.obstruction_type = match VALID_OBSTRUCTIONS.get(usize::from(t)) {
-                    Some(false) => 0,
-                    _ => t,
-                };
+                self.obstruction_type = ObstructionType::set(low8(v));
             }
             a::BLOCKAGE_CLASS => self.obstruction_class = low8(v),
             a::SELECTION_EFFECT => self.selection_effect = low8(v),

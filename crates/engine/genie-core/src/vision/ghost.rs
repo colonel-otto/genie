@@ -681,6 +681,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::TileOffset;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::ids;
     use crate::objects::masters::ids::HOUSE;
     use crate::objects::masters::master_type::DOPPELGANGER;
@@ -1216,7 +1217,10 @@ mod tests {
             builders: 0,
             hit_points: 0,
             build_time: 0,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         });

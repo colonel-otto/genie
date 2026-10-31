@@ -20,6 +20,7 @@ use crate::map::Rect;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
+use crate::objects::masters::ObstructionType;
 use crate::players::PlayerId;
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
@@ -165,9 +166,6 @@ const TRAPPERS: [MasterId; 3] = [
     MasterId::named(2171),
 ];
 
-/// Obstruction kinds the query tests (`FUN_141051e00`): boxes (2, 3, 11, 13) and circles (5).
-const TESTED_KINDS: [u8; 5] = [2, 3, 5, 11, 13];
-
 /// What the walk reads of a moving object it meets: whether it moves (its velocity, `+0x868`, is
 /// not 0: slot 0x5c8, `FUN_1411583d0`), its last move time (`+0x870`, slot 0x5e8) and its current
 /// path level's pause time (`+0x858`'s `+0x34`, slot 0x528), none without a level, and when that
@@ -208,7 +206,7 @@ pub struct Placed {
     /// The master's id.
     pub master: MasterId,
     /// The master's `obstruction_type` (`+0x651`), whether or not the object has its record yet.
-    pub obstruction_type: u8,
+    pub obstruction_type: ObstructionType,
     /// The master's `can_be_built_on` (`+0x5e9`): a foundation clears such objects off its
     /// footprint.
     pub buildable_on: u8,
@@ -230,7 +228,7 @@ pub struct Placed {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct Obstruction {
     /// The record's kind (`obstruction_type`).
-    pub kind: u8,
+    pub kind: ObstructionType,
     /// The master's `obstruction_class`.
     pub class: u8,
 }
@@ -240,13 +238,7 @@ impl Obstruction {
     /// neither a record nor a mesh shape.
     #[must_use]
     pub const fn recorded(self) -> bool {
-        self.kind != 0 && self.kind != 12 && self.class != 0
-    }
-
-    /// The kinds that mark the tiles under them (`FUN_141056460`: 0, 1, 2, 11, 13 and 10, which the
-    /// game files as 2).
-    const fn marks_tiles(self) -> bool {
-        self.kind == 10 || (self.kind < 14 && (0x2807u32 >> self.kind) & 1 != 0)
+        self.kind.recorded() && self.class != 0
     }
 }
 

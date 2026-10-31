@@ -5,6 +5,7 @@ use crate::map::GroundOffset;
 use crate::map::Radii;
 use crate::map::Tile;
 use crate::map::TileOffset;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -213,7 +214,7 @@ fn sheep(state: u8) -> Near {
         class: class::LIVESTOCK,
         master: master_id(705),
         buildable_on: 0,
-        obstruction_type: 5,
+        obstruction_type: ObstructionType::CIRCLE,
         auto_gather: false,
         state,
         desolid: false,
@@ -290,7 +291,7 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         kind: master_type::BUILDING,
         class: class::BUILDING,
         master: ids::HOUSE,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         moving: false,
         player: PlayerId::new(2),
         state: 2,
@@ -1211,7 +1212,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         kind: master_type::BUILDING,
         class: class::BUILDING,
         master: ids::HOUSE,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         moving: false,
         player: PlayerId::new(2),
         state: 2,
@@ -1264,7 +1265,7 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
     // a negative height, passes; a height of 0 counts as 1 for a building
     let outlined = |outline| Near {
         position: Position::new(22.6, 21.0, 0.0),
-        obstruction_type: 11,
+        obstruction_type: ObstructionType::TYPE_11,
         outline,
         ..house
     };
@@ -1288,7 +1289,7 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
         moving: false,
         player: PlayerId::new(2),
         state: 4,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         ..sheep(2)
     };
     let build = house_site(&[1.0], false);

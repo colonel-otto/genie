@@ -17,6 +17,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::spatial::{BLOCKED, Placed, Tiles};
 use crate::objects::ObjectId;
+use crate::objects::masters::ObstructionType;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::short_path::Pather;
 use crate::pathing::tile_path::Planner;
@@ -297,7 +298,7 @@ impl Pathing {
         };
         let has_shape = p.tall
             && p.obstruction
-                .is_some_and(|o| o.kind != 0 && o.kind != 12 && o.class != 0);
+                .is_some_and(|o| o.kind.recorded() && o.class != 0);
         if !has_shape {
             return;
         }
@@ -349,7 +350,7 @@ impl Pathing {
             }
             return;
         }
-        let radius = if p.obstruction_type == 11 {
+        let radius = if p.obstruction_type == ObstructionType::TYPE_11 {
             outline
         } else {
             p.radius
@@ -522,12 +523,15 @@ mod tests {
             class: class::VILLAGER,
             player: PlayerId::new(2),
             master: ids::BUILDER,
-            obstruction_type: 5,
+            obstruction_type: ObstructionType::CIRCLE,
             buildable_on: 0,
             tall: true,
             speed: 0.8,
             unknown: None,
-            obstruction: Some(Obstruction { kind: 5, class: 2 }),
+            obstruction: Some(Obstruction {
+                kind: ObstructionType::CIRCLE,
+                class: 2,
+            }),
         }
     }
 

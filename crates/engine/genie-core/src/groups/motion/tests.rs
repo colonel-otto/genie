@@ -3,6 +3,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::objects::actions::ActionList;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::test_ids::object_id;
@@ -492,7 +493,7 @@ fn target_at(y: f32) -> Placed {
         class: class::CLASS_0,
         player: PlayerId::new(0),
         master: ids::ID_0,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: false,
         speed: 0.0,
@@ -881,7 +882,10 @@ fn placed_at(x: f32, y: f32) -> Placed {
     Placed {
         position: Position::new(x, y, 0.0),
         radius: Footprint::new(0.2, 0.2),
-        obstruction: Some(crate::map::spatial::Obstruction { kind: 5, class: 2 }),
+        obstruction: Some(crate::map::spatial::Obstruction {
+            kind: ObstructionType::CIRCLE,
+            class: 2,
+        }),
         ..target_at(y)
     }
 }

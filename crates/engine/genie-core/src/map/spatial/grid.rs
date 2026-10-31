@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::spatial::{
-    Gait, Placed, QUERY_HITS, RecordId, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
+    Gait, Placed, QUERY_HITS, RecordId, Spatial, record_meets_segment, tile_record_id,
 };
 use crate::map::{Rect, Segment};
+use crate::objects::masters::ObstructionType;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 
@@ -32,7 +33,7 @@ pub struct WalkQuery<'a> {
 
 impl Spatial {
     /// Each obstruction record: the object's id, the record's kind and box.
-    pub fn records(&self) -> impl Iterator<Item = (ObjectId, u8, Rect)> + '_ {
+    pub fn records(&self) -> impl Iterator<Item = (ObjectId, ObstructionType, Rect)> + '_ {
         self.objects
             .iter()
             .filter_map(|(&id, p)| Some((id, p.obstruction?.kind, p.bounds())))
@@ -50,11 +51,18 @@ impl Spatial {
     /// cell x, y. Its box's tiles, held on the map; a box of kind 2 (10), 11 or 13 whose centre
     /// sits on a half tile ends 0.001 short on both axes. The level is the finest whose cell holds
     /// both corners' tiles, the cell the one of the low corner's tile.
-    pub(super) fn filed(&self, p: &Placed, kind: u8) -> (i32, i32, i32) {
+    pub(super) fn filed(&self, p: &Placed, kind: ObstructionType) -> (i32, i32, i32) {
         let b = p.bounds();
         let (x0, y0, mut x1, mut y1) = (b.x0(), b.y0(), b.x1(), b.y1());
         let (x, y) = (p.position.x(), p.position.y());
-        if matches!(kind, 2 | 10 | 11 | 13) && x % 0.5 < 0.001 && y % 0.5 < 0.001 {
+        let half_tile_box = matches!(
+            kind,
+            ObstructionType::TYPE_2
+                | ObstructionType::TYPE_10
+                | ObstructionType::TYPE_11
+                | ObstructionType::TYPE_13
+        );
+        if half_tile_box && x % 0.5 < 0.001 && y % 0.5 < 0.001 {
             x1 -= 0.001;
             y1 -= 0.001;
         }
@@ -73,7 +81,7 @@ impl Spatial {
     /// visits the cell an object's record of kind `kind` is filed in ([`Spatial::filed`]): the
     /// query's tiles run from the low corner's (at least 0) to the high corner's (at most the
     /// map's size), and on each level it visits the cells they cover.
-    pub(super) fn visits(&self, p: &Placed, kind: u8, rect: Rect) -> bool {
+    pub(super) fn visits(&self, p: &Placed, kind: ObstructionType, rect: Rect) -> bool {
         let (level, cx, cy) = self.filed(p, kind);
         self.visits_cell(level, cx, cy, rect)
     }
@@ -391,8 +399,8 @@ impl Spatial {
             if player.is_some() && skip(p) {
                 continue;
             }
-            let kind = if o.kind == 10 { 2 } else { o.kind };
-            if !TESTED_KINDS.contains(&kind)
+            let kind = o.kind.filed();
+            if !kind.tested()
                 || ignore.contains(&RecordId::from(id))
                 || !self.visits(p, kind, query)
             {
@@ -480,7 +488,7 @@ impl Spatial {
         }
         self.check_known_records(query)?;
         let walk = Segment { from, to };
-        let meets = |kind: u8, bx: Rect| {
+        let meets = |kind: ObstructionType, bx: Rect| {
             rect.overlaps(bx.grown(grow)) && record_meets_segment(kind, bx, grow, walk)
         };
         if tiles {
@@ -491,7 +499,7 @@ impl Spatial {
                 let bx = Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
                 if self.visits_cell(level, x >> shift, y >> shift, query)
                     && !ignore.contains(&id)
-                    && meets(3, bx)
+                    && meets(ObstructionType::TYPE_3, bx)
                 {
                     hits.push(id);
                     if MOST_HITS <= hits.len() {
@@ -504,8 +512,8 @@ impl Spatial {
             let Some(o) = p.obstruction else {
                 continue;
             };
-            let kind = if o.kind == 10 { 2 } else { o.kind };
-            if !TESTED_KINDS.contains(&kind)
+            let kind = o.kind.filed();
+            if !kind.tested()
                 || ignore.contains(&RecordId::from(id))
                 || !self.visits(p, kind, query)
             {

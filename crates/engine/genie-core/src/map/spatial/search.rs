@@ -6,11 +6,12 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FarmLook, Filter, LIVESTOCK_CLASS, PASTURE_CLASS,
-    PASTURES, Placed, QUERY_HITS, Reach, RecordId, SEARCH_REUSE_SQUARED, Spatial, TESTED_KINDS,
-    TRAPPERS, players_seen, record_meets_segment, tile_record_id,
+    PASTURES, Placed, QUERY_HITS, Reach, RecordId, SEARCH_REUSE_SQUARED, Spatial, TRAPPERS,
+    players_seen, record_meets_segment, tile_record_id,
 };
 use crate::map::{Rect, Segment};
 use crate::objects::ObjectId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::players::PlayerId;
@@ -57,7 +58,7 @@ impl Spatial {
         }
         self.check_known_records(query)?;
         let walk = Segment { from, to };
-        let meets = |kind: u8, bx: Rect| {
+        let meets = |kind: ObstructionType, bx: Rect| {
             rect.overlaps(bx.grown(grow)) && record_meets_segment(kind, bx, grow, walk)
         };
         let level = self.grid.level(0);
@@ -66,7 +67,7 @@ impl Spatial {
             self.visits_cell(level, x >> shift, y >> shift, query)
                 && !ignore.contains(&tile_record_id(x, y))
                 && meets(
-                    3,
+                    ObstructionType::TYPE_3,
                     Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0),
                 )
         });
@@ -77,8 +78,8 @@ impl Spatial {
             let Some(o) = p.obstruction else {
                 return false;
             };
-            let kind = if o.kind == 10 { 2 } else { o.kind };
-            TESTED_KINDS.contains(&kind)
+            let kind = o.kind.filed();
+            kind.tested()
                 && !ignore.contains(&RecordId::from(id))
                 && !self.gaits.get(&id).is_some_and(|g| g.moving)
                 && self.visits(p, kind, query)

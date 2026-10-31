@@ -12,6 +12,7 @@ use crate::map::spatial::{
     tile_record_id,
 };
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use std::collections::BTreeMap;
@@ -73,7 +74,7 @@ impl Spatial {
             return;
         };
         p.obstruction = Some(o);
-        if o.marks_tiles() {
+        if o.kind.marks_tiles() {
             self.tiles.mark(p, o);
             self.changed.push(self.tiles.covered_rect(p));
         }
@@ -126,13 +127,12 @@ impl Spatial {
             return false;
         };
         let kind = p.obstruction_type;
-        if kind == 0 || kind == 12 {
+        if !kind.recorded() {
             return false;
         }
-        let marks = Obstruction { kind, class: 0 }.marks_tiles();
-        if marks {
+        if kind.marks_tiles() {
             self.unmark(&p, id);
-            if kind == 1 {
+            if kind == ObstructionType::TYPE_1 {
                 return true;
             }
         }
@@ -159,7 +159,7 @@ impl Spatial {
             objects
                 .get(&o)
                 .and_then(|q| q.obstruction)
-                .is_some_and(|r| matches!(r.kind, 0 | 1 | 2 | 10 | 11 | 13))
+                .is_some_and(|r| r.kind.marks_tiles())
         };
         if self.tiles.unmark(p, id, static_record) {
             self.changed.push(self.tiles.covered_rect(p));
@@ -361,7 +361,7 @@ impl Spatial {
         if placed.unknown.is_some() {
             let _ = self.frozen_for.entry(id).or_insert(0.0);
         }
-        if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
+        if let Some(o) = placed.obstruction.filter(|o| o.kind.marks_tiles()) {
             self.tiles.mark(&placed, o);
             self.changed.push(self.tiles.covered_rect(&placed));
         }
@@ -390,10 +390,10 @@ impl Spatial {
         if self.tiles.tile_of(old.position) != self.tiles.tile_of(placed.position) {
             return self.insert(id, placed);
         }
-        if old.obstruction.is_some_and(Obstruction::marks_tiles) {
+        if old.obstruction.is_some_and(|o| o.kind.marks_tiles()) {
             self.unmark(&old, id);
         }
-        if let Some(o) = placed.obstruction.filter(|o| o.marks_tiles()) {
+        if let Some(o) = placed.obstruction.filter(|o| o.kind.marks_tiles()) {
             self.tiles.mark(&placed, o);
             self.changed.push(self.tiles.covered_rect(&placed));
         }
@@ -456,7 +456,7 @@ impl Spatial {
                 let objects = &self.objects;
                 self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
             }
-            if gone.obstruction.is_some_and(Obstruction::marks_tiles) {
+            if gone.obstruction.is_some_and(|o| o.kind.marks_tiles()) {
                 self.unmark(&gone, id);
             }
         }
@@ -495,11 +495,17 @@ impl Spatial {
         self.tile_records_meet(&test, ignore)
             || self.records_in(test.query).any(|(id, p)| {
                 // kind 10 is filed as 2
-                let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
-                matches!(kind, Some(2 | 11 | 13))
-                    && !ignore.contains(&RecordId::from(id))
+                let kind = p.obstruction.map(|o| o.kind.filed());
+                matches!(
+                    kind,
+                    Some(
+                        ObstructionType::TYPE_2
+                            | ObstructionType::TYPE_11
+                            | ObstructionType::TYPE_13
+                    )
+                ) && !ignore.contains(&RecordId::from(id))
                     && test.meets(p.bounds())
-                    && self.visits(p, kind.unwrap_or(0), test.query)
+                    && self.visits(p, kind.unwrap_or(ObstructionType::NONE), test.query)
             })
     }
 

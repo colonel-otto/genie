@@ -410,7 +410,7 @@ fn site_occupants(
     cleared: &[ObjectId],
     reads: &BuildReads,
 ) -> Result<Vec<ObjectId>, GenieError> {
-    let obstructs = !matches!(placed.obstruction_type, 0 | 12);
+    let obstructs = placed.obstruction_type.recorded();
     Ok(c.w
         .spatial
         .footprint_occupants(site, placed, obstructs, &reads.looks)?

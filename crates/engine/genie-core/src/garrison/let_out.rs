@@ -9,6 +9,7 @@ use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
@@ -185,11 +186,12 @@ impl World {
                 .with("building", bid)
         })?;
         let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
-        placed.obstruction =
-            (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
+        placed.obstruction = (made.obstruction_type != ObstructionType::NONE && solid).then_some(
+            crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
                 class: made.obstruction_class,
-            });
+            },
+        );
         let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
         let _ =
@@ -308,11 +310,12 @@ impl World {
         self.pathing.removed(id);
         self.spatial.remove(id);
         let solid = 0.0 < made.radius.x() && 0.0 < made.radius.y() && made.tall;
-        placed.obstruction =
-            (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
+        placed.obstruction = (made.obstruction_type != ObstructionType::NONE && solid).then_some(
+            crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
                 class: made.obstruction_class,
-            });
+            },
+        );
         let world_time = self.world_time;
         let unit = &mut self.players.player_mut(up)?.objects[ui];
         let placed =

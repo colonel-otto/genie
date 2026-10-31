@@ -13,7 +13,7 @@ use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
-use crate::map::spatial::{Placed, QUERY_HITS, RecordId, Spatial, TESTED_KINDS, tile_record_id};
+use crate::map::spatial::{Placed, QUERY_HITS, RecordId, Spatial, tile_record_id};
 
 impl Spatial {
     /// `FUN_1411566b0`: the tile beside a footprint at `at` of radii `radius` a unit at `from`
@@ -375,9 +375,9 @@ impl Spatial {
         let query = rect.grown(grow);
         self.records_in(query)
             .filter(|(id, p)| {
-                p.obstruction.is_some_and(|o| {
-                    TESTED_KINDS.contains(&o.kind) && self.visits(p, o.kind, query)
-                }) && !ignore.contains(&RecordId::from(*id))
+                p.obstruction
+                    .is_some_and(|o| o.kind.tested() && self.visits(p, o.kind, query))
+                    && !ignore.contains(&RecordId::from(*id))
             })
             .filter(|(_, p)| rect.overlaps(p.bounds().grown(grow)))
             .map(|(id, _)| id)

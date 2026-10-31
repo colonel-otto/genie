@@ -390,6 +390,7 @@ mod tests {
     use crate::map::Footprint;
     use crate::map::GridSize;
     use crate::map::Position;
+    use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
     use crate::test_ids::group_id;
     use crate::test_ids::master_id;
@@ -473,12 +474,15 @@ mod tests {
                     class: class::CLASS_6,
                     player: PlayerId::new(0),
                     master: master_id(4),
-                    obstruction_type: 0,
+                    obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: true,
                     speed: 0.0,
                     unknown: None,
-                    obstruction: Some(Obstruction { kind: 5, class: 2 }),
+                    obstruction: Some(Obstruction {
+                        kind: ObstructionType::CIRCLE,
+                        class: 2,
+                    }),
                 },
             );
         }

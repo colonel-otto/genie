@@ -8,6 +8,7 @@ use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWa
 use crate::objects::ObjectId;
 use crate::objects::layers::Animated;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::master_type;
@@ -889,7 +890,7 @@ fn world_with(id: i32, player: PlayerId, class: ClassId, at: Position) -> Spatia
             class,
             player,
             master: master_id(4),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 0.0,

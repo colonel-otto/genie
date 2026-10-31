@@ -34,6 +34,7 @@ use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData, seconds};
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -381,7 +382,7 @@ pub(crate) fn builder_masters() -> Masters {
         task_by_group: group,
         radius: Footprint::new(0.2, 0.2),
         tall: true,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tasks,
         cost: costs(&[]),
@@ -439,7 +440,7 @@ pub(crate) fn builder_masters() -> Masters {
             task_by_group: 0,
             radius: Footprint::new(1.0, 1.0),
             tall: true,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tasks: vec![],
             cost: costs(&[(attribute::WOOD, 25, true)]),
@@ -1238,7 +1239,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
                 class: class::TREE,
                 player: PlayerId::new(0),
                 master: u.life.master_id,
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
                 speed: 0.0,
@@ -1875,7 +1876,10 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
             builders: 0,
             hit_points: 550,
             build_time: 25,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -2119,7 +2123,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
                 class: class::BUILDING,
                 player: PlayerId::new(1),
                 master: ids::HOUSE,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
@@ -2339,7 +2343,7 @@ fn a_builder_with_a_master_of_its_own_walks_with_its_own_master_s_sprite() {
         class,
         player: PlayerId::new(1),
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -2688,7 +2692,7 @@ pub(crate) fn forage_world() -> World {
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -3140,7 +3144,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             class: class::FARM,
             player: PlayerId::new(1),
             master: ids::FARM,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: false,
             speed: 0.0,
@@ -3483,7 +3487,7 @@ fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -3648,7 +3652,7 @@ fn cart_world() -> World {
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::MASTER_1808,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -3693,7 +3697,7 @@ fn footprint_world() -> World {
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -3875,7 +3879,10 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
             builders: 0,
             hit_points: 550,
             build_time: 25,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -3905,7 +3912,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
         class: class::BUILDING,
         radius: Footprint::new(1.0, 1.0),
         tall: true,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         obstruction_class,
         ..Master::default()
     };
@@ -3923,7 +3930,7 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
                 class: class::BUILDING,
                 player: PlayerId::new(0),
                 master: ids::HOUSE,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
@@ -4006,7 +4013,7 @@ pub(crate) fn hunt_world() -> World {
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -4606,7 +4613,7 @@ fn shepherd_world(x: f32) -> World {
             class: class::LIVESTOCK,
             player: PlayerId::new(1),
             master: master_id(594),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -4732,7 +4739,7 @@ fn lumber_world(near: f32) -> World {
                 class: class::TREE,
                 player: PlayerId::new(0),
                 master: master_id(349),
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
@@ -5248,7 +5255,7 @@ fn the_unit_ai_s_repair_command_is_the_unit_s_within_its_run() {
         class: class::BUILDING,
         player: PlayerId::new(1),
         master: ids::HOUSE,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -5341,7 +5348,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -5357,7 +5364,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.8,
@@ -6248,7 +6255,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -6723,7 +6730,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
         master: master_id(594),
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -7088,7 +7095,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
     let master = Master {
         id: master_id(64),
         class: class::GATE,
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         obstruction_class: 5,
         building: Some(crate::objects::masters::BuildingMaster {
             transform_unit: Some(master_id(63)),
@@ -7102,7 +7109,10 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         crate::map::spatial::Tiles::new(20, 20, vec![1; 400]),
     );
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
-    let record = crate::map::spatial::Obstruction { kind: 2, class: 5 };
+    let record = crate::map::spatial::Obstruction {
+        kind: ObstructionType::TYPE_2,
+        class: 5,
+    };
     t.spatial.insert(
         object_id(27687),
         Placed {
@@ -7111,7 +7121,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
             class: class::GATE,
             player: PlayerId::new(2),
             master: master_id(64),
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -7188,19 +7198,43 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
     };
     s.insert(
         object_id(27745),
-        placed(20.0, class::GATE, PlayerId::new(1), 0.0, 2),
+        placed(
+            20.0,
+            class::GATE,
+            PlayerId::new(1),
+            0.0,
+            ObstructionType::TYPE_2,
+        ),
     );
     s.insert(
         object_id(27746),
-        placed(18.5, class::GATE, PlayerId::new(1), 0.0, 2),
+        placed(
+            18.5,
+            class::GATE,
+            PlayerId::new(1),
+            0.0,
+            ObstructionType::TYPE_2,
+        ),
     );
     s.insert(
         object_id(27747),
-        placed(21.5, class::GATE, PlayerId::new(1), 0.0, 2),
+        placed(
+            21.5,
+            class::GATE,
+            PlayerId::new(1),
+            0.0,
+            ObstructionType::TYPE_2,
+        ),
     );
     s.insert(
         object_id(1),
-        placed(19.6, class::VILLAGER, PlayerId::new(1), 0.8, 5),
+        placed(
+            19.6,
+            class::VILLAGER,
+            PlayerId::new(1),
+            0.8,
+            ObstructionType::CIRCLE,
+        ),
     );
     let (units, allied) = gate_units(
         &mut s,
@@ -7211,15 +7245,33 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
     assert_eq!((units, allied), (vec![object_id(1)], 1));
     s.insert(
         object_id(2),
-        placed(20.4, class::PREDATOR, PlayerId::new(0), 0.0, 5),
+        placed(
+            20.4,
+            class::PREDATOR,
+            PlayerId::new(0),
+            0.0,
+            ObstructionType::CIRCLE,
+        ),
     );
     s.insert(
         object_id(3),
-        placed(20.8, class::CLASS_6, PlayerId::new(2), 0.9, 5),
+        placed(
+            20.8,
+            class::CLASS_6,
+            PlayerId::new(2),
+            0.9,
+            ObstructionType::CIRCLE,
+        ),
     );
     s.insert(
         object_id(4),
-        placed(21.0, class::WALL, PlayerId::new(1), 0.0, 2),
+        placed(
+            21.0,
+            class::WALL,
+            PlayerId::new(1),
+            0.0,
+            ObstructionType::TYPE_2,
+        ),
     );
     let (units, allied) = gate_units(
         &mut s,
@@ -7335,14 +7387,22 @@ fn gate_world() -> World {
         unknown: None,
         obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
     };
-    t.spatial
-        .insert(object_id(27745), placed(20.0, class::GATE, 0.0, 2));
-    t.spatial
-        .insert(object_id(27746), placed(18.5, class::GATE, 0.0, 2));
-    t.spatial
-        .insert(object_id(27747), placed(21.5, class::GATE, 0.0, 2));
-    t.spatial
-        .insert(object_id(1), placed(19.6, class::CLASS_6, 0.8, 5));
+    t.spatial.insert(
+        object_id(27745),
+        placed(20.0, class::GATE, 0.0, ObstructionType::TYPE_2),
+    );
+    t.spatial.insert(
+        object_id(27746),
+        placed(18.5, class::GATE, 0.0, ObstructionType::TYPE_2),
+    );
+    t.spatial.insert(
+        object_id(27747),
+        placed(21.5, class::GATE, 0.0, ObstructionType::TYPE_2),
+    );
+    t.spatial.insert(
+        object_id(1),
+        placed(19.6, class::CLASS_6, 0.8, ObstructionType::CIRCLE),
+    );
     t
 }
 
@@ -8428,7 +8488,7 @@ fn hands_world(id: i32, p: PlayerId, class: ClassId, master: MasterId, los: f32)
             class,
             player: p,
             master,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -8581,7 +8641,7 @@ fn owner_search_unit(s: &mut Spatial, id: i32, p: PlayerId, x: f32) {
             class: class::CLASS_0,
             player: p,
             master: master_id(4),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -8790,7 +8850,7 @@ fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
                 class: class::CLASS_0,
                 player: PlayerId::new(0),
                 master: master_id(4),
-                obstruction_type: 0,
+                obstruction_type: ObstructionType::NONE,
                 buildable_on: 0,
                 tall: false,
                 speed: 0.0,
@@ -8996,7 +9056,10 @@ fn teardown_world() -> World {
             builders: 1,
             hit_points: 550,
             build_time: 25,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -9321,7 +9384,10 @@ fn deaths_world() -> World {
             builders: 1,
             hit_points: 550,
             build_time: 25,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -9473,7 +9539,7 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
         class,
         player: PlayerId::new(0),
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -9568,7 +9634,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
             class: class::TREE,
             player: PlayerId::new(0),
             master: master_id(349),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -9707,7 +9773,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         class,
         player: PlayerId::new(1),
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -9800,7 +9866,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
             class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::HOUSE,
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -10059,7 +10125,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
                 class: class::TOWER,
                 player: PlayerId::new(1),
                 master: ids::TOWN_CENTRE,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
@@ -10115,7 +10181,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             (None, 0.0, 0),
             (None, 0.0, 0),
         ],
-        obstruction_type: 2,
+        obstruction_type: ObstructionType::TYPE_2,
         obstruction_class: 2,
         building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: None,
@@ -10151,7 +10217,10 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             builders: 0,
             hit_points: 20000,
             build_time: 10,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -10207,7 +10276,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -10347,7 +10416,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -10477,7 +10546,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
             class: class::VILLAGER,
             player: PlayerId::new(1),
             master: VILLAGER_MALE,
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -10717,7 +10786,7 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
             class: class::LIVESTOCK,
             player: PlayerId::new(1),
             master: master_id(705),
-            obstruction_type: 0,
+            obstruction_type: ObstructionType::NONE,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
@@ -11674,7 +11743,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -11787,7 +11856,10 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
             builders: 0,
             hit_points: 1650,
             build_time: 100,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -11895,7 +11967,10 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             builders: 0,
             hit_points: 10,
             build_time: 70,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 2,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -12201,7 +12276,10 @@ fn building_short_of_its_build_time_dies(state: u8) {
             builders: 0,
             hit_points: 1200,
             build_time: 50,
-            record: crate::map::spatial::Obstruction { kind: 2, class: 0 },
+            record: crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 0,
+            },
             snow: false,
             sprite_override: false,
         }),
@@ -12773,7 +12851,7 @@ fn scout_attack_on(
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -12899,7 +12977,7 @@ fn attack_by(
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -13063,7 +13141,7 @@ fn help_view<R>(
         class,
         player,
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -13775,7 +13853,7 @@ fn a_reseed_s_placement_passes_over_the_old_farm() {
                 class: class::FARM,
                 player: PlayerId::new(1),
                 master: ids::FARM,
-                obstruction_type: 2,
+                obstruction_type: ObstructionType::TYPE_2,
                 buildable_on: 0,
                 tall: true,
                 speed: 0.0,
@@ -14253,12 +14331,15 @@ pub(crate) fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Worl
             class: class::PREDATOR,
             player: PlayerId::new(0),
             master: master_id(65),
-            obstruction_type: 2,
+            obstruction_type: ObstructionType::TYPE_2,
             buildable_on: 0,
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::map::spatial::Obstruction { kind: 2, class: 0 }),
+            obstruction: Some(crate::map::spatial::Obstruction {
+                kind: ObstructionType::TYPE_2,
+                class: 0,
+            }),
         },
     );
     t.recycling.next_id = object_id(-2);
@@ -15726,7 +15807,10 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
         builders: 0,
         hit_points: 2400,
         build_time: 25,
-        record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+        record: crate::map::spatial::Obstruction {
+            kind: ObstructionType::TYPE_2,
+            class: 2,
+        },
         snow: false,
         sprite_override: false,
     });
@@ -16161,7 +16245,7 @@ pub(crate) fn repairing(at: Position) -> World {
         class,
         player: PlayerId::new(1),
         master,
-        obstruction_type: 0,
+        obstruction_type: ObstructionType::NONE,
         buildable_on: 0,
         tall: true,
         speed: 0.0,
@@ -16877,7 +16961,10 @@ fn the_own_razings_count_where_the_hit_runs() {
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::map::spatial::Obstruction;
     use crate::objects::unit::Outcome;
-    let record = Obstruction { kind: 2, class: 2 };
+    let record = Obstruction {
+        kind: ObstructionType::TYPE_2,
+        class: 2,
+    };
     let mut t = house_builder();
     let r = finished_with(&mut t, (PlayerId::new(1), 0), |c| {
         c.w.spatial.add_record(object_id(10028), record);

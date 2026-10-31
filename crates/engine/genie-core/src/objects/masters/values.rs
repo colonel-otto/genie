@@ -28,10 +28,6 @@ pub(super) const UNHANDICAPPED: u64 = 0x2_8000_0018;
 /// `FUN_141249040`).
 pub(super) const MOST_DAMAGE_GRAPHICS: u64 = 0xff;
 pub(super) const MOST_TRAIN_LOCATIONS: u64 = 0x7fff;
-/// The obstruction types `FUN_141125ae0` keeps (its 14-byte table); any other becomes 0.
-pub(super) const VALID_OBSTRUCTIONS: [bool; 14] = [
-    true, true, true, true, false, true, false, false, false, false, true, true, true, true,
-];
 
 /// What the masters' attribute setters read beyond the master.
 #[derive(Clone, Copy)]

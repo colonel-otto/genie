@@ -12,6 +12,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::RELIC;
 use crate::objects::masters::master_type;
@@ -42,7 +43,7 @@ pub struct Near {
     /// Its master's `can_be_built_on` (`+0x5e9`).
     pub buildable_on: u8,
     /// Its master's `obstruction_type` (`+0x651`).
-    pub obstruction_type: u8,
+    pub obstruction_type: ObstructionType,
     /// Its master's `enable_auto_gather` (`+0x681`).
     pub auto_gather: bool,
     /// Its state (`+0x640`) and, for a building, its `desolid_flag` (`+0xc60`).
@@ -282,7 +283,7 @@ fn static_scans_find(
             && (o.kind != BUILDING || !o.desolid);
         let tall = o.tall
             || (site.class == class::TREE && o.class == class::FARM)
-            || (o.kind == BUILDING && o.obstruction_type != 0);
+            || (o.kind == BUILDING && o.obstruction_type != ObstructionType::NONE);
         listed.then_some(tall)
     };
     if !overlapping(map, p, site.radius, &first)?.is_empty() {
@@ -297,7 +298,7 @@ fn static_scans_find(
                 || o.class == class::CLASS_51
                 || o.class == class::CLASS_54
                 || !o.desolid);
-        let tall = o.tall || (o.kind == BUILDING && !matches!(o.obstruction_type, 0 | 12));
+        let tall = o.tall || (o.kind == BUILDING && o.obstruction_type.recorded());
         listed.then_some(tall)
     };
     Ok(!overlapping(map, p, site.radius, &second)?.is_empty())
@@ -430,15 +431,16 @@ pub(super) fn blocks_build(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near, a
     if build_ignores(site, map, o) || build_passes(site, map, o) {
         return false;
     }
-    let (or, tall) = if (11..=13).contains(&o.obstruction_type) {
-        let oz = o.outline.z();
-        (
-            o.outline.ground(),
-            0.0 < oz || (oz == 0.0 && (o.kind == BUILDING || o.holds)),
-        )
-    } else {
-        (o.radius, o.tall || o.kind == BUILDING || o.holds)
-    };
+    let (or, tall) =
+        if (ObstructionType::TYPE_11..=ObstructionType::TYPE_13).contains(&o.obstruction_type) {
+            let oz = o.outline.z();
+            (
+                o.outline.ground(),
+                0.0 < oz || (oz == 0.0 && (o.kind == BUILDING || o.holds)),
+            )
+        } else {
+            (o.radius, o.tall || o.kind == BUILDING || o.holds)
+        };
     let r = site.radius;
     0.0 < or.x()
         && 0.0 < or.y()
@@ -551,7 +553,7 @@ pub fn placement(
                     o.state < 7 && o.buildable_on != 1 && (o.kind != BUILDING || !o.desolid);
                 let tall = o.tall
                     || (me.class == class::TREE && o.class == class::FARM)
-                    || (o.kind == BUILDING && o.obstruction_type != 0);
+                    || (o.kind == BUILDING && o.obstruction_type != ObstructionType::NONE);
                 listed.then_some(tall && me.tall)
             };
             let found = if me.tall {
@@ -573,7 +575,7 @@ pub fn placement(
                 || o.class == class::CLASS_51
                 || o.class == class::CLASS_54
                 || !o.desolid);
-        let tall = o.tall || (o.kind == BUILDING && !matches!(o.obstruction_type, 0 | 12));
+        let tall = o.tall || (o.kind == BUILDING && o.obstruction_type.recorded());
         listed.then_some(tall && me.tall)
     };
     let found = if me.tall && (0.0 < rx || 0.0 < ry) {

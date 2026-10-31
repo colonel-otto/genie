@@ -2,6 +2,7 @@
 
 use crate::map::Tile;
 use crate::objects::ObjectId;
+use crate::objects::masters::ObstructionType;
 
 use crate::map::Footprint;
 use crate::map::Point;
@@ -211,9 +212,15 @@ pub(crate) fn tile_plan_for(
         range,
         target,
     } = ask;
-    let target_box = target
-        .and_then(|t| t.obstruction)
-        .is_some_and(|o| matches!(o.kind, 2 | 10 | 11 | 13));
+    let target_box = target.and_then(|t| t.obstruction).is_some_and(|o| {
+        matches!(
+            o.kind,
+            ObstructionType::TYPE_2
+                | ObstructionType::TYPE_10
+                | ObstructionType::TYPE_11
+                | ObstructionType::TYPE_13
+        )
+    });
     let req = Request {
         from,
         to: to.ground(),
@@ -291,7 +298,7 @@ pub(super) fn include_kept(
             let p = world
                 .get_known(id)?
                 .ok_or(GenieError::unsupported("a kept hit without a place"))?;
-            if p.obstruction_type == 11 {
+            if p.obstruction_type == ObstructionType::TYPE_11 {
                 return Err(GenieError::unsupported(
                     "a kept hit of obstruction type 11 (its outline)",
                 ));

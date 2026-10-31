@@ -5,6 +5,7 @@ use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterKind;
+use crate::objects::masters::ObstructionType;
 use crate::objects::masters::master_type;
 use crate::objects::masters::{ClassId, class};
 use crate::objects::masters::{MasterId, ids};
@@ -588,7 +589,7 @@ fn register(t: &mut World) {
                     class: m.class,
                     player: p,
                     master: m.id,
-                    obstruction_type: 0,
+                    obstruction_type: ObstructionType::NONE,
                     buildable_on: 0,
                     tall: false,
                     speed: 0.0,

@@ -13,6 +13,7 @@ use genie_core::objects::HpPowerup;
 use genie_core::objects::ObjectId;
 use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
+use genie_core::objects::masters::ObstructionType;
 use genie_core::objects::unit::Unit;
 use genie_core::orders::town_bell::TownBell;
 use genie_core::players::attribute::AttributeId;
@@ -384,7 +385,7 @@ pub(super) fn construction(
         hit_points: ms.read_temp_6,
         build_time,
         record: genie_core::map::spatial::Obstruction {
-            kind: ms.obstruction_type,
+            kind: ObstructionType::from(ms.obstruction_type),
             class: ms.obstruction_class,
         },
         snow: b.snow_flag != 0,
