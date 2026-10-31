@@ -57,6 +57,7 @@ use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::players::relation_row;
 use crate::players::relations;
+use crate::players::tracker::ListKey;
 use crate::test_ids::attack_category;
 use crate::test_ids::carrying;
 use crate::test_ids::class_id;
@@ -4833,7 +4834,10 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
     assert!(t.players[0].sleeping.by_id(object_id(521)).is_none());
     let k = crate::players::tracker::key(t.masters.first(), &t.lines, master_id(349));
     assert_eq!(
-        t.players[0].tracker.list(k.master).last(),
+        t.players[0]
+            .tracker
+            .list(ListKey::of_master(k.master))
+            .last(),
         Some(&Some(object_id(521)))
     );
     let villager = t.players[1].objects[0].id;
@@ -4901,7 +4905,10 @@ fn outside_an_update_the_lets_run_on_the_whole_world() {
     );
     let k = crate::players::tracker::key(t.masters.first(), &t.lines, master_id(349));
     assert_eq!(
-        t.players[0].tracker.list(k.master).last(),
+        t.players[0]
+            .tracker
+            .list(ListKey::of_master(k.master))
+            .last(),
         Some(&Some(object_id(521)))
     );
     assert_eq!(t.object(object_id(521)).map(|(_, u)| u.workers), Some(1));
@@ -13158,7 +13165,10 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
     // the owner's attribute 4 (10 before) as the attack command returns
     assert_eq!(housed, 10.0 - 1.0 + 3.0);
     assert_eq!(
-        (tracker.list(118), tracker.list(83)),
+        (
+            tracker.list(ListKey::master(master_id(118))),
+            tracker.list(ListKey::master(master_id(83)))
+        ),
         (&[][..], &[Some(object_id(123))][..])
     );
 }
@@ -14560,7 +14570,7 @@ fn a_fired_missile_joins_its_owner_s_list_at_its_making() {
             listed,
             c.w.players[c.player.index()]
                 .tracker
-                .list(k.master)
+                .list(ListKey::of_master(k.master))
                 .contains(&Some(object_id(-2))),
         ))
     });
@@ -15819,7 +15829,7 @@ fn annexed_house() -> World {
 /// Where houses `a` and `b` stand in their owner's done tracker list of master 70.
 fn done_at(t: &World, a: i32, b: i32) -> (Option<usize>, Option<usize>) {
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, ids::HOUSE);
-    let done = t.players[1].tracker.list(k.master);
+    let done = t.players[1].tracker.list(ListKey::of_master(k.master));
     let at = |id| done.iter().position(|&d| d == id);
     (at(ObjectId::of_field(a)), at(ObjectId::of_field(b)))
 }
@@ -16036,7 +16046,7 @@ fn a_builder_s_completion_reaches_the_world_within_its_update() {
     assert!(
         t.players[1]
             .tracker
-            .list(k.master)
+            .list(ListKey::of_master(k.master))
             .contains(&Some(object_id(10028)))
     );
     let attributes = &t.players[1].attributes;
@@ -16117,7 +16127,7 @@ fn a_foundation_whose_build_points_reached_its_build_time_completes() {
     assert_eq!((h.life.state, k.desolid), (2, false));
     let key = crate::players::tracker::key(t.masters.get(1), &t.lines, ids::HOUSE);
     assert_eq!(
-        t.players[1].tracker.list(key.master),
+        t.players[1].tracker.list(ListKey::of_master(key.master)),
         [Some(object_id(10028))]
     );
     let short: fn(&mut Unit) = |h| h.construction.as_mut().unwrap().progress = 24.0;

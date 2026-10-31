@@ -11,6 +11,8 @@ pub const ID_45: MasterId = MasterId::named(45);
 /// The farm (`0x32`): a mill's queue buys it, and BUILD places it as the rice farm on mangrove or
 /// rice farm terrain.
 pub const FARM: MasterId = MasterId::named(50);
+/// The mill (`0x44`), whose livestock makes food (the tracker's list `FUN_14104f960`).
+pub const MILL: MasterId = MasterId::named(68);
 /// The house (`0x46`), whose update takes the walls' branch.
 pub const HOUSE: MasterId = MasterId::named(70);
 /// The castle (`0x52`), whose death lowers its owner's attribute 134 (`FUN_1411dbb70`).
@@ -40,6 +42,8 @@ pub const RELIC: MasterId = MasterId::named(285);
 pub const VILLAGER_FEMALE: MasterId = MasterId::named(293);
 /// The king (`0x1b2`).
 pub const KING: MasterId = MasterId::named(434);
+/// A town centre (`0x1bc`), whose tracker list the town centre counts read after 109's.
+pub const TOWN_CENTRE_444: MasterId = MasterId::named(444);
 /// The scout cavalry (`.dat` SCOUT, raw `0x625c`), which the task finder treats apart.
 pub const ID_448: MasterId = MasterId::named(448);
 /// The light cavalry (`.dat` LTCAV, raw `0x62be`), which the task finder treats apart.

@@ -24,6 +24,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::tracker::ListKey;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::TaskTarget;
@@ -640,7 +641,7 @@ pub(crate) fn nearest_table_site(
     let mut best = (None, TABLE_DROP_FAR);
     for m in buildings {
         // a queued unit's place (−1) names no object
-        for &id in tracker.list(i32::from(m.get())).iter().flatten() {
+        for &id in tracker.list(ListKey::master(m)).iter().flatten() {
             let Some((state, position)) = look(id) else {
                 continue;
             };

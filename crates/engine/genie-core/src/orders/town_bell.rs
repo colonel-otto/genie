@@ -19,6 +19,7 @@ use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::orders::{GARRISON, own_order_target};
 use crate::players::PlayerId;
+use crate::players::tracker::ListKey;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -394,7 +395,7 @@ impl World {
     fn workers_back(&mut self, owner: PlayerId) -> Result<(), GenieError> {
         let tracker = &self.players.player(owner)?.tracker;
         let mut ids = tracker.class_list(class::VILLAGER).to_vec();
-        ids.extend_from_slice(tracker.list(i32::from(MASTER_1808.get())));
+        ids.extend_from_slice(tracker.list(ListKey::master(MASTER_1808)));
         // a queued unit's place (−1) names no object
         for id in ids.into_iter().flatten() {
             // the tracker's keepers follow every object its player gains and loses: the world

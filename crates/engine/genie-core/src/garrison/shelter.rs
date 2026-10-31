@@ -19,6 +19,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::orders::object_gone;
 use crate::orders::{GARRISON, Work};
 use crate::players::PlayerId;
+use crate::players::tracker::ListKey;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -187,7 +188,7 @@ impl World {
         master: MasterId,
     ) -> Result<Shelters, GenieError> {
         let mut shelters = Shelters::default();
-        let key = self.lines.base(i32::from(master.get()));
+        let key = ListKey::of_master(self.lines.base(master));
         let (at, radius) = self.ground(target)?;
         for &id in self.players[tp].tracker.list(key) {
             // the tracker's keepers follow every object its player gains and loses, so the

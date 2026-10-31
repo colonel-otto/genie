@@ -684,6 +684,7 @@ mod tests {
     use crate::objects::masters::{MasterId, ids};
     use crate::players::attribute;
     use crate::players::attribute::AttributeId;
+    use crate::players::tracker::ListKey;
     use crate::test_ids::carrying;
     use crate::test_ids::class_id;
     use crate::test_ids::master_id;
@@ -1220,13 +1221,19 @@ mod tests {
             .unwrap();
         let tracker = &t.players[0].tracker;
         assert_eq!(
-            (tracker.list(0x67f), tracker.list(4)),
+            (
+                tracker.list(ListKey::master(master_id(0x67f))),
+                tracker.list(ListKey::master(master_id(4)))
+            ),
             (&[Some(object_id(10))][..], &[][..])
         );
         let mut t = upgrade_world();
         t.upgrade_objects(PlayerId::new(0), master_id(4), master_id(5), 0, None)
             .unwrap();
-        assert_eq!(t.players[0].tracker.list(4), [Some(object_id(10))]);
+        assert_eq!(
+            t.players[0].tracker.list(ListKey::master(master_id(4))),
+            [Some(object_id(10))]
+        );
     }
     /// A world of player 0 holding `objects`, its masters `masters`, its graphics `graphics`
     /// (each animated) and 300 attributes.

@@ -42,16 +42,59 @@ use crate::players::PlayerId;
 use crate::world::slots::PlayerSlots;
 
 /// A pending key is its done key + this (a master's + 90000, a class's + 90900).
-pub const PENDING: i32 = 90_000;
+const PENDING: i32 = 90_000;
 /// A class's key is the class + this.
-pub const CLASS_KEY: i32 = 900;
-/// The list key of a class's done list: the class + [`CLASS_KEY`].
-fn class_key(class: ClassId) -> i32 {
-    i32::from(class.get()) + CLASS_KEY
+const CLASS_KEY: i32 = 900;
+
+/// A list's key in the tracker (`FUN_141658430`'s integers): a key master's id, a class + 900,
+/// each + 90000 while pending. The game keeps them as one integer, so a key master of 900 to
+/// 999 shares a class's list (the game logs it), and a master the player lacks files under −1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ListKey(i32);
+
+impl ListKey {
+    /// The list of no key master (−1): [`Key::NONE`]'s.
+    pub const NONE: Self = Self(-1);
+
+    /// The done list of key master `master`.
+    #[must_use]
+    pub fn master(master: MasterId) -> Self {
+        Self(i32::from(master.get()))
+    }
+
+    /// The done list of key master `master`, [`ListKey::NONE`] for none.
+    #[must_use]
+    pub fn of_master(master: Option<MasterId>) -> Self {
+        master.map_or(Self::NONE, Self::master)
+    }
+
+    /// The done list of class `class` (the class + 900).
+    #[must_use]
+    pub fn class(class: ClassId) -> Self {
+        Self(i32::from(class.get()) + CLASS_KEY)
+    }
+
+    /// The pending list of the same key (+ 90000).
+    #[must_use]
+    pub const fn pending(self) -> Self {
+        Self(self.0 + PENDING)
+    }
+
+    /// Whether this is a pending list's key (90000 or more).
+    #[must_use]
+    pub const fn is_pending(self) -> bool {
+        self.0 >= PENDING
+    }
+
+    /// The game's integer.
+    #[must_use]
+    pub const fn get(self) -> i32 {
+        self.0
+    }
 }
 
 /// The keys run below this master id (`FUN_141658430`: 9000 or more is none).
-const TRACKED_MASTERS: i32 = 9000;
+const TRACKED_MASTERS: i16 = 9000;
 /// The classes a key holds below this (`FUN_141658430`).
 const CLASSES: i16 = 100;
 /// The classes that count as done from the start (packed and unpacked siege, 51 and 54).
@@ -89,7 +132,7 @@ const MILITARY: [ClassId; 25] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Key {
     /// `+0`: the key master (−1 for none).
-    pub master: i32,
+    pub master: Option<MasterId>,
     /// `+4`: the key master's class (−1 for none).
     pub class: Option<ClassId>,
     /// `+8`: the object waits in the pending lists until its completion.
@@ -101,11 +144,28 @@ pub struct Key {
 impl Key {
     /// The key of a master the player lacks (`FUN_141658430`'s −1, −1, 0).
     pub const NONE: Self = Self {
-        master: -1,
+        master: None,
         class: None,
         pending: false,
         military: false,
     };
+
+    /// The key master's list ([`ListKey::NONE`] for none), pending while the key waits.
+    #[must_use]
+    pub fn master_list(self) -> ListKey {
+        self.waiting(ListKey::of_master(self.master))
+    }
+
+    /// The class's list (none for a key without a class), pending while the key waits.
+    #[must_use]
+    pub fn class_list(self) -> Option<ListKey> {
+        self.class.map(|c| self.waiting(ListKey::class(c)))
+    }
+
+    /// `list`, pending while the key waits.
+    const fn waiting(self, list: ListKey) -> ListKey {
+        if self.pending { list.pending() } else { list }
+    }
 }
 
 /// `FUN_141658430`: the key of player's master `master` (`masters`, the player's table; None
@@ -117,40 +177,24 @@ impl Key {
 /// not wait.
 #[must_use]
 pub fn key(masters: Option<&Masters>, lines: &UnitLines, master: MasterId) -> Key {
-    let get = |id: i32| {
-        masters?
-            .get(MasterId::of_data(i16::try_from(id).ok()?)?)
-            .filter(|_| (0..TRACKED_MASTERS).contains(&id))
-    };
-    let Some(m) = get(i32::from(master.get())) else {
+    let get = |id: MasterId| masters?.get(id).filter(|_| id.get() < TRACKED_MASTERS);
+    let Some(m) = get(master) else {
         return Key::NONE;
     };
     let mut out = Key::NONE;
-    let mut id = i32::from(master.get());
     let mut classed = true;
     // The buildings' type, which wait in the pending lists.
-    if m.kind == BUILDING {
-        let (stack, head, first_annex) = m.building.as_ref().map_or((-1, -1, -1), |b| {
-            (
-                MasterId::field(b.stack_unit),
-                MasterId::field(b.head_unit),
-                MasterId::field(b.annexes[0]),
-            )
-        });
-        if stack != -1 {
-            id = i32::from(stack);
-            if get(id).is_none() {
-                return Key::NONE;
-            }
-        }
-        if head != -1 && first_annex == -1 {
+    let id = if m.kind == BUILDING {
+        let building = m.building.as_ref();
+        if building.is_some_and(|b| b.head_unit.is_some() && b.annexes[0].is_none()) {
             classed = false;
         }
         out.pending = true;
+        Some(building.and_then(|b| b.stack_unit).unwrap_or(master))
     } else {
-        id = lines.base(id);
-    }
-    let Some(k) = get(id) else {
+        lines.base(master)
+    };
+    let Some(k) = id.and_then(get) else {
         return Key::NONE;
     };
     out.master = id;
@@ -171,7 +215,7 @@ pub fn key(masters: Option<&Masters>, lines: &UnitLines, master: MasterId) -> Ke
 /// pending), each in the order its ids came in.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tracker {
-    lists: std::collections::BTreeMap<i32, Vec<Option<ObjectId>>>,
+    lists: std::collections::BTreeMap<ListKey, Vec<Option<ObjectId>>>,
     /// `+0x60` (`FUN_14104fb00`): what the production queues' writers count, units queued and
     /// spawned or cancelled (a cancel of several counts them twice, as the game does).
     pub queued: i32,
@@ -181,22 +225,22 @@ impl Tracker {
     /// The list of key `key` (a key the tracker lacks: the empty one, `+0x40`); a queued unit's
     /// place holds none (−1, [`Tracker::place`]).
     #[must_use]
-    pub fn list(&self, key: i32) -> &[Option<ObjectId>] {
+    pub fn list(&self, key: ListKey) -> &[Option<ObjectId>] {
         self.lists.get(&key).map_or(&[], Vec::as_slice)
     }
 
     /// `FUN_14104f8f0`: the done objects filed under class `class` (key class + 900).
     #[must_use]
     pub fn class_list(&self, class: ClassId) -> &[Option<ObjectId>] {
-        self.list(class_key(class))
+        self.list(ListKey::class(class))
     }
 
-    fn push(&mut self, key: i32, id: Option<ObjectId>) {
+    fn push(&mut self, key: ListKey, id: Option<ObjectId>) {
         self.lists.entry(key).or_default().push(id);
     }
 
     /// `FUN_140a63bd0` on the first `id` of list `key`: the ids after it move up.
-    fn erase(&mut self, key: i32, id: ObjectId) {
+    fn erase(&mut self, key: ListKey, id: ObjectId) {
         if let Some(list) = self.lists.get_mut(&key)
             && let Some(k) = list.iter().position(|&x| x == Some(id))
         {
@@ -204,7 +248,7 @@ impl Tracker {
         }
     }
 
-    fn holds(&self, key: i32, id: ObjectId) -> bool {
+    fn holds(&self, key: ListKey, id: ObjectId) -> bool {
         self.list(key).contains(&Some(id))
     }
 
@@ -212,10 +256,9 @@ impl Tracker {
     /// has one), each + 90000 while pending. (The game logs a key master of 900 to 999, which a
     /// class's list uses.)
     pub fn add(&mut self, id: ObjectId, key: Key) {
-        let wait = if key.pending { PENDING } else { 0 };
-        self.push(key.master + wait, Some(id));
-        if let Some(class) = key.class {
-            self.push(class_key(class) + wait, Some(id));
+        self.push(key.master_list(), Some(id));
+        if let Some(class) = key.class_list() {
+            self.push(class, Some(id));
         }
     }
 
@@ -226,12 +269,16 @@ impl Tracker {
         if !key.pending {
             return;
         }
-        self.erase(key.master + PENDING, id);
-        if !self.holds(key.master, id) {
-            self.push(key.master, Some(id));
+        let done = Key {
+            pending: false,
+            ..key
+        };
+        self.erase(key.master_list(), id);
+        if !self.holds(done.master_list(), id) {
+            self.push(done.master_list(), Some(id));
         }
-        if let Some(class) = key.class.map(class_key) {
-            self.erase(class + PENDING, id);
+        if let (Some(waiting), Some(class)) = (key.class_list(), done.class_list()) {
+            self.erase(waiting, id);
             if !self.holds(class, id) {
                 self.push(class, Some(id));
             }
@@ -242,16 +289,20 @@ impl Tracker {
     /// and its key master's (the pending one first). (A tracker in teardown, its `+0xb0`, is
     /// not held.)
     pub fn remove(&mut self, id: ObjectId, key: Key) {
-        if let Some(class) = key.class.map(class_key) {
+        let done = Key {
+            pending: false,
+            ..key
+        };
+        if let Some(class) = done.class_list() {
             self.erase(class, id);
             if key.pending {
-                self.erase(class + PENDING, id);
+                self.erase(class.pending(), id);
             }
         }
         if key.pending {
-            self.erase(key.master + PENDING, id);
+            self.erase(key.master_list(), id);
         }
-        self.erase(key.master, id);
+        self.erase(done.master_list(), id);
     }
 
     /// `FUN_14104fb00`: the counter of queued units (`+0x60`) changes by `n`.
@@ -263,23 +314,23 @@ impl Tracker {
     /// none) files a −1 (none) at the end of the master's pending list (+ 90000, the master
     /// itself, not its key master) and of the class's (+ 90900).
     pub fn place(&mut self, master: Option<MasterId>, class: Option<ClassId>) {
-        self.push(i32::from(MasterId::field(master)) + PENDING, None);
+        self.push(ListKey::of_master(master).pending(), None);
         if let Some(class) = class {
-            self.push(class_key(class) + PENDING, None);
+            self.push(ListKey::class(class).pending(), None);
         }
     }
 
     /// `FUN_14104f330`: a queued unit's spawn or cancel drops the last id of the same lists
     /// (`FUN_140a63bd0` at the end; an empty list stays empty).
     pub fn unplace(&mut self, master: Option<MasterId>, class: Option<ClassId>) {
-        let mut drop_last = |key: i32| {
+        let mut drop_last = |key: ListKey| {
             if let Some(list) = self.lists.get_mut(&key) {
                 let _ = list.pop();
             }
         };
-        drop_last(i32::from(MasterId::field(master)) + PENDING);
+        drop_last(ListKey::of_master(master).pending());
         if let Some(class) = class {
-            drop_last(class_key(class) + PENDING);
+            drop_last(ListKey::class(class).pending());
         }
     }
 
@@ -288,16 +339,17 @@ impl Tracker {
     /// one's (a key without a class has none); one the old done list does not hold stays where
     /// it is (the game logs "Skipping promotion on untracked object.").
     pub fn promote(&mut self, id: ObjectId, old: Key, new: Key) {
-        if !self.holds(old.master, id) {
+        let old_list = ListKey::of_master(old.master);
+        if !self.holds(old_list, id) {
             return;
         }
-        self.erase(old.master, id);
-        self.push(new.master, Some(id));
+        self.erase(old_list, id);
+        self.push(ListKey::of_master(new.master), Some(id));
         if let Some(class) = old.class {
-            self.erase(class_key(class), id);
+            self.erase(ListKey::class(class), id);
         }
         if let Some(class) = new.class {
-            self.push(class_key(class), Some(id));
+            self.push(ListKey::class(class), Some(id));
         }
     }
 
@@ -310,8 +362,8 @@ impl Tracker {
     /// the same key twice would loop for ever in the game.
     pub fn move_all(
         &mut self,
-        old: i32,
-        new: i32,
+        old: ListKey,
+        new: ListKey,
         old_class: Option<ClassId>,
         class_of: &dyn Fn(ObjectId) -> Result<Option<ClassId>, GenieError>,
     ) -> Result<(), GenieError> {
@@ -326,16 +378,16 @@ impl Tracker {
                 };
                 self.push(new, Some(id));
                 if let Some(old_class) = old_class {
-                    self.erase(class_key(old_class), id);
+                    self.erase(ListKey::class(old_class), id);
                 }
-                self.push(class_key(class), Some(id));
+                self.push(ListKey::class(class), Some(id));
             }
             if let Some(list) = self.lists.get_mut(&old) {
                 list.clear();
             }
         }
-        if old < PENDING {
-            self.move_all(old + PENDING, new + PENDING, Key::NONE.class, class_of)?;
+        if !old.is_pending() {
+            self.move_all(old.pending(), new.pending(), Key::NONE.class, class_of)?;
         }
         Ok(())
     }
@@ -474,8 +526,8 @@ impl crate::world::World {
             Ok(Some(u.master(&self.masters, q)?.class))
         };
         let moved = tracker.move_all(
-            i32::from(from.get()),
-            i32::from(to.get()),
+            ListKey::master(from),
+            ListKey::master(to),
             old_class,
             &class_of,
         );
@@ -539,6 +591,61 @@ mod tests {
         ])
     }
 
+    /// Key master `id`'s done list.
+    fn list_of(id: i16) -> ListKey {
+        ListKey::master(master_id(id))
+    }
+
+    /// A list's key is the game's integer: a master's id, a class + 900, each + 90000 pending.
+    #[test]
+    fn a_list_key_is_the_games_integer() {
+        assert_eq!(
+            (list_of(109).get(), list_of(109).pending().get()),
+            (109, 90_109)
+        );
+        assert_eq!(
+            (
+                ListKey::class(class::BUILDING).get(),
+                ListKey::class(class::BUILDING).pending().get()
+            ),
+            (903, 90_903)
+        );
+        assert_eq!(ListKey::NONE.pending().get(), 89_999);
+        assert!(list_of(109).pending().is_pending() && !ListKey::NONE.pending().is_pending());
+        // a key master of 900 to 999 shares a class's list
+        assert_eq!(list_of(903), ListKey::class(class::BUILDING));
+    }
+
+    /// A waiting key files under its pending lists, a done one under its done lists.
+    #[test]
+    fn a_keys_lists_are_pending_while_it_waits() {
+        let tc = Key {
+            master: Some(master_id(109)),
+            class: Some(class::BUILDING),
+            pending: true,
+            military: false,
+        };
+        assert_eq!(
+            (tc.master_list(), tc.class_list()),
+            (
+                list_of(109).pending(),
+                Some(ListKey::class(class::BUILDING).pending())
+            )
+        );
+        let done = Key {
+            pending: false,
+            ..tc
+        };
+        assert_eq!(
+            (done.master_list(), done.class_list()),
+            (list_of(109), Some(ListKey::class(class::BUILDING)))
+        );
+        assert_eq!(
+            (Key::NONE.master_list(), Key::NONE.class_list()),
+            (ListKey::NONE, None)
+        );
+    }
+
     fn lines() -> UnitLines {
         UnitLines::build(
             2000,
@@ -559,19 +666,25 @@ mod tests {
         t.place(Some(master_id(24)), Some(class::CLASS_0));
         t.place(Some(master_id(24)), Some(class::CLASS_0));
         t.place(Some(ids::VILLAGER_MALE), None);
-        assert_eq!(t.list(24 + PENDING), [None, None]);
-        assert_eq!(t.list(CLASS_KEY + PENDING), [None, None]);
-        assert_eq!(t.list(83 + PENDING), [None]);
+        assert_eq!(t.list(list_of(24).pending()), [None, None]);
+        assert_eq!(
+            t.list(ListKey::class(class::CLASS_0).pending()),
+            [None, None]
+        );
+        assert_eq!(t.list(list_of(83).pending()), [None]);
         t.lists
-            .get_mut(&(CLASS_KEY + PENDING))
+            .get_mut(&ListKey::class(class::CLASS_0).pending())
             .unwrap()
             .push(Some(object_id(5)));
         t.unplace(Some(master_id(24)), Some(class::CLASS_0));
-        assert_eq!(t.list(24 + PENDING), [None]);
-        assert_eq!(t.list(CLASS_KEY + PENDING), [None, None]);
+        assert_eq!(t.list(list_of(24).pending()), [None]);
+        assert_eq!(
+            t.list(ListKey::class(class::CLASS_0).pending()),
+            [None, None]
+        );
         t.unplace(Some(ids::VILLAGER_MALE), None);
         t.unplace(Some(ids::VILLAGER_MALE), None);
-        assert_eq!(t.list(83 + PENDING), []);
+        assert_eq!(t.list(list_of(83).pending()), []);
     }
 
     #[test]
@@ -582,7 +695,7 @@ mod tests {
         assert_eq!(
             k(master_id(24)),
             Key {
-                master: 4,
+                master: Some(master_id(4)),
                 class: Some(class::CLASS_0),
                 pending: false,
                 military: true
@@ -591,7 +704,7 @@ mod tests {
         assert_eq!(
             k(ids::VILLAGER_MALE),
             Key {
-                master: 83,
+                master: Some(master_id(83)),
                 class: Some(class::VILLAGER),
                 pending: false,
                 military: false
@@ -601,7 +714,7 @@ mod tests {
         assert_eq!(
             k(ids::TOWN_CENTRE),
             Key {
-                master: 109,
+                master: Some(master_id(109)),
                 class: Some(class::BUILDING),
                 pending: true,
                 military: false
@@ -610,7 +723,7 @@ mod tests {
         assert_eq!(
             k(master_id(1189)),
             Key {
-                master: 79,
+                master: Some(master_id(79)),
                 class: Some(class::TOWER),
                 pending: true,
                 military: true
@@ -620,7 +733,7 @@ mod tests {
         assert_eq!(
             k(master_id(618)),
             Key {
-                master: 618,
+                master: Some(master_id(618)),
                 class: None,
                 pending: true,
                 military: false
@@ -654,17 +767,17 @@ mod tests {
         t.add(object_id(10), tc);
         t.add(object_id(11), tc);
         assert_eq!(
-            (t.list(109), t.list(109 + PENDING)),
+            (t.list(list_of(109)), t.list(list_of(109).pending())),
             (&[][..], &[Some(object_id(10)), Some(object_id(11))][..])
         );
         assert_eq!(
-            t.list(3 + CLASS_KEY + PENDING),
+            t.list(ListKey::class(class::BUILDING).pending()),
             [Some(object_id(10)), Some(object_id(11))]
         );
         t.complete(object_id(11), tc);
         t.complete(object_id(10), tc);
         assert_eq!(
-            (t.list(109), t.list(109 + PENDING)),
+            (t.list(list_of(109)), t.list(list_of(109).pending())),
             (&[Some(object_id(11)), Some(object_id(10))][..], &[][..])
         );
         assert_eq!(
@@ -673,7 +786,10 @@ mod tests {
         );
         // a second completion leaves the order as it is
         t.complete(object_id(11), tc);
-        assert_eq!(t.list(109), [Some(object_id(11)), Some(object_id(10))]);
+        assert_eq!(
+            t.list(list_of(109)),
+            [Some(object_id(11)), Some(object_id(10))]
+        );
         // a key that does not wait changes nothing
         let villager = key(Some(&m), &l, ids::VILLAGER_MALE);
         t.add(object_id(20), villager);
@@ -691,7 +807,7 @@ mod tests {
         }
         t.remove(object_id(2), v);
         assert_eq!(
-            (t.list(83), t.class_list(class::VILLAGER)),
+            (t.list(list_of(83)), t.class_list(class::VILLAGER)),
             (
                 &[Some(object_id(1)), Some(object_id(3)), Some(object_id(4))][..],
                 &[Some(object_id(1)), Some(object_id(3)), Some(object_id(4))][..]
@@ -706,8 +822,8 @@ mod tests {
         t.remove(object_id(31), tc);
         assert_eq!(
             (
-                t.list(109),
-                t.list(109 + PENDING),
+                t.list(list_of(109)),
+                t.list(list_of(109).pending()),
                 t.class_list(class::BUILDING)
             ),
             (&[][..], &[][..], &[][..])
@@ -728,7 +844,7 @@ mod tests {
         // villager 1 becomes a builder: class 4's list takes it last
         t.promote(object_id(1), villager, builder);
         assert_eq!(
-            (t.list(83), t.list(118)),
+            (t.list(list_of(83)), t.list(list_of(118))),
             (
                 &[Some(object_id(2)), Some(object_id(3))][..],
                 &[Some(object_id(1))][..]
@@ -745,7 +861,7 @@ mod tests {
         t.add(object_id(8), archer);
         t.promote(object_id(7), archer, crossbow);
         assert_eq!(
-            (t.list(4), t.class_list(class::CLASS_0)),
+            (t.list(list_of(4)), t.class_list(class::CLASS_0)),
             (
                 &[Some(object_id(8)), Some(object_id(7))][..],
                 &[Some(object_id(8)), Some(object_id(7))][..]
@@ -753,7 +869,7 @@ mod tests {
         );
         // an object the old list does not hold is skipped
         t.promote(object_id(99), villager, builder);
-        assert_eq!(t.list(118), [Some(object_id(1))]);
+        assert_eq!(t.list(list_of(118)), [Some(object_id(1))]);
     }
 
     fn world() -> crate::world::World {
@@ -811,7 +927,10 @@ mod tests {
         let tracker = &t.players[1].tracker;
         // build points at the build time complete; below it, or NaN, the building waits
         assert_eq!(
-            (tracker.list(109), tracker.list(109 + PENDING)),
+            (
+                tracker.list(list_of(109)),
+                tracker.list(list_of(109).pending())
+            ),
             (
                 &[Some(object_id(10))][..],
                 &[Some(object_id(12)), Some(object_id(14))][..]
@@ -826,7 +945,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            (tracker.list(83), tracker.list(118)),
+            (tracker.list(list_of(83)), tracker.list(list_of(118))),
             (
                 &[Some(object_id(11)), Some(object_id(15))][..],
                 &[Some(object_id(13))][..]
@@ -852,7 +971,7 @@ mod tests {
         t.track_complete(PlayerId::new(1), object_id(12), ids::TOWN_CENTRE)
             .unwrap();
         assert_eq!(
-            t.players[1].tracker.list(109),
+            t.players[1].tracker.list(list_of(109)),
             [Some(object_id(10)), Some(object_id(12))]
         );
         t.track_promote(
@@ -864,7 +983,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             (
-                t.players[1].tracker.list(118),
+                t.players[1].tracker.list(list_of(118)),
                 t.players[1].tracker.class_list(class::VILLAGER)
             ),
             (
@@ -899,7 +1018,7 @@ mod tests {
             .unwrap();
         let tracker = &t.players[1].tracker;
         assert_eq!(
-            (tracker.list(83), tracker.list(118)),
+            (tracker.list(list_of(83)), tracker.list(list_of(118))),
             (
                 &[][..],
                 &[
@@ -922,21 +1041,24 @@ mod tests {
     #[test]
     fn a_move_of_all_takes_the_list_and_its_pending_one_and_empties_them() {
         let mut t = Tracker::default();
-        t.push(500, Some(object_id(1)));
-        t.push(500, None);
-        t.push(500, Some(object_id(2)));
-        t.push(500, Some(object_id(3)));
-        t.push(5 + CLASS_KEY, Some(object_id(1)));
-        t.push(5 + CLASS_KEY, Some(object_id(3)));
-        t.push(500 + PENDING, Some(object_id(4)));
-        t.push(500 + PENDING, None);
+        t.push(list_of(500), Some(object_id(1)));
+        t.push(list_of(500), None);
+        t.push(list_of(500), Some(object_id(2)));
+        t.push(list_of(500), Some(object_id(3)));
+        t.push(ListKey::class(class::CLASS_5), Some(object_id(1)));
+        t.push(ListKey::class(class::CLASS_5), Some(object_id(3)));
+        t.push(list_of(500).pending(), Some(object_id(4)));
+        t.push(list_of(500).pending(), None);
         // 2 is gone from the world; the objects are of class 6 now
         let class_of = |id: ObjectId| Ok((id != object_id(2)).then_some(class::CLASS_6));
-        t.move_all(500, 600, Some(class::CLASS_5), &class_of)
+        t.move_all(list_of(500), list_of(600), Some(class::CLASS_5), &class_of)
             .unwrap();
-        assert_eq!((t.list(500), t.list(500 + PENDING)), (&[][..], &[][..]));
         assert_eq!(
-            (t.list(600), t.list(600 + PENDING)),
+            (t.list(list_of(500)), t.list(list_of(500).pending())),
+            (&[][..], &[][..])
+        );
+        assert_eq!(
+            (t.list(list_of(600)), t.list(list_of(600).pending())),
             (
                 &[Some(object_id(1)), Some(object_id(3))][..],
                 &[Some(object_id(4))][..]

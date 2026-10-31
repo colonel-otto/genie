@@ -7,6 +7,7 @@ use crate::math::fmath::maxss;
 use crate::objects::masters::MasterId;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::tracker::ListKey;
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -60,7 +61,7 @@ impl World {
                 && self
                     .players
                     .get(p.index())
-                    .is_some_and(|pl| !pl.tracker.list(i32::from(m.get())).is_empty())
+                    .is_some_and(|pl| !pl.tracker.list(ListKey::master(m)).is_empty())
         })
     }
 
@@ -178,7 +179,7 @@ mod tests {
             t.players[1].tracker.add(
                 object_id(7),
                 crate::players::tracker::Key {
-                    master: 84,
+                    master: Some(ids::MARKET),
                     class: Some(class::BUILDING),
                     pending: false,
                     military: false,

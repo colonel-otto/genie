@@ -10,6 +10,8 @@
 //! 158041: the builder `FUN_140fde680`, a master's line `FUN_140fdd6c0`, a line's first master
 //! `FUN_140fdd6f0`.
 
+use crate::objects::masters::MasterId;
+
 /// The first line id (table 2's index 0): a line's id + 399 indexes table 2.
 pub const FIRST_LINE: i32 = -399;
 /// Table 2's entries (`DAT_143cc2990`, the builder's 200).
@@ -139,12 +141,16 @@ impl UnitLines {
     }
 
     /// The master a line stands for (`FUN_141658430`'s and `FUN_14161e370`'s reading): the first
-    /// of `master`'s line, or `master` itself in none (a line without a first master gives −1).
+    /// of `master`'s line, or `master` itself in none (a line without a first master gives
+    /// none, the game's −1).
     #[must_use]
-    pub fn base(&self, master: i32) -> i32 {
-        match self.line_of(master) {
-            -1 => master,
-            line => self.first_of(line),
+    pub fn base(&self, master: MasterId) -> Option<MasterId> {
+        match self.line_of(i32::from(master.get())) {
+            -1 => Some(master),
+            // the builder files only the masters' range's ids (0 or more) as a first master
+            line => i16::try_from(self.first_of(line))
+                .ok()
+                .and_then(MasterId::of_data),
         }
     }
 }
@@ -152,6 +158,7 @@ impl UnitLines {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::master_id;
 
     fn line(id: i32, chain: &[i32], building: bool, names: &[&str]) -> UnitLine {
         UnitLine {
@@ -186,10 +193,17 @@ mod tests {
         assert_eq!(lines.entries[4].next, 24);
         assert!(lines.entries[234].building);
         assert_eq!(
-            (lines.line_of(492), lines.first_of(-299), lines.base(492)),
-            (-299, 4, 4)
+            (
+                lines.line_of(492),
+                lines.first_of(-299),
+                lines.base(master_id(492))
+            ),
+            (-299, 4, Some(master_id(4)))
         );
-        assert_eq!((lines.base(235), lines.base(83)), (79, 83));
+        assert_eq!(
+            (lines.base(master_id(235)), lines.base(master_id(83))),
+            (Some(master_id(79)), Some(master_id(83)))
+        );
         assert_eq!(
             lines.identifiers,
             vec![
@@ -210,7 +224,7 @@ mod tests {
         let lines = UnitLines::build(600, &[line(-296, &[600, 75], false, &[])]);
         assert_eq!(lines.first_of(-296), -1);
         assert_eq!(lines.line_of(75), -296);
-        assert_eq!(lines.base(75), -1);
+        assert_eq!(lines.base(master_id(75)), None);
         // an id at the master count is out (the builder's `local_208 <= id`)
         assert_eq!(lines.line_of(600), -1);
     }
@@ -268,8 +282,12 @@ mod tests {
     fn unbuilt_tables_hold_no_line() {
         let lines = UnitLines::default();
         assert_eq!(
-            (lines.line_of(4), lines.first_of(-299), lines.base(4)),
-            (-1, -1, 4)
+            (
+                lines.line_of(4),
+                lines.first_of(-299),
+                lines.base(master_id(4))
+            ),
+            (-1, -1, Some(master_id(4)))
         );
     }
 }

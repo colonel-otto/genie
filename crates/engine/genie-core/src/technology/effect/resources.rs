@@ -223,7 +223,7 @@ impl World {
         }
         let mut ids = Vec::new();
         for farm in FARMS {
-            ids.extend(self.tracked_key(p, farm.get())?);
+            ids.extend(self.tracked_key(p, farm)?);
         }
         for id in ids {
             let Some((q, u)) = self.object(id) else {

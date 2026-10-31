@@ -4,12 +4,14 @@
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::objects::masters::class;
+use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
 use crate::players::PlayerId;
 use crate::players::PlayerType;
 use crate::players::attribute;
+use crate::players::tracker::ListKey;
 use crate::players::world_player::{
-    ALIVE_STORE_MODE, KING, PERCENT, POPULATION_STORAGE, SECOND, UNKEPT_HIGH, UNKEPT_LOW, get, set,
+    ALIVE_STORE_MODE, PERCENT, POPULATION_STORAGE, SECOND, UNKEPT_HIGH, UNKEPT_LOW, get, set,
 };
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -138,8 +140,13 @@ impl World {
         if self.players.player(p)?.game_status == crate::players::game_status::LOST {
             return Ok(());
         }
-        let kingless =
-            self.settings.regicide() && self.players.player(p)?.tracker.list(KING).is_empty();
+        let kingless = self.settings.regicide()
+            && self
+                .players
+                .player(p)?
+                .tracker
+                .list(ListKey::master(ids::KING))
+                .is_empty();
         if !stays || kingless {
             self.set_status(p, crate::players::game_status::LOST)?;
             set(

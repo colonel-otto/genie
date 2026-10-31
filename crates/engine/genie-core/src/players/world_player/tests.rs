@@ -195,7 +195,7 @@ fn a_mill_s_livestock_makes_food() {
     let mut sheep = object(12, master_id(5), 2);
     sheep.livestock_summation = 1000.0;
     let key = Key {
-        master: 68,
+        master: Some(ids::MILL),
         class: Some(class::BUILDING),
         pending: false,
         military: false,
@@ -370,7 +370,7 @@ fn a_running_victory_timer_keeps_the_player() {
 #[test]
 fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
     let key = |master| Key {
-        master,
+        master: Some(master),
         class: Some(class::BUILDING),
         pending: false,
         military: false,
@@ -384,7 +384,9 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
     .into();
     // 9 is filed but gone from the world
     for (id, master) in [(5, 109), (9, 109), (6, 109), (7, 444)] {
-        t.players[1].tracker.add(object_id(id), key(master));
+        t.players[1]
+            .tracker
+            .add(object_id(id), key(master_id(master)));
     }
     let all: Vec<Option<ObjectId>> = (0..4)
         .map(|n| t.town_centre_at(PlayerId::new(1), n))
@@ -410,7 +412,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
         master(ids::TOWN_CENTRE, master_type::BUILDING, class::BUILDING),
     ]);
     let tc_key = Key {
-        master: 109,
+        master: Some(ids::TOWN_CENTRE),
         class: Some(class::BUILDING),
         pending: false,
         military: false,
@@ -446,7 +448,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     t2.players[1].tracker.add(
         object_id(7),
         Key {
-            master: KING,
+            master: Some(ids::KING),
             class: Some(class::KING),
             pending: false,
             military: true,

@@ -379,6 +379,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::objects::masters::ids;
+    use crate::players::tracker::ListKey;
     use crate::test_ids::object_id;
 
     fn unit(id: i32) -> Unit {
@@ -593,7 +594,10 @@ mod tests {
             (vec![1, 2], vec![])
         );
         assert_eq!(
-            (tracker.list(k.master), before[0].tracker.list(k.master)),
+            (
+                tracker.list(ListKey::of_master(k.master)),
+                before[0].tracker.list(ListKey::of_master(k.master))
+            ),
             (
                 &[Some(object_id(10)), Some(object_id(13))][..],
                 &[Some(object_id(1)), Some(object_id(2))][..]

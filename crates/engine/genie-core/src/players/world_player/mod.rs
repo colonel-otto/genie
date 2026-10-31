@@ -37,6 +37,8 @@
 
 use crate::math::fmath::below_or_unordered;
 use crate::objects::masters::ClassMask;
+use crate::objects::masters::MasterId;
+use crate::objects::masters::ids;
 use crate::players::attribute::AttributeId;
 
 mod counts;
@@ -59,12 +61,8 @@ const LIVESTOCK_SCALE: f32 = crate::math::image::world_player::LIVESTOCK_SCALE;
 /// Until this world time (ms) the scout map takes only the explored tiles the player sees.
 const EARLY_SCOUTING_MS: u32 = 5000;
 
-/// The mill's master, whose livestock makes food (`FUN_14104f960` with 0x44).
-const MILL: i32 = 68;
-/// The king's master, which the regicide rule asks the tracker for (`FUN_14104eea0` with 0x1b2).
-const KING: i32 = crate::objects::masters::ids::KING.index() as i32;
 /// The town centres' masters (`FUN_141658970`'s and `FUN_141658a30`'s keys 0x6d and 0x1bc).
-const TOWN_CENTRES: [i32; 2] = [109, 444];
+const TOWN_CENTRES: [MasterId; 2] = [ids::TOWN_CENTRE, ids::TOWN_CENTRE_444];
 /// The classes that never keep their player (`0x48000800`: other 11, walls 27, flags 30).
 const UNKEPT_LOW: ClassMask = ClassMask::new(0x4800_0800, 31);
 /// The classes that never keep their player (`0x140204a000384006`: 1, 2, 14, 19, 20, 21, 37,

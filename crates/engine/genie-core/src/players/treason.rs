@@ -11,6 +11,7 @@ use crate::objects::masters::ids::CASTLE;
 use crate::objects::masters::ids::KING;
 use crate::players::PlayerId;
 use crate::players::attribute::{self, AttributeId};
+use crate::players::tracker::ListKey;
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
 
@@ -41,7 +42,7 @@ impl World {
             && self
                 .players
                 .get(p.index())
-                .is_some_and(|pl| !pl.tracker.list(i32::from(castle.get())).is_empty())
+                .is_some_and(|pl| !pl.tracker.list(ListKey::master(castle)).is_empty())
     }
 
     /// `FUN_141620400`: player `p`'s treason. It costs 400 gold, 200 with attribute 197 above 0

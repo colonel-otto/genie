@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::math::fmath::at_most_or_unordered;
+use crate::objects::masters::ids;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
 use crate::players::PlayerType;
 use crate::players::attribute::{self, AttributeId, RESOURCES};
-use crate::players::world_player::{
-    EARLY_SCOUTING_MS, LIVESTOCK_SCALE, MILL, MINUTE, SECOND, get, set,
-};
+use crate::players::tracker::ListKey;
+use crate::players::world_player::{EARLY_SCOUTING_MS, LIVESTOCK_SCALE, MINUTE, SECOND, get, set};
 use crate::world::World;
 use crate::world::slots::{CheckedIndex, PlayerSlots};
 
@@ -39,7 +39,12 @@ impl World {
     /// also when that is 0. `time` is the update time before the loop's step.
     pub fn mill_food(&mut self, p: PlayerId, time: f32) -> Result<(), GenieError> {
         let mut sum = 0.0;
-        for &id in self.players.player(p)?.tracker.list(MILL) {
+        for &id in self
+            .players
+            .player(p)?
+            .tracker
+            .list(ListKey::master(ids::MILL))
+        {
             let Some((owner, unit)) = self.object(id) else {
                 continue;
             };

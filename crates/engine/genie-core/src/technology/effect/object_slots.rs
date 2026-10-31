@@ -11,6 +11,7 @@ use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
+use crate::players::tracker::ListKey;
 use crate::technology::effect::{Change, OBJECT_GONE};
 use crate::world::World;
 use crate::world::slots::PlayerSlots;
@@ -46,18 +47,19 @@ impl World {
         class: ClassId,
     ) -> Result<(Vec<ObjectId>, Vec<ObjectId>), GenieError> {
         let t = &self.players.player(p)?.tracker;
-        let key = i32::from(class.get()) + crate::players::tracker::CLASS_KEY;
-        Ok((
-            tracked_ids(t.list(key)),
-            tracked_ids(t.list(key + crate::players::tracker::PENDING)),
-        ))
+        let key = ListKey::class(class);
+        Ok((tracked_ids(t.list(key)), tracked_ids(t.list(key.pending()))))
     }
 
     /// The ids player `p`'s tracker files as done under key master `key` (`FUN_14104f560`'s list
     /// of one key, whatever the objects' masters), in the tracker's order.
-    pub(super) fn tracked_key(&self, p: PlayerId, key: i16) -> Result<Vec<ObjectId>, GenieError> {
+    pub(super) fn tracked_key(
+        &self,
+        p: PlayerId,
+        key: MasterId,
+    ) -> Result<Vec<ObjectId>, GenieError> {
         Ok(tracked_ids(
-            self.players.player(p)?.tracker.list(i32::from(key)),
+            self.players.player(p)?.tracker.list(ListKey::master(key)),
         ))
     }
 
@@ -78,7 +80,7 @@ impl World {
                 .chain(&player.sleeping)
                 .any(|u| u.id == *id && u.life.master_id == master.id)
         };
-        let done: Vec<ObjectId> = tracked_ids(player.tracker.list(i32::from(master.id.get())))
+        let done: Vec<ObjectId> = tracked_ids(player.tracker.list(ListKey::master(master.id)))
             .into_iter()
             .filter(of_master)
             .collect();
@@ -94,11 +96,7 @@ impl World {
                             .is_some_and(|b| b.head_unit == Some(master.id))
                 })
                 .map_or(master.id, |s| s.id);
-            pending = tracked_ids(
-                player
-                    .tracker
-                    .list(i32::from(key.get()) + crate::players::tracker::PENDING),
-            );
+            pending = tracked_ids(player.tracker.list(ListKey::master(key).pending()));
         }
         Ok((done, pending))
     }

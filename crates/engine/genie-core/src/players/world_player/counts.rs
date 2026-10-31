@@ -9,6 +9,7 @@ use crate::objects::masters::master_type::COMBAT;
 use crate::objects::masters::player_master;
 use crate::players::PlayerId;
 use crate::players::attribute;
+use crate::players::tracker::ListKey;
 use crate::players::world_player::{AGES, TOWN_CENTRES, TreeQuery, full_tree_civ, get};
 use crate::technology::RESEARCHED;
 use crate::world::World;
@@ -22,7 +23,7 @@ impl World {
         let tracker = &self.players.get(p.index())?.tracker;
         TOWN_CENTRES
             .iter()
-            .flat_map(|&k| tracker.list(k).iter().copied().flatten())
+            .flat_map(|&k| tracker.list(ListKey::master(k)).iter().copied().flatten())
             .find(|&id| self.object(id).is_some_and(|(_, u)| u.life.state == 2))
     }
 
@@ -35,7 +36,7 @@ impl World {
         // a queued unit's place (−1) names no object the world holds
         TOWN_CENTRES
             .iter()
-            .flat_map(|&k| tracker.list(k).iter().copied().flatten())
+            .flat_map(|&k| tracker.list(ListKey::master(k)).iter().copied().flatten())
             .filter(|&id| self.object(id).is_some())
             .nth(n)
     }
@@ -49,10 +50,10 @@ impl World {
             return 0;
         };
         let tracker = &player.tracker;
-        let pending = tracker.list(TOWN_CENTRES[0] + crate::players::tracker::PENDING);
+        let pending = tracker.list(ListKey::master(TOWN_CENTRES[0]).pending());
         TOWN_CENTRES
             .iter()
-            .flat_map(|&k| tracker.list(k).iter())
+            .flat_map(|&k| tracker.list(ListKey::master(k)).iter())
             .chain(pending)
             .filter(|&&id| self.object(id).is_some_and(|(_, u)| u.life.state < 3))
             .count() as i32
