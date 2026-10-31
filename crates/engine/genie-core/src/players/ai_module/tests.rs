@@ -142,16 +142,16 @@ impl Area for Grid {
     fn explored(&self, _: i32, _: i32) -> Result<bool, GenieError> {
         Ok(false)
     }
-    fn zone(&mut self, x: i32, y: i32) -> u16 {
+    fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId {
         // the byte past the zone's own one is not read
-        if self.other_zone.contains(&[x, y]) {
+        crate::pathing::zones::ZoneId::new(if self.other_zone.contains(&[x, y]) {
             0x108
         } else {
             0x207
-        }
+        })
     }
-    fn own_zone(&mut self) -> u16 {
-        0x307
+    fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
+        crate::pathing::zones::ZoneId::new(0x307)
     }
     fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
         Ok(!self.blocked.contains(&[x, y]))

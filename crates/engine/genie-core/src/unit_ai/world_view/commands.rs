@@ -330,11 +330,11 @@ impl crate::movement::explore::Area for ScoutArea<'_> {
         self.spatial.explored(self.player, x, y)
     }
 
-    fn zone(&mut self, x: i32, y: i32) -> u16 {
+    fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId {
         self.zones.zone(x, y)
     }
 
-    fn own_zone(&mut self) -> u16 {
+    fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
         let (x, y) = (self.mover.position().x(), self.mover.position().y());
         self.zones.zone(x as i32, y as i32)
     }

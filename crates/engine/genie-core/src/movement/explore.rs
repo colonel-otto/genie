@@ -317,9 +317,9 @@ pub trait Area {
     fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The tile's zone for the unit's restriction (`FUN_1411958c0`), and the unit's own
     /// (`FUN_14118eea0`).
-    fn zone(&mut self, x: i32, y: i32) -> u16;
+    fn zone(&mut self, x: i32, y: i32) -> crate::pathing::zones::ZoneId;
     /// The unit's own zone (`FUN_14118eea0`).
-    fn own_zone(&mut self) -> u16;
+    fn own_zone(&mut self) -> crate::pathing::zones::ZoneId;
     /// The unit could stand at the point (slot 0x278, [`crate::map::spatial::Spatial::point_clear`]).
     fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The unit reaches the point within its line of sight less a tile (slot 0x3d8,
@@ -358,7 +358,7 @@ pub fn unexplored_area(
                 continue;
             }
             // the zones' low bytes only (`CMP byte ptr [RSP+0x48],AL` at 0x140c65812)
-            if area.zone(x, y) as u8 != own as u8 || !area.clear(x, y)? || !area.reaches(x, y)? {
+            if area.zone(x, y).byte() != own.byte() || !area.clear(x, y)? || !area.reaches(x, y)? {
                 continue;
             }
             let d = area.distance(x, y);
@@ -777,11 +777,11 @@ mod tests {
         fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             Ok(self.explored.contains(&[x, y]))
         }
-        fn zone(&mut self, _: i32, _: i32) -> u16 {
-            1
+        fn zone(&mut self, _: i32, _: i32) -> crate::pathing::zones::ZoneId {
+            crate::pathing::zones::ZoneId::new(1)
         }
-        fn own_zone(&mut self) -> u16 {
-            1
+        fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
+            crate::pathing::zones::ZoneId::new(1)
         }
         fn clear(&mut self, _: i32, _: i32) -> Result<bool, GenieError> {
             Ok(true)
@@ -874,11 +874,11 @@ mod tests {
         fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             self.open.explored(x, y)
         }
-        fn zone(&mut self, _: i32, _: i32) -> u16 {
-            self.zone
+        fn zone(&mut self, _: i32, _: i32) -> crate::pathing::zones::ZoneId {
+            crate::pathing::zones::ZoneId::new(self.zone)
         }
-        fn own_zone(&mut self) -> u16 {
-            1
+        fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
+            crate::pathing::zones::ZoneId::new(1)
         }
         fn clear(&mut self, x: i32, y: i32) -> Result<bool, GenieError> {
             self.open.clear(x, y)
@@ -926,11 +926,11 @@ mod tests {
         fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
             Ok(!self.unexplored.contains(&[x, y]))
         }
-        fn zone(&mut self, _: i32, _: i32) -> u16 {
-            1
+        fn zone(&mut self, _: i32, _: i32) -> crate::pathing::zones::ZoneId {
+            crate::pathing::zones::ZoneId::new(1)
         }
-        fn own_zone(&mut self) -> u16 {
-            1
+        fn own_zone(&mut self) -> crate::pathing::zones::ZoneId {
+            crate::pathing::zones::ZoneId::new(1)
         }
         fn clear(&mut self, _: i32, _: i32) -> Result<bool, GenieError> {
             Ok(true)

@@ -326,7 +326,11 @@ fn shore(
         if !terrain.beach(x, y) {
             continue;
         }
-        let zone = if x < 0 || y < 0 { 0 } else { map.zone(x, y) };
+        let zone = if x < 0 || y < 0 {
+            crate::pathing::zones::ZoneId::OFF_MAP
+        } else {
+            map.zone(x, y)
+        };
         if zone == own
             && spatial.point_clear(id, place, stats.radius.x(), stats.restriction_mask)?
         {

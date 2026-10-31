@@ -153,7 +153,7 @@ impl InfoModule {
         area: &mut dyn SearchArea,
         (map, rng): (GridSize, &mut Well512),
     ) -> Result<Option<Tile>, GenieError> {
-        let own = area.own_zone() as u8;
+        let own = area.own_zone().byte();
         let mut start = start;
         loop {
             match self.flood(unit, start, own, area, (map, &mut *rng))? {
@@ -195,7 +195,7 @@ impl InfoModule {
                 push_neighbours(&mut queue, &mut visited, t, map);
                 continue;
             }
-            if area.zone(x, y) as u8 != own || !area.clear(x, y)? {
+            if area.zone(x, y).byte() != own || !area.clear(x, y)? {
                 continue;
             }
             if area.reaches(x, y)? {
@@ -251,7 +251,7 @@ impl InfoModule {
                 let cell = self.cell(x, y)?;
                 if cell != UNEXPLORED
                     && cell != DEAD_END
-                    && area.zone(x, y) as u8 == own
+                    && area.zone(x, y).byte() == own
                     && !area.visible_now(x, y)
                 {
                     self.path_map.set(x, y, DEAD_END);

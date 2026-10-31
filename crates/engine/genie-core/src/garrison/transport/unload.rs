@@ -158,7 +158,7 @@ impl crate::world::World {
                 restriction,
                 unit.position(),
             )?;
-            u32::from(shore.zone(cvttss2si(x), cvttss2si(y))?)
+            u32::from(shore.zone(cvttss2si(x), cvttss2si(y))?.get())
         };
         let count = self.unload_all(p, i, zone)?;
         let computer = self.players.player(p)?.computer;

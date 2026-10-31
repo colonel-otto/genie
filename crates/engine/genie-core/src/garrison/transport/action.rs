@@ -163,7 +163,7 @@ impl TransportAction {
         // MAXSS 0, gap: the gap when it is not below 0, a NaN gap too
         let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius.x());
         let dy = crate::math::fmath::maxss(0.0, (y - uy).abs() - ship.radius.y());
-        let near = shore.near(zone as u8, NEAR)?;
+        let near = shore.near(zone.byte(), NEAR)?;
         let within =
             !crate::math::fmath::below_or_unordered(UNLOAD_REACH_SQUARED, dy * dy + dx * dx);
         let state = if near && within {
@@ -293,7 +293,7 @@ impl TransportAction {
                 } else {
                     let zone = shore.zone(cvttss2si(x), cvttss2si(y))?;
                     self.retarget = false;
-                    reaches = shore.near(zone as u8, NEAR)?;
+                    reaches = shore.near(zone.byte(), NEAR)?;
                 }
                 let mut cannot_unload = !reaches;
                 if reaches && ship.loaded {

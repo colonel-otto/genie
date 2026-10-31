@@ -168,17 +168,20 @@ pub(crate) fn in_zone(
     let (tx, ty) = (cvttss2si(x), cvttss2si(y));
     let tile_zone = match zone_map {
         Some(m) if 0 <= tx && 0 <= ty => m.zone(tx, ty),
-        _ => 0,
+        _ => crate::pathing::zones::ZoneId::OFF_MAP,
     };
-    let low = tile_zone & 0xff;
+    let low = tile_zone.byte();
     if u32::from(low) == zone {
         return Ok(true);
     }
     let Some(m) = zone_map else {
         return Ok(false);
     };
-    m.adjacent(low, (zone & 0xff) as u16)
-        .ok_or(GenieError::unreachable("a zone adjacency past its table"))
+    m.adjacent(
+        crate::pathing::zones::ZoneId::new(u16::from(low)),
+        crate::pathing::zones::ZoneId::new((zone & 0xff) as u16),
+    )
+    .ok_or(GenieError::unreachable("a zone adjacency past its table"))
 }
 
 /// The map as a unit's Transport reads it ([`Shore`]): the map's terrain, the zone maps and the
@@ -238,18 +241,25 @@ impl<'a> MapShore<'a> {
 }
 
 impl Shore for MapShore<'_> {
-    fn zone(&mut self, x: i32, y: i32) -> Result<u16, GenieError> {
+    fn zone(&mut self, x: i32, y: i32) -> Result<crate::pathing::zones::ZoneId, GenieError> {
         if x < 0 || y < 0 {
-            return Ok(0);
+            return Ok(crate::pathing::zones::ZoneId::OFF_MAP);
         }
-        Ok(self.zone_map()?.map_or(0, |m| m.zone(x, y)))
+        Ok(self
+            .zone_map()?
+            .map_or(crate::pathing::zones::ZoneId::OFF_MAP, |m| m.zone(x, y)))
     }
 
     fn near(&mut self, zone: u8, reach: f32) -> Result<bool, GenieError> {
         let tile = self.tile;
-        Ok(self
-            .zone_map()?
-            .is_some_and(|m| m.near(u16::from(zone), tile, reach).is_some()))
+        Ok(self.zone_map()?.is_some_and(|m| {
+            m.near(
+                crate::pathing::zones::ZoneId::new(u16::from(zone)),
+                tile,
+                reach,
+            )
+            .is_some()
+        }))
     }
 
     fn flags(&self, x: i16, y: i16) -> u8 {

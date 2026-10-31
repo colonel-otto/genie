@@ -16,8 +16,12 @@ struct Coast {
 }
 
 impl Shore for Coast {
-    fn zone(&mut self, x: i32, _y: i32) -> Result<u16, GenieError> {
-        Ok(if x < 0 { 0 } else { (x / 10) as u16 + 1 })
+    fn zone(&mut self, x: i32, _y: i32) -> Result<crate::pathing::zones::ZoneId, GenieError> {
+        Ok(crate::pathing::zones::ZoneId::new(if x < 0 {
+            0
+        } else {
+            (x / 10) as u16 + 1
+        }))
     }
 
     fn near(&mut self, _zone: u8, _reach: f32) -> Result<bool, GenieError> {
