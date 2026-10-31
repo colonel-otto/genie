@@ -66,11 +66,11 @@ impl Found {
 pub fn flood_search(
     at: Tile,
     r: i32,
-    mut test: impl FnMut(i32, i32) -> Result<Option<ObjectId>, GenieError>,
+    mut test: impl FnMut(Tile) -> Result<Option<ObjectId>, GenieError>,
 ) -> Result<Option<ObjectId>, GenieError> {
     let (ux, uy) = (at.x(), at.y());
     let mut reached = std::collections::HashSet::from([at]);
-    if let Some(id) = test(ux, uy)? {
+    if let Some(id) = test(at)? {
         return Ok(Some(id));
     }
     let mut queue = vec![at];
@@ -84,7 +84,7 @@ pub fn flood_search(
             if !reached.insert(n) {
                 continue;
             }
-            if let Some(id) = test(n.x(), n.y())? {
+            if let Some(id) = test(n)? {
                 return Ok(Some(id));
             }
             queue.push(n);

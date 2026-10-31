@@ -183,8 +183,8 @@ struct Recorder {
 #[test]
 fn the_builder_s_flood_tests_left_right_below_above() {
     let at = Tile::new(50, 50);
-    let found = flood_search(at, 8, |x, y| {
-        Ok(match (x, y) {
+    let found = flood_search(at, 8, |t: Tile| {
+        Ok(match (t.x(), t.y()) {
             (48, 50) => Some(object_id(1)),
             (50, 52) => Some(object_id(2)),
             _ => None,
@@ -193,8 +193,8 @@ fn the_builder_s_flood_tests_left_right_below_above() {
     assert_eq!(found, Ok(Some(object_id(1))));
     let mut tested = Vec::new();
     assert_eq!(
-        flood_search(at, 3, |x, y| {
-            tested.push((x, y));
+        flood_search(at, 3, |t: Tile| {
+            tested.push((t.x(), t.y()));
             Ok(None)
         }),
         Ok(None)

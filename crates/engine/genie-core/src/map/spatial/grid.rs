@@ -494,7 +494,7 @@ impl Spatial {
             let level = self.grid.level(0);
             let shift = self.grid.shift(level);
             for &(y, x) in &self.tile_records {
-                let id = tile_record_id(x, y);
+                let id = tile_record_id(Tile::new(x, y));
                 let bx = Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
                 if self.visits_cell(level, x >> shift, y >> shift, query)
                     && !ignore.contains(&id)

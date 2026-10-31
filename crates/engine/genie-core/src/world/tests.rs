@@ -18208,8 +18208,7 @@ fn explorer_world(open: &[[i32; 2]], slots: Vec<i32>) -> World {
         PlayerId::new(1),
         AiModule {
             info: InfoModule {
-                width: 120,
-                height: 120,
+                size: GridSize::new(120, 120),
                 path_map,
                 quadrants: [[0; 3]; 16],
                 explorer: None,

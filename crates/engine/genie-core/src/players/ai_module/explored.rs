@@ -8,10 +8,10 @@ use crate::world::World;
 
 impl AiModule {
     /// `FUN_140b8ab60` on the information module: a tile on the map goes into the path map as 0.
-    pub fn explored_tile(&mut self, x: i32, y: i32) {
+    pub fn explored_tile(&mut self, tile: Tile) {
         let info = &mut self.info;
-        if 0 <= x && x < info.width && 0 <= y && y < info.height {
-            info.path_map.set(Tile::new(x, y), 0);
+        if info.size.holds(tile) {
+            info.path_map.set(tile, 0);
         }
     }
 }
@@ -24,10 +24,9 @@ impl World {
         let Some(tiles) = self.spatial.sight.as_mut().map(Visibility::take_ai_tiles) else {
             return;
         };
-        for (player, pair) in tiles {
-            let (x, y) = (pair.x(), pair.y());
+        for (player, tile) in tiles {
             if let Some(module) = self.ai.get_mut(player) {
-                module.explored_tile(x, y);
+                module.explored_tile(tile);
             }
         }
     }

@@ -514,7 +514,7 @@ impl Spatial {
         let shift = self.grid.shift(level);
         self.tile_records.iter().any(|&(y, x)| {
             self.visits_cell(level, x >> shift, y >> shift, test.query)
-                && !ignore.contains(&tile_record_id(x, y))
+                && !ignore.contains(&tile_record_id(Tile::new(x, y)))
                 && test.meets(Rect::new(
                     x as f32,
                     y as f32,

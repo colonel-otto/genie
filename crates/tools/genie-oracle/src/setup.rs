@@ -647,8 +647,7 @@ pub fn ai_module(
         .collect();
     AiModule {
         info: InfoModule {
-            width: info.map_width,
-            height: info.map_height,
+            size: GridSize::new(info.map_width, info.map_height),
             path_map: genie_core::movement::explore::InfluenceMap {
                 size: GridSize::new(grid.x_size_value, grid.y_size_value),
                 origin: Tile::new(grid.x_reference_point_value, grid.y_reference_point_value),

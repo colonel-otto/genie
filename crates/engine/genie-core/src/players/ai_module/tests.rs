@@ -15,8 +15,7 @@ use crate::players::ai_module::{
 fn module() -> AiModule {
     AiModule {
         info: InfoModule {
-            width: 4,
-            height: 3,
+            size: GridSize::new(4, 3),
             path_map: InfluenceMap::new(GridSize::new(4, 3), 0xff),
             quadrants: [[0; 3]; 16],
             explorer: None,
@@ -31,7 +30,7 @@ fn module() -> AiModule {
 #[test]
 fn an_explored_tile_on_the_map_writes_zero_into_the_path_map() {
     let mut m = module();
-    m.explored_tile(2, 1);
+    m.explored_tile(Tile::new(2, 1));
     assert_eq!(m.info.path_map.get(Tile::new(2, 1)), Some(0));
     assert_eq!(m.info.path_map.get(Tile::new(1, 1)), Some(0xff));
 }
@@ -41,7 +40,7 @@ fn an_explored_tile_off_the_map_changes_nothing() {
     let mut m = module();
     let before = m.clone();
     for (x, y) in [(-1, 0), (0, -1), (4, 0), (0, 3)] {
-        m.explored_tile(x, y);
+        m.explored_tile(Tile::new(x, y));
     }
     assert_eq!(m, before);
 }
@@ -50,10 +49,9 @@ fn an_explored_tile_off_the_map_changes_nothing() {
 fn the_hooks_bound_is_the_modules_size_not_the_path_maps() {
     // FUN_140b8ab60 tests +0x10518/+0x1051c, then the grid lets a tile off its own size be
     let mut m = module();
-    m.info.width = 10;
-    m.info.height = 10;
+    m.info.size = GridSize::new(10, 10);
     let before = m.info.path_map.clone();
-    m.explored_tile(8, 8);
+    m.explored_tile(Tile::new(8, 8));
     assert_eq!(m.info.path_map, before);
 }
 
@@ -106,8 +104,7 @@ fn the_worlds_sight_hands_its_explored_tiles_to_the_players_module() {
     );
     t.spatial.sight = Some(v);
     let mut m = module();
-    m.info.width = 16;
-    m.info.height = 16;
+    m.info.size = GridSize::new(16, 16);
     m.info.path_map = InfluenceMap::new(GridSize::new(16, 16), 0xff);
     t.ai.set(PlayerId::new(1), m);
     assert!(t.take_sight_unsupported().is_none());
@@ -194,8 +191,7 @@ fn unit(civilian: bool) -> SearchUnit {
 
 fn info(size: i32, fill: u8) -> InfoModule {
     InfoModule {
-        width: size,
-        height: size,
+        size: GridSize::new(size, size),
         path_map: InfluenceMap::new(GridSize::new(size, size), fill),
         quadrants: [[0; 3]; 16],
         explorer: None,
@@ -411,12 +407,12 @@ fn tile_uncovered_is_false_off_the_map_and_for_unexplored_and_dead_ends() {
     m.path_map.set(Tile::new(0, 0), UNEXPLORED);
     m.path_map.set(Tile::new(1, 0), DEAD_END);
     m.path_map.set(Tile::new(2, 0), PUNTED);
-    assert!(!m.tile_uncovered(0, 0).unwrap());
-    assert!(!m.tile_uncovered(1, 0).unwrap());
-    assert!(m.tile_uncovered(2, 0).unwrap());
-    assert!(m.tile_uncovered(0, 1).unwrap());
+    assert!(!m.tile_uncovered(Tile::new(0, 0)).unwrap());
+    assert!(!m.tile_uncovered(Tile::new(1, 0)).unwrap());
+    assert!(m.tile_uncovered(Tile::new(2, 0)).unwrap());
+    assert!(m.tile_uncovered(Tile::new(0, 1)).unwrap());
     for (x, y) in [(-1, 0), (0, -1), (3, 0), (0, 3)] {
-        assert!(!m.tile_uncovered(x, y).unwrap());
+        assert!(!m.tile_uncovered(Tile::new(x, y)).unwrap());
     }
 }
 

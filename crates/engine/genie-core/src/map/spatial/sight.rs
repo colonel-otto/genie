@@ -477,9 +477,9 @@ impl Spatial {
     /// `FUN_141185690`: tile (`x`, `y`) lies on the obstruction manager's map, its terrain class
     /// is in `mask` and no static record blocks it.
     #[must_use]
-    pub fn standable(&self, x: i32, y: i32, mask: crate::map::TerrainMask) -> bool {
+    pub fn standable(&self, tile: Tile, mask: crate::map::TerrainMask) -> bool {
         self.tiles
-            .word(Tile::new(x, y))
+            .word(tile)
             .is_some_and(|w| w & (mask.blocked() | BLOCKED) == 0)
     }
 

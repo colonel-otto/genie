@@ -83,11 +83,11 @@ impl InfoModule {
     /// # Errors
     ///
     /// A tile of the map that the path map does not hold.
-    pub fn tile_uncovered(&self, x: i32, y: i32) -> Result<bool, GenieError> {
-        if x < 0 || y < 0 || self.width <= x || self.height <= y {
+    pub fn tile_uncovered(&self, tile: Tile) -> Result<bool, GenieError> {
+        if !self.size.holds(tile) {
             return Ok(false);
         }
-        let cell = self.cell(Tile::new(x, y))?;
+        let cell = self.cell(tile)?;
         Ok(cell != UNEXPLORED && cell != DEAD_END)
     }
 
@@ -109,15 +109,15 @@ impl InfoModule {
         if x < 0 {
             x = 0;
             moved = true;
-        } else if self.width <= x {
-            x = self.width - 1;
+        } else if self.size.width() <= x {
+            x = self.size.width() - 1;
             moved = true;
         }
         if y < 0 {
             y = 0;
             moved = true;
-        } else if self.height <= y {
-            y = self.height - 1;
+        } else if self.size.height() <= y {
+            y = self.size.height() - 1;
             moved = true;
         }
         (Tile::new(x, y), moved)
@@ -214,7 +214,7 @@ impl InfoModule {
     /// (`first + draw % 100 + second * 25`, a draw for each record from the first column down),
     /// and one of its corners by a draw.
     fn punt(&self, rng: &mut Well512) -> Tile {
-        let (w, h) = (self.width, self.height);
+        let (w, h) = (self.size.width(), self.size.height());
         let mut best = -1_i32;
         let mut corner = Tile::new(0, 0);
         for (index, record) in self.quadrants.iter().enumerate() {

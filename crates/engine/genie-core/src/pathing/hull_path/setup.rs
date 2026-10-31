@@ -130,7 +130,7 @@ impl<'w> HullPather<'w> {
                 let (tx, ty) = (cvttss2si(x.floor()), cvttss2si(y.floor()));
                 let word = world.tiles().word(Tile::new(tx, ty)).unwrap_or(0);
                 if word & mask.blocked() != 0 {
-                    ignore.push(tile_record_id(tx, ty));
+                    ignore.push(tile_record_id(Tile::new(tx, ty)));
                 }
             }
         }

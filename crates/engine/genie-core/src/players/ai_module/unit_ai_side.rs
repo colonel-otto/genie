@@ -147,7 +147,7 @@ impl UnitView<'_, '_> {
         }
         // one more turn than the stack holds points: a point already on top is met twice
         for _ in 0..=info.search.len() {
-            if !info.tile_uncovered(tile.x(), tile.y())?
+            if !info.tile_uncovered(tile)?
                 && let Some(p) = search(info, Point::new(tile.x() as f32, tile.y() as f32))?
             {
                 return Ok(Heard::Task(p));

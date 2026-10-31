@@ -306,7 +306,7 @@ impl Spatial {
         let tile = self.tile_records.iter().any(|&(ty, tx)| {
             let bx = Rect::new(tx as f32, ty as f32, tx as f32 + 1.0, ty as f32 + 1.0);
             self.visits_cell(level, tx >> shift, ty >> shift, rect)
-                && !ignore.contains(&tile_record_id(tx, ty))
+                && !ignore.contains(&tile_record_id(Tile::new(tx, ty)))
                 && bx.grown(grow).holds(point)
         });
         if tile {

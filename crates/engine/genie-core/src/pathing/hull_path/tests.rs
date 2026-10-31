@@ -1115,7 +1115,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     assert_eq!(
         hull_ids(&p),
         [vec![
-            tile_record_id(9, 9),
+            tile_record_id(Tile::new(9, 9)),
             RecordId::from(object_id(21)),
             RecordId::from(object_id(20))
         ]]
@@ -1129,7 +1129,10 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     p.process_tile(9, 9, [5, 5, 10, 10], None).unwrap();
     assert_eq!(
         hull_ids(&p),
-        [vec![tile_record_id(9, 9), RecordId::from(object_id(21))]]
+        [vec![
+            tile_record_id(Tile::new(9, 9)),
+            RecordId::from(object_id(21))
+        ]]
     );
     // into a given hull, once; an ignored tile's box stays out
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
@@ -1138,13 +1141,16 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
         .unwrap();
     p.process_tile(3, 3, [0, 0, 5, 5], Some(HullIndex::new(0)))
         .unwrap();
-    assert_eq!(hull_ids(&p), [vec![tile_record_id(3, 3)]]);
-    p.ignore.push(tile_record_id(9, 9));
+    assert_eq!(hull_ids(&p), [vec![tile_record_id(Tile::new(3, 3))]]);
+    p.ignore.push(tile_record_id(Tile::new(9, 9)));
     p.process_tile(9, 9, [5, 5, 10, 10], Some(HullIndex::new(0)))
         .unwrap();
     assert_eq!(
         hull_ids(&p),
-        [vec![tile_record_id(3, 3), RecordId::from(object_id(21))]]
+        [vec![
+            tile_record_id(Tile::new(3, 3)),
+            RecordId::from(object_id(21))
+        ]]
     );
 }
 
@@ -1190,7 +1196,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     p.area = [-1, 5, 9, 5];
     p.build_hulls().unwrap();
     assert_eq!(p.area, [0, 5, 9, 5]);
-    let t = |x: i32| tile_record_id(x, 5);
+    let t = |x: i32| tile_record_id(Tile::new(x, 5));
     // the run 8..10 (the area ends at 9) overlaps object 32's hull and joins it; its tile 8
     // is blocked by its static bit alone, which the tile's box test (the mask's byte) does
     // not see
@@ -2150,7 +2156,7 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
             RecordId::from(object_id(3)),
             RecordId::from(object_id(777)),
             RecordId::from(object_id(4)),
-            tile_record_id(3, 3)
+            tile_record_id(Tile::new(3, 3))
         ]
     );
     assert_eq!(
@@ -2175,7 +2181,7 @@ fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre(
         [
             RecordId::from(object_id(2)),
             RecordId::from(object_id(1)),
-            tile_record_id(3, 3)
+            tile_record_id(Tile::new(3, 3))
         ]
     );
 }

@@ -19,11 +19,11 @@ pub struct Hit {
     pub bounds: Rect,
 }
 
-/// The id of tile (`x`, `y`)'s temporary record (`FUN_1410510c0`) and of the tile in a pather's
-/// ignore list (`FUN_140f89e40`).
+/// The id of `tile`'s temporary record (`FUN_1410510c0`) and of the tile in a pather's ignore
+/// list (`FUN_140f89e40`).
 #[must_use]
-pub const fn tile_record_id(x: i32, y: i32) -> RecordId {
-    RecordId::Tile(Tile::new(x, y))
+pub const fn tile_record_id(tile: Tile) -> RecordId {
+    RecordId::Tile(tile)
 }
 
 impl Spatial {
@@ -76,7 +76,7 @@ impl Spatial {
         let level = self.grid.level(0);
         let shift = self.grid.shift(level);
         for &(y, x) in &self.tile_records {
-            let id = tile_record_id(x, y);
+            let id = tile_record_id(Tile::new(x, y));
             let bx = Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0);
             if self.visits_cell(level, x >> shift, y >> shift, grown)
                 && !ignore.contains(&id)

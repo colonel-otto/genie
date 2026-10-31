@@ -16,6 +16,7 @@ mod unit_ai_side;
 
 pub(crate) use self::search::{SearchArea, SearchUnit};
 
+use crate::map::GridSize;
 use crate::map::Tile;
 use crate::movement::explore::InfluenceMap;
 use crate::objects::ObjectId;
@@ -29,10 +30,8 @@ pub const SLOTS: usize = 0x1ff;
 /// the map.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InfoModule {
-    /// The map's width (`+0x10518`, saved).
-    pub width: i32,
-    /// The map's height (`+0x1051c`, saved).
-    pub height: i32,
+    /// The map's size (`+0x10518`, `+0x1051c`, saved).
+    pub size: GridSize,
     /// The path map (`+0x105c8`, an `InfluenceMap`, saved): a byte per tile. The explored-tile
     /// hook writes 0; the explorer's search writes 1 for a tile its unit cannot path to and 0
     /// for the tile it picks.

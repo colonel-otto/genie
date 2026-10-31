@@ -269,7 +269,7 @@ impl World {
         let mask = self.master_mask(tester.player(), tester.master_id())?;
         let stands = |at: BVector| {
             let t = slot_tile(at);
-            self.spatial.standable(t.x(), t.y(), mask)
+            self.spatial.standable(t, mask)
         };
         let position = g.motion.position[0];
         let Some(_) = formation
@@ -405,7 +405,9 @@ impl World {
                 && cx < w
                 && 0 <= cy
                 && cy < h
-                && self.spatial.standable(ox + cx, oz + cy, unit_mask))
+                && self
+                    .spatial
+                    .standable(Tile::new(ox + cx, oz + cy), unit_mask))
             {
                 continue;
             }

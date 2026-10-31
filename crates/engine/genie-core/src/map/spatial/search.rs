@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FarmLook, Filter, LIVESTOCK_CLASS, PASTURE_CLASS,
     PASTURES, Placed, QUERY_HITS, Reach, RecordId, SEARCH_REUSE_SQUARED, Spatial, TRAPPERS,
@@ -66,7 +67,7 @@ impl Spatial {
         let shift = self.grid.shift(level);
         let tile = self.tile_records.iter().any(|&(y, x)| {
             self.visits_cell(level, x >> shift, y >> shift, query)
-                && !ignore.contains(&tile_record_id(x, y))
+                && !ignore.contains(&tile_record_id(Tile::new(x, y)))
                 && meets(
                     ObstructionType::TYPE_3,
                     Rect::new(x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0),

@@ -9,6 +9,7 @@ use crate::groups::motion::{
 };
 use crate::map::Footprint;
 use crate::map::Position;
+use crate::map::Tile;
 use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::PathState;
@@ -162,7 +163,7 @@ fn back_to_parent(motion: &mut Motion, lead: &Lead, spatial: &Spatial) -> Result
             break;
         }
         let p = point(parent, parent.waypoint);
-        if spatial.standable(p.x() as i32, p.y() as i32, lead.walker.mask) {
+        if spatial.standable(Tile::new(p.x() as i32, p.y() as i32), lead.walker.mask) {
             break;
         }
     }

@@ -217,7 +217,7 @@ impl HullPather<'_> {
         }
         let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
         if word & self.mask.blocked() != 0 {
-            let id = tile_record_id(x, y);
+            let id = tile_record_id(Tile::new(x, y));
             if !self.ignore.contains(&id) {
                 let r = self.radius;
                 let bounds = Rect::new(

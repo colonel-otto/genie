@@ -558,7 +558,13 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
             &[],
         )
         .unwrap();
-    assert_eq!(hits, [tile_record_id(5, 5), RecordId::from(object_id(7))]);
+    assert_eq!(
+        hits,
+        [
+            tile_record_id(Tile::new(5, 5)),
+            RecordId::from(object_id(7))
+        ]
+    );
     // the routine sets the ignore list, resets the buffer and removes its records
     assert_eq!(s.manager_ignore(), Vec::<RecordId>::new());
     assert_eq!(s.manager_buffer(), None);
@@ -590,7 +596,7 @@ fn a_line_meets_the_records_and_the_tiles_its_mask_lacks() {
             &[RecordId::from(object_id(7))],
         )
         .unwrap();
-    assert_eq!(kept, [tile_record_id(5, 5)]);
+    assert_eq!(kept, [tile_record_id(Tile::new(5, 5))]);
     let movers = s
         .line_hits(
             Point::new(2.0, 5.5),
@@ -682,8 +688,13 @@ fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
     assert!(s.point_hit(Point::new(3.95, 5.5), 0.1, &[], true).unwrap());
     assert!(!s.point_hit(Point::new(3.85, 5.5), 0.1, &[], true).unwrap());
     assert!(
-        !s.point_hit(Point::new(3.95, 5.5), 0.1, &[tile_record_id(4, 5)], true)
-            .unwrap()
+        !s.point_hit(
+            Point::new(3.95, 5.5),
+            0.1,
+            &[tile_record_id(Tile::new(4, 5))],
+            true
+        )
+        .unwrap()
     );
     // a stand test counts it too
     assert!(
@@ -1622,7 +1633,7 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
     assert_eq!(
         hits,
         [Hit {
-            id: tile_record_id(5, 5),
+            id: tile_record_id(Tile::new(5, 5)),
             bounds: Rect::new(5.0, 5.0, 6.0, 6.0)
         }]
     );
@@ -1633,7 +1644,7 @@ fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
             b,
             Some(0.5),
             TerrainMask::of_bits(1),
-            &[tile_record_id(5, 5)]
+            &[tile_record_id(Tile::new(5, 5))]
         )
         .unwrap()
     );
@@ -1754,7 +1765,12 @@ fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
     assert_eq!(s.tile_records(), vec![Tile::new(78, 90)]);
     assert!(s.segment_meets(second.0, second.1, 0.5, &[]));
     // the record's id in the ignore list leaves it out
-    assert!(!s.segment_meets(second.0, second.1, 0.5, &[tile_record_id(78, 90)]));
+    assert!(!s.segment_meets(
+        second.0,
+        second.1,
+        0.5,
+        &[tile_record_id(Tile::new(78, 90))]
+    ));
     // a tile that holds a record takes no second
     s.put_tile_records(
         second.0,
