@@ -26,6 +26,7 @@ tiles test which points see each other. The files follow the search:
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`axis_dir.rs`](axis_dir.rs) | The direction of an axis walk of the short pather. |
 | [`call.rs`](call.rs) | The short pather's call (`Call`, `Query`) and its state between searches (`Pather`): the terrain's shapes, the start test and the core. |
 | [`geometry.rs`](geometry.rs) | The fixed-point geometry: a shrunk rectangle's corners and sides, a contact's point, the segment and ray hits. |
 | [`main_loop.rs`](main_loop.rs) | The search's run: its main loop and a popped node's expansion by its type. |

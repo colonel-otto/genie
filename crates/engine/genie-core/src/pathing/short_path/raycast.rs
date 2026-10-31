@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::pathing::mesh::{ONE, Rect};
+use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
     Callback, Ctx, FixedPoint, Hit, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
 };
@@ -240,31 +241,28 @@ impl Ctx<'_> {
         end: FixedPoint,
         r: Rect,
         d: i32,
-        dir: u8,
+        dir: AxisDir,
     ) -> Option<(FixedPoint, ShapeSide)> {
         let [x, y] = from;
-        match dir {
-            1 => {
+        let met = match dir {
+            AxisDir::PlusX => {
                 let h = d + r[0];
-                (r[1] + d < y && y < r[3] - d && h < end[0] && x <= h)
-                    .then_some(([h, y], ShapeSide::LowX))
+                (r[1] + d < y && y < r[3] - d && h < end[0] && x <= h).then_some([h, y])
             }
-            2 => {
+            AxisDir::PlusY => {
                 let h = d + r[1];
-                (r[0] + d < x && x < r[2] - d && h < end[1] && y <= h)
-                    .then_some(([x, h], ShapeSide::LowY))
+                (r[0] + d < x && x < r[2] - d && h < end[1] && y <= h).then_some([x, h])
             }
-            3 => {
+            AxisDir::MinusX => {
                 let h = r[2] - d;
-                (r[1] + d < y && y < r[3] - d && end[0] < h && h <= x)
-                    .then_some(([h, y], ShapeSide::HighX))
+                (r[1] + d < y && y < r[3] - d && end[0] < h && h <= x).then_some([h, y])
             }
-            _ => {
+            AxisDir::MinusY => {
                 let h = r[3] - d;
-                (r[0] + d < x && x < r[2] - d && end[1] < h && h <= y)
-                    .then_some(([x, h], ShapeSide::HighY))
+                (r[0] + d < x && x < r[2] - d && end[1] < h && h <= y).then_some([x, h])
             }
-        }
+        };
+        met.map(|p| (p, dir.facing()))
     }
 
     /// `FUN_140fa8930` (and `FUN_140fa2420` per tile): an axis sweep from `from` to `to` in
@@ -276,7 +274,7 @@ impl Ctx<'_> {
         &self,
         from: FixedPoint,
         to: FixedPoint,
-        dir: u8,
+        dir: AxisDir,
     ) -> Result<Sweep, GenieError> {
         let d = self.d;
         let mut end = to;
@@ -294,7 +292,7 @@ impl Ctx<'_> {
                     out.point = Some(hp);
                     out.side = Some(side);
                     if from == hp && *end == to {
-                        let back = Self::axis_hit(*end, from, r, d, (dir.wrapping_sub(2)) & 3);
+                        let back = Self::axis_hit(*end, from, r, d, dir.reverse());
                         if back.is_some_and(|(bp, _)| bp == from) {
                             continue;
                         }
@@ -306,7 +304,7 @@ impl Ctx<'_> {
                 Ok(())
             };
         match dir {
-            1 => {
+            AxisDir::PlusX => {
                 let row = tile_of(from[1]);
                 let mut x = tile_of(from[0]) as u32;
                 while x <= tile_of(to[0]) as u32 {
@@ -314,7 +312,7 @@ impl Ctx<'_> {
                     x = x.wrapping_add(1);
                 }
             }
-            2 => {
+            AxisDir::PlusY => {
                 let col = tile_of(from[0]);
                 let mut y = tile_of(from[1]) as u32;
                 while y <= tile_of(to[1]) as u32 {
@@ -322,7 +320,7 @@ impl Ctx<'_> {
                     y = y.wrapping_add(1);
                 }
             }
-            3 => {
+            AxisDir::MinusX => {
                 let row = tile_of(from[1]);
                 let mut x = tile_of(from[0]);
                 while tile_of(to[0]) <= x {
@@ -330,7 +328,7 @@ impl Ctx<'_> {
                     x -= 1;
                 }
             }
-            _ => {
+            AxisDir::MinusY => {
                 let col = tile_of(from[0]);
                 let mut y = tile_of(from[1]);
                 while tile_of(to[1]) <= y {
@@ -346,12 +344,10 @@ impl Ctx<'_> {
     /// sight): an axis sweep along an axis, else the raycast with callback C.
     pub(super) fn sight_blocked(&self, a: FixedPoint, b: FixedPoint) -> Result<bool, GenieError> {
         if a[0] == b[0] {
-            let dir = if 0 < b[1] - a[1] { 2 } else { 0 };
-            return Ok(self.sweep(a, b, dir)?.found);
+            return Ok(self.sweep(a, b, AxisDir::of_dy(b[1] - a[1]))?.found);
         }
         if a[1] == b[1] {
-            let dir = if 0 < b[0] - a[0] { 1 } else { 3 };
-            return Ok(self.sweep(a, b, dir)?.found);
+            return Ok(self.sweep(a, b, AxisDir::of_dx(b[0] - a[0]))?.found);
         }
         let mut t = T_START;
         let mut token = 0;

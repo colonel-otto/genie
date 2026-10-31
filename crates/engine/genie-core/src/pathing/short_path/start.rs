@@ -1,6 +1,7 @@
 //! The start's node, the hits' points and the two legs of an L.
 
 use crate::pathing::mesh::ONE;
+use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
     FixedPoint, Hit, Kind, NONE, Node, Search, TO_FIXED, TO_FLOAT, contact_point, in_box,
     shrunk_corner, snap_to_side, strictly_inside, through_float, tile_of,
@@ -286,12 +287,12 @@ impl Search<'_> {
         &mut self,
         b: Node,
         c: FixedPoint,
-        a: u8,
-        second: u8,
+        a: AxisDir,
+        second: AxisDir,
         delta: FixedPoint,
     ) -> Result<(), GenieError> {
         let p = b.at;
-        let m = if a == 1 || a == 3 {
+        let m = if a.along_x() {
             [c[0], p[1]]
         } else {
             [p[0], c[1]]

@@ -1,5 +1,6 @@
 //! The search's run: its main loop and a popped node's expansion by its type.
 
+use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
     Callback, Corner, Ctx, FixedPoint, Hit, Kind, NONE, NUDGES, Node, OPEN_CORNER_WITHOUT_SIDES,
     Poly, RECT_HEURISTIC, Search, ShortPath, T_START, TO_FIXED, TO_FLOAT, UNSET, cheb,
@@ -276,13 +277,13 @@ impl Search<'_> {
         let dx = t[0].wrapping_sub(p[0]);
         let dy = t[1].wrapping_sub(p[1]);
         let m = [t[0], p[1]];
-        let sw = self.ctx.sweep(p, m, if 0 < dx { 1 } else { 3 })?;
+        let sw = self.ctx.sweep(p, m, AxisDir::of_dx(dx))?;
         if let Some((shape, side, at)) = sw.counted()? {
             let g = n.g.wrapping_add(float_distance(p, at));
             self.side_node(g, n.idx, shape, side, at);
             return Ok(());
         }
-        let sw2 = self.ctx.sweep(m, t, if 0 < dy { 2 } else { 0 })?;
+        let sw2 = self.ctx.sweep(m, t, AxisDir::of_dy(dy))?;
         let Some((shape, side, at)) = sw2.counted()? else {
             let step = if dx.wrapping_abs() < 0x40_0000 {
                 dx
@@ -522,8 +523,8 @@ impl Search<'_> {
             },
         ];
         let delta = [c[0].wrapping_sub(p[0]), c[1].wrapping_sub(p[1])];
-        let dir_x = if 0 < delta[0] { 1 } else { 3 };
-        let dir_y = if 0 < delta[1] { 2 } else { 0 };
+        let dir_x = AxisDir::of_dx(delta[0]);
+        let dir_y = AxisDir::of_dy(delta[1]);
         self.legs(base, c, dir_x, dir_y, delta)?;
         self.legs(base, c, dir_y, dir_x, delta)
     }

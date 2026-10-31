@@ -10,6 +10,7 @@ use crate::math::fmath;
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::{ShapeId, ShapeSide};
 
+mod axis_dir;
 mod call;
 mod geometry;
 mod main_loop;

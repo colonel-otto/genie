@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::pathing::mesh::Mesh;
+use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
     Corner, FixedPoint, Foot, Kind, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box,
     contact_point, corner_emits, in_box, inside, shrunk_corner,
@@ -102,10 +103,10 @@ impl Search<'_> {
         let b = self.bounds;
         let w = side.prev();
         let (target, dir) = match w {
-            ShapeSide::LowY => ([b[0], b[3]], 2),
-            ShapeSide::HighX => ([b[0], b[1]], 3),
-            ShapeSide::HighY => ([b[2], b[1]], 0),
-            ShapeSide::LowX => ([b[2], b[3]], 1),
+            ShapeSide::LowY => ([b[0], b[3]], AxisDir::PlusY),
+            ShapeSide::HighX => ([b[0], b[1]], AxisDir::MinusX),
+            ShapeSide::HighY => ([b[2], b[1]], AxisDir::MinusY),
+            ShapeSide::LowX => ([b[2], b[3]], AxisDir::PlusX),
         };
         let sw = self.ctx.sweep(*pos, target, dir)?;
         let u_new = Self::along(*pos, w);
