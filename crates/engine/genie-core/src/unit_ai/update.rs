@@ -10,6 +10,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
+use crate::players::QueryRelation;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::OrderKind;
@@ -394,11 +395,11 @@ impl UnitAi {
                     size: at.size,
                     pick: Pick::Closest {
                         group: Some(class),
-                        relation: -1,
+                        relation: None,
                         state: -1,
                         master: None,
                         workers: if class == class::FARM { 1 } else { -1 },
-                        spared: -1,
+                        spared: None,
                         reach: true,
                     },
                     memory: Memory::default(),
@@ -473,7 +474,7 @@ impl UnitAi {
         let found = match kind {
             None => {
                 // "Calling closest object for a farm that's alive": the friends' pass over
-                let spared = if noted == Some(class::FARM) { 0 } else { -1 };
+                let spared = (noted == Some(class::FARM)).then_some(QueryRelation::Friends);
                 let found = side.closest(&Search {
                     at: at.position.ground(),
                     radius: civilian_search_radius(at.los, at.search_radius),
@@ -481,7 +482,7 @@ impl UnitAi {
                     size: at.size,
                     pick: Pick::Closest {
                         group: Some(class),
-                        relation: -1,
+                        relation: None,
                         state: -1,
                         master: None,
                         workers: -1,

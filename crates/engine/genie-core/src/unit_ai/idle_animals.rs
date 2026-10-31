@@ -5,6 +5,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::masters::class;
+use crate::players::QueryRelation;
 use crate::unit_ai::{
     AI_MOVE_RANGE, AiMove, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW, BOAR_OFFSET, BOAR_STEP,
     BOAR_WANDER, EVADE_REACH, Effect, Found, HUNTED_CARED, HUNTED_HOME, HUNTED_SIGHT_GROWTH,
@@ -203,11 +204,11 @@ impl UnitAi {
             size: at.size,
             pick: Pick::Closest {
                 group: None,
-                relation: -1,
+                relation: None,
                 state: -1,
                 master: None,
                 workers: -1,
-                spared: -1,
+                spared: None,
                 reach: true,
             },
             memory: Memory::default(),
@@ -282,11 +283,11 @@ impl UnitAi {
             size: at.size,
             pick: Pick::Closest {
                 group,
-                relation: 2,
+                relation: Some(QueryRelation::Enemies),
                 state: 2,
                 master: None,
                 workers: -1,
-                spared: -1,
+                spared: None,
                 reach: true,
             },
             memory: Memory::default(),

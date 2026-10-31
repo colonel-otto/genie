@@ -15,7 +15,7 @@ use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
 use crate::players::PlayerId;
-use crate::players::{ByRelation, UnitRelation};
+use crate::players::{ByRelation, QueryRelation, UnitRelation};
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::registry::VisibleQuery;
@@ -376,10 +376,11 @@ impl Spatial {
             farmer: at.is_some_and(|m| m.class == class::VILLAGER),
             trapper: at.is_some_and(|m| TRAPPERS.contains(&m.master)),
         };
-        let spared = spared_list(filter.spared);
+        let spared = filter.spared.map(QueryRelation::list);
         let mut best: Option<(ObjectId, f32)> = None;
         for relation in UnitRelation::ALL {
-            let related = related(filter.relation, relation);
+            // no filter (−1) keeps every list
+            let related = filter.relation.is_none_or(|f| f.keeps(relation));
             // each record is read where it is tested: the reachability check is handed the
             // spatial index, which it writes
             let mut next = 0;
@@ -475,31 +476,6 @@ pub(super) struct Searcher {
     pub(super) class_10: bool,
     pub(super) farmer: bool,
     pub(super) trapper: bool,
-}
-
-/// `FUN_140c32b50`: the relation list `ClosestObject`'s argument 9 passes over: 0 the friends
-/// (list 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1); any other none.
-pub(super) const fn spared_list(spared: i32) -> Option<UnitRelation> {
-    match spared {
-        0 => Some(UnitRelation::ALLY),
-        1 => Some(UnitRelation::NEUTRAL),
-        2 => Some(UnitRelation::ENEMY),
-        3 => Some(UnitRelation::OWN),
-        _ => None,
-    }
-}
-
-/// `ClosestObject`'s relation filter (`param_3`, `filter`) on the relation list `relation`: 0
-/// the friends and itself (lists 1 and 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1),
-/// any other all.
-pub(super) const fn related(filter: i32, relation: UnitRelation) -> bool {
-    match filter {
-        0 => matches!(relation, UnitRelation::OWN | UnitRelation::ALLY),
-        1 => matches!(relation, UnitRelation::NEUTRAL),
-        2 => matches!(relation, UnitRelation::ENEMY),
-        3 => matches!(relation, UnitRelation::OWN),
-        _ => true,
-    }
 }
 
 /// `ClosestObject`'s tests of the object `id` it found (its seer and its place `p`) past the

@@ -13,6 +13,7 @@ use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::masters::master_type::COMBAT;
 use crate::players::PlayerId;
+use crate::players::QueryRelation;
 use crate::players::attribute;
 use crate::players::attribute::AttributeId;
 use crate::unit_ai::ActionKind;
@@ -108,17 +109,16 @@ pub enum Pick {
     Closest {
         /// The master class (−1 any).
         group: Option<ClassId>,
-        /// The relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself; −1 any).
-        relation: i32,
+        /// The relation (−1 any).
+        relation: Option<QueryRelation>,
         /// The object state (−1 any).
         state: i32,
         /// The master (−1 any).
         master: Option<MasterId>,
         /// The workers cap (−1 none).
         workers: i32,
-        /// The relation passed over (argument 9: 0 friends, 1 neutrals, 2 enemies, 3 itself;
-        /// −1 none).
-        spared: i32,
+        /// The relation passed over (argument 9; −1 none).
+        spared: Option<QueryRelation>,
         /// Argument 8: only objects the unit reaches count (slot 0x3d0); every caller but the
         /// artifact's passes 1.
         reach: bool,

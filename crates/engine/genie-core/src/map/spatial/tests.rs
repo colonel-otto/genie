@@ -1615,11 +1615,11 @@ fn the_manager_keeps_the_last_ignore_list_set() {
 const fn any_filter() -> Filter {
     Filter {
         group: None,
-        relation: -1,
+        relation: None,
         state: -1,
         master: None,
         workers: -1,
-        spared: -1,
+        spared: None,
         reach: false,
     }
 }
@@ -1637,29 +1637,6 @@ const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
         capture: 0,
         kind: master_type::COMBAT,
     }
-}
-
-/// `FUN_140c32b50` and `ClosestObject`'s relation filter: the list each relation number names
-/// (friends 2, neutrals 3, enemies 4, itself 1; none for another), and the lists a relation
-/// filter keeps (0 itself and the friends, 1 the neutrals, 2 the enemies, 3 itself, another all).
-#[test]
-fn closest_object_s_relation_numbers_name_its_lists() {
-    use crate::map::spatial::search::{related, spared_list};
-    assert_eq!(
-        [0, 1, 2, 3, -1, 4].map(|s| spared_list(s).map(UnitRelation::get)),
-        [Some(2), Some(3), Some(4), Some(1), None, None]
-    );
-    let kept = |filter| {
-        UnitRelation::ALL
-            .into_iter()
-            .filter(|&r| related(filter, r))
-            .map(UnitRelation::get)
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        [kept(0), kept(1), kept(2), kept(3), kept(-1)],
-        [vec![1, 2], vec![3], vec![4], vec![1], vec![0, 1, 2, 3, 4]]
-    );
 }
 
 /// The nearest so far gives way to a nearer record, to an equally near one of a lower id and

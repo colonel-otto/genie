@@ -23,7 +23,7 @@ use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::players::PlayerId;
-use crate::players::{ByRelation, UnitRelation};
+use crate::players::{ByRelation, QueryRelation, UnitRelation};
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
 use genie_diff::Diff;
@@ -131,13 +131,12 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Filter {
     group: Option<ClassId>,
-    relation: i32,
+    relation: Option<QueryRelation>,
     state: i32,
     master: Option<MasterId>,
     workers: i32,
-    /// The relation passed over (argument 9, `FUN_140c32b50`: 0 friends, 1 neutrals, 2
-    /// enemies, 3 itself; −1 none).
-    spared: i32,
+    /// The relation passed over (argument 9, `FUN_140c32b50`; −1 none).
+    spared: Option<QueryRelation>,
     /// Argument 8: only objects the unit reaches count (slot 0x3d0).
     reach: bool,
 }

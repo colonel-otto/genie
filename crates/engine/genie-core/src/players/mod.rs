@@ -10,6 +10,7 @@ pub mod history;
 pub mod market;
 mod player_id;
 mod player_type;
+mod query_relation;
 mod relation;
 mod stance;
 pub mod tracker;
@@ -20,6 +21,7 @@ pub mod world_player;
 
 pub use self::player_id::PlayerId;
 pub use self::player_type::PlayerType;
+pub use self::query_relation::QueryRelation;
 pub use self::relation::Relation;
 #[cfg(test)]
 pub(crate) use self::relation::relation_row;

@@ -94,11 +94,11 @@ impl UnitAi {
             size: at.size,
             pick: Pick::Closest {
                 group: None,
-                relation: -1,
+                relation: None,
                 state: -1,
                 master: None,
                 workers: -1,
-                spared: -1,
+                spared: None,
                 reach: true,
             },
             memory: Memory::default(),

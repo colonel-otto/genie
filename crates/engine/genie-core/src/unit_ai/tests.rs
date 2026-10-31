@@ -13,6 +13,7 @@ use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::BUILDING;
+use crate::players::QueryRelation;
 use crate::players::attribute::AttributeId;
 use crate::test_ids::attack_category;
 use crate::test_ids::class_id;
@@ -9597,7 +9598,7 @@ fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
         pick,
         Pick::Closest {
             group: None,
-            relation: -1,
+            relation: None,
             reach: true,
             ..
         }
@@ -9814,7 +9815,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
         .map(|(_, _, p)| match p {
             Pick::Closest {
                 group,
-                relation: 3,
+                relation: Some(QueryRelation::Itself),
                 state: 0,
                 ..
             } => *group,

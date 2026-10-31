@@ -350,11 +350,11 @@ impl Unit {
             size: master.radius,
             pick: crate::unit_ai::Pick::Closest {
                 group: class,
-                relation: -1,
+                relation: None,
                 state: -1,
                 master: None,
                 workers: if class == Some(class::FARM) { 1 } else { -1 },
-                spared: -1,
+                spared: None,
                 reach: true,
             },
             memory: crate::unit_ai::Memory::default(),

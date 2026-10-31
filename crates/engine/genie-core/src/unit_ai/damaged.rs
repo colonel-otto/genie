@@ -8,6 +8,7 @@ use crate::objects::ObjectId;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
+use crate::players::QueryRelation;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::Issuer;
@@ -350,11 +351,11 @@ impl UnitAi {
                 size: at.size,
                 pick: Pick::Closest {
                     group: Some(class),
-                    relation: 3,
+                    relation: Some(QueryRelation::Itself),
                     state: 0,
                     master: None,
                     workers: -1,
-                    spared: -1,
+                    spared: None,
                     reach: true,
                 },
                 memory: Memory::default(),
