@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone, slot_gone};
 use crate::groups::motion::passes_waypoint;
@@ -30,8 +31,8 @@ impl World {
             .ok_or(NO_FORMATION)?
             .slots
             .checked(slot)?;
-        if s.state == 1 {
-            self.set_slot_state(group, slot, 2)?;
+        if s.state == SlotState::Arriving {
+            self.set_slot_state(group, slot, SlotState::Stopping)?;
             self.stop_member(id)?;
         }
         let g = self.groups.held(group)?;
@@ -44,14 +45,14 @@ impl World {
             .state;
         let mut placed = false;
         match state {
-            2 => {
+            SlotState::Stopping => {
                 if !g.motion.moving() {
                     placed = self.try_slot(group, id, s.transform_position)?;
                 }
-                self.set_slot_state(group, slot, 3)?;
+                self.set_slot_state(group, slot, SlotState::InPlace)?;
             }
-            3 => {}
-            _ => return Ok(false),
+            SlotState::InPlace => {}
+            SlotState::Steering | SlotState::Arriving => return Ok(false),
         }
         self.show_standing(id)?;
         if placed {
@@ -165,13 +166,13 @@ impl World {
         let facets = facets.or_else(|| mover.facets());
         mover.yaw(turn, facets)?;
         let next = mover.projected(direction, dt);
-        let state = i32::from(passes_waypoint(to, at, next));
+        let state = SlotState::of_passing(passes_waypoint(to, at, next));
         let radius = mover.stats.radius.x();
         let speed = mover.stats.speed;
         self.set_slot_state(group, slot, state)?;
         let within = !below_or_unordered(radius, gap);
         let near = !within && !below_or_unordered(radius * SLOT_REACH, gap);
-        if state == 2 {
+        if state == SlotState::Stopping {
             self.stop_at_slot(group, id)?;
         } else if near {
             self.set_member_speed(id, speed);
@@ -248,7 +249,7 @@ impl World {
         &mut self,
         group: GroupId,
         slot: usize,
-        state: i32,
+        state: SlotState,
     ) -> Result<(), GenieError> {
         let g = self.groups.held_mut(group)?;
         let formation = g.current_formation.as_mut().ok_or(NO_FORMATION)?;

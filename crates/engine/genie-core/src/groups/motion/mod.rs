@@ -21,8 +21,8 @@ mod request;
 mod step;
 mod walk;
 
+pub(in crate::groups) use self::levels::{Passing, hold, passes_waypoint};
 use self::levels::{ground, looping_next, point, reset_level, set_flag};
-pub(in crate::groups) use self::levels::{hold, passes_waypoint};
 use self::request::request;
 use self::step::Pass;
 pub(crate) use self::step::{StepWorld, path_step};

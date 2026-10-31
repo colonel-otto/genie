@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::groups::FormationKind;
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::formation::{CATEGORIES, EPSILON, FLANK_SPACING, STAGGER_SHARE, TWO};
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
@@ -388,7 +389,7 @@ fn lay_line(
             offset: (flank_offset(total, at.line_index, style)),
             desired_transform_position: BVector::ZERO,
             time: style.world_time,
-            state: 0,
+            state: SlotState::Steering,
             depth: at.line_index,
             transform_position: BVector::ZERO,
             position_filled: 0,

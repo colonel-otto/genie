@@ -25,12 +25,14 @@ mod formation_kind;
 mod group_id;
 mod group_list;
 mod objects;
+mod slot_state;
 
 pub use self::formation_kind::FormationKind;
 pub use self::group_id::GroupId;
 pub use self::group_list::{GroupLink, UnitGroups, common_group};
 pub(crate) use self::objects::WorldObject;
 pub use self::objects::sub_formation;
+pub use self::slot_state::SlotState;
 pub use self::target::GroupTarget;
 
 mod attack;
@@ -137,7 +139,7 @@ pub struct Slot {
     /// `mTime`.
     pub time: u32,
     /// `mState`.
-    pub state: i32,
+    pub state: SlotState,
     /// `mDepth`.
     pub depth: i32,
     /// `mDesiredTransformPosition`.
@@ -544,7 +546,7 @@ impl UnitGroup {
         self.current_formation
             .as_ref()
             .and_then(|f| f.slots.iter().find(|s| s.unit_id == Some(id)))
-            .is_some_and(|s| s.state == 3)
+            .is_some_and(|s| s.state == SlotState::InPlace)
     }
 }
 

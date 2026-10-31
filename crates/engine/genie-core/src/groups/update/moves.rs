@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::group_list::member_gone;
 use crate::groups::update::{
@@ -173,7 +174,7 @@ impl World {
                 let target = g.current_target.target.key();
                 let mut kept = 0;
                 for &(unit, state) in &slots {
-                    if state == 3 {
+                    if state == SlotState::InPlace {
                         // a slot without a unit names no member: the removal finds none
                         if let Some(unit) = unit {
                             let _ = self.remove_unit(group, unit, target, false)?;
@@ -288,7 +289,7 @@ impl World {
             if !self.member_idle(slot.unit_id)? {
                 continue;
             }
-            if slot.state == 3 {
+            if slot.state == SlotState::InPlace {
                 if command == ATTACK && held_target {
                     return Err(GenieError::unsupported(
                         "AutomaticMoveUnitsToDesiredPositions' attack on the target (slot 0x128)",

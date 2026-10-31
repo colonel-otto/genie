@@ -1,4 +1,5 @@
 use super::*;
+use crate::groups::SlotState;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::Footprint;
 use crate::map::GridSize;
@@ -181,7 +182,7 @@ fn mover(t: &World, id: i32) -> &crate::movement::Mover {
     unit(t, id).body.mover().unwrap()
 }
 
-fn state(t: &World, slot: usize) -> i32 {
+fn state(t: &World, slot: usize) -> SlotState {
     t.groups
         .get(group_id(1))
         .unwrap()
@@ -274,7 +275,7 @@ fn a_member_in_place_or_failing_too_often() {
     let mut t = world();
     let g = t.groups.get_mut(group_id(1)).unwrap();
     g.current_formation.as_mut().unwrap().slots[0].transform_position = BVector::new(5.0, 0.0, 5.0);
-    g.current_formation.as_mut().unwrap().slots[0].state = 3;
+    g.current_formation.as_mut().unwrap().slots[0].state = SlotState::InPlace;
     g.members[0].specific_move.consecutive_move_failures = 11;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
     let g = t.groups.get(group_id(1)).unwrap();
@@ -307,7 +308,7 @@ fn a_member_in_place_or_failing_too_often() {
     let m = t.players[1].objects[0].body.mover_mut().unwrap();
     m.moved_at = m.moved_at.with_x(f32::NAN);
     let g = t.groups.get_mut(group_id(1)).unwrap();
-    g.current_formation.as_mut().unwrap().slots[0].state = 3;
+    g.current_formation.as_mut().unwrap().slots[0].state = SlotState::InPlace;
     g.members[0].specific_move.consecutive_move_failures = 11;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
     assert_eq!(
@@ -323,7 +324,12 @@ fn a_member_in_place_or_failing_too_often() {
 /// state keeps it.
 #[test]
 fn a_busy_member_stops_and_its_slot_counts_it_there() {
-    for (before, after) in [(1, 3), (2, 3), (0, 0), (4, 4)] {
+    for (before, after) in [
+        (SlotState::Arriving, SlotState::InPlace),
+        (SlotState::Stopping, SlotState::InPlace),
+        (SlotState::Steering, SlotState::Steering),
+        (SlotState::InPlace, SlotState::InPlace),
+    ] {
         let mut t = world();
         t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::Attack);
         let g = t.groups.get_mut(group_id(1)).unwrap();
@@ -353,7 +359,7 @@ fn a_far_member_turns_and_walks_to_its_slot() {
     assert_eq!(m.velocity.unwrap().velocity.y(), 0.8);
     assert_eq!(m.stats.speed, WALKING);
     assert_eq!(t.groups.get(group_id(1)).unwrap().flags & 0x200, 0x200);
-    assert_eq!(state(&t, 0), 0);
+    assert_eq!(state(&t, 0), SlotState::Steering);
     assert_eq!(
         unit(&t, 10).ai.as_ref().unwrap().state_position,
         Point::new(10.0, 5.0)
@@ -413,7 +419,7 @@ fn a_member_about_to_pass_its_slot_stops() {
         .unwrap();
     f.slots[0].transform_position = BVector::new(5.05, 0.0, 5.0);
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
-    assert_eq!(state(&t, 0), 2);
+    assert_eq!(state(&t, 0), SlotState::Stopping);
     let m = mover(&t, 10);
     assert_eq!(m.animated.speed, 0.0);
     assert_eq!(m.velocity.unwrap().velocity.y(), 0.0);
@@ -432,9 +438,9 @@ fn a_due_slot_takes_its_member() {
     g.motion.velocity = BVector::new(0.0, 0.0, 1.0);
     let s = &mut g.current_formation.as_mut().unwrap().slots[0];
     s.time = 50;
-    s.state = 1;
+    s.state = SlotState::Arriving;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
-    assert_eq!(state(&t, 0), 3);
+    assert_eq!(state(&t, 0), SlotState::InPlace);
     assert_eq!(mover(&t, 10).animated.speed, 0.0);
     assert_eq!(unit(&t, 10).position(), Position::new(5.0, 5.0, 0.0));
     let mut t = world();
@@ -457,9 +463,9 @@ fn a_due_slot_takes_its_member() {
         .unwrap()
         .slots[0];
     s.time = 50;
-    s.state = 2;
+    s.state = SlotState::Stopping;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
-    assert_eq!(state(&t, 0), 3);
+    assert_eq!(state(&t, 0), SlotState::InPlace);
     assert_eq!(unit(&t, 10).position(), Position::new(10.0, 5.0, 0.0));
     let m = mover(&t, 10);
     assert_eq!(m.moved_at, Position::new(10.0, 5.0, 0.0));
@@ -481,7 +487,7 @@ fn a_due_slot_takes_its_member() {
         .unwrap()
         .slots[0];
     s.time = 50;
-    s.state = 3;
+    s.state = SlotState::InPlace;
     t.steer_to_slot(group_id(1), 0, 0, &[]).unwrap();
     assert_eq!(mover(&t, 10).stats.speed, 0.8);
     assert_eq!(
@@ -529,7 +535,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
         ),
         (1, 0, 3.0, 3.0, 1)
     );
-    assert_eq!(state(&t, 0), 0);
+    assert_eq!(state(&t, 0), SlotState::Steering);
     // the update's list ignored: clear
     let mut t = world();
     t.spatial.insert(object_id(50), post(7.5, 5.0));
@@ -737,7 +743,7 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
     };
     let t = run(false);
     assert_eq!(mover(&t, 10).paths.len(), 0);
-    assert_eq!(state(&t, 0), 3);
+    assert_eq!(state(&t, 0), SlotState::InPlace);
     let own = t.groups.get(group_id(1)).unwrap().members[0].specific_move;
     assert_eq!((own.active, own.consecutive_move_failures), (0, 0));
     let t = run(true);
@@ -748,5 +754,5 @@ fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
     );
     let own = t.groups.get(group_id(1)).unwrap().members[0].specific_move;
     assert_eq!((own.active, own.goal), (1, BVector::new(5.0, 0.0, 8.0)));
-    assert_eq!(state(&t, 0), 0);
+    assert_eq!(state(&t, 0), SlotState::Steering);
 }

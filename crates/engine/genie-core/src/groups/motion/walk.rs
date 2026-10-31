@@ -4,8 +4,8 @@
 use crate::groups::GroupId;
 use crate::groups::Motion;
 use crate::groups::motion::{
-    EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, StepWorld, ground,
-    hold, passes_waypoint, path_step, point, reset_level, set_flag,
+    EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, Passing, StepWorld,
+    ground, hold, passes_waypoint, path_step, point, reset_level, set_flag,
 };
 use crate::map::Footprint;
 use crate::map::Position;
@@ -47,15 +47,15 @@ pub(super) fn steer(
     let step = (dt * motion.acceleration.y() + motion.velocity.y()) * dt;
     let next = fmath::add(at, fmath::scale(step, direction));
     match passes_waypoint(waypoint, at, next) {
-        2 => {
+        Passing::Passes => {
             set_flag(&mut motion.paths, 1, true);
             return Ok(Pass::Reached);
         }
-        1 => {
+        Passing::Reaches => {
             set_flag(&mut motion.paths, 1, true);
             set_flag(&mut motion.paths, 0, true);
         }
-        _ => {}
+        Passing::Short => {}
     }
     if let Some(pass) = way_blocked(motion, lead, world.spatial, at, next)? {
         return Ok(pass);

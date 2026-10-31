@@ -113,15 +113,15 @@ fn a_unit_is_in_place_when_its_first_slot_in_the_current_formation_is() {
     };
     let mut group = UnitGroup::new(group_id(1));
     group.previous_formation = Some(Formation {
-        slots: vec![slot(Some(object_id(10)), 3)],
+        slots: vec![slot(Some(object_id(10)), SlotState::InPlace)],
         ..Formation::default()
     });
     assert!(!group.slot_in_place(object_id(10)));
     group.current_formation = Some(Formation {
         slots: vec![
-            slot(Some(object_id(11)), 3),
-            slot(Some(object_id(10)), 2),
-            slot(Some(object_id(10)), 3),
+            slot(Some(object_id(11)), SlotState::InPlace),
+            slot(Some(object_id(10)), SlotState::Stopping),
+            slot(Some(object_id(10)), SlotState::InPlace),
         ],
         ..Formation::default()
     });

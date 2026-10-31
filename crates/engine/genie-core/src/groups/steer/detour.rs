@@ -2,6 +2,7 @@
 //! tile planner.
 
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::steer::{
     BLOCKED, EPSILON, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
@@ -84,7 +85,7 @@ impl World {
             self.stop_member(id)?;
             self.show_standing(id)?;
             self.move_record(group, index)?.consecutive_move_failures = 0;
-            self.set_slot_state(group, slot, 3)?;
+            self.set_slot_state(group, slot, SlotState::InPlace)?;
             return Ok(());
         }
         if serves {
@@ -97,7 +98,7 @@ impl World {
             let goal = (way.goal, ROUND_TIMER, ROUND_TIMER);
             let _ = self.set_specific_move(group, id, (-1, 0), goal)?;
         }
-        self.set_slot_state(group, slot, 0)?;
+        self.set_slot_state(group, slot, SlotState::Steering)?;
         self.stop_member(id)?;
         self.move_record(group, index)?.consecutive_move_failures += 1;
         Ok(())

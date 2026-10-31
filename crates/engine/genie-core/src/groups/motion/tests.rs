@@ -227,7 +227,7 @@ fn a_step_falls_short_of_reaches_or_passes_its_waypoint() {
     let w = BVector::new(10.0, 0.0, 0.0);
     assert_eq!(
         passes_waypoint(w, BVector::ZERO, BVector::new(5.0, 0.0, 0.0)),
-        0
+        Passing::Short
     );
     // a step that ends on the waypoint is not past it
     assert_eq!(
@@ -236,7 +236,7 @@ fn a_step_falls_short_of_reaches_or_passes_its_waypoint() {
             BVector::new(9.95, 0.0, 0.0),
             BVector::new(10.0, 0.0, 0.0)
         ),
-        0
+        Passing::Short
     );
     // one past it by less than 0.1 is
     assert_eq!(
@@ -245,24 +245,24 @@ fn a_step_falls_short_of_reaches_or_passes_its_waypoint() {
             BVector::new(9.95, 0.0, 0.0),
             BVector::new(10.02, 0.0, 0.0)
         ),
-        2
+        Passing::Passes
     );
     assert_eq!(
         passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(10.0, 0.0, 0.0)),
-        0
+        Passing::Short
     );
     // past it, but no farther beyond than it was before: on it
     assert_eq!(
         passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(10.5, 0.0, 0.0)),
-        1
+        Passing::Reaches
     );
     assert_eq!(
         passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(11.0, 0.0, 0.0)),
-        1
+        Passing::Reaches
     );
     assert_eq!(
         passes_waypoint(w, BVector::new(9.0, 0.0, 0.0), BVector::new(12.0, 0.0, 0.0)),
-        2
+        Passing::Passes
     );
     // a NaN step is short (COMISS step, to the waypoint; JBE at 0x14104621d), where an
     // ordered compare would pass it on to the next tests
@@ -272,7 +272,7 @@ fn a_step_falls_short_of_reaches_or_passes_its_waypoint() {
             BVector::new(9.0, 0.0, 0.0),
             BVector::new(f32::NAN, 0.0, 0.0)
         ),
-        0
+        Passing::Short
     );
 }
 

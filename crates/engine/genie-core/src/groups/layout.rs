@@ -6,6 +6,7 @@
 use crate::GenieError;
 use crate::groups::FormationKind;
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, BVector};
 use crate::objects::ObjectId;
@@ -97,7 +98,7 @@ pub(crate) fn slots_by_place(
         s.transform_position = m.at;
         s.transformed = 1;
         s.time = world_time;
-        s.state = 0;
+        s.state = SlotState::Steering;
         s.depth = 0;
         s.position_filled = 1;
         s.active = 1;
@@ -242,7 +243,7 @@ pub(crate) fn phalanx_slots(
                 desired_transform_position: BVector::ZERO,
                 transform_position: BVector::ZERO,
                 time: world_time,
-                state: 0,
+                state: SlotState::Steering,
                 depth: line,
                 position_filled: 0,
                 active: 1,
@@ -513,7 +514,7 @@ pub(crate) fn box_slots(
                 desired_transform_position: BVector::ZERO,
                 transform_position: BVector::ZERO,
                 time: world_time,
-                state: 0,
+                state: SlotState::Steering,
                 depth: 0,
                 position_filled: 0,
                 active: 1,

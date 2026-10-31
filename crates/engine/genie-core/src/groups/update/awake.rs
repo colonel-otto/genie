@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::groups::FormationKind;
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::UnitGroup;
 use crate::groups::group_list::{NO_FORMATION, member_gone};
 use crate::groups::update::{
@@ -423,5 +424,5 @@ pub(super) fn awake_group_ends(g: &UnitGroup) -> bool {
         && g.current_command == NO_COMMAND
         && g.current_formation
             .as_ref()
-            .is_some_and(|f| f.slots.iter().all(|s| s.state == 3))
+            .is_some_and(|f| f.slots.iter().all(|s| s.state == SlotState::InPlace))
 }

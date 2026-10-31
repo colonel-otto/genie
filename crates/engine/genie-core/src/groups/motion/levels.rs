@@ -88,10 +88,19 @@ pub(super) fn ground(a: BVector, b: BVector) -> f32 {
     fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y())
 }
 
-/// `FUN_141046130` for a walk from `at` toward `waypoint` that would end at `next`: 0 short of
-/// it (`COMISS` then `JBE`: a NaN step or distance is short), 2 past it (or a step under 0.1),
-/// 1 on it.
-pub(in crate::groups) fn passes_waypoint(waypoint: BVector, at: BVector, next: BVector) -> u8 {
+/// Where a step toward a waypoint ends against it (`FUN_141046130`'s answer).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::groups) enum Passing {
+    /// 0: short of it (`COMISS` then `JBE`: a NaN step or distance is short).
+    Short = 0,
+    /// 1: across it, ending no farther beyond than it was ahead.
+    Reaches = 1,
+    /// 2: past it, or a step under 0.1.
+    Passes = 2,
+}
+
+/// `FUN_141046130` for a walk from `at` toward `waypoint` that would end at `next`.
+pub(in crate::groups) fn passes_waypoint(waypoint: BVector, at: BVector, next: BVector) -> Passing {
     let mut a = fmath::sub(waypoint, at);
     let mut b = fmath::sub(waypoint, next);
     let c = fmath::sub(next, at);
@@ -101,11 +110,11 @@ pub(in crate::groups) fn passes_waypoint(waypoint: BVector, at: BVector, next: B
     let beyond = fmath::sqrt(b.x() * b.x() + b.height() * b.height() + b.y() * b.y());
     let step = fmath::sqrt(c.x() * c.x() + c.height() * c.height() + c.y() * c.y());
     if fmath::at_most_or_unordered(step, to_waypoint) {
-        0
+        Passing::Short
     } else if to_waypoint < beyond || step < NEAR {
-        2
+        Passing::Passes
     } else {
-        1
+        Passing::Reaches
     }
 }
 

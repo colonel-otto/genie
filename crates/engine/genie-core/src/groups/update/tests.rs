@@ -1,5 +1,6 @@
 use crate::combat::attack::AttackState;
 use crate::groups::FormationKind;
+use crate::groups::SlotState;
 use crate::groups::{GroupTarget, Member, UnitGroup, UnitGroups};
 use crate::map::Footprint;
 use crate::map::GridSize;
@@ -949,7 +950,10 @@ fn a_standing_group_s_move_ends_or_goes_on() {
     g.motion.flags = 0;
     g.current_formation = Some(crate::groups::Formation {
         kind: FormationKind::COLUMN,
-        slots: vec![slot(Some(object_id(10)), 3), slot(Some(object_id(11)), 3)],
+        slots: vec![
+            slot(Some(object_id(10)), SlotState::InPlace),
+            slot(Some(object_id(11)), SlotState::InPlace),
+        ],
         ..crate::groups::Formation::default()
     });
     assert!(t.move_update(group_id(1), &mut relayout).unwrap());
@@ -969,7 +973,7 @@ fn a_standing_group_s_move_ends_or_goes_on() {
     g.motion.flags = 0;
     g.current_formation = Some(crate::groups::Formation {
         kind: FormationKind::COLUMN,
-        slots: vec![slot(Some(object_id(10)), 0)],
+        slots: vec![slot(Some(object_id(10)), SlotState::Steering)],
         ..crate::groups::Formation::default()
     });
     assert!(!t.move_update(group_id(1), &mut relayout).unwrap());
@@ -990,10 +994,10 @@ fn units_out_of_their_places_get_paths() {
     t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
     t.groups.get_mut(group_id(1)).unwrap().current_formation = Some(crate::groups::Formation {
         slots: vec![
-            slot(None, 0),
-            slot(Some(object_id(99)), 0),
-            slot(Some(object_id(11)), 0),
-            slot(Some(object_id(10)), 3),
+            slot(None, SlotState::Steering),
+            slot(Some(object_id(99)), SlotState::Steering),
+            slot(Some(object_id(11)), SlotState::Steering),
+            slot(Some(object_id(10)), SlotState::InPlace),
         ],
         ..crate::groups::Formation::default()
     });
@@ -1010,7 +1014,7 @@ fn units_out_of_their_places_get_paths() {
         .as_mut()
         .unwrap()
         .slots[3]
-        .state = 0;
+        .state = SlotState::Steering;
     assert!(t.move_to_desired_positions(group_id(1), 1, None).is_err());
 }
 
@@ -1215,7 +1219,7 @@ fn an_idle_group_goes() {
     g.current_formation = Some(crate::groups::Formation {
         kind: FormationKind::COLUMN,
         slots: vec![crate::groups::Slot {
-            state: 3,
+            state: SlotState::InPlace,
             ..crate::groups::Slot::default()
         }],
         ..crate::groups::Formation::default()
@@ -1327,7 +1331,7 @@ fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
     g.current_formation = Some(crate::groups::Formation {
         slots: vec![crate::groups::Slot {
             unit_id: Some(object_id(10)),
-            state: 3,
+            state: SlotState::InPlace,
             ..crate::groups::Slot::default()
         }],
         ..crate::groups::Formation::default()

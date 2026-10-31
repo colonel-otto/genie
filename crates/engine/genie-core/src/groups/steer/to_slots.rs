@@ -2,6 +2,7 @@
 //! steering toward its slot (`FUN_141025fb0`).
 
 use crate::groups::GroupId;
+use crate::groups::SlotState;
 use crate::groups::SpecificMove;
 use crate::groups::group_list::{NO_FORMATION, NO_MOVER, member_gone};
 use crate::groups::motion::hold;
@@ -286,7 +287,7 @@ impl World {
         let mut d = fmath::sub(to, at);
         d = d.with_height(0.0);
         let gap = fmath::sqrt(d.x() * d.x() + 0.0 + d.y() * d.y());
-        if !below_or_unordered(EPSILON, gap) && s.state == 3 {
+        if !below_or_unordered(EPSILON, gap) && s.state == SlotState::InPlace {
             self.groups
                 .held_mut(group)?
                 .members
@@ -321,8 +322,8 @@ impl World {
             .slots
             .checked_mut(slot)?
             .state;
-        if *state == 3 && (moving || waits) {
-            *state = 0;
+        if *state == SlotState::InPlace && (moving || waits) {
+            *state = SlotState::Steering;
         }
         if late && self.slot_due(group, index, slot)? {
             return Ok(());
@@ -368,8 +369,8 @@ impl World {
             .slots
             .checked_mut(slot)?
             .state;
-        if matches!(*state, 1 | 2) {
-            *state = 3;
+        if matches!(*state, SlotState::Arriving | SlotState::Stopping) {
+            *state = SlotState::InPlace;
         }
         Ok(())
     }

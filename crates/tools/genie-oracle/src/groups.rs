@@ -8,8 +8,8 @@
 use genie_core::GenieError;
 use genie_core::groups::{
     Formation, FormationKind, FormationLine, GroupCommand, GroupId, GroupOrder, GroupTarget,
-    LinePoint, Member, Motion, PointLine, Slot, SpecificMove, TargetData, UnitGroup, UnitGroups,
-    UnitTypeStatistic,
+    LinePoint, Member, Motion, PointLine, Slot, SlotState, SpecificMove, TargetData, UnitGroup,
+    UnitGroups, UnitTypeStatistic,
 };
 use genie_core::math::fmath::BVector;
 use genie_core::objects::ObjectId;
@@ -66,27 +66,29 @@ fn motion(m: &saved::Motion, paths: &[saved::Path]) -> Result<Motion, GenieError
     })
 }
 
-fn formation(f: &saved::Formation) -> Formation {
-    Formation {
+fn formation(f: &saved::Formation) -> Result<Formation, GenieError> {
+    Ok(Formation {
         kind: FormationKind::from(f.type_),
         slots: f
             .slots
             .iter()
-            .map(|s| Slot {
-                unit_id: ObjectId::of_field(s.slots_unit_id),
-                offset: vec3(&s.slots_offset),
-                transform_position: vec3(&s.slots_transform_position),
-                time: s.slots_time,
-                state: s.slots_state,
-                depth: s.slots_depth,
-                desired_transform_position: vec3(&s.slots_desired_transform_position),
-                position_filled: s.slots_position_filled,
-                desired_category: s.slots_desired_category,
-                active: s.slots_active,
-                desired_sub_category: s.slots_desired_sub_category,
-                transformed: 0,
+            .map(|s| {
+                Ok(Slot {
+                    unit_id: ObjectId::of_field(s.slots_unit_id),
+                    offset: vec3(&s.slots_offset),
+                    transform_position: vec3(&s.slots_transform_position),
+                    time: s.slots_time,
+                    state: SlotState::of_int(s.slots_state)?,
+                    depth: s.slots_depth,
+                    desired_transform_position: vec3(&s.slots_desired_transform_position),
+                    position_filled: s.slots_position_filled,
+                    desired_category: s.slots_desired_category,
+                    active: s.slots_active,
+                    desired_sub_category: s.slots_desired_sub_category,
+                    transformed: 0,
+                })
             })
-            .collect(),
+            .collect::<Result<_, GenieError>>()?,
         number_transformed_slots: f.number_transformed_slots,
         maximum_width: f.maximum_width,
         maximum_depth: f.maximum_depth,
@@ -106,7 +108,7 @@ fn formation(f: &saved::Formation) -> Formation {
         transform_orientation: vec3(&f.transform_orientation),
         // a load's array holds the saved slots alone
         spare_slots: Vec::new(),
-    }
+    })
 }
 
 fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, GenieError> {
@@ -136,8 +138,8 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
                 })
             })
             .collect::<Result<_, GenieError>>()?,
-        previous_formation: g.previous_formation.as_deref().map(formation),
-        current_formation: g.current_formation.as_deref().map(formation),
+        previous_formation: g.previous_formation.as_deref().map(formation).transpose()?,
+        current_formation: g.current_formation.as_deref().map(formation).transpose()?,
         garbage: g.garbage,
         formation_locked_type: FormationKind::of_field(g.formation_locked_type),
         flags: g.group_flags_m_bits,
@@ -399,7 +401,8 @@ flat_value!(
     GroupId,
     GroupTarget,
     ActionType,
-    FormationKind
+    FormationKind,
+    SlotState
 );
 
 impl<T: Flat, const N: usize> Flat for [T; N] {
@@ -513,6 +516,22 @@ mod tests {
             }],
             ..UnitGroup::default()
         }
+    }
+
+    /// A formation slot's saved state reads as its state (3, in place); 4 names none and the
+    /// formation does not import.
+    #[test]
+    fn a_slot_takes_its_saved_state() {
+        let saved = |state: i32| saved::Formation {
+            slots: vec![saved::FormationEntry1 {
+                slots_state: state,
+                ..saved::FormationEntry1::default()
+            }],
+            ..saved::Formation::default()
+        };
+        let f = formation(&saved(3)).unwrap();
+        assert_eq!(f.slots[0].state, SlotState::InPlace);
+        assert!(formation(&saved(4)).is_err());
     }
 
     #[test]
