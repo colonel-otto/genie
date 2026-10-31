@@ -91,9 +91,9 @@ impl Unit {
         };
         let me = candidate(me_id, player, self, self.position())?;
         let spatial: &Spatial = &c.w.spatial;
-        let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
+        let objects = |tile: Tile| -> Result<Vec<Candidate>, GenieError> {
             spatial
-                .objects_on(Tile::new(x, y))
+                .objects_on(tile)
                 .map(|(id, p)| {
                     if id == me_id {
                         return Ok(me);
@@ -111,8 +111,9 @@ impl Unit {
             )?;
             let width = i64::from(planner.level_sizes().0[0]);
             let cells = planner.level(0);
-            let blocked =
-                move |x: i32, y: i32| cells[(width * i64::from(y) + i64::from(x)) as usize][0] == 0;
+            let blocked = move |t: Tile| {
+                cells[(width * i64::from(t.y()) + i64::from(t.x())) as usize][0] == 0
+            };
             gather_search::more_work(entry, &builder, spatial.map, Some(&blocked), &objects)?
         };
         let Some(found) = found else {

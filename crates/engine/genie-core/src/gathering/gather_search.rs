@@ -9,6 +9,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
+use crate::map::TileOffset;
 use crate::math::msvc;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -90,8 +91,8 @@ pub fn more_work(
     entry: Option<&DropSite>,
     builder: &Builder,
     map: GridSize,
-    blocked: Option<&dyn Fn(i32, i32) -> bool>,
-    objects: &dyn Fn(i32, i32) -> Result<Vec<Candidate>, GenieError>,
+    blocked: Option<&dyn Fn(Tile) -> bool>,
+    objects: &dyn Fn(Tile) -> Result<Vec<Candidate>, GenieError>,
 ) -> Result<Option<Candidate>, GenieError> {
     let Some(entry) = entry.filter(|e| e.auto_work) else {
         return Ok(None);
@@ -115,15 +116,10 @@ pub fn more_work(
         y1 = map.height() as i16 - 1;
     }
     let (w, h) = (i32::from(x1 - x0) + 1, i32::from(y1 - y0) + 1);
-    let start = Tile::new(
-        builder.position.x() as i32 - i32::from(x0),
-        builder.position.y() as i32 - i32::from(y0),
-    );
-    let grid = blocked.and_then(|b| {
-        reached(start, GridSize::new(w, h), &|x, y| {
-            b(i32::from(x0) + x, i32::from(y0) + y)
-        })
-    });
+    let corner = TileOffset::new(i32::from(x0), i32::from(y0));
+    let start =
+        Tile::new(builder.position.x() as i32, builder.position.y() as i32).stepped_back(corner);
+    let grid = blocked.and_then(|b| reached(start, GridSize::new(w, h), &|t| b(t.stepped(corner))));
     // gold, stone, food, wood: (the object, its workers, the group's least distance)
     let mut groups: [Option<(Candidate, i32)>; 4] = [None; 4];
     let mut least = [90.0f32; 4];
@@ -133,7 +129,7 @@ pub fn more_work(
             if grid.as_ref().is_some_and(|g| !g[(gx * h + gy) as usize]) {
                 continue;
             }
-            for o in objects(i32::from(x), i32::from(y))? {
+            for o in objects(Tile::new(i32::from(x), i32::from(y)))? {
                 // The farm class (49), which both searches treat apart.
                 if o.class == class::FARM {
                     // its own tests (owner, pasture, the targeting flag, masters 1893 and 1897)
@@ -194,31 +190,23 @@ pub fn more_work(
 /// entered and not `blocked`, `start` entered whatever it holds. None when `start` lies outside
 /// the box.
 #[must_use]
-pub fn reached(
-    start: Tile,
-    size: GridSize,
-    blocked: &dyn Fn(i32, i32) -> bool,
-) -> Option<Vec<bool>> {
-    let (w, h) = (size.width(), size.height());
-    let (sx, sy) = (start.x(), start.y());
-    if sx < 0 || sy < 0 || w <= sx || h <= sy {
+pub fn reached(start: Tile, size: GridSize, blocked: &dyn Fn(Tile) -> bool) -> Option<Vec<bool>> {
+    if !size.holds(start) {
         return None;
     }
-    let mut seen = vec![false; (w * h) as usize];
-    *seen.get_mut((sx * h + sy) as usize)? = true;
+    // by columns, unlike the grid's own rows
+    let cell = |t: Tile| (t.x() * size.height() + t.y()) as usize;
+    let mut seen = vec![false; (size.width() * size.height()) as usize];
+    *seen.get_mut(cell(start))? = true;
     let mut todo = vec![start];
     let mut first = true;
     while let Some(t) = todo.pop() {
-        if !std::mem::take(&mut first) && blocked(t.x(), t.y()) {
+        if !std::mem::take(&mut first) && blocked(t) {
             continue;
         }
         for n in t.beside() {
-            let (nx, ny) = (n.x(), n.y());
-            if 0 <= nx
-                && nx < w
-                && 0 <= ny
-                && ny < h
-                && let Some(s) = seen.get_mut((nx * h + ny) as usize)
+            if size.holds(n)
+                && let Some(s) = seen.get_mut(cell(n))
                 && !*s
             {
                 *s = true;
@@ -252,8 +240,7 @@ pub struct Seeker {
 /// One cell of the search's queue: a tile and its steps from the start.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Cell {
-    x: i32,
-    y: i32,
+    tile: Tile,
     steps: i32,
 }
 
@@ -288,11 +275,11 @@ struct Pass {
 /// The search's reads of its world `W` (the spatial index): a tile the player has explored, a tile
 /// the unit can stand on, the candidates on a tile, and the check whether the unit reaches an
 /// object, which writes the obstruction manager's scratch in `W` and so takes it by `&mut`.
-pub type Explored<'a, W> = dyn Fn(&W, i32, i32) -> Result<bool, GenieError> + 'a;
+pub type Explored<'a, W> = dyn Fn(&W, Tile) -> Result<bool, GenieError> + 'a;
 /// See [`Explored`].
-pub type Passable<'a, W> = dyn Fn(&W, i32, i32) -> bool + 'a;
+pub type Passable<'a, W> = dyn Fn(&W, Tile) -> bool + 'a;
 /// See [`Explored`].
-pub type ObjectsOn<'a, W> = dyn Fn(&W, i32, i32) -> Result<Vec<Candidate>, GenieError> + 'a;
+pub type ObjectsOn<'a, W> = dyn Fn(&W, Tile) -> Result<Vec<Candidate>, GenieError> + 'a;
 /// See [`Explored`].
 pub type Reaches<'a, W> = dyn FnMut(&mut W, ObjectId) -> Result<bool, GenieError> + 'a;
 
@@ -404,20 +391,13 @@ pub fn closest_resource_at<W>(
     let half = side / 2;
     let nearer = |a: Cell, b: Cell| {
         let d = |c: Cell| {
-            let dx = sort_at.0 - (c.x as f32 + TILE_CENTRE);
-            let dy = sort_at.1 - (c.y as f32 + TILE_CENTRE);
+            let dx = sort_at.0 - (c.tile.x() as f32 + TILE_CENTRE);
+            let dy = sort_at.1 - (c.tile.y() as f32 + TILE_CENTRE);
             dy * dy + dx * dx
         };
         d(a) < d(b)
     };
-    let passes = search_passes(
-        site,
-        map,
-        &|x, y| passable(world, x, y),
-        unit_tile,
-        los,
-        &nearer,
-    );
+    let passes = search_passes(site, map, &|t| passable(world, t), unit_tile, los, &nearer);
     let cap = if max_workers == -1 {
         i32::MAX
     } else {
@@ -427,27 +407,27 @@ pub fn closest_resource_at<W>(
     for pass in passes {
         let (ox, oy) = (half - pass.origin.x(), half - pass.origin.y());
         let mut seen = vec![false; (side * side) as usize];
-        let at = |x: i32, y: i32| ((y + oy) * side + x + ox) as usize;
+        let at = |t: Tile| ((t.y() + oy) * side + t.x() + ox) as usize;
         for c in &pass.seeds {
-            seen[at(c.x, c.y)] = true;
+            seen[at(c.tile)] = true;
         }
         let mut queue = pass.seeds;
         let mut i = 0;
         while i < queue.len() {
-            let Cell { x, y, steps } = queue[i];
+            let Cell { tile, steps } = queue[i];
             i += 1;
-            if !explored(world, x, y)? {
+            if !explored(world, tile)? {
                 continue;
             }
-            let d = pass_distance(pass.origin, x, y);
-            if pass.max_steps < d || x < 0 || y < 0 || map.width() <= x || map.height() <= y {
+            let d = pass_distance(pass.origin, tile);
+            if pass.max_steps < d || !map.holds(tile) {
                 continue;
             }
-            if passable(world, x, y) {
-                push_neighbours(&mut queue, &mut seen, &at, Cell { x, y, steps }, map);
+            if passable(world, tile) {
+                push_neighbours(&mut queue, &mut seen, &at, Cell { tile, steps }, map);
                 msvc::sort(&mut queue[i..], &nearer);
             }
-            let on_tile = objects(world, x, y)?;
+            let on_tile = objects(world, tile)?;
             let Some(o) = first_resource(&on_tile, kind)? else {
                 continue;
             };
@@ -483,7 +463,7 @@ pub fn closest_resource_at<W>(
 fn search_passes(
     site: Option<&SearchSite>,
     map: GridSize,
-    passable: &dyn Fn(i32, i32) -> bool,
+    passable: &dyn Fn(Tile) -> bool,
     unit_tile: Tile,
     los: i32,
     nearer: &impl Fn(Cell, Cell) -> bool,
@@ -491,11 +471,7 @@ fn search_passes(
     let single = |at: Tile| Pass {
         origin: at,
         max_steps: los + 5,
-        seeds: vec![Cell {
-            x: at.x(),
-            y: at.y(),
-            steps: 0,
-        }],
+        seeds: vec![Cell { tile: at, steps: 0 }],
     };
     let mut passes = Vec::with_capacity(2);
     match site {
@@ -519,23 +495,22 @@ fn search_passes(
 }
 
 /// [`closest_resource_at`]'s spread from a passable `cell`: its neighbours x−1, x+1, y−1, y+1
-/// not seen yet become seen (`at` gives a tile's index in `seen`), and those on the map join the
-/// `queue` a step farther.
+/// ([`Tile::beside`]) not seen yet become seen (`at` gives a tile's index in `seen`), and those
+/// on the map join the `queue` a step farther.
 fn push_neighbours(
     queue: &mut Vec<Cell>,
     seen: &mut [bool],
-    at: &impl Fn(i32, i32) -> usize,
-    Cell { x, y, steps }: Cell,
+    at: &impl Fn(Tile) -> usize,
+    Cell { tile, steps }: Cell,
     map: GridSize,
 ) {
-    for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
-        let c = at(nx, ny);
+    for n in tile.beside() {
+        let c = at(n);
         if !seen[c] {
             seen[c] = true;
-            if 0 <= nx && nx < map.width() && 0 <= ny && ny < map.height() {
+            if map.holds(n) {
                 queue.push(Cell {
-                    x: nx,
-                    y: ny,
+                    tile: n,
                     steps: steps + 1,
                 });
             }
@@ -576,11 +551,7 @@ fn sort_point_and_side(at: Point, los: i32, site: Option<&SearchSite>) -> ((f32,
 /// [`closest_resource_at`]'s first pass from a site's footprint: every tile of the footprint
 /// the unit can stand on (x from the site's x less its radius, truncated, at least 1, less 1, to
 /// the site's x plus its radius, truncated, at most the map's last column; y alike), row by row.
-fn footprint_seeds(
-    s: &SearchSite,
-    map: GridSize,
-    passable: &dyn Fn(i32, i32) -> bool,
-) -> Vec<Cell> {
+fn footprint_seeds(s: &SearchSite, map: GridSize, passable: &dyn Fn(Tile) -> bool) -> Vec<Cell> {
     let (sx, sy) = (s.position.x(), s.position.y());
     let (rx, ry) = (s.radius.x(), s.radius.y());
     let x0 = ((sx - rx) as i32).max(1) - 1;
@@ -590,21 +561,21 @@ fn footprint_seeds(
     let mut seeds = Vec::new();
     for y in y0..=y1 {
         for x in x0..=x1 {
-            if passable(x, y) {
-                seeds.push(Cell { x, y, steps: 0 });
+            let tile = Tile::new(x, y);
+            if passable(tile) {
+                seeds.push(Cell { tile, steps: 0 });
             }
         }
     }
     seeds
 }
 
-/// The search's distance of tile (`x`, `y`) from a pass's origin: the longer axis plus the
-/// shorter one times 1.4 rounded down, less the shorter one (`DIAGONAL` plus `ROUNDING`,
-/// truncated).
-fn pass_distance(origin: Tile, x: i32, y: i32) -> i32 {
+/// The search's distance of `tile` from a pass's origin: the longer axis plus the shorter one
+/// times 1.4 rounded down, less the shorter one (`DIAGONAL` plus `ROUNDING`, truncated).
+fn pass_distance(origin: Tile, tile: Tile) -> i32 {
     const DIAGONAL: f32 = crate::math::image::gather_search::DIAGONAL;
     const ROUNDING: f32 = crate::math::image::gather_search::ROUNDING;
-    let (dx, dy) = ((origin.x() - x).abs(), (origin.y() - y).abs());
+    let (dx, dy) = ((origin.x() - tile.x()).abs(), (origin.y() - tile.y()).abs());
     if dy < dx {
         ((dy as f32 * DIAGONAL + ROUNDING) as i32 - dy) + dx
     } else {
@@ -702,7 +673,7 @@ mod tests {
     fn a_flood_enters_the_blocked_cells_next_to_what_it_reaches_but_not_past_them() {
         // a wall at x = 2 in a 5 x 3 box: the flood from (0, 1) reaches x 0..=1 and enters the
         // wall's cells, never x 3 or 4
-        let seen = reached(Tile::new(0, 1), GridSize::new(5, 3), &|x, _| x == 2).unwrap();
+        let seen = reached(Tile::new(0, 1), GridSize::new(5, 3), &|t| t.x() == 2).unwrap();
         let col = |x: i32| {
             (0..3)
                 .map(|y| seen[(x * 3 + y) as usize])
@@ -711,7 +682,7 @@ mod tests {
         assert_eq!(col(1), [true; 3]);
         assert_eq!(col(2), [true; 3]);
         assert_eq!(col(3), [false; 3]);
-        assert!(reached(Tile::new(5, 0), GridSize::new(5, 3), &|_, _| false).is_none());
+        assert!(reached(Tile::new(5, 0), GridSize::new(5, 3), &|_| false).is_none());
     }
 
     #[test]
@@ -727,10 +698,10 @@ mod tests {
         // with fewer workers than 3's kept 1 and takes over
         let mut trees = [tree(3, 7.5, 10.5), tree(4, 13.5, 10.5)];
         trees[0].workers = 2;
-        let objects = |x: i32, y: i32| {
+        let objects = |tile: Tile| {
             Ok(trees
                 .iter()
-                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+                .filter(|t| t.position.tile() == tile)
                 .copied()
                 .collect())
         };
@@ -763,10 +734,10 @@ mod tests {
         gold.class = class::CLASS_32;
         let wood = tree(8, 12.5, 10.5);
         let all = [gold, wood];
-        let objects = |x: i32, y: i32| {
+        let objects = |tile: Tile| {
             Ok(all
                 .iter()
-                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+                .filter(|t| t.position.tile() == tile)
                 .copied()
                 .collect())
         };
@@ -789,10 +760,10 @@ mod tests {
         };
         let listed = |first: i32, second: i32| {
             let trees = [tree(first, 13.2, 10.5), tree(second, 13.6, 10.5)];
-            let objects = |x: i32, y: i32| {
+            let objects = |tile: Tile| {
                 Ok(trees
                     .iter()
-                    .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+                    .filter(|t| t.position.tile() == tile)
                     .copied()
                     .collect())
             };
@@ -817,18 +788,14 @@ mod tests {
         };
         // trees at (12, 10) and (8, 11): the second is nearer the unit's place
         let trees = [tree(1, 12.5, 10.5), tree(2, 8.5, 11.5)];
-        let objects = |(): &(), x: i32, y: i32| {
+        let objects = |(): &(), tile: Tile| {
             Ok(trees
                 .iter()
-                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+                .filter(|t| t.position.tile() == tile)
                 .copied()
                 .collect())
         };
-        let tree_at = |x: i32, y: i32| {
-            trees
-                .iter()
-                .any(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
-        };
+        let tree_at = |tile: Tile| trees.iter().any(|t| t.position.tile() == tile);
         let mut asked = Vec::new();
         let found = closest_resource(
             &seeker,
@@ -837,8 +804,8 @@ mod tests {
             ResourceWorld {
                 map: GridSize::new(40, 40),
                 world: &mut (),
-                explored: &|&(), _, _| Ok(true),
-                passable: &|&(), x, y| !tree_at(x, y),
+                explored: &|&(), _| Ok(true),
+                passable: &|&(), t| !tree_at(t),
                 objects: &objects,
                 reach: &mut |&mut (), id| {
                     asked.push(id);
@@ -860,8 +827,8 @@ mod tests {
             ResourceWorld {
                 map: GridSize::new(40, 40),
                 world: &mut (),
-                explored: &|&(), _, _| Ok(true),
-                passable: &|&(), x, y| !tree_at(x, y),
+                explored: &|&(), _| Ok(true),
+                passable: &|&(), t| !tree_at(t),
                 objects: &objects,
                 reach: &mut |&mut (), _| Ok(true),
             },
@@ -889,18 +856,16 @@ mod tests {
             footprint: true,
         };
         let search = |trees: &[Candidate], site: Option<&SearchSite>| {
-            let objects = |(): &(), x: i32, y: i32| {
+            let objects = |(): &(), tile: Tile| {
                 Ok(trees
                     .iter()
-                    .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+                    .filter(|t| t.position.tile() == tile)
                     .copied()
                     .collect())
             };
-            let blocked = |x: i32, y: i32| {
-                (13..=14).contains(&x) && (9..=10).contains(&y)
-                    || trees
-                        .iter()
-                        .any(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+            let blocked = |tile: Tile| {
+                (13..=14).contains(&tile.x()) && (9..=10).contains(&tile.y())
+                    || trees.iter().any(|t| t.position.tile() == tile)
             };
             closest_resource_at(
                 &seeker,
@@ -910,8 +875,8 @@ mod tests {
                 ResourceWorld {
                     map: GridSize::new(40, 40),
                     world: &mut (),
-                    explored: &|&(), _, _| Ok(true),
-                    passable: &|&(), x, y| !blocked(x, y),
+                    explored: &|&(), _| Ok(true),
+                    passable: &|&(), t| !blocked(t),
                     objects: &objects,
                     reach: &mut |&mut (), _| Ok(true),
                 },
@@ -964,10 +929,10 @@ mod tests {
         explored: &Explored<'_, ()>,
         reach: &[ObjectId],
     ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
-        let objects = |(): &(), x: i32, y: i32| {
+        let objects = |(): &(), tile: Tile| {
             Ok(trees
                 .iter()
-                .filter(|t| t.position.x() as i32 == x && t.position.y() as i32 == y)
+                .filter(|t| t.position.tile() == tile)
                 .copied()
                 .collect())
         };
@@ -980,7 +945,7 @@ mod tests {
                 map: GridSize::new(40, 40),
                 world: &mut (),
                 explored,
-                passable: &|&(), _, _| true,
+                passable: &|&(), _| true,
                 objects: &objects,
                 reach: &mut |&mut (), id| Ok(reach.contains(&id)),
             },
@@ -995,7 +960,7 @@ mod tests {
             ..SEEKER
         };
         assert_eq!(
-            search_trees(&low, &trees, 2, &|&(), _, _| Ok(true), &[object_id(1)]),
+            search_trees(&low, &trees, 2, &|&(), _| Ok(true), &[object_id(1)]),
             Ok((None, None))
         );
         let tending = Seeker {
@@ -1003,7 +968,7 @@ mod tests {
             ..SEEKER
         };
         assert_eq!(
-            search_trees(&tending, &trees, 2, &|&(), _, _| Ok(true), &[object_id(1)]),
+            search_trees(&tending, &trees, 2, &|&(), _| Ok(true), &[object_id(1)]),
             Err(GenieError::unsupported(
                 "a resource search by a unit with a pasture of its own"
             ))
@@ -1018,7 +983,7 @@ mod tests {
             ..tree(1, 12.5, 10.5)
         };
         let both = [full, tree(2, 15.5, 10.5)];
-        let all = |&(): &(), _, _| Ok(true);
+        let all = |&(): &(), _| Ok(true);
         // at most 2 workers: past the full one to the free one
         assert_eq!(
             search_trees(&SEEKER, &both, 2, &all, &[object_id(1), object_id(2)]),
@@ -1044,7 +1009,7 @@ mod tests {
     #[test]
     fn an_unexplored_tile_s_resource_is_not_tested() {
         let both = [tree(1, 12.5, 10.5), tree(2, 15.5, 10.5)];
-        let dark = |&(): &(), x, y| Ok((x, y) != (12, 10));
+        let dark = |&(): &(), t: Tile| Ok(t != Tile::new(12, 10));
         assert_eq!(
             search_trees(&SEEKER, &both, 2, &dark, &[object_id(1), object_id(2)]),
             Ok((Some(object_id(2)), Some(5)))
@@ -1063,7 +1028,7 @@ mod tests {
         let with = |n: usize| {
             let mut trees: Vec<Candidate> = near[..n].to_vec();
             trees.push(far);
-            search_trees(&SEEKER, &trees, 2, &|&(), _, _| Ok(true), &[object_id(99)])
+            search_trees(&SEEKER, &trees, 2, &|&(), _| Ok(true), &[object_id(99)])
         };
         // 30 tested: the 31st is the far one, taken
         assert_eq!(with(30), Ok((Some(object_id(99)), Some(8))));

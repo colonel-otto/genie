@@ -129,9 +129,9 @@ pub(crate) fn closest_resource_of(
         })
     };
     let me = candidate(me_id, player, unit, unit.position())?;
-    let objects = |spatial: &Spatial, x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
+    let objects = |spatial: &Spatial, tile: Tile| -> Result<Vec<Candidate>, GenieError> {
         spatial
-            .objects_on(Tile::new(x, y))
+            .objects_on(tile)
             .map(|(id, p)| {
                 if id == me_id {
                     return Ok(me);
@@ -169,13 +169,8 @@ pub(crate) fn closest_resource_of(
         ResourceWorld {
             map: c.spatial.map,
             world: c.spatial,
-            explored: &|spatial, x, y| spatial.explored(player, Tile::new(x, y)),
-            passable: &|spatial, x, y| {
-                spatial
-                    .tiles()
-                    .word(Tile::new(x, y))
-                    .is_some_and(|w| w & blocked == 0)
-            },
+            explored: &|spatial, tile| spatial.explored(player, tile),
+            passable: &|spatial, tile| spatial.tiles().word(tile).is_some_and(|w| w & blocked == 0),
             objects: &objects,
             reach: &mut |spatial, id| {
                 mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id)

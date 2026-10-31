@@ -262,11 +262,10 @@ impl World {
             })
         };
         let objects = |spatial: &crate::map::spatial::Spatial,
-                       x: i32,
-                       y: i32|
+                       tile: Tile|
          -> Result<Vec<Candidate>, GenieError> {
             spatial
-                .objects_on(Tile::new(x, y))
+                .objects_on(tile)
                 .map(|(id, _)| candidate(spatial, id))
                 .collect()
         };
@@ -287,12 +286,9 @@ impl World {
             ResourceWorld {
                 map: self.spatial.map,
                 world: &mut self.spatial,
-                explored: &|spatial, x, y| spatial.explored(p, Tile::new(x, y)),
-                passable: &|spatial, x, y| {
-                    spatial
-                        .tiles()
-                        .word(Tile::new(x, y))
-                        .is_some_and(|w| w & blocked == 0)
+                explored: &|spatial, tile| spatial.explored(p, tile),
+                passable: &|spatial, tile| {
+                    spatial.tiles().word(tile).is_some_and(|w| w & blocked == 0)
                 },
                 objects: &objects,
                 reach: &mut |spatial, id| {
