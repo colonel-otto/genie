@@ -14,6 +14,7 @@ use crate::movement::move_to::TargetMoved;
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::actions::Action;
 use crate::objects::masters::ActionType;
 use crate::objects::release::Releaser;
@@ -212,7 +213,7 @@ impl Artifact {
             to
         };
         let walk = reads.to_object(held, range, self.moving, TargetMoved::Follows)?;
-        let alive = to.state.is_none_or(|s| s < 7);
+        let alive = to.state.is_none_or(|s| s < ObjectState::Removed);
         let released = self.set_target(None, false).released;
         let taken = self.set_target(to.id, alive).taken;
         let gone = self.drop_sub_actions();
@@ -1066,7 +1067,7 @@ mod tests {
     fn move_reads<'g>(sprites: &SpriteReads<'g>) -> MoveToReads<'g> {
         MoveToReads {
             sprites: *sprites,
-            state: 2,
+            state: ObjectState::Alive,
             speed: 1.0,
             at: Position::ORIGIN,
             ground: Footprint::ZERO,
@@ -1079,7 +1080,11 @@ mod tests {
             id: ObjectId::of_field(id),
             at,
             gap: 5.0,
-            state: Some(if alive { 2 } else { 7 }),
+            state: Some(if alive {
+                ObjectState::Alive
+            } else {
+                ObjectState::Removed
+            }),
         }
     }
 
@@ -1260,7 +1265,7 @@ mod tests {
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default())
             .holding(600, PlayerId::new(1));
         if let Some(u) = rig.t.players[1].objects.last_mut() {
-            u.life.state = 7;
+            u.life.state = ObjectState::Removed;
         }
         let mut dying = Artifact {
             move_to: Some(MoveToAction {

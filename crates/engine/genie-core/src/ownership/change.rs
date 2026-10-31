@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -124,13 +125,13 @@ impl World {
             .is_some_and(|c| f32::from(c.build_time) <= c.progress);
         let rice = u.rice;
         let placed = self.spatial.get(id).copied();
-        if state < 3 {
+        if state < ObjectState::Dying {
             self.unrecord(id);
         }
-        if state == 2 {
+        if state == ObjectState::Alive {
             lose_built_storage(self.players.player_mut(old)?, &master, held, amount)?;
         }
-        if state == 0 {
+        if state == ObjectState::Foundation {
             self.foundation_sight_off(id, placed)?;
         }
         self.clear_for_hand_over(old, (idx, id), watched)?;
@@ -141,15 +142,15 @@ impl World {
         if watched {
             self.watch_at_place(new, id, placed)?;
         }
-        if state == 0 {
+        if state == ObjectState::Foundation {
             self.foundation_sight_on(id, placed)?;
         }
-        if state == 2 {
+        if state == ObjectState::Alive {
             self.built_with_new_owner(owner, id, &master, rice)?;
             gain_built_storage(self.players.player_mut(owner)?, &master, held, amount)?;
         }
         self.garrison_leaves(owner, id)?;
-        if state < 3 {
+        if state < ObjectState::Dying {
             self.record_again(id, &master);
         }
         if let Some((_, u)) = self.object_mut(id) {
@@ -485,7 +486,7 @@ pub(crate) fn change_hands(
     }
     let los = own.line_of_sight;
     u.own_master = Some(own);
-    let sees = u.life.state == 2 && u.life.inside.is_none();
+    let sees = u.life.state == ObjectState::Alive && u.life.inside.is_none();
     spatial.change_owner(u.id, new, los, sees)?;
     if let Some(a) = u.actions.artifact_mut() {
         a.gaia = new == PlayerId::GAIA;

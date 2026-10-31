@@ -10,6 +10,7 @@ use crate::map::Position;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
@@ -152,7 +153,7 @@ impl BuildAction {
             Some(u) => u.master(&c.w.masters, c.player)?.id == PASTURE_1889,
             None => false,
         };
-        let built = site.is_some_and(|u| u.life.state != 0);
+        let built = site.is_some_and(|u| u.life.state != ObjectState::Foundation);
         if computer || !pasture || !built {
             return Ok(false);
         }
@@ -203,7 +204,7 @@ impl BuildAction {
             return Ok(());
         };
         let state = site.life.state;
-        if state == 0 || matches!(self.state, FINISHED | MOVE | 8) {
+        if state == ObjectState::Foundation || matches!(self.state, FINISHED | MOVE | 8) {
             return Ok(());
         }
         let master = site.master(&c.w.masters, c.player)?;
@@ -211,7 +212,9 @@ impl BuildAction {
         let unbuilt = site
             .construction
             .is_some_and(|k| k.progress < f32::from(k.build_time));
-        if (special || state < 3) && !(special && 2 < state && unbuilt) {
+        if (special || state < ObjectState::Dying)
+            && !(special && ObjectState::Alive < state && unbuilt)
+        {
             return self.finish(c, builder, reads);
         }
         self.restart(c, builder)?;
@@ -385,8 +388,8 @@ impl BuildAction {
 /// others' states are as the update started (`build_targets`, None for one that is gone).
 pub(super) fn drop_done_orders(
     ai: &mut UnitAi,
-    site: Option<(ObjectId, u8)>,
-    build_targets: &[(Option<ObjectId>, Option<u8>)],
+    site: Option<(ObjectId, ObjectState)>,
+    build_targets: &[(Option<ObjectId>, Option<ObjectState>)],
 ) {
     ai.orders.retain(|o| {
         if o.order != OrderKind::Build {
@@ -399,6 +402,6 @@ pub(super) fn drop_done_orders(
                 .find(|&&(id, _)| id == o.target)
                 .and_then(|&(_, s)| s),
         };
-        state == Some(0)
+        state == Some(ObjectState::Foundation)
     });
 }

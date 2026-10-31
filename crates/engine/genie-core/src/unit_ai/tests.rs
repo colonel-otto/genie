@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
@@ -319,7 +320,7 @@ impl UnitSide for HelpSide {
             class: class::CLASS_35,
             owner: PlayerId::new(0),
             combat_level: 0,
-            state: 4,
+            state: ObjectState::DyingSprite,
             target: None,
             gap_squared: 0.0,
             position: Position::new(101.5, 158.5, 0.0),
@@ -678,7 +679,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     let mut u = idle(UnitAiType::HUNTED);
     u.post(
         Notify::own(object_id(14054), NotifyKind::SENT_OFF, [200, 200, 14100]),
-        2,
+        ObjectState::Alive,
     )
     .unwrap();
     let off = OffFootprint {
@@ -693,7 +694,7 @@ fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
     let mut side = OffSide(off, Vec::new());
     let at = Surroundings {
         position: Position::new(164.5, 50.5, 0.0),
-        state: 2,
+        state: ObjectState::Alive,
         class: Some(class::PREY),
         ..Surroundings::default()
     };
@@ -1057,7 +1058,10 @@ impl UnitSide for ResourceSide {
         &mut self,
         search: ResourceSearch,
     ) -> Result<Option<Gatherable>, GenieError> {
-        assert_eq!((search.point, search.min_state), (NO_POINT, 2));
+        assert_eq!(
+            (search.point, search.min_state),
+            (NO_POINT, ObjectState::Alive)
+        );
         self.searches
             .push((search.kind, search.cap, search.site, search.current));
         Ok(self.resource)
@@ -1583,7 +1587,7 @@ fn attacker(id: i32, class: ClassId, gap_squared: f32) -> UnitSeen {
     UnitSeen {
         id: object_id(id),
         class,
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(object_id(9729)),
         gap_squared,
         position: Position::new(100.0, 40.0, 0.0),
@@ -1856,7 +1860,7 @@ fn an_idle_lion_attacks_what_it_finds_within_its_reach() {
                 id: object_id(found[0].max(found[1])),
                 class: class::VILLAGER,
                 owner: PlayerId::new(1),
-                state: 2,
+                state: ObjectState::Alive,
                 gap_squared,
                 ..UnitSeen::default()
             },
@@ -2070,7 +2074,7 @@ fn hit_villager() -> (UnitAi, Surroundings, Notify) {
         speed: 1.0,
         class: Some(class::VILLAGER),
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         map: GridSize::new(100, 100),
         anim_speed: Some(1.0),
         action_state: Some(5),
@@ -2147,7 +2151,7 @@ fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
     };
     let at = Surroundings {
         id: object_id(20),
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let n = Notify::own(
@@ -2238,7 +2242,7 @@ fn an_invalidated_action_of_the_order_or_an_attack_stops_the_unit() {
         id: object_id(20),
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let unit = |order, action| UnitAi {
@@ -2339,7 +2343,7 @@ fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
         position: Position::new(12.0, 13.0, 0.0),
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let unit = |order, action| UnitAi {
@@ -2439,7 +2443,7 @@ fn the_base_handler_takes_each_kind_it_models() {
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
         speed: 1.0,
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let unit = || UnitAi {
@@ -2677,7 +2681,7 @@ fn ward(gap_squared: f32) -> UnitSeen {
         id: object_id(20),
         class: class::CLASS_6,
         owner: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         position: Position::new(11.0, 10.0, 0.0),
         gap_squared,
         kind: master_type::COMBAT,
@@ -2710,7 +2714,7 @@ fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
         ..ward(1.0)
     };
     let dead = UnitSeen {
-        state: 3,
+        state: ObjectState::Dying,
         ..ward(1.0)
     };
     for units in [vec![], vec![foreign], vec![dead]] {
@@ -2790,7 +2794,7 @@ fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
         fx,
         vec![Effect::MoveToObject {
             target: object_id(20),
-            state: 2,
+            state: ObjectState::Alive,
             range: 2.5
         }]
     );
@@ -2857,7 +2861,7 @@ fn foe(id: i32, class: ClassId) -> UnitSeen {
         id: object_id(id),
         class,
         owner: PlayerId::new(2),
-        state: 2,
+        state: ObjectState::Alive,
         position: Position::new(12.0, 10.0, 0.0),
         hp: 30.0,
         kind: master_type::COMBAT,
@@ -3691,7 +3695,7 @@ fn an_attacker_that_no_longer_targets_the_unit_leaves_one_an_update() {
     let mut walked_off = attacker(10049, class::VILLAGER, 1.0);
     walked_off.target = None;
     let mut dead = attacker(10050, class::VILLAGER, 1.0);
-    dead.state = 3;
+    dead.state = ObjectState::Dying;
     let at = Surroundings {
         id: object_id(9729),
         under_attack: true,
@@ -3722,9 +3726,11 @@ fn a_released_attacker_leaves_the_set_through_notify_699() {
         kind: NotifyKind::NO_LONGER_ON_ME,
         p: [4, 0, 0],
     };
-    u.post(released(Some(object_id(10050))), 2).unwrap();
+    u.post(released(Some(object_id(10050))), ObjectState::Alive)
+        .unwrap();
     assert_eq!(u.notifies, Vec::new());
-    u.post(released(Some(object_id(10049))), 2).unwrap();
+    u.post(released(Some(object_id(10049))), ObjectState::Alive)
+        .unwrap();
     assert_eq!(u.notifies, vec![released(Some(object_id(10049)))]);
     let r = u.base_notify(
         released(Some(object_id(10049))),
@@ -4318,7 +4324,7 @@ impl UnitSide for ScoutSide {
 fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
     let at = Surroundings {
         id: object_id(20),
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let scout = |order| UnitAi {
@@ -4406,7 +4412,7 @@ fn rock_church() -> (UnitAi, Surroundings) {
         los: 5.0,
         search_radius: 5.0,
         player: PlayerId::new(0),
-        state: 2,
+        state: ObjectState::Alive,
         class: Some(class::ARTIFACT),
         kind: BUILDING,
         ..Surroundings::default()
@@ -5719,20 +5725,20 @@ fn a_movement_completion_reaches_only_a_moving_unit_ai() {
         current_action: Some(ActionKind::Build),
         ..idle(UnitAiType::CIVILIAN)
     };
-    builder.post(completed, 2).unwrap();
+    builder.post(completed, ObjectState::Alive).unwrap();
     assert_eq!(builder.notifies, Vec::<Notify>::new());
     let mut wanderer = UnitAi {
         current_action: Some(ActionKind::Move),
         ..deer()
     };
-    wanderer.post(completed, 2).unwrap();
+    wanderer.post(completed, ObjectState::Alive).unwrap();
     assert_eq!(wanderer.notifies, vec![completed]);
     // a unit not in state 2 tells its AI nothing
     let mut dying = UnitAi {
         current_action: Some(ActionKind::Move),
         ..deer()
     };
-    dying.post(completed, 3).unwrap();
+    dying.post(completed, ObjectState::Dying).unwrap();
     assert_eq!(dying.notifies, Vec::<Notify>::new());
 }
 
@@ -5782,13 +5788,23 @@ fn an_order_for_the_queue_goes_after_the_last_or_before_the_first() {
     };
     let mut ai = UnitAi::default();
     assert_eq!(
-        ai.queue_order(3, order(Some(object_id(1)), true), false, false),
+        ai.queue_order(
+            ObjectState::Dying,
+            order(Some(object_id(1)), true),
+            false,
+            false
+        ),
         Ok(false)
     );
     assert_eq!(ai.orders, Vec::<QueuedOrder>::new());
     for (target, front) in [(1, true), (2, false), (3, true)] {
         assert_eq!(
-            ai.queue_order(2, order(ObjectId::of_field(target), true), false, front),
+            ai.queue_order(
+                ObjectState::Alive,
+                order(ObjectId::of_field(target), true),
+                false,
+                front
+            ),
             Ok(true)
         );
     }
@@ -5799,12 +5815,22 @@ fn an_order_for_the_queue_goes_after_the_last_or_before_the_first() {
     );
     assert!(!ai.has_unready_order());
     let _ = ai
-        .queue_order(2, order(Some(object_id(4)), false), false, false)
+        .queue_order(
+            ObjectState::Alive,
+            order(Some(object_id(4)), false),
+            false,
+            false,
+        )
         .unwrap();
     assert!(ai.has_unready_order());
     assert!(
-        ai.queue_order(2, order(Some(object_id(5)), true), true, false)
-            .is_err()
+        ai.queue_order(
+            ObjectState::Alive,
+            order(Some(object_id(5)), true),
+            true,
+            false
+        )
+        .is_err()
     );
 }
 
@@ -5963,9 +5989,9 @@ fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
     let at = Surroundings {
         busy: true,
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(Seen {
-            state: 2,
+            state: ObjectState::Alive,
             kind: master_type::COMBAT,
             owner: PlayerId::new(2),
             class: class::VILLAGER,
@@ -6025,9 +6051,9 @@ fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
 fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
     // 1497: the house exists in state 2, which keeps it
     let standing = Surroundings {
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(Seen {
-            state: 2,
+            state: ObjectState::Alive,
             kind: BUILDING,
             ..Seen::default()
         }),
@@ -6049,7 +6075,7 @@ fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
     // a target no longer in the world goes (its class and point stay); an attack action's
     // idle timer then takes its timeout
     let gone = Surroundings {
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let mut u = UnitAi {
@@ -6084,9 +6110,9 @@ fn the_target_block_keeps_a_standing_target_and_drops_a_gone_one() {
 #[test]
 fn a_dead_target_stops_an_action_that_needs_a_live_one() {
     let dead = Surroundings {
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(Seen {
-            state: 3,
+            state: ObjectState::Dying,
             kind: master_type::COMBAT,
             ..Seen::default()
         }),
@@ -6209,11 +6235,11 @@ fn follower(deer: Position, visible: bool) -> (UnitAi, Surroundings) {
     let at = Surroundings {
         position: Position::new(110.0, 40.0, 0.0),
         size: Footprint::new(0.2, 0.2),
-        state: 2,
+        state: ObjectState::Alive,
         busy: true,
         class: Some(class::CLASS_12),
         target: Some(Seen {
-            state: 2,
+            state: ObjectState::Alive,
             kind: master_type::COMBAT,
             class: class::PREY,
             position: deer,
@@ -6237,7 +6263,7 @@ fn the_follow_order_moves_to_a_target_that_left_its_point() {
         fx,
         vec![Effect::MoveToObject {
             target: object_id(9655),
-            state: 2,
+            state: ObjectState::Alive,
             range: 2.0
         }]
     );
@@ -6313,7 +6339,7 @@ fn idle_scout() -> (UnitAi, Surroundings) {
         size: Footprint::new(0.2, 0.2),
         los: 4.0,
         search_radius: 4.0,
-        state: 2,
+        state: ObjectState::Alive,
         kind: master_type::COMBAT,
         master: ids::ID_448,
         ..Surroundings::default()
@@ -6402,7 +6428,7 @@ const TC: Attacker = Attacker {
     ai_type: UnitAiType::TOWER,
     player: PlayerId::new(2),
     computer: false,
-    state: 2,
+    state: ObjectState::Alive,
     held: None,
     top_action: None,
     master: ids::TOWN_CENTRE,
@@ -6669,7 +6695,7 @@ fn an_idle_tower_searches_with_its_classes() {
         size: Footprint::new(2.0, 2.0),
         los: 8.0,
         search_radius: 0.0,
-        state: 2,
+        state: ObjectState::Alive,
         kind: BUILDING,
         ..Surroundings::default()
     };
@@ -6962,7 +6988,7 @@ fn an_immediate_attack_roundup_keeps_the_target_until_it_attacks_the_next() {
     let mut u = attacking();
     let mut fx = Vec::new();
     let r = u.take_order_now(
-        2,
+        ObjectState::Alive,
         roundup,
         (Point::ORIGIN, Some(class::CLASS_6)),
         &mut rng(),
@@ -7211,7 +7237,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     let mut g = group(true, false, false);
     g.as_mut().unwrap().patrol = true;
     let seen = Seen {
-        state: 2,
+        state: ObjectState::Alive,
         kind: master_type::COMBAT,
         owner: PlayerId::new(2),
         class: class::CLASS_6,
@@ -7223,7 +7249,7 @@ fn a_grouped_unit_s_full_update_reads_its_group() {
     };
     let target_at = Surroundings {
         target: Some(seen),
-        state: 2,
+        state: ObjectState::Alive,
         ..at(g)
     };
     let mut u = UnitAi {
@@ -7376,7 +7402,7 @@ fn a_wolf_whose_attack_target_died_attacks_the_next_villager() {
             id: object_id(700),
             class: class::VILLAGER,
             owner: PlayerId::new(1),
-            state: 2,
+            state: ObjectState::Alive,
             gap_squared: 1.0,
             ..UnitSeen::default()
         },
@@ -7408,7 +7434,7 @@ fn a_no_attack_tower_only_searches() {
         player: PlayerId::new(2),
         size: Footprint::new(2.0, 2.0),
         los: 8.0,
-        state: 2,
+        state: ObjectState::Alive,
         kind: BUILDING,
         ..Surroundings::default()
     };
@@ -7447,7 +7473,7 @@ fn an_idle_tower_attacks_what_its_search_found() {
         player: PlayerId::new(2),
         size: Footprint::new(2.0, 2.0),
         los: 8.0,
-        state: 2,
+        state: ObjectState::Alive,
         kind: BUILDING,
         ..Surroundings::default()
     };
@@ -7537,7 +7563,7 @@ fn a_human_player_s_king_s_idle_check_only_caps() {
 fn a_villager_hunts_an_animal_and_attacks_another_object() {
     let at = |priority: u8| Surroundings {
         id: object_id(10041),
-        state: 2,
+        state: ObjectState::Alive,
         attack_priority: AttackPriority::of_byte(priority),
         units: vec![
             attacker(9731, class::PREDATOR, 0.5),
@@ -7641,7 +7667,7 @@ fn a_villager_hunts_an_animal_and_attacks_another_object() {
 fn a_ship_or_livestock_may_attack_anything_and_a_building_nothing() {
     let at = Surroundings {
         id: object_id(10041),
-        state: 2,
+        state: ObjectState::Alive,
         units: vec![attacker(9800, class::CLASS_6, 1.0)],
         ..Surroundings::default()
     };
@@ -7768,7 +7794,7 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
         size: Footprint::new(0.5, 0.5),
         los: 4.0,
         target: Some(Seen {
-            state: 2,
+            state: ObjectState::Alive,
             class: class::VILLAGER,
             position: Position::new(x, 10.0, 0.0),
             radius: Footprint::new(0.5, 0.5),
@@ -7778,7 +7804,7 @@ fn a_lion_drops_a_moved_target_out_of_its_sight() {
             id: object_id(700),
             class: class::VILLAGER,
             owner: PlayerId::new(1),
-            state: 2,
+            state: ObjectState::Alive,
             position: Position::new(x, 10.0, 0.0),
             ..UnitSeen::default()
         }],
@@ -8346,12 +8372,12 @@ fn a_human_player_s_king_runs_from_its_attacker() {
         map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::KING),
-        state: 2,
+        state: ObjectState::Alive,
         units: vec![UnitSeen {
             id: object_id(77),
             class: class::CLASS_6,
             owner: PlayerId::new(2),
-            state: 2,
+            state: ObjectState::Alive,
             target: Some(object_id(500)),
             position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
@@ -8410,7 +8436,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         id,
         class,
         owner: PlayerId::new(2),
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(object_id(500)),
         position: Position::new(x, 30.0, 0.0),
         ..UnitSeen::default()
@@ -8422,7 +8448,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::CLASS_6),
-        state: 2,
+        state: ObjectState::Alive,
         units: vec![
             seen(object_id(77), class::CLASS_6, 22.0),
             seen(object_id(78), class::CLASS_6, 18.0),
@@ -8573,15 +8599,21 @@ fn the_unit_ai_s_notify_answers_whether_it_took_it() {
         ..idle(UnitAiType::CIVILIAN)
     };
     let n = |caller, kind, p0| Notify::own(caller, kind, [p0, 0, 0]);
-    assert!(!u.accept(n(object_id(70), NotifyKind::DAMAGED, 0), 0));
-    assert!(!u.accept(n(object_id(71), NotifyKind::NO_LONGER_ON_ME, 0), 2));
+    assert!(!u.accept(
+        n(object_id(70), NotifyKind::DAMAGED, 0),
+        ObjectState::Foundation
+    ));
+    assert!(!u.accept(
+        n(object_id(71), NotifyKind::NO_LONGER_ON_ME, 0),
+        ObjectState::Alive
+    ));
     assert!(!u.accept(
         n(
             object_id(70),
             NotifyKind::ACTION_INVALIDATED,
             ActionKind::Attack.value()
         ),
-        2
+        ObjectState::Alive
     ));
     assert!(u.accept(
         n(
@@ -8589,17 +8621,20 @@ fn the_unit_ai_s_notify_answers_whether_it_took_it() {
             NotifyKind::ACTION_COMPLETED,
             ActionKind::Move.value()
         ),
-        2
+        ObjectState::Alive
     ));
     assert_eq!(u.notifies, Vec::new());
-    assert!(u.accept(n(object_id(70), NotifyKind::NO_LONGER_ON_ME, 0), 2));
+    assert!(u.accept(
+        n(object_id(70), NotifyKind::NO_LONGER_ON_ME, 0),
+        ObjectState::Alive
+    ));
     assert!(u.accept(
         n(
             object_id(70),
             NotifyKind::ACTION_INVALIDATED,
             ActionKind::Gather.value()
         ),
-        2
+        ObjectState::Alive
     ));
     assert_eq!(u.notifies.len(), 2);
 }
@@ -8700,7 +8735,7 @@ fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
         position: Position::new(20.0, 20.0, 0.0),
         player: PlayerId::new(1),
         kind: master_type::COMBAT,
-        state: 2,
+        state: ObjectState::Alive,
         size: Footprint::new(0.2, 0.2),
         los: 4.0,
         weapon_range: 1.0,
@@ -9246,12 +9281,12 @@ fn attacked_transport() -> (UnitAi, Surroundings) {
         map: GridSize::new(64, 64),
         player: PlayerId::new(1),
         class: Some(class::TRANSPORT),
-        state: 2,
+        state: ObjectState::Alive,
         units: vec![UnitSeen {
             id: object_id(77),
             class: class::WARSHIP,
             owner: PlayerId::new(2),
-            state: 2,
+            state: ObjectState::Alive,
             target: Some(object_id(500)),
             position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
@@ -9844,7 +9879,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
         position: Position::new(20.0, 30.0, 0.0),
         los: 4.0,
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let found = |id, distance| Found {
@@ -9895,7 +9930,7 @@ fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
             Pick::Closest {
                 group,
                 relation: Some(QueryRelation::Itself),
-                state: 0,
+                state: Some(ObjectState::Foundation),
                 ..
             } => *group,
             _ => Some(class_id(99)),
@@ -10097,7 +10132,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         Ok(true)
     );
     let low = Attacker {
-        state: 1,
+        state: ObjectState::Unfinished,
         ..MANGONEL
     };
     assert_eq!(
@@ -10279,7 +10314,7 @@ fn a_siege_unit_attacks_what_its_idle_search_finds() {
         kind: master_type::COMBAT,
         los: 9.0,
         weapon_range: 7.0,
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let mut u = UnitAi {
@@ -10363,7 +10398,7 @@ fn a_siege_unit_with_retargeting_off_keeps_a_reachable_top_target() {
         class: Some(class::SIEGE),
         kind: master_type::COMBAT,
         weapon_range: 7.0,
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(Seen::default()),
         top_target: Some(TopTarget {
             id: object_id(88),
@@ -10545,7 +10580,7 @@ fn a_priest_retargets_but_on_an_order_on_a_target() {
 struct TailSide {
     top: Option<ObjectId>,
     flags: Vec<(ObjectId, TargetFlags)>,
-    states: Vec<(ObjectId, u8)>,
+    states: Vec<(ObjectId, ObjectState)>,
 }
 
 impl UnitSide for TailSide {
@@ -10787,7 +10822,7 @@ fn the_tail_reads_the_top_target_the_update_s_commands_left() {
     let mut u = on_target(Some(ActionKind::Move));
     let to = Effect::MoveToObject {
         target: object_id(600),
-        state: 2,
+        state: ObjectState::Alive,
         range: 2.0,
     };
     let mut fx = vec![to];
@@ -10844,10 +10879,10 @@ fn queued_builds_on_started_or_gone_foundations_leave_the_queue() {
     ];
     let mut side = TailSide {
         states: vec![
-            (object_id(1), 0),
-            (object_id(2), 2),
-            (object_id(3), 2),
-            (object_id(5), 0),
+            (object_id(1), ObjectState::Foundation),
+            (object_id(2), ObjectState::Alive),
+            (object_id(3), ObjectState::Alive),
+            (object_id(5), ObjectState::Foundation),
         ],
         ..TailSide::default()
     };
@@ -11108,9 +11143,9 @@ fn a_busy_villager_on_the_attack_order_runs_its_full_update() {
         busy: true,
         player: PlayerId::new(3),
         class: Some(class::VILLAGER),
-        state: 2,
+        state: ObjectState::Alive,
         target: Some(Seen {
-            state: 2,
+            state: ObjectState::Alive,
             kind: master_type::COMBAT,
             owner: PlayerId::new(0),
             class: class::PREDATOR,
@@ -11164,7 +11199,7 @@ impl OrderSide {
                 .map(|&(id, class)| UnitSeen {
                     id: object_id(id),
                     class,
-                    state: 2,
+                    state: ObjectState::Alive,
                     gap_squared: 1.0,
                     position: Position::new(10.0, 20.0, 0.0),
                     ..UnitSeen::default()
@@ -11290,7 +11325,7 @@ fn run_order(
         class: Some(class),
         master: master_id(4),
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let mut fx = Vec::new();
@@ -11879,7 +11914,7 @@ fn the_follow_order_follows_and_moves_to_a_target_beyond_its_range() {
         fx,
         vec![Effect::MoveToObject {
             target: object_id(70),
-            state: 2,
+            state: ObjectState::Alive,
             range: 3.0,
         }]
     );
@@ -12196,7 +12231,7 @@ fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() 
             site: None,
             current: Some(object_id(7)),
             point: Point::new(12.5, 30.5),
-            min_state: 0,
+            min_state: ObjectState::Foundation,
         }]
     );
     // with an owner the type is a master of that player's: a gold mine's class (32: kind
@@ -12393,7 +12428,7 @@ fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() 
     };
     let at = Surroundings {
         id: object_id(6116),
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let moved = Notify::own(object_id(6116), NotifyKind::TARGET_MOVED, [0, 0, 0]);
@@ -12433,7 +12468,7 @@ fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() 
 fn a_villager_drops_another_resource_at_the_table_s_building() {
     let at = Surroundings {
         id: object_id(20),
-        state: 2,
+        state: ObjectState::Alive,
         ..Surroundings::default()
     };
     let other = Notify::own(object_id(20), NotifyKind::OTHER_LOAD, [0; 3]);
@@ -12485,7 +12520,7 @@ fn a_villager_works_the_pasture_it_built() {
     };
     let at = Surroundings {
         id: object_id(15295),
-        state: 2,
+        state: ObjectState::Alive,
         units: vec![pasture],
         ..Surroundings::default()
     };
@@ -12616,7 +12651,7 @@ fn packed_siege() -> (UnitAi, Surroundings) {
             id: object_id(77),
             class: class::WARSHIP,
             owner: PlayerId::new(2),
-            state: 2,
+            state: ObjectState::Alive,
             position: Position::new(22.0, 30.0, 0.0),
             ..UnitSeen::default()
         }],
@@ -12770,7 +12805,7 @@ fn retargeting(target: i32) -> (UnitAi, Surroundings) {
         id,
         class,
         owner: PlayerId::new(2),
-        state: 2,
+        state: ObjectState::Alive,
         kind,
         main,
         position: Position::new(12.0, 10.0, 0.0),

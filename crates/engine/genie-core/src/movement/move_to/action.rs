@@ -12,6 +12,7 @@ use crate::movement::move_to::{
 };
 use crate::movement::{Mover, PathAsk, footprint_gap};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::TOWN_CENTRE;
@@ -69,9 +70,9 @@ const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET
 /// and no `MoveTo` holds a target in state 7 or later (`FUN_140a7a230`); any other target is
 /// held, and a `MoveTo` of its own (not quiet) takes it (slot 0x178).
 #[must_use]
-pub const fn holds_object(livestock: bool, master: MasterId, state: u8) -> bool {
+pub fn holds_object(livestock: bool, master: MasterId, state: ObjectState) -> bool {
     // The town centre's master (`FUN_140aa0df0`'s `0x6109` raw), to which livestock walks beside.
-    !(livestock && matches!(master, TOWN_CENTRE)) && state < 7
+    !(livestock && matches!(master, TOWN_CENTRE)) && state < ObjectState::Removed
 }
 
 /// What one update of a [`MoveToAction`] did.
@@ -250,7 +251,7 @@ impl MoveToAction {
         world: &Spatial,
         me: Position,
         mover: &mut Mover,
-        (target, state): (ObjectId, u8),
+        (target, state): (ObjectId, ObjectState),
         range: f32,
         (sprite, livestock): (Option<Graphic>, bool),
     ) -> Result<Self, GenieError> {
@@ -414,7 +415,7 @@ impl MoveToAction {
     /// The notify's.
     pub fn check_held(
         &mut self,
-        state: Option<u8>,
+        state: Option<ObjectState>,
         inbox: &mut Inbox<'_>,
     ) -> Result<Option<u8>, GenieError> {
         if self.target.is_none() {
@@ -425,7 +426,7 @@ impl MoveToAction {
                 self.target = None;
                 Ok(None)
             }
-            Some(s) if 6 < s => {
+            Some(s) if ObjectState::Undead < s => {
                 self.target = None;
                 if self.quiet {
                     return Ok(Some(5));
@@ -827,23 +828,26 @@ mod tests {
             MoveToAction::to_object(&world, me, &mut walker, target, 0.0, (None, livestock))
                 .unwrap()
         };
-        let held = to((object_id(9186), 2), false, 0.8);
+        let held = to((object_id(9186), ObjectState::Alive), false, 0.8);
         assert_eq!(
             (ObjectId::field(held.target), held.goal(), held.state),
             (9186, None, MoveTo::Start)
         );
-        let gone = to((object_id(9186), 7), false, 0.8);
+        let gone = to((object_id(9186), ObjectState::Removed), false, 0.8);
         assert_eq!(
             (ObjectId::field(gone.target), gone.goal(), gone.state),
             (-1, Some(Position::new(35.0, 40.0, 0.0)), MoveTo::Start)
         );
-        assert_eq!(to((object_id(9186), 7), false, 0.0).state, MoveTo::Failed);
+        assert_eq!(
+            to((object_id(9186), ObjectState::Removed), false, 0.0).state,
+            MoveTo::Failed
+        );
         // a villager to the town centre holds it; livestock walks beside it
         assert_eq!(
-            to((object_id(9149), 2), false, 0.8).target,
+            to((object_id(9149), ObjectState::Alive), false, 0.8).target,
             Some(object_id(9149))
         );
-        let beside = to((object_id(9149), 2), true, 0.8);
+        let beside = to((object_id(9149), ObjectState::Alive), true, 0.8);
         assert_eq!(
             (ObjectId::field(beside.target), beside.goal()),
             (-1, Some(Position::new(50.0 - 0.2, 40.0 - 0.2, 0.0)))

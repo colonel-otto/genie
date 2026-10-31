@@ -11,6 +11,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::msvc;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::MasterId;
@@ -32,7 +33,7 @@ pub struct Candidate {
     /// Its master's id.
     pub master: MasterId,
     /// `+0x640`.
-    pub state: u8,
+    pub state: ObjectState,
     /// `+0x644`, `worker_num`.
     pub workers: i32,
     /// x, y, z.
@@ -144,7 +145,7 @@ pub fn more_work(
                     }
                     continue;
                 }
-                if 6 <= o.state {
+                if ObjectState::Undead <= o.state {
                     continue;
                 }
                 let Some(resource) = entry.resource_of(o.class, o.state, o.workers) else {
@@ -238,14 +239,14 @@ pub struct Seeker {
     /// Its master's line of sight (`+0x5d0`).
     pub line_of_sight: f32,
     /// `+0x640`.
-    pub state: u8,
+    pub state: ObjectState,
     /// Its unit AI's current target (`+0x48`), which the search passes over.
     pub current_target: Option<ObjectId>,
     /// `+0x794`, `my_pasture_id`.
     pub my_pasture: Option<ObjectId>,
     /// `param_6`: below this state the unit finds nothing (2 for the unit AIs' searches, 0 for
     /// a mule cart's).
-    pub min_state: u8,
+    pub min_state: ObjectState,
 }
 
 /// One cell of the search's queue: a tile and its steps from the start.
@@ -667,7 +668,7 @@ mod tests {
             player: PlayerId::new(0),
             class: class::TREE,
             master: master_id(349),
-            state: 2,
+            state: ObjectState::Alive,
             workers: 0,
             position: Position::new(x, y, 0.0),
             pasture: None,
@@ -689,7 +690,7 @@ mod tests {
             targets: vec![DropTarget {
                 class: class::TREE,
                 workers: -1,
-                state: -1,
+                state: None,
                 attribute: Some(attribute::WOOD),
             }],
             livestock: false,
@@ -749,7 +750,7 @@ mod tests {
         entry.targets.push(DropTarget {
             class: class::CLASS_32,
             workers: -1,
-            state: -1,
+            state: None,
             attribute: Some(attribute::GOLD),
         });
         let b = Builder {
@@ -809,10 +810,10 @@ mod tests {
             player: PlayerId::new(1),
             position: Position::new(10.2, 10.7, 0.0),
             line_of_sight: 4.0,
-            state: 2,
+            state: ObjectState::Alive,
             current_target: None,
             my_pasture: None,
-            min_state: 2,
+            min_state: ObjectState::Alive,
         };
         // trees at (12, 10) and (8, 11): the second is nearer the unit's place
         let trees = [tree(1, 12.5, 10.5), tree(2, 8.5, 11.5)];
@@ -875,10 +876,10 @@ mod tests {
             player: PlayerId::new(1),
             position: Position::new(10.2, 10.7, 0.0),
             line_of_sight: 4.0,
-            state: 2,
+            state: ObjectState::Alive,
             current_target: None,
             my_pasture: None,
-            min_state: 2,
+            min_state: ObjectState::Alive,
         };
         // a 2x2 site at (14, 10): its own tiles are blocked
         let site = SearchSite {
@@ -947,10 +948,10 @@ mod tests {
         player: PlayerId::new(1),
         position: Position::new(10.2, 10.7, 0.0),
         line_of_sight: 4.0,
-        state: 2,
+        state: ObjectState::Alive,
         current_target: None,
         my_pasture: None,
-        min_state: 2,
+        min_state: ObjectState::Alive,
     };
 
     /// `closest_resource_at` from [`SEEKER`] over a 40-tile map without a site: the tiles
@@ -989,7 +990,10 @@ mod tests {
     #[test]
     fn a_unit_below_its_least_state_finds_nothing_and_one_with_a_pasture_stops() {
         let trees = [tree(1, 12.5, 10.5)];
-        let low = Seeker { state: 1, ..SEEKER };
+        let low = Seeker {
+            state: ObjectState::Unfinished,
+            ..SEEKER
+        };
         assert_eq!(
             search_trees(&low, &trees, 2, &|&(), _, _| Ok(true), &[object_id(1)]),
             Ok((None, None))

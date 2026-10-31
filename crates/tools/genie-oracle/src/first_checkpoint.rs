@@ -6,7 +6,7 @@ use genie_core::GenieError;
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
 use genie_core::objects::unit::Unit;
-use genie_core::world::checkpoint::{ObjectState, PlayerState, player_block};
+use genie_core::world::checkpoint::{CheckpointObject, PlayerState, player_block};
 use genie_rec::de;
 use genie_rec::de::Op;
 use genie_save::PlayerSection;
@@ -52,12 +52,12 @@ pub(super) fn dies_at_start(s: &RgeStaticObject) -> bool {
 ///
 /// # Errors
 ///
-/// An id of −1, which names no object.
-pub(super) fn object_state(s: &RgeStaticObject) -> Result<ObjectState, GenieError> {
-    Ok(ObjectState {
+/// An id of −1, which names no object; a state past 8.
+pub(super) fn object_state(s: &RgeStaticObject) -> Result<CheckpointObject, GenieError> {
+    Ok(CheckpointObject {
         id: ObjectId::try_from(s.id)?,
         main_id: s.master_obj,
-        state: s.object_state,
+        state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
         amount_held: s.attribute_amount_held,
         position: Position::new(s.t_x, s.t_y, s.t_z),
         top_action: None,

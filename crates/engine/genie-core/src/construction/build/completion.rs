@@ -6,6 +6,7 @@ use crate::construction::build::construction::{completion_counts, hand_storage, 
 use crate::construction::build::{NO_CONSTRUCTION, NOT_HELD, StackUnit, held, show_built};
 use crate::map::spatial::Placed;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE_1889;
@@ -49,7 +50,10 @@ impl crate::world::World {
         ))?;
         self.completion_part(p, id, &master)?;
         // FUN_1411e5670 while still in state 0 (2 lies within 1 to 6)
-        if self.object(id).is_some_and(|(_, u)| u.life.state == 0) {
+        if self
+            .object(id)
+            .is_some_and(|(_, u)| u.life.state == ObjectState::Foundation)
+        {
             self.construction_starts(p, id)?;
         }
         if 0 <= building.foundation_terrain && master.object_flags & 0x40 != 0 {
@@ -65,11 +69,11 @@ impl crate::world::World {
         self.completion_stack(p, id, &master, &building, &placed)?;
         self.completion_ground(p, id, &master, &building, &placed)?;
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
-        u.life.state = 2;
+        u.life.state = ObjectState::Alive;
         if building.disappears_when_built {
             u.life.hp = 0.0;
         }
-        self.spatial.sight_state(id, 2)?;
+        self.spatial.sight_state(id, ObjectState::Alive)?;
         if let Some(tech) = building.tech {
             self.research_built(p, tech)?;
         }

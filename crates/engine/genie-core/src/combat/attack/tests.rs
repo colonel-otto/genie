@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::movement::move_to::{GiveUp, MoveDefaults, MoveTo, MoveToReads, MoveWait, SpriteReads};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::layers::Animated;
 use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
@@ -76,7 +77,7 @@ pub(crate) static NO_GRAPHICS: BTreeMap<i16, Graphic> = BTreeMap::new();
 fn walking_reads(
     graphics: &BTreeMap<i16, Graphic>,
     defaults: MoveDefaults,
-    state: u8,
+    state: ObjectState,
     speed: f32,
 ) -> MoveToReads<'_> {
     MoveToReads {
@@ -170,7 +171,7 @@ fn mark(id: i32, x: f32) -> Mark {
         id: object_id(id),
         kind: master_type::COMBAT,
         class: class::PREY,
-        state: 2,
+        state: ObjectState::Alive,
         position: Position::new(x, 10.0, 0.5),
         radius: Footprint::new(0.2, 0.2),
     }
@@ -339,7 +340,10 @@ fn an_area_effect_s_attack_takes_a_building_s_main_building() {
     );
     // a new target in state 7 or more leaves the Attack without one
     let mut a = own_attack(30, 6, 0.0);
-    let dying = Mark { state: 7, ..main };
+    let dying = Mark {
+        state: ObjectState::Removed,
+        ..main
+    };
     let w = a.work(Some(annex), Some(dying), &mangonel, |_| true);
     assert_eq!(
         (w.lets_go, w.takes, ObjectId::field(a.target)),
@@ -550,7 +554,7 @@ impl Rig {
         };
         t.masters = vec![Masters::new([master]); t.players.len()];
         let unit = &mut t.players[1].objects[0];
-        unit.life.state = 2;
+        unit.life.state = ObjectState::Alive;
         unit.life.master_id = master_id(4);
         unit.ai = Some(UnitAi {
             current_action: Some(ActionKind::Attack),
@@ -571,7 +575,7 @@ impl Rig {
             workers: 1,
             ..Unit::default()
         };
-        u.life.state = 2;
+        u.life.state = ObjectState::Alive;
         u.life.master_id = master_id(4);
         self.t.players[player.index()].objects.push(u);
         self
@@ -1105,7 +1109,7 @@ fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
         world.sight = Some(sight(seen));
         let victim = Victim {
             id: object_id(7),
-            state: 2,
+            state: ObjectState::Alive,
             player: PlayerId::new(2),
             position: now_at,
             ..Victim::default()
@@ -1153,7 +1157,7 @@ fn an_attack_arrived_where_it_saw_its_target_looks_again() {
         world.sight = Some(sight(seen));
         let victim = Victim {
             id: object_id(7),
-            state: 2,
+            state: ObjectState::Alive,
             player: PlayerId::new(2),
             position: at,
             ..Victim::default()
@@ -1263,7 +1267,7 @@ fn an_attack_in_a_state_without_a_case_returns_0() {
     for state in [0, 3, 8, 9, 10, 12, 14] {
         let victim = Victim {
             id: object_id(7),
-            state: 2,
+            state: ObjectState::Alive,
             position: at,
             ..Victim::default()
         };
@@ -1293,7 +1297,7 @@ fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
         |class: ClassId, allied: bool, same_owner: bool, player: PlayerId, sub_action: bool| {
             let victim = Victim {
                 id: object_id(7),
-                state: 2,
+                state: ObjectState::Alive,
                 class,
                 player: PlayerId::new(1),
                 position: at,
@@ -1346,7 +1350,7 @@ fn a_sub_action_s_attack_after_its_kill_posts_0x1fb_and_returns_5() {
     let at = Position::new(11.0, 10.0, 0.0);
     let victim = Victim {
         id: object_id(7),
-        state: 3,
+        state: ObjectState::Dying,
         position: at,
         ..Victim::default()
     };
@@ -1375,7 +1379,7 @@ fn a_sub_action_s_attack_after_its_kill_posts_0x1fb_and_returns_5() {
 #[test]
 fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
     let at = Position::new(11.0, 10.0, 0.0);
-    let run = |unit_class: ClassId, tree_state: u8| {
+    let run = |unit_class: ClassId, tree_state: ObjectState| {
         let victim = Victim {
             id: object_id(7),
             class: class::TREE,
@@ -1397,10 +1401,10 @@ fn a_dead_tree_keeps_a_soldier_s_attack_until_it_is_ready() {
             .unwrap();
         (code, a.state, rig.workers(7, PlayerId::new(0)) == Some(0))
     };
-    assert_eq!(run(class::CLASS_6, 3), (5, DONE, false));
-    assert_eq!(run(class::CLASS_6, 5), (5, DONE, false));
-    assert_eq!(run(class::VILLAGER, 3), (5, DONE, true));
-    assert_eq!(run(class::CLASS_6, 6), (5, DONE, true));
+    assert_eq!(run(class::CLASS_6, ObjectState::Dying), (5, DONE, false));
+    assert_eq!(run(class::CLASS_6, ObjectState::Dead), (5, DONE, false));
+    assert_eq!(run(class::VILLAGER, ObjectState::Dying), (5, DONE, true));
+    assert_eq!(run(class::CLASS_6, ObjectState::Undead), (5, DONE, true));
 }
 
 /// After a hit, the swing's loop test reads the unit's sprite as readyToAttack left it: one
@@ -1411,7 +1415,7 @@ fn a_swing_that_fails_its_interrupt_check_stays_failed() {
     let at = Position::new(15.0, 10.0, 0.0);
     let victim = Victim {
         id: object_id(7),
-        state: 2,
+        state: ObjectState::Alive,
         position: at,
         ..Victim::default()
     };
@@ -1608,7 +1612,12 @@ fn own_start(
         target_owner: owner.index(),
         ready: None,
     };
-    let reads = walking_reads(&NO_GRAPHICS, MoveDefaults::default(), 2, e.speed);
+    let reads = walking_reads(
+        &NO_GRAPHICS,
+        MoveDefaults::default(),
+        ObjectState::Alive,
+        e.speed,
+    );
     let (attack, begun, posted) = Attack::own_start(&cmd, world, mover, &reads)?;
     Ok(Started {
         attack,
@@ -2317,7 +2326,7 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
         let arrived = a.walk_to_target(at, gap, &reads).unwrap();
         (arrived, a.timer, a.move_to)
     };
-    let (arrived, timer, m) = made(1.0, 1.0, 2, TargetMoved::AsksAgain);
+    let (arrived, timer, m) = made(1.0, 1.0, ObjectState::Alive, TargetMoved::AsksAgain);
     let m = m.unwrap();
     assert_eq!((arrived, timer), (false, 0.0));
     assert_eq!(
@@ -2332,24 +2341,24 @@ fn an_attack_s_move_to_the_target_takes_its_range_sprite_and_target_moved_mode()
         (MoveTo::Start, at, 7, 2.0, Some(STANDING), true)
     );
     assert_eq!(m.on_target_moved, TargetMoved::AsksAgain);
-    let (arrived, _, m) = made(0.01, 1.0, 2, TargetMoved::Follows);
+    let (arrived, _, m) = made(0.01, 1.0, ObjectState::Alive, TargetMoved::Follows);
     assert_eq!(
         (arrived, m.map(|m| (m.state, m.on_target_moved))),
         (true, Some((MoveTo::Arrived, TargetMoved::Follows)))
     );
-    let (arrived, _, m) = made(1.0, 0.0, 2, TargetMoved::Follows);
+    let (arrived, _, m) = made(1.0, 0.0, ObjectState::Alive, TargetMoved::Follows);
     assert_eq!((arrived, m.map(|m| m.state)), (false, Some(MoveTo::Failed)));
-    let (arrived, _, m) = made(0.0, 1.0, 3, TargetMoved::Follows);
+    let (arrived, _, m) = made(0.0, 1.0, ObjectState::Dying, TargetMoved::Follows);
     assert_eq!((arrived, m), (false, None));
     let mut none = own_attack(-1, MOVE, 2.0);
-    let reads = walking_reads(&table, MoveDefaults::default(), 2, 1.0);
+    let reads = walking_reads(&table, MoveDefaults::default(), ObjectState::Alive, 1.0);
     assert!(none.walk_to_target(at, 1.0, &reads).is_err());
     // without a sprite of its own the constructor's default is taken
     let defaults = MoveDefaults {
         point: Some(STANDING.id),
         object: Some(STANDING.id),
     };
-    let reads = walking_reads(&table, defaults, 2, 1.0);
+    let reads = walking_reads(&table, defaults, ObjectState::Alive, 1.0);
     let mut bare = own_attack(7, MOVE, 2.0);
     let _ = bare.walk_to_target(at, 1.0, &reads).unwrap();
     assert_eq!(bare.move_to.and_then(|m| m.sprite), Some(STANDING));
@@ -2377,15 +2386,18 @@ fn an_attack_s_move_to_where_it_saw_the_target_walks_within_its_range_or_onto_it
         )
     };
     assert_eq!(
-        made(GOTO_SEEN, 1.0, 2),
+        made(GOTO_SEEN, 1.0, ObjectState::Alive),
         (0.0, Some((MoveTo::Start, seen, 3.0, -1)))
     );
     assert_eq!(
-        made(GOTO_POINT, 1.0, 2),
+        made(GOTO_POINT, 1.0, ObjectState::Alive),
         (0.0, Some((MoveTo::Start, seen, 0.0, -1)))
     );
-    assert_eq!(made(GOTO_SEEN, 0.0, 2).1.map(|m| m.0), Some(MoveTo::Failed));
-    assert_eq!(made(GOTO_SEEN, 1.0, 3).1, None);
+    assert_eq!(
+        made(GOTO_SEEN, 0.0, ObjectState::Alive).1.map(|m| m.0),
+        Some(MoveTo::Failed)
+    );
+    assert_eq!(made(GOTO_SEEN, 1.0, ObjectState::Dying).1, None);
 }
 
 /// State 4's update ([`Attack::walk`]) on the house 10028 out of reach: a walking `MoveTo`
@@ -2491,7 +2503,7 @@ fn an_attack_without_a_target_walks_to_where_it_saw_it_and_ends_there() {
 /// `state` at `at`, `seen` or not by the unit's player, held in its player's list with one
 /// worker), in `attack_state`, its sub-action `sub` or its own; its unit AI has an order.
 fn on_target(
-    (player, class, state, at): (PlayerId, ClassId, u8, Position),
+    (player, class, state, at): (PlayerId, ClassId, ObjectState, Position),
     seen: bool,
     (attack_state, sub): (u8, bool),
 ) -> (Rig, Attack) {
@@ -2521,7 +2533,7 @@ fn an_attack_whose_target_died_lets_it_go_and_ends() {
         (
             PlayerId::new(player),
             class::CLASS_6,
-            3,
+            ObjectState::Dying,
             Position::new(11.0, 10.0, 0.0),
         )
     };
@@ -2563,7 +2575,7 @@ fn an_attack_on_a_moved_target_follows_waits_or_fails() {
     let moved = (
         PlayerId::new(2),
         class::CLASS_6,
-        2,
+        ObjectState::Alive,
         Position::new(13.0, 10.0, 0.0),
     );
     let run = |state: u8, seen: bool, own_player: PlayerId| {
@@ -2602,7 +2614,7 @@ fn an_attack_ends_early_on_an_ally_a_hidden_target_or_disarmed() {
     let live = (
         PlayerId::new(2),
         class::CLASS_6,
-        2,
+        ObjectState::Alive,
         Position::new(11.0, 10.0, 0.0),
     );
     let run = |set: fn(&mut Rig)| {
@@ -2654,7 +2666,7 @@ fn a_ready_attack_swings_ends_on_a_dead_tree_or_follows() {
         (
             PlayerId::new(2),
             class::CLASS_6,
-            2,
+            ObjectState::Alive,
             Position::new(11.0, 10.0, 0.0),
         ),
         true,
@@ -2667,7 +2679,7 @@ fn a_ready_attack_swings_ends_on_a_dead_tree_or_follows() {
         (
             PlayerId::new(0),
             class::TREE,
-            3,
+            ObjectState::Dying,
             Position::new(11.0, 10.0, 0.0),
         ),
         true,
@@ -2679,7 +2691,7 @@ fn a_ready_attack_swings_ends_on_a_dead_tree_or_follows() {
         (
             PlayerId::new(0),
             class::CLASS_6,
-            2,
+            ObjectState::Alive,
             Position::new(15.0, 10.0, 0.0),
         ),
         true,
@@ -2698,7 +2710,7 @@ fn a_killing_attack_ends_once_its_swing_looped() {
     let dead = (
         PlayerId::new(0),
         class::CLASS_6,
-        3,
+        ObjectState::Dying,
         Position::new(11.0, 10.0, 0.0),
     );
     let (mut rig, mut a) = on_target(dead, true, (KILLED, false));
@@ -2751,7 +2763,7 @@ fn an_attack_on_a_dead_target_posts_by_its_unit_ai() {
     let dead = (
         PlayerId::new(2),
         class::CLASS_6,
-        3,
+        ObjectState::Dying,
         Position::new(11.0, 10.0, 0.0),
     );
     let lost = |order: AiOrder, set: fn(&mut Rig)| {

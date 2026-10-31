@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::{self, RELIC, VILLAGER_FEMALE, VILLAGER_MALE};
@@ -254,7 +255,7 @@ impl World {
             .player(p)?
             .objects
             .iter()
-            .filter(|u| u.life.master_id == at && u.life.state == 2)
+            .filter(|u| u.life.master_id == at && u.life.state == ObjectState::Alive)
             .map(|u| u.id)
             .collect();
         for (k, &b) in buildings.iter().enumerate() {

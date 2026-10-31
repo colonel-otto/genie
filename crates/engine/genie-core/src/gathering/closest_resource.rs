@@ -55,7 +55,7 @@ pub(crate) fn closest_resource_of(
     c: &mut ResourceWorld<'_, '_>,
     others: OthersRef<'_>,
     (kind, cap, site): (GatherGroup, i32, Option<ObjectId>),
-    (current, min_state, point): (Option<ObjectId>, u8, Point),
+    (current, min_state, point): (Option<ObjectId>, crate::objects::ObjectState, Point),
 ) -> Result<(Option<ObjectId>, Option<i32>), GenieError> {
     use crate::gathering::gather_search::{self, Candidate, ResourceWorld};
     /// The site masters whose search starts from their footprint in any zone.
@@ -287,7 +287,11 @@ impl Unit {
                 groups: &c.w.groups,
             },
         };
-        let search = (current, 2, crate::unit_ai::NO_POINT);
+        let search = (
+            current,
+            crate::objects::ObjectState::Alive,
+            crate::unit_ai::NO_POINT,
+        );
         closest_resource_of(self, &mut w, others, (kind, cap, site), search).map(|(id, _)| id)
     }
 }

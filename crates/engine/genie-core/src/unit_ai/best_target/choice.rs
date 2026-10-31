@@ -1,6 +1,7 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -105,7 +106,12 @@ pub(super) fn may_attack(
     relation: UnitRelation,
     world: &mut dyn Battlefield,
 ) -> Result<bool, crate::GenieError> {
-    if !t.has_ai || 3 <= t.state || t.allied || t.inside || !world.can_attack(id)? {
+    if !t.has_ai
+        || ObjectState::Dying <= t.state
+        || t.allied
+        || t.inside
+        || !world.can_attack(id)?
+    {
         return Ok(false);
     }
     if me.kind == COMBAT && !world.spares_friends(id)? {
@@ -227,7 +233,7 @@ fn current_target(
     };
     Ok(world
         .thing(target)?
-        .filter(|t| t.state <= 2 && !t.allied)
+        .filter(|t| t.state <= ObjectState::Alive && !t.allied)
         .map(|t| (target, t)))
 }
 

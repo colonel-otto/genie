@@ -495,6 +495,7 @@ pub fn target_left(
 mod tests {
     use super::*;
     use crate::map::spatial::Placed;
+    use crate::objects::ObjectState;
     use crate::objects::masters::ObstructionType;
     use crate::objects::masters::class;
     use crate::players::PlayerId;
@@ -530,13 +531,13 @@ mod tests {
         };
         let mut ai = None;
         let mut update = |m: &mut MoveToAction| {
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), ObjectState::Alive);
             // the house 10028 stands (state 2)
             m.sub_update(
                 &mut rig.walk(4),
                 PathAsk::default(),
                 gives_up,
-                Some(2),
+                Some(ObjectState::Alive),
                 None,
                 &mut inbox,
             )
@@ -634,12 +635,12 @@ mod tests {
                 ..MoveToAction::sub_in(MoveTo::Moving)
             };
             let mut ai = Some(crate::unit_ai::UnitAi::default());
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), ObjectState::Alive);
             let code = m.sub_update(
                 &mut rig.walk(4),
                 PathAsk::default(),
                 GiveUp::default(),
-                Some(2),
+                Some(ObjectState::Alive),
                 None,
                 &mut inbox,
             );
@@ -685,7 +686,7 @@ mod tests {
     /// value, the id let go, −1, and 0). A sub-action `MoveTo` runs it first and gives its 5.
     #[test]
     fn a_move_to_lets_a_dying_target_go_and_walks_on_from_one_the_world_lost() {
-        let checked = |quiet: bool, target: i32, state: Option<u8>| {
+        let checked = |quiet: bool, target: i32, state: Option<ObjectState>| {
             let mut m = MoveToAction {
                 target: ObjectId::of_field(target),
                 quiet,
@@ -696,23 +697,32 @@ mod tests {
                 current_action: Some(crate::unit_ai::ActionKind::Move),
                 ..crate::unit_ai::UnitAi::default()
             });
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), ObjectState::Alive);
             let code = m.check_held(state, &mut inbox).unwrap();
             let posted: Vec<(crate::unit_ai::NotifyKind, [i32; 3])> = ai.map_or(vec![], |ai| {
                 ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
             });
             (code, ObjectId::field(m.target), posted)
         };
-        assert_eq!(checked(true, -1, Some(9)), (None, -1, vec![]));
+        assert_eq!(
+            checked(true, -1, Some(ObjectState::Gone)),
+            (None, -1, vec![])
+        );
         assert_eq!(checked(false, 10028, None), (None, -1, vec![]));
-        assert_eq!(checked(false, 10028, Some(6)), (None, 10028, vec![]));
-        assert_eq!(checked(true, 10028, Some(7)), (Some(5), -1, vec![]));
+        assert_eq!(
+            checked(false, 10028, Some(ObjectState::Undead)),
+            (None, 10028, vec![])
+        );
+        assert_eq!(
+            checked(true, 10028, Some(ObjectState::Removed)),
+            (Some(5), -1, vec![])
+        );
         let invalidated = (
             crate::unit_ai::NotifyKind::ACTION_INVALIDATED,
             [0x262, -1, 0],
         );
         assert_eq!(
-            checked(false, 10028, Some(7)),
+            checked(false, 10028, Some(ObjectState::Removed)),
             (Some(4), -1, vec![invalidated])
         );
         // through the sub-action's update, before its state's case
@@ -722,13 +732,13 @@ mod tests {
             ..MoveToAction::sub_in(MoveTo::Moving)
         };
         let mut ai = None;
-        let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
+        let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), ObjectState::Alive);
         let ask = PathAsk::default();
         let code = m.sub_update(
             &mut rig.walk(4),
             ask,
             GiveUp::default(),
-            Some(8),
+            Some(ObjectState::Gone),
             None,
             &mut inbox,
         );
@@ -745,7 +755,7 @@ mod tests {
             &mut rig.walk(4),
             ask,
             GiveUp::default(),
-            Some(8),
+            Some(ObjectState::Gone),
             None,
             &mut inbox,
         );
@@ -766,7 +776,7 @@ mod tests {
                 current_action: Some(crate::unit_ai::ActionKind::Move),
                 ..crate::unit_ai::UnitAi::default()
             });
-            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), 2);
+            let mut inbox = crate::unit_ai::Inbox::of(&mut ai, object_id(9177), ObjectState::Alive);
             let code = m
                 .sub_update(
                     &mut rig.walk(4),
@@ -807,17 +817,32 @@ mod tests {
     fn an_added_sub_move_to_arrives_starts_or_fails_and_a_dying_unit_adds_none() {
         let m = MoveToAction::sub_to_point(Position::new(1.0, 2.0, 0.0), 0.5, None);
         let state = |unit_state, gap, speed| m.added(unit_state, gap, speed).map(|a| a.state);
-        assert_eq!(state(2, 0.01, 0.0), Some(MoveTo::Arrived));
-        assert_eq!(state(2, 0.0, 1.0), Some(MoveTo::Arrived));
-        assert_eq!(state(2, 0.010_001, 1.0), Some(MoveTo::Start));
-        assert_eq!(state(2, 0.5, 0.0), Some(MoveTo::Failed));
-        assert_eq!(state(2, f32::NAN, 1.0), Some(MoveTo::Start));
-        assert_eq!(state(2, 0.5, f32::NAN), Some(MoveTo::Start));
-        assert_eq!(state(0, NO_TARGET_GAP, 1.0), Some(MoveTo::Start));
-        assert_eq!(state(2, NO_TARGET_GAP, 0.0), Some(MoveTo::Failed));
-        assert_eq!(state(3, 0.0, 1.0), None);
-        assert_eq!(state(7, 0.5, 1.0), None);
-        let added = m.added(2, 0.5, 1.0);
+        assert_eq!(state(ObjectState::Alive, 0.01, 0.0), Some(MoveTo::Arrived));
+        assert_eq!(state(ObjectState::Alive, 0.0, 1.0), Some(MoveTo::Arrived));
+        assert_eq!(
+            state(ObjectState::Alive, 0.010_001, 1.0),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(state(ObjectState::Alive, 0.5, 0.0), Some(MoveTo::Failed));
+        assert_eq!(
+            state(ObjectState::Alive, f32::NAN, 1.0),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(
+            state(ObjectState::Alive, 0.5, f32::NAN),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(
+            state(ObjectState::Foundation, NO_TARGET_GAP, 1.0),
+            Some(MoveTo::Start)
+        );
+        assert_eq!(
+            state(ObjectState::Alive, NO_TARGET_GAP, 0.0),
+            Some(MoveTo::Failed)
+        );
+        assert_eq!(state(ObjectState::Dying, 0.0, 1.0), None);
+        assert_eq!(state(ObjectState::Removed, 0.5, 1.0), None);
+        let added = m.added(ObjectState::Alive, 0.5, 1.0);
         assert_eq!(
             added.map(|a| (a.point, a.range, a.quiet)),
             Some((m.point, 0.5, true))

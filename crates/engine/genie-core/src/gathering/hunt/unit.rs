@@ -8,6 +8,7 @@ use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
@@ -276,7 +277,7 @@ impl Unit {
                 .sight
                 .as_ref()
                 .and_then(|v| v.seer(id))
-                .is_some_and(|s| 5 < s.state)
+                .is_some_and(|s| ObjectState::Dead < s.state)
         };
         ai.orders.retain(|o| {
             !(matches!(
@@ -351,7 +352,7 @@ impl Unit {
             pick: crate::unit_ai::Pick::Closest {
                 group: class,
                 relation: None,
-                state: -1,
+                state: None,
                 master: None,
                 workers: if class == Some(class::FARM) { 1 } else { -1 },
                 spared: None,

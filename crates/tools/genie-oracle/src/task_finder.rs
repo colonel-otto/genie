@@ -36,7 +36,7 @@ pub struct FinderObject {
     /// Its master.
     pub master: genie_core::objects::masters::MasterId,
     /// Its state.
-    pub state: u8,
+    pub state: genie_core::objects::ObjectState,
     /// What it holds: the attribute and the amount.
     pub held: Held,
     /// Its hit points.
@@ -219,7 +219,7 @@ fn finder_object(
     Ok(FinderObject {
         player,
         master: genie_core::objects::masters::MasterId::try_from(s.master_obj)?,
-        state: s.object_state,
+        state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
         held: Held {
             kind: AttributeId::of_field(s.attribute_type_held)?,
             amount: s.attribute_amount_held,

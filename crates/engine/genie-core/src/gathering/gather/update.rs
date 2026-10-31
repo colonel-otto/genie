@@ -14,6 +14,7 @@ use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{GiveUp, MoveTo};
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::{Me, Mover};
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::unit::Unit;
@@ -212,7 +213,7 @@ impl GatherAction {
         r: &GatherReads,
     ) -> Result<Next, GenieError> {
         if target.class == class::FARM {
-            if target.state < 2 {
+            if target.state < ObjectState::Alive {
                 return self.begin_search(c, unit, r);
             }
             if matches!(

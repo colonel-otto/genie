@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
@@ -458,12 +459,12 @@ impl UnitAi {
     /// the current order and runs the queue at once, is not modelled.
     pub fn queue_order(
         &mut self,
-        unit_state: u8,
+        unit_state: ObjectState,
         order: QueuedOrder,
         immediate: bool,
         in_front: bool,
     ) -> Result<bool, GenieError> {
-        if 2 < unit_state {
+        if ObjectState::Alive < unit_state {
             return Ok(false);
         }
 

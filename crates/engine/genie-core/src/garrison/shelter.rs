@@ -10,6 +10,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -160,7 +161,10 @@ impl World {
         for b in &self.players.player(player)?.objects {
             let m = b.master(&self.masters, player)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
-            if b.life.state == 2 && b.life.inside.is_none() && m.kind == BUILDING && takes_villagers
+            if b.life.state == ObjectState::Alive
+                && b.life.inside.is_none()
+                && m.kind == BUILDING
+                && takes_villagers
             {
                 buildings.push(b.id);
             }
@@ -375,7 +379,9 @@ impl World {
             };
             let unit = &self.players.player(p)?.objects[idx];
             let kind = unit.master(&self.masters, p)?.kind;
-            if (2 < unit.life.state && unit.life.state != 6) || kind < COMBAT {
+            if (ObjectState::Alive < unit.life.state && unit.life.state != ObjectState::Undead)
+                || kind < COMBAT
+            {
                 continue;
             }
             if through_ai && unit.ai.is_some() {

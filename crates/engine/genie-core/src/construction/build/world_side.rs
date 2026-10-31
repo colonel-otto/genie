@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::construction::build::{Completion, Construction, StackUnit};
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -74,7 +75,7 @@ impl crate::world::World {
             self.setup_pasture(owner, id)?;
         }
         if part.cart {
-            self.cart_search(owner, id, 0)?;
+            self.cart_search(owner, id, ObjectState::Foundation)?;
         }
         Ok(())
     }
@@ -176,7 +177,7 @@ impl crate::world::World {
             };
             match self.object(main) {
                 Some((_, m))
-                    if m.life.state == 0
+                    if m.life.state == ObjectState::Foundation
                         && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp) =>
                 {
                     at = main;
@@ -185,7 +186,9 @@ impl crate::world::World {
             }
         }
         let (q, u) = self.object(at).ok_or(NOT_HELD)?;
-        if u.life.state != 0 || crate::math::fmath::below_or_unordered(u.life.hp, 1.0) {
+        if u.life.state != ObjectState::Foundation
+            || crate::math::fmath::below_or_unordered(u.life.hp, 1.0)
+        {
             return Ok(false);
         }
         if u.construction.is_some_and(|c| c.desolid) {
@@ -197,7 +200,7 @@ impl crate::world::World {
         if !c.add_work(&mut u.life.hp, amount) {
             return Ok(true);
         }
-        self.set_state(q, at, 2)?;
+        self.set_state(q, at, ObjectState::Alive)?;
         Ok(false)
     }
 

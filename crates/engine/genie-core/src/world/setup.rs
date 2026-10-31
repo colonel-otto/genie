@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
 use crate::pathing::Pathing;
@@ -112,7 +113,7 @@ impl World {
         self.pathing.start_mesh(width);
         for (q, p) in PlayerId::each(self.players.len()).zip(&self.players) {
             for u in p.objects.iter().chain(&p.sleeping) {
-                if u.life.inside.is_some() || 7 <= u.life.state {
+                if u.life.inside.is_some() || ObjectState::Removed <= u.life.state {
                     continue;
                 }
                 let m = u.master(&self.masters, q)?;

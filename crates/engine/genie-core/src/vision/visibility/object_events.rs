@@ -6,6 +6,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::players::PlayerId;
 use crate::vision::registry::UnitUpdate;
@@ -69,7 +70,7 @@ impl Visibility {
         if self.registry.is_none() || id.is_recyclable() {
             return Ok(None);
         }
-        let annex = main.filter(|_| s.state < 7 && s.building.is_some());
+        let annex = main.filter(|_| s.state < ObjectState::Removed && s.building.is_some());
         let (place, umv, edge) = match annex {
             Some((place, umv)) => (place, umv, false),
             None => (at, s.umv, true),

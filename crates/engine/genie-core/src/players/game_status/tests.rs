@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::action_type;
@@ -195,7 +196,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         workers: 0,
         drop_site: false,
         gap: 1.2,
-        state: 2,
+        state: ObjectState::Alive,
         radius: Footprint::new(0.5, 0.5),
     };
     let rate = crate::gathering::gather::StopRate {
@@ -253,7 +254,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
                         defaults: crate::movement::move_to::MoveDefaults::default(),
                         graphics: &std::collections::BTreeMap::new(),
                     },
-                    state: 2,
+                    state: ObjectState::Alive,
                     speed: 1.0,
                     at: Position::new(3.5, 3.5, 0.0),
                     ground: Footprint::new(0.2, 0.2),
@@ -433,7 +434,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
-    t.players[1].objects[0].life.state = 3;
+    t.players[1].objects[0].life.state = ObjectState::Dying;
     t.building_production(PlayerId::new(1), 0, 0.05).unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (200.0, 0.0));
@@ -446,7 +447,7 @@ fn a_dying_building_cancels_its_queue_in_its_update() {
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[villager(Some(ids::VILLAGER_MALE), 4, 50.0)]);
     t.players[1].attributes[80] = 4.0;
-    t.players[1].objects[0].life.state = 2;
+    t.players[1].objects[0].life.state = ObjectState::Alive;
     // a disabled queue (+0xbf6): the production step does nothing
     t.players[1].objects[0]
         .production

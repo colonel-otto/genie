@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{MoveToReads, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -173,7 +174,7 @@ impl World {
             id: foundation,
             master: site,
             player: fp,
-            state: 0,
+            state: ObjectState::Foundation,
             held: Held::default(),
             hp: 1.0,
             max_hp: f32::from(site.hit_points),

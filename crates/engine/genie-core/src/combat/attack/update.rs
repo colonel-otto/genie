@@ -12,6 +12,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::GiveUp;
 use crate::movement::{Me, footprint_gap};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
@@ -133,11 +134,11 @@ impl Attack {
         self.timer += seconds(c.dt);
         // a dead tree (class 15) up to state 5 keeps a non-villager's attack going: its update
         // goes on, the target not alive (`0x140a8342e`)
-        let alive = f.victim.state <= 2;
+        let alive = f.victim.state <= ObjectState::Alive;
         let gone = !alive
             && (f.victim.class != class::TREE
                 || f.own.class == class::VILLAGER
-                || 5 < f.victim.state);
+                || ObjectState::Dead < f.victim.state);
         if self.state != KILLED && gone {
             return self.target_died(c, unit, f, r);
         }

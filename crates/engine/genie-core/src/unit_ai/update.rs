@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
@@ -255,7 +256,7 @@ impl UnitAi {
                 Some(t) => side.seen_unit(t)?,
                 None => None,
             };
-            if seen.is_none_or(|u| u.state != 0) {
+            if seen.is_none_or(|u| u.state != ObjectState::Foundation) {
                 let _ = self.orders.remove(k);
             }
         }
@@ -316,7 +317,10 @@ impl UnitAi {
                 }
             }
             Some(t) => {
-                if at.state == 2 && 2 < t.state && t.kind != BUILDING {
+                if at.state == ObjectState::Alive
+                    && ObjectState::Alive < t.state
+                    && t.kind != BUILDING
+                {
                     let attack_over = action == Some(ActionKind::Attack)
                         && at.action_state.ok_or(GenieError::unsupported(
                             "an attack whose target died, its top action not held",
@@ -396,7 +400,7 @@ impl UnitAi {
                     pick: Pick::Closest {
                         group: Some(class),
                         relation: None,
-                        state: -1,
+                        state: None,
                         master: None,
                         workers: if class == class::FARM { 1 } else { -1 },
                         spared: None,
@@ -425,7 +429,7 @@ impl UnitAi {
                     site: ObjectId::of_field(n.p[2]),
                     current: self.current_target,
                     point: NO_POINT,
-                    min_state: 2,
+                    min_state: ObjectState::Alive,
                 })?
             }
         };
@@ -483,7 +487,7 @@ impl UnitAi {
                     pick: Pick::Closest {
                         group: Some(class),
                         relation: None,
-                        state: -1,
+                        state: None,
                         master: None,
                         workers: -1,
                         spared,
@@ -516,7 +520,7 @@ impl UnitAi {
                     site: ObjectId::of_field(n.p[2]),
                     current: self.current_target,
                     point: NO_POINT,
-                    min_state: 2,
+                    min_state: ObjectState::Alive,
                 })?
             }
         };

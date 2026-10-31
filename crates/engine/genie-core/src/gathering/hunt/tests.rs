@@ -58,7 +58,7 @@ pub(crate) fn walks(held: Held) -> Walks<'static> {
                 defaults: MoveDefaults::default(),
                 graphics: &NO_GRAPHICS,
             },
-            state: 2,
+            state: ObjectState::Alive,
             speed: 1.0,
             at: Position::ORIGIN,
             ground: Footprint::ZERO,
@@ -85,11 +85,11 @@ fn a_hunt_s_move_to_refuses_a_target_past_state_6() {
             .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
     assert_eq!(
-        walk(6),
+        walk(ObjectState::Undead),
         Some((31, Position::new(5.0, 6.0, 0.0), MoveTo::Arrived))
     );
     assert_eq!(
-        walk(7),
+        walk(ObjectState::Removed),
         Some((-1, Position::new(5.0, 6.0, 0.0), MoveTo::Start))
     );
 }
@@ -272,7 +272,7 @@ fn tree() -> Quarry {
         position: Position::new(24.5, 97.5, 0.0),
         class: class::TREE,
         kind: master_type::STATIC,
-        state: 2,
+        state: ObjectState::Alive,
         player: PlayerId::new(0),
         amount: 100.0,
         allied: false,
@@ -527,7 +527,7 @@ fn victim(amount: f32) -> Victim {
     Victim {
         id: object_id(9357),
         amount,
-        state: 3,
+        state: ObjectState::Dying,
         kind: master_type::STATIC,
         class: class::TREE,
         storage: 100.0,
@@ -635,7 +635,10 @@ fn a_hunt_on_a_live_ally_fails() {
 /// own sheep 9520 in update 1116).
 #[test]
 fn a_hunt_walks_to_a_dead_target_or_its_own_livestock() {
-    let dead = Quarry { state: 3, ..tree() };
+    let dead = Quarry {
+        state: ObjectState::Dying,
+        ..tree()
+    };
     let sheep = Quarry {
         class: class::LIVESTOCK,
         player: PlayerId::new(2),
@@ -745,7 +748,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
         class: class::FARM,
         kind: master_type::MOVING,
         player: PlayerId::new(1),
-        state: 5,
+        state: ObjectState::Dead,
         ..Victim::default()
     };
     let face = |victim: Victim| {
@@ -1042,13 +1045,13 @@ fn a_hunt_walks_to_its_target_s_place_within_its_range() {
     };
     let walk = |h: &HuntAction| h.move_to.map(|m| (m.state, m.range, m.point));
     let dead = Victim {
-        state: 3,
+        state: ObjectState::Dying,
         ..Victim::default()
     };
     let own = Victim {
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         ..Victim::default()
     };
     let mut rig = Rig::on_the_path(Victim::default());
@@ -1100,7 +1103,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
         id: object_id(10028),
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         position,
         ..Victim::default()
     };
@@ -1235,7 +1238,7 @@ fn a_hunt_s_update_runs_the_step_of_its_state() {
     lost.t.players[0]
         .objects
         .iter_mut()
-        .for_each(|u| u.life.state = 7);
+        .for_each(|u| u.life.state = ObjectState::Removed);
     let mut h = walking(-1, 0.0, MoveTo::Moving);
     assert_eq!(update(&mut h, &mut lost, false, 0.0), Ok(HuntNext::Stay));
     assert_eq!(
@@ -1297,7 +1300,7 @@ fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
         id: object_id(10028),
         class: class::LIVESTOCK,
         player: PlayerId::new(1),
-        state: 2,
+        state: ObjectState::Alive,
         position: Position::new(30.0, 88.0, 0.0),
         ..Victim::default()
     };
@@ -1424,11 +1427,11 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
         },
         ..hunting(target)
     };
-    assert!(face(&mut walking(10028, false), sheep(2), None).is_err());
+    assert!(face(&mut walking(10028, false), sheep(ObjectState::Alive), None).is_err());
     let mut h = walking(10028, false);
     let led = face(
         &mut h,
-        sheep(2),
+        sheep(ObjectState::Alive),
         Some(herd(Some((object_id(500), 16.0)), false)),
     );
     assert_eq!(led, Ok(HuntNext::Stay));
@@ -1449,23 +1452,32 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     ] {
         let mut h = walking(10028, moved);
         let herd = herd(Some((object_id(500), gap_squared)), false);
-        assert_eq!(face(&mut h, sheep(2), Some(herd)), Ok(HuntNext::Stay));
+        assert_eq!(
+            face(&mut h, sheep(ObjectState::Alive), Some(herd)),
+            Ok(HuntNext::Stay)
+        );
         assert_eq!(h.state, state, "{gap_squared} {moved}");
     }
     let mut h = walking(10028, false);
     assert_eq!(
-        face(&mut h, sheep(2), Some(herd(None, false))),
+        face(&mut h, sheep(ObjectState::Alive), Some(herd(None, false))),
         Ok(HuntNext::Stay)
     );
     assert_eq!(h.state, ATTACK);
     let mut h = walking(10028, false);
-    assert_eq!(face(&mut h, sheep(3), None), Ok(HuntNext::Stay));
+    assert_eq!(
+        face(&mut h, sheep(ObjectState::Dying), None),
+        Ok(HuntNext::Stay)
+    );
     assert_eq!(
         (h.state, h.move_to.map(|m| m.state)),
         (WALK, Some(MoveTo::Start))
     );
     let mut h = walking(9177, false);
-    assert_eq!(face(&mut h, sheep(3), None), Ok(HuntNext::Stay));
+    assert_eq!(
+        face(&mut h, sheep(ObjectState::Dying), None),
+        Ok(HuntNext::Stay)
+    );
     assert_eq!((h.state, h.move_to, h.timer), (FACE, None, 0.0));
 }
 
@@ -1601,7 +1613,7 @@ fn a_hunt_s_walk_starts_toward_its_target() {
     let start = |range: f32| {
         let house = Victim {
             id: object_id(10028),
-            state: 3,
+            state: ObjectState::Dying,
             ..Victim::default()
         };
         let mut rig = Rig::on_the_path(house).holding(10028, PlayerId::new(0));
@@ -1667,7 +1679,7 @@ fn a_move_to_that_lost_its_target_ends_the_drop_off_and_the_point_walk() {
         rig.t.players[0]
             .objects
             .iter_mut()
-            .for_each(|u| u.life.state = 7);
+            .for_each(|u| u.life.state = ObjectState::Removed);
         rig
     };
     let mut rig = lost();
@@ -1700,7 +1712,7 @@ fn a_move_to_that_lost_its_target_ends_the_drop_off_and_the_point_walk() {
 /// holds is not a loss (the `MoveTo` walks on to its point), and nor is a `MoveTo` on its way.
 #[test]
 fn a_hunt_of_a_tree_searches_on_a_failed_walk_or_a_target_let_go() {
-    let tree_lost = |state: u8, move_to: MoveTo, holding: bool| {
+    let tree_lost = |state: ObjectState, move_to: MoveTo, holding: bool| {
         let mut rig = Rig::on_the_path(Victim::default());
         if holding {
             rig = rig.holding(10028, PlayerId::new(0));
@@ -1720,10 +1732,22 @@ fn a_hunt_of_a_tree_searches_on_a_failed_walk_or_a_target_let_go() {
         }));
         rig.run(100, |c, u, _, _| Ok(u.tree_lost(c)))
     };
-    assert_eq!(tree_lost(7, MoveTo::Moving, true), Ok(true));
-    assert_eq!(tree_lost(6, MoveTo::Moving, true), Ok(false));
-    assert_eq!(tree_lost(2, MoveTo::Failed, true), Ok(true));
-    assert_eq!(tree_lost(2, MoveTo::Moving, false), Ok(false));
+    assert_eq!(
+        tree_lost(ObjectState::Removed, MoveTo::Moving, true),
+        Ok(true)
+    );
+    assert_eq!(
+        tree_lost(ObjectState::Undead, MoveTo::Moving, true),
+        Ok(false)
+    );
+    assert_eq!(
+        tree_lost(ObjectState::Alive, MoveTo::Failed, true),
+        Ok(true)
+    );
+    assert_eq!(
+        tree_lost(ObjectState::Alive, MoveTo::Moving, false),
+        Ok(false)
+    );
 }
 
 /// A unit in a state of 3 or more adds no sub-action (`FUN_140a977e0` deletes the new
@@ -1734,7 +1758,7 @@ fn a_dying_hunter_makes_no_move_to() {
     let mut h = hunting(-1);
     h.point = Position::new(5.0, 6.0, 0.0);
     let mut dying = walks(Held::default());
-    dying.reads.state = 3;
+    dying.reads.state = ObjectState::Dying;
     h.set_point_walk(WALK_SEARCH, &mut mover, &dying).unwrap();
     assert_eq!((h.state, h.move_to), (WALK_SEARCH, None));
     h.set_point_walk(WALK_SEARCH, &mut mover, &walks(Held::default()))

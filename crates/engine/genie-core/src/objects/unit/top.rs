@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::game_vector::GameVector;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::actions::Action;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
@@ -40,7 +41,7 @@ impl Unit {
     /// player is not allied with its owner (`FUN_141663d90` with 1: `allied` false).
     pub(crate) fn lists_taker(&self, master: &Master, allied: bool) -> bool {
         master.kind == BUILDING
-            && self.life.state < 2
+            && self.life.state < ObjectState::Alive
             && master.building.is_some_and(|b| b.stack_unit.is_some())
             && !allied
     }

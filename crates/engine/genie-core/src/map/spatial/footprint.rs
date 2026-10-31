@@ -8,6 +8,7 @@ use crate::map::Rect;
 use crate::map::{Tile, TileRect};
 use crate::math::fmath::BVector;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::world::slots::CheckedIndex;
 use std::collections::BTreeMap;
@@ -132,7 +133,8 @@ impl Spatial {
         self.check_known(Rect::new(sx - rx, sy - ry, sx + rx, sy + ry))?;
         let counts = |id: ObjectId, o: &Placed| {
             looks.get(&id).is_none_or(|l| {
-                let alive = l.state < 3 || (l.kind != BUILDING && l.state < 7);
+                let alive = l.state < ObjectState::Dying
+                    || (l.kind != BUILDING && l.state < ObjectState::Removed);
                 let foundation = l.kind == BUILDING && l.desolid;
                 alive
                     && (!foundation

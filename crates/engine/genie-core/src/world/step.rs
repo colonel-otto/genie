@@ -45,7 +45,7 @@ pub(crate) struct Step<'a> {
     pub(crate) player: PlayerId,
     /// While the unit AI's side runs ([`Unit::with_side`]: the AI out of the unit), the notifies
     /// the step's calls give that AI, posted to it as the side returns; None otherwise.
-    pub(crate) side_notifies: Option<Vec<(crate::unit_ai::Notify, u8)>>,
+    pub(crate) side_notifies: Option<Vec<(crate::unit_ai::Notify, crate::objects::ObjectState)>>,
 }
 
 /// What a walk takes of the update beside the world: the dt in seconds, the world's time, and

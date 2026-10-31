@@ -12,6 +12,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::footprint_gap;
 use crate::movement::move_to::WalkTo;
+use crate::objects::ObjectState;
 use crate::objects::layers::Body;
 use crate::objects::masters::class;
 use crate::objects::sprite::new_sprite;
@@ -42,7 +43,7 @@ impl HuntAction {
         // Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).
         // The predators' class, whose hunt ends on its own terms (`-0xea2` raw, `0x140ac85fd`).
         let own_livestock = victim.class == class::LIVESTOCK && victim.player == player;
-        if victim.state <= 2 && !own_livestock {
+        if victim.state <= ObjectState::Alive && !own_livestock {
             return Err(GenieError::unsupported(
                 "a hunt's set_state 4 on a live target after its attack",
             ));
@@ -51,7 +52,7 @@ impl HuntAction {
             .get_known(self.target)?
             .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
         self.point = t.position;
-        let range = if victim.state <= 2 {
+        let range = if victim.state <= ObjectState::Alive {
             OWN_LIVESTOCK_RANGE
         } else {
             self.task.range
@@ -94,7 +95,7 @@ impl HuntAction {
             ));
         }
         if f.victim.class == class::LIVESTOCK {
-            if f.victim.state <= 2 {
+            if f.victim.state <= ObjectState::Alive {
                 let herd = r.herd.ok_or(GenieError::unsupported(
                     "a hunt facing live livestock unprepared",
                 ))?;

@@ -363,6 +363,7 @@ mod tests {
     use super::*;
     use crate::map::Radii;
     use crate::movement::move_to::MoveTo;
+    use crate::objects::ObjectState;
     use crate::objects::layers::Body;
     use crate::objects::lifecycle::Lifecycle;
     use crate::test_ids::master_id;
@@ -416,7 +417,7 @@ mod tests {
             id: object_id(9925),
             body: Body::new(AT, None, Some(wings(speed))),
             life: Lifecycle {
-                state: 2,
+                state: ObjectState::Alive,
                 master_id: master_id(96),
                 ..Lifecycle::default()
             },

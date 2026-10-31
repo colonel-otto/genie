@@ -11,13 +11,13 @@ use crate::objects::masters::ActionType;
 
 /// What the block reads from one object of a player's live list.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ObjectState {
+pub struct CheckpointObject {
     /// The object's id.
     pub id: ObjectId,
     /// Its master.
     pub main_id: i16,
     /// Its state.
-    pub state: u8,
+    pub state: crate::objects::ObjectState,
     /// What it holds.
     pub amount_held: f32,
     /// Its place.
@@ -67,7 +67,7 @@ pub struct PlayerState {
     /// How many objects sleep.
     pub sleeping_count: u32,
     /// The live objects, in their list's order.
-    pub live: Vec<ObjectState>,
+    pub live: Vec<CheckpointObject>,
 }
 
 /// The player's 11-word block, in the order the recording stores it.
@@ -81,7 +81,7 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
         .fold(0u32, |acc, r| acc.wrapping_add(cvttss2si(*r) as u32));
     for o in &player.live {
         w[2] = w[2].wrapping_add(i32::from(o.main_id) as u32);
-        w[3] = w[3].wrapping_add(u32::from(o.state));
+        w[3] = w[3].wrapping_add(u32::from(o.state.get()));
         w[4] = w[4].wrapping_add(cvttss2si(o.amount_held) as u32);
         for axis in o.position.get() {
             w[7] = w[7].wrapping_add(cvttss2si(axis * 100.0) as u32);
@@ -97,7 +97,7 @@ pub fn player_block(player: &PlayerState) -> [u32; 11] {
 
 /// Word 9's term for one object: action type + action state byte + unit-AI retarget timer. An
 /// object without an action list reports type -1 and state 0.
-fn action_checksum(o: &ObjectState) -> u32 {
+fn action_checksum(o: &CheckpointObject) -> u32 {
     let (kind, state) = o
         .top_action
         .map_or((-1, 0), |t| (ActionType::field(t.kind), t.state));
@@ -111,16 +111,16 @@ mod tests {
     use super::*;
     use crate::test_ids::object_id;
 
-    fn object() -> ObjectState {
-        ObjectState {
+    fn object() -> CheckpointObject {
+        CheckpointObject {
             id: object_id(1),
             main_id: 4,
-            state: 2,
-            ..ObjectState::default()
+            state: crate::objects::ObjectState::Alive,
+            ..CheckpointObject::default()
         }
     }
 
-    fn player(live: Vec<ObjectState>) -> PlayerState {
+    fn player(live: Vec<CheckpointObject>) -> PlayerState {
         PlayerState {
             id: 3,
             live,
@@ -151,11 +151,11 @@ mod tests {
     #[test]
     fn main_ids_are_sign_extended() {
         let p = player(vec![
-            ObjectState {
+            CheckpointObject {
                 main_id: -1,
                 ..object()
             },
-            ObjectState {
+            CheckpointObject {
                 main_id: 3,
                 ..object()
             },
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn positions_are_scaled_in_f32_before_truncation() {
         // f32: 0.57 * 100 rounds to 57.0; the same product in f64 is 56.99999928 and truncates to 56
-        let p = player(vec![ObjectState {
+        let p = player(vec![CheckpointObject {
             position: Position::new(0.57, 0.0, 0.0),
             ..object()
         }]);
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn word_9_adds_action_type_state_byte_and_retarget_timer() {
-        let o = ObjectState {
+        let o = CheckpointObject {
             top_action: Some(ActionTerm {
                 kind: Some(crate::gathering::gather::GATHER),
                 state: 3,
@@ -195,11 +195,11 @@ mod tests {
     #[test]
     fn sums_wrap_in_32_bits() {
         let p = player(vec![
-            ObjectState {
+            CheckpointObject {
                 id: object_id(i32::MAX),
                 ..object()
             },
-            ObjectState {
+            CheckpointObject {
                 id: object_id(i32::MAX),
                 ..object()
             },
@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn words_count_state_amount_live_list_and_zero_waypoints() {
         let p = player(vec![
-            ObjectState {
+            CheckpointObject {
                 amount_held: 150.7,
                 ..object()
             },

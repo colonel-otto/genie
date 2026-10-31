@@ -2,6 +2,7 @@ use super::*;
 use crate::map::GridSize;
 use crate::map::Tile;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -74,7 +75,7 @@ fn master(id: MasterId, kind: MasterKind, class: ClassId) -> Master {
 }
 
 /// An object `id` of master `m` in `state`.
-fn object(id: i32, m: MasterId, state: u8) -> Unit {
+fn object(id: i32, m: MasterId, state: ObjectState) -> Unit {
     let mut u = Unit {
         id: object_id(id),
         ..Unit::default()
@@ -189,11 +190,11 @@ fn a_mill_s_livestock_makes_food() {
         master(master_id(5), master_type::COMBAT, class::LIVESTOCK),
     ]);
     t.masters = vec![masters.clone(), masters.clone(), masters.clone(), masters];
-    let mut mill = object(10, master_id(68), 2);
+    let mut mill = object(10, master_id(68), ObjectState::Alive);
     mill.livestock_summation = 100.0;
-    let mut other = object(11, master_id(68), 2);
+    let mut other = object(11, master_id(68), ObjectState::Alive);
     other.livestock_summation = 300.0;
-    let mut sheep = object(12, master_id(5), 2);
+    let mut sheep = object(12, master_id(5), ObjectState::Alive);
     sheep.livestock_summation = 1000.0;
     let key = Key {
         master: Some(ids::MILL),
@@ -295,17 +296,17 @@ fn a_player_without_an_object_that_keeps_it_loses() {
     assert_eq!(
         keeps(
             vec![
-                object(1, ids::VILLAGER_MALE, 2),
-                object(2, ids::VILLAGER_MALE, 3),
-                object(3, master_id(117), 2),
-                object(4, ids::FARM, 2),
-                object(5, ids::TOWN_CENTRE, 2),
-                object(6, master_id(12), 2),
-                object(7, ids::ID_331, 0),
-                object(8, ids::ID_331, 1),
-                object(9, ids::WONDER, 2),
-                object(10, master_id(900), 3),
-                object(11, master_id(900), 5),
+                object(1, ids::VILLAGER_MALE, ObjectState::Alive),
+                object(2, ids::VILLAGER_MALE, ObjectState::Dying),
+                object(3, master_id(117), ObjectState::Alive),
+                object(4, ids::FARM, ObjectState::Alive),
+                object(5, ids::TOWN_CENTRE, ObjectState::Alive),
+                object(6, master_id(12), ObjectState::Alive),
+                object(7, ids::ID_331, ObjectState::Foundation),
+                object(8, ids::ID_331, ObjectState::Unfinished),
+                object(9, ids::WONDER, ObjectState::Alive),
+                object(10, master_id(900), ObjectState::Dying),
+                object(11, master_id(900), ObjectState::Dead),
             ],
             0
         ),
@@ -313,13 +314,19 @@ fn a_player_without_an_object_that_keeps_it_loses() {
             true, false, false, false, true, false, true, false, false, true, false
         ]
     );
-    assert_eq!(keeps(vec![object(9, ids::WONDER, 2)], 3), [true]);
-    assert_eq!(keeps(vec![object(9, ids::WONDER, 0)], 3), [false]);
+    assert_eq!(
+        keeps(vec![object(9, ids::WONDER, ObjectState::Alive)], 3),
+        [true]
+    );
+    assert_eq!(
+        keeps(vec![object(9, ids::WONDER, ObjectState::Foundation)], 3),
+        [false]
+    );
     // a player with only a wall loses, attribute 45 cleared
     let mut t = world();
     t.masters = vec![masters.clone(); 4];
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(3, master_id(117), 2)].into();
+    t.players[1].objects = vec![object(3, master_id(117), ObjectState::Alive)].into();
     t.players[1].attributes[45] = 1.0;
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
@@ -329,8 +336,8 @@ fn a_player_without_an_object_that_keeps_it_loses() {
     t.masters = vec![masters; 4];
     t.players[1].victory_times = VictoryTimes::default();
     t.players[1].objects = vec![
-        object(3, master_id(117), 2),
-        object(1, ids::VILLAGER_MALE, 2),
+        object(3, master_id(117), ObjectState::Alive),
+        object(1, ids::VILLAGER_MALE, ObjectState::Alive),
     ]
     .into();
     t.players[1].attributes[45] = 1.0;
@@ -378,9 +385,9 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
     };
     let mut t = world();
     t.players[1].objects = vec![
-        object(7, master_id(444), 2),
-        object(5, ids::TOWN_CENTRE, 3),
-        object(6, ids::TOWN_CENTRE, 2),
+        object(7, master_id(444), ObjectState::Alive),
+        object(5, ids::TOWN_CENTRE, ObjectState::Dying),
+        object(6, ids::TOWN_CENTRE, ObjectState::Alive),
     ]
     .into();
     // 9 is filed but gone from the world
@@ -423,8 +430,8 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     t.settings.game_mode = 11;
     t.players[1].victory_times = VictoryTimes::default();
     t.players[1].objects = vec![
-        object(1, ids::VILLAGER_MALE, 2),
-        object(5, ids::TOWN_CENTRE, 2),
+        object(1, ids::VILLAGER_MALE, ObjectState::Alive),
+        object(5, ids::TOWN_CENTRE, ObjectState::Alive),
     ]
     .into();
     t.players[1].tracker.add(object_id(5), tc_key);
@@ -433,7 +440,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     assert_eq!(t.players[1].game_status, PLAYING);
     assert_eq!(t.first_town_centre(PlayerId::new(1)), Some(object_id(5)));
     // the town centre falls (state 3): the villager no longer keeps the player
-    t.players[1].objects[1].life.state = 3;
+    t.players[1].objects[1].life.state = ObjectState::Dying;
     assert_eq!(t.first_town_centre(PlayerId::new(1)), None);
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
@@ -441,7 +448,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     let mut t = world();
     t.masters = vec![masters; 4];
     t.settings.sub_game_mode_flag = 4;
-    t.players[1].objects = vec![object(1, ids::VILLAGER_MALE, 2)].into();
+    t.players[1].objects = vec![object(1, ids::VILLAGER_MALE, ObjectState::Alive)].into();
     t.update_world_player(PlayerId::new(1)).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
     let mut t2 = world();

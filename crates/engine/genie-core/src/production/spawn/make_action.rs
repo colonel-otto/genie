@@ -40,7 +40,7 @@ impl World {
         i: usize,
         dt_seconds: f32,
     ) -> Result<(), GenieError> {
-        if 2 < self.players.live(p, i)?.life.state {
+        if crate::objects::ObjectState::Alive < self.players.live(p, i)?.life.state {
             return self.cancel_queue(p, i);
         }
         self.produce(p, i, dt_seconds)
@@ -204,7 +204,7 @@ impl World {
         i: usize,
         making: Making,
     ) -> Result<(), GenieError> {
-        if 3 <= self.players.live(p, i)?.life.state {
+        if crate::objects::ObjectState::Dying <= self.players.live(p, i)?.life.state {
             return self.destroy_action(p, i, making);
         }
         let mut making = making;

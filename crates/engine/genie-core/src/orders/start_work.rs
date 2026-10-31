@@ -22,6 +22,7 @@ use crate::map::Rect;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
@@ -199,7 +200,7 @@ impl World {
             state: unit.life.state,
             current_target: ai.current_target,
             my_pasture: unit.my_pasture,
-            min_state: 2,
+            min_state: ObjectState::Alive,
         };
         let me_walk = Me {
             id: unit.id,

@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -227,7 +228,7 @@ fn enemy(id: i32, class: ClassId, distance: f32, hp: f32) -> (Thing, Candidate) 
     (
         Thing {
             owner: PlayerId::new(2),
-            state: 2,
+            state: ObjectState::Alive,
             has_ai: true,
             master: master_id(4),
             class,
@@ -347,7 +348,7 @@ fn the_lists_pass_over_what_the_unit_may_not_attack() {
     let mut inside = enemy(31, class::CLASS_0, 3.0, 40.0);
     inside.0.inside = true;
     let mut dead = enemy(32, class::CLASS_0, 3.0, 40.0);
-    dead.0.state = 3;
+    dead.0.state = ObjectState::Dying;
     let mut ally = enemy(33, class::CLASS_0, 3.0, 40.0);
     ally.0.allied = true;
     for (id, t) in [(30, no_ai), (31, inside), (32, dead), (33, ally)] {
@@ -602,7 +603,10 @@ fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_
             has_ai: false,
             ..thing
         },
-        Thing { state: 3, ..thing },
+        Thing {
+            state: ObjectState::Dying,
+            ..thing
+        },
         Thing {
             allied: true,
             ..thing

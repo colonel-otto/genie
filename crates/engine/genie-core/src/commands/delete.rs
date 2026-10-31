@@ -9,6 +9,7 @@
 use crate::GenieError;
 use crate::construction::build::held;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterKind;
@@ -220,7 +221,7 @@ impl World {
         let (state, hp) = (unit.life.state, unit.life.hp);
         let site = unit.construction;
         let desolid = site.is_some_and(|c| c.desolid);
-        let share = if state < 2 && 1.0 <= hp {
+        let share = if state < ObjectState::Alive && 1.0 <= hp {
             let c = site.ok_or(crate::construction::build::NO_CONSTRUCTION)?;
             let build_time = f32::from(c.build_time);
             (build_time - c.progress) / build_time
@@ -243,7 +244,7 @@ impl World {
         }
         let i = self.wake(id)?;
         self.players.live_mut(owner, i)?.life.hp = 0.0;
-        if state < 2 && desolid {
+        if state < ObjectState::Alive && desolid {
             self.destroy_foundation(owner, id)?;
         }
         Ok(())
@@ -275,7 +276,7 @@ impl World {
         let state = u.life.state;
         let master = u.master(&self.masters, owner)?.clone();
         if master.kind == BUILDING {
-            if state == 2 {
+            if state == ObjectState::Alive {
                 self.storage_leaves(owner, id, &master)?;
             }
             if master.id == TOWN_CENTRE_621 && !self.has_town_centre(owner) {
@@ -327,7 +328,7 @@ impl World {
         let (_, u) = self
             .object(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
-        if 7 <= u.life.state {
+        if ObjectState::Removed <= u.life.state {
             return Ok(());
         }
         if u.life.inside.is_some() {
@@ -337,7 +338,7 @@ impl World {
         }
         let i = self.wake(id)?;
         self.players.live_mut(owner, i)?.life.hp = 0.0;
-        self.set_state(owner, id, 7)
+        self.set_state(owner, id, ObjectState::Removed)
     }
 
     /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more (2 for a
@@ -353,7 +354,7 @@ impl World {
         &mut self,
         owner: PlayerId,
         id: ObjectId,
-        new: u8,
+        new: ObjectState,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(GenieError::unsupported(
             "a set_state of an object the slice does not hold",
@@ -377,7 +378,7 @@ impl World {
         &mut self,
         owner: PlayerId,
         id: ObjectId,
-        new: u8,
+        new: ObjectState,
         master: &Master,
     ) -> Result<(), GenieError> {
         for annex in self.spatial.annexes_of(id) {
@@ -388,19 +389,23 @@ impl World {
                 self.set_state(q, annex, new)?;
             }
         }
-        let state = self.object(id).map_or(8, |(_, u)| u.life.state);
+        let state = self
+            .object(id)
+            .map_or(ObjectState::Gone, |(_, u)| u.life.state);
         // the completion: its first part, its construction's start and the block for state 2
-        if new == 2 && state == 0 {
+        if new == ObjectState::Alive && state == ObjectState::Foundation {
             return self.complete_building(id);
         }
-        if state == 0 {
+        if state == ObjectState::Foundation {
             self.completion_part(owner, id, master)?;
-            let still = self.object(id).is_some_and(|(_, u)| u.life.state == 0);
-            if still && (1..=6).contains(&new) {
+            let still = self
+                .object(id)
+                .is_some_and(|(_, u)| u.life.state == ObjectState::Foundation);
+            if still && (ObjectState::Unfinished..=ObjectState::Undead).contains(&new) {
                 self.construction_starts(owner, id)?;
             }
         }
-        if new == 3 && state == 2 {
+        if new == ObjectState::Dying && state == ObjectState::Alive {
             return self.built_building_dies(owner, id, master);
         }
         self.combat_set_state(owner, id, new, master)
@@ -414,7 +419,7 @@ impl World {
         &mut self,
         owner: PlayerId,
         id: ObjectId,
-        new: u8,
+        new: ObjectState,
         master: &Master,
     ) -> Result<(), GenieError> {
         // an object the slice does not hold fails in the base set_state
@@ -423,7 +428,7 @@ impl World {
         };
         let u = held(&mut self.players, place);
         let (state, main) = (u.life.state, u.annex_of);
-        if 3 <= new && state < 3 {
+        if ObjectState::Dying <= new && state < ObjectState::Dying {
             crate::objects::lifecycle::death_parts::combat_dies(
                 u,
                 master,
@@ -432,7 +437,7 @@ impl World {
             )?;
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
-        if new == 3 && state == 2 {
+        if new == ObjectState::Dying && state == ObjectState::Alive {
             for (kind, amount) in crate::objects::lifecycle::death_parts::refund_of(master, main) {
                 let player = self.players.player_mut(owner)?;
                 player.take_at_least_zero(kind, amount)?;
@@ -454,24 +459,24 @@ impl World {
         &mut self,
         owner: PlayerId,
         id: ObjectId,
-        new: u8,
+        new: ObjectState,
         master: &Master,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object(id).ok_or(GenieError::unsupported(
             "a set_state of an object the slice does not hold",
         ))?;
         let (old, position) = (u.life.state, u.position());
-        if old == new || (new < old && new != 0) {
+        if old == new || (new < old && new != ObjectState::Foundation) {
             return Ok(());
         }
-        if 2 < new && old < 3 {
+        if ObjectState::Alive < new && old < ObjectState::Dying {
             self.leave_storage(owner, master, |flag| matches!(flag, 2 | 16))?;
             if master.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS && self.game_state != 2
             {
                 self.ghosts_at_death(owner.index(), id)?;
             }
         }
-        if old < 4 && 6 < new {
+        if old < ObjectState::DyingSprite && ObjectState::Undead < new {
             crate::objects::lifecycle::death_parts::forget_resource(
                 &mut self.spatial,
                 Some(master),
@@ -480,13 +485,15 @@ impl World {
             )?;
         }
         self.spatial.sight_state(id, new)?;
-        if old < 7 && new == 7 {
+        if old < ObjectState::Removed && new == ObjectState::Removed {
             self.leave_storage(owner, master, |flag| flag == 32)?;
         }
         if let Some((_, u)) = self.object_mut(id) {
             u.life.state = new;
         }
-        if !matches!(new, 2 | 6) && matches!(self.place(id), Some(Place::Sleeping(..))) {
+        if !matches!(new, ObjectState::Alive | ObjectState::Undead)
+            && matches!(self.place(id), Some(Place::Sleeping(..)))
+        {
             let _ = self.wake(id)?;
         }
         Ok(())
@@ -535,7 +542,7 @@ impl World {
         if let (Some(v), Some(at)) = (self.spatial.sight.as_mut(), death.unlink) {
             v.unlink_building(at, master.radius)?;
         }
-        self.combat_set_state(owner, id, 3, master)?;
+        self.combat_set_state(owner, id, ObjectState::Dying, master)?;
         if let Some(kind) = death.building.count {
             self.players
                 .player_mut(owner)?
@@ -654,7 +661,7 @@ mod tests {
                 u.my_pasture = None;
             }
         }
-        t.players[1].objects[1].life.state = 0;
+        t.players[1].objects[1].life.state = ObjectState::Foundation;
         t.players[1].objects[2].life.amount = 100.0;
         let masters = Masters::new([
             Master {
@@ -711,7 +718,7 @@ mod tests {
         let house = &t.players[1].objects[1].life;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
-            (25.0, 0.0, 7)
+            (25.0, 0.0, ObjectState::Removed)
         );
         // 10 of its 25 seconds of work done: 15/25 of the wood (in f32: 15.000001); it dies in
         // its own update
@@ -721,7 +728,7 @@ mod tests {
         let share = (25.0_f32 - 10.0) / 25.0;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
-            (25.0 * share, 0.0, 0)
+            (25.0 * share, 0.0, ObjectState::Foundation)
         );
     }
 
@@ -743,7 +750,10 @@ mod tests {
         town_centre(&mut t);
         t.delete(player_id(1), object_id(11)).unwrap();
         let tc = &t.players[1].objects[1].life;
-        assert_eq!((t.players[1].resources[1], tc.hp, tc.state), (25.0, 0.0, 7));
+        assert_eq!(
+            (t.players[1].resources[1], tc.hp, tc.state),
+            (25.0, 0.0, ObjectState::Removed)
+        );
         let mut t = game(0.0, true);
         town_centre(&mut t);
         t.settings.treaty_length = 10;
@@ -942,9 +952,9 @@ mod clearing_tests {
         assert_eq!(ids, [object_id(1), object_id(6084), object_id(6083)]);
         assert_eq!(t.players[0].sleeping.len(), 0);
         for u in &t.players[0].objects[1..] {
-            assert_eq!((u.life.state, u.life.hp), (7, 0.0));
+            assert_eq!((u.life.state, u.life.hp), (ObjectState::Removed, 0.0));
         }
-        assert_eq!(t.players[0].objects[0].life.state, 2);
+        assert_eq!(t.players[0].objects[0].life.state, ObjectState::Alive);
     }
 
     /// records/428477858's update 1838: a foundation clears a dead villager (type 30) in state 5
@@ -953,14 +963,14 @@ mod clearing_tests {
     #[test]
     fn a_cleared_corpse_goes_to_state_7_and_its_flag_32_storage_leaves() {
         let mut corpse = object(30, master_id(43), 10.5, 10.5);
-        corpse.life.state = 5;
+        corpse.life.state = ObjectState::Dead;
         corpse.life.class = Class::Animated;
         let mut t = world(vec![], vec![], vec![corpse]);
         t.players[1].attributes[7] = 3.0;
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
         let u = &t.players[1].objects[0];
-        assert_eq!((u.life.state, u.life.hp), (7, 0.0));
+        assert_eq!((u.life.state, u.life.hp), (ObjectState::Removed, 0.0));
         assert_eq!(t.players[1].attributes[7], 2.0);
     }
 
@@ -975,7 +985,10 @@ mod clearing_tests {
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), true)
             .unwrap();
         let u = &t.players[0].objects[0];
-        assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
+        assert_eq!(
+            (u.life.state, u.life.hp, u.roo_called),
+            (ObjectState::Removed, 0.0, true)
+        );
         let p = t.spatial.get(object_id(40)).unwrap();
         assert_eq!((p.obstruction, p.tall), (None, false));
         assert_eq!(t.players[0].attributes[98], 5.0);
@@ -991,7 +1004,10 @@ mod clearing_tests {
         t.clear_footprint(PlayerId::new(1), ids::HOUSE, Point::new(10.5, 10.5), false)
             .unwrap();
         let u = &t.players[1].objects[0];
-        assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
+        assert_eq!(
+            (u.life.state, u.life.hp, u.roo_called),
+            (ObjectState::Removed, 0.0, true)
+        );
     }
 
     /// The base `set_state` (`FUN_14119d710`) of a decoration (type 10): the same or a lower
@@ -1018,31 +1034,40 @@ mod clearing_tests {
         }
         let at = |t: &World| [4, 5, 7].map(|i| t.players[0].attributes[i]);
         t.players[0].attributes[4..8].copy_from_slice(&[10.0, 10.0, 10.0, 10.0]);
-        t.players[0].objects[0].life.state = 2;
+        t.players[0].objects[0].life.state = ObjectState::Alive;
         // the same state, then a lower one: nothing
-        t.set_state(PlayerId::new(0), object_id(1), 2).unwrap();
-        t.players[0].objects[0].life.state = 5;
-        t.set_state(PlayerId::new(0), object_id(1), 3).unwrap();
-        assert_eq!(t.players[0].objects[0].life.state, 5);
+        t.set_state(PlayerId::new(0), object_id(1), ObjectState::Alive)
+            .unwrap();
+        t.players[0].objects[0].life.state = ObjectState::Dead;
+        t.set_state(PlayerId::new(0), object_id(1), ObjectState::Dying)
+            .unwrap();
+        assert_eq!(t.players[0].objects[0].life.state, ObjectState::Dead);
         assert_eq!(at(&t), [10.0; 3]);
         // from 2 to 5: flags 2 and 16 leave, flag 32 stays; then to 7, flag 32 leaves
-        t.players[0].objects[0].life.state = 2;
-        t.set_state(PlayerId::new(0), object_id(1), 5).unwrap();
+        t.players[0].objects[0].life.state = ObjectState::Alive;
+        t.set_state(PlayerId::new(0), object_id(1), ObjectState::Dead)
+            .unwrap();
         assert_eq!(at(&t), [8.0, 7.0, 10.0]);
-        t.set_state(PlayerId::new(0), object_id(1), 7).unwrap();
+        t.set_state(PlayerId::new(0), object_id(1), ObjectState::Removed)
+            .unwrap();
         assert_eq!(at(&t), [8.0, 7.0, 9.0]);
-        assert_eq!(t.players[0].objects[0].life.state, 7);
+        assert_eq!(t.players[0].objects[0].life.state, ObjectState::Removed);
         // a sleeper set to 6 sleeps on, one set to 7 wakes
-        t.players[0].sleeping[0].life.state = 5;
-        t.set_state(PlayerId::new(0), object_id(2), 6).unwrap();
+        t.players[0].sleeping[0].life.state = ObjectState::Dead;
+        t.set_state(PlayerId::new(0), object_id(2), ObjectState::Undead)
+            .unwrap();
         assert_eq!(t.players[0].sleeping.len(), 2);
-        t.set_state(PlayerId::new(0), object_id(3), 7).unwrap();
+        t.set_state(PlayerId::new(0), object_id(3), ObjectState::Removed)
+            .unwrap();
         let ids: Vec<ObjectId> = t.players[0].objects.iter().map(|u| u.id).collect();
         assert_eq!(
             (ids, t.players[0].sleeping.len()),
             (vec![object_id(1), object_id(3)], 1)
         );
-        assert!(t.set_state(PlayerId::new(0), object_id(99), 7).is_err());
+        assert!(
+            t.set_state(PlayerId::new(0), object_id(99), ObjectState::Removed)
+                .is_err()
+        );
     }
 
     /// `FUN_14121cc40`'s refund at a death from state 2: a unit's paid cost leaves attributes 98

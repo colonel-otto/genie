@@ -345,10 +345,10 @@ pub(crate) struct BuildReads {
     pub(crate) stack_made: Option<ObjectId>,
     /// The state of each foundation its unit AI's queued build orders name (None for one that
     /// is gone).
-    pub(crate) build_targets: Vec<(Option<ObjectId>, Option<u8>)>,
+    pub(crate) build_targets: Vec<(Option<ObjectId>, Option<crate::objects::ObjectState>)>,
     /// In state 8, what the drop-off reads of its second target ([`BuildAction::site`]): its
     /// state and [`crate::gathering::hunt::DropOff`]; None when the world does not hold it.
-    pub(crate) deposit: Option<(u8, crate::gathering::hunt::DropOff)>,
+    pub(crate) deposit: Option<(crate::objects::ObjectState, crate::gathering::hunt::DropOff)>,
     /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
     /// no longer holds or whose seen state is above 5 (`FUN_140c5de60`).
     pub(crate) gone_orders: Vec<Option<ObjectId>>,
@@ -414,6 +414,7 @@ mod stack_tests {
     use crate::map::GroundOffset;
     use crate::map::Radii;
     use crate::map::spatial::{Placed, Tiles};
+    use crate::objects::ObjectState;
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::ObstructionClass;
     use crate::objects::masters::ObstructionType;
@@ -552,7 +553,7 @@ mod stack_tests {
             body: crate::objects::layers::Body::at(Position::new(54.0, 147.0, 0.0)),
             life: Lifecycle {
                 class: Class::Animated,
-                state: 0,
+                state: ObjectState::Foundation,
                 hp: 2399.0,
                 master_id: ids::TOWN_CENTRE_621,
                 ..Lifecycle::default()
@@ -677,7 +678,7 @@ mod stack_tests {
     fn a_town_centre_foundation_completes_into_the_town_centre_and_its_annexes() {
         let mut t = world();
         assert_eq!(t.work_building(object_id(8759), 1.0), Ok(false));
-        let ids: Vec<(i32, i16, u8)> = t.players[1]
+        let ids: Vec<(i32, i16, ObjectState)> = t.players[1]
             .objects
             .iter()
             .map(|u| (u.id.get(), u.life.master_id.get(), u.life.state))
@@ -685,13 +686,13 @@ mod stack_tests {
         assert_eq!(
             ids,
             [
-                (8759, 621, 7),
-                (8768, 109, 2),
-                (8769, 618, 2),
-                (8770, 619, 2),
-                (8771, 1649, 2),
-                (8772, 620, 2),
-                (8773, 890, 2),
+                (8759, 621, ObjectState::Removed),
+                (8768, 109, ObjectState::Alive),
+                (8769, 618, ObjectState::Alive),
+                (8770, 619, ObjectState::Alive),
+                (8771, 1649, ObjectState::Alive),
+                (8772, 620, ObjectState::Alive),
+                (8773, 890, ObjectState::Alive),
             ]
         );
         let at = |id: ObjectId| t.spatial.get(id).unwrap().position;

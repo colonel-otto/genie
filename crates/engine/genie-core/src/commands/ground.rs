@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -58,7 +59,10 @@ impl World {
                 continue;
             };
             let master = u.master(&self.masters, owner)?;
-            if master.kind < MOVING || u.life.state != 2 || u.top_target() == Some(foundation) {
+            if master.kind < MOVING
+                || u.life.state != ObjectState::Alive
+                || u.top_target() == Some(foundation)
+            {
                 continue;
             }
             let walking = u.body.anim_speed().is_some_and(|s| 0.0 < s);
@@ -357,7 +361,7 @@ impl World {
                     player,
                     master: made.id,
                     los: made.line_of_sight,
-                    state: 0,
+                    state: ObjectState::Foundation,
                     explored: false,
                     building: Some(BuildingSight::default()),
                     umv: umv as u8,

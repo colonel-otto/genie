@@ -9,6 +9,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveDefaults;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
 use crate::objects::masters::master_type::BUILDING;
@@ -522,7 +523,7 @@ impl Unit {
         &mut self,
         target: Option<ObjectId>,
         at: Position,
-        state: u8,
+        state: ObjectState,
         me: &Master,
         bm: &Master,
     ) -> Result<(), GenieError> {
@@ -546,7 +547,7 @@ impl Unit {
             });
         }
         if bm.kind == BUILDING
-            && state == 2
+            && state == ObjectState::Alive
             && bm.building.is_some_and(|b| b.garrison_type & 1 != 0)
         {
             self.town_bell.flag = true;

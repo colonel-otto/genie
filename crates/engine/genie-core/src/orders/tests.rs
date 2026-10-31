@@ -160,10 +160,10 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
     t.players[0].objects[0].life.attribute_type = Some(attribute::FOOD);
     t.players[0].objects[0].place_for_test(Position::new(10.0, 10.0, 0.0));
     for (id, x, state) in [
-        (500, 30.0, 2),
-        (501, 12.0, 0),
-        (502, 20.0, 2),
-        (503, 15.0, 2),
+        (500, 30.0, ObjectState::Alive),
+        (501, 12.0, ObjectState::Foundation),
+        (502, 20.0, ObjectState::Alive),
+        (503, 15.0, ObjectState::Alive),
     ] {
         t.players[0].objects.push(pen(object_id(id), x, state));
         t.track_add(PlayerId::new(0), object_id(id), ids::PASTURE)
@@ -224,7 +224,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         id: object_id(10),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::VILLAGER_MALE,
-            state: 2,
+            state: ObjectState::Alive,
             attribute_type: Some(attribute::WOOD),
             amount: 5.0,
             ..crate::objects::lifecycle::Lifecycle::default()
@@ -280,7 +280,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         body: crate::objects::layers::Body::at(Position::new(15.0, 10.0, 0.0)),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(68),
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -690,7 +690,7 @@ fn annexed(t: &mut World) {
         annex_of,
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -765,7 +765,7 @@ fn work_attack(stance: UnitStance) -> (World, crate::objects::masters::Task) {
         body: crate::objects::layers::Body::at(Position::new(10.4, 10.0, 0.0)),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(126),
-            state: 2,
+            state: ObjectState::Alive,
             hp: 25.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
@@ -839,7 +839,7 @@ fn soldiers(units: &[(i32, i16, Point)], members: &[i32]) -> World {
             },
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: master_id(master),
-                state: 2,
+                state: ObjectState::Alive,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
@@ -1334,7 +1334,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
         body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(79),
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -1397,7 +1397,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
         },
         ..Unit::default()
     };
-    t.players[1].objects = vec![trophy(2)].into();
+    t.players[1].objects = vec![trophy(ObjectState::Alive)].into();
     t.transform_object(player_id(1), object_id(60), master_id(1650))
         .unwrap();
     let unit = &t.players[1].objects[0];
@@ -1406,7 +1406,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
     assert_eq!(unit.construction.unwrap().progress, 30.0);
     // FUN_141225b70 in state 2: the volleys are the new master's volley fire
     assert_eq!(unit.firepower, 2.0);
-    t.players[1].objects = vec![trophy(1)].into();
+    t.players[1].objects = vec![trophy(ObjectState::Unfinished)].into();
     t.transform_object(player_id(1), object_id(60), master_id(1650))
         .unwrap();
     assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
@@ -1766,7 +1766,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
         ai: Some(ai.clone()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::ID_448,
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -1855,7 +1855,7 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
         ai: Some(crate::unit_ai::UnitAi::default()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(4),
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -2080,7 +2080,7 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
             },
             &mut sprites,
         )),
-        ..unit(20.0, 2)
+        ..unit(20.0, ObjectState::Alive)
     };
     let (switched, u, record) = switched_in_the_open(showing, &old, &next, &[10, 11]).unwrap();
     assert_eq!(
@@ -2114,12 +2114,15 @@ fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_spri
         })
     );
     let hp = |hp| {
-        let (_, u, _) = switched_in_the_open(unit(hp, 1), &old, &next, &[10, 11]).unwrap();
+        let (_, u, _) =
+            switched_in_the_open(unit(hp, ObjectState::Unfinished), &old, &next, &[10, 11])
+                .unwrap();
         (u.life.hp, u.firepower)
     };
     assert_eq!(hp(50.0), (60.0, 0.0));
     assert_eq!(hp(0.5), (1.0, 0.0));
-    let (switched, u, record) = switched_in_the_open(unit(20.0, 3), &old, &next, &[]).unwrap();
+    let (switched, u, record) =
+        switched_in_the_open(unit(20.0, ObjectState::Dying), &old, &next, &[]).unwrap();
     assert!(!switched.promoted && switched.leaving.is_empty());
     assert_eq!(
         (u.life.master_id, record.master),
@@ -2329,7 +2332,7 @@ fn followers() -> World {
         body: crate::objects::layers::Body::at(Position::new(40.0, 20.0, 0.0)),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(5),
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -2547,9 +2550,9 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
         ..Unit::default()
     };
     t.players[0].objects = vec![
-        deer(object_id(40), 2, 1),
-        deer(object_id(41), 2, 0),
-        deer(object_id(42), 7, 0),
+        deer(object_id(40), ObjectState::Alive, 1),
+        deer(object_id(41), ObjectState::Alive, 0),
+        deer(object_id(42), ObjectState::Removed, 0),
     ]
     .into();
     let workers =
@@ -2732,7 +2735,7 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
             master_id: master,
             hp: 10.0,
             amount,
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -2802,7 +2805,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
         id: object_id(60),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::HOUSE,
-            state: 0,
+            state: ObjectState::Foundation,
             hp: 550.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
@@ -2875,7 +2878,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         ),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master_id(594),
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -2975,7 +2978,7 @@ fn soldier_and_enemy(x: f32, class: ClassId) -> World {
         ai: Some(crate::unit_ai::UnitAi::default()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: master,
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -3184,7 +3187,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
         speed: 1.2,
         position,
         moved_at: position.ground(),
-        state: 2,
+        state: ObjectState::Alive,
         radius: 0.2,
         restriction: Some(RestrictionId::named(1)),
     };
@@ -3221,7 +3224,10 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
     };
     assert!(splits_together(&scout, &far, wide, false, &mut none, &mut away).unwrap());
     // a member must stand in state 2 or more
-    let born = Splittable { state: 0, ..far };
+    let born = Splittable {
+        state: ObjectState::Foundation,
+        ..far
+    };
     assert!(!splits_together(&scout, &born, wide, true, &mut none, &mut away).unwrap());
 }
 
@@ -3730,7 +3736,7 @@ fn a_kept_group_takes_only_the_soldiers_that_do_not_see_the_target() {
             body: crate::objects::layers::Body::at(Position::new(target_x, 20.0, 0.0)),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: ids::HOUSE,
-                state: 2,
+                state: ObjectState::Alive,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
@@ -3991,11 +3997,17 @@ fn a_gather_takes_a_farm_but_no_other_building() {
         my_pasture: None,
         ..Unit::default()
     };
-    t.players[1].objects.push(farm(object_id(800), 2, None));
-    t.players[1].objects.push(farm(object_id(801), 0, None));
     t.players[1]
         .objects
-        .push(farm(object_id(802), 2, Some(object_id(4444))));
+        .push(farm(object_id(800), ObjectState::Alive, None));
+    t.players[1]
+        .objects
+        .push(farm(object_id(801), ObjectState::Foundation, None));
+    t.players[1].objects.push(farm(
+        object_id(802),
+        ObjectState::Alive,
+        Some(object_id(4444)),
+    ));
     let world = t.clone();
     assert_eq!(
         t.retarget_gather(PlayerId::new(1), 0, object_id(800)),
@@ -4367,7 +4379,7 @@ fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
             body: crate::objects::layers::Body::at(Position::new(33.5, 89.5, 0.0)),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: ids::MARKET,
-                state: 2,
+                state: ObjectState::Alive,
                 hp: 5.0,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
@@ -4550,7 +4562,7 @@ fn an_interact_of_soldiers_on_an_enemy_building_forms_a_group_that_attacks_it() 
         attackable: true,
         life: crate::objects::lifecycle::Lifecycle {
             master_id: ids::HOUSE,
-            state: 2,
+            state: ObjectState::Alive,
             hp: 550.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },

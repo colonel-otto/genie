@@ -9,6 +9,7 @@ use crate::movement::move_to::{
     Follow, MoveTo, MoveToAction, MoveWait, Shown, TargetMoved, Walk, ask_walk, walk_or_give_up,
 };
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::sprite::Graphic;
 use crate::unit_ai::NotifyKind;
 use crate::unit_ai::{ActionKind, Inbox};
@@ -58,8 +59,8 @@ impl MoveToAction {
     /// `speed` (slot 0x208) and fails (13) without (`UCOMISS`, `JP`: a NaN speed starts). A quiet
     /// `MoveTo` shows no standing sprite in states 1 and 13 (`0x140aa29e0`).
     #[must_use]
-    pub const fn added(self, unit_state: u8, gap: f32, speed: f32) -> Option<Self> {
-        if 3 <= unit_state {
+    pub fn added(self, unit_state: ObjectState, gap: f32, speed: f32) -> Option<Self> {
+        if ObjectState::Dying <= unit_state {
             return None;
         }
         let state = if gap <= ARRIVED {
@@ -97,7 +98,7 @@ impl MoveToAction {
         walk: &mut Walk<'_>,
         ask: PathAsk,
         gives_up: GiveUp,
-        target_state: Option<u8>,
+        target_state: Option<ObjectState>,
         shown: Option<Shown<'_>>,
         inbox: &mut Inbox<'_>,
     ) -> Result<u8, GenieError> {

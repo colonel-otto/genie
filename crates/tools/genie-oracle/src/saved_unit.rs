@@ -11,6 +11,7 @@ use genie_core::map::Point;
 use genie_core::map::{Offset, Position};
 use genie_core::objects::HpPowerup;
 use genie_core::objects::ObjectId;
+use genie_core::objects::lifecycle::Lifecycle;
 use genie_core::objects::masters::ClassId;
 use genie_core::objects::masters::MasterId;
 use genie_core::objects::masters::ObstructionClass;
@@ -57,13 +58,17 @@ pub(super) fn unit(
         Ok(parts) => (parts, Ok(())),
         Err(e) => ((None, TownBell::default()), Err(e)),
     };
+    let (life, life_read) = match lifecycle(object, (s, master), objects, civ, masters) {
+        Ok(life) => (life, Ok(())),
+        Err(e) => (Lifecycle::default(), Err(e)),
+    };
     let (lists, lists_read) = match building_lists(object) {
         Ok(lists) => (lists, Ok(())),
         Err(e) => (BuildingLists::default(), Err(e)),
     };
     let mut unit = Unit {
         id,
-        life: lifecycle(object, (s, master), objects, civ, masters),
+        life,
         ai,
         construction: construction(object, s, objects),
         work_rate_powerup: object.combat().map_or(0.0, |c| c.work_rate_powerup),
@@ -258,7 +263,8 @@ pub(super) fn unit(
     }
     let production = production(object).map(|p| unit.production = p);
     let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.body.put_mover(m));
-    unit.unmodelled_action = ai_read
+    unit.unmodelled_action = life_read
+        .and(ai_read)
         .and(lists_read)
         .and(imported)
         .and(production)

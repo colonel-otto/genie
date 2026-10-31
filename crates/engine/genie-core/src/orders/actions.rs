@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -170,7 +171,7 @@ impl World {
         self.change_master(player, idx, new)?;
         let build_time = self.master(player, new)?.build_time;
         let unit = self.players.live_mut(player, idx)?;
-        if unit.life.state == 2
+        if unit.life.state == ObjectState::Alive
             && let Some(c) = unit.construction.as_mut()
         {
             c.progress = f32::from(build_time);
@@ -356,7 +357,7 @@ pub(crate) fn switch_master(
 ) -> Result<Switched, GenieError> {
     let mut switched = Switched::default();
     let new = next.id;
-    if unit.life.state < 3 {
+    if unit.life.state < ObjectState::Dying {
         for &(kind, amount, flag) in &old.storage {
             if let Some(kind) = kind
                 && matches!(flag, 2 | 16 | 32)
@@ -463,7 +464,7 @@ pub(crate) fn switch_master(
     clear_powerups(unit);
     // in state 2 the volleys (`+0xa00`) are the new master's volley fire, the shares of the
     // units inside dropped
-    if unit.life.state == 2 {
+    if unit.life.state == ObjectState::Alive {
         unit.firepower = next.volley_fire;
     }
     Ok(switched)

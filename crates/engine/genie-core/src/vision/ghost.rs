@@ -19,6 +19,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::conversions::cvttss2si;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -74,7 +75,7 @@ pub(crate) struct Original {
     /// Its owner (`+0x138`'s `+0x718`).
     pub owner: PlayerId,
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its master (`+0xa0`).
     pub master: MasterId,
 }
@@ -105,8 +106,8 @@ pub struct Ghost {
     pub cant_see: u32,
     /// `+0x7f7`: its viewer saw its tile while the original's mask had not.
     pub seen: bool,
-    /// Its state: 2, then 7 once destroyed, 8, and it leaves.
-    pub state: u8,
+    /// Its state: alive, then removed once destroyed, gone, and it leaves.
+    pub state: ObjectState,
 }
 
 impl World {
@@ -305,7 +306,7 @@ impl World {
                 let pair = Self::tile_at(position);
                 let (x, y) = (pair.x(), pair.y());
                 // the static load's watch of a dead object (FUN_14119df60)
-                if ghosts == LEAVES_GHOSTS && 2 < state {
+                if ghosts == LEAVES_GHOSTS && ObjectState::Alive < state {
                     let _ = self.watch(p, id, x, y)?;
                 }
                 // a building's load constructor (FUN_1411ac170, type 80 only): FUN_1411cc980
@@ -413,7 +414,7 @@ impl World {
             }
             None => self.take_object_id(viewer, GHOST_MASTER),
         };
-        let gone = 6 < original.state;
+        let gone = ObjectState::Undead < original.state;
         let mut ghost = Ghost {
             id,
             original: (!gone).then_some(original.id),
@@ -426,7 +427,7 @@ impl World {
             bits: 0,
             cant_see: 0,
             seen: false,
-            state: 2,
+            state: ObjectState::Alive,
         };
         self.spatial.insert_ghost(id, at);
         self.check_twins(viewer, &mut ghost)?;
@@ -448,7 +449,7 @@ impl World {
                 if Self::tile_at(g.position) != tile
                     || g.id == ghost.id
                     || g.original_id != ghost.original_id
-                    || g.state != 2
+                    || g.state != ObjectState::Alive
                 {
                     continue;
                 }
@@ -468,8 +469,8 @@ impl World {
     /// hit points go and it goes to state 7.
     fn destroy_ghost(&mut self, p: PlayerId, k: usize) -> Result<(), GenieError> {
         let g = self.players.player_mut(p)?.ghosts.checked_mut(k)?;
-        if g.state < 7 {
-            g.state = 7;
+        if g.state < ObjectState::Removed {
+            g.state = ObjectState::Removed;
         }
         Ok(())
     }
@@ -516,7 +517,10 @@ impl World {
         k: usize,
         original: Option<ObjectId>,
     ) -> Result<(), GenieError> {
-        let live = original.is_some_and(|o| self.object(o).is_some_and(|(_, u)| u.life.state < 7));
+        let live = original.is_some_and(|o| {
+            self.object(o)
+                .is_some_and(|(_, u)| u.life.state < ObjectState::Removed)
+        });
         let g = self.players.player_mut(p)?.ghosts.checked_mut(k)?;
         if original.is_none() {
             g.original_id = None;
@@ -580,7 +584,7 @@ impl World {
         let viewer = self.vision_mask(p);
         let mut seen = g.seen;
         let mut destroy = false;
-        if bits & viewer != 0 && !unseen && g.state < 3 {
+        if bits & viewer != 0 && !unseen && g.state < ObjectState::Dying {
             if g.footprint != 0
                 && let Some(o) = g.original
             {
@@ -599,14 +603,14 @@ impl World {
     fn update_ghost(&mut self, p: PlayerId, k: usize) -> Result<bool, GenieError> {
         let g = *self.players.player(p)?.ghosts.checked(k)?;
         let leaves = match g.state {
-            7 => {
-                self.players.player_mut(p)?.ghosts.checked_mut(k)?.state = 8;
+            ObjectState::Removed => {
+                self.players.player_mut(p)?.ghosts.checked_mut(k)?.state = ObjectState::Gone;
                 false
             }
-            8 => true,
+            ObjectState::Gone => true,
             _ => false,
         };
-        if g.seen && g.state < 3 {
+        if g.seen && g.state < ObjectState::Dying {
             self.destroy_ghost(p, k)?;
             return Ok(leaves);
         }
@@ -727,7 +731,7 @@ mod tests {
         ])
     }
 
-    fn object(id: i32, master: MasterId, state: u8, position: Position) -> Unit {
+    fn object(id: i32, master: MasterId, state: ObjectState, position: Position) -> Unit {
         let mut u = Unit {
             id: object_id(id),
             body: crate::objects::layers::Body::at(position),
@@ -744,12 +748,18 @@ mod tests {
         let players = (0..3).map(|_| Player::default()).collect();
         let mut t = World::new(0, 0, PlayerId::new(0), vec![0; 3], players);
         t.masters = (0..3).map(|_| masters(recyclable)).collect();
-        t.players[0]
-            .objects
-            .push(object(5, MINE, 2, Position::new(1.5, 2.5, 0.0)));
-        t.players[1]
-            .objects
-            .push(object(9, HOUSE, 2, Position::new(2.5, 1.5, 0.0)));
+        t.players[0].objects.push(object(
+            5,
+            MINE,
+            ObjectState::Alive,
+            Position::new(1.5, 2.5, 0.0),
+        ));
+        t.players[1].objects.push(object(
+            9,
+            HOUSE,
+            ObjectState::Alive,
+            Position::new(2.5, 1.5, 0.0),
+        ));
         let mut sight = Visibility::new(4, 4, Vec::new(), vec![0; 16], Vec::new(), 0, Vec::new());
         sight.add_seer(
             object_id(9),
@@ -757,7 +767,7 @@ mod tests {
                 player: PlayerId::new(1),
                 master: HOUSE,
                 los: 2.0,
-                state: 2,
+                state: ObjectState::Alive,
                 explored: true,
                 building: None,
                 umv: 1,
@@ -814,7 +824,7 @@ mod tests {
         t.players[2].computer = true;
         set_tile(&mut t, 1, 2, 0x0000_000f_0000_0002);
         t.recycling.ghosts = vec![object_id(-3)];
-        t.players[0].objects[0].life.state = 3;
+        t.players[0].objects[0].life.state = ObjectState::Dying;
         assert_eq!(t.ghosts_at_death(0, object_id(5)), Ok(()));
         assert!(t.players[0].ghosts.is_empty() && t.players[1].ghosts.is_empty());
         // a computer viewer gets its ghost as any other (the notify is the watched list's)
@@ -826,7 +836,7 @@ mod tests {
         assert_eq!((g.original_owner, g.original_master), (0, Some(MINE)));
         assert_eq!(
             (g.tile, g.state, g.cant_see, g.footprint),
-            (Tile::new(1, 2), 2, 0, 0)
+            (Tile::new(1, 2), ObjectState::Alive, 0, 0)
         );
         // then the owner watches its tile at the tile's bits
         assert_eq!(
@@ -856,7 +866,7 @@ mod tests {
         let original = Original {
             id: object_id(9),
             owner: PlayerId::new(1),
-            state: 2,
+            state: ObjectState::Alive,
             master: HOUSE,
         };
         let mut t = world(true);
@@ -871,8 +881,15 @@ mod tests {
         assert_eq!(ids, [object_id(-6), object_id(-4), object_id(-10)]);
         assert_eq!(t.recycling.next_id, object_id(-11));
         // each new one destroyed the viewer's twin before it
-        let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
-        assert_eq!(states, [7, 7, 2]);
+        let states: Vec<ObjectState> = t.players[2].ghosts.iter().map(|g| g.state).collect();
+        assert_eq!(
+            states,
+            [
+                ObjectState::Removed,
+                ObjectState::Removed,
+                ObjectState::Alive
+            ]
+        );
         // a building's ghost follows its original's UMV entry
         assert_eq!(t.players[2].ghosts[2].footprint, 1);
         let mut t = world(false);
@@ -884,7 +901,7 @@ mod tests {
         // an original past state 6 is forgotten, its master kept
         let mut t = world(true);
         let gone = Original {
-            state: 7,
+            state: ObjectState::Removed,
             ..original
         };
         t.make_ghost(PlayerId::new(2), Position::new(2.5, 1.5, 0.0), gone)
@@ -918,32 +935,32 @@ mod tests {
             object_id(-20),
             Some(object_id(9)),
             Position::new(2.1, 1.9, 0.0),
-            2,
+            ObjectState::Alive,
         )];
         t.players[2].ghosts = vec![
             twin(
                 object_id(-21),
                 Some(object_id(9)),
                 Position::new(2.9, 1.1, 0.0),
-                2,
+                ObjectState::Alive,
             ),
             twin(
                 object_id(-22),
                 Some(object_id(9)),
                 Position::new(3.0, 1.5, 0.0),
-                2,
+                ObjectState::Alive,
             ),
             twin(
                 object_id(-23),
                 Some(object_id(8)),
                 Position::new(2.5, 1.5, 0.0),
-                2,
+                ObjectState::Alive,
             ),
             twin(
                 object_id(-24),
                 Some(object_id(9)),
                 Position::new(2.5, 1.5, 0.0),
-                7,
+                ObjectState::Removed,
             ),
             // the tile list holds a ghost by its place, whatever its +0x7dc/+0x7e0 say
             Ghost {
@@ -952,7 +969,7 @@ mod tests {
                     object_id(-25),
                     Some(object_id(9)),
                     Position::new(2.2, 1.2, 0.0),
-                    2,
+                    ObjectState::Alive,
                 )
             },
         ];
@@ -960,12 +977,21 @@ mod tests {
             object_id(-30),
             Some(object_id(9)),
             Position::new(2.5, 1.5, 0.0),
-            2,
+            ObjectState::Alive,
         );
         t.check_twins(PlayerId::new(2), &mut ghost).unwrap();
         // the viewer's own twins on the tile are destroyed
-        let states: Vec<u8> = t.players[2].ghosts.iter().map(|g| g.state).collect();
-        assert_eq!(states, [7, 2, 2, 7, 7]);
+        let states: Vec<ObjectState> = t.players[2].ghosts.iter().map(|g| g.state).collect();
+        assert_eq!(
+            states,
+            [
+                ObjectState::Removed,
+                ObjectState::Alive,
+                ObjectState::Alive,
+                ObjectState::Removed,
+                ObjectState::Removed
+            ]
+        );
         // player 1's twin and the new ghost note each other
         assert_eq!(t.players[1].ghosts[0].cant_see, 1 << 2);
         assert_eq!(ghost.cant_see, 1 << 1);
@@ -988,7 +1014,7 @@ mod tests {
             bits: 0,
             cant_see: 0,
             seen: false,
-            state: 2,
+            state: ObjectState::Alive,
         };
         t.players[2].ghosts = vec![ghost];
         t.update_ghosts(PlayerId::new(2)).unwrap();
@@ -996,17 +1022,20 @@ mod tests {
         assert_eq!((g.original_id, g.original_master), (None, Some(HOUSE)));
         // an original past state 6 takes its master with it
         t.players[2].ghosts[0].original = Some(object_id(9));
-        t.players[1].objects[0].life.state = 7;
+        t.players[1].objects[0].life.state = ObjectState::Removed;
         t.update_ghosts(PlayerId::new(2)).unwrap();
         assert_eq!(t.players[2].ghosts[0].original_master, None);
         // states 7, then 8, then it leaves; a master not recyclable gives the pool nothing
-        t.players[2].ghosts[0].state = 7;
+        t.players[2].ghosts[0].state = ObjectState::Removed;
         t.update_ghosts(PlayerId::new(2)).unwrap();
-        assert_eq!(t.players[2].ghosts[0].state, 8);
+        assert_eq!(t.players[2].ghosts[0].state, ObjectState::Gone);
         t.update_ghosts(PlayerId::new(2)).unwrap();
         assert!(t.players[2].ghosts.is_empty() && t.recycling.ghosts.is_empty());
         let mut t = world(true);
-        t.players[2].ghosts = vec![Ghost { state: 8, ..ghost }];
+        t.players[2].ghosts = vec![Ghost {
+            state: ObjectState::Gone,
+            ..ghost
+        }];
         t.update_ghosts(PlayerId::new(2)).unwrap();
         assert_eq!(t.recycling.ghosts, [object_id(100)]);
     }
@@ -1026,7 +1055,7 @@ mod tests {
             bits: 0,
             cant_see: 0,
             seen: false,
-            state: 2,
+            state: ObjectState::Alive,
         }
     }
 
@@ -1041,13 +1070,16 @@ mod tests {
         set_tile(&mut t, 2, 1, 1 << 1);
         t.update_ghosts(PlayerId::new(2)).unwrap();
         let g = t.players[2].ghosts[0];
-        assert_eq!((g.state, g.bits, g.cant_see), (2, 1 << 1, 1 << 1));
+        assert_eq!(
+            (g.state, g.bits, g.cant_see),
+            (ObjectState::Alive, 1 << 1, 1 << 1)
+        );
         t.players[2].ghosts[0].cant_see = 0;
         t.update_ghosts(PlayerId::new(2)).unwrap();
         assert_eq!(t.players[2].ghosts[0].cant_see, 0);
         set_tile(&mut t, 2, 1, (1 << 1) | (1 << 2));
         t.update_ghosts(PlayerId::new(2)).unwrap();
-        assert_eq!(t.players[2].ghosts[0].state, 7);
+        assert_eq!(t.players[2].ghosts[0].state, ObjectState::Removed);
         let mut t = world(true);
         t.players[2].ghosts = vec![Ghost {
             seen: true,
@@ -1056,7 +1088,7 @@ mod tests {
         set_tile(&mut t, 2, 1, 1 << 1);
         t.update_ghosts(PlayerId::new(2)).unwrap();
         let g = t.players[2].ghosts[0];
-        assert_eq!((g.state, g.bits), (7, 0));
+        assert_eq!((g.state, g.bits), (ObjectState::Removed, 0));
     }
 
     /// A ghost its viewer sees stays while a player sharing the viewer's sight (but not the
@@ -1085,10 +1117,13 @@ mod tests {
         set_tile(&mut t, 2, 1, 1 << 4);
         t.update_ghosts(PlayerId::new(2)).unwrap();
         let g = t.players[2].ghosts[0];
-        assert_eq!((g.state, g.bits, g.cant_see), (2, 1 << 4, 1 << 1));
+        assert_eq!(
+            (g.state, g.bits, g.cant_see),
+            (ObjectState::Alive, 1 << 4, 1 << 1)
+        );
         set_tile(&mut t, 2, 1, (1 << 3) | (1 << 4));
         t.update_ghosts(PlayerId::new(2)).unwrap();
-        assert_eq!(t.players[2].ghosts[0].state, 7);
+        assert_eq!(t.players[2].ghosts[0].state, ObjectState::Removed);
     }
 
     /// A building's ghost reads its footprint's tiles too (its UMV entry's offsets): seen there
@@ -1118,9 +1153,12 @@ mod tests {
         set_tile(&mut t, 3, 1, 1 << 2);
         t.update_ghosts(PlayerId::new(2)).unwrap();
         let g = t.players[2].ghosts[0];
-        assert_eq!((g.state, g.seen, g.bits), (2, true, (1 << 1) | (1 << 2)));
+        assert_eq!(
+            (g.state, g.seen, g.bits),
+            (ObjectState::Alive, true, (1 << 1) | (1 << 2))
+        );
         t.update_ghosts(PlayerId::new(2)).unwrap();
-        assert_eq!(t.players[2].ghosts[0].state, 7);
+        assert_eq!(t.players[2].ghosts[0].state, ObjectState::Removed);
         let mut t = world(true);
         t.players[2].ghosts = vec![house_ghost(1)];
         assert_eq!(
@@ -1200,18 +1238,38 @@ mod tests {
             .collect();
         // Gaia's mine 5 dead (state 3), house 9's annexes 10 (a gate) and 11, a class-51
         // building 12, master 1808's 13, a desolid foundation 14 in the sleeping list
-        t.players[0].objects[0].life.state = 3;
-        let mut g = object(10, master_id(88), 2, Position::new(2.5, 2.5, 0.0));
+        t.players[0].objects[0].life.state = ObjectState::Dying;
+        let mut g = object(
+            10,
+            master_id(88),
+            ObjectState::Alive,
+            Position::new(2.5, 2.5, 0.0),
+        );
         g.annex_of = Some(object_id(9));
-        let mut a = object(11, master_id(89), 2, Position::new(3.5, 2.5, 0.0));
+        let mut a = object(
+            11,
+            master_id(89),
+            ObjectState::Alive,
+            Position::new(3.5, 2.5, 0.0),
+        );
         a.annex_of = Some(object_id(9));
         t.players[1].objects.extend([
             g,
             a,
-            object(12, ids::WONDER, 2, Position::new(0.5, 0.5, 0.0)),
-            object(13, MASTER_1808, 2, Position::new(0.5, 1.5, 0.0)),
+            object(
+                12,
+                ids::WONDER,
+                ObjectState::Alive,
+                Position::new(0.5, 0.5, 0.0),
+            ),
+            object(
+                13,
+                MASTER_1808,
+                ObjectState::Alive,
+                Position::new(0.5, 1.5, 0.0),
+            ),
         ]);
-        let mut foundation = object(14, HOUSE, 2, Position::new(0.5, 3.5, 0.0));
+        let mut foundation = object(14, HOUSE, ObjectState::Alive, Position::new(0.5, 3.5, 0.0));
         foundation.construction = Some(crate::construction::build::Construction {
             progress: 0.0,
             desolid: true,

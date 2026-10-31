@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
@@ -206,7 +207,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        if u.life.state != 2 || u.life.inside.is_some() {
+        if u.life.state != ObjectState::Alive || u.life.inside.is_some() {
             return Ok(());
         }
         let Some(placed) = self.spatial.get(id).copied() else {

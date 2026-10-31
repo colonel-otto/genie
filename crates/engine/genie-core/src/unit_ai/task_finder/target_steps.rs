@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::action_type;
@@ -34,7 +35,7 @@ pub(super) fn on_target<'m>(
         return Ok(Finding::Answer(task));
     }
     // LAB_1412795f5: building its player's foundation
-    if t.player == actor.player && t.master.kind == BUILDING && t.state == 0 {
+    if t.player == actor.player && t.master.kind == BUILDING && t.state == ObjectState::Foundation {
         return Ok(Finding::Answer(build_task(list, t, filter)));
     }
     if t.master.id == ids::FISH_TRAP {
@@ -68,7 +69,8 @@ fn trade_task<'m>(
     t: &TaskTarget<'_>,
     filter: Option<ActionType>,
 ) -> Option<&'m Task> {
-    let trades = t.state < 3 && (t.master.id == ids::ID_45 || t.master.id == ids::MARKET);
+    let trades =
+        t.state < ObjectState::Dying && (t.master.id == ids::ID_45 || t.master.id == ids::MARKET);
     trades
         .then(|| {
             first(list, |task| {
@@ -100,7 +102,7 @@ pub(super) fn drop_off_finding<'m>(
     // gathering (5, 110, 111) for what it carries
     if held_kind.is_some()
         && 0.0 < held_amount
-        && t.state == 2
+        && t.state == ObjectState::Alive
         && t.player == actor.player
         && dip.drops_at(t.master.id, actor)
     {
@@ -144,7 +146,7 @@ pub(super) fn garrison_into<'m>(
     // (the whole shorts) the filter takes (any, or 3); with none, the garrison filter has
     // no task, and any filter ends the finder after the repair and task 0x6f below
     if own_or_allied
-        && t.state < 3
+        && t.state < ObjectState::Dying
         && t.master.object_flags & 1 != 0
         && (t.master.class == class::TRANSPORT
             || own.class != class::VILLAGER
@@ -192,7 +194,7 @@ pub(super) fn repair_finding<'m>(
             class::CLASS_55,
         ]
         .contains(&t.master.class);
-    if repairable && repair_class && t.hp < t.max_hp && t.state < 3 {
+    if repairable && repair_class && t.hp < t.max_hp && t.state < ObjectState::Dying {
         // the repair tasks the filter takes: the last for any target, the last for the
         // target's class, else the first for its master, which ends the scan; the class's
         // needs a work value above 0, the any one only without a class's

@@ -3,6 +3,7 @@ use crate::map::GridSize;
 use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::{Rect, Segment};
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -1340,7 +1341,7 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     wall.player = PlayerId::new(3);
     wall.radius = Footprint::new(0.5, 0.5);
     s.insert(object_id(33990), wall);
-    let look = |state: u8, kind: MasterKind, desolid: bool| ClearLook {
+    let look = |state: ObjectState, kind: MasterKind, desolid: bool| ClearLook {
         hp: 1.0,
         height: 1.0,
         roo_called: false,
@@ -1350,38 +1351,47 @@ fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
     };
     let looks = |wall: ClearLook| {
         BTreeMap::from([
-            (object_id(9175), look(2, master_type::COMBAT, false)),
+            (
+                object_id(9175),
+                look(ObjectState::Alive, master_type::COMBAT, false),
+            ),
             (object_id(33990), wall),
         ])
     };
     let occupants =
         |s: &Spatial, wall| s.footprint_occupants(object_id(10028), &house, true, &looks(wall));
     assert_eq!(
-        occupants(&s, look(0, master_type::BUILDING, true)),
+        occupants(
+            &s,
+            look(ObjectState::Foundation, master_type::BUILDING, true)
+        ),
         Ok(vec![object_id(9175)])
     );
     // allied both ways, the foundation occupies it; built (not desolid) too
     s.relations[3][2] = Relation::ALLY;
     assert_eq!(
-        occupants(&s, look(0, master_type::BUILDING, true)),
+        occupants(
+            &s,
+            look(ObjectState::Foundation, master_type::BUILDING, true)
+        ),
         Ok(vec![object_id(9175), object_id(33990)])
     );
     s.relations[3][2] = Relation::ENEMY;
     assert_eq!(
-        occupants(&s, look(2, master_type::BUILDING, false)),
+        occupants(&s, look(ObjectState::Alive, master_type::BUILDING, false)),
         Ok(vec![object_id(9175), object_id(33990)])
     );
     // a building from state 3 on, any object from state 7 on, passes
     assert_eq!(
-        occupants(&s, look(3, master_type::BUILDING, false)),
+        occupants(&s, look(ObjectState::Dying, master_type::BUILDING, false)),
         Ok(vec![object_id(9175)])
     );
     assert_eq!(
-        occupants(&s, look(6, master_type::COMBAT, false)),
+        occupants(&s, look(ObjectState::Undead, master_type::COMBAT, false)),
         Ok(vec![object_id(9175), object_id(33990)])
     );
     assert_eq!(
-        occupants(&s, look(7, master_type::COMBAT, false)),
+        occupants(&s, look(ObjectState::Removed, master_type::COMBAT, false)),
         Ok(vec![object_id(9175)])
     );
     // the view does not look at it: it counts
@@ -1785,7 +1795,7 @@ const fn any_filter() -> Filter {
     Filter {
         group: None,
         relation: None,
-        state: -1,
+        state: None,
         master: None,
         workers: -1,
         spared: None,
@@ -1794,7 +1804,7 @@ const fn any_filter() -> Filter {
 }
 
 /// The sight of a combat unit of player 2 in `state`.
-const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
+const fn seer_in(state: ObjectState) -> crate::vision::visibility::Seer {
     crate::vision::visibility::Seer {
         player: PlayerId::new(2),
         master: ids::ID_0,
@@ -1877,30 +1887,69 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
         f(&mut filter);
         filter
     };
-    assert!(kept(any_filter(), &p, 2, plain, checks).unwrap());
-    assert!(kept(with(|f| f.group = Some(class_id(4))), &p, 2, plain, checks).unwrap());
-    assert!(!kept(with(|f| f.group = Some(class_id(3))), &p, 2, plain, checks).unwrap());
+    assert!(kept(any_filter(), &p, ObjectState::Alive, plain, checks).unwrap());
     assert!(
-        !kept(
-            with(|f| f.master = Some(master_id(5))),
+        kept(
+            with(|f| f.group = Some(class_id(4))),
             &p,
-            2,
+            ObjectState::Alive,
             plain,
             checks
         )
         .unwrap()
     );
-    assert!(!kept(with(|f| f.state = 3), &p, 2, plain, checks).unwrap());
+    assert!(
+        !kept(
+            with(|f| f.group = Some(class_id(3))),
+            &p,
+            ObjectState::Alive,
+            plain,
+            checks
+        )
+        .unwrap()
+    );
+    assert!(
+        !kept(
+            with(|f| f.master = Some(master_id(5))),
+            &p,
+            ObjectState::Alive,
+            plain,
+            checks
+        )
+        .unwrap()
+    );
+    assert!(
+        !kept(
+            with(|f| f.state = Some(ObjectState::Dying)),
+            &p,
+            ObjectState::Alive,
+            plain,
+            checks
+        )
+        .unwrap()
+    );
     assert_eq!(
-        kept(with(|f| f.workers = 1), &p, 2, plain, checks)
-            .unwrap_err()
-            .reason(),
+        kept(
+            with(|f| f.workers = 1),
+            &p,
+            ObjectState::Alive,
+            plain,
+            checks
+        )
+        .unwrap_err()
+        .reason(),
         "ClosestObject's workers cap (+0x644)"
     );
     assert_eq!(
-        kept(with(|f| f.state = 0), &p, 0, plain, checks)
-            .unwrap_err()
-            .reason(),
+        kept(
+            with(|f| f.state = Some(ObjectState::Foundation)),
+            &p,
+            ObjectState::Foundation,
+            plain,
+            checks
+        )
+        .unwrap_err()
+        .reason(),
         "ClosestObject's unbuilt farm test"
     );
     let livestock = with(|f| f.group = Some(class_id(58)));
@@ -1908,19 +1957,55 @@ fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
         class: class::LIVESTOCK,
         ..p
     };
-    assert!(!kept(livestock, &sheep, 2, plain, checks).unwrap());
-    assert!(kept(livestock, &sheep, 1, plain, checks).unwrap());
+    assert!(!kept(livestock, &sheep, ObjectState::Alive, plain, checks).unwrap());
+    assert!(kept(livestock, &sheep, ObjectState::Unfinished, plain, checks).unwrap());
     sheep.player = PlayerId::new(1);
-    assert!(kept(livestock, &sheep, 2, plain, checks).unwrap());
-    assert!(!kept(livestock, &sheep, 2, plain, (&moving, &takes, &farm)).unwrap());
+    assert!(kept(livestock, &sheep, ObjectState::Alive, plain, checks).unwrap());
+    assert!(
+        !kept(
+            livestock,
+            &sheep,
+            ObjectState::Alive,
+            plain,
+            (&moving, &takes, &farm)
+        )
+        .unwrap()
+    );
     let wolf = Searcher {
         class_10: true,
         ..plain
     };
-    assert!(kept(any_filter(), &p, 2, wolf, checks).unwrap());
-    assert!(!kept(any_filter(), &p, 2, wolf, (&still, &shuns, &farm)).unwrap());
-    assert!(kept(any_filter(), &p, 2, plain, (&still, &shuns, &farm)).unwrap());
-    assert!(kept(any_filter(), &p, 2, wolf, (&still, &fails, &farm)).is_err());
+    assert!(kept(any_filter(), &p, ObjectState::Alive, wolf, checks).unwrap());
+    assert!(
+        !kept(
+            any_filter(),
+            &p,
+            ObjectState::Alive,
+            wolf,
+            (&still, &shuns, &farm)
+        )
+        .unwrap()
+    );
+    assert!(
+        kept(
+            any_filter(),
+            &p,
+            ObjectState::Alive,
+            plain,
+            (&still, &shuns, &farm)
+        )
+        .unwrap()
+    );
+    assert!(
+        kept(
+            any_filter(),
+            &p,
+            ObjectState::Alive,
+            wolf,
+            (&still, &fails, &farm)
+        )
+        .is_err()
+    );
 }
 
 /// A farm `ClosestObject` found: a free one the searcher gathers from (a fish trap for a
@@ -1979,7 +2064,7 @@ fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
     // through the tests past the relation: the worked farm passed, the free one kept
     let (still, takes) = (|_: ObjectId| false, |_: &Placed| Ok(false));
     let checks: ClosestChecks<'_> = (&still, &takes, &look);
-    let s = seer_in(2);
+    let s = seer_in(ObjectState::Alive);
     assert!(
         closest_kept(
             object_id(1),

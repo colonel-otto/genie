@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::garrison::{CLASS_FLAGS, LEAST_HP_SHARE, TRANSPORTED};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -161,7 +162,7 @@ impl World {
                 return Ok(false);
             }
         }
-        if b.life.state != 2 {
+        if b.life.state != ObjectState::Alive {
             return Ok(false);
         }
         let own = b.master(&self.masters, bp)?;

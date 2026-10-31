@@ -12,6 +12,7 @@ use crate::movement::move_to::{GiveUp, MoveToAction, MoveToReads, Sprites, Targe
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::movement::{Me, footprint_gap};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::teardown::HeadCode;
@@ -153,7 +154,9 @@ impl RepairAction {
             return Ok(HeadCode::Keeps);
         }
         if let Some(t) = reads.target
-            && (t.state != 2 || LEAST_HP > t.hp || (!t.allied && t.owner != PlayerId::GAIA))
+            && (t.state != ObjectState::Alive
+                || LEAST_HP > t.hp
+                || (!t.allied && t.owner != PlayerId::GAIA))
         {
             self.drop_target(c, repairer, reads)?;
             self.set_state(c, repairer, DONE, reads)?;

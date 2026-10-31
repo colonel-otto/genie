@@ -319,7 +319,7 @@ impl Unit {
     /// ([`MoveToAction::to_object`]).
     pub(crate) fn move_to_object(
         &mut self,
-        (target, state): (ObjectId, u8),
+        (target, state): (ObjectId, crate::objects::ObjectState),
         range: f32,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {

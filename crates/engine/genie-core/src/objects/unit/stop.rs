@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
@@ -42,7 +43,7 @@ impl Unit {
         sprite: &mut Well512,
     ) -> Result<(), GenieError> {
         self.tear_down_actions(releases, builder_leaves, by)?;
-        if self.life.state == 2 {
+        if self.life.state == ObjectState::Alive {
             self.show_standing(masters, graphics, sprite)?;
         }
         Ok(())

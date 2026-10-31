@@ -9,6 +9,7 @@ use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::WaypointLevel;
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
@@ -1885,7 +1886,7 @@ pub(crate) fn path_world(owner: crate::world::Player) -> crate::world::World {
         body: crate::objects::layers::Body::new(mover.position(), None, Some(mover)),
         ..Unit::default()
     };
-    unit.life.state = 2;
+    unit.life.state = ObjectState::Alive;
     t.players[1].objects.push(unit);
     // the villager's master (the gatherer tests set it) and the default one
     let master = |id| crate::objects::masters::Master {

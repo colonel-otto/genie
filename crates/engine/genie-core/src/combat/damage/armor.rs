@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::class;
@@ -32,9 +33,9 @@ pub(super) fn master_melee_armor(a: &Armored) -> i16 {
 /// Slot 0x868 of a combat unit or building (`FUN_141213810`): [`master_melee_armor`] plus its
 /// melee armor powerup (`+0xa48`, slot 0x708) and stinger (`+0xb4c`, slot 0x770, 0 as
 /// [`Victim::most_hp`] says), each as 16 bits; a wall foundation (class 27 in state 0) has none.
-pub(super) fn melee_armor(a: &Armored, own_class: ClassId, state: u8) -> i16 {
+pub(super) fn melee_armor(a: &Armored, own_class: ClassId, state: ObjectState) -> i16 {
     let armor = master_melee_armor(a).wrapping_add(a.armor_powerups[0]);
-    if own_class == class::WALL && state == 0 {
+    if own_class == class::WALL && state == ObjectState::Foundation {
         return 0;
     }
     armor
@@ -44,7 +45,12 @@ pub(super) fn melee_armor(a: &Armored, own_class: ClassId, state: u8) -> i16 {
 /// [`melee_armor`]) or pierce (class 3; slot 0x870, `FUN_1410857f0`: its best armor of the
 /// class, else its base armor and best of any, plus its powerup; the stinger `+0xb50` is 0, as
 /// [`Victim::most_hp`] says), less the armor removed.
-pub(super) fn class_armor(a: &Armored, class: OwnSlot, own_class: ClassId, state: u8) -> i16 {
+pub(super) fn class_armor(
+    a: &Armored,
+    class: OwnSlot,
+    own_class: ClassId,
+    state: ObjectState,
+) -> i16 {
     let best = |c: DamageClass, from: i16| {
         a.armors
             .iter()
@@ -100,7 +106,7 @@ pub(super) fn weapon_armor(
     attacker: &Attacker,
     kind: MasterKind,
     own_class: ClassId,
-    state: u8,
+    state: ObjectState,
 ) -> i16 {
     let mut armor = a.base_armor;
     for e in &a.armors {

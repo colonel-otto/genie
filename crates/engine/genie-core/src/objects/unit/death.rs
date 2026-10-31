@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::construction::build::{Completion, Construction};
 use crate::math::rng::Stream;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::objects::masters::Master;
@@ -56,7 +57,7 @@ impl Unit {
     /// takes from its owner's attributes; then the base one's (`FUN_14119d710`, whose storage and
     /// sight are the caller's). An animated or moving object (types 20 to 69) shows its
     /// master's dying sprite. Not held: the particles and the sounds.
-    pub(crate) fn died(&mut self, c: &mut Step<'_>, before: u8) -> Result<(), GenieError> {
+    pub(crate) fn died(&mut self, c: &mut Step<'_>, before: ObjectState) -> Result<(), GenieError> {
         // its master as the death starts: the world's calls below change other objects
         let master = &self.master(&c.w.masters, c.player)?.clone();
         // the last building of a master with a technology withdraws it, after the combat part
@@ -73,9 +74,9 @@ impl Unit {
                     a.life.hp = self.life.hp;
                 }
             }
-            if before == 2 {
+            if before == ObjectState::Alive {
                 tech = self.built_building_died(c, master)?;
-            } else if before == 0 {
+            } else if before == ObjectState::Foundation {
                 self.foundation_died(c, master)?;
             }
         } else if master.kind != COMBAT {
@@ -92,7 +93,7 @@ impl Unit {
             return Ok(());
         }
         combat_dies(self, master, &mut c.w.spatial, &mut c.w.pathing)?;
-        if before == 2 {
+        if before == ObjectState::Alive {
             // FUN_14121cc40: the paid cost leaves attributes 98 and 164 (a building's 98 and
             // 165), each at least 0 (slots 0xf8, then 0xf0 with 0)
             let owner = c.w.players.player_mut(c.player)?;
@@ -185,7 +186,7 @@ impl Unit {
                     w.setup_pasture(p, id)?;
                 }
                 if part.cart {
-                    w.cart_search(p, id, 0)?;
+                    w.cart_search(p, id, ObjectState::Foundation)?;
                 }
                 Ok(())
             })?;

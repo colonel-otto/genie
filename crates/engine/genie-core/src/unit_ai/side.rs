@@ -453,7 +453,7 @@ pub struct ResourceSearch {
     /// unit's place).
     pub point: Point,
     /// Below this state the unit finds nothing (`param_6`; its −1 is 0 here).
-    pub min_state: u8,
+    pub min_state: crate::objects::ObjectState,
 }
 
 /// [`ResourceSearch::point`]'s (−1, −1): the unit's own place (`DAT_14330ec20`).

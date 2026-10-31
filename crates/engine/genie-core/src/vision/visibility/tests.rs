@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::{Tile, TileOffset, TileRect};
+use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type;
 use crate::test_ids::object_id;
@@ -31,7 +32,7 @@ fn unit(player: PlayerId, los: f32) -> Seer {
         player,
         master: ids::VILLAGER_MALE,
         los,
-        state: 2,
+        state: ObjectState::Alive,
         explored: true,
         building: None,
         umv: 0,
@@ -394,8 +395,13 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
     .unwrap();
     assert_eq!(v.maps[1].counts[v.index(8, 5)], 1);
     assert_eq!(v.maps[1].counts[v.index(3, 5)], 0);
-    v.state_changed(object_id(7), Position::new(6.1, 5.2, 0.0), r, 3)
-        .unwrap();
+    v.state_changed(
+        object_id(7),
+        Position::new(6.1, 5.2, 0.0),
+        r,
+        ObjectState::Dying,
+    )
+    .unwrap();
     let seen: Vec<_> = (0..120 * 120)
         .filter(|&i| 0 < v.maps[1].counts[i])
         .collect();
@@ -403,8 +409,13 @@ fn a_unit_s_sight_moves_with_its_tile_and_shrinks_to_its_footprint_when_it_dies(
         seen,
         vec![v.index(5, 4), v.index(6, 4), v.index(5, 5), v.index(6, 5)]
     );
-    v.state_changed(object_id(7), Position::new(6.1, 5.2, 0.0), r, 7)
-        .unwrap();
+    v.state_changed(
+        object_id(7),
+        Position::new(6.1, 5.2, 0.0),
+        r,
+        ObjectState::Removed,
+    )
+    .unwrap();
     assert!(v.maps[1].counts.iter().all(|&c| c <= 0));
 }
 
@@ -535,7 +546,7 @@ fn a_building_sees_its_footprint_while_built_then_its_circle_from_a_tile_corner(
     let site = Seer {
         master: ids::HOUSE,
         explored: false,
-        state: 0,
+        state: ObjectState::Foundation,
         building: Some(BuildingSight::default()),
         ..unit(PlayerId::new(2), 2.0)
     };

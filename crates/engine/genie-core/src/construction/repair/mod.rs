@@ -15,6 +15,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -134,7 +135,7 @@ pub struct RepairAction {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Repairee {
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its hit points (`+0x278`).
     pub hp: f32,
     /// Its owner's id (`player+0x718`).

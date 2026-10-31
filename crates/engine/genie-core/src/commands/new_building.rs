@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::death_parts::count_class;
@@ -245,7 +246,7 @@ impl World {
             footprint_waits: 0,
             life: Lifecycle {
                 class: Class::Animated,
-                state: 0,
+                state: ObjectState::Foundation,
                 hp,
                 master_id: master,
                 attribute_type: held.kind,

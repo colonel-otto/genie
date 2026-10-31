@@ -5,6 +5,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
@@ -276,7 +277,7 @@ fn bystander() -> Bystander {
         allied: false,
         kind: COMBAT,
         class: class::CLASS_6,
-        state: 2,
+        state: ObjectState::Alive,
         blast_defense: 1,
         position: Position::new(11.5, 10.0, 0.0),
         radius: Footprint::new(0.2, 0.2),
@@ -308,7 +309,14 @@ fn a_movement_damage_strikes_enemies_in_reach() {
             ..b
         }
     ));
-    assert!(!struck(&h, 1.0, &Bystander { state: 3, ..b }));
+    assert!(!struck(
+        &h,
+        1.0,
+        &Bystander {
+            state: ObjectState::Dying,
+            ..b
+        }
+    ));
     // buildings only of classes 51 and 54
     let building = Bystander {
         kind: BUILDING,
@@ -565,7 +573,7 @@ fn put(t: &mut World, p: PlayerId, id: i32, m: MasterId, hp: f32, at: Point) {
     };
     u.life.master_id = m;
     u.life.hp = hp;
-    u.life.state = 2;
+    u.life.state = ObjectState::Alive;
     t.players[p.index()].objects.push(u);
     let radius = t.masters[p.index()]
         .get(m)
@@ -624,7 +632,7 @@ fn building_sight(t: &mut World, p: PlayerId, id: i32, built: bool) {
             player: p,
             master: master_id(1021),
             los: 6.0,
-            state: 2,
+            state: ObjectState::Alive,
             explored: true,
             building: Some(crate::vision::visibility::BuildingSight {
                 built,

@@ -6,6 +6,7 @@ use crate::gathering::hunt::HuntRetarget;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::master_type::BUILDING;
 use crate::players::PlayerId;
@@ -331,7 +332,7 @@ impl World {
         let Some((_, t)) = self.object(new) else {
             return Ok(None);
         };
-        if 7 <= t.life.state {
+        if ObjectState::Removed <= t.life.state {
             return Ok(None);
         }
         if !quiet {

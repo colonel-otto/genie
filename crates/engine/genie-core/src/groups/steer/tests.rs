@@ -11,6 +11,7 @@ use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::math::fmath::BVector;
 use crate::movement::ASIDE;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
@@ -65,7 +66,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
         ..Unit::default()
     };
     u.life.master_id = master_id(4);
-    u.life.state = 2;
+    u.life.state = ObjectState::Alive;
     u.life.hp = 50.0;
     u.group.id = Some(group_id(1));
     u

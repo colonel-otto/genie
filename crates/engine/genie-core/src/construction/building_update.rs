@@ -7,6 +7,7 @@ use crate::combat::victims::{victim_of, write_back};
 use crate::construction::gates::gate_units;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
@@ -53,7 +54,7 @@ impl Unit {
             .building
             .as_ref()
             .is_some_and(|b| b.transform_unit.is_some());
-        if master.class != class::GATE || !transforms || self.life.state != 2 {
+        if master.class != class::GATE || !transforms || self.life.state != ObjectState::Alive {
             return Ok(());
         }
         let height = master.height;
@@ -135,7 +136,7 @@ impl Unit {
     pub(crate) fn farm_stage(&self, c: &mut Step<'_>) -> Result<(), GenieError> {
         let Some(cons) = self
             .construction
-            .filter(|k| self.life.state == 0 && 0 < k.build_time)
+            .filter(|k| self.life.state == ObjectState::Foundation && 0 < k.build_time)
         else {
             return Ok(());
         };
@@ -187,7 +188,7 @@ impl Unit {
     /// What the completion does not model.
     pub(crate) fn complete_on_update(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
         self.farm_stage(c)?;
-        let due = self.life.state == 0
+        let due = self.life.state == ObjectState::Foundation
             && self
                 .construction
                 .is_some_and(|cons| f32::from(cons.build_time) <= cons.progress);
@@ -199,7 +200,7 @@ impl Unit {
             return Ok(());
         }
         let (p, id) = (c.player, self.id);
-        c.lend(self, |w| w.set_state(p, id, 2))
+        c.lend(self, |w| w.set_state(p, id, ObjectState::Alive))
     }
 
     /// `TRIBE_Building_Object::update`'s whole seconds of a building in state 2 (`0x1411c9000`,
@@ -214,7 +215,7 @@ impl Unit {
     /// building with a `garrison_repair_rate` repairs itself at a cost (`FUN_1411d33e0`, not
     /// modelled). Its `damaged_lately_timer` (`+0x30d`) loses one when whole seconds passed.
     pub(crate) fn building_seconds(&mut self, c: &mut Step<'_>) -> Result<(), GenieError> {
-        if self.life.state != 2 {
+        if self.life.state != ObjectState::Alive {
             return Ok(());
         }
         let Ok(master) = object_master(
@@ -470,6 +471,6 @@ pub(crate) const DEATH_BLAST_FACTOR: f32 = crate::math::image::turn::DEATH_BLAST
 pub(crate) fn blasts_at_death(master: &Master, life: &Lifecycle) -> bool {
     COMBAT <= master.kind
         && life.hp < DEATH_BLAST_HP
-        && life.state == 2
+        && life.state == ObjectState::Alive
         && (DEATH_BLAST_MASTERS.contains(&master.id) || DEATH_BLAST_CLASSES.contains(&master.class))
 }

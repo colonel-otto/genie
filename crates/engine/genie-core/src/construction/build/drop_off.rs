@@ -7,6 +7,7 @@ use crate::construction::build::{
 use crate::movement::Me;
 use crate::movement::move_to::TargetMoved;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::sprite::sprite_id;
 use crate::objects::teardown::HeadCode;
@@ -233,7 +234,7 @@ impl BuildAction {
             // 0 (it walks or waits) and any code above 5 (none): the update returns 0
             _ => return Ok(HeadCode::Keeps),
         }
-        let Some((2, drop)) = reads.deposit.filter(|_| self.site.is_some()) else {
+        let Some((ObjectState::Alive, drop)) = reads.deposit.filter(|_| self.site.is_some()) else {
             self.drop_again(c, builder, reads.by)?;
             return Ok(HeadCode::Keeps);
         };

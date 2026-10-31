@@ -10,6 +10,7 @@ use crate::movement::move_to::{
     MoveTo, MoveToAction, MoveWait, NO_TARGET_GAP, SpriteReads, TargetMoved,
 };
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
@@ -19,7 +20,7 @@ use std::collections::BTreeMap;
 
 /// The last object state a `MoveTo` takes as its target (`FUN_140a7a230`: one above is refused,
 /// its id −1).
-const LAST_TAKEN: u8 = 6;
+const LAST_TAKEN: ObjectState = ObjectState::Undead;
 
 /// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
 const NO_TARGET_POINT: Position = Position::ORIGIN;
@@ -34,7 +35,7 @@ pub struct MoveToReads<'a> {
     /// The sprites a `MoveTo` takes when its maker gives none.
     pub sprites: SpriteReads<'a>,
     /// The unit's object state.
-    pub state: u8,
+    pub state: ObjectState,
     /// The unit's speed.
     pub speed: f32,
     /// The unit's place.
@@ -54,7 +55,7 @@ pub struct WalkTo {
     /// The unit's footprint gap to it.
     pub gap: f32,
     /// Its object state.
-    pub state: Option<u8>,
+    pub state: Option<ObjectState>,
 }
 
 impl WalkTo {
@@ -75,7 +76,7 @@ impl WalkTo {
     /// The target the `MoveTo` takes (slot 0x68, `FUN_140a7a230`) and the gap its start measures:
     /// an object in a state above [`LAST_TAKEN`] is refused (the id -1) and far
     /// ([`NO_TARGET_GAP`]).
-    const fn held(&self) -> (Option<ObjectId>, f32) {
+    fn held(&self) -> (Option<ObjectId>, f32) {
         match self.state {
             Some(s) if LAST_TAKEN < s => (None, NO_TARGET_GAP),
             _ => (self.id, self.gap),
@@ -270,7 +271,7 @@ mod tests {
                 },
                 graphics: &graphics,
             },
-            state: 2,
+            state: ObjectState::Alive,
             speed: 1.0,
             at: Position::new(10.0, 10.0, 0.0),
             ground: Footprint::new(0.2, 0.2),
@@ -279,7 +280,7 @@ mod tests {
             id: Some(object_id(10028)),
             at: Position::new(10.5, 10.5, 0.0),
             gap: 5.0,
-            state: Some(0),
+            state: Some(ObjectState::Foundation),
         };
         let to = |w: &MoveToReads<'_>, to, given| {
             w.to_object(to, 0.1, given, TargetMoved::Follows)
@@ -303,7 +304,7 @@ mod tests {
         assert_eq!(to(&move_reads, near, None).state, MoveTo::Arrived);
         let gone = WalkTo {
             gap: 0.0,
-            state: Some(7),
+            state: Some(ObjectState::Removed),
             ..house
         };
         let refused = to(&move_reads, gone, None);
@@ -343,7 +344,7 @@ mod tests {
             (MoveTo::Start, -1, 0.0, Some(20))
         );
         let dying = MoveToReads {
-            state: 3,
+            state: ObjectState::Dying,
             ..move_reads
         };
         assert_eq!(

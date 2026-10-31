@@ -13,6 +13,7 @@ use crate::movement::move_to::{
 };
 use crate::movement::move_to::{ListUpdate, update_sub_actions};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -82,7 +83,7 @@ pub struct EnterAction {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EnterTarget {
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// The unit's player counts its player as allied (`FUN_141663dc0`), or it is Gaia's.
     pub allied: bool,
     /// It has room for the unit (slot 0x198).
@@ -387,15 +388,13 @@ impl EnterAction {
     /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or
     /// more) or of an unallied player, or without room for the unit, makes the action let it go
     /// and turn to state 11, which is not modelled.
-    pub(super) const fn held_target(
-        target: Option<EnterTarget>,
-    ) -> Result<EnterTarget, GenieError> {
+    pub(super) fn held_target(target: Option<EnterTarget>) -> Result<EnterTarget, GenieError> {
         let Some(t) = target else {
             return Err(GenieError::unsupported(
                 "an Enter whose building is gone (state 11)",
             ));
         };
-        if 3 <= t.state || !t.allied {
+        if ObjectState::Dying <= t.state || !t.allied {
             return Err(ENTER_TARGET_DIED);
         }
         if !t.room {

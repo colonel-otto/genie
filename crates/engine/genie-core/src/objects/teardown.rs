@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::actions::{Action, ActionList};
 use crate::objects::layers::Body;
 use crate::objects::release::Releaser;
@@ -180,13 +181,13 @@ impl ActionList {
     pub(crate) fn delete_head(
         &mut self,
         body: &mut Body,
-        state: u8,
+        state: ObjectState,
     ) -> Result<TornDown, GenieError> {
         let Some(head) = self.pop_head() else {
             return Ok(TornDown::default());
         };
         let torn = head.tear_down(body)?;
-        if !self.is_empty() && state < 3 {
+        if !self.is_empty() && state < ObjectState::Dying {
             return Err(GenieError::unreachable(NEXT_HEAD));
         }
         Ok(torn)
@@ -201,7 +202,7 @@ impl ActionList {
     pub(crate) fn delete_all(
         &mut self,
         body: &mut Body,
-        state: u8,
+        state: ObjectState,
     ) -> Result<TornDown, GenieError> {
         let mut all = TornDown::default();
         while !self.is_empty() {
@@ -327,19 +328,27 @@ mod tests {
     fn the_list_s_deletions_tear_down_the_head_and_stop_at_a_second_action() {
         let mut body = moving();
         let mut list = ActionList::default().with_build(Some(build()));
-        let torn = list.delete_all(&mut body, 2).unwrap();
+        let torn = list.delete_all(&mut body, ObjectState::Alive).unwrap();
         assert_eq!(torn.releases, [object_id(10028)]);
         assert!(list.is_empty());
-        assert_eq!(list.delete_head(&mut body, 2), Ok(TornDown::default()));
+        assert_eq!(
+            list.delete_head(&mut body, ObjectState::Alive),
+            Ok(TornDown::default())
+        );
         let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), 0.0, None, body.mover_mut());
         let two = ActionList::default()
             .with_build(Some(build()))
             .with_move_to(Some(to));
-        let err = two.clone().delete_head(&mut body, 2).unwrap_err();
+        let err = two
+            .clone()
+            .delete_head(&mut body, ObjectState::Alive)
+            .unwrap_err();
         assert_eq!(err.reason(), NEXT_HEAD);
         let mut dying = two;
         assert_eq!(
-            dying.delete_head(&mut body, 3).map(|t| t.releases),
+            dying
+                .delete_head(&mut body, ObjectState::Dying)
+                .map(|t| t.releases),
             Ok(vec![])
         );
         assert_eq!(dying.iter().count(), 1);

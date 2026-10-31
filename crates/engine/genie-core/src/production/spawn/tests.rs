@@ -5,6 +5,7 @@ use crate::map::GroundOffset;
 use crate::map::Radii;
 use crate::map::Tile;
 use crate::map::TileOffset;
+use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
@@ -204,7 +205,7 @@ fn a_blocker_that_moves_lets_the_spot_try_its_next_candidate() {
     assert_eq!(p, Some(Point::new(1.5, 1.0)));
 }
 
-fn sheep(state: u8) -> Near {
+fn sheep(state: ObjectState) -> Near {
     Near {
         id: object_id(9520),
         position: Position::new(106.68481, 47.14652, 0.0),
@@ -231,15 +232,21 @@ fn sheep(state: u8) -> Near {
 
 #[test]
 fn livestock_stays_alive_a_tree_only_once_dead() {
-    assert!(sheep(2).stays());
-    assert!(!sheep(1).stays());
+    assert!(sheep(ObjectState::Alive).stays());
+    assert!(!sheep(ObjectState::Unfinished).stays());
     let tree = Near {
         class: class::TREE,
         kind: master_type::STATIC,
-        ..sheep(2)
+        ..sheep(ObjectState::Alive)
     };
     assert!(!tree.stays());
-    assert!(Near { state: 3, ..tree }.stays());
+    assert!(
+        Near {
+            state: ObjectState::Dying,
+            ..tree
+        }
+        .stays()
+    );
 }
 
 /// A map the player explored but does not see now, with its masks.
@@ -294,9 +301,9 @@ fn a_fogged_building_blocks_a_build_by_its_visibility_mask() {
         obstruction_type: ObstructionType::TYPE_2,
         moving: false,
         player: PlayerId::new(2),
-        state: 2,
+        state: ObjectState::Alive,
         fog_mask: Some((1 << 1) | (1 << 33)),
-        ..sheep(2)
+        ..sheep(ObjectState::Alive)
     };
     let site = BuildSite {
         player: PlayerId::new(1),
@@ -385,7 +392,7 @@ fn the_sheep_blocks_the_villager_where_their_boxes_overlap() {
         hill_mode: 0,
         placement: [-1; 4],
     };
-    let map = Flat(vec![sheep(2)]);
+    let map = Flat(vec![sheep(ObjectState::Alive)]);
     let at = |x, y| placement(&villager, &map, Point::new(x, y), false).unwrap();
     assert_eq!(at(106.5, 47.5), Tested::Blocked { stays: true });
     assert_eq!(at(106.5, 47.0), Tested::Blocked { stays: true });
@@ -410,14 +417,17 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
         id: object_id(9521),
         class: class::CLASS_6,
         master: master_id(4),
-        ..sheep(2)
+        ..sheep(ObjectState::Alive)
     };
     let at = |list: Vec<Near>| {
         placement(&villager, &Flat(list), Point::new(106.5, 47.5), false).unwrap()
     };
-    assert_eq!(at(vec![sheep(2), soldier]), Tested::Blocked { stays: true });
     assert_eq!(
-        at(vec![soldier, sheep(2)]),
+        at(vec![sheep(ObjectState::Alive), soldier]),
+        Tested::Blocked { stays: true }
+    );
+    assert_eq!(
+        at(vec![soldier, sheep(ObjectState::Alive)]),
         Tested::Blocked { stays: false }
     );
 }
@@ -787,7 +797,7 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
         "a gather point's move of a unit with an action"
     );
     let mut t = crate::world::tests::forage_world();
-    t.players[1].objects[0].life.state = 3;
+    t.players[1].objects[0].life.state = ObjectState::Dying;
     assert_eq!(
         reason(&mut t),
         "a gather point's move of a unit not in state 2"
@@ -1048,7 +1058,7 @@ fn build_s_scan_counts_what_the_player_sees_of_a_tile() {
     let o = |player, fog_visibility| Near {
         player,
         fog_visibility,
-        ..sheep(2)
+        ..sheep(ObjectState::Alive)
     };
     let sees = |map: &dyn PlaceMap, o: Near, sight| build_sees(&site, map, &o, sight);
     assert_eq!(sees(&flat, o(PlayerId::new(2), 0), (true, true)), Ok(true));
@@ -1090,19 +1100,31 @@ fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() 
         class: class::BUILDING,
         moving: false,
         player: PlayerId::new(2),
-        state: 2,
-        ..sheep(2)
+        state: ObjectState::Alive,
+        ..sheep(ObjectState::Alive)
     };
     let ignores = |site: &BuildSite<'_>, o: Near| build_ignores(site, &flat, &o);
     assert!(!ignores(&site, house));
-    assert!(ignores(&site, Near { state: 3, ..house }));
+    assert!(ignores(
+        &site,
+        Near {
+            state: ObjectState::Dying,
+            ..house
+        }
+    ));
     let unit = Near {
         kind: master_type::COMBAT,
-        state: 6,
+        state: ObjectState::Undead,
         ..house
     };
     assert!(!ignores(&site, unit));
-    assert!(ignores(&site, Near { state: 7, ..unit }));
+    assert!(ignores(
+        &site,
+        Near {
+            state: ObjectState::Removed,
+            ..unit
+        }
+    ));
     let walking = Near {
         moving: true,
         ..unit
@@ -1156,8 +1178,8 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
         class: class::CLASS_6,
         moving: true,
         player: PlayerId::new(1),
-        state: 2,
-        ..sheep(1)
+        state: ObjectState::Alive,
+        ..sheep(ObjectState::Unfinished)
     };
     let passes = |o: Near| build_passes(&site, &flat, &o);
     assert!(passes(walker));
@@ -1173,7 +1195,10 @@ fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
         moving: false,
         ..walker
     }));
-    assert!(!passes(Near { state: 3, ..walker }));
+    assert!(!passes(Near {
+        state: ObjectState::Dying,
+        ..walker
+    }));
     let still = Near {
         moving: false,
         ..walker
@@ -1215,14 +1240,17 @@ fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
         obstruction_type: ObstructionType::TYPE_2,
         moving: false,
         player: PlayerId::new(2),
-        state: 2,
-        ..sheep(2)
+        state: ObjectState::Alive,
+        ..sheep(ObjectState::Alive)
     };
     let blocks =
         |site: &BuildSite<'_>, o: Near| blocks_build(site, &flat, &o, Point::new(21.0, 21.0));
     assert!(blocks(&site, house));
     for passed in [
-        Near { state: 3, ..house },
+        Near {
+            state: ObjectState::Dying,
+            ..house
+        },
         Near {
             kind: master_type::COMBAT,
             player: PlayerId::new(1),
@@ -1288,9 +1316,9 @@ fn the_build_s_static_scans_find_a_dying_house_build_passes_over() {
         class: class::BUILDING,
         moving: false,
         player: PlayerId::new(2),
-        state: 4,
+        state: ObjectState::DyingSprite,
         obstruction_type: ObstructionType::TYPE_2,
-        ..sheep(2)
+        ..sheep(ObjectState::Alive)
     };
     let build = house_site(&[1.0], false);
     let test = |site: &BuildSite<'_>, o: Near| {

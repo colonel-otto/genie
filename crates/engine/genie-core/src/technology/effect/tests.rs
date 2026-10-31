@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassAmount;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionClass;
@@ -171,7 +172,7 @@ fn a_population_set_moves_each_storage_entry_to_the_new_value() {
 /// master keeps none.
 #[test]
 fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
-    let unit = |id, state: u8, inside: Option<ObjectId>| {
+    let unit = |id, state: ObjectState, inside: Option<ObjectId>| {
         let mut u = Unit {
             id,
             body: crate::objects::layers::Body::at(Position::new(5.5, 5.5, 0.0)),
@@ -189,9 +190,9 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         vec![0],
         vec![Player {
             objects: vec![
-                unit(object_id(1), 2, None),
-                unit(object_id(2), 7, None),
-                unit(object_id(3), 2, Some(object_id(9))),
+                unit(object_id(1), ObjectState::Alive, None),
+                unit(object_id(2), ObjectState::Removed, None),
+                unit(object_id(3), ObjectState::Alive, Some(object_id(9))),
             ]
             .into(),
             ..Player::default()
@@ -380,7 +381,7 @@ fn unit_of(id: i32, master: MasterId, hp: f32) -> Unit {
     };
     u.life.master_id = master;
     u.life.hp = hp;
-    u.life.state = 2;
+    u.life.state = ObjectState::Alive;
     u
 }
 
@@ -490,7 +491,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     annex.annex_of = Some(object_id(20));
     annex.construction = Some(built());
     let mut foundation = unit_of(22, master_id(30), 10.0);
-    foundation.life.state = 0;
+    foundation.life.state = ObjectState::Foundation;
     let player = Player {
         objects: vec![main, annex, foundation].into(),
         ..Player::default()
@@ -648,7 +649,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             player: PlayerId::new(0),
             master: ids::FARM,
             los: 2.0,
-            state: 2,
+            state: ObjectState::Alive,
             explored: true,
             building: None,
             umv: 0,
@@ -720,7 +721,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     assert_eq!(sight(&t), six);
     // off the map: the circle stays
     let mut t = world();
-    t.players[0].objects[0].life.state = 0;
+    t.players[0].objects[0].life.state = ObjectState::Foundation;
     t.do_effect(PlayerId::new(0), &[attribute(0, -1, 11, 1, 6.0)], None)
         .unwrap();
     assert_eq!(sight(&t), two);
@@ -829,7 +830,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         player: PlayerId::new(0),
         master: master_id(4),
         los: 2.0,
-        state: 2,
+        state: ObjectState::Alive,
         explored: true,
         building: None,
         umv: 0,
@@ -1223,7 +1224,7 @@ fn an_upgrade_copies_the_new_master_into_the_old() {
 #[test]
 fn spawns_and_cost_entries() {
     let mut centre = unit_of(1, ids::TOWN_CENTRE, 2400.0);
-    centre.life.state = 0;
+    centre.life.state = ObjectState::Foundation;
     let player = Player {
         objects: vec![centre].into(),
         ..Player::default()
@@ -1236,7 +1237,7 @@ fn spawns_and_cost_entries() {
     t.masters = vec![Masters::new([tc, serjeant])];
     t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
         .unwrap();
-    t.players[0].objects[0].life.state = 2;
+    t.players[0].objects[0].life.state = ObjectState::Alive;
     assert!(
         t.do_effect(PlayerId::new(0), &[attribute(7, 1658, 109, 5, 0.0)], None)
             .is_err()
@@ -1620,7 +1621,11 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         u
     };
     let player = Player {
-        objects: vec![building(object_id(1), 3), building(object_id(2), 2)].into(),
+        objects: vec![
+            building(object_id(1), ObjectState::Dying),
+            building(object_id(2), ObjectState::Alive),
+        ]
+        .into(),
         techs: vec![TechState {
             state: 3,
             ..TechState::default()

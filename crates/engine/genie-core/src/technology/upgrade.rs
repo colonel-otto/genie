@@ -6,6 +6,7 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::TaskId;
@@ -65,18 +66,18 @@ const SPRITE_SHOWN: u8 = 2;
 /// answers 1): whether an object of a master of type `kind` in state `state` takes an upgrade
 /// (below state 4) rather than a master of its own.
 #[must_use]
-pub fn upgradable(kind: MasterKind, state: u8) -> bool {
-    kind < master_type::COMBAT || state < 4
+pub fn upgradable(kind: MasterKind, state: ObjectState) -> bool {
+    kind < master_type::COMBAT || state < ObjectState::DyingSprite
 }
 
 /// `FUN_141193590`: an object of `master` in `state` whose damage share is its storage's
 /// (`+0x681` set, or a resource class: those of [`RESOURCE_CLASSES`] and
 /// [`RESOURCE_CLASSES_DEAD`] in a state above 2).
-fn storage_share(master: &Master, state: u8) -> bool {
+fn storage_share(master: &Master, state: ObjectState) -> bool {
     master.auto_gather
         || ((RESOURCE_CLASSES.contains(&master.class)
             || RESOURCE_CLASSES_DEAD.contains(&master.class))
-            && 2 < state)
+            && ObjectState::Alive < state)
 }
 
 /// The damage sprites' check (`FUN_1411859a0`) of object `u` reading `master`, whose damage share
@@ -418,7 +419,7 @@ impl World {
     ) -> Result<(), GenieError> {
         let id = self.object_at(place)?.id;
         let u = self.object_at(place)?;
-        if u.life.state == 2
+        if u.life.state == ObjectState::Alive
             && u.life.inside.is_none()
             && let Some(placed) = self.spatial.get(id).copied()
             && let Some(sight) = self.spatial.sight.as_mut()
@@ -466,7 +467,7 @@ impl World {
         let state = u.life.state;
         self.object_at_mut(place)?.life.hp = most;
         let mut held = before;
-        if state == 2 {
+        if state == ObjectState::Alive {
             held = self.damage_sprites_at(place, old, held)?;
         }
         let sprites = [
@@ -497,7 +498,7 @@ impl World {
         if let Some(s) = next.filter(|&s| 0 <= s) {
             self.show(place, s)?;
         }
-        if state == 2 {
+        if state == ObjectState::Alive {
             let _ = self.damage_sprites_at(place, new, held)?;
         }
         Ok(())
@@ -731,7 +732,7 @@ mod tests {
     }
 
     /// A unit of master `master` in `state` with `hp`.
-    fn object(id: i32, master: MasterId, state: u8, hp: f32) -> Unit {
+    fn object(id: i32, master: MasterId, state: ObjectState, hp: f32) -> Unit {
         Unit {
             id: object_id(id),
             life: crate::objects::lifecycle::Lifecycle {
@@ -830,7 +831,7 @@ mod tests {
     }
 
     fn object_of(hp: f32) -> Unit {
-        object(1, ids::HOUSE, 2, hp)
+        object(1, ids::HOUSE, ObjectState::Alive, hp)
     }
 
     /// `FUN_141193590`: a dead tree's share is that of its storage left (the entry of the kind
@@ -848,12 +849,12 @@ mod tests {
             }],
             ..Master::default()
         };
-        let mut u = object(1, master_id(1), 3, 20.0);
+        let mut u = object(1, master_id(1), ObjectState::Dying, 20.0);
         (u.life.attribute_type, u.life.amount) = (Some(attribute::WOOD), 25.0);
         assert_eq!(share_of(&u, &tree), Some((75, 20.0)));
         u.life.attribute_type = Some(attribute::STONE);
         assert_eq!(share_of(&u, &tree), Some((0, 20.0)));
-        u.life.state = 2;
+        u.life.state = ObjectState::Alive;
         u.life.hp = 5.0;
         assert_eq!(share_of(&u, &tree), Some((75, 5.0)));
     }
@@ -863,10 +864,10 @@ mod tests {
     /// 18/43 and 43/18 (the new class first).
     #[test]
     fn who_takes_an_upgrade_and_who_a_new_unit_ai() {
-        assert!(upgradable(master_type::BUILDING, 3));
-        assert!(!upgradable(master_type::BUILDING, 4));
-        assert!(!upgradable(master_type::COMBAT, 7));
-        assert!(upgradable(master_type::ACTION, 7));
+        assert!(upgradable(master_type::BUILDING, ObjectState::Dying));
+        assert!(!upgradable(master_type::BUILDING, ObjectState::DyingSprite));
+        assert!(!upgradable(master_type::COMBAT, ObjectState::Removed));
+        assert!(upgradable(master_type::ACTION, ObjectState::Removed));
         let m = |class| Master {
             class,
             ..Master::default()
@@ -919,7 +920,7 @@ mod tests {
             kind: master_type::STATIC,
             ..Master::default()
         };
-        let mut house = object(10, ids::HOUSE, 2, 275.0);
+        let mut house = object(10, ids::HOUSE, ObjectState::Alive, 275.0);
         let mut sprites = Well512::default();
         house.sprite = Some(crate::objects::sprite::ActiveSprite::start(
             graphic(1070),
@@ -928,8 +929,8 @@ mod tests {
         let player = crate::world::Player {
             objects: vec![
                 house,
-                object(11, ids::HOUSE, 4, 0.0),
-                object(12, master_id(1403), 2, 1.0),
+                object(11, ids::HOUSE, ObjectState::DyingSprite, 0.0),
+                object(12, master_id(1403), ObjectState::Alive, 1.0),
             ]
             .into(),
             ..crate::world::Player::default()
@@ -993,7 +994,7 @@ mod tests {
             volley_fire: 3.0,
             ..Master::default()
         };
-        let mut v = object(10, ids::VILLAGER_MALE, 2, 25.0);
+        let mut v = object(10, ids::VILLAGER_MALE, ObjectState::Alive, 25.0);
         (v.life.attribute_type, v.life.amount) = (Some(AttributeId::numbered(17)), 10.0);
         v.firepower = 1.0;
         let player = crate::world::Player {
@@ -1145,11 +1146,11 @@ mod tests {
             hit_points,
             ..Master::default()
         };
-        let mut own = object(11, master_id(4), 2, 20.0);
+        let mut own = object(11, master_id(4), ObjectState::Alive, 20.0);
         own.own_master = Some(Box::new(soldier(master_id(4), 40)));
         let player = crate::world::Player {
-            objects: vec![object(10, master_id(4), 2, 20.0), own].into(),
-            sleeping: vec![object(12, master_id(4), 2, 20.0)].into(),
+            objects: vec![object(10, master_id(4), ObjectState::Alive, 20.0), own].into(),
+            sleeping: vec![object(12, master_id(4), ObjectState::Alive, 20.0)].into(),
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
@@ -1291,7 +1292,7 @@ mod tests {
             ..Master::default()
         };
         let shown = |at: i16, new: &Master| {
-            let mut u = object(10, master_id(4), 2, 10.0);
+            let mut u = object(10, master_id(4), ObjectState::Alive, 10.0);
             u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(at),
                 &mut Well512::default(),
@@ -1329,7 +1330,7 @@ mod tests {
             ..villager.clone()
         };
         let load = |master: &Master, kind, amount| {
-            let mut v = object(10, master.id, 2, 25.0);
+            let mut v = object(10, master.id, ObjectState::Alive, 25.0);
             (v.life.attribute_type, v.life.amount) = (kind, amount);
             let mut t = one_player(vec![v], vec![master.clone()], &[]);
             t.players[0].attributes[37] = 1.0;
@@ -1379,7 +1380,7 @@ mod tests {
             line_of_sight: 6.0,
             ..Master::default()
         };
-        let sighted = |state: u8, inside: Option<ObjectId>, keep: bool| {
+        let sighted = |state: ObjectState, inside: Option<ObjectId>, keep: bool| {
             let mut u = object(10, master_id(4), state, 10.0);
             u.place_for_test(Position::new(5.5, 5.5, 0.0));
             u.life.inside = inside;
@@ -1420,7 +1421,7 @@ mod tests {
                     player: PlayerId::new(0),
                     master: master_id(4),
                     los: 5.0,
-                    state: 2,
+                    state: ObjectState::Alive,
                     explored: true,
                     building: None,
                     umv: 0,
@@ -1439,13 +1440,22 @@ mod tests {
                 .copied();
             seer.map(|s| (s.los, s.master))
         };
-        assert_eq!(sighted(2, None, false), Some((7.0, master_id(5))));
-        assert_eq!(sighted(2, None, true), Some((7.0, master_id(4))));
         assert_eq!(
-            sighted(2, Some(object_id(99)), false),
+            sighted(ObjectState::Alive, None, false),
+            Some((7.0, master_id(5)))
+        );
+        assert_eq!(
+            sighted(ObjectState::Alive, None, true),
+            Some((7.0, master_id(4)))
+        );
+        assert_eq!(
+            sighted(ObjectState::Alive, Some(object_id(99)), false),
             Some((5.0, master_id(4)))
         );
-        assert_eq!(sighted(4, None, false), Some((5.0, master_id(4))));
+        assert_eq!(
+            sighted(ObjectState::DyingSprite, None, false),
+            Some((5.0, master_id(4)))
+        );
     }
 
     /// The upgrade's hit points: the share of the old maximum carries to the new one (none
@@ -1477,7 +1487,7 @@ mod tests {
             ..old.clone()
         };
         let upgraded = |old: &Master, new: &Master, at: i16| {
-            let mut u = object(10, master_id(4), 4, 20.0);
+            let mut u = object(10, master_id(4), ObjectState::DyingSprite, 20.0);
             u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(at),
                 &mut Well512::default(),

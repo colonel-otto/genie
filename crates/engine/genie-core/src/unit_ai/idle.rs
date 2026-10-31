@@ -96,7 +96,7 @@ impl UnitAi {
             pick: Pick::Closest {
                 group: None,
                 relation: None,
-                state: -1,
+                state: None,
                 master: None,
                 workers: -1,
                 spared: None,

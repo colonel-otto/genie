@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::PASTURE;
@@ -287,7 +288,7 @@ impl World {
         let master = unit.master(&self.masters, player)?;
         // the class-54 test of its top action comes first in the game, but either way the order
         // is ignored
-        if 2 < unit.life.state {
+        if ObjectState::Alive < unit.life.state {
             return Ok(());
         }
         let class = master.class;

@@ -93,7 +93,7 @@ pub struct Seer {
     /// The master's `line_of_sight` (`+0x5d0`); slot 0x210 adds the object's powerup (`+0xad4`).
     pub los: f32,
     /// `object_state` (`+0x640`): only state 2 sees from a new tile.
-    pub state: u8,
+    pub state: crate::objects::ObjectState,
     /// `+0x684`: the object explored since it was made (unsaved; a load sets it, `FUN_14116a500`,
     /// and a foundation made in the game has it clear until its construction starts). Only a
     /// building's slot 0x1d8 reads it.

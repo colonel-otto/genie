@@ -34,7 +34,7 @@ pub(crate) struct Lets<'l> {
     pub(crate) masters: &'l [Masters],
     pub(crate) lines: &'l UnitLines,
     pub(crate) tracker: &'l mut Tracker,
-    pub(crate) own_notifies: &'l mut Vec<(Notify, u8)>,
+    pub(crate) own_notifies: &'l mut Vec<(Notify, crate::objects::ObjectState)>,
 }
 
 impl World {
@@ -57,7 +57,7 @@ impl World {
     pub(crate) fn with_lets_for<R>(
         &mut self,
         player: PlayerId,
-        own_notifies: &mut Vec<(Notify, u8)>,
+        own_notifies: &mut Vec<(Notify, crate::objects::ObjectState)>,
         f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
     ) -> Result<R, GenieError> {
         let no_player = || {

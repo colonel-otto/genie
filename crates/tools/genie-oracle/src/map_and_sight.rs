@@ -213,7 +213,7 @@ pub(super) fn spatial(
                     player,
                     master,
                     los: m.los,
-                    state: s.object_state,
+                    state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
                     // a foundation made in the game explores first when its construction starts
                     explored: building.is_none_or(|b| b.built != 0 || b.build_pts != 0.0),
                     building: building.map(|b| BuildingSight {

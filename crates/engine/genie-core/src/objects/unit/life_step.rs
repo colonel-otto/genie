@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::master_type::BUILDING;
@@ -19,7 +20,7 @@ impl Unit {
     pub(crate) fn life_step(&mut self, c: &mut Step<'_>) -> Result<Outcome, GenieError> {
         self.dying_storage_leaves(c)?;
         let before = self.life.state;
-        if before == 4 && self.sprite.is_none() {
+        if before == ObjectState::DyingSprite && self.sprite.is_none() {
             return Err(GenieError::unsupported(
                 "a dying object whose sprite the slice does not hold",
             ));
@@ -72,9 +73,13 @@ impl Unit {
     /// ([`Unit::annexes_follow`]), the sight takes the states ([`Unit::sight_follows`]), the
     /// dying sprite's end leaves the remains ([`Unit::dying_sprite_ended`]) and a dead object
     /// that holds nothing makes its death spawn ([`Unit::death_spawn_comes`]).
-    pub(crate) fn state_set_off(&mut self, c: &mut Step<'_>, before: u8) -> Result<(), GenieError> {
+    pub(crate) fn state_set_off(
+        &mut self,
+        c: &mut Step<'_>,
+        before: ObjectState,
+    ) -> Result<(), GenieError> {
         let after = self.life.state;
-        if before <= 2 && 3 <= after {
+        if before <= ObjectState::Alive && ObjectState::Dying <= after {
             self.died(c, before)?;
             if self.master(&c.w.masters, c.player)?.ghost_on_death
                 == crate::vision::ghost::LEAVES_GHOSTS
@@ -87,10 +92,13 @@ impl Unit {
         }
         self.annexes_follow(c, before, after)?;
         self.sight_follows(c, before, after)?;
-        if before == 4 && after == 5 {
+        if before == ObjectState::DyingSprite && after == ObjectState::Dead {
             self.dying_sprite_ended(c)?;
         }
-        if matches!(before, 3 | 5) && after == 7 && self.life.death_spawn {
+        if matches!(before, ObjectState::Dying | ObjectState::Dead)
+            && after == ObjectState::Removed
+            && self.life.death_spawn
+        {
             self.death_spawn_comes(c)?;
         }
         Ok(())
@@ -108,12 +116,12 @@ impl Unit {
     pub(crate) fn annexes_follow(
         &mut self,
         c: &mut Step<'_>,
-        before: u8,
-        after: u8,
+        before: ObjectState,
+        after: ObjectState,
     ) -> Result<(), GenieError> {
-        if 3 < after
+        if ObjectState::Dying < after
             && after != before
-            && !(before == 4 && after == 5)
+            && !(before == ObjectState::DyingSprite && after == ObjectState::Dead)
             && self.master(&c.w.masters, c.player)?.kind == BUILDING
         {
             for annex in c.w.spatial.annexes_of(self.id) {
@@ -131,19 +139,19 @@ impl Unit {
     pub(crate) fn sight_follows(
         &self,
         c: &mut Step<'_>,
-        before: u8,
-        after: u8,
+        before: ObjectState,
+        after: ObjectState,
     ) -> Result<(), GenieError> {
         if after == before {
             return Ok(());
         }
-        if before <= 2 && 3 <= after {
-            c.w.spatial.sight_state(self.id, 3)?;
+        if before <= ObjectState::Alive && ObjectState::Dying <= after {
+            c.w.spatial.sight_state(self.id, ObjectState::Dying)?;
         }
-        if after != 3 {
+        if after != ObjectState::Dying {
             c.w.spatial.sight_state(self.id, after)?;
         }
-        if before < 4 && 6 < after {
+        if before < ObjectState::DyingSprite && ObjectState::Undead < after {
             let master = self.master(&c.w.masters, c.player)?;
             forget_resource(&mut c.w.spatial, Some(master), self.id, self.position())?;
         }

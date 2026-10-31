@@ -5,6 +5,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
@@ -114,7 +115,7 @@ pub enum Pick {
         /// The relation (−1 any).
         relation: Option<QueryRelation>,
         /// The object state (−1 any).
-        state: i32,
+        state: Option<ObjectState>,
         /// The master (−1 any).
         master: Option<MasterId>,
         /// The workers cap (−1 none).
@@ -158,7 +159,7 @@ pub struct Attacker {
     /// The owner is a computer player (`FUN_141659cf0`).
     pub computer: bool,
     /// The unit's state.
-    pub state: u8,
+    pub state: ObjectState,
     /// The kind it holds (`attribute_type_held`, `+0x308`), none for −1.
     pub held: Option<AttributeId>,
     /// Its top action's type, if any.
@@ -370,7 +371,10 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     {
         return Ok(false);
     }
-    if (t.kind == BUILDING && t.desolid) || TOWER_SPARED.contains(&t.master) || me.state <= 1 {
+    if (t.kind == BUILDING && t.desolid)
+        || TOWER_SPARED.contains(&t.master)
+        || me.state <= ObjectState::Unfinished
+    {
         return Ok(false);
     }
     if t.class == class::PREDATOR && me.attack_priority < AttackPriority::PRIORITY_3 {

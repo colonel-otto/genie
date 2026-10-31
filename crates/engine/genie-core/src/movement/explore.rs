@@ -640,7 +640,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
                 defaults: MoveDefaults::default(),
                 graphics: &NO_GRAPHICS,
             },
-            state: 2,
+            state: crate::objects::ObjectState::Alive,
             speed: 1.0,
             at: Position::ORIGIN,
             ground: crate::map::Footprint::ZERO,
@@ -653,6 +653,7 @@ pub(crate) fn bare_walk() -> ExploreMove<'static> {
 mod tests {
     use super::*;
     use crate::map::Footprint;
+    use crate::objects::ObjectState;
 
     const WALKING: Graphic = Graphic {
         id: 7,
@@ -674,7 +675,7 @@ mod tests {
         ExploreMove {
             reads: MoveToReads {
                 sprites: SpriteReads { defaults, graphics },
-                state: 2,
+                state: ObjectState::Alive,
                 speed: 1.0,
                 at: Position::ORIGIN,
                 ground: Footprint::ZERO,
@@ -762,7 +763,7 @@ mod tests {
             b.move_to.map(|m| m.state),
             Some(crate::movement::move_to::MoveTo::Failed)
         );
-        stuck.reads.state = 3;
+        stuck.reads.state = ObjectState::Dying;
         let (b, _) = ExploreAction::new(Position::new(5.0, 5.0, 0.0), &stuck).unwrap();
         assert_eq!(b.move_to, None);
     }

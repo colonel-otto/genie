@@ -2,6 +2,7 @@
 //! Make or the Artifact of livestock.
 
 use crate::GenieError;
+use crate::objects::ObjectState;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
@@ -14,7 +15,10 @@ impl Unit {
     /// production: the master's default task starts (slot 0x7f0), and its first update comes in
     /// the next update (true). A default task that the slice does not hold is an error.
     pub(crate) fn start_default_task(&mut self, c: &mut Step<'_>) -> Result<bool, GenieError> {
-        if self.life.state != 2 || self.top_action_kind().is_some() || self.production.is_some() {
+        if self.life.state != ObjectState::Alive
+            || self.top_action_kind().is_some()
+            || self.production.is_some()
+        {
             return Ok(false);
         }
         if let Some(task) = self.default_fly {

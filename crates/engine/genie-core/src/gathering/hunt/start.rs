@@ -14,6 +14,7 @@ use crate::movement::move_to::GiveUp;
 use crate::movement::move_to::WalkTo;
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -195,8 +196,8 @@ impl HuntAction {
         self.timer = 0.0;
         self.point = target.position;
         let own_livestock = target.class == class::LIVESTOCK && target.player == player;
-        if 2 < target.state || own_livestock {
-            let range = if 2 < target.state {
+        if ObjectState::Alive < target.state || own_livestock {
+            let range = if ObjectState::Alive < target.state {
                 self.task.range
             } else {
                 OWN_LIVESTOCK_RANGE

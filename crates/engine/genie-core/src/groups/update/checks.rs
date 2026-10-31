@@ -254,7 +254,11 @@ impl World {
             return Ok(false);
         };
         let owner = g.owner_player()?;
-        let most = if g.current_command == BUILD { 0 } else { 2 };
+        let most = if g.current_command == BUILD {
+            crate::objects::ObjectState::Foundation
+        } else {
+            crate::objects::ObjectState::Alive
+        };
         if most < target.state() || target.inside() {
             return Ok(false);
         }

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiCommand;
 use crate::unit_ai::NotifyKind;
@@ -429,7 +430,8 @@ impl UnitAi {
             NotifyKind::ACTION_COMPLETED
                 if n.p[0] == 600 && self.current_order == Some(OrderKind::Attack) =>
             {
-                let gone = self.current_target.is_none() || at.target.is_none_or(|t| 2 < t.state);
+                let gone = self.current_target.is_none()
+                    || at.target.is_none_or(|t| ObjectState::Alive < t.state);
                 if gone {
                     self.remove_target();
                     self.stop_current(true, at, side, ai_rng)?;

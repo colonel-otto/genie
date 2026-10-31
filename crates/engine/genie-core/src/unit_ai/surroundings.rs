@@ -7,6 +7,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -159,7 +160,7 @@ pub struct Surroundings {
     /// An object of type 70 or more inside another (`+0x2f0`): it runs no queued order.
     pub garrisoned: bool,
     /// The unit's state (`+0x640`), type (`+0xf`), `+0x924` and master id.
-    pub state: u8,
+    pub state: ObjectState,
     /// The unit's type (`+0xf`).
     pub kind: MasterKind,
     /// Its master has a missile (`+0x83c` 0 or more, `FUN_1410bfca0`).
@@ -301,7 +302,7 @@ pub struct UnitSeen {
     /// Its master's `combat_level` (`+0x62c`).
     pub combat_level: u8,
     /// `+0x640`.
-    pub state: u8,
+    pub state: ObjectState,
     /// Its unit AI's current target (`+0x48`); None without a unit AI or a target.
     pub target: Option<ObjectId>,
     /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
@@ -349,7 +350,7 @@ pub struct Duel {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Seen {
     /// The object's state.
-    pub state: u8,
+    pub state: ObjectState,
     /// Its master's type.
     pub kind: MasterKind,
     /// Its owner.

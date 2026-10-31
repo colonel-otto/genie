@@ -5,6 +5,7 @@ use crate::commands::GatherPoint;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -62,7 +63,7 @@ impl World {
         if unit.body.mover().map_or(0.0, |m| m.stats.speed) <= 0.0 {
             return Ok(());
         }
-        if unit.life.state != 2 {
+        if unit.life.state != ObjectState::Alive {
             return Err(GenieError::unsupported(
                 "a gather point's move of a unit not in state 2",
             ));

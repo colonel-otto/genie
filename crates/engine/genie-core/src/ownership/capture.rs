@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -250,7 +251,7 @@ fn livestock_on(c: &Step<'_>, tile: Tile, taken: &[ObjectId]) -> Result<Vec<Obje
         .own_iter()
         .filter(|u| {
             let (ux, uy) = (u.position().x(), u.position().y());
-            u.life.state == 2
+            u.life.state == ObjectState::Alive
                 && ux as i32 == x
                 && uy as i32 == y
                 && !taken.contains(&u.id)

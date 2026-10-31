@@ -2,6 +2,7 @@ use super::*;
 use crate::map::Footprint;
 use crate::map::GridSize;
 use crate::map::Position;
+use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassAmount;
 use crate::objects::masters::class;
@@ -57,7 +58,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
             id: object_id(50),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: master.id,
-                state: 2,
+                state: ObjectState::Alive,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
@@ -77,7 +78,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         ai_type: UnitAiType::CIVILIAN,
         player: PlayerId::new(1),
         computer: false,
-        state: 2,
+        state: ObjectState::Alive,
         held: None,
         top_action: None,
         master: ids::VILLAGER_MALE,
@@ -139,7 +140,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         ai,
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
-            state: 2,
+            state: ObjectState::Alive,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
@@ -188,7 +189,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         ai_type: UnitAiType::SOLDIER,
         player: PlayerId::new(1),
         computer: false,
-        state: 2,
+        state: ObjectState::Alive,
         held: None,
         top_action: None,
         master: master_id(4),
@@ -311,7 +312,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         body: crate::objects::layers::Body::at(Position::new(x, 10.0, 0.0)),
         life: crate::objects::lifecycle::Lifecycle {
             master_id,
-            state: 2,
+            state: ObjectState::Alive,
             hp: 40.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
@@ -342,7 +343,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         ai_type: UnitAiType::SOLDIER,
         player: PlayerId::new(1),
         computer: false,
-        state: 2,
+        state: ObjectState::Alive,
         held: None,
         top_action: None,
         master: master_id(4),

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{master_type, player_master};
 use crate::players::PlayerId;
@@ -161,7 +162,7 @@ impl World {
         if owner
             .objects
             .iter()
-            .any(|u| u.life.master_id == master && u.life.state == 2)
+            .any(|u| u.life.master_id == master && u.life.state == ObjectState::Alive)
         {
             return Ok(());
         }

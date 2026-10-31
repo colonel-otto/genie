@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -26,7 +27,7 @@ impl World {
         &mut self,
         p: PlayerId,
         id: ObjectId,
-        state: u8,
+        state: ObjectState,
     ) -> Result<(), GenieError> {
         let Some(idx) = self.players.player(p)?.objects.position_of(id) else {
             return Ok(());
@@ -151,7 +152,7 @@ impl World {
                     &mut w,
                     others,
                     (kind, -1, Some(id)),
-                    (current, 0, crate::unit_ai::NO_POINT),
+                    (current, ObjectState::Foundation, crate::unit_ai::NO_POINT),
                 )?;
                 if let Some(f) = f {
                     found.push(f);

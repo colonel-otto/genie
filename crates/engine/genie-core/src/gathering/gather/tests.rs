@@ -51,7 +51,7 @@ fn walks(held: Held) -> Walks<'static> {
                 defaults: MoveDefaults::default(),
                 graphics: &NO_GRAPHICS,
             },
-            state: 2,
+            state: ObjectState::Alive,
             speed: 1.0,
             at: Position::ORIGIN,
             ground: Footprint::ZERO,
@@ -87,7 +87,7 @@ impl Rig {
 
     /// The house 10028 (a unit of player 0 in `state`), which a `MoveTo` to it reads the state
     /// of.
-    fn with_house(mut self, state: u8) -> Self {
+    fn with_house(mut self, state: ObjectState) -> Self {
         let mut house = Unit {
             id: object_id(10028),
             ..Unit::default()
@@ -197,7 +197,7 @@ fn bush() -> Resource {
         workers: 0,
         drop_site: false,
         gap: 1.2,
-        state: 2,
+        state: ObjectState::Alive,
         radius: Footprint::new(0.5, 0.5),
     }
 }
@@ -215,7 +215,7 @@ fn target(amount: f32) -> Victim {
     Victim {
         id: object_id(28222),
         amount,
-        state: 2,
+        state: ObjectState::Alive,
         class: class::CLASS_7,
         master_id: master_id(59),
         storage: 125.0,
@@ -234,7 +234,7 @@ fn farm() -> Resource {
         workers: 0,
         drop_site: false,
         gap: 0.0,
-        state: 2,
+        state: ObjectState::Alive,
         radius: Footprint::new(1.5, 1.5),
     }
 }
@@ -348,11 +348,11 @@ fn a_gather_s_move_to_refuses_a_target_past_state_6() {
             .map(|m| (ObjectId::field(m.target), m.point, m.state))
     };
     assert_eq!(
-        walk(6),
+        walk(ObjectState::Undead),
         Some((31, Position::new(5.0, 6.0, 0.0), MoveTo::Arrived))
     );
     assert_eq!(
-        walk(7),
+        walk(ObjectState::Removed),
         Some((-1, Position::new(5.0, 6.0, 0.0), MoveTo::Start))
     );
 }
@@ -378,7 +378,7 @@ fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
         id: g.target,
         at: Position::new(112.5, 173.5, 3.0),
         gap: 0.0,
-        state: Some(2),
+        state: Some(ObjectState::Alive),
     };
     g.set_walk(to, Footprint::new(1.5, 1.5), &mut mover, &mut rng, &walks)
         .unwrap();
@@ -688,7 +688,7 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
 /// while as a failed one does; the `MoveTo` then walks on to the point it held.
 #[test]
 fn a_drop_off_whose_site_was_let_go_waits_a_random_while() {
-    let mut rig = Rig::on_the_path().with_house(7);
+    let mut rig = Rig::on_the_path().with_house(ObjectState::Removed);
     let mut g = GatherAction {
         state: DROP,
         carry_to: Some(object_id(10028)),
@@ -722,13 +722,13 @@ fn a_gatherer_walks_to_its_drop_site_and_starts_again_when_it_moved() {
         })
     };
     let state = |g: &GatherAction| g.move_to.map(|m| m.state);
-    let mut rig = Rig::on_the_path().with_house(2);
+    let mut rig = Rig::on_the_path().with_house(ObjectState::Alive);
     rig.mover_mut().paths.clear();
     let mut g = dropping(MoveTo::Start);
     assert_eq!(drop(&mut g, &mut rig), Ok(Dropped::Going));
     assert_eq!(state(&g), Some(MoveTo::Moving));
     assert_eq!(rig.mover_mut().paths.len(), 2);
-    let mut rig = Rig::on_the_path().with_house(2);
+    let mut rig = Rig::on_the_path().with_house(ObjectState::Alive);
     let mut g = dropping(MoveTo::Moving);
     assert_eq!(drop(&mut g, &mut rig), Ok(Dropped::Going));
     assert_eq!(state(&g), Some(MoveTo::Moving));
@@ -768,13 +768,13 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
             g.update(c, u, me, Some(&mut house), &reads())
         })
     };
-    let mut rig = Rig::on_the_path().with_house(2);
+    let mut rig = Rig::on_the_path().with_house(ObjectState::Alive);
     rig.mover_mut().paths.clear();
     let mut g = walking(Some(MoveTo::Start));
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
     assert_eq!((g.state, state(&g)), (WALK, Some(MoveTo::Moving)));
     assert_eq!(rig.mover_mut().paths.len(), 2);
-    let mut rig = Rig::on_the_path().with_house(2);
+    let mut rig = Rig::on_the_path().with_house(ObjectState::Alive);
     let mut g = walking(Some(MoveTo::Moving));
     assert_eq!(walk(&mut g, &mut rig, 0), Ok(Next::Stay));
     assert_eq!(state(&g), Some(MoveTo::Moving));
@@ -819,7 +819,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
 /// `+0x61` stays 0.
 #[test]
 fn a_gatherer_whose_move_to_lost_its_target_walks_back_to_its_point() {
-    let mut rig = Rig::on_the_path().with_house(7);
+    let mut rig = Rig::on_the_path().with_house(ObjectState::Removed);
     let mut g = GatherAction {
         state: WALK,
         target: Some(object_id(10028)),
@@ -856,7 +856,7 @@ fn a_walk_to_a_point_ends_on_its_target_let_go_as_on_its_arrival() {
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
     };
     let run = |g: &mut GatherAction, computer: bool| {
-        let mut rig = Rig::on_the_path().with_house(7);
+        let mut rig = Rig::on_the_path().with_house(ObjectState::Removed);
         rig.set_load(None, 0.0);
         let r = GatherReads {
             computer,
@@ -988,7 +988,7 @@ fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
     let mut farm = Victim {
         id: object_id(12557),
         amount: 175.0,
-        state: 2,
+        state: ObjectState::Alive,
         class: class::FARM,
         master_id: ids::FARM,
         radius: Footprint::new(1.5, 1.5),
@@ -1037,7 +1037,7 @@ fn at_the_end_of_its_walk_back_a_farmer_reseeds() {
     let mut g = walking(MoveTo::Arrived);
     g.target = Some(object_id(28222));
     let mut dying = Victim {
-        state: 3,
+        state: ObjectState::Dying,
         ..target(10.0)
     };
     assert_eq!(

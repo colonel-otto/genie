@@ -7,6 +7,7 @@ use crate::gathering::hunt::{HuntAction, HuntMove, HuntStart, HuntTask, Quarry};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::action_type;
 use crate::objects::masters::class;
@@ -488,7 +489,8 @@ impl World {
                     None => (tp, t),
                 };
                 let main_master = main.master(&self.masters, mp)?.id;
-                if (main.life.state < 2 || matches!(main_master, PASTURE_MANGROVE | PASTURE))
+                if (main.life.state < ObjectState::Alive
+                    || matches!(main_master, PASTURE_MANGROVE | PASTURE))
                     && mp == player
                 {
                     return Err(GenieError::unsupported(

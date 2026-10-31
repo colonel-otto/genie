@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterAttribute;
 use crate::objects::masters::MasterId;
@@ -389,7 +390,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return;
         };
-        if 7 <= u.life.state
+        if ObjectState::Removed <= u.life.state
             || u.life.inside.is_some()
             || crate::math::fmath::at_most_or_unordered(master.height, 0.0)
         {

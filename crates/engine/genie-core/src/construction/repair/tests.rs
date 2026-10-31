@@ -65,7 +65,7 @@ const fn move_reads(
             defaults: DEFAULTS,
             graphics,
         },
-        state: 2,
+        state: ObjectState::Alive,
         speed: 1.0,
         at: Position::new(10.0, 10.0, 0.0),
         ground: Footprint::new(0.2, 0.2),
@@ -77,7 +77,7 @@ const TARGET: WalkTo = WalkTo {
     id: Some(object_id(20)),
     at: Position::new(11.0, 10.0, 0.0),
     gap: 0.3,
-    state: Some(2),
+    state: Some(ObjectState::Alive),
 };
 
 /// The Repair of the work command on [`TARGET`], within 0, with [`TASK`].
@@ -398,7 +398,7 @@ fn a_repair_s_move_to_starts_as_its_list_adds_it() {
     };
     assert_eq!(state(TARGET, stuck), Some(MoveTo::Failed));
     let dying = MoveToReads {
-        state: 3,
+        state: ObjectState::Dying,
         ..move_reads(&g)
     };
     assert_eq!(state(TARGET, dying), None);
@@ -456,7 +456,10 @@ fn a_repair_ends_with_its_target_gone_foreign_or_dead() {
     type Change = fn(&mut crate::world::World);
     let cases: [(Change, bool); 4] = [
         (|t| drop(t.players[1].objects.remove(1).unwrap()), false),
-        (|t| t.players[1].objects[1].life.state = 3, true),
+        (
+            |t| t.players[1].objects[1].life.state = ObjectState::Dying,
+            true,
+        ),
         (|t| t.players[1].objects[1].life.hp = 0.25, true),
         (
             |t| {
@@ -505,7 +508,7 @@ fn a_repair_whose_move_to_target_died_lets_go_and_ends() {
         id: object_id(777),
         ..crate::objects::unit::Unit::default()
     };
-    dying.life.state = 7;
+    dying.life.state = ObjectState::Removed;
     t.players[1].objects.push(dying);
     assert_eq!(repaired(&mut t), Ok(HeadCode::Keeps));
     let r = repair_of(&t);

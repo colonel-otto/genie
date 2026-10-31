@@ -6,6 +6,7 @@ use crate::map::Point;
 use crate::map::Tile;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToReads, SpriteReads, WalkTo};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ObstructionClass;
@@ -79,7 +80,7 @@ const fn seen(hp: f32, height: f32) -> ClearLook {
         height,
         roo_called: false,
         kind: master_type::STATIC,
-        state: 2,
+        state: ObjectState::Alive,
         desolid: false,
     }
 }
@@ -274,7 +275,7 @@ fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
             8,
             ClearLook {
                 kind: master_type::COMBAT,
-                state: 5,
+                state: ObjectState::Dead,
                 ..seen(1.0, 0.0)
             },
         ),
@@ -453,7 +454,7 @@ pub(crate) fn started_on(
             defaults: MoveDefaults::default(),
             graphics: &graphics,
         },
-        state: 2,
+        state: ObjectState::Alive,
         speed: 1.0,
         at: Position::new(at.x() - gap, at.y(), 0.0),
         ground: Footprint::new(0.2, 0.2),
@@ -462,7 +463,7 @@ pub(crate) fn started_on(
         id,
         at,
         gap,
-        state: Some(0),
+        state: Some(ObjectState::Foundation),
     };
     BuildAction::start(to, task, &move_reads).unwrap()
 }
@@ -755,7 +756,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         b.foundation_terrain = 27;
     }
     let life = Lifecycle {
-        state: 0,
+        state: ObjectState::Foundation,
         hp: 548.0,
         master_id: ids::HOUSE,
         ..Lifecycle::default()
@@ -778,7 +779,10 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
     assert_eq!(t.work_building(object_id(10026), 0.02), Ok(false));
     let h = t.players[1].objects.by_id(object_id(10026)).unwrap();
     let c = h.construction.unwrap();
-    assert_eq!((h.life.state, c.progress, c.snow), (2, 25.0, true));
+    assert_eq!(
+        (h.life.state, c.progress, c.snow),
+        (ObjectState::Alive, 25.0, true)
+    );
     let a = &t.players[1].attributes;
     assert_eq!((a[4], a[98], a[165]), (5.0, 25.0, 25.0));
     let terrain = t.spatial.terrain.as_ref().unwrap();
@@ -812,7 +816,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             },
         );
         let life = Lifecycle {
-            state: 0,
+            state: ObjectState::Foundation,
             hp: 100.0,
             master_id: id,
             ..Lifecycle::default()
@@ -843,7 +847,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
                 .unwrap()
                 .life
                 .state,
-            2
+            ObjectState::Alive
         );
         let gained = t.players[1]
             .attributes
@@ -901,7 +905,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     );
     world.insert(object_id(10028), house());
     let life = Lifecycle {
-        state: 0,
+        state: ObjectState::Foundation,
         hp: 1.0,
         master_id: ids::HOUSE,
         ..Lifecycle::default()
@@ -976,7 +980,7 @@ fn the_work_starts_the_desolid_annexes_first() {
         sprite_override: false,
     };
     let life = |master_id| Lifecycle {
-        state: 0,
+        state: ObjectState::Foundation,
         hp: 1.0,
         master_id,
         ..Lifecycle::default()
@@ -1110,7 +1114,7 @@ fn an_annex_s_work_goes_to_its_main_building() {
             },
         );
         let life = Lifecycle {
-            state: 0,
+            state: ObjectState::Foundation,
             hp: 1.0,
             master_id: master_id(1192),
             ..Lifecycle::default()
@@ -1146,13 +1150,13 @@ fn an_annex_s_work_goes_to_its_main_building() {
             .state;
         (going, state)
     };
-    assert_eq!(run(foundation, 0.021), (Ok(true), 0));
+    assert_eq!(run(foundation, 0.021), (Ok(true), ObjectState::Foundation));
     let nearly = Construction {
         progress: 24.99,
         desolid: false,
         ..foundation
     };
-    assert_eq!(run(nearly, 0.021), (Ok(false), 2));
+    assert_eq!(run(nearly, 0.021), (Ok(false), ObjectState::Alive));
 }
 
 use crate::map::spatial::Spatial;

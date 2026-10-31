@@ -20,13 +20,17 @@ use genie_save::generated::world::{
 /// The object's lifecycle fields. An object with its own master takes every master value from it;
 /// otherwise the death sprite and spawns come from its player's master in the save, and the decay
 /// and undead flag from the table, which the save lacks.
+///
+/// # Errors
+///
+/// A saved state past 8.
 pub(super) fn lifecycle(
     object: &genie_save::Object,
     (s, master_id): (&RgeStaticObject, MasterId),
     objects: &PlayerObjects,
     civ: u8,
     masters: Option<&MasterTable>,
-) -> Lifecycle {
+) -> Result<Lifecycle, GenieError> {
     let pure_static = object
         .rge_object
         .as_deref()
@@ -70,13 +74,13 @@ pub(super) fn lifecycle(
             )
         },
     );
-    Lifecycle {
+    Ok(Lifecycle {
         class: if pure_static {
             Class::Static
         } else {
             Class::Animated
         },
-        state: s.object_state,
+        state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
         hp: s.hp,
         attribute_type: AttributeId::of_data(s.attribute_type_held),
         amount: s.attribute_amount_held,
@@ -88,7 +92,7 @@ pub(super) fn lifecycle(
         goto_sleep: s.goto_sleep_flag != 0,
         master_id,
         master,
-    }
+    })
 }
 
 /// A combat object's unit AI as the save holds it, None without one.

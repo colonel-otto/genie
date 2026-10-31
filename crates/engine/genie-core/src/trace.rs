@@ -157,7 +157,7 @@ pub(crate) fn player_unsupported(tick: u32, player: PlayerId, why: &GenieError) 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Watch {
     /// The object's state (`+0x640`).
-    object_state: u8,
+    object_state: crate::objects::ObjectState,
     /// Its top action's type and state.
     action: Option<(i16, u8)>,
     /// Its unit AI's order, action and target.
@@ -192,8 +192,8 @@ impl Watch {
                 tick,
                 player = player.index(),
                 object,
-                from = self.object_state,
-                to = now.object_state,
+                from = self.object_state.get(),
+                to = now.object_state.get(),
                 "object_state"
             );
         }

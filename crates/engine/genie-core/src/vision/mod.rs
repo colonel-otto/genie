@@ -146,6 +146,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::map::Position;
+    use crate::objects::ObjectState;
     use crate::players::Relation;
     use crate::test_ids::object_id;
     use crate::world::Player;
@@ -260,7 +261,7 @@ mod tests {
             body: crate::objects::layers::Body::at(Position::new(7.0, 8.0, 0.0)),
             life: crate::objects::lifecycle::Lifecycle {
                 master_id: TOWN_CENTRE,
-                state: 2,
+                state: ObjectState::Alive,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..crate::objects::unit::Unit::default()

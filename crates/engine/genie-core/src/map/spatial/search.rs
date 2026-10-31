@@ -11,6 +11,7 @@ use crate::map::spatial::{
 };
 use crate::map::{Rect, Segment};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::FISH_TRAP;
@@ -396,7 +397,7 @@ impl Spatial {
                 else {
                     continue;
                 };
-                if 7 <= seer.state || !related || spared == Some(relation) {
+                if ObjectState::Removed <= seer.state || !related || spared == Some(relation) {
                     continue;
                 }
                 if !closest_kept(record.id, (seer, p), filter, (player, searcher), checks)? {
@@ -496,7 +497,7 @@ pub(super) fn closest_kept(
     if filter.master.is_some_and(|m| p.master != m) {
         return Ok(false);
     }
-    if filter.state != -1 && i32::from(seer.state) != filter.state {
+    if filter.state.is_some_and(|state| seer.state != state) {
         return Ok(false);
     }
     if filter.workers != -1 {
@@ -504,14 +505,14 @@ pub(super) fn closest_kept(
             "ClosestObject's workers cap (+0x644)",
         ));
     }
-    if filter.state == 0 {
+    if filter.state == Some(ObjectState::Foundation) {
         return Err(GenieError::unsupported("ClosestObject's unbuilt farm test"));
     }
     if filter.group == Some(PASTURE_CLASS) && !farm_kept(id, p, filter, searcher, farm)? {
         return Ok(false);
     }
     if filter.group == Some(LIVESTOCK_CLASS)
-        && ((p.player != player && seer.state == 2) || moving(id))
+        && ((p.player != player && seer.state == ObjectState::Alive) || moving(id))
     {
         return Ok(false);
     }

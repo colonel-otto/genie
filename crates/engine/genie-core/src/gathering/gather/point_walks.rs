@@ -13,6 +13,7 @@ use crate::math::rng::Well512;
 use crate::movement::move_to::TargetMoved;
 use crate::movement::{Me, Mover};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::ClassId;
@@ -203,7 +204,7 @@ impl GatherAction {
             1 | 2 | 5 => {
                 self.tear_down(unit.body.mover_mut())?;
                 if let Some(t) = target
-                    && !(2 < t.state && t.state != 6)
+                    && !(ObjectState::Alive < t.state && t.state != ObjectState::Undead)
                 {
                     return self.set_face(c, unit, t, r);
                 }

@@ -11,6 +11,7 @@ use crate::movement::move_to::WalkTo;
 use crate::movement::move_to::{MoveDefaults, SpriteReads};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
@@ -73,7 +74,7 @@ impl Unit {
         if target.is_some() {
             let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
             let gone = match state {
-                Some(s) => 6 < s,
+                Some(s) => ObjectState::Undead < s,
                 None if c.w.spatial.get(target).is_some() => {
                     return Err(GenieError::unsupported(
                         "a gather's target the slice cannot read",

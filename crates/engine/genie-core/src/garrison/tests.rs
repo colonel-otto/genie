@@ -12,6 +12,7 @@ use crate::map::Tile;
 use crate::math::fmath::BVector;
 use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::BuildingMaster;
 use crate::objects::masters::ClassAmount;
@@ -137,7 +138,7 @@ pub(crate) fn unit(id: i32, master: MasterId, hp: f32) -> Unit {
     };
     u.life.master_id = master;
     u.life.hp = hp;
-    u.life.state = 2;
+    u.life.state = ObjectState::Alive;
     u
 }
 
@@ -216,7 +217,7 @@ fn an_enter_walks_to_its_building_unless_it_is_in_reach() {
     // the villager walks at 0.8
     walks_at(&mut t, v, 0.8);
     let tc = EnterTarget {
-        state: 2,
+        state: ObjectState::Alive,
         allied: true,
         room: true,
         position: Position::new(104.0, 47.0, 0.0),
@@ -292,7 +293,7 @@ fn an_enter_of_a_unit_without_speed_starts_failed_beyond_arrived() {
     let (mut t, v) = walk_again_world();
     walks_at(&mut t, v, 0.0);
     let tc = EnterTarget {
-        state: 2,
+        state: ObjectState::Alive,
         allied: true,
         room: true,
         position: Position::new(104.0, 47.0, 0.0),
@@ -320,7 +321,7 @@ fn a_transport_s_enter_walks_to_it_and_sends_it_where_they_meet() {
     let mut t = shore_world(Point::new(5.5, 12.5), Point::new(5.5, 30.5));
     let v = villager(&t);
     let ship = EnterTarget {
-        state: 2,
+        state: ObjectState::Alive,
         allied: true,
         room: true,
         position: Position::new(5.5, 30.5, 0.25),
@@ -612,7 +613,7 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
 /// A transport target, room for the unit, 1.0 tiles off its point on y.
 fn moved_ship(y: f32) -> EnterTarget {
     EnterTarget {
-        state: 2,
+        state: ObjectState::Alive,
         allied: true,
         room: true,
         position: Position::new(82.5, y, 0.0),
@@ -630,7 +631,13 @@ fn an_enter_holds_only_a_live_allied_target_with_room() {
     let reason = |t| EnterAction::held_target(t).unwrap_err().reason();
     assert_eq!(reason(None), "an Enter whose building is gone (state 11)");
     let died = "an Enter whose building died or is not allied (state 11)";
-    assert_eq!(reason(Some(EnterTarget { state: 3, ..ship })), died);
+    assert_eq!(
+        reason(Some(EnterTarget {
+            state: ObjectState::Dying,
+            ..ship
+        })),
+        died
+    );
     let unallied = EnterTarget {
         allied: false,
         ..ship
@@ -1255,9 +1262,9 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
     t.players[1].objects[0].life.hp = 480.5;
     assert!(takes(&t, 100, PlayerId::new(1), VILLAGER, true, true));
     // state 2 only
-    t.players[1].objects[0].life.state = 3;
+    t.players[1].objects[0].life.state = ObjectState::Dying;
     assert!(!takes(&t, 100, PlayerId::new(1), VILLAGER, true, true));
-    t.players[1].objects[0].life.state = 2;
+    t.players[1].objects[0].life.state = ObjectState::Alive;
     // full: only the room test (param_5 0) refuses
     for k in 0..15 {
         let mut v = unit(1000 + k, VILLAGER, 25.0);
@@ -1674,7 +1681,7 @@ fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
             targets: vec![crate::unit_ai::task_finder::DropTarget {
                 class: class::CLASS_7,
                 workers: -1,
-                state: -1,
+                state: None,
                 attribute: Some(AttributeId::numbered(17)),
             }],
             ..crate::unit_ai::task_finder::DropSite::default()

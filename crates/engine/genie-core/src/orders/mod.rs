@@ -14,6 +14,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -165,7 +166,7 @@ struct Splittable {
     speed: f32,
     position: Position,
     moved_at: Point,
-    state: u8,
+    state: ObjectState,
     radius: f32,
     restriction: Option<crate::map::RestrictionId>,
 }
@@ -265,7 +266,7 @@ fn splits_together(
     if f.by_speed && SPLIT_SPEED_GAP < (a.speed - b.speed).abs() {
         return Ok(false);
     }
-    if member && b.state < 2 {
+    if member && b.state < ObjectState::Alive {
         return Ok(false);
     }
     let (dx, dy) = (
@@ -362,7 +363,7 @@ impl World {
     /// The object state (`+0x640`) of the object `id`, live or sleeping, None for −1 or an id the
     /// world no longer holds: what a `MoveTo`'s first check reads of its target
     /// ([`crate::movement::move_to::MoveToAction::check_held`]).
-    pub(crate) fn object_state(&self, id: impl ObjectKey) -> Option<u8> {
+    pub(crate) fn object_state(&self, id: impl ObjectKey) -> Option<ObjectState> {
         self.object(id).map(|(_, u)| u.life.state)
     }
 
@@ -634,7 +635,7 @@ pub(crate) fn nearest_table_site(
         &crate::players::tracker::Tracker,
     ),
     (at, held, class): (Point, Option<AttributeId>, ClassId),
-    look: impl Fn(ObjectId) -> Option<(u8, Position)>,
+    look: impl Fn(ObjectId) -> Option<(ObjectState, Position)>,
 ) -> Option<ObjectId> {
     let buildings =
         crate::unit_ai::task_finder::table_drop_buildings(table, held, Some(class), civ);
@@ -645,7 +646,7 @@ pub(crate) fn nearest_table_site(
             let Some((state, position)) = look(id) else {
                 continue;
             };
-            if state != 2 {
+            if state != ObjectState::Alive {
                 continue;
             }
             let (dx, dy) = (at.x() - position.x(), at.y() - position.y());

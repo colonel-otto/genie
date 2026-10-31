@@ -4,6 +4,7 @@
 //! that heals around it) calls the healed object's heal here.
 
 use crate::GenieError;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::class;
@@ -154,7 +155,9 @@ impl Unit {
     pub(crate) fn regenerate(&mut self, master: &Master, dt_seconds: f32) {
         use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
         let rate = regeneration_rate(master, self);
-        if below_or_unordered(self.life.hp, REGENERATION_LEAST_HP) || self.life.state != 2 {
+        if below_or_unordered(self.life.hp, REGENERATION_LEAST_HP)
+            || self.life.state != ObjectState::Alive
+        {
             return;
         }
         if !below_or_unordered(REGENERATION_EPSILON, rate.abs()) {

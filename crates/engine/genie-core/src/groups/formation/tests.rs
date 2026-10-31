@@ -9,6 +9,7 @@ use crate::map::RestrictionId;
 use crate::map::Tile;
 use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
@@ -248,7 +249,7 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
         bits: 0,
         cant_see: 0,
         seen: false,
-        state: 2,
+        state: ObjectState::Alive,
     }];
     assert_eq!(t.unit_category(None).unwrap(), -1);
     assert_eq!(t.unit_category(t.world_object(object_id(99))).unwrap(), -1);
@@ -588,7 +589,7 @@ pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::vision::ghost::Ghost {
         bits: 0,
         cant_see: 0,
         seen: false,
-        state: 2,
+        state: ObjectState::Alive,
     }
 }
 

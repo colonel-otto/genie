@@ -6,6 +6,7 @@ use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterId;
@@ -555,7 +556,7 @@ impl World {
         // slot 0x828 with 1 (the move's order and action) for a unit in state 2, -1 for
         // another; then the move to the target (slot 0x138) for a unit in state 2 or of
         // class 51
-        let (alive, class) = (unit.life.state == 2, master.class);
+        let (alive, class) = (unit.life.state == ObjectState::Alive, master.class);
         let named = match target {
             None => None,
             Some(target) => {

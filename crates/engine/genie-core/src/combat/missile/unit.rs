@@ -10,6 +10,7 @@ use crate::map::spatial::{RecordId, WalkQuery};
 use crate::math::rng::Stream;
 use crate::objects::ObjectId;
 use crate::objects::ObjectKey;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::MasterKind;
@@ -60,7 +61,7 @@ impl Unit {
         action: &mut crate::combat::missile::MissileAction,
         c: &mut Step<'_>,
     ) -> Result<(), GenieError> {
-        let dead = |state: u8| 2 < state && state != 6;
+        let dead = |state: ObjectState| ObjectState::Alive < state && state != ObjectState::Undead;
         let target_state = readable(c, action.target)?.map(|(_, u, _)| u.life.state);
         let shooter_state = OthersRef::of(&c.w.players, c.player)?
             .own(action.fired_from)
@@ -537,7 +538,7 @@ impl Unit {
                 crate::world::lets::release(c, self, t, by)?;
             }
         }
-        if self.life.state < 7 {
+        if self.life.state < ObjectState::Removed {
             if self.life.inside.is_some() {
                 return Err(GenieError::unsupported(
                     "a destroyed object inside another (slot 0x1a8)",
@@ -546,9 +547,9 @@ impl Unit {
             let before = self.life.state;
             self.life.hp = 0.0;
             self.life.goto_sleep = false;
-            self.life.state = 7;
-            c.w.spatial.sight_state(self.id, 7)?;
-            if before < 4 {
+            self.life.state = ObjectState::Removed;
+            c.w.spatial.sight_state(self.id, ObjectState::Removed)?;
+            if before < ObjectState::DyingSprite {
                 let master = self.master(&c.w.masters, c.player)?;
                 forget_resource(&mut c.w.spatial, Some(master), self.id, self.position())?;
             }

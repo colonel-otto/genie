@@ -18,6 +18,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::Rect;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
@@ -132,7 +133,7 @@ impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
 struct Filter {
     group: Option<ClassId>,
     relation: Option<QueryRelation>,
-    state: i32,
+    state: Option<ObjectState>,
     master: Option<MasterId>,
     workers: i32,
     /// The relation passed over (argument 9, `FUN_140c32b50`; −1 none).

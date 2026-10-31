@@ -4,6 +4,7 @@
 //! foundation's work, its starts and its completion.
 
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use std::collections::BTreeMap;
 
@@ -91,7 +92,7 @@ impl Unit {
             .map(|u| u.id);
         let built = foundation.map(|u| u.life.master_id);
         let stack_made = foundation.and_then(|u| u.stack_made);
-        let build_targets: Vec<(Option<ObjectId>, Option<u8>)> =
+        let build_targets: Vec<(Option<ObjectId>, Option<ObjectState>)> =
             self.ai.as_ref().map_or_else(Vec::new, |ai| {
                 ai.orders
                     .iter()
@@ -135,7 +136,7 @@ impl Unit {
         c: &Step<'_>,
         others: OthersRef<'_>,
         site: Option<ObjectId>,
-    ) -> Result<Option<(u8, DropOff)>, GenieError> {
+    ) -> Result<Option<(ObjectState, DropOff)>, GenieError> {
         let Some(s) = c.w.spatial.get(site).filter(|_| site.is_some()) else {
             return Ok(None);
         };
@@ -182,7 +183,7 @@ impl Unit {
                 .sight
                 .as_ref()
                 .and_then(|v| v.seer(t))
-                .is_some_and(|s| 5 < s.state),
+                .is_some_and(|s| ObjectState::Dead < s.state),
         };
         self.ai.as_ref().map_or_else(Vec::new, |ai| {
             ai.orders

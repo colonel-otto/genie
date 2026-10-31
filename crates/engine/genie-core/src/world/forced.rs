@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::combat::volley::same_members;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
@@ -271,13 +272,13 @@ impl World {
             self.spatial.set_position(id, forced.position())?;
         }
         if state != before {
-            if before <= 2 && 3 <= state {
-                self.spatial.sight_state(id, 3)?;
+            if before <= ObjectState::Alive && ObjectState::Dying <= state {
+                self.spatial.sight_state(id, ObjectState::Dying)?;
             }
-            if state != 3 {
+            if state != ObjectState::Dying {
                 self.spatial.sight_state(id, state)?;
             }
-            if before < 4 && 6 < state {
+            if before < ObjectState::DyingSprite && ObjectState::Undead < state {
                 let master = forced.master(&self.masters, p)?;
                 forget_resource(&mut self.spatial, Some(master), id, forced.position())?;
             }

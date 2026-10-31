@@ -7,6 +7,7 @@ use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::master_type::BUILDING;
 use crate::orders::tech_outside;
 use crate::players::PlayerId;
@@ -345,7 +346,7 @@ impl World {
             .locations
             .iter()
             .any(|l| l.building == Some(building.life.master_id));
-        if master.kind != BUILDING || building.life.state != 2 || !at {
+        if master.kind != BUILDING || building.life.state != ObjectState::Alive || !at {
             return Ok(());
         }
         if owner.computer {

@@ -7,6 +7,7 @@ use crate::garrison::{NO_POINT, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, sh
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::ObstructionType;
@@ -208,7 +209,7 @@ impl World {
         }
         let state = unit.life.state;
         if let Some(v) = self.spatial.sight.as_mut()
-            && state == 2
+            && state == ObjectState::Alive
         {
             let _ = v.sight_on(id, at, made.radius, false, false)?;
         }

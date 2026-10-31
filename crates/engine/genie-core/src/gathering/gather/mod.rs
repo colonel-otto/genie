@@ -20,6 +20,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -195,7 +196,7 @@ pub struct Resource {
     /// reads.
     pub gap: f32,
     /// Its object state (`+0x640`), which a `MoveTo` to it reads (`FUN_140a7a230`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its master's radii (`+0x5d8`, `+0x5dc`), over which a farm's stops spread.
     pub radius: Footprint,
 }

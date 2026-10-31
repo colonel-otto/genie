@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::Tile;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::GatherGroup;
 use crate::objects::masters::class;
@@ -387,7 +388,7 @@ impl UnitAi {
                 site: None,
                 current: self.current_target,
                 point: o.shown,
-                min_state: 0,
+                min_state: ObjectState::Foundation,
             })?;
             // the world holds what the search found: the move after a found object it does not
             // hold cannot run
@@ -483,13 +484,13 @@ impl UnitAi {
     /// An order whose slot reads the unit's surroundings, which this entry does not have.
     pub fn take_order_now(
         &mut self,
-        unit_state: u8,
+        unit_state: ObjectState,
         order: QueuedOrder,
         place: (Point, Option<ClassId>),
         ai: &mut Well512,
         side: &mut dyn UnitSide,
     ) -> Result<(), GenieError> {
-        if 2 < unit_state {
+        if ObjectState::Alive < unit_state {
             return Ok(());
         }
         self.order_now(order, None, Some(place), None, ai, side)
@@ -510,7 +511,7 @@ impl UnitAi {
         (at, side, computer): (&Surroundings, &mut dyn UnitSide, bool),
         ai: &mut Well512,
     ) -> Result<(), GenieError> {
-        if 2 < at.state {
+        if ObjectState::Alive < at.state {
             return Ok(());
         }
         let place = (at.position.ground(), at.class);

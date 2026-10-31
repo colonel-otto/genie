@@ -115,16 +115,28 @@ fn a_wall_foundation_s_pierce_armor_is_computed_as_any_other() {
         base_armor: 1,
         ..Armored::default()
     };
-    assert_eq!(class_armor(&a, OwnSlot::Pierce, class::WALL, 0), 5);
-    assert_eq!(class_armor(&a, OwnSlot::Pierce, class::WALL, 2), 5);
+    assert_eq!(
+        class_armor(&a, OwnSlot::Pierce, class::WALL, ObjectState::Foundation),
+        5
+    );
+    assert_eq!(
+        class_armor(&a, OwnSlot::Pierce, class::WALL, ObjectState::Alive),
+        5
+    );
     let none = Armored {
         armors: vec![ClassAmount::new(4, 2)],
         base_armor: 1,
         ..Armored::default()
     };
-    assert_eq!(class_armor(&none, OwnSlot::Pierce, class::WALL, 0), 2);
+    assert_eq!(
+        class_armor(&none, OwnSlot::Pierce, class::WALL, ObjectState::Foundation),
+        2
+    );
     // its melee armor (FUN_141213810's wall foundation) is 0
-    assert_eq!(class_armor(&a, OwnSlot::Melee, class::WALL, 0), 0);
+    assert_eq!(
+        class_armor(&a, OwnSlot::Melee, class::WALL, ObjectState::Foundation),
+        0
+    );
 }
 
 /// Slot 0xf0 (`FUN_14118cab0`): a TRIBE attacker whose charge hits the target (slot 0x2f0)
@@ -450,7 +462,7 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     let mut a = hunter();
     a.armored.as_mut().unwrap().armor_powerups = [2, 0];
     assert_eq!(shown_melee_armor(&a), Ok(2));
-    (a.class, a.state) = (class::WALL, 0);
+    (a.class, a.state) = (class::WALL, ObjectState::Foundation);
     assert_eq!(shown_melee_armor(&a), Ok(0));
     a.kind = master_type::RGE_COMBAT;
     a.armored.as_mut().unwrap().armors = vec![ClassAmount::new(3, 5), ClassAmount::new(11, 7)];

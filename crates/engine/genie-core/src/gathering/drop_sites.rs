@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
@@ -163,7 +164,7 @@ pub(crate) fn drop_site_search<'u>(
     let mut best_d = NO_DROP_DISTANCE;
     let mut last = NO_DROP_DISTANCE;
     for o in units {
-        if !sites.contains(&o.life.master_id) || o.life.state != 2 {
+        if !sites.contains(&o.life.master_id) || o.life.state != ObjectState::Alive {
             continue;
         }
         if x == NO_POINT && y == NO_POINT {
@@ -232,7 +233,7 @@ pub(crate) fn nearest_drop_site(
 ) -> Option<(ObjectId, f32)> {
     let mut best: Option<(ObjectId, f32)> = None;
     for o in others.own_iter() {
-        if !sites.contains(&o.life.master_id) || o.life.state != 2 {
+        if !sites.contains(&o.life.master_id) || o.life.state != ObjectState::Alive {
             continue;
         }
         let (x, y) = (at.x(), at.y());
@@ -273,7 +274,7 @@ mod tests {
             id: object_id(id),
             body: crate::objects::layers::Body::at(at.with_height(0.0)),
             life: Lifecycle {
-                state: 2,
+                state: ObjectState::Alive,
                 master_id,
                 ..Lifecycle::default()
             },
@@ -468,7 +469,7 @@ mod tests {
             Ok(Some(object_id(700)))
         );
         let mut units = sites();
-        units[0].life.state = 0;
+        units[0].life.state = ObjectState::Foundation;
         assert_eq!(
             search(&units, &villager(None), class::VILLAGER, none, &map),
             Ok(Some(object_id(701)))

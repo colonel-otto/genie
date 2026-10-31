@@ -2,7 +2,7 @@
 
 use genie_core::map::Position;
 use genie_core::objects::ObjectId;
-use genie_core::world::checkpoint::{ObjectState, PlayerState, player_block};
+use genie_core::world::checkpoint::{CheckpointObject, PlayerState, player_block};
 
 const FIXTURE: &str = include_str!("fixtures/marvinblue-426048731-p2-checkpoint1.txt");
 
@@ -23,13 +23,13 @@ fn load() -> (PlayerState, [Option<u32>; 11]) {
                 player.resources = [num(1), num(2), num(3), num(4)];
                 player.sleeping_count = v[5].parse().unwrap();
             }
-            "object" => player.live.push(ObjectState {
+            "object" => player.live.push(CheckpointObject {
                 id: ObjectId::try_from(v[0].parse::<i32>().unwrap()).unwrap(),
                 main_id: v[1].parse().unwrap(),
-                state: v[2].parse().unwrap(),
+                state: genie_core::objects::ObjectState::of_byte(v[2].parse().unwrap()).unwrap(),
                 amount_held: num(3),
                 position: Position::new(num(4), num(5), num(6)),
-                ..ObjectState::default()
+                ..CheckpointObject::default()
             }),
             "expected" => {
                 for (k, w) in v.iter().enumerate() {

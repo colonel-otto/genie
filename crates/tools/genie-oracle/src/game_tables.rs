@@ -114,6 +114,8 @@ pub enum DropSitesError {
     Building(usize),
     /// An attribute value that is no attribute: the entry's index and the key.
     Attribute(usize, &'static str),
+    /// An `object_state` past 8: the entry's index.
+    State(usize),
 }
 
 impl std::fmt::Display for DropSitesError {
@@ -123,11 +125,28 @@ impl std::fmt::Display for DropSitesError {
             Self::Class(i, key) => write!(f, "drop_site_list[{i}]: {key} is no master class"),
             Self::Building(i) => write!(f, "drop_site_list[{i}]: building_id is no master"),
             Self::Attribute(i, key) => write!(f, "drop_site_list[{i}]: {key} is no attribute"),
+            Self::State(i) => write!(f, "drop_site_list[{i}]: object_state is no object state"),
         }
     }
 }
 
 impl std::error::Error for DropSitesError {}
+
+/// A drop-site target's `object_state` (of entry `i`): none for a negative value, which the task
+/// finder reads as any state (`0 <= state`), else the state.
+fn object_state(
+    i: usize,
+    n: i64,
+) -> Result<Option<genie_core::objects::ObjectState>, DropSitesError> {
+    if n < 0 {
+        return Ok(None);
+    }
+    u8::try_from(n)
+        .ok()
+        .and_then(|n| genie_core::objects::ObjectState::of_byte(n).ok())
+        .map(Some)
+        .ok_or(DropSitesError::State(i))
+}
 
 /// The game's drop-site table (`resources/_common/dat/dropsites.json`): each entry's
 /// `building_id`, `worker_object_group` (−1 when absent), `worker_object_list`, `target_civs`,
@@ -135,8 +154,8 @@ impl std::error::Error for DropSitesError {}
 ///
 /// # Errors
 ///
-/// A file that is not JSON, or a target's `object_group` or an entry's `worker_object_group`
-/// that is neither a class nor (the worker group only) -1.
+/// A file that is not JSON, a target's `object_group` or an entry's `worker_object_group`
+/// that is neither a class nor (the worker group only) -1, or a target's `object_state` past 8.
 pub fn drop_sites(
     json: &str,
 ) -> Result<Vec<genie_core::unit_ai::task_finder::DropSite>, DropSitesError> {
@@ -174,7 +193,7 @@ pub fn drop_sites(
                     Ok(genie_core::unit_ai::task_finder::DropTarget {
                         class: class(i, "object_group", field("object_group"))?,
                         workers: field("worker_num") as i32,
-                        state: field("object_state") as i32,
+                        state: object_state(i, field("object_state"))?,
                         attribute: AttributeId::of_field(field("attribute_type") as i16)
                             .map_err(|_| DropSitesError::Attribute(i, "attribute_type"))?,
                     })
@@ -207,4 +226,29 @@ pub fn drop_sites(
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game_tables::{DropSitesError, drop_sites};
+    use genie_core::objects::ObjectState;
+
+    /// A table of one entry whose target has `object_state` `state` (absent for `None`).
+    fn table(state: Option<i64>) -> String {
+        let state = state.map_or_else(String::new, |s| format!(r#", "object_state": {s}"#));
+        format!(
+            r#"{{"drop_site_list": [{{"building_id": 562, "target_list": [{{"object_group": 15{state}}}]}}]}}"#
+        )
+    }
+
+    /// A target's `object_state` is its state; a missing key or a negative value any state
+    /// (none); a value past 8 an error.
+    #[test]
+    fn a_target_s_object_state_reads_as_a_state_or_none() {
+        let state = |s| drop_sites(&table(s)).map(|sites| sites[0].targets[0].state);
+        assert_eq!(state(Some(5)).unwrap(), Some(ObjectState::Dead));
+        assert_eq!(state(None).unwrap(), None);
+        assert_eq!(state(Some(-2)).unwrap(), None);
+        assert!(matches!(state(Some(9)), Err(DropSitesError::State(0))));
+    }
 }

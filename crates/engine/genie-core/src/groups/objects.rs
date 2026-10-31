@@ -48,7 +48,7 @@ impl WorldObject<'_> {
     }
 
     /// Its state (`+0x640`): a ghost's own (2, then 7 and 8 once destroyed).
-    pub(crate) const fn state(&self) -> u8 {
+    pub(crate) const fn state(&self) -> crate::objects::ObjectState {
         match *self {
             Self::Unit(_, u) => u.life.state,
             Self::Ghost(_, g) => g.state,

@@ -6,6 +6,7 @@ use crate::garrison::{SIEGE_UNLOAD, WHOLE_SHARE_CLASS};
 use crate::map::Footprint;
 use crate::map::Point;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::ids::MASTER_1808;
@@ -227,7 +228,7 @@ impl World {
             (None, None) => return Ok(()),
         };
         let (ip, unit) = self.object(inner).ok_or_else(|| object_gone(inner))?;
-        if unit.life.state != 2 {
+        if unit.life.state != ObjectState::Alive {
             return Ok(());
         }
         let made = unit.master(&self.masters, ip)?.clone();

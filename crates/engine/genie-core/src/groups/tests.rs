@@ -3,6 +3,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::ObstructionType;
@@ -284,8 +285,8 @@ fn tasked_world(masters: Vec<crate::objects::masters::Master>, owner_range: f32)
             crate::world::Player::default(),
             crate::world::Player {
                 objects: vec![
-                    unit(object_id(11), ids::VILLAGER_MALE, 2, 25.0),
-                    unit(object_id(60), ids::HOUSE, 0, 550.0),
+                    unit(object_id(11), ids::VILLAGER_MALE, ObjectState::Alive, 25.0),
+                    unit(object_id(60), ids::HOUSE, ObjectState::Foundation, 550.0),
                 ]
                 .into(),
                 attributes,
@@ -499,7 +500,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
             },
             life: Lifecycle {
                 master_id: master_id(master),
-                state: 2,
+                state: ObjectState::Alive,
                 hp: 25.0,
                 ..Lifecycle::default()
             },
@@ -512,7 +513,7 @@ fn attack_world(members: &[(i32, i16, f32, f32)]) -> World {
         attackable: true,
         life: Lifecycle {
             master_id: ids::HOUSE,
-            state: 2,
+            state: ObjectState::Alive,
             hp: 550.0,
             ..Lifecycle::default()
         },

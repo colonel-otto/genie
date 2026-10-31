@@ -2,6 +2,7 @@
 //! world ([`Battlefield`]).
 
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -88,7 +89,7 @@ pub struct Thing {
     /// The unit's owner counts its owner an ally (`FUN_141663d90` with the ally flag).
     pub allied: bool,
     /// `+0x640`.
-    pub state: u8,
+    pub state: ObjectState,
     /// It has a unit AI (`+0x6b0`).
     pub has_ai: bool,
     /// It is inside another (`+0x2f0`).

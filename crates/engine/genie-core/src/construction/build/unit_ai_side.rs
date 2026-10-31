@@ -7,6 +7,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Tile;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::action_type;
 use crate::objects::masters::master_type::BUILDING;
 use crate::objects::unit::Unit;
@@ -123,7 +124,7 @@ impl UnitView<'_, '_> {
                     continue;
                 };
                 let kind = u.master(every, player)?.kind;
-                if BUILDING <= kind && u.life.state == 0 {
+                if BUILDING <= kind && u.life.state == ObjectState::Foundation {
                     return Ok(Some(id));
                 }
             }

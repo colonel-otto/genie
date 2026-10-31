@@ -16,6 +16,7 @@ use crate::map::spatial::{Placed, SearchQuery, Spatial};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, Planning, footprint_gap_squared};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
 use crate::objects::masters::MasterId;
@@ -105,7 +106,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_, '_> {
             let Some((owner, u)) = find(r.id) else {
                 continue;
             };
-            if u.ai.is_none() || 3 <= u.life.state {
+            if u.ai.is_none() || ObjectState::Dying <= u.life.state {
                 continue;
             }
             let m = u.master(&self.c.w.masters, owner)?;

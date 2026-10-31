@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover};
+use crate::objects::ObjectState;
 use crate::objects::actions::Action;
 use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::seconds;
@@ -223,7 +224,7 @@ impl Unit {
         if let Some(e) = self
             .unmodelled_action
             .clone()
-            .filter(|_| self.life.state == 2)
+            .filter(|_| self.life.state == ObjectState::Alive)
         {
             return Err(e);
         }

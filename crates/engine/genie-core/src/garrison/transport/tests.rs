@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::GridSize;
 use crate::movement::move_to::{MoveDefaults, MoveTo, MoveToAction, MoveToReads, SpriteReads};
+use crate::objects::ObjectState;
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::test_ids::object_id;
@@ -74,7 +75,7 @@ fn hull() -> crate::objects::unit::Unit {
         ai: Some(crate::unit_ai::UnitAi::default()),
         ..crate::objects::unit::Unit::default()
     };
-    unit.life.state = 2;
+    unit.life.state = ObjectState::Alive;
     unit
 }
 
@@ -153,7 +154,7 @@ fn ship(loaded: bool) -> Ship<'static> {
                 defaults: MoveDefaults::default(),
                 graphics: &NO_GRAPHICS,
             },
-            state: 2,
+            state: ObjectState::Alive,
             speed: 1.0,
             at: Position::new(12.5, 8.5, 0.0),
             ground: Footprint::new(0.5, 0.5),
@@ -216,7 +217,10 @@ fn a_sail_takes_the_shore_point_and_drops_its_old_move_to() {
     assert_eq!(t.move_to.map(|m| m.state), Some(MoveTo::Failed));
     // a unit in state 3 or later adds no MoveTo (`FUN_140a977e0`)
     let dying = Ship {
-        walk: MoveToReads { state: 3, ..s.walk },
+        walk: MoveToReads {
+            state: ObjectState::Dying,
+            ..s.walk
+        },
         ..s
     };
     let _ = t.set_state(SAIL, &dying, &mut c).unwrap();

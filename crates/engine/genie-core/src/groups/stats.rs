@@ -9,6 +9,7 @@ use crate::groups::attack::moved_place;
 use crate::groups::create::FormationUnit;
 use crate::groups::group_list::member_gone;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type;
 use crate::objects::masters::master_type::ACTION;
@@ -336,7 +337,7 @@ impl World {
                     crate::groups::WorldObject::Unit(_, u) => u.life.state,
                     crate::groups::WorldObject::Ghost(_, g) => g.state,
                 };
-                if 3 <= state {
+                if ObjectState::Dying <= state {
                     continue;
                 }
                 if list == UnitRelation::NEUTRAL {
@@ -625,7 +626,7 @@ mod tests {
                 ..Unit::default()
             };
             u.life.master_id = master;
-            u.life.state = 2;
+            u.life.state = ObjectState::Alive;
             u
         };
         let mut soldier = unit(10, master_id(4), 5.0, 5.0);
@@ -634,7 +635,7 @@ mod tests {
             ..crate::unit_ai::UnitAi::default()
         });
         let mut dying = unit(21, master_id(4), 5.0, 6.0);
-        dying.life.state = 3;
+        dying.life.state = ObjectState::Dying;
         let players = vec![
             Player::default(),
             Player {

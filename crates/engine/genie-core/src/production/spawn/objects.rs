@@ -9,6 +9,7 @@ use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::static_storage;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::MasterId;
@@ -154,7 +155,7 @@ impl World {
                     player: p,
                     master,
                     los: made.line_of_sight,
-                    state: 2,
+                    state: ObjectState::Alive,
                     explored: false,
                     building: None,
                     umv: 0,
@@ -296,7 +297,7 @@ impl World {
                 } else {
                     Class::Animated
                 },
-                state: 2,
+                state: ObjectState::Alive,
                 hp: f32::from(made.hit_points),
                 attribute_type: held.kind,
                 amount: held.amount,

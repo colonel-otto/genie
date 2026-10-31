@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::objects::masters::ids;
 use crate::objects::masters::ids::WONDER;
@@ -183,7 +184,7 @@ impl World {
     ) -> Result<bool, GenieError> {
         let master = unit.master(&self.masters, p)?;
         let state = unit.life.state;
-        if (1..=4).contains(&state)
+        if (ObjectState::Unfinished..=ObjectState::DyingSprite).contains(&state)
             && master.storage.iter().any(|&(kind, _, mode)| {
                 kind == Some(POPULATION_STORAGE) && mode == ALIVE_STORE_MODE
             })
@@ -194,10 +195,10 @@ impl World {
         let builds = matches!(master.class, class::TOWER | class::BUILDING);
         let never = UNKEPT_HIGH.contains(master.class);
         let other = !(none || builds || never);
-        if other && state == 2 {
+        if other && state == ObjectState::Alive {
             return Ok(true);
         }
-        if builds && state == 2 {
+        if builds && state == ObjectState::Alive {
             let count = self
                 .trainable_count(p, master.id)
                 .wrapping_add(self.upgradable_count(p, master.id));
@@ -207,12 +208,12 @@ impl World {
         }
         if (builds || other)
             && matches!(master.class, class::CLASS_51 | class::CLASS_54)
-            && state == 0
+            && state == ObjectState::Foundation
         {
             return Ok(true);
         }
         Ok(master.id == WONDER
-            && state != 0
+            && state != ObjectState::Foundation
             && crate::world::scenario_mode(self.settings.game_mode))
     }
 }

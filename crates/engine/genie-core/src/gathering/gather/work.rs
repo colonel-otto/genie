@@ -10,6 +10,7 @@ use crate::gathering::gather::{
 use crate::gathering::hunt::Dropped;
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::sprite::{Graphic, new_sprite};
@@ -42,7 +43,7 @@ impl GatherAction {
                 "a gather's set_state 6 on master 357 or 1188",
             ));
         }
-        if target.state < 2 {
+        if target.state < ObjectState::Alive {
             return Ok(Next::Build);
         }
         if matches!(

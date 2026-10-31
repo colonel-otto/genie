@@ -5,6 +5,7 @@ use crate::map::GridSize;
 use crate::map::Point;
 use crate::map::Rect;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -53,7 +54,7 @@ pub struct ClearLook {
     /// Its master's type.
     pub kind: MasterKind,
     /// `+0x640`.
-    pub state: u8,
+    pub state: ObjectState,
     /// `+0xc60`.
     pub desolid: bool,
 }
@@ -228,7 +229,7 @@ pub(super) fn clearing_takes(
     // the destroy's death part (FUN_14121cc40 below state 3) drops the record and sets +0x686
     // first; then FUN_141189670: COMISS 0 against the height, JC drops the record (a NaN too),
     // else the record held (`+0x658`) does
-    let dies = COMBAT <= seen.kind && seen.state < 3 && !seen.roo_called;
+    let dies = COMBAT <= seen.kind && seen.state < ObjectState::Dying && !seen.roo_called;
     let destroy_drops = dies && (seen.kind < BUILDING || (!seen.desolid && 0.0 < seen.height));
     let roo_drops = site.trees
         && !seen.roo_called

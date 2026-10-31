@@ -3,6 +3,7 @@
 use crate::map::Position;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::ids::WONDER;
@@ -350,10 +351,10 @@ pub(crate) fn annexes_of<'a>(
 /// to let go); one past state 6 is let go (slot 0x180) and goes. The game checks the second
 /// target's absence before the first target's state; the two touch different objects. Returns
 /// the second target after them and the object let go.
-pub(crate) const fn second_target_checked(
+pub(crate) fn second_target_checked(
     site: Option<ObjectId>,
     held: bool,
-    state: Option<u8>,
+    state: Option<ObjectState>,
 ) -> (Option<ObjectId>, Option<ObjectId>) {
     let Some(site) = site else {
         return (None, None);
@@ -362,7 +363,7 @@ pub(crate) const fn second_target_checked(
         return (None, None);
     }
     match state {
-        Some(s) if 6 < s => (None, Some(site)),
+        Some(s) if ObjectState::Undead < s => (None, Some(site)),
         _ => (Some(site), None),
     }
 }
@@ -388,11 +389,11 @@ pub(crate) fn object_master<'a>(
 
 /// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes
 /// (`FUN_140a98620`), the Wonder's (master 276, `0x61b0` raw) only past state 5.
-pub(crate) const fn loses_actions(life: &Lifecycle) -> bool {
+pub(crate) fn loses_actions(life: &Lifecycle) -> bool {
     let last = if matches!(life.master_id, WONDER) {
-        5
+        ObjectState::Dead
     } else {
-        2
+        ObjectState::Alive
     };
     last < life.state
 }

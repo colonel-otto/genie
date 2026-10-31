@@ -8,6 +8,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{BLOCKED, Spatial};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::class;
@@ -111,7 +112,7 @@ impl Spatial {
             (y0..=y1).flat_map(|ty| (x0..=x1).flat_map(move |tx| self.objects_on(tx, ty)));
         for (id, q) in on_tiles {
             let Some(s) = v.seer(id) else { continue };
-            if s.kind != COMBAT || s.state != 2 || KEPT.contains(&q.class) {
+            if s.kind != COMBAT || s.state != ObjectState::Alive || KEPT.contains(&q.class) {
                 continue;
             }
             if (q.player == PlayerId::GAIA && s.capture != 0) || out(q.player.index()) {
@@ -385,7 +386,7 @@ impl Spatial {
     }
 
     /// The object's `set_state` to `state` ([`Visibility::state_changed`]).
-    pub fn sight_state(&mut self, id: ObjectId, state: u8) -> Result<(), GenieError> {
+    pub fn sight_state(&mut self, id: ObjectId, state: ObjectState) -> Result<(), GenieError> {
         if let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) {
             v.state_changed(id, p.position, p.radius, state)?;
         }

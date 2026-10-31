@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::NotifyKind;
@@ -19,12 +20,12 @@ pub struct Inbox<'a> {
     /// The unit's id: the notify's caller and its recipient.
     pub id: ObjectId,
     /// The unit's state, which the AI's acceptance reads ([`UnitAi::accept`]).
-    pub state: u8,
+    pub state: ObjectState,
 }
 
 impl<'a> Inbox<'a> {
     /// The inbox of the unit `id` in `state` with its AI `ai`, borrowed beside its body.
-    pub const fn of(ai: &'a mut Option<UnitAi>, id: ObjectId, state: u8) -> Self {
+    pub const fn of(ai: &'a mut Option<UnitAi>, id: ObjectId, state: ObjectState) -> Self {
         Self {
             ai: ai.as_mut(),
             id,
@@ -162,7 +163,7 @@ impl UnitAi {
     /// 0x38 ([`UnitAi::accept`]). A notify the AI does not take (any but 699) goes to the
     /// owner's slot 0x2e8 (`FUN_14162dab0`, the human player's alerts), which the slice does not
     /// hold.
-    pub fn post(&mut self, n: Notify, unit_state: u8) -> Result<(), GenieError> {
+    pub fn post(&mut self, n: Notify, unit_state: ObjectState) -> Result<(), GenieError> {
         let _ = self.accept(n, unit_state);
         Ok(())
     }
@@ -173,8 +174,8 @@ impl UnitAi {
     /// (`0x1fa` with `0x262`) while the AI has an action other than a move (`0x262`, `0x268`,
     /// `0x2bf`, `0x2c0`) is ignored, answering 1 without joining the queue; any other joins the
     /// queue (`FUN_140c42470`, whose 0 on a failed allocation cannot happen) and answers 1.
-    pub fn accept(&mut self, n: Notify, unit_state: u8) -> bool {
-        if unit_state != 2 {
+    pub fn accept(&mut self, n: Notify, unit_state: ObjectState) -> bool {
+        if unit_state != ObjectState::Alive {
             return false;
         }
         let action = self.current_action;

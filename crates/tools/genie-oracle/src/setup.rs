@@ -556,7 +556,7 @@ pub(super) fn saved_ghosts(
                 bits: 0,
                 cant_see: d.cant_see_bits,
                 seen: false,
-                state: s.object_state,
+                state: genie_core::objects::ObjectState::of_byte(s.object_state)?,
             })
         })
         .collect()

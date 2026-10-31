@@ -5,6 +5,7 @@ use crate::map::Position;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::players::PlayerId;
@@ -352,7 +353,7 @@ impl UnitAi {
                 pick: Pick::Closest {
                     group: Some(class),
                     relation: Some(QueryRelation::Itself),
-                    state: 0,
+                    state: Some(ObjectState::Foundation),
                     master: None,
                     workers: -1,
                     spared: None,
@@ -516,7 +517,10 @@ impl UnitAi {
         computer: bool,
         ai: &mut Well512,
     ) -> Result<(), GenieError> {
-        let Some(order) = self.current_order.filter(|_| at.state <= 2) else {
+        let Some(order) = self
+            .current_order
+            .filter(|_| at.state <= ObjectState::Alive)
+        else {
             return Ok(());
         };
         let record = QueuedOrder {

@@ -6,6 +6,7 @@ use crate::groups::GroupId;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
+use crate::objects::ObjectState;
 use crate::objects::{ObjectId, ObjectKey};
 use crate::players::PlayerId;
 use crate::world::World;
@@ -210,7 +211,7 @@ impl World {
             NO_COMMAND | MOVE_COMMAND => !g.command_queue.is_empty(),
             BUILD => !self
                 .world_object(target)
-                .is_some_and(|t| t.state() < 2 && t.player() == owner),
+                .is_some_and(|t| t.state() < ObjectState::Alive && t.player() == owner),
             _ => return Ok(None),
         }))
     }

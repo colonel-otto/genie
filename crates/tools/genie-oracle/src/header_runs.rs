@@ -7,7 +7,7 @@ use genie_core::GenieError;
 use genie_core::commands::Command;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
-use genie_core::world::checkpoint::{ActionTerm, ObjectState, TopAction, player_block};
+use genie_core::world::checkpoint::{ActionTerm, CheckpointObject, TopAction, player_block};
 use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::{Header, PlayerSection};
@@ -144,7 +144,7 @@ pub(super) fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Playe
         .objects
         .iter()
         .filter(|unit| listed(unit))
-        .map(|unit| ObjectState {
+        .map(|unit| CheckpointObject {
             id: unit.id,
             main_id: unit.life.master_id.get(),
             state: unit.life.state,

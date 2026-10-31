@@ -177,6 +177,7 @@ impl Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::ObjectState;
     use crate::objects::masters::ids;
     use crate::objects::masters::master_type;
     use crate::objects::masters::{Master, Masters};
@@ -225,7 +226,7 @@ mod tests {
         let mut farm = Unit {
             id: object_id(600),
             life: Lifecycle {
-                state: 2,
+                state: ObjectState::Alive,
                 hp: 480.0,
                 master_id: master,
                 attribute_type: Some(attribute::FARM_FOOD),

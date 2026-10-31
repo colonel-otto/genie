@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::objects::masters::master_type::BUILDING;
@@ -365,7 +366,7 @@ impl UnitAi {
         if !keeps
             && self.current_order == Some(OrderKind::Attack)
             && let (Some(n), Some(c)) = (new, current)
-            && c.state == 2
+            && c.state == ObjectState::Alive
             && crate::unit_ai::best_target::category(n.master, n.class)
                 != crate::unit_ai::best_target::category(c.master, c.class)
         {
@@ -510,7 +511,7 @@ impl UnitAi {
                             .with_x(t.position.x())
                             .with_y(t.position.y());
                     }
-                    2 < t.state && t.owner != PlayerId::GAIA
+                    ObjectState::Alive < t.state && t.owner != PlayerId::GAIA
                 }
             };
             if ends {
@@ -587,7 +588,8 @@ impl UnitAi {
         // the world holds the current target (`at.target`) only when the AI has one
         let (Some(id), Some(target)) = (
             self.current_target,
-            at.target.filter(|t| t.state <= 2 && t.visible),
+            at.target
+                .filter(|t| t.state <= ObjectState::Alive && t.visible),
         ) else {
             self.defend_target = None;
             self.remove_target();
@@ -636,7 +638,7 @@ impl UnitAi {
     pub(super) fn move_to_object(
         &mut self,
         id: ObjectId,
-        (state, class, position): (u8, ClassId, Position),
+        (state, class, position): (ObjectState, ClassId, Position),
         range: f32,
         side: &mut dyn UnitSide,
         rng: &mut Well512,

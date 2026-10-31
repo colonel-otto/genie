@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
+use crate::objects::ObjectState;
 use crate::objects::masters::class;
 use crate::players::QueryRelation;
 use crate::unit_ai::{
@@ -205,7 +206,7 @@ impl UnitAi {
             pick: Pick::Closest {
                 group: None,
                 relation: None,
-                state: -1,
+                state: None,
                 master: None,
                 workers: -1,
                 spared: None,
@@ -284,7 +285,7 @@ impl UnitAi {
             pick: Pick::Closest {
                 group,
                 relation: Some(QueryRelation::Enemies),
-                state: 2,
+                state: Some(ObjectState::Alive),
                 master: None,
                 workers: -1,
                 spared: None,

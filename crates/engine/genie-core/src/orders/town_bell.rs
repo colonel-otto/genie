@@ -10,6 +10,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::footprint_gap_squared;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
@@ -250,7 +251,7 @@ impl World {
         while k < self.players.player(owner)?.objects.len() {
             let o = &self.players.live(owner, k)?;
             k += 1;
-            if o.life.state != 2 || o.life.inside.is_some() {
+            if o.life.state != ObjectState::Alive || o.life.inside.is_some() {
                 continue;
             }
             let id = o.id;
@@ -304,7 +305,11 @@ impl World {
             let b = &self.players.live(owner, idx)?;
             let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
-            if m.kind != BUILDING || 3 <= b.life.state || !takes_villagers || !b.town_bell.flag {
+            if m.kind != BUILDING
+                || ObjectState::Dying <= b.life.state
+                || !takes_villagers
+                || !b.town_bell.flag
+            {
                 continue;
             }
             let id = b.id;
@@ -349,7 +354,7 @@ impl World {
             let b = &self.players.live(owner, idx)?;
             let m = b.master(&self.masters, owner)?;
             let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
-            if b.life.state != 2
+            if b.life.state != ObjectState::Alive
                 || b.life.inside.is_some()
                 || m.kind != BUILDING
                 || !takes_villagers
@@ -489,7 +494,7 @@ impl World {
                 drop_sites: &self.drop_sites,
             };
             (tm.kind == BUILDING
-                && t.life.state == 2
+                && t.life.state == ObjectState::Alive
                 && world.allied(player, tp, true)
                 && tm.building.is_some_and(|b| b.garrison_type & 1 != 0))
             .then_some(true)

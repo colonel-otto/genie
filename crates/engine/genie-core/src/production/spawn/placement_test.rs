@@ -9,6 +9,7 @@ use crate::map::Position;
 use crate::map::Radii;
 use crate::map::{Tile, TileRect};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -47,7 +48,7 @@ pub struct Near {
     /// Its master's `enable_auto_gather` (`+0x681`).
     pub auto_gather: bool,
     /// Its state (`+0x640`) and, for a building, its `desolid_flag` (`+0xc60`).
-    pub state: u8,
+    pub state: ObjectState,
     /// A building's `desolid_flag` (`+0xc60`).
     pub desolid: bool,
     /// Its owner.
@@ -80,7 +81,7 @@ impl Near {
     #[must_use]
     pub fn stays(&self) -> bool {
         if self.kind == BUILDING
-            || (self.class == class::TREE && 2 < self.state)
+            || (self.class == class::TREE && ObjectState::Alive < self.state)
             || self.master == RELIC
         {
             return true;
@@ -99,13 +100,13 @@ impl Near {
             | class::CLASS_40
             | class::CLASS_41
             | class::LIVESTOCK
-            | class::CLASS_61 => 1 < self.state,
+            | class::CLASS_61 => ObjectState::Unfinished < self.state,
             class::CLASS_7
             | class::CLASS_8
             | class::TREE
             | class::CLASS_32
             | class::CLASS_48
-            | class::CLASS_63 => 2 < self.state,
+            | class::CLASS_63 => ObjectState::Alive < self.state,
             _ => false,
         }
     }
@@ -278,7 +279,7 @@ fn static_scans_find(
     }
     let first = |o: &Near| {
         let listed = !site.own.contains(&o.id)
-            && o.state < 7
+            && o.state < ObjectState::Removed
             && o.buildable_on != 1
             && (o.kind != BUILDING || !o.desolid);
         let tall = o.tall
@@ -291,7 +292,7 @@ fn static_scans_find(
     }
     let second = |o: &Near| {
         let listed = !site.own.contains(&o.id)
-            && o.state < 7
+            && o.state < ObjectState::Removed
             && o.buildable_on != 1
             && o.kind != COMBAT
             && (o.kind != BUILDING
@@ -454,7 +455,8 @@ pub(super) fn blocks_build(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near, a
 /// that is not an ally both ways.
 pub(super) fn build_ignores(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -> bool {
     let player = site.player;
-    let alive = o.state < 3 || (o.kind != BUILDING && o.state < 7);
+    let alive =
+        o.state < ObjectState::Dying || (o.kind != BUILDING && o.state < ObjectState::Removed);
     let standing = site.obstructs || o.kind < master_type::MOVING || !o.moving;
     let gate_wall = site.class == class::GATE && o.class == class::WALL && o.player == player;
     let foundation = o.kind == BUILDING
@@ -471,7 +473,7 @@ pub(super) fn build_passes(site: &BuildSite<'_>, map: &dyn PlaceMap, o: &Near) -
     // a moving unit of the player, of Gaia or of a mutual ally passes (the game type
     // 7's own test of allies is not modelled)
     let passes = master_type::MOVING <= o.kind
-        && o.state == 2
+        && o.state == ObjectState::Alive
         && o.moving
         && (o.player == player
             || o.player == PlayerId::GAIA
@@ -549,8 +551,9 @@ pub fn placement(
                 return Err(GenieError::unsupported("a placement test in a zone mode"));
             }
             let counts = |o: &Near| {
-                let listed =
-                    o.state < 7 && o.buildable_on != 1 && (o.kind != BUILDING || !o.desolid);
+                let listed = o.state < ObjectState::Removed
+                    && o.buildable_on != 1
+                    && (o.kind != BUILDING || !o.desolid);
                 let tall = o.tall
                     || (me.class == class::TREE && o.class == class::FARM)
                     || (o.kind == BUILDING && o.obstruction_type != ObstructionType::NONE);
@@ -569,7 +572,7 @@ pub fn placement(
     };
     // slot 0x50's own scan
     let counts = |o: &Near| {
-        let listed = o.state < 7
+        let listed = o.state < ObjectState::Removed
             && o.buildable_on != 1
             && (o.kind != BUILDING
                 || o.class == class::CLASS_51

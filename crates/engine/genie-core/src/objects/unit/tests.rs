@@ -1,6 +1,7 @@
 use crate::GenieError;
 use crate::map::Position;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
 use crate::objects::layers::{Animated, Body};
 use crate::objects::lifecycle::{Class, Lifecycle};
@@ -108,7 +109,7 @@ fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
 fn an_object_past_state_2_loses_its_actions() {
     let mut t = forage_world();
     let u = &mut t.players[1].objects[0];
-    u.life.state = 3;
+    u.life.state = ObjectState::Dying;
     u.actions.set_move_to(Some(MoveToAction {
         sprite: None,
         state: MoveTo::Moving,

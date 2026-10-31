@@ -12,6 +12,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::movement::move_to::{MoveDefaults, MoveToAction};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
@@ -269,7 +270,7 @@ pub struct Quarry {
     /// Its master's type.
     pub kind: MasterKind,
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its owner.
     pub player: PlayerId,
     /// What it holds (`+0x310`).

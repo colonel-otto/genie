@@ -5,6 +5,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::class;
 use crate::unit_ai::ActionKind;
@@ -222,7 +223,7 @@ impl UnitAi {
         // none (−1) is an object the world does not hold
         self.attackers.remove_first(|id| {
             id.and_then(|id| at.unit(id))
-                .is_none_or(|u| 2 < u.state || u.target != Some(at.id))
+                .is_none_or(|u| ObjectState::Alive < u.state || u.target != Some(at.id))
         });
     }
 }

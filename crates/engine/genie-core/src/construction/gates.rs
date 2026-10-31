@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::map::Rect;
 use crate::map::spatial::{RecordId, Spatial, WalkQuery};
+use crate::objects::ObjectState;
 use crate::objects::masters::ObstructionType;
 use crate::objects::masters::class;
 use crate::objects::masters::player_master;
@@ -113,7 +114,7 @@ impl World {
             && m.building
                 .as_ref()
                 .is_some_and(|b| b.transform_unit.is_some());
-        Ok(gate.life.state < 3
+        Ok(gate.life.state < ObjectState::Dying
             && transforming
             && !gate.gate.is_some_and(|g| g.locked)
             && self.spatial.allied_with(q, p)

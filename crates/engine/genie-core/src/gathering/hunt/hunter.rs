@@ -8,6 +8,7 @@ use crate::combat::victims::readable;
 use crate::gathering::hunt::NO_HUNT;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::seconds;
 use crate::objects::masters::class;
 use crate::objects::teardown::HeadCode;
@@ -36,7 +37,7 @@ impl Unit {
         {
             let state = readable(c, target)?.map(|(_, u, _)| u.life.state);
             let gone = match state {
-                Some(s) => 6 < s,
+                Some(s) => ObjectState::Undead < s,
                 None if c.w.spatial.get(target).is_some() => {
                     return Err(GenieError::unsupported(
                         "a hunt's target the slice cannot read",
@@ -81,8 +82,9 @@ impl Unit {
                 && 0.0 <= h.timer
                 && h.move_to.is_some_and(|m| {
                     m.state == MoveTo::Failed
-                        || m.target
-                            .is_some_and(|t| c.w.object_state(t).is_some_and(|s| 6 < s))
+                        || m.target.is_some_and(|t| {
+                            c.w.object_state(t).is_some_and(|s| ObjectState::Undead < s)
+                        })
                 })
         }) && self.ai.as_ref().is_some_and(|ai| {
             let class = ai

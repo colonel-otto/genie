@@ -10,6 +10,7 @@ use crate::math::fmath::BVector;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::static_storage;
 use crate::objects::lifecycle::{Class, Lifecycle};
@@ -91,7 +92,7 @@ impl Unit {
             master.id,
             ids::ID_527 | ids::ID_528 | ids::ID_1104 | ids::ID_2133 | ids::ID_2134 | ids::ID_2135
         ) || matches!(master.class, class::CLASS_35 | class::CLASS_64))
-            && self.life.state == 2
+            && self.life.state == ObjectState::Alive
         {
             return Err(GenieError::unsupported(
                 "a self-destructing attacker's hit (its object 112 and its death)",
@@ -443,7 +444,7 @@ impl Unit {
                     player: c.player,
                     master: made.id,
                     los: made.line_of_sight,
-                    state: 2,
+                    state: ObjectState::Alive,
                     explored: false,
                     building: None,
                     umv: 0,
@@ -502,7 +503,7 @@ impl Unit {
             id,
             life: Lifecycle {
                 class: Class::Animated,
-                state: 2,
+                state: ObjectState::Alive,
                 hp: f32::from(made.hit_points),
                 attribute_type: held.kind,
                 amount: held.amount,

@@ -6,6 +6,7 @@ use crate::map::Footprint;
 use crate::map::Point;
 use crate::map::Position;
 use crate::math::fmath::BVector;
+use crate::objects::ObjectState;
 use crate::objects::masters::AttackPriority;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::ClassMask;
@@ -393,7 +394,7 @@ pub fn siege_can_attack(
     if me.player == PlayerId::GAIA && !takes_by_sight {
         return Ok(false);
     }
-    if (t.kind == BUILDING && t.desolid) || me.state < 2 {
+    if (t.kind == BUILDING && t.desolid) || me.state < ObjectState::Alive {
         return Ok(false);
     }
     if !me.computer && !any && me.class == Some(PACKED_UNIT_CLASS) {

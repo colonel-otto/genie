@@ -14,6 +14,7 @@
 
 use crate::GenieError;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::ClassId;
@@ -65,7 +66,7 @@ pub struct TaskTarget<'a> {
     /// Its player.
     pub player: PlayerId,
     /// The object state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// What it holds (`+0x308`, `+0x310`): a resource's kind and amount.
     pub held: Held,
     /// Its hit points and their most (slots 0xc0 and 200).
@@ -157,8 +158,8 @@ pub struct DropTarget {
     pub class: ClassId,
     /// `worker_num`: the most workers such an object may have.
     pub workers: i32,
-    /// `object_state`: the state such an object must be in.
-    pub state: i32,
+    /// `object_state`: the state such an object must be in (none for −1, any).
+    pub state: Option<ObjectState>,
     /// `attribute_type`: the resource it gives, none for −1.
     pub attribute: Option<AttributeId>,
 }
@@ -168,9 +169,14 @@ impl DropSite {
     /// state `state` with `workers` workers: its first target of that class decides, unless it
     /// caps the workers below the object's or wants another state (None).
     #[must_use]
-    pub fn resource_of(&self, class: ClassId, state: u8, workers: i32) -> Option<AttributeId> {
+    pub fn resource_of(
+        &self,
+        class: ClassId,
+        state: ObjectState,
+        workers: i32,
+    ) -> Option<AttributeId> {
         let t = self.targets.iter().find(|t| t.class == class)?;
-        if (0 <= t.workers && t.workers < workers) || (0 <= t.state && t.state != i32::from(state))
+        if (0 <= t.workers && t.workers < workers) || t.state.is_some_and(|wanted| wanted != state)
         {
             return None;
         }
@@ -324,7 +330,7 @@ fn general<'m>(
         let usable = |task: &Task| {
             !special_type(task.action_type) && applies(task, actor, t, dip) && wanted(filter, task)
         };
-        if t.state < 3
+        if t.state < ObjectState::Dying
             && t.master.combat_level != 0
             && let Some(task) = first(list, |task| task.combat_level != 0 && usable(task))
         {
@@ -366,7 +372,7 @@ fn garrison_task<'m>(
         dip.allied(actor.player, t.player, true) && dip.allied(t.player, actor.player, true);
     if (t.player == actor.player || mutual)
         && t.player != PlayerId::GAIA
-        && t.state == 2
+        && t.state == ObjectState::Alive
         // A building's master type (`'P'`).
         && t.master.kind == BUILDING
         && (list.kind == COMBAT || list.id == ids::MASTER_1808)
@@ -460,7 +466,9 @@ fn finder_head<'m>(
     // LAB_141278e9f: the monk tasks for carried relics and conversions of villagers
     if actor.held.kind == Some(attribute::RELIC)
         && target.is_some_and(|t| {
-            t.state == 2 && t.player == actor.player && t.master.id == ids::TOWN_CENTRE
+            t.state == ObjectState::Alive
+                && t.player == actor.player
+                && t.master.id == ids::TOWN_CENTRE
         })
         && let Some(task) = first(list, |task| task.action_type == action_type::ACTION_135)
     {
@@ -542,7 +550,7 @@ fn finder_tail<'m>(
         }
         // LAB_14127ba9e: a list with task 13 takes it, under that filter alone, for an own,
         // allied or artifact target in a state below 3
-        if t.state < 3
+        if t.state < ObjectState::Dying
             && (t.player == actor.player
                 || dip.allied(actor.player, t.player, true)
                 || t.master.class == class::ARTIFACT)
@@ -625,7 +633,7 @@ mod tests {
         }
     }
 
-    fn building(site: &Master, player: PlayerId, state: u8) -> TaskTarget<'_> {
+    fn building(site: &Master, player: PlayerId, state: ObjectState) -> TaskTarget<'_> {
         TaskTarget {
             id: object_id(10028),
             master: site,
@@ -678,7 +686,7 @@ mod tests {
         };
         let at = |player, held| TaskTarget {
             held,
-            ..building(&own, player, 2)
+            ..building(&own, player, ObjectState::Alive)
         };
         let applies_to = |task: &Task, master, target: &TaskTarget<'_>| {
             applies(task, &me(master), target, &Teams)
@@ -787,7 +795,7 @@ mod tests {
             targets: vec![DropTarget {
                 class: class::TREE,
                 workers: -1,
-                state: -1,
+                state: None,
                 attribute,
             }],
             ..DropSite::default()
@@ -883,8 +891,8 @@ mod tests {
             ..master(master_id(65), COMBAT, class::PREY, vec![])
         };
         let target = |m| TaskTarget {
-            state: 2,
-            ..building(m, PlayerId::new(0), 2)
+            state: ObjectState::Alive,
+            ..building(m, PlayerId::new(0), ObjectState::Alive)
         };
         assert_eq!(find(&hunter, carrying(None, 0.0), &target(&deer)), Ok(None));
         let eaten = Master {
@@ -908,7 +916,7 @@ mod tests {
     #[test]
     fn a_build_task_for_the_foundation_s_master_or_class_needs_a_work_value() {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
-        let site = building(&house, PlayerId::new(2), 0);
+        let site = building(&house, PlayerId::new(2), ObjectState::Foundation);
         let by = |tasks: Vec<Task>| {
             let builder = master(ids::BUILDER, COMBAT, class::VILLAGER, tasks);
             find(&builder, carrying(None, 0.0), &site).map(Option::<&Task>::copied)
@@ -949,7 +957,7 @@ mod tests {
             find(
                 &lumberjack,
                 carrying(Some(attribute::FOOD), 10.0),
-                &building(&camp, PlayerId::new(2), 2)
+                &building(&camp, PlayerId::new(2), ObjectState::Alive)
             ),
             Ok(Some(&chop))
         );
@@ -958,7 +966,7 @@ mod tests {
             find(
                 &lumberjack,
                 carrying(None, 0.0),
-                &building(&camp, PlayerId::new(2), 2)
+                &building(&camp, PlayerId::new(2), ObjectState::Alive)
             ),
             Ok(None)
         );
@@ -967,7 +975,7 @@ mod tests {
             find(
                 &lumberjack,
                 carrying(Some(attribute::FOOD), 10.0),
-                &building(&camp, PlayerId::new(2), 0)
+                &building(&camp, PlayerId::new(2), ObjectState::Foundation)
             ),
             Ok(Some(&task(action_type::BUILD, -1, -1, 1.0)))
         );
@@ -982,7 +990,7 @@ mod tests {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let damaged = TaskTarget {
             hp: 300.0,
-            ..building(&house, PlayerId::new(2), 2)
+            ..building(&house, PlayerId::new(2), ObjectState::Alive)
         };
         let by = |tasks: Vec<Task>, t: &TaskTarget<'_>, filter: Option<ActionType>| {
             let builder = master(ids::BUILDER, COMBAT, class::VILLAGER, tasks);
@@ -1020,7 +1028,7 @@ mod tests {
         assert_eq!(
             by(
                 vec![any],
-                &building(&house, PlayerId::new(2), 2),
+                &building(&house, PlayerId::new(2), ObjectState::Alive),
                 Some(crate::construction::repair::REPAIR)
             ),
             Ok(None)
@@ -1045,7 +1053,7 @@ mod tests {
             id: object_id(7420),
             hp: 100.0,
             max_hp: 100.0,
-            ..building(ship, player, 2)
+            ..building(ship, player, ObjectState::Alive)
         }
     }
 
@@ -1163,7 +1171,7 @@ mod tests {
         );
         // a dead ram (state 3) is none of its garrisons
         let dead = TaskTarget {
-            state: 3,
+            state: ObjectState::Dying,
             ..transport(&ram, PlayerId::new(2))
         };
         assert_eq!(
@@ -1184,7 +1192,7 @@ mod tests {
             find(
                 &militia,
                 carrying(None, 0.0),
-                &building(&house, PlayerId::new(1), 2)
+                &building(&house, PlayerId::new(1), ObjectState::Alive)
             ),
             Ok(Some(&attack))
         );
@@ -1192,13 +1200,13 @@ mod tests {
             find(
                 &militia,
                 carrying(None, 0.0),
-                &building(&house, PlayerId::new(2), 2)
+                &building(&house, PlayerId::new(2), ObjectState::Alive)
             ),
             Ok(None)
         );
         let rubble = TaskTarget {
             attackable: false,
-            ..building(&house, PlayerId::new(1), 2)
+            ..building(&house, PlayerId::new(1), ObjectState::Alive)
         };
         assert_eq!(find(&militia, carrying(None, 0.0), &rubble), Ok(None));
     }
@@ -1216,7 +1224,7 @@ mod tests {
             vec![task(action_type::ACTION_135, -1, -1, 0.0)],
         );
         let a = actor(&villager, carrying(None, 0.0));
-        let t = building(&house, PlayerId::new(2), 2);
+        let t = building(&house, PlayerId::new(2), ObjectState::Alive);
         assert_eq!(
             finder_head(&villager, &a, Some(&t), None, &Alone),
             Ok(Finding::Next)
@@ -1253,7 +1261,7 @@ mod tests {
             object_flags: 0x10,
             ..master(master_id(126), COMBAT, class::PREDATOR, vec![])
         };
-        let prey = building(&deer, PlayerId::new(0), 2);
+        let prey = building(&deer, PlayerId::new(0), ObjectState::Alive);
         assert_eq!(
             finder_head(
                 &wolf,
@@ -1270,7 +1278,7 @@ mod tests {
             finder_head(
                 &villager,
                 &carrier,
-                Some(&building(&monastery, PlayerId::new(2), 2)),
+                Some(&building(&monastery, PlayerId::new(2), ObjectState::Alive)),
                 None,
                 &Alone
             ),
@@ -1281,7 +1289,7 @@ mod tests {
             attribute_95: 2.0,
             ..actor(&monk, carrying(None, 0.0))
         };
-        let peasant = building(&villager, PlayerId::new(3), 2);
+        let peasant = building(&villager, PlayerId::new(3), ObjectState::Alive);
         assert!(finder_head(&monk, &converting, Some(&peasant), None, &Alone).is_err());
     }
 
@@ -1316,7 +1324,7 @@ mod tests {
         assert_eq!(found(None, Some(1), None), Ok(None));
         assert_eq!(found(None, None, None), Ok(None));
         let villager = master(ids::VILLAGER_MALE, COMBAT, class::VILLAGER, vec![]);
-        let peasant = building(&villager, PlayerId::new(2), 2);
+        let peasant = building(&villager, PlayerId::new(2), ObjectState::Alive);
         assert_eq!(
             found(Some(&peasant), Some(2), None),
             Ok(Some(crate::garrison::transport::TRANSPORT))
@@ -1341,7 +1349,7 @@ mod tests {
             on_target(
                 &builder,
                 &a,
-                &building(&house, PlayerId::new(2), 0),
+                &building(&house, PlayerId::new(2), ObjectState::Foundation),
                 None,
                 &Alone
             ),
@@ -1351,7 +1359,7 @@ mod tests {
             on_target(
                 &builder,
                 &a,
-                &building(&house, PlayerId::new(2), 2),
+                &building(&house, PlayerId::new(2), ObjectState::Alive),
                 None,
                 &Alone
             ),
@@ -1362,7 +1370,7 @@ mod tests {
             on_target(
                 &builder,
                 &a,
-                &building(&m199, PlayerId::new(2), 2),
+                &building(&m199, PlayerId::new(2), ObjectState::Alive),
                 None,
                 &Alone
             )
@@ -1373,7 +1381,7 @@ mod tests {
             on_target(
                 &builder,
                 &a,
-                &building(&m45, PlayerId::new(2), 2),
+                &building(&m45, PlayerId::new(2), ObjectState::Alive),
                 None,
                 &Alone
             ),
@@ -1390,7 +1398,7 @@ mod tests {
             ],
         );
         let cart = actor(&trader, carrying(None, 0.0));
-        let dock = building(&m45, PlayerId::new(2), 2);
+        let dock = building(&m45, PlayerId::new(2), ObjectState::Alive);
         assert_eq!(
             on_target(&trader, &cart, &dock, None, &Alone),
             Ok(Finding::Answer(Some(&trader.tasks[2])))
@@ -1414,7 +1422,7 @@ mod tests {
             on_target(
                 &trader,
                 &cart,
-                &building(&market, PlayerId::new(2), 2),
+                &building(&market, PlayerId::new(2), ObjectState::Alive),
                 None,
                 &Alone
             ),
@@ -1425,7 +1433,7 @@ mod tests {
             on_target(
                 &trader,
                 &cart,
-                &building(&m45, PlayerId::new(2), 3),
+                &building(&m45, PlayerId::new(2), ObjectState::Dying),
                 None,
                 &Alone
             ),
@@ -1463,7 +1471,7 @@ mod tests {
             ..task(crate::gathering::gather::GATHER, 15, -1, 0.6)
         };
         let lumberjack = master(master_id(123), COMBAT, class::VILLAGER, vec![chop]);
-        let site = building(&camp, PlayerId::new(2), 2);
+        let site = building(&camp, PlayerId::new(2), ObjectState::Alive);
         assert_eq!(
             drop(&lumberjack, carrying(Some(attribute::FOOD), 10.0), &site),
             Finding::Answer(Some(&lumberjack.tasks[0]))
@@ -1538,7 +1546,7 @@ mod tests {
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
         let damaged = TaskTarget {
             hp: 300.0,
-            ..building(&house, PlayerId::new(2), 2)
+            ..building(&house, PlayerId::new(2), ObjectState::Alive)
         };
         let any = master(
             ids::BUILDER,
@@ -1551,7 +1559,11 @@ mod tests {
             Finding::Answer(Some(&any.tasks[0]))
         );
         assert_eq!(
-            repair(&any, &building(&house, PlayerId::new(2), 2), None),
+            repair(
+                &any,
+                &building(&house, PlayerId::new(2), ObjectState::Alive),
+                None
+            ),
             Finding::Next
         );
         let weak = master(
@@ -1592,7 +1604,7 @@ mod tests {
             )
         }
         let house = master(ids::HOUSE, BUILDING, class::BUILDING, vec![]);
-        let own = building(&house, PlayerId::new(2), 2);
+        let own = building(&house, PlayerId::new(2), ObjectState::Alive);
         let thirteen = master(
             master_id(9),
             COMBAT,
@@ -1617,7 +1629,11 @@ mod tests {
             )],
         );
         assert_eq!(
-            tail(&shepherd, &building(&sheep, PlayerId::new(0), 2), None),
+            tail(
+                &shepherd,
+                &building(&sheep, PlayerId::new(0), ObjectState::Alive),
+                None
+            ),
             Ok(Some(&shepherd.tasks[0]))
         );
         for list in [
@@ -1641,6 +1657,13 @@ mod tests {
             vec![task(action_type::PICK_UP, -1, -1, 0.0)],
         );
         let c42 = master(master_id(1), COMBAT, class::RELIC, vec![]);
-        assert!(tail(&relic_cart, &building(&c42, PlayerId::new(2), 2), None).is_err());
+        assert!(
+            tail(
+                &relic_cart,
+                &building(&c42, PlayerId::new(2), ObjectState::Alive),
+                None
+            )
+            .is_err()
+        );
     }
 }

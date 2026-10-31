@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::math::fmath::BVector;
 use crate::movement::GroupSpeed;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -41,7 +42,7 @@ fn soldier(id: i32, x: f32, y: f32) -> Unit {
         ..Unit::default()
     };
     u.life.master_id = master_id(4);
-    u.life.state = 2;
+    u.life.state = ObjectState::Alive;
     u.life.hp = 50.0;
     u
 }
@@ -217,12 +218,12 @@ fn a_hibernating_group_waits_runs_its_queue_or_goes() {
     }
     // a build on the group's own 11 in state 1 waits, in state 2 or of another player not
     set(&mut t, 0x65, 11, false);
-    t.players[1].objects[1].life.state = 1;
+    t.players[1].objects[1].life.state = ObjectState::Unfinished;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(false));
-    t.players[1].objects[1].life.state = 2;
+    t.players[1].objects[1].life.state = ObjectState::Alive;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
     set(&mut t, 0x65, 20, false);
-    t.players[2].objects[0].life.state = 0;
+    t.players[2].objects[0].life.state = ObjectState::Foundation;
     assert_eq!(t.hibernation(group_id(1)).unwrap(), Some(true));
     // a repair of the ally's 30 below its 60 hit points waits; at them, or of the enemy's
     // 20, or of nothing, the queue runs
@@ -264,9 +265,9 @@ fn a_target_is_pending_while_seen_and_no_ally_s() {
         *m = Masters::new([master]);
     }
     assert!(t.target_pending(group_id(1)).unwrap());
-    t.players[2].objects[0].life.state = 3;
+    t.players[2].objects[0].life.state = ObjectState::Dying;
     assert!(!t.target_pending(group_id(1)).unwrap());
-    t.players[2].objects[0].life.state = 2;
+    t.players[2].objects[0].life.state = ObjectState::Alive;
     t.players[2].objects[0].life.inside = Some(object_id(5));
     assert!(!t.target_pending(group_id(1)).unwrap());
     t.players[2].objects[0].life.inside = None;
@@ -277,7 +278,7 @@ fn a_target_is_pending_while_seen_and_no_ally_s() {
     assert!(!t.target_pending(group_id(1)).unwrap());
     target(&mut t, 0x65, 30);
     assert!(!t.target_pending(group_id(1)).unwrap());
-    t.players[3].objects[0].life.state = 0;
+    t.players[3].objects[0].life.state = ObjectState::Foundation;
     assert!(t.target_pending(group_id(1)).unwrap());
     // without members, none
     t.groups.get_mut(group_id(1)).unwrap().members.clear();

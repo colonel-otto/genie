@@ -10,6 +10,7 @@ use genie_core::groups::{UnitGroup, UnitGroups};
 use genie_core::map::Position;
 use genie_core::map::Tile;
 use genie_core::objects::ObjectId;
+use genie_core::objects::ObjectState;
 use genie_core::vision::ghost::Ghost;
 use genie_core::world::{GameState, World};
 
@@ -32,7 +33,7 @@ fn ghost(id: i32) -> Ghost {
         bits: 0,
         cant_see: 0,
         seen: false,
-        state: 2,
+        state: ObjectState::Alive,
     }
 }
 

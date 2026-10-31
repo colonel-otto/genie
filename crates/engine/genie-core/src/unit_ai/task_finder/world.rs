@@ -85,7 +85,10 @@ pub(crate) fn wait_progress(id: ObjectId, others: OthersRef<'_>) -> Option<f32> 
 /// The state (`+0x640`) of object `id` among its owner's other objects and the other players'
 /// lists: None when they do not hold it (the unit itself, or one of its owner's sleeping objects:
 /// static objects only, never a drop site, which the callers ask for).
-pub(crate) fn state_of(id: Option<ObjectId>, others: OthersRef<'_>) -> Option<u8> {
+pub(crate) fn state_of(
+    id: Option<ObjectId>,
+    others: OthersRef<'_>,
+) -> Option<crate::objects::ObjectState> {
     others.get(id).map(|u| u.life.state)
 }
 

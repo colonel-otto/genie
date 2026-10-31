@@ -2,6 +2,7 @@
 //! and where a master trains.
 
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::BUILDER;
 use crate::objects::masters::ids::TOWN_CENTRE_621;
@@ -24,7 +25,10 @@ impl World {
         TOWN_CENTRES
             .iter()
             .flat_map(|&k| tracker.list(ListKey::master(k)).iter().copied().flatten())
-            .find(|&id| self.object(id).is_some_and(|(_, u)| u.life.state == 2))
+            .find(|&id| {
+                self.object(id)
+                    .is_some_and(|(_, u)| u.life.state == ObjectState::Alive)
+            })
     }
 
     /// `FUN_1416597e0(player, n)`: the `n`-th object the world holds (`FUN_1415417a0`, in any
@@ -55,7 +59,10 @@ impl World {
             .iter()
             .flat_map(|&k| tracker.list(ListKey::master(k)).iter())
             .chain(pending)
-            .filter(|&&id| self.object(id).is_some_and(|(_, u)| u.life.state < 3))
+            .filter(|&&id| {
+                self.object(id)
+                    .is_some_and(|(_, u)| u.life.state < ObjectState::Dying)
+            })
             .count() as i32
     }
 

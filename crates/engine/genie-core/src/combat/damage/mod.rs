@@ -47,6 +47,7 @@ use crate::map::Position;
 use crate::math::fmath;
 use crate::objects::HpPowerup;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::MasterKind;
@@ -137,7 +138,7 @@ pub struct Victim {
     /// What it holds (`+0x310`).
     pub amount: f32,
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its place.
     pub position: Position,
     /// Its master's type, class, id, radii, first storage amount (`+0x610`, which a gatherer

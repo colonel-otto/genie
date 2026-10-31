@@ -385,7 +385,7 @@ impl World {
         &mut self,
         player: PlayerId,
         idx: usize,
-        (target, t_state): (ObjectId, u8),
+        (target, t_state): (ObjectId, crate::objects::ObjectState),
         livestock: bool,
     ) -> Result<bool, GenieError> {
         let master = self

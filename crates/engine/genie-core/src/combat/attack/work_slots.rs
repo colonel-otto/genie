@@ -9,6 +9,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::movement::footprint_gap;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::master_type::BUILDING;
@@ -28,7 +29,7 @@ pub struct Mark {
     /// Its master's class.
     pub class: ClassId,
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its place (decoded `x`, `y`, `z`).
     pub position: Position,
     /// Its master's radii on the ground, which the footprint gap (`FUN_14118f680`) reads.
@@ -216,7 +217,7 @@ impl Attack {
         }
         if self.target != new {
             self.target = match target {
-                Some(t) if t.state < 7 => {
+                Some(t) if t.state < ObjectState::Removed => {
                     if !self.sub_action {
                         worked.takes = Some(t.id);
                     }

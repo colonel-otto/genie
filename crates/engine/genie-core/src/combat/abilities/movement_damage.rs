@@ -8,6 +8,7 @@ use crate::map::GridSize;
 use crate::map::Position;
 use crate::map::Tile;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::Task;
@@ -73,7 +74,7 @@ pub struct Bystander {
     /// Its master's class (`+0x410`).
     pub class: ClassId,
     /// Its state (`+0x640`).
-    pub state: u8,
+    pub state: ObjectState,
     /// Its master's `area_effect_object_level` (`+0x62b`).
     pub blast_defense: u8,
     /// Its place (`+0x3c8`, `+0x4c8`).
@@ -109,7 +110,7 @@ pub fn struck(hitter: &Hitter, range: f32, b: &Bystander) -> bool {
     if b.kind == BUILDING && !STRUCK_BUILDING_CLASSES.contains(&b.class) {
         return false;
     }
-    if 2 < b.state {
+    if ObjectState::Alive < b.state {
         return false;
     }
     if !(ALWAYS_REACHED <= b.blast_defense || hitter.blast_level <= b.blast_defense) {

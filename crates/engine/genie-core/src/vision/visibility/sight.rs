@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ids::MARKET;
 use crate::vision::registry::MASK;
@@ -218,7 +219,11 @@ impl Visibility {
             return Ok(());
         }
         self.sight_off(id, from, radius, false, false)?;
-        if self.seers.get(&id).is_some_and(|s| s.state == 2) {
+        if self
+            .seers
+            .get(&id)
+            .is_some_and(|s| s.state == ObjectState::Alive)
+        {
             let _ = self.sight_on(id, to, radius, false, false)?;
         }
         Ok(())
@@ -231,22 +236,23 @@ impl Visibility {
         id: ObjectId,
         position: Position,
         radius: Footprint,
-        new: u8,
+        new: ObjectState,
     ) -> Result<(), GenieError> {
         let Some(old) = self.seers.get(&id).map(|s| s.state) else {
             return Ok(());
         };
-        if old == new || (new < old && new != 0) {
+        if old == new || (new < old && new != ObjectState::Foundation) {
             return Ok(());
         }
         let master_sees = self.seers.get(&id).is_some_and(|s| 0.0 < s.los);
-        if old == 2 && (2 < new || new == 0) {
+        if old == ObjectState::Alive && (ObjectState::Alive < new || new == ObjectState::Foundation)
+        {
             self.sight_off(id, position, radius, false, false)?;
             if master_sees {
                 let _ = self.sight_on(id, position, radius, true, false)?;
             }
         }
-        if old < 7 && new == 7 && master_sees {
+        if old < ObjectState::Removed && new == ObjectState::Removed && master_sees {
             self.sight_off(id, position, radius, true, false)?;
         }
         if let Some(s) = self.seers.get_mut(&id) {

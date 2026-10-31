@@ -9,6 +9,7 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::SpriteReads;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::ObjectId;
+use crate::objects::ObjectState;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::action_type;
 use crate::objects::release::Releaser;
@@ -56,7 +57,7 @@ impl Unit {
                 .sight
                 .as_ref()
                 .and_then(|v| v.seer(id))
-                .is_some_and(|s| 5 < s.state),
+                .is_some_and(|s| ObjectState::Dead < s.state),
         };
         let Some(ai) = self.ai.as_mut() else {
             return Ok(false);
