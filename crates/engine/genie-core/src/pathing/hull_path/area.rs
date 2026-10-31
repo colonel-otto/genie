@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::map::Rect;
+use crate::map::Tile;
 use crate::map::spatial::RecordId;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::objects::ObjectId;
@@ -143,7 +144,7 @@ impl HullPather<'_> {
         let grown = [x0, y0, x1, y1];
         for x in x0..=x1 {
             for y in y0..=y1 {
-                self.process_tile(x, y, grown, None)?;
+                self.process_tile(Tile::new(x, y), grown, None)?;
             }
         }
         self.area = grown;

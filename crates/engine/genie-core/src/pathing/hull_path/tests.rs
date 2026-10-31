@@ -932,7 +932,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     assert_eq!(p.player, 1);
     p.hulls = vec![far.clone()];
     assert!(
-        p.add_tile_objects(5, 5, Some(HullIndex::new(0)), 1)
+        p.add_tile_objects(Tile::new(5, 5), Some(HullIndex::new(0)), 1)
             .is_err()
     );
     // player 1 passes the gate
@@ -946,7 +946,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     )
     .with_gates(&passes);
     p.hulls = vec![far.clone()];
-    p.add_tile_objects(5, 5, Some(HullIndex::new(0)), 1)
+    p.add_tile_objects(Tile::new(5, 5), Some(HullIndex::new(0)), 1)
         .unwrap();
     assert_eq!(
         hull_ids(&p),
@@ -958,7 +958,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     assert_eq!(p.hulls[0].objects[0].bounds, Rect::new(4.8, 4.8, 6.2, 6.2));
     assert_eq!(p.hulls[1].objects[0].bounds, Rect::new(4.3, 4.3, 6.7, 6.7));
     // once per hull
-    p.add_tile_objects(5, 5, Some(HullIndex::new(0)), 1)
+    p.add_tile_objects(Tile::new(5, 5), Some(HullIndex::new(0)), 1)
         .unwrap();
     assert_eq!(
         hull_ids(&p),
@@ -977,7 +977,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     )
     .including(&[object_id(5), object_id(10)]);
     p.hulls = vec![far];
-    p.add_tile_objects(5, 5, Some(HullIndex::new(0)), -1)
+    p.add_tile_objects(Tile::new(5, 5), Some(HullIndex::new(0)), -1)
         .unwrap();
     assert_eq!(
         hull_ids(&p),
@@ -992,7 +992,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
         ]
     );
     // an unordered radius takes the given hull
-    p.add_tile_objects(8, 8, Some(HullIndex::new(0)), -1)
+    p.add_tile_objects(Tile::new(8, 8), Some(HullIndex::new(0)), -1)
         .unwrap();
     assert_eq!(
         hull_ids(&p)[0],
@@ -1013,7 +1013,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
         0.2,
     )
     .with_gates(&passes);
-    p.add_tile_objects(5, 5, None, 1).unwrap();
+    p.add_tile_objects(Tile::new(5, 5), None, 1).unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![
@@ -1107,11 +1107,13 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     w.insert(object_id(20), tall(10.0, 10.0, 1.0, class::PREDATOR)); // the building, on its anchor tile
     w.insert(object_id(21), tall(9.5, 9.5, 0.1, class::PREDATOR));
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.process_tile(-1, 9, [5, 5, 9, 9], None).unwrap();
-    p.process_tile(20, 9, [5, 5, 9, 9], None).unwrap();
+    p.process_tile(Tile::new(-1, 9), [5, 5, 9, 9], None)
+        .unwrap();
+    p.process_tile(Tile::new(20, 9), [5, 5, 9, 9], None)
+        .unwrap();
     assert_eq!(p.hulls, []);
     // the tile's box, its object, then the anchor's building, the anchor outside the area
-    p.process_tile(9, 9, [5, 5, 9, 9], None).unwrap();
+    p.process_tile(Tile::new(9, 9), [5, 5, 9, 9], None).unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![
@@ -1126,7 +1128,8 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     );
     // the anchor inside the area: its tile's own turn takes the building
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
-    p.process_tile(9, 9, [5, 5, 10, 10], None).unwrap();
+    p.process_tile(Tile::new(9, 9), [5, 5, 10, 10], None)
+        .unwrap();
     assert_eq!(
         hull_ids(&p),
         [vec![
@@ -1137,13 +1140,13 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     // into a given hull, once; an ignored tile's box stays out
     let mut p = HullPather::new(&mut w, ObjectId::NOBODY, None, TerrainMask::of_bits(6), 0.2);
     p.hulls = vec![Hull::default()];
-    p.process_tile(3, 3, [0, 0, 5, 5], Some(HullIndex::new(0)))
+    p.process_tile(Tile::new(3, 3), [0, 0, 5, 5], Some(HullIndex::new(0)))
         .unwrap();
-    p.process_tile(3, 3, [0, 0, 5, 5], Some(HullIndex::new(0)))
+    p.process_tile(Tile::new(3, 3), [0, 0, 5, 5], Some(HullIndex::new(0)))
         .unwrap();
     assert_eq!(hull_ids(&p), [vec![tile_record_id(Tile::new(3, 3))]]);
     p.ignore.push(tile_record_id(Tile::new(9, 9)));
-    p.process_tile(9, 9, [5, 5, 10, 10], Some(HullIndex::new(0)))
+    p.process_tile(Tile::new(9, 9), [5, 5, 10, 10], Some(HullIndex::new(0)))
         .unwrap();
     assert_eq!(
         hull_ids(&p),

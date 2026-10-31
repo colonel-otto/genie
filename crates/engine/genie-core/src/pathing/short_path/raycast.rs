@@ -2,6 +2,7 @@
 //! axis sweeps and the sight test.
 
 use crate::GenieError;
+use crate::map::Tile;
 use crate::pathing::mesh::{ONE, Rect};
 use crate::pathing::short_path::axis_dir::AxisDir;
 use crate::pathing::short_path::{
@@ -31,14 +32,18 @@ impl Ctx<'_> {
         self.ignore.get(id.index()).copied().unwrap_or(false)
     }
 
-    pub(super) fn tile(&self, tx: i32, ty: i32) -> Result<&[ShapeId], GenieError> {
-        let i = (ty.wrapping_mul(self.mesh.width as i32).wrapping_add(tx)) as u32 as usize;
+    /// The shapes listed on `tile` (its index wraps as the game's does).
+    pub(super) fn tile(&self, tile: Tile) -> Result<&[ShapeId], GenieError> {
+        let i = (tile
+            .y()
+            .wrapping_mul(self.mesh.width as i32)
+            .wrapping_add(tile.x())) as u32 as usize;
         Ok(self.mesh.tiles.checked(i)?)
     }
 
     /// `FUN_140fa3dc0`: the first shape of `p`'s tile, not ignored, strictly holding `p` (shrunk).
     pub(super) fn holder(&self, p: FixedPoint) -> Result<Option<ShapeId>, GenieError> {
-        for &id in self.tile(tile_of(p[0]), tile_of(p[1]))? {
+        for &id in self.tile(Tile::new(tile_of(p[0]), tile_of(p[1])))? {
             if !self.ignored(id)
                 && strictly_inside(*self.mesh.shapes.checked(id.index())?, p, self.d)
             {
@@ -56,7 +61,7 @@ impl Ctx<'_> {
         excl: ShapeId,
         d: i32,
     ) -> Result<Option<ShapeId>, GenieError> {
-        for &id in self.tile(tile_of(p[0]), tile_of(p[1]))? {
+        for &id in self.tile(Tile::new(tile_of(p[0]), tile_of(p[1])))? {
             if id != excl
                 && !self.ignored(id)
                 && inside(*self.mesh.shapes.checked(id.index())?, p, d)
@@ -201,7 +206,7 @@ impl Ctx<'_> {
         let mut result = None;
         while 0 < count {
             let e = err;
-            let list = self.tile(tx, ty)?;
+            let list = self.tile(Tile::new(tx, ty))?;
             let r = self.ray_tile(RayTile {
                 callback: &mut cb,
                 list,
@@ -304,7 +309,7 @@ impl Ctx<'_> {
                 let row = tile_of(from[1]);
                 let mut x = tile_of(from[0]) as u32;
                 while x <= tile_of(to[0]) as u32 {
-                    visit(self.tile(x as i32, row)?, &mut end, &mut out)?;
+                    visit(self.tile(Tile::new(x as i32, row))?, &mut end, &mut out)?;
                     x = x.wrapping_add(1);
                 }
             }
@@ -312,7 +317,7 @@ impl Ctx<'_> {
                 let col = tile_of(from[0]);
                 let mut y = tile_of(from[1]) as u32;
                 while y <= tile_of(to[1]) as u32 {
-                    visit(self.tile(col, y as i32)?, &mut end, &mut out)?;
+                    visit(self.tile(Tile::new(col, y as i32))?, &mut end, &mut out)?;
                     y = y.wrapping_add(1);
                 }
             }
@@ -320,7 +325,7 @@ impl Ctx<'_> {
                 let row = tile_of(from[1]);
                 let mut x = tile_of(from[0]);
                 while tile_of(to[0]) <= x {
-                    visit(self.tile(x, row)?, &mut end, &mut out)?;
+                    visit(self.tile(Tile::new(x, row))?, &mut end, &mut out)?;
                     x -= 1;
                 }
             }
@@ -328,7 +333,7 @@ impl Ctx<'_> {
                 let col = tile_of(from[0]);
                 let mut y = tile_of(from[1]);
                 while tile_of(to[1]) <= y {
-                    visit(self.tile(col, y)?, &mut end, &mut out)?;
+                    visit(self.tile(Tile::new(col, y))?, &mut end, &mut out)?;
                     y -= 1;
                 }
             }

@@ -127,20 +127,18 @@ impl HullPather<'_> {
         })
     }
 
-    /// `MShortPather::addTileObjects` (`FUN_140f8b460`): the tall objects of tile (`x`, `y`)'s
-    /// list (master `+0x5e0` above 0), in its order, but gates `player` may pass (slot 0x678) and,
+    /// `MShortPather::addTileObjects` (`FUN_140f8b460`): the tall objects of `tile`'s list (master `+0x5e0` above 0), in its order, but gates `player` may pass (slot 0x678) and,
     /// unless included, those ignored or moving (slot 0x5c8): each box, grown by the radius, into
     /// `hull` (when given and the object is at most a tile wide) or its own place in the hulls,
     /// once per hull.
     pub(super) fn add_tile_objects(
         &mut self,
-        x: i32,
-        y: i32,
+        tile: Tile,
         hull: Option<HullIndex>,
         player: i32,
     ) -> Result<(), GenieError> {
         let world = &*self.world;
-        for &id in world.tiles().list(Tile::new(x, y)) {
+        for &id in world.tiles().list(tile) {
             let Some(p) = world.get(id) else {
                 continue;
             };
@@ -201,23 +199,21 @@ impl HullPather<'_> {
         Self::add_shape_to(&mut self.hulls, min, max)
     }
 
-    /// `MShortPather::processTileObstructions` (`FUN_140f8e1d0`): tile (`x`, `y`)'s box when its
-    /// terrain is not the unit's (unless ignored), into `hull` or its own place, then its objects,
+    /// `MShortPather::processTileObstructions` (`FUN_140f8e1d0`): `tile`'s box when its terrain is not the unit's (unless ignored), into `hull` or its own place, then its objects,
     /// and those of its building's anchor tile when that lies outside the `area`.
     pub(super) fn process_tile(
         &mut self,
-        x: i32,
-        y: i32,
+        tile: Tile,
         area: [i32; 4],
         hull: Option<HullIndex>,
     ) -> Result<(), GenieError> {
-        let (w, h) = (self.world.map.width(), self.world.map.height());
-        if x < 0 || y < 0 || w <= x || h <= y {
+        if !self.world.map.holds(tile) {
             return Ok(());
         }
-        let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
+        let (x, y) = (tile.x(), tile.y());
+        let word = self.world.tiles().word(tile).unwrap_or(0);
         if word & self.mask.blocked() != 0 {
-            let id = tile_record_id(Tile::new(x, y));
+            let id = tile_record_id(tile);
             if !self.ignore.contains(&id) {
                 let r = self.radius;
                 let bounds = Rect::new(
@@ -236,18 +232,18 @@ impl HullPather<'_> {
                 }
             }
         }
-        self.add_tile_objects(x, y, hull, self.player)?;
+        self.add_tile_objects(tile, hull, self.player)?;
         let sight = self.world.sight.as_ref().ok_or(GenieError::unsupported(
             "the old short pather without the map's building links",
         ))?;
-        if sight.link(Tile::new(x, y))?.0 & 0x60 != 0
-            && let Some(anchor) = sight.anchor_of(Tile::new(x, y))
+        if sight.link(tile)?.0 & 0x60 != 0
+            && let Some(anchor) = sight.anchor_of(tile)
             && (anchor.x() < area[0]
                 || area[2] < anchor.x()
                 || anchor.y() < area[1]
                 || area[3] < anchor.y())
         {
-            self.add_tile_objects(anchor.x(), anchor.y(), hull, self.player)?;
+            self.add_tile_objects(anchor, hull, self.player)?;
         }
         Ok(())
     }
@@ -276,7 +272,7 @@ impl HullPather<'_> {
                     if let Some(x0) = run.take() {
                         self.add_run(x0, x, y, r)?;
                     }
-                    self.process_tile(x, y, self.area, None)?;
+                    self.process_tile(Tile::new(x, y), self.area, None)?;
                 } else if run.is_none() {
                     run = Some(x);
                 }
@@ -295,7 +291,7 @@ impl HullPather<'_> {
         let max = Point::new(x1 as f32 + r, (y + 1) as f32 + r);
         let hull = self.add_shape(min, max)?;
         for t in x0..x1 {
-            self.process_tile(t, y, self.area, Some(hull))?;
+            self.process_tile(Tile::new(t, y), self.area, Some(hull))?;
         }
         Ok(())
     }
@@ -309,12 +305,12 @@ impl HullPather<'_> {
         let (ex1, ey1) = ((x1 + 2).min(w - 1), (y1 + 2).min(h - 1));
         for y in ey0..=ey1 {
             for x in (ex0..x0).chain(x1 + 1..=ex1) {
-                self.cliff(x, y)?;
+                self.cliff(Tile::new(x, y))?;
             }
         }
         for y in (ey0..y0).chain(y1 + 1..=ey1) {
             for x in x0..=x1 {
-                self.cliff(x, y)?;
+                self.cliff(Tile::new(x, y))?;
             }
         }
         Ok(())
@@ -322,10 +318,10 @@ impl HullPather<'_> {
 
     /// `FUN_140f8a890`: a cliff tile's objects (its word's static class 6), each to its own place
     /// ([`HullPather::add_tile_objects`] with no hull and player -1: no gate passes).
-    pub(super) fn cliff(&mut self, x: i32, y: i32) -> Result<(), GenieError> {
-        let word = self.world.tiles().word(Tile::new(x, y)).unwrap_or(0);
+    pub(super) fn cliff(&mut self, tile: Tile) -> Result<(), GenieError> {
+        let word = self.world.tiles().word(tile).unwrap_or(0);
         if word & 0x3f00 == 0x600 {
-            self.add_tile_objects(x, y, None, -1)?;
+            self.add_tile_objects(tile, None, -1)?;
         }
         Ok(())
     }

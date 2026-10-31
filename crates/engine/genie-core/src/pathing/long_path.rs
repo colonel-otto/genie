@@ -404,7 +404,7 @@ const fn step_cost(here: i32, from: Tile, to: Tile, goal: Tile) -> i32 {
 /// without [`BLOCKED`].
 struct Grid<'a> {
     tiles: &'a Tiles,
-    width: i32,
+    map: GridSize,
     lowered: Vec<u8>,
     blocked_terrain: u64,
     blocked: u64,
@@ -412,38 +412,35 @@ struct Grid<'a> {
 
 impl<'a> Grid<'a> {
     fn new(tiles: &'a Tiles, map: GridSize, req: &LongRequest) -> Self {
-        let (w, h) = (map.width(), map.height());
         let blocked_terrain = req.mask.blocked();
-        let mut lowered = vec![0u8; (w.max(0) * h.max(0)) as usize];
+        let mut lowered = vec![0u8; (map.width().max(0) * map.height().max(0)) as usize];
         for &t in &req.lowered {
-            let (x, y) = (t.x(), t.y());
-            if 0 <= x && x < w && 0 <= y && y < h {
-                let i = (y * w + x) as usize;
-                if let Some(cell) = lowered.get_mut(i) {
-                    *cell = cell.wrapping_add(1);
-                }
+            if let Some(cell) = map.index(t).and_then(|i| lowered.get_mut(i)) {
+                *cell = cell.wrapping_add(1);
             }
         }
         Self {
             tiles,
-            width: w,
+            map,
             lowered,
             blocked_terrain,
             blocked: blocked_terrain | BLOCKED,
         }
     }
 
-    fn word(&self, x: i32, y: i32) -> u64 {
-        self.tiles.word(Tile::new(x, y)).unwrap_or(0)
+    fn word(&self, tile: Tile) -> u64 {
+        self.tiles.word(tile).unwrap_or(0)
     }
 
-    fn tall(&self, x: i32, y: i32) -> u8 {
-        let Some(t) = self.tiles.tall(Tile::new(x, y)) else {
+    fn tall(&self, tile: Tile) -> u8 {
+        let Some(t) = self.tiles.tall(tile) else {
             return 0;
         };
+        // the tiles hold the tile, so the map does
         t.wrapping_sub(
-            self.lowered
-                .get((y * self.width + x) as usize)
+            self.map
+                .index(tile)
+                .and_then(|i| self.lowered.get(i))
                 .copied()
                 .unwrap_or(0),
         )
@@ -465,20 +462,18 @@ impl<'a> Grid<'a> {
         at_goal: bool,
         req: &LongRequest,
     ) -> Result<bool, GenieError> {
-        let (nx, ny) = (n.x(), n.y());
-        let corners = |test: &dyn Fn(i32, i32) -> bool| {
-            beside.is_none_or(|b| b.iter().all(|t| test(t.x(), t.y())))
-        };
-        let clear = |test: &dyn Fn(i32, i32) -> bool| test(nx, ny) && corners(test);
-        if !clear(&|x, y| self.word(x, y) & self.blocked_terrain == 0) {
+        let corners =
+            |test: &dyn Fn(Tile) -> bool| beside.is_none_or(|b| b.iter().all(|&t| test(t)));
+        let clear = |test: &dyn Fn(Tile) -> bool| test(n) && corners(test);
+        if !clear(&|t| self.word(t) & self.blocked_terrain == 0) {
             return Ok(false);
         }
         let passes = || {
-            corners(&|x, y| self.word(x, y) & self.blocked == 0)
-                && self.tall(nx, ny) == 0
-                && corners(&|x, y| self.tall(x, y) == 0)
+            corners(&|t| self.word(t) & self.blocked == 0)
+                && self.tall(n) == 0
+                && corners(&|t| self.tall(t) == 0)
         };
-        let word = self.word(nx, ny);
+        let word = self.word(n);
         let open = if word & self.blocked == 0 {
             passes()
         } else if word & 0x3f00 == GATE_CLASS_BITS {
@@ -539,7 +534,7 @@ impl Relax<'_> {
         from: &Origin,
         (to, dir): (Tile, StepDir),
     ) -> Result<Option<Tile>, GenieError> {
-        let i = (to.y() * self.map.width() + to.x()) as usize;
+        let i = cell(self.map, to);
         let new_cost = step_cost(from.cost, from.at, to, self.req.to);
         let seen = *front.entered.checked(i)?;
         let old = *front.cost.checked(i)?;
@@ -574,6 +569,12 @@ impl Relax<'_> {
     }
 }
 
+/// `tile`'s place in the search's tables, row by row, unchecked (the game's tables are the
+/// map's).
+const fn cell(map: GridSize, tile: Tile) -> usize {
+    (tile.y() * map.width() + tile.x()) as usize
+}
+
 /// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
 fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, GenieError> {
     let (w, h) = (map.width(), map.height());
@@ -589,7 +590,6 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
         .target
         .map_or_else(|| (req.to, TileRect::of(req.to)), |t| (t.tile, t.rect));
     let n = (w.max(0) * h.max(0)) as usize;
-    let index = |x: i32, y: i32| (y * w + x) as usize;
     let relax = Relax {
         grid: Grid::new(tiles, map, req),
         req,
@@ -606,7 +606,7 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
         heap: Heap { slots: Vec::new() },
     };
     let start_cost = quad(dy).wrapping_add(quad(dx));
-    *front.cost.checked_mut(index(x0, y0))? = start_cost;
+    *front.cost.checked_mut(cell(map, req.from))? = start_cost;
     front.heap.slots = vec![(Tile::new(0, 0), SENTINEL), (req.from, start_cost)];
     let straight = crate::math::fmath::sqrt(gap2 as f32) as i32;
     let budget = if req.computer {
@@ -639,13 +639,12 @@ fn search(tiles: &Tiles, map: GridSize, req: &LongRequest) -> Result<Searched, G
             nearest = (c, near);
         }
         front.heap.pop()?;
-        let came = *front.entered.checked(index(cx, cy))?;
+        let came = *front.entered.checked(cell(map, c))?;
         let back = StepDir::behind(came);
-        let here = *front.cost.checked(index(cx, cy))?;
+        let here = *front.cost.checked(cell(map, c))?;
         for (dir, step) in StepDir::ALL.into_iter().zip(STEPS) {
             let n = c.stepped(step);
-            let (nx, ny) = (n.x(), n.y());
-            if dir.in_set(back) || nx < 0 || ny < 0 || w <= nx || h <= ny || n == req.from {
+            if dir.in_set(back) || !map.holds(n) || n == req.from {
                 continue;
             }
             let from = Origin {
