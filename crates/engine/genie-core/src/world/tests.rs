@@ -61,6 +61,7 @@ use crate::objects::unit::{Unit, loses_actions};
 use crate::orders::action_state::DONE;
 use crate::orders::action_state::FAILED;
 use crate::ownership::artifact::Artifact;
+use crate::ownership::artifact::ArtifactState;
 use crate::ownership::change::change_hands;
 use crate::players::CivId;
 use crate::players::PlayerType;
@@ -246,10 +247,16 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
     };
     stock_masters(&mut t);
     t.tick(50);
-    assert_eq!((state(&t, 0), state(&t, 1)), (6, 6));
+    assert_eq!(
+        (state(&t, 0), state(&t, 1)),
+        (ArtifactState::Check, ArtifactState::Check)
+    );
     stock_masters(&mut t);
     t.tick(50);
-    assert_eq!((state(&t, 0), state(&t, 1)), (10, 10));
+    assert_eq!(
+        (state(&t, 0), state(&t, 1)),
+        (ArtifactState::Wait, ArtifactState::Wait)
+    );
 }
 
 #[test]
@@ -6679,7 +6686,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
     // its first update checks for a new owner, finds none and waits a second
     t.tick(50);
     let a = t.players[1].objects[0].actions.artifact().copied().unwrap();
-    assert_eq!((a.state, a.timer), (10, 1.0));
+    assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
 }
 
 /// [`forage_world`]'s villager 9175 (master 120) with `set` run on its master and on itself,
@@ -6829,7 +6836,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
             ..Lifecycle::default()
         },
         actions: ActionList::default().with_artifact(Some(Artifact {
-            state: crate::ownership::artifact::TO_GAIA,
+            state: ArtifactState::ToGaia,
             ..Artifact::new(false, None)
         })),
         ..Unit::default()
@@ -6877,7 +6884,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
     assert_eq!(sheep.id, object_id(40));
     assert_eq!(
         sheep.actions.artifact().map(|a| a.state),
-        Some(crate::ownership::artifact::CHECK)
+        Some(ArtifactState::Check)
     );
 }
 
@@ -14378,7 +14385,15 @@ fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
         let v = &t.players[1].objects[0];
         kinds.push(v.actions.artifact().map(|a| a.state));
     }
-    assert_eq!(kinds, [Some(6), None, Some(6), None]);
+    assert_eq!(
+        kinds,
+        [
+            Some(ArtifactState::Check),
+            None,
+            Some(ArtifactState::Check),
+            None
+        ]
+    );
     assert_eq!(t.players[1].freezes, vec![]);
 }
 

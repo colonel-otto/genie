@@ -2,6 +2,7 @@ use super::*;
 use crate::test_ids::object_id;
 use genie_core::objects::actions::ActionList;
 use genie_core::objects::masters::{MasterId, ids};
+use genie_core::ownership::artifact::ArtifactState;
 use genie_core::world::checkpoint::ActionTerm;
 
 /// Word 9 reads a building's production action's state over its top action's (records
@@ -10,7 +11,7 @@ use genie_core::world::checkpoint::ActionTerm;
 #[test]
 fn a_building_s_production_state_comes_before_its_top_action_s() {
     let artifact = genie_core::ownership::artifact::Artifact {
-        state: 10,
+        state: ArtifactState::Wait,
         timer: 0.0,
         gaia: false,
         move_to: None,

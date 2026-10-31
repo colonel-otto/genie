@@ -16,7 +16,7 @@ use genie_core::objects::masters::action_type::BUILD;
 use genie_core::objects::masters::{Task, class};
 use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
-use genie_core::ownership::artifact::ARTIFACT_TYPE;
+use genie_core::ownership::artifact::{ARTIFACT_TYPE, ArtifactState};
 use genie_core::players::attribute;
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByType, RgeActionEnter,
@@ -319,10 +319,12 @@ fn artifact(b: RgeAction) -> Action {
 }
 
 /// An Artifact waits, or walks to its target: its `MoveTo`'s goal, a point or an object, with
-/// its range, quiet toward an object; another sub-action is refused.
+/// its range, quiet toward an object; another sub-action is refused. A walking Artifact checks
+/// (state 6): its `set_state`'s walks (4 and 5, `FUN_140aace30`) add the `MoveTo` and pass on
+/// to 6.
 #[test]
 fn an_artifact_waits_or_walks_to_its_target() {
-    let a = imported(ARTIFACT_TYPE, artifact(base(1)))
+    let a = imported(ARTIFACT_TYPE, artifact(base(ArtifactState::Wait.get())))
         .unwrap()
         .actions
         .artifact()
@@ -330,10 +332,10 @@ fn an_artifact_waits_or_walks_to_its_target() {
         .unwrap();
     assert_eq!(
         (a.state, a.target, a.move_to, a.goal),
-        (1, None, None, None)
+        (ArtifactState::Wait, None, None, None)
     );
     assert!(a.gaia);
-    let mut b = base(5);
+    let mut b = base(ArtifactState::Check.get());
     b.target_id = 9;
     b.target_x = 4.0;
     let a = imported(
@@ -376,7 +378,7 @@ fn an_artifact_waits_or_walks_to_its_target() {
         Some(Goal::Target(object_id(9)))
     );
     // the target's place is its goal however near the origin; an unset place (-1) is none
-    let mut near = base(5);
+    let mut near = base(ArtifactState::Check.get());
     near.target_id = 9;
     let a = imported(ARTIFACT_TYPE, artifact(near.clone()))
         .unwrap()
@@ -396,7 +398,11 @@ fn an_artifact_waits_or_walks_to_its_target() {
     // without a target the goal is the MoveTo's point, the action's own
     let a = imported(
         ARTIFACT_TYPE,
-        artifact(with_sub(base(5), MOVE_TO, move_to(4, 0.5))),
+        artifact(with_sub(
+            base(ArtifactState::Check.get()),
+            MOVE_TO,
+            move_to(4, 0.5),
+        )),
     )
     .unwrap()
     .actions

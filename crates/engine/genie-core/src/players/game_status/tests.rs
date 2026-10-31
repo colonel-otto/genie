@@ -331,7 +331,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     assert!(a.sprite.is_some());
     assert_eq!(
         objects[artifact].actions.artifact().map(|a| a.state),
-        Some(6)
+        Some(crate::ownership::artifact::ArtifactState::Check)
     );
     assert!(
         t.halt_other(PlayerId::new(1), gather, ActionType::named(99))

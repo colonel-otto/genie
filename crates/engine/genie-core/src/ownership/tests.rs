@@ -110,7 +110,12 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
     let a = u.actions.artifact().copied().unwrap();
     assert_eq!(
         (a.move_to, a.goal, a.target, a.state),
-        (None, None, None, crate::ownership::artifact::CHECK)
+        (
+            None,
+            None,
+            None,
+            crate::ownership::artifact::ArtifactState::Check
+        )
     );
     assert_eq!(released, [600]);
     assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);

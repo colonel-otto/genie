@@ -146,7 +146,7 @@ impl Action {
     #[must_use]
     pub const fn state(&self) -> u8 {
         match self {
-            Self::Artifact(a) => a.state,
+            Self::Artifact(a) => a.state.get(),
             Self::Build(a) => a.state.get(),
             Self::Repair(a) => a.state.get(),
             Self::MoveTo(a) => a.state.number(),
@@ -270,8 +270,9 @@ impl<'a> IntoIterator for &'a ActionList {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ownership::artifact::ArtifactState;
 
-    fn artifact(state: u8) -> Artifact {
+    fn artifact(state: ArtifactState) -> Artifact {
         Artifact {
             state,
             ..Artifact::new(false, None)
@@ -286,12 +287,15 @@ mod tests {
     fn a_kind_set_twice_keeps_one_entry_in_its_place() {
         let mut list = ActionList::default();
         assert!(list.is_empty());
-        list.put(Action::Artifact(artifact(1)));
-        assert_eq!(list.head(), Some(&Action::Artifact(artifact(1))));
-        list.set_artifact(Some(artifact(2)));
+        list.put(Action::Artifact(artifact(ArtifactState::Check)));
+        assert_eq!(
+            list.head(),
+            Some(&Action::Artifact(artifact(ArtifactState::Check)))
+        );
+        list.set_artifact(Some(artifact(ArtifactState::Wait)));
         assert_eq!(
             list.iter().cloned().collect::<Vec<_>>(),
-            [Action::Artifact(artifact(2))],
+            [Action::Artifact(artifact(ArtifactState::Wait))],
             "the held kind changed in its place"
         );
         list.put(other());
@@ -301,26 +305,26 @@ mod tests {
 
     #[test]
     fn the_accessors_reach_only_their_kind() {
-        let mut list = ActionList::default().with_artifact(Some(artifact(7)));
-        assert_eq!(list.artifact(), Some(&artifact(7)));
+        let mut list = ActionList::default().with_artifact(Some(artifact(ArtifactState::Wait)));
+        assert_eq!(list.artifact(), Some(&artifact(ArtifactState::Wait)));
         assert_eq!(list.make(), None);
         if let Some(a) = list.artifact_mut() {
-            a.state = 8;
+            a.state = ArtifactState::ToGaia;
         }
         assert_eq!(list.make_mut(), None);
         assert_eq!(list.take_make(), None);
-        assert_eq!(list.take_artifact(), Some(artifact(8)));
+        assert_eq!(list.take_artifact(), Some(artifact(ArtifactState::ToGaia)));
         assert!(list.is_empty());
     }
 
     #[test]
     fn an_action_reads_its_type_and_state() {
-        let a = Action::Artifact(artifact(6));
+        let a = Action::Artifact(artifact(ArtifactState::Check));
         assert_eq!(
             (a.kind(), a.state()),
             (crate::ownership::artifact::ARTIFACT_TYPE, 6)
         );
-        let list = ActionList::default().with_artifact(Some(artifact(6)));
+        let list = ActionList::default().with_artifact(Some(artifact(ArtifactState::Check)));
         assert_eq!(
             list.of_kind(crate::ownership::artifact::ARTIFACT_TYPE),
             Some(&a)
@@ -332,7 +336,7 @@ mod tests {
 
     #[test]
     fn setting_none_takes_the_kind_out() {
-        let mut list = ActionList::default().with_artifact(Some(artifact(1)));
+        let mut list = ActionList::default().with_artifact(Some(artifact(ArtifactState::Check)));
         list.set_make(None);
         assert_eq!(list.iter().count(), 1);
         list.set_artifact(None);

@@ -79,7 +79,7 @@ pub struct SubActionsGone {
 #[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Artifact {
     /// 6 checks for a new owner; 10 waits for the timer.
-    pub state: u8,
+    pub state: ArtifactState,
     /// `+0x44`, in seconds.
     pub timer: f32,
     /// Gaia waits half as long between checks.
@@ -101,11 +101,8 @@ pub struct Artifact {
 /// The action type the checkpoint adds for an Artifact action.
 pub const ARTIFACT_TYPE: ActionType = ActionType::named(107);
 
-/// The state that checks for a new owner (6).
-pub(crate) const CHECK: u8 = 6;
-const WAIT: u8 = 10;
-/// The state that gives the animal to Gaia (`0x140aad250`'s case `'d'`).
-pub(crate) const TO_GAIA: u8 = 100;
+pub use crate::ownership::artifact_state::ArtifactState;
+
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
 const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET;
@@ -115,7 +112,7 @@ impl Artifact {
     #[must_use]
     pub const fn new(gaia: bool, moving: Option<i16>) -> Self {
         Self {
-            state: CHECK,
+            state: ArtifactState::Check,
             timer: 0.0,
             gaia,
             move_to: None,
@@ -219,7 +216,7 @@ impl Artifact {
         let gone = self.drop_sub_actions();
         self.goal = Some(to.at);
         self.move_to = walk;
-        self.state = CHECK;
+        self.state = ArtifactState::Check;
         Ok((Targets { released, taken }, gone))
     }
 
@@ -241,7 +238,7 @@ impl Artifact {
         self.goal = Some(point);
         let gone = self.drop_sub_actions();
         self.move_to = walk.map(|m| MoveToAction { quiet: false, ..m });
-        self.state = CHECK;
+        self.state = ArtifactState::Check;
         Ok(gone)
     }
 
@@ -260,7 +257,7 @@ impl Artifact {
             self.goal = None;
             released = self.set_target(None, false).released;
         }
-        self.state = CHECK;
+        self.state = ArtifactState::Check;
         (gone, released)
     }
 
@@ -294,7 +291,7 @@ impl Artifact {
         r: &ArtifactReads,
     ) -> Result<Option<Handover>, GenieError> {
         self.walk(c, unit, me, r)?;
-        let owner = if self.state == CHECK && r.searches {
+        let owner = if self.state == ArtifactState::Check && r.searches {
             c.w.spatial.artifact_owner(unit.id, &c.w.players)?
         } else {
             None
@@ -380,7 +377,7 @@ impl Artifact {
         owner: Option<PlayerId>,
     ) -> Result<Option<Handover>, GenieError> {
         match self.state {
-            CHECK => {
+            ArtifactState::Check => {
                 if let Some(new) = owner {
                     // its sub-actions go (FUN_140a98620) before the caller's conversion: the
                     // point and the target stay, so the conversion's stop ([`Artifact::stop`])
@@ -388,23 +385,20 @@ impl Artifact {
                     let gone = self.drop_sub_actions();
                     return Ok(Some(Handover::Taken { new, gone }));
                 }
-                self.state = WAIT;
+                self.state = ArtifactState::Wait;
                 self.timer = if self.gaia { 0.5 } else { 1.0 };
             }
-            WAIT => {
+            ArtifactState::Wait => {
                 // world+0x164 is `dt / 1000.0f`; the subtraction is f32
                 self.timer -= dt_ms as f32 / 1000.0;
                 if self.timer <= 0.0 {
-                    self.state = CHECK;
+                    self.state = ArtifactState::Check;
                 }
             }
-            TO_GAIA => {
-                self.state = CHECK;
+            ArtifactState::ToGaia => {
+                self.state = ArtifactState::Check;
                 return Ok(Some(Handover::ToGaia));
             }
-            // its states 4 and 5 (`set_state`'s walks) pass on to 6 at once; the update has no
-            // case for any other
-            _ => {}
         }
         Ok(None)
     }
@@ -577,14 +571,14 @@ mod tests {
     fn a_check_finds_no_owner_and_waits_one_second() {
         let mut a = Artifact::new(false, None);
         let _ = a.step(50, None).unwrap();
-        assert_eq!((a.state, a.timer), (10, 1.0));
+        assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
     }
 
     #[test]
     fn a_move_s_point_starts_a_moveto_and_the_check_runs_again() {
         // MarvinBlue/426048731's cow 9517 in 1118: MOVE to (28.5, 93.5); slot 8 takes the point
         let mut a = Artifact {
-            state: WAIT,
+            state: ArtifactState::Wait,
             timer: 0.4,
             ..Artifact::new(false, None)
         };
@@ -594,7 +588,11 @@ mod tests {
         );
         assert_eq!(
             (a.state, a.timer, a.goal),
-            (6, 0.4, Some(Position::new(28.5, 93.5, 0.0)))
+            (
+                ArtifactState::Check,
+                0.4,
+                Some(Position::new(28.5, 93.5, 0.0))
+            )
         );
         // a MoveTo to the point within 0 that is not quiet: the action's AI hears its end
         let to_point = MoveToAction {
@@ -624,7 +622,10 @@ mod tests {
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         let found = rig.run(50, |c, u, _, _| a.update(c, u, me(), &reads()));
         assert_eq!(found, Ok(None));
-        assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
+        assert_eq!(
+            (a.state, a.timer, a.move_to, a.goal),
+            (ArtifactState::Wait, 1.0, None, None)
+        );
     }
 
     /// `set_state(4)` and `set_state(5)` (`0x140aace30`) delete every sub-action
@@ -716,12 +717,12 @@ mod tests {
             Some(e),
             Some(Position::new(1.0, 2.0, 0.0)),
             Some(object_id(77)),
-            WAIT,
+            ArtifactState::Wait,
         );
         assert_eq!(a.stop(), (by_enter, Some(object_id(77))));
         assert_eq!(
             (a.enter, a.goal, a.target, a.state),
-            (None, None, None, CHECK)
+            (None, None, None, ArtifactState::Check)
         );
         let mut b = Artifact::new(false, None);
         (b.enter, b.target) = (Some(e), Some(object_id(77)));
@@ -796,12 +797,12 @@ mod tests {
         // 1.0 - 20 × 0.05 in f32 is -1.56e-7, so the 20th update ends the wait
         let waits = (0..30).take_while(|_| {
             let _ = a.step(50, None).unwrap();
-            a.state == 10
+            a.state == ArtifactState::Wait
         });
         assert_eq!(waits.count(), 19);
-        assert_eq!(a.state, 6);
+        assert_eq!(a.state, ArtifactState::Check);
         let _ = a.step(50, None).unwrap();
-        assert_eq!((a.state, a.timer), (10, 1.0));
+        assert_eq!((a.state, a.timer), (ArtifactState::Wait, 1.0));
     }
 
     #[test]
@@ -815,16 +816,16 @@ mod tests {
                     new: PlayerId::new(2),
                     gone: SubActionsGone::default()
                 }),
-                6
+                ArtifactState::Check
             )
         );
         // no owner found (a combat-type animal whose +0x924 is 0 never asks): it waits
         let mut b = Artifact::new(true, None);
         let found = b.step(50, None).unwrap();
-        assert_eq!((found, b.state), (None, 10));
+        assert_eq!((found, b.state), (None, ArtifactState::Wait));
         // the conversion's stop: the check again, no MoveTo went
         assert_eq!(b.stop(), (SubActionsGone::default(), None));
-        assert_eq!(b.state, 6);
+        assert_eq!(b.state, ArtifactState::Check);
         // a walking animal's MoveTo goes (its teardown stops the unit), and its target is let go
         let mut walking = Artifact::new(false, None);
         let _ = walking
@@ -850,7 +851,7 @@ mod tests {
         (kept.goal, kept.target, kept.state) = (
             Some(Position::new(3.0, 4.0, 0.0)),
             Some(object_id(77)),
-            WAIT,
+            ArtifactState::Wait,
         );
         assert_eq!(kept.stop(), (SubActionsGone::default(), None));
         assert_eq!(
@@ -858,7 +859,7 @@ mod tests {
             (
                 Some(Position::new(3.0, 4.0, 0.0)),
                 Some(object_id(77)),
-                CHECK
+                ArtifactState::Check
             )
         );
     }
@@ -900,11 +901,14 @@ mod tests {
     #[test]
     fn state_100_hands_the_animal_to_gaia() {
         let mut a = Artifact {
-            state: TO_GAIA,
+            state: ArtifactState::ToGaia,
             ..Artifact::new(false, None)
         };
         let found = a.step(50, None).unwrap();
-        assert_eq!((found, a.state), (Some(Handover::ToGaia), CHECK));
+        assert_eq!(
+            (found, a.state),
+            (Some(Handover::ToGaia), ArtifactState::Check)
+        );
     }
 
     /// Slot 8 on an object (`FUN_140aaca30`): the old target is let go, then the new one taken
@@ -1328,7 +1332,7 @@ mod tests {
         let mut a = Artifact::new(false, None);
         let mut rig = Rig::on_the_path(crate::combat::damage::Victim::default());
         let found = rig.run(50, |c, u, _, _| a.update(c, u, me(), &reads()));
-        assert_eq!((found, a.state), (Ok(None), WAIT));
+        assert_eq!((found, a.state), (Ok(None), ArtifactState::Wait));
         // the step's effects on a handover: the Enter's transport let go, the unit stopped
         let mut e = crate::garrison::EnterAction::new(
             object_id(11970),

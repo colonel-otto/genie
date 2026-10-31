@@ -208,7 +208,7 @@ fn import_artifact(
         .transpose()?;
     unit.actions
         .set_artifact(Some(genie_core::ownership::artifact::Artifact {
-            state: base.state,
+            state: genie_core::ownership::artifact::ArtifactState::of_byte(base.state)?,
             timer: base.timer,
             gaia: saved.s.owner == 0,
             move_to,

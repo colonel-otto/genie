@@ -225,7 +225,7 @@ pub fn word9_terms(
                 .actions
                 .artifact()
                 .map_or(-1, |_| i32::from(ARTIFACT_TYPE.get())),
-            state: unit.actions.artifact().map_or(0, |a| a.state),
+            state: unit.actions.artifact().map_or(0, |a| a.state.get()),
             retarget: unit.ai.as_ref().map_or(0, |ai| ai.retarget_timer as i32),
         })
         .collect())
