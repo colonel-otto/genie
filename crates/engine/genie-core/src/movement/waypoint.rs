@@ -6,6 +6,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::spatial::{Spatial, WalkQuery};
 use crate::math::fmath::BVector;
+use crate::movement::WaypointLevel;
 use crate::movement::{
     CLOSE, EPSILON, Goal, LOOK_AHEAD, Me, Motion, Mover, Next, PathData, RANGE_FLOOR,
     STRAIGHT_GROW, TARGET_SHORT_REACH, drop_edge_waypoints, footprint_gap, gate_gap, looping_next,
@@ -57,8 +58,11 @@ impl Mover {
         let parent_is_level_1 = self
             .paths
             .get(1)
-            .is_some_and(|p| p.level == 1 && !p.points.is_empty());
-        if self.paths[0].level == 0 && parent_is_level_1 && self.look_ahead(me, world)? {
+            .is_some_and(|p| p.level == WaypointLevel::PLANNED && !p.points.is_empty());
+        if self.paths[0].level == WaypointLevel::WALKED
+            && parent_is_level_1
+            && self.look_ahead(me, world)?
+        {
             return Ok(Next::Again);
         }
         // LAB_14115192d
@@ -83,18 +87,20 @@ impl Mover {
         }
         let level = &mut self.paths[0];
         if level.waypoint < level.points.len() as i32 {
-            if level.level != 0 {
+            if level.level != WaypointLevel::WALKED {
                 level.state = 2;
             }
             return Ok(Next::Dispatch);
         }
-        if EPSILON <= beyond && (goal.target.is_some() || CLOSE <= beyond || level.level == 0) {
+        if EPSILON <= beyond
+            && (goal.target.is_some() || CLOSE <= beyond || level.level == WaypointLevel::WALKED)
+        {
             if EPSILON <= back {
                 level.waypoint -= 1;
                 level.state = 2;
                 return Ok(Next::Dispatch);
             }
-            if level.level == 2 {
+            if level.level == WaypointLevel::TOP {
                 return self.level_2_short(me, world, goal);
             }
         }
@@ -135,7 +141,7 @@ impl Mover {
     pub(super) fn drop_held_waypoint(&mut self, world: &Spatial) -> Result<(), GenieError> {
         let level = &self.paths[0];
         let next = level.waypoint + 1;
-        if level.level == 0 || level.points.len() as i32 <= next {
+        if level.level == WaypointLevel::WALKED || level.points.len() as i32 <= next {
             return Ok(());
         }
         let d = fmath::sub(self.position().vector(), level.points[next as usize]);

@@ -4,6 +4,7 @@
 use crate::map::Point;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, RecordId, Spatial};
+use crate::movement::WaypointLevel;
 use crate::movement::{
     AfterRequest, CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, ReachAsk,
     SHORT_PATHER, SPLIT, STUCK_PAUSE, ShortAsk, TileAsk, Walker, footprint_gap_squared,
@@ -51,7 +52,7 @@ impl Mover {
                         "a looping level without a path pauses the unit",
                     ));
                 }
-                if 1 < level.level || !top_has_more {
+                if WaypointLevel::PLANNED < level.level || !top_has_more {
                     return Err(GenieError::unsupported(
                         "a level without a path stops the unit",
                     ));
@@ -88,11 +89,11 @@ impl Mover {
         new.range = level.range;
         new.target = level.target;
         new.waypoint = 1;
-        if level.level == 2 && planned {
+        if level.level == WaypointLevel::TOP && planned {
             new.length = path.length;
             new.points = path.points;
             new.state = 2;
-            new.level = 1;
+            new.level = WaypointLevel::PLANNED;
             new.linked_type = if found { 1 } else { 2 };
             self.paths.insert(0, new);
             return if SHORT_PATHER || LONG_PATHER {
@@ -114,7 +115,7 @@ impl Mover {
         new.length = path.length;
         new.points = path.points;
         new.state = 3;
-        new.level = 0;
+        new.level = WaypointLevel::WALKED;
         new.linked_type = if !found || partial { 2 } else { 1 };
         if !solid {
             // the walked level lets its path go (FUN_140f95b70): it holds none (path id -1),

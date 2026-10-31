@@ -115,7 +115,7 @@ pub(super) fn path_level(
         ),
     };
     Ok(genie_core::movement::PathData {
-        level: d.waypoint_level,
+        level: genie_core::movement::WaypointLevel::of_byte(d.waypoint_level),
         linked_type: d.linked_path_type,
         points: path.map_or_else(Vec::new, |p| p.m_waypoints.iter().map(vec3).collect()),
         has_path: path.is_some(),

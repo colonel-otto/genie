@@ -505,7 +505,7 @@ fn a_blocked_way_to_the_slot_goes_round() {
     assert_eq!(
         (
             m.paths.len(),
-            walked.level,
+            walked.level.get(),
             walked.state,
             walked.waypoint,
             walked.target

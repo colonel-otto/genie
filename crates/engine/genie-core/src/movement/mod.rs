@@ -46,6 +46,8 @@ pub use self::step::GroupSpeed;
 mod unit;
 mod walk;
 mod waypoint;
+mod waypoint_level;
+pub use self::waypoint_level::WaypointLevel;
 
 #[cfg(test)]
 use self::long_walk::old_pather_for;
@@ -114,7 +116,7 @@ impl Default for PathAsk {
 #[derive(Clone, Debug, PartialEq, Diff)]
 pub struct PathData {
     /// `+0x14`, `mWaypointLevel`: 0 is the path the unit walks.
-    pub level: u8,
+    pub level: WaypointLevel,
     /// `+0x10`, `mLinkedPathType`: what a finished level hands its parent.
     pub linked_type: i32,
     /// The path's waypoints (`+0x18`, the path's `+0x438`..`+0x440`).
@@ -405,7 +407,7 @@ impl PathData {
     /// A new level (`FUN_140f8f670`) with a new path (`FUN_14152eea0`, flags 6, made `now`).
     pub(crate) const fn new(now: u32) -> Self {
         Self {
-            level: 0,
+            level: WaypointLevel::WALKED,
             linked_type: 0,
             points: Vec::new(),
             has_path: true,
@@ -430,7 +432,7 @@ impl PathData {
     #[must_use]
     pub const fn without_path() -> Self {
         Self {
-            level: 0,
+            level: WaypointLevel::WALKED,
             linked_type: 0,
             points: Vec::new(),
             has_path: false,

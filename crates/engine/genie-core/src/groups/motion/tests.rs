@@ -4,6 +4,7 @@ use crate::map::Point;
 use crate::map::RestrictionId;
 use crate::map::TerrainMask;
 use crate::movement::NEW_PATH_FLAGS;
+use crate::movement::WaypointLevel;
 use crate::objects::actions::ActionList;
 use crate::objects::masters::ObstructionClass;
 use crate::objects::masters::ObstructionType;
@@ -64,7 +65,7 @@ use crate::pathing::Pathing;
 
 fn level(level: u8, points: &[Point], waypoint: i32, state: i32) -> PathData {
     PathData {
-        level,
+        level: WaypointLevel::of_byte(level),
         points: points
             .iter()
             .map(|p| BVector::new(p.x(), 0.0, p.y()))
@@ -135,7 +136,7 @@ fn the_walked_levels_below_the_high_level_go() {
     assert_eq!(m.paths.len(), 1);
     let l = &m.paths[0];
     assert_eq!(
-        (l.level, l.waypoint, l.state, l.continue_counter),
+        (l.level.get(), l.waypoint, l.state, l.continue_counter),
         (2, 1, 2, 10)
     );
     assert_eq!(l.points.len(), 3);
@@ -577,7 +578,7 @@ fn a_top_level_without_a_planner_plans_the_straight_way() {
     assert_eq!(m.paths.len(), 2);
     let (new, top) = (&m.paths[0], &m.paths[1]);
     assert_eq!(
-        (new.level, new.state, new.linked_type, new.waypoint),
+        (new.level.get(), new.state, new.linked_type, new.waypoint),
         (1, 2, 1, 1)
     );
     assert_eq!(
@@ -638,7 +639,7 @@ fn a_near_target_takes_the_straight_way() {
             .is_none()
     );
     let new = &m.paths[0];
-    assert_eq!((new.level, new.state, new.linked_type), (0, 3, 1));
+    assert_eq!((new.level.get(), new.state, new.linked_type), (0, 3, 1));
     assert_eq!(
         new.points,
         [BVector::new(5.0, 0.0, 5.0), BVector::new(5.0, 0.0, 30.0)]
@@ -665,7 +666,7 @@ fn a_near_waypoint_takes_the_short_pather_s_path() {
     lead.walker.radius = 0.6;
     assert!(fx.request(&mut m, &lead, false, None, f32::MAX).is_none());
     let new = &m.paths[0];
-    assert_eq!((new.level, new.state, new.linked_type), (0, 3, 1));
+    assert_eq!((new.level.get(), new.state, new.linked_type), (0, 3, 1));
     assert_eq!(new.points.first(), Some(&BVector::new(5.0, 0.0, 5.0)));
     assert_eq!(new.points.last(), Some(&BVector::new(5.0, 0.0, 9.0)));
     assert_eq!(m.paths[1].state, 0);
@@ -679,7 +680,7 @@ fn a_far_waypoint_takes_the_long_pather_s_path() {
     let mut m = requesting(0, 30.0);
     assert!(fx.request(&mut m, &lead(), false, None, f32::MAX).is_none());
     let new = &m.paths[0];
-    assert_eq!((new.level, new.state, new.linked_type), (0, 3, 1));
+    assert_eq!((new.level.get(), new.state, new.linked_type), (0, 3, 1));
     assert_eq!(
         new.points,
         [BVector::new(5.5, 0.0, 5.5), BVector::new(5.5, 0.0, 30.5)]
@@ -930,7 +931,7 @@ fn what_stands_in_the_way_stops_the_walk() {
     ));
     assert!(matches!(fx.pass(&mut m, &lead()), Pass::Next));
     assert_eq!(
-        (m.paths.len(), m.paths[0].level, m.paths[0].state),
+        (m.paths.len(), m.paths[0].level.get(), m.paths[0].state),
         (1, 2, 2)
     );
     let mut m = walking(None);

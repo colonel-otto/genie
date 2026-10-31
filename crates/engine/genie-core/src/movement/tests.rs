@@ -6,6 +6,7 @@ use crate::map::TerrainMask;
 use crate::map::Tile;
 use crate::map::spatial::RecordId;
 use crate::map::spatial::{Gait, Obstruction, Placed};
+use crate::movement::WaypointLevel;
 use crate::movement::move_to::Walk;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::objects::masters::ClassId;
@@ -88,7 +89,7 @@ fn stats() -> MoveStats {
 
 fn level(level: u8, points: &[Point], state: i32) -> PathData {
     PathData {
-        level,
+        level: WaypointLevel::of_byte(level),
         linked_type: i32::from(level == 0),
         points: points
             .iter()
@@ -1411,7 +1412,11 @@ fn level_0_looks_ahead_to_the_farthest_parent_waypoint_it_walks_to_straight() {
     assert_eq!(m.look_ahead(&me, &mut w), Ok(true));
     assert_eq!(m.paths.len(), 1);
     assert_eq!(
-        (m.paths[0].level, m.paths[0].waypoint, m.paths[0].state),
+        (
+            m.paths[0].level.get(),
+            m.paths[0].waypoint,
+            m.paths[0].state
+        ),
         (1, 2, 2)
     );
     // a tree in the way of both leaves the levels as they are
@@ -1796,7 +1801,7 @@ fn a_level_without_a_path_marks_its_waypoint_pauses_or_waits() {
     assert!(out(&|_| {}).0.is_err());
     assert!(out(&|m| m.paths[0].path_flags |= 1).0.is_err());
     assert!(out(&|m| m.attack_moving = true).0.is_err());
-    assert!(out(&|m| m.paths[0].level = 2).0.is_err());
+    assert!(out(&|m| m.paths[0].level = WaypointLevel::TOP).0.is_err());
     let (r, m) = out(&|m| m.paths[0].waypoint = 0);
     assert!(matches!(r, Ok(AfterRequest::Again)));
     assert_eq!(m.paths[0].flags, 1);
@@ -2352,7 +2357,7 @@ fn a_path_request_makes_the_top_level_from_the_unit_to_its_goal() {
     let top = &m.paths[0];
     assert_eq!(
         (
-            top.level,
+            top.level.get(),
             top.path_flags,
             top.waypoint,
             top.state,
@@ -2805,10 +2810,10 @@ fn a_request_spends_a_try_and_gives_up_or_goes_on_without_more() {
     assert_eq!((m.paths.len(), m.paths[0].state), (1, 6));
     assert_eq!(m.animated.speed, 0.0);
     let mut m = last_try();
-    m.paths[0].level = 2;
+    m.paths[0].level = WaypointLevel::TOP;
     assert_eq!(m.spend_try(), Ok(Some(AfterRequest::GaveUp)));
     let mut m = last_try();
-    m.paths[0].level = 2;
+    m.paths[0].level = WaypointLevel::TOP;
     m.paths[0].waypoint = 0;
     assert_eq!(m.spend_try(), Ok(Some(AfterRequest::Again)));
     assert_eq!(
@@ -2827,7 +2832,7 @@ fn way_9177(goal: Goal<'_>, range: f32) -> Way<'_> {
         waypoint: BVector::new(30.0, 0.0, 88.0),
         distance: ground(BVector::new(30.0, 0.0, 88.0), BVector::new(28.0, 0.0, 89.0)),
         radius: 0.2,
-        level: 0,
+        level: WaypointLevel::WALKED,
         range,
         target_id: None,
         trade_cart: false,

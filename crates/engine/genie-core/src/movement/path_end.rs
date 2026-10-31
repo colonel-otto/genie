@@ -1,6 +1,7 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
 use crate::map::Tile;
+use crate::movement::WaypointLevel;
 use crate::objects::{ObjectId, ObjectKey};
 
 use crate::map::Point;
@@ -191,7 +192,7 @@ impl Mover {
         let Some(level) = self
             .paths
             .first()
-            .filter(|l| l.level == 0 && !l.points.is_empty())
+            .filter(|l| l.level == WaypointLevel::WALKED && !l.points.is_empty())
         else {
             return Ok(false);
         };
@@ -263,7 +264,11 @@ impl Mover {
     ) {
         let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
         self.paths = vec![PathData {
-            level: if planned { 2 } else { 0 },
+            level: if planned {
+                WaypointLevel::TOP
+            } else {
+                WaypointLevel::WALKED
+            },
             points,
             has_path: true,
             path_flags: 6,
@@ -338,7 +343,7 @@ impl Mover {
         };
         let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
         self.paths = vec![PathData {
-            level: 2,
+            level: WaypointLevel::TOP,
             points: path.points,
             path_flags,
             waypoint: if ask.resume == -1 { 1 } else { ask.resume },

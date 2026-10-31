@@ -6,6 +6,7 @@ use std::ops::ControlFlow;
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::fmath::BVector;
+use crate::movement::WaypointLevel;
 use crate::movement::{
     AfterRequest, CLOSE, DETOUR, EPSILON, FAR, Goal, LONG, LONG_PATHER, LongAsk, Me, Mover,
     PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SHORT_REACH, ShortAsk, TARGET_SHORT_REACH,
@@ -53,7 +54,7 @@ pub(super) struct Way<'a> {
     pub(super) waypoint: BVector,
     pub(super) distance: f32,
     pub(super) radius: f32,
-    pub(super) level: u8,
+    pub(super) level: WaypointLevel,
     pub(super) range: f32,
     pub(super) target_id: Option<ObjectId>,
     pub(super) trade_cart: bool,
@@ -80,7 +81,7 @@ impl Mover {
                 "a path request in game type 12 (its tile escape)",
             ));
         }
-        if w.level == 2 && TILE_PATHER {
+        if w.level == WaypointLevel::TOP && TILE_PATHER {
             self.first_plan(me, world, plan, w, np)?;
         }
         let tail = match self.short_tail(me, world, plan, w, np)? {
@@ -90,7 +91,7 @@ impl Mover {
         if tail && let Some(step) = self.long_tail(me, world, plan, w, np)? {
             return Ok(Some(step));
         }
-        if (!np.found || too_short(&np.path)) && w.level == 2 && TILE_PATHER {
+        if (!np.found || too_short(&np.path)) && w.level == WaypointLevel::TOP && TILE_PATHER {
             self.tile_again(me, world, plan, w, np)?;
         }
         if !(np.path.length <= w.distance * DETOUR || np.path.length <= LONG) {
@@ -183,7 +184,7 @@ impl Mover {
             return Ok(());
         }
         let level = &mut self.paths[0];
-        if r == 2 && (level.level != 2 || level.flags & 8 != 0) {
+        if r == 2 && (level.level != WaypointLevel::TOP || level.flags & 8 != 0) {
             return Ok(());
         }
         np.planned = true;
@@ -193,7 +194,7 @@ impl Mover {
             np.path.points.clear();
         }
         np.found = !farther;
-        if !target_moves && !farther && level.level == 2 && r == 2 {
+        if !target_moves && !farther && level.level == WaypointLevel::TOP && r == 2 {
             level.flags |= 8;
         }
         Ok(())

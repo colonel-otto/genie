@@ -12,6 +12,7 @@ use crate::map::spatial::{Placed, RecordId, Spatial};
 use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
+use crate::movement::WaypointLevel;
 use crate::movement::{
     LongWalker, PathData, TileAsk, long_path_for, short_path_for, tile_plan_for,
 };
@@ -23,7 +24,7 @@ use crate::world::slots::CheckedIndex;
 /// the group's place (x, height, y; `from` its ground point) and the ground distance between
 /// them.
 struct Leg {
-    level: u8,
+    level: WaypointLevel,
     range: f32,
     target_id: Option<ObjectId>,
     waypoint: BVector,
@@ -76,16 +77,16 @@ pub(super) fn request(
         way: ground(waypoint, at),
     };
     let mut plan = PathSoFar::default();
-    if leg.level == 2 {
+    if leg.level == WaypointLevel::TOP {
         tile_plan(lead, world, &leg, target, &mut plan)?;
     }
     let level = motion.paths.checked(0)?;
-    let (short_range, beyond) = if leg.level == 2 && level.points.len() as i32 == level.waypoint + 1
-    {
-        (leg.range, leg.way - leg.range)
-    } else {
-        (0.0, leg.way)
-    };
+    let (short_range, beyond) =
+        if leg.level == WaypointLevel::TOP && level.points.len() as i32 == level.waypoint + 1 {
+            (leg.range, leg.way - leg.range)
+        } else {
+            (0.0, leg.way)
+        };
     let mut long = false;
     if !plan.has_plan || plan.path.points.len() < 3 {
         if leg.way <= SHORT_REACH
@@ -381,7 +382,7 @@ pub(super) fn link(
     now: u32,
 ) -> Result<Option<Pass>, GenieError> {
     let level = motion.paths.checked(0)?;
-    if (level.level == 2 && !found) || path.points.len() < 2 {
+    if (level.level == WaypointLevel::TOP && !found) || path.points.len() < 2 {
         if !found {
             if level.continue_counter < LAST_TRIES {
                 if level.points.len() as i32 - 1 <= level.waypoint {
@@ -394,7 +395,7 @@ pub(super) fn link(
                         .paths
                         .last()
                         .is_some_and(|t| t.has_path && t.waypoint < t.points.len() as i32 - 1);
-                    if level.level < 2 && top_has_more {
+                    if level.level < WaypointLevel::TOP && top_has_more {
                         motion.paths.checked_mut(0)?.state = 5;
                         return Ok(Some(Pass::Next));
                     }
@@ -419,7 +420,7 @@ pub(super) fn link(
     // A level's plans (`FUN_140f8f670`, `FUN_140f9b800`).
     // A new path's flags (`FUN_14152eea0`).
     level.continue_counter = CONTINUE;
-    let (range, target, top) = (level.range, level.target, level.level == 2);
+    let (range, target, top) = (level.range, level.target, level.level == WaypointLevel::TOP);
     let new = PathData {
         points: path.points,
         has_path: true,
@@ -430,7 +431,11 @@ pub(super) fn link(
         target,
         waypoint: 1,
         state: if top && planned { 2 } else { 3 },
-        level: u8::from(top && planned),
+        level: if top && planned {
+            WaypointLevel::PLANNED
+        } else {
+            WaypointLevel::WALKED
+        },
         linked_type: if found { 1 } else { 2 },
         ..PathData::without_path()
     };

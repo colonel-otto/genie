@@ -7,6 +7,7 @@ use crate::map::Position;
 use crate::map::Rect;
 use crate::map::RestrictionId;
 use crate::map::Tile;
+use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::ObstructionClass;
@@ -852,7 +853,7 @@ fn a_line_after_a_column_takes_its_units_in_the_column_s_order() {
 /// A path level of `points` points at waypoint `waypoint` (none without points).
 fn level(points: &[BVector], waypoint: i32, flags: u32) -> PathData {
     PathData {
-        level: 0,
+        level: WaypointLevel::WALKED,
         linked_type: 0,
         points: points.to_vec(),
         has_path: !points.is_empty(),

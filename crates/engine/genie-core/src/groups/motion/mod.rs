@@ -9,6 +9,7 @@ use crate::map::Footprint;
 use crate::map::Position;
 use crate::math::fmath::{self, BVector};
 use crate::movement::Walker;
+use crate::movement::WaypointLevel;
 use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use crate::world::World;
@@ -139,11 +140,11 @@ impl Motion {
         if self.paths.len() < 2 {
             return Ok(());
         }
-        while self.paths.checked(0)?.level != 2 && 1 < self.paths.len() {
+        while self.paths.checked(0)?.level != WaypointLevel::TOP && 1 < self.paths.len() {
             let _ = self.paths.remove(0);
         }
         let level = self.paths.checked_mut(0)?;
-        if level.level == 2 {
+        if level.level == WaypointLevel::TOP {
             level.waypoint = 1;
             level.state = 2;
             level.continue_counter = 10;

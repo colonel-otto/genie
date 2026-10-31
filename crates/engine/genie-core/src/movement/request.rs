@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::Rect;
 use crate::map::spatial::{Placed, Spatial, WalkQuery};
 use crate::math::fmath::BVector;
+use crate::movement::WaypointLevel;
 use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
     AfterRequest, CONTINUE, EPSILON, Goal, LONG_PATH_GROW, LONG_PATH_MOVER, LongWalker, Me, Mover,
@@ -177,8 +178,8 @@ impl Mover {
         if 1 <= level.continue_counter {
             return Ok(None);
         }
-        if 1 < level.level || !top_has_more {
-            if level.level == 2 && level.waypoint < level.points.len() as i32 - 1 {
+        if WaypointLevel::PLANNED < level.level || !top_has_more {
+            if level.level == WaypointLevel::TOP && level.waypoint < level.points.len() as i32 - 1 {
                 level.flags |= 1;
                 level.continue_counter = CONTINUE;
                 return Ok(Some(AfterRequest::Again));
@@ -342,6 +343,6 @@ impl Mover {
         level.target.is_some()
             && level.points.len() as i32 == level.waypoint + 1
             && way - level.range <= SHORT_REACH
-            && level.level == 2
+            && level.level == WaypointLevel::TOP
     }
 }

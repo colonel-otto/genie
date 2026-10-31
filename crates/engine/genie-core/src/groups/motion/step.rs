@@ -8,6 +8,7 @@ use crate::groups::motion::{
 use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
+use crate::movement::WaypointLevel;
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
 use crate::world::slots::CheckedIndex;
 use crate::{GenieError, math::fmath};
@@ -208,11 +209,11 @@ pub(super) fn reached(motion: &mut Motion, target: Option<&Placed>) -> Result<()
     }
     let level = motion.paths.checked_mut(0)?;
     if level.waypoint < level.points.len() as i32 {
-        if level.level != 0 {
+        if level.level != WaypointLevel::WALKED {
             level.state = 2;
         }
     } else if EPSILON <= beyond
-        && (target.is_some() || CLOSE <= beyond || level.level == 0)
+        && (target.is_some() || CLOSE <= beyond || level.level == WaypointLevel::WALKED)
         && EPSILON <= d
     {
         level.waypoint -= 1;

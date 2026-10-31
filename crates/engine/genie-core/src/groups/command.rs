@@ -13,6 +13,7 @@ use crate::math::fmath::BVector;
 use crate::movement::CONTINUE;
 use crate::movement::NEW_PATH_FLAGS;
 use crate::movement::PathData;
+use crate::movement::WaypointLevel;
 use crate::objects::masters::ActionType;
 use crate::objects::masters::master_type::COMBAT;
 use crate::objects::{ObjectId, ObjectKey};
@@ -623,7 +624,7 @@ fn move_level(
         level.state = 2;
         level.continue_counter = CONTINUE;
     }
-    level.level = 2;
+    level.level = WaypointLevel::TOP;
     level
 }
 /// The id of a queued command's target, which the world holds.
