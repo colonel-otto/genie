@@ -152,13 +152,14 @@ impl Attack {
         Ok(())
     }
 
-    /// Slot 9 (`FUN_140a841d0`) on `target`, the Attack's own target, for a caller that holds no
-    /// more of the unit and the target than the id (the work command's `keep_attack`): one in
-    /// states 4 to 7 or 11 keeps it as it is. The rest of the slot (the main building of an area
-    /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
-    /// needs the unit's and the target's values.
-    pub fn keeps(&self, target: Option<ObjectId>) -> GenieResult<bool> {
-        if target == self.target.map(AttackTargetId::id) && self.state.keeps_target() {
+    /// Slot 9 (`FUN_140a841d0`) on the object `target`, the Attack's own target, for a caller that
+    /// holds no more of the unit and the target than the id (the work command's `keep_attack`,
+    /// which asks only with an object: slot 9 answers false for none): one in states 4 to 7 or 11
+    /// keeps it as it is. The rest of the slot (the main building of an area effect's building
+    /// target, the range test, the new target) is [`Attack::work`]'s, which needs the unit's and
+    /// the target's values.
+    pub fn keeps(&self, target: ObjectId) -> GenieResult<bool> {
+        if self.target.map(AttackTargetId::id) == Some(target) && self.state.keeps_target() {
             return Ok(true);
         }
         Err(GenieError::unsupported(

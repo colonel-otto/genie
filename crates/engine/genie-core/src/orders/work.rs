@@ -1,7 +1,6 @@
 //! A kept attack, the garrison task and the work command and its task.
 
-use crate::combat::AttackTargetId;
-use crate::combat::attack::{ATTACK, Attack};
+use crate::combat::attack::ATTACK;
 use crate::construction::build::CART_TASK;
 use crate::construction::repair::REPAIR;
 use crate::garrison::ENTER;
@@ -16,7 +15,9 @@ use crate::math::rng::Stream;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
+use crate::objects::actions::Action as ListedAction;
 use crate::objects::masters::ActionKind;
+use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
 use crate::objects::masters::player_masters;
@@ -56,12 +57,6 @@ const TERRAIN_TASK: GenieError =
 const UNMODELLED_FACTORY: GenieError =
     GenieError::unsupported("the action factory for a task the slice does not model");
 
-/// Whether the unit's top action (`top`) is the Attack `attack` on `target` (both none counts, as
-/// the game compares −1 with −1).
-fn attack_on(top: Option<ActionKind>, attack: &Attack, target: Option<ObjectId>) -> bool {
-    top == Some(ATTACK) && attack.target.map(AttackTargetId::id) == target
-}
-
 /// Whether a unit changes its master to the one whose task it found (1) or keeps its own (0):
 /// the task search's ([`World::find_work_task`]), and the work command's before it retakes the
 /// task ([`World::retake_task`]).
@@ -74,11 +69,18 @@ pub(crate) enum MasterSwap {
 }
 
 impl World {
-    /// The work command's check of the unit's top Attack (`FUN_14106ff70`): one on this very
-    /// target, the filter none or 9, keeps it when its slot 9 (`FUN_140a841d0`, [`Attack::keeps`])
-    /// does, and the unit AI hears of it as of a new one (slot 0x828: the attack order and
-    /// action, the target, the retarget time). Taken when kept.
+    /// The work command's check of the unit's top Attack (`FUN_14106ff70`, `0x141070914`): the
+    /// object the top action's target names (`FUN_140a78450`, [`Action::top_action_object`]:
+    /// none for a recyclable target or one the world no longer holds) is the command's target
+    /// object (`CMP RAX,R14`: none for a command without a target or on an id the world does not
+    /// hold), the top action is an Attack (type 9) and the filter none or 9. Its slot 9
+    /// (`FUN_140a841d0`, [`Attack::keeps`]) on that object then keeps it, and the unit AI hears of
+    /// it as of a new one (slot 0x828: the attack order and action, the target, the retarget
+    /// time). Taken when kept. Slot 9 answers false for no object (`TEST RDX,RDX`), so a command
+    /// without a target object keeps no Attack, though it matches one without a target object.
+    /// The unit AI's `+0x1d5`, cleared after the notify, is not held.
     ///
+    /// [`Action::top_action_object`]: crate::objects::layers::Action::top_action_object
     /// [`Attack::keeps`]: crate::combat::attack::Attack::keeps
     pub(super) fn keep_attack(
         &mut self,
@@ -89,41 +91,40 @@ impl World {
         point: Position,
         notifies: Notifies,
     ) -> GenieResult<Answer> {
-        let unit = &self.players.live(player, idx)?;
-        let top = self.parts.actions_of(unit.id).top_action_kind();
-        let attacking = self
-            .parts
-            .actions_of(unit.id)
-            .list
-            .attack()
-            .filter(|attack| attack_on(top, attack, target));
-        let Some(attack) = attacking.filter(|_| matches!(filter, None | Some(ATTACK))) else {
+        let actions = self.parts.actions_of(self.players.live(player, idx)?.id);
+        let top_object = actions.top_action_object(|id| self.object(id));
+        let attack = match actions.list.head() {
+            Some(ListedAction::Attack(attack)) if matches!(filter, None | Some(ATTACK)) => attack,
+            _ => return Ok(Answer::NotTaken),
+        };
+        let Some((owner, object)) = top_object.filter(|(_, object)| Some(object.id) == target)
+        else {
             return Ok(Answer::NotTaken);
         };
-        if !attack.keeps(target)? {
+        if !attack.keeps(object.id)? {
             return Ok(Answer::NotTaken);
         }
-        self.tell_of_attack(player, idx, (target, point), notifies)?;
+        let target = object.id;
+        let class = object.master(self.master_tables(), owner)?.class;
+        self.tell_of_attack(player, idx, target, class, point, notifies)?;
         Ok(Answer::Taken)
     }
 
-    /// The unit AI hears of the kept Attack as of a new one ([`World::keep_attack`]'s last part).
+    /// The unit AI hears of the kept Attack on `target` of class `class` as of a new one
+    /// ([`World::keep_attack`]'s last part).
     ///
     /// # Errors
     ///
-    /// A target or master the slice does not hold, or the notify's.
+    /// The notify's, or a unit the slice does not hold.
     fn tell_of_attack(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
-        (target, point): (Option<ObjectId>, Position),
+        target: ObjectId,
+        class: ClassId,
+        point: Position,
         notifies: Notifies,
     ) -> GenieResult<()> {
-        let (tp, target_unit) = self.object(target).ok_or(GenieError::unsupported(
-            "an attack's target the slice does not hold",
-        ))?;
-        let target = target_unit.id;
-        let class = target_unit.master(self.master_tables(), tp)?.class;
         let world_time = self.world_time;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {

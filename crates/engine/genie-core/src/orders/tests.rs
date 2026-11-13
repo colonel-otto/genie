@@ -828,6 +828,107 @@ fn work_command_keeps_the_top_attack_on_its_target_and_tells_its_unit_ai() {
     assert_eq!(ai(&game), Some(WorldTime::from_millis(3500)));
 }
 
+/// The soldier of [`work_attack`] with its Attack started on the wolf 50, then the Attack's
+/// target set to `target`.
+fn attacking(target: Option<ObjectId>) -> World {
+    let (mut world, task) = work_attack(UnitStance::Aggressive);
+    world
+        .start_attack(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(50),
+            &task,
+            Position::new(10.4, 10.0, 0.0),
+            Notifies::Cleared,
+        )
+        .unwrap();
+    let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    let attack = world
+        .parts
+        .actions
+        .of_mut(soldier)
+        .unwrap()
+        .list
+        .attack_mut()
+        .expect("the soldier's Attack");
+    attack.target = target.map(AttackTargetId::new);
+    world
+}
+
+/// The work command's check of the soldier's top Attack ([`World::keep_attack`]) on `target`,
+/// any task.
+fn keep_attack_on(world: &mut World, target: Option<ObjectId>) -> GenieResult<Answer> {
+    world.keep_attack(
+        PlayerId::new(1),
+        ListIndex::new(0),
+        target,
+        None,
+        Position::new(10.4, 10.0, 0.0),
+        Notifies::Cleared,
+    )
+}
+
+/// The work command's check of the top Attack compares the object the Attack's target names
+/// (`FUN_140a78450`) with the command's target object (`CMP RAX,R14`): a recyclable target
+/// (−50, a copy of the wolf the world holds) names none, so a command on that very object keeps
+/// nothing.
+#[test]
+fn work_command_keeps_no_attack_whose_target_is_recyclable() {
+    let mut world = attacking(Some(object_id(-50)));
+    let (owner, wolf) = world.object(object_id(50)).unwrap();
+    let copy = Unit {
+        id: object_id(-50),
+        ..wolf.clone()
+    };
+    let _ = world.push_live(owner, copy).unwrap();
+    assert!(world.object(object_id(-50)).is_some());
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(-50))),
+        Ok(Answer::NotTaken)
+    );
+}
+
+/// An Attack on a target the world no longer holds (77) names no object: a command on that id,
+/// whose object the world does not hold either, matches it, but slot 9 (`FUN_140a841d0`)
+/// answers false for no object (`TEST RDX,RDX`), so nothing is kept; nor by a command without a
+/// target.
+#[test]
+fn work_command_keeps_no_attack_whose_target_is_gone() {
+    let mut world = attacking(Some(object_id(77)));
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(77))),
+        Ok(Answer::NotTaken)
+    );
+    assert_eq!(keep_attack_on(&mut world, None), Ok(Answer::NotTaken));
+}
+
+/// A command without a target object matches a top Attack without one, but slot 9 answers false
+/// for no object: nothing is kept.
+#[test]
+fn work_command_without_target_keeps_no_attack_without_one() {
+    let mut world = attacking(None);
+    assert_eq!(keep_attack_on(&mut world, None), Ok(Answer::NotTaken));
+}
+
+/// The check reads the top action (`FUN_140a986f0`): an Attack on the wolf under a `MoveTo` to
+/// the wolf on top (type 1, not 9) is not kept, though the top action's target names the
+/// command's object.
+#[test]
+fn work_command_keeps_no_attack_under_another_top_action() {
+    let mut world = attacking(Some(object_id(50)));
+    let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    let actions = world.parts.actions.of_mut(soldier).unwrap();
+    actions.list.set_move_to(Some(MoveToAction {
+        target: Some(object_id(50)),
+        ..MoveToAction::sub_in(MoveTo::Moving)
+    }));
+    assert_eq!(world.top_target_object(soldier), Some(object_id(50)));
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::NotTaken)
+    );
+}
+
 /// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
 /// its main building, with the annex's owner, class and fog visibility but the main building's
 /// place and class; a target or a main building the slice does not hold fails.
