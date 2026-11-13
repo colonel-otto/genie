@@ -16,6 +16,7 @@ use crate::movement::footprint_gap;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::masters::ClassId;
+use crate::objects::masters::Master;
 use crate::objects::masters::MasterKind;
 use crate::objects::sprite::new_sprite;
 use crate::objects::unit::Unit;
@@ -40,6 +41,21 @@ pub struct Mark {
     pub(crate) position: Position,
     /// Its master's radii on the ground, which the footprint gap (`FUN_14118f680`) reads.
     pub(crate) radius: Footprint,
+}
+
+impl Mark {
+    /// Object `object` of master `master`, as slot 9 and slot 0x68 read it.
+    #[must_use]
+    pub(crate) const fn of(object: &Unit, master: &Master) -> Self {
+        Self {
+            id: object.id,
+            kind: master.kind,
+            class: master.class,
+            state: object.life.state,
+            position: object.position(),
+            radius: master.radius,
+        }
+    }
 }
 
 /// What the Attack's slot 9 ([`Attack::work`]) reads of its unit.
@@ -150,21 +166,6 @@ impl Attack {
             },
         );
         Ok(())
-    }
-
-    /// Slot 9 (`FUN_140a841d0`) on the object `target`, the Attack's own target, for a caller that
-    /// holds no more of the unit and the target than the id (the work command's `keep_attack`,
-    /// which asks only with an object: slot 9 answers false for none): one in states 4 to 7 or 11
-    /// keeps it as it is. The rest of the slot (the main building of an area effect's building
-    /// target, the range test, the new target) is [`Attack::work`]'s, which needs the unit's and
-    /// the target's values.
-    pub fn keeps(&self, target: ObjectId) -> GenieResult<bool> {
-        if self.target.map(AttackTargetId::id) == Some(target) && self.state.keeps_target() {
-            return Ok(true);
-        }
-        Err(GenieError::unsupported(
-            "an Attack's slot 9 on a target out of its states 4 to 7 and 11",
-        ))
     }
 
     /// Slot 9 (`FUN_140a841d0`, `RGE_Action_Attack::work`) on `target`: none answers false. A

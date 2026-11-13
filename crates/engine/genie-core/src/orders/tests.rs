@@ -2,7 +2,7 @@ use super::*;
 use crate::GenieResult;
 use crate::combat::attack::tests::own_attack;
 use crate::combat::attack::{ATTACK, AttackState};
-use crate::combat::{AttackTargetId, Firepower};
+use crate::combat::{AttackCount, AttackTargetId, Firepower};
 use crate::commands::UnitOrderAction;
 use crate::commands::UnloadPick;
 use crate::construction::MainBuildingId;
@@ -926,6 +926,165 @@ fn work_command_keeps_no_attack_under_another_top_action() {
     assert_eq!(
         keep_attack_on(&mut world, Some(object_id(50))),
         Ok(Answer::NotTaken)
+    );
+}
+
+/// The work command's check keeps the top Attack on its target with no filter, the filter of
+/// the command without a task (`CMP R15W,-0x1`).
+#[test]
+fn work_command_without_filter_keeps_the_top_attack_on_its_target() {
+    let mut world = attacking(Some(object_id(50)));
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::Taken)
+    );
+}
+
+/// Slot 9 (`FUN_140a841d0`, [`crate::combat::attack::Attack::work`]) on the target of an
+/// Attack out of states 4 to 7 and 11 (13, failed): a unit that may not move (stand ground
+/// without an order, slot 0x1d0) keeps it within its reach (the footprint gap at most its range
+/// of 0 and half a tile), where it saw the target becoming the target's place, and not beyond;
+/// one that may move (aggressive) keeps it beyond, one without top speed (no mover, slot 0x208)
+/// only within. The Attack's state stays.
+#[test]
+fn work_command_keeps_failed_attack_within_reach_or_for_unit_that_may_move() {
+    let mut world = attacking(Some(object_id(50)));
+    let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    let attack = |world: &World| {
+        *world
+            .parts
+            .actions_of(soldier)
+            .list
+            .attack()
+            .expect("the soldier's Attack")
+    };
+    // each kept Attack's notify gives the unit AI the attack order (700): without it the
+    // stance asks
+    let stance = |world: &mut World, stance| {
+        let unit_ai = world.parts.unit_ai.get_mut(soldier).unwrap();
+        unit_ai.current_order = None;
+        unit_ai.stance = stance;
+    };
+    let wolf_at = |world: &mut World, x| {
+        world.object_mut(object_id(50)).unwrap().1.place = Static::at(Position::new(x, 10.0, 0.0));
+    };
+    {
+        let failed = world
+            .parts
+            .actions
+            .of_mut(soldier)
+            .unwrap()
+            .list
+            .attack_mut()
+            .unwrap();
+        failed.state = AttackState::Failed;
+        failed.seen = Position::new(1.0, 1.0, 0.0);
+    }
+    stance(&mut world, UnitStance::StandGround);
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::Taken)
+    );
+    let kept = attack(&world);
+    assert_eq!(
+        (kept.state, kept.seen, kept.target),
+        (
+            AttackState::Failed,
+            Position::new(10.4, 10.0, 0.0),
+            Some(AttackTargetId::new(object_id(50)))
+        )
+    );
+    wolf_at(&mut world, 12.0);
+    stance(&mut world, UnitStance::StandGround);
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::NotTaken)
+    );
+    assert_eq!(attack(&world).seen, Position::new(10.4, 10.0, 0.0));
+    stance(&mut world, UnitStance::Aggressive);
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::Taken)
+    );
+    assert_eq!(attack(&world).seen, Position::new(12.0, 10.0, 0.0));
+    world.parts.put_mover(soldier, None);
+    stance(&mut world, UnitStance::Aggressive);
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::NotTaken)
+    );
+    wolf_at(&mut world, 10.4);
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(50))),
+        Ok(Answer::Taken)
+    );
+}
+
+/// Slot 9 on an annex (61) of a unit whose master has an area effect (`+0x82c` above 0) takes
+/// the annex's main building (60, `+0xbb8`) for its target (slot 0x68): the unit's attack count
+/// (`+0x900`) clears, the annex is let go (slot 0x180: one worker less) and the main building
+/// taken (slot 0x178: one more), and the Attack saw its target at the main building's place.
+/// The unit AI hears of the annex, the command's object (slot 0x828 with `R14`). Without the
+/// area effect the Attack keeps the annex as it is.
+#[test]
+fn work_command_retargets_area_effect_attack_on_annex_to_its_main_building() {
+    let mut world = attacking(Some(object_id(61)));
+    annexed(&mut world);
+    let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    world.players[0].objects[ListIndex::new(2)].workers = WorkerCount::of_data(1);
+    world.parts.combat_mut(soldier).unwrap().attack_count = AttackCount::of_data(3);
+    let outcome = |world: &World| {
+        let attack = world.parts.actions_of(soldier).list.attack().unwrap();
+        (
+            attack.target,
+            world.parts.combat_of(soldier).attack_count,
+            world.players[0].objects[ListIndex::new(1)].workers,
+            world.players[0].objects[ListIndex::new(2)].workers,
+            world
+                .parts
+                .unit_ai
+                .get(soldier)
+                .and_then(|unit_ai| unit_ai.current_target),
+        )
+    };
+    let mut plain = world.clone();
+    assert_eq!(
+        keep_attack_on(&mut plain, Some(object_id(61))),
+        Ok(Answer::Taken)
+    );
+    assert_eq!(
+        outcome(&plain),
+        (
+            Some(AttackTargetId::new(object_id(61))),
+            AttackCount::of_data(3),
+            WorkerCount::ZERO,
+            WorkerCount::of_data(1),
+            Some(object_id(61))
+        )
+    );
+    Arc::make_mut(&mut world.model.masters[1])
+        .get_mut(master_id(4))
+        .unwrap()
+        .combat
+        .get_or_insert_with(Default::default)
+        .area_effect = Distance::new(1.0);
+    assert_eq!(
+        keep_attack_on(&mut world, Some(object_id(61))),
+        Ok(Answer::Taken)
+    );
+    assert_eq!(
+        outcome(&world),
+        (
+            Some(AttackTargetId::new(object_id(60))),
+            AttackCount::ZERO,
+            WorkerCount::of_data(1),
+            WorkerCount::ZERO,
+            Some(object_id(61))
+        )
+    );
+    assert_eq!(
+        world.parts.actions_of(soldier).list.attack().unwrap().seen,
+        Position::new(20.5, 20.5, 0.0)
     );
 }
 

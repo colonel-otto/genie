@@ -3,6 +3,7 @@
 use crate::combat::Firepower;
 use crate::combat::attack::ATTACK;
 use crate::combat::attack::CHARGE_RANGE;
+use crate::groups::GroupId;
 use crate::map::Distance;
 use crate::map::DistanceSquared;
 use crate::map::Footprint;
@@ -29,12 +30,14 @@ use crate::players::attribute::AttributeId;
 use crate::unit_ai::AiAction;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::TargetRules;
+use crate::unit_ai::UnitAi;
 use crate::unit_ai::UnitAiKind;
 use crate::unit_ai::UnitStance;
 use crate::unit_ai::best_target::Ask;
 use crate::unit_ai::{
     OrderRecord, civilian_may_attack, defend_patrol_range, lion_may_attack, siege_can_attack,
 };
+use crate::world::World;
 use crate::world::WorldTime;
 use crate::world::layer::AttributeRoles;
 use crate::world::layer::ClassRoles;
@@ -303,6 +306,33 @@ impl Seeker {
     #[must_use]
     pub const fn can_move(&self) -> bool {
         self.order.is_some() || self.stance.below(UnitStance::StandGround)
+    }
+}
+
+impl World {
+    /// Slot 0x1d0 of unit AI `ai`, `UAM::canMoveToAttack` (`FUN_140c48420`, every unit AI's), on
+    /// `target`, its unit in group `group` (`+0x6d0`): false on a target the world does not hold
+    /// (`FUN_1415417a0`; none passes), and while the group the world holds (`FUN_14152ff40`) is
+    /// not idle (`IsIdle`, [`UnitGroup::is_idle`]); else true with an order (`+0x3c`), or without
+    /// one in a stance (`+0x1a9`) of at most 1.
+    ///
+    /// [`UnitGroup::is_idle`]: crate::groups::UnitGroup::is_idle
+    pub(crate) fn can_move_to_attack(
+        &self,
+        ai: &UnitAi,
+        group: Option<GroupId>,
+        target: Option<ObjectId>,
+    ) -> bool {
+        if target.is_some_and(|id| self.object(id).is_none()) {
+            return false;
+        }
+        if group
+            .and_then(|id| self.groups.get(id))
+            .is_some_and(|unit_group| !unit_group.is_idle())
+        {
+            return false;
+        }
+        ai.current_order.is_some() || ai.stance.below(UnitStance::StandGround)
     }
 }
 

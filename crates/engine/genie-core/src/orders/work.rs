@@ -1,6 +1,8 @@
 //! A kept attack, the garrison task and the work command and its task.
 
+use crate::combat::AttackCount;
 use crate::combat::attack::ATTACK;
+use crate::combat::attack::{Mark, Wielder, Worked};
 use crate::construction::build::CART_TASK;
 use crate::construction::repair::REPAIR;
 use crate::garrison::ENTER;
@@ -15,13 +17,15 @@ use crate::math::rng::Stream;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
-use crate::objects::actions::Action as ListedAction;
+use crate::objects::actions::Action as ActionsAction;
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::Task;
 use crate::objects::masters::player_masters;
 use crate::objects::masters::work_master;
+use crate::objects::release::Releaser;
+use crate::objects::unit::Unit;
 use crate::orders::ActionsOnChange;
 use crate::orders::gather::HuntOrder;
 use crate::orders::{ATTACK_TASK, Work};
@@ -57,6 +61,24 @@ const TERRAIN_TASK: GenieError =
 const UNMODELLED_FACTORY: GenieError =
     GenieError::unsupported("the action factory for a task the slice does not model");
 
+/// What slot 9 (`FUN_140a841d0`, [`Attack::work`]) reads for the work command's kept Attack
+/// ([`World::keep_attack`]).
+///
+/// [`Attack::work`]: crate::combat::attack::Attack::work
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct KeptAttackReads {
+    /// The command's target object.
+    target: Mark,
+    /// Its main building (`+0xbb8`), when it is an annex and the world holds the building.
+    main: Option<Mark>,
+    /// The unit.
+    wielder: Wielder,
+    /// Its unit AI's canMoveToAttack (slot 0x1d0).
+    can_move: bool,
+    /// The unit as the releaser of the Attack's targets.
+    by: Releaser,
+}
+
 /// Whether a unit changes its master to the one whose task it found (1) or keeps its own (0):
 /// the task search's ([`World::find_work_task`]), and the work command's before it retakes the
 /// task ([`World::retake_task`]).
@@ -74,14 +96,18 @@ impl World {
     /// none for a recyclable target or one the world no longer holds) is the command's target
     /// object (`CMP RAX,R14`: none for a command without a target or on an id the world does not
     /// hold), the top action is an Attack (type 9) and the filter none or 9. Its slot 9
-    /// (`FUN_140a841d0`, [`Attack::keeps`]) on that object then keeps it, and the unit AI hears of
-    /// it as of a new one (slot 0x828: the attack order and action, the target, the retarget
-    /// time). Taken when kept. Slot 9 answers false for no object (`TEST RDX,RDX`), so a command
-    /// without a target object keeps no Attack, though it matches one without a target object.
-    /// The unit AI's `+0x1d5`, cleared after the notify, is not held.
+    /// (`FUN_140a841d0`, [`Attack::work`]) on that object then keeps it or takes it anew (an area
+    /// effect's annex its main building, a target in reach or one the unit may move to): a new
+    /// target clears the unit's attack count (`+0x900`), lets the old one go (slot 0x180) and is
+    /// taken (slot 0x178). Kept, the unit AI hears of it as of a new one (slot 0x828 with the
+    /// command's object: the attack order and action, the target, the retarget time); Taken.
+    /// Slot 9 answers false for no object (`TEST RDX,RDX`), so a command without a target object
+    /// keeps no Attack, though it matches one without a target object. The reads before the
+    /// type test have no effects, so the game's order of the tests is free. The unit AI's
+    /// `+0x1d5`, cleared after the notify, is not held.
     ///
     /// [`Action::top_action_object`]: crate::objects::layers::Action::top_action_object
-    /// [`Attack::keeps`]: crate::combat::attack::Attack::keeps
+    /// [`Attack::work`]: crate::combat::attack::Attack::work
     pub(super) fn keep_attack(
         &mut self,
         player: PlayerId,
@@ -91,23 +117,117 @@ impl World {
         point: Position,
         notifies: Notifies,
     ) -> GenieResult<Answer> {
-        let actions = self.parts.actions_of(self.players.live(player, idx)?.id);
-        let top_object = actions.top_action_object(|id| self.object(id));
-        let attack = match actions.list.head() {
-            Some(ListedAction::Attack(attack)) if matches!(filter, None | Some(ATTACK)) => attack,
-            _ => return Ok(Answer::NotTaken),
-        };
-        let Some((owner, object)) = top_object.filter(|(_, object)| Some(object.id) == target)
+        if !matches!(filter, None | Some(ATTACK)) {
+            return Ok(Answer::NotTaken);
+        }
+        let unit = self.players.live(player, idx)?;
+        let Some((owner, object)) = self
+            .parts
+            .actions_of(unit.id)
+            .top_action_object(|id| self.object(id))
+            .filter(|(_, object)| Some(object.id) == target)
         else {
             return Ok(Answer::NotTaken);
         };
-        if !attack.keeps(object.id)? {
+        let reads = self.kept_attack_reads(player, unit, owner, object)?;
+        let roles = &self.model.roles;
+        let worked = match self.parts.actions_mut(reads.by.id)?.list.head_mut() {
+            Some(ActionsAction::Attack(attack)) => attack.work(
+                Some(reads.target),
+                reads.main,
+                &reads.wielder,
+                |_| reads.can_move,
+                roles,
+            ),
+            _ => return Ok(Answer::NotTaken),
+        };
+        if !worked.kept {
             return Ok(Answer::NotTaken);
         }
-        let target = object.id;
-        let class = object.master(self.master_tables(), owner)?.class;
-        self.tell_of_attack(player, idx, target, class, point, notifies)?;
+        self.retarget_attack(worked, reads.by)?;
+        let Mark { id, class, .. } = reads.target;
+        self.tell_of_attack(player, idx, id, class, point, notifies)?;
         Ok(Answer::Taken)
+    }
+
+    /// What slot 9 (`FUN_140a841d0`, [`Attack::work`]) of unit `unit` of player `player` reads
+    /// on object `object` of player `owner` ([`World::keep_attack`]): the object and its main
+    /// building (`+0xbb8`) when the world holds it, the unit's area effect (`+0x82c`), top speed
+    /// (slot 0x208), place and radii, and its unit AI's canMoveToAttack (slot 0x1d0,
+    /// [`World::can_move_to_attack`]; false without a unit AI, as [`AttackReads::of`]).
+    ///
+    /// # Errors
+    ///
+    /// An object of a master its owner lacks, or [`World::top_speed`]'s.
+    ///
+    /// [`Attack::work`]: crate::combat::attack::Attack::work
+    /// [`AttackReads::of`]: crate::combat::attack::AttackReads::of
+    fn kept_attack_reads(
+        &self,
+        player: PlayerId,
+        unit: &Unit,
+        owner: PlayerId,
+        object: &Unit,
+    ) -> GenieResult<KeptAttackReads> {
+        let master = unit.master(self.master_tables(), player)?;
+        let target = Mark::of(object, object.master(self.master_tables(), owner)?);
+        let main = self
+            .parts
+            .building_of(object.id)
+            .annex_of
+            .and_then(|main| self.object(main.id()))
+            .map(|(main_owner, building)| {
+                building
+                    .master(self.master_tables(), main_owner)
+                    .map(|main_master| Mark::of(building, main_master))
+            })
+            .transpose()?;
+        // slot 9 asks on the object or its main building: the world holds both, so the
+        // lookup passes for either
+        let can_move = self
+            .parts
+            .unit_ai
+            .get(unit.id)
+            .is_some_and(|ai| self.can_move_to_attack(ai, unit.group.id, Some(object.id)));
+        Ok(KeptAttackReads {
+            target,
+            main,
+            wielder: Wielder {
+                area_effect: master.combat_part().area_effect,
+                speed: self.top_speed(player, unit)?,
+                position: unit.position(),
+                radius: master.radius,
+            },
+            can_move,
+            by: Releaser {
+                id: unit.id,
+                class: Some(master.class),
+                player,
+            },
+        })
+    }
+
+    /// The new target of an Attack of `by` that slot 9 took (slot 0x68, [`Attack::set_target`]):
+    /// the unit's attack count (`+0x900`) clears, the old target is let go (slot 0x180,
+    /// [`World::release`]) and the new one taken (slot 0x178, [`World::take`]), in the slot's
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// A unit without its combat part, or the release's and the take's.
+    ///
+    /// [`Attack::set_target`]: crate::combat::attack::Attack::set_target
+    fn retarget_attack(&mut self, worked: Worked, by: Releaser) -> GenieResult<()> {
+        if worked.clears_count {
+            self.parts.combat_mut(by.id)?.attack_count = AttackCount::ZERO;
+        }
+        if let Some(old) = worked.lets_go {
+            self.release(old, by)?;
+        }
+        if let Some(new) = worked.takes {
+            self.take(new, by)?;
+        }
+        Ok(())
     }
 
     /// The unit AI hears of the kept Attack on `target` of class `class` as of a new one

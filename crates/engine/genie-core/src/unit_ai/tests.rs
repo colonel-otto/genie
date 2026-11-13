@@ -8350,6 +8350,62 @@ fn grouped_ship_world(
     world
 }
 
+/// Slot 0x1d0, canMoveToAttack (`FUN_140c48420`, [`World::can_move_to_attack`]): a target the
+/// world does not hold (98) answers false, none or one it holds (the ship 50) asks on; a group
+/// the world holds that is not idle (its motion moves) answers false, an idle one or one the
+/// world does not hold asks on; then an order answers true, and without one a stance of at most
+/// 1 (aggressive, defensive).
+#[test]
+fn move_to_attack_needs_held_target_idle_group_and_order_or_low_stance() {
+    let still = Some((GroupCommandKind::MOVE, BVector::ZERO, GroupFlags::empty()));
+    let moving = Some((
+        GroupCommandKind::MOVE,
+        BVector::new(0.5, 0.0, 0.0),
+        GroupFlags::empty(),
+    ));
+    let ai = |order, stance| UnitAi {
+        current_order: order,
+        stance,
+        ..idle(UnitAiKind::Transport)
+    };
+    let can_move = |world: &World, unit_ai: &UnitAi, target| {
+        let group = world.players[1]
+            .objects
+            .by_id(object_id(50))
+            .unwrap()
+            .group
+            .id;
+        world.can_move_to_attack(unit_ai, group, target)
+    };
+    let aggressive = ai(None, UnitStance::Aggressive);
+    let ordered = ai(Some(OrderKind::Attack), UnitStance::NoAttack);
+    let world = grouped_ship_world(aggressive.clone(), None, (false, &[]));
+    assert!(can_move(&world, &aggressive, None));
+    assert!(can_move(&world, &aggressive, Some(object_id(50))));
+    assert!(!can_move(&world, &aggressive, Some(object_id(98))));
+    assert!(!can_move(&world, &ordered, Some(object_id(98))));
+    assert!(can_move(&world, &ordered, None));
+    for (stance, expected) in [
+        (UnitStance::Aggressive, true),
+        (UnitStance::Defensive, true),
+        (UnitStance::StandGround, false),
+        (UnitStance::NoAttack, false),
+    ] {
+        assert_eq!(
+            can_move(&world, &ai(None, stance), None),
+            expected,
+            "{stance:?}"
+        );
+    }
+    let world = grouped_ship_world(aggressive.clone(), still, (false, &[]));
+    assert!(can_move(&world, &aggressive, None));
+    let mut world = grouped_ship_world(aggressive.clone(), moving, (false, &[]));
+    assert!(!can_move(&world, &aggressive, None));
+    assert!(!can_move(&world, &ordered, None));
+    world.groups.groups.clear();
+    assert!(can_move(&world, &aggressive, None));
+}
+
 /// Player 1's lone unit 50 of `world` joins player 1's group 7, the group's command, its
 /// motion's velocity and its flags `group`'s.
 fn join_group(
