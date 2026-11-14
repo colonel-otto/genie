@@ -71,8 +71,9 @@ const AT: (PlayerId, ListIndex) = (PlayerId::new(1), ListIndex::new(0));
 /// The target's id: player 2's villager.
 const TARGET: ObjectId = object_id(800);
 
-/// The trebuchet's construction sprite 137 of the `.dat`, which a Pack at work shows: 10
-/// frames, animated.
+/// The trebuchet's construction sprite 137, which a Pack at work shows. The fixture's sprite of
+/// that id is a stand-in ([`graphic`]): the `.dat`'s 137 has 3 frames of 32 angles and a frame
+/// duration of 0.
 const PACKING: SpriteId = SpriteId::named(137);
 
 /// The trebuchet's standing sprite 1180 of the `.dat`, which a Pack's undoing shows.
@@ -224,6 +225,23 @@ fn trebuchet_world(list: ActionList, state: ObjectState) -> World {
 fn world_with(list: ActionList) -> World {
     trebuchet_world(list, ObjectState::Alive)
 }
+
+/// A stand-in annex master `id` of type `kind` and 200 hit points, a building part for a
+/// building. The tests take 273 for a building and 379 for an animated object: the `.dat` leaves
+/// both empty in every civilisation.
+fn annex_master(id: i16, kind: MasterKind) -> Master {
+    Master {
+        id: MasterId::named(id),
+        kind,
+        class: class::BUILDING,
+        hit_points: MasterHitPoints::of_data(200),
+        building: (kind == MasterKind::BUILDING).then(BuildingMaster::default),
+        ..Master::default()
+    }
+}
+
+/// A deletion of the trebuchet's actions, from the world or from its step.
+type Deletion = fn(&mut World) -> GenieResult<()>;
 
 /// The trebuchet's Pack, if it holds one.
 fn held(world: &World) -> Option<PackAction> {
@@ -579,6 +597,27 @@ fn update_at_pack_time_orders_the_attack_and_transforms() {
     );
 }
 
+/// The update writes the status 2 before the transform (`0x140ad6fb0`), whose list deletion runs
+/// the destructor on the old master: the destructor leaves the building as the transform made
+/// it and makes none of master 42's annexes again.
+#[test]
+fn update_at_pack_time_transforms_without_rebuilding_annexes() {
+    let tower = annex_master(273, MasterKind::BUILDING);
+    let mut annexed = trebuchet_master();
+    annexed.building.as_mut().unwrap().annexes = [Some(tower.id), None, None, None];
+    let mut world = world_with(packing(working(49.0)));
+    world.model.masters[1] = Arc::new(Masters::new([annexed, packed_master(), tower]));
+    world.players[1].attributes = vec![Amount::ZERO; 300];
+    assert_eq!(updated(&mut world, 2000), Ok(HeadCode::Deletes));
+    assert_eq!(trebuchet(&world).life.master_id, ids::ID_331);
+    assert_eq!(
+        world.parts.building_of(TREBUCHET).annexes,
+        Annexes::default()
+    );
+    assert_eq!(world.players[1].objects.len(), 1);
+    assert_eq!(heard(&world), [completed()]);
+}
+
 /// A Pack without a target turns the building without an order.
 #[test]
 fn update_at_pack_time_without_target_orders_nothing() {
@@ -664,63 +703,67 @@ fn actions_update_deletes_done_pack_and_undoes_it() {
     assert_eq!(shown(&world).map(|(id, _)| id), Some(STANDING));
 }
 
-/// The list's deletion outside the step (`FUN_140a98620`): the notify once the timer reached
-/// the pack time, the standing sprite at work in a played game; the target goes in any case.
+/// The list's deletion outside the step (`FUN_140a98620`, [`World::clear_actions`]) and the
+/// head's from the step (`FUN_140a98e20`, [`Unit::delete_own_head`]) each run the destructor's
+/// two checks: the notify once the timer reached the pack time, the standing sprite at work in a
+/// played game.
 #[test]
-fn cleared_pack_tells_its_unit_ai_and_puts_building_back() {
-    for (timer, status, game_state, told, sprite) in [
-        (
-            50.0,
-            PackStatus::Packing,
-            PlayState::Playing,
-            true,
-            STANDING,
-        ),
-        (
-            49.5,
-            PackStatus::Packing,
-            PlayState::Playing,
-            false,
-            STANDING,
-        ),
-        (
-            f32::NAN,
-            PackStatus::Packing,
-            PlayState::Over,
-            false,
-            PACKING,
-        ),
-        (60.0, PackStatus::Idle, PlayState::Playing, true, PACKING),
-        (
-            60.0,
-            PackStatus::Transformed,
-            PlayState::Playing,
-            true,
-            PACKING,
-        ),
-    ] {
-        let mut world = world_with(packing(PackAction {
-            status,
-            ..working(timer)
-        }));
-        world.game_state = game_state;
-        world.clear_actions(AT.0, AT.1).unwrap();
-        assert_eq!(held(&world), None);
-        let notifies = if told { vec![completed()] } else { Vec::new() };
-        assert_eq!(heard(&world), notifies, "{timer} {status:?}");
-        assert_eq!(shown(&world).map(|(id, _)| id), Some(sprite), "{timer}");
+fn deleted_pack_tells_its_unit_ai_and_puts_building_back() {
+    let deletions: [(&str, Deletion); 2] = [
+        ("world", |world| world.clear_actions(AT.0, AT.1)),
+        ("step", |world| delete_head_at(world, AT.0, AT.1)),
+    ];
+    for (path, delete) in deletions {
+        for (timer, status, game_state, told, sprite) in [
+            (
+                50.0,
+                PackStatus::Packing,
+                PlayState::Playing,
+                true,
+                STANDING,
+            ),
+            (
+                49.5,
+                PackStatus::Packing,
+                PlayState::Playing,
+                false,
+                STANDING,
+            ),
+            (
+                f32::NAN,
+                PackStatus::Packing,
+                PlayState::Over,
+                false,
+                PACKING,
+            ),
+            (60.0, PackStatus::Idle, PlayState::Playing, true, PACKING),
+            (
+                60.0,
+                PackStatus::Transformed,
+                PlayState::Playing,
+                true,
+                PACKING,
+            ),
+        ] {
+            let mut world = world_with(packing(PackAction {
+                status,
+                ..working(timer)
+            }));
+            world.game_state = game_state;
+            delete(&mut world).unwrap();
+            assert_eq!(held(&world), None, "{path}");
+            let notifies = if told { vec![completed()] } else { Vec::new() };
+            assert_eq!(heard(&world), notifies, "{path} {timer} {status:?}");
+            let shown_id = shown(&world).map(|(id, _)| id);
+            assert_eq!(shown_id, Some(sprite), "{path} {timer} {status:?}");
+        }
     }
 }
 
-/// The head's deletion from the step (`FUN_140a98e20`) runs the same destructor; a Pack under a
-/// deleted head restarts as it was (slot 0x28 with 0 does nothing).
+/// A Pack under a deleted head restarts as it was (slot 0x28 with 0 does nothing): its unit AI
+/// hears nothing and the building keeps its sprite.
 #[test]
-fn deleted_head_pack_tells_its_unit_ai_and_restarts_none() {
-    let mut world = world_with(packing(working(50.0)));
-    delete_head_at(&mut world, AT.0, AT.1).unwrap();
-    assert_eq!(held(&world), None);
-    assert_eq!(heard(&world), [completed()]);
-    assert_eq!(shown(&world).map(|(id, _)| id), Some(STANDING));
+fn pack_under_deleted_head_restarts_as_it_was() {
     let mut under = world_with(wait_over(packing(working(50.0))));
     delete_head_at(&mut under, AT.0, AT.1).unwrap();
     assert_eq!(held(&under), Some(working(50.0)));
@@ -775,19 +818,9 @@ fn torn_pack_hands_itself_over_and_releases_its_target() {
 /// building, an annex of another type holds no main.
 #[test]
 fn undone_pack_rebuilds_annexes() {
-    // 273 and 379 stand in for annex masters, a building and an animated object: the `.dat`
-    // leaves both empty in every civilisation
-    let annex = |id, kind| Master {
-        id: MasterId::named(id),
-        kind,
-        class: class::BUILDING,
-        hit_points: MasterHitPoints::of_data(200),
-        building: (kind == MasterKind::BUILDING).then(BuildingMaster::default),
-        ..Master::default()
-    };
     let (tower, soldier) = (
-        annex(273, MasterKind::BUILDING),
-        annex(379, MasterKind::ANIMATED),
+        annex_master(273, MasterKind::BUILDING),
+        annex_master(379, MasterKind::ANIMATED),
     );
     let mut annexed = trebuchet_master();
     let building = annexed.building.as_mut().unwrap();
