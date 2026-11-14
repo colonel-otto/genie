@@ -17,6 +17,7 @@ use crate::map::TileRect;
 use crate::map::spatial::Placed;
 use crate::map::spatial::TileSight;
 use crate::movement::Speed;
+use crate::movement::move_to::MoveTo;
 use crate::movement::move_to::TargetMoved;
 use crate::objects::HitPoints;
 use crate::objects::ListIndex;
@@ -1795,7 +1796,7 @@ fn queued_move() -> QueuedOrder {
 /// range 0); a new unit's queue empties, an unloaded unit's stays.
 #[test]
 fn gather_point_without_target_walks_the_new_unit_there() {
-    use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+    use crate::movement::move_to::{MoveToAction, MoveWait};
     let walked = |source| {
         let mut world = forage_world();
         let unit = &mut world.players[1].objects[ListIndex::new(0)];
@@ -1857,8 +1858,9 @@ fn gather_point_without_target_walks_the_new_unit_there() {
 
 /// A unit whose master does not move (the work command's slot 0xe8, `+0x740` not above 0; a
 /// NaN does not move) only waits to move, whatever its own top speed; one whose master moves
-/// walks without a top speed of its own. One that already acts, or one not in state 2, is not
-/// modelled.
+/// takes the `MoveTo`, whose start (`0x140aa2100`, as the install's add runs it) reads the unit's
+/// top speed (slot 0x208): it walks (state 3) with one, and fails (13) without. One that already
+/// acts, or one not in state 2, is not modelled.
 #[test]
 fn gather_point_walk_waits_without_master_speed_and_stops_at_the_unmodelled() {
     let walk = |master_speed: f32, own: Speed| {
@@ -1882,13 +1884,24 @@ fn gather_point_walk_waits_without_master_speed_and_stops_at_the_unmodelled() {
         .unwrap();
         assert_eq!(game.parts.mover_of(id).unwrap().waiting, 1);
         (
-            game.parts.actions_of(id).list.move_to().is_some(),
+            game.parts
+                .actions_of(id)
+                .list
+                .move_to()
+                .map(|move_to| move_to.state),
             game.parts.unit_ai.get(id).unwrap().current_order,
         )
     };
-    assert_eq!(walk(0.0, Speed::new(0.8)), (false, None));
-    assert_eq!(walk(f32::NAN, Speed::new(0.8)), (false, None));
-    assert_eq!(walk(0.8, Speed::ZERO), (true, Some(OrderKind::Move)));
+    assert_eq!(walk(0.0, Speed::new(0.8)), (None, None));
+    assert_eq!(walk(f32::NAN, Speed::new(0.8)), (None, None));
+    assert_eq!(
+        walk(0.8, Speed::new(0.8)),
+        (Some(MoveTo::Start), Some(OrderKind::Move))
+    );
+    assert_eq!(
+        walk(0.8, Speed::ZERO),
+        (Some(MoveTo::Failed), Some(OrderKind::Move))
+    );
     // a second walk finds the first's `MoveTo`
     let mut game = forage_world();
     game.gather_move(

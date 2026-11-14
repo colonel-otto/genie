@@ -522,12 +522,7 @@ mod tests {
     #[test]
     fn move_to_destructor_stops_the_unit() {
         let mut motion = moving();
-        let to = MoveToAction::to_point(
-            Position::new(5.0, 5.0, 0.0),
-            Distance::ZERO,
-            None,
-            Speed::new(1.0),
-        );
+        let to = MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), Distance::ZERO, None);
         let torn = Action::MoveTo(to)
             .tear_down(motion.lent(), Speed::new(1.0))
             .unwrap();
@@ -581,12 +576,7 @@ mod tests {
 
     /// A `MoveTo` to (5, 5) without a target.
     fn walk_to_point() -> MoveToAction {
-        MoveToAction::to_point(
-            Position::new(5.0, 5.0, 0.0),
-            Distance::ZERO,
-            None,
-            Speed::new(1.0),
-        )
+        MoveToAction::to_point(Position::new(5.0, 5.0, 0.0), Distance::ZERO, None)
     }
 
     /// The add after slot 0x808 (`FUN_140a977e0`) on a unit below state 3: the new Build comes

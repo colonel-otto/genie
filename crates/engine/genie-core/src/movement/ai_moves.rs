@@ -57,7 +57,8 @@ use crate::world::{Unread, WALKER_UNMOVING};
 
 /// What the sprites of a move the unit AI gives read: the owner's masters, the sprites' table,
 /// the unit's terrain look and the build's roles, and what its slot 0x208 reads
-/// ([`Unit::ai_move_with`], [`Unit::head_takes_point`]).
+/// ([`Unit::ai_move_with`], [`Unit::head_takes_point`]; the start of a unit's own `MoveTo`,
+/// [`Unit::start_own_move_to`], reads its masters, table, tuning and slot 0x208's terms).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MoveSprites<'world> {
     /// The unit's owner's masters.
@@ -78,9 +79,9 @@ pub(crate) struct MoveSprites<'world> {
 
 impl Unit {
     /// The unit's slot 0x340 on its unit AI's move ([`Unit::ai_move_with`]) in the context
-    /// `step`: what the head lets go applied at once; a list the head declines the point for is
-    /// deleted on the step ([`Unit::delete_own_actions`]: a deleted head's restart at once) for
-    /// the unit's `MoveTo` ([`Unit::install_ai_move`]); a Transport sails.
+    /// `step`: what the head lets go applied at once; the `MoveTo` made for a list whose head
+    /// declines the point replaces the list through the install on the step
+    /// ([`Unit::install_own_move_to`]: a deleted head's restart at once); a Transport sails.
     ///
     /// # Errors
     ///
@@ -139,27 +140,7 @@ impl Unit {
                     },
                 )
             }
-            MoveWith::Replaces => {
-                self.delete_own_actions(actions, step)?;
-                self.install_ai_move(
-                    actions,
-                    step.world.parts.motion.layer_mut(self.id),
-                    requested,
-                    MoveSprites {
-                        masters: OwnerMasters::new(
-                            &step.world.parts.own_master,
-                            step.world.model.masters.of(step.player),
-                        ),
-                        graphics: &step.world.model.graphics,
-                        look: step.world.parts.combat.of(self.id).abilities.look.as_ref(),
-                        roles,
-                        sprite_tuning: step.world.model.tuning.sprite,
-                        move_to_tuning: &step.world.model.tuning.move_to,
-                        top_speed,
-                    },
-                    step.world.streams.get_mut(Stream::Sprite),
-                )
-            }
+            MoveWith::Replaces(move_to) => self.install_own_move_to(actions, move_to, step),
             MoveWith::Walks => Ok(()),
         }
     }
@@ -173,10 +154,12 @@ impl Unit {
     /// `MoveTo` whose point (`+0x38`..`+0x40`, [`MoveToAction::point`]) is `ai_move.point` stands:
     /// the move is done. Then the head action's slot 0x40 may take the point
     /// ([`Unit::head_takes_point`]; the target it lets go into `releases` and a counted repairer's
-    /// building into `builder_leaves`, by `by`). Otherwise the action list is cleared
-    /// (`FUN_140a98620`), which the caller runs with the unit's step or the world
-    /// ([`MoveWith::Replaces`]: a deleted head's restart runs at once), and the `MoveTo` installed
-    /// ([`Unit::install_ai_move`]). [`MoveWith::Sails`] when a Transport on top takes the point,
+    /// building into `builder_leaves`, by `by`). Otherwise a `MoveTo` to `ai_move.point` within
+    /// `ai_move.range` is made (`FUN_140aa0d30`, the master's walking sprite with [`Pace::Walk`],
+    /// else its running one; the sprite is not held), which replaces the action list
+    /// (`FUN_140a98620`, then slot 0x808): the caller installs it with the unit's step or the
+    /// world ([`MoveWith::Replaces`]: a deleted head's restart runs at once).
+    /// [`MoveWith::Sails`] when a Transport on top takes the point,
     /// which the caller sails there ([`Unit::transport_sail`]). `motion` is the unit's motion
     /// layer, `actions` its action layer and `unread` why the load could not read it whole
     /// ([`crate::world::Unread`]).
@@ -230,57 +213,24 @@ impl Unit {
                 Ok(MoveWith::Walks)
             }
             PointMove::Sails(transport_action) => Ok(MoveWith::Sails(transport_action)),
-            PointMove::Declined => Ok(MoveWith::Replaces),
+            PointMove::Declined => Ok(MoveWith::Replaces(self.ai_move_to(ai_move, sprites)?)),
         }
     }
 
-    /// The end of the unit's slot 0x340 once its caller deleted the action list
-    /// ([`MoveWith::Replaces`]): a `MoveTo` to `ai_move.point` within `ai_move.range`
-    /// (`FUN_140aa0d30`, the master's walking sprite with [`Pace::Walk`], else its running one; the
-    /// sprite is not held) is installed and started (slot 0x808, `FUN_14106e990`: its slot 0x70
-    /// sees an empty list; `FUN_140a977e0` starts an action of a unit below state 3, which the unit
-    /// AI's moves are, and [`MoveToAction::to_point`]); one that ends at its start shows the
-    /// standing sprite of the unit's master in `look` ([`Unit::shows_standing_sprite`]). `motion`
-    /// is the unit's motion layer, `actions` its action layer.
+    /// The `MoveTo` slot 0x340 makes for a list whose head declined the point (`FUN_140aa0d30`
+    /// before the list's deletion): to `ai_move.point` within `ai_move.range`, the master's
+    /// walking sprite with [`Pace::Walk`], else its running one, else the constructor's default
+    /// ([`point_sprite`] with the unit's terrain look in `sprites`).
     ///
     /// # Errors
     ///
-    /// A master the owner's masters lack, and the standing sprite's.
-    pub(crate) fn install_ai_move(
-        &mut self,
-        actions: &mut Action,
-        mut motion: MotionMut<'_>,
-        ai_move: AiMove,
-        sprites: MoveSprites<'_>,
-        sprite_rng: &mut Well512,
-    ) -> GenieResult<()> {
-        let MoveSprites {
-            masters,
-            graphics,
-            look,
-            roles,
-            sprite_tuning,
-            ..
-        } = sprites;
-        let master = self.master_in(masters)?;
+    /// A master the owner's masters lack.
+    fn ai_move_to(&self, ai_move: AiMove, sprites: MoveSprites<'_>) -> GenieResult<MoveToAction> {
+        let master = self.master_in(sprites.masters)?;
         let sprite = ai_sprite(master, ai_move.pace)
-            .or_else(|| point_sprite(master, look, Cargo::Empty, roles))
-            .and_then(|id| graphics.get(id).copied());
-        let top = sprites
-            .top_speed
-            .of_object(motion.mover(), self.position().ground());
-        let move_to = MoveToAction::to_point(ai_move.point, ai_move.range, sprite, top);
-        if move_to.shows_standing() {
-            self.shows_standing_sprite(
-                motion.reborrow(),
-                masters,
-                graphics,
-                sprite_rng,
-                sprite_tuning,
-            )?;
-        }
-        actions.list.set_move_to(Some(move_to));
-        Ok(())
+            .or_else(|| point_sprite(master, sprites.look, Cargo::Empty, sprites.roles))
+            .and_then(|id| sprites.graphics.get(id).copied());
+        Ok(MoveToAction::to_point(ai_move.point, ai_move.range, sprite))
     }
 
     /// The head action's slot 0x40 on a move to `point` without a target object (its second
@@ -502,9 +452,9 @@ impl Unit {
     /// `state`): a `MoveTo` to the target within `range` (none: slot 0x268's,
     /// [`crate::movement::move_to::object_range`]), showing the master's running sprite (the
     /// walking one without it), takes the target it holds (`FUN_140aa0df0`, quiet 0: slot 0x178,
-    /// [`crate::movement::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
-    /// [`Unit::delete_own_actions`]: the old actions' teardowns let their targets go) and starts
-    /// ([`MoveToAction::to_object`]).
+    /// [`crate::movement::move_to::holds_object`], [`MoveToAction::to_object`]), then replaces
+    /// its action list (`FUN_140a98620`, then slot 0x808: [`Unit::install_own_move_to`], which
+    /// deletes it unstarted for a unit in state 3 or later, its target let go).
     pub(crate) fn move_to_object(
         &mut self,
         actions: &mut Action,
@@ -516,11 +466,6 @@ impl Unit {
         if step.world.parts.unread.contains(self.id) {
             return Err(GenieError::unsupported(
                 "an AI move to an object of a unit with an action",
-            ));
-        }
-        if step.world.parts.mover_of(self.id).is_none() {
-            return Err(GenieError::unsupported(
-                "an AI move to an object of a unit that does not move",
             ));
         }
         let livestock = roles
@@ -536,27 +481,14 @@ impl Unit {
             let by = self.releaser(step)?;
             take(step, self, target, by, roles)?;
         }
-        self.delete_own_actions(actions, step)?;
         let own = self.master(step.world.master_tables(), step.player)?;
         let range = object_range(range, Some(own), &step.world.model.tuning.order);
         let sprite = ai_sprite(own, Pace::Run)
             .or_else(|| object_sprite(own))
             .and_then(|id| step.world.model.graphics.get(id).copied());
-        let here = self.position();
-        let top = step.world.top_speed(step.player, self)?;
-        let mover = step
-            .world
-            .parts
-            .mover_of(self.id)
-            .ok_or(GenieError::unreachable(
-                "a walker tested above without its mover",
-            ))?;
         let move_to = MoveToAction::to_object(
             &step.world.spatial,
             ToObject {
-                me: here,
-                mover,
-                top,
                 target,
                 state,
                 range,
@@ -565,20 +497,7 @@ impl Unit {
             },
             &step.world.model,
         )?;
-        if move_to.shows_standing() {
-            self.shows_standing_sprite(
-                step.world.parts.motion.layer_mut(self.id),
-                OwnerMasters::new(
-                    &step.world.parts.own_master,
-                    step.world.model.masters.of(step.player),
-                ),
-                &step.world.model.graphics,
-                step.world.streams.get_mut(Stream::Sprite),
-                step.world.model.tuning.sprite,
-            )?;
-        }
-        actions.list.set_move_to(Some(move_to));
-        Ok(())
+        self.install_own_move_to(actions, move_to, step)
     }
 
     /// `LAB_140aa320c`, the motion step gave up on the unit's own `MoveTo`: a human's villager
@@ -670,10 +589,10 @@ pub(crate) enum MoveWith {
     /// A Transport on top takes the point: the caller sails there with this copy of it
     /// ([`Unit::transport_sail`]).
     Sails(TransportAction),
-    /// The head declined the point: the caller deletes the action list (`FUN_140a98620`, a
-    /// deleted head's restart on the unit's step), then installs the unit's own `MoveTo`
-    /// ([`Unit::install_ai_move`]).
-    Replaces,
+    /// The head declined the point: the caller installs this `MoveTo` of the unit's own
+    /// (`FUN_140a98620`, then slot 0x808: [`Unit::install_own_move_to`] on the unit's step,
+    /// [`crate::world::World::install_move_to`] from the world), a deleted head's restart at once.
+    Replaces(MoveToAction),
     /// The unit moves itself, or nothing moves.
     Walks,
 }

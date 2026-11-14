@@ -29,6 +29,7 @@ use genie_diff::Diff;
 
 mod action;
 mod constructors;
+mod install;
 mod list;
 mod move_wait_state;
 mod sub_action;

@@ -10,7 +10,6 @@ use crate::movement::Speed;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
-use crate::objects::Voice;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::MasterTables;
 use crate::objects::unit::Unit;
@@ -21,7 +20,7 @@ use crate::world::slots::PlayerSlotsExt;
 use crate::{GenieError, GenieResult};
 
 use crate::garrison::ENTER;
-use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait, TargetMoved};
+use crate::movement::move_to::MoveToAction;
 use crate::unit_ai::AiAction;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -40,8 +39,9 @@ impl World {
     /// notifies its unit AI with the `MoveTo`'s order and action, no target and the point, its
     /// notifies cleared by its `+0xa14` ([`UnitAi::notify_work`], slot 0x828), and moves (slot
     /// 0x138: [`World::move_start`]; `FUN_14106d340`: the notifies cleared with the world time,
-    /// then, the unit holding no action, the `MoveTo` to the point, range 0, installed, and the
-    /// command count one more). `FUN_14106c590` counts it once more after the work.
+    /// then, the unit holding no action, the `MoveTo` to the point, range 0, installed and
+    /// started, [`World::install_move_to`], and the command count one more). `FUN_14106c590`
+    /// counts it once more after the work.
     ///
     /// [`UnitAi::notify_work`]: crate::unit_ai::UnitAi::notify_work
     pub(crate) fn gather_move(
@@ -66,7 +66,6 @@ impl World {
         point: Position,
     ) -> GenieResult<()> {
         let world_time = self.world_time;
-        let sprite = self.point_move_sprite(player_id, new)?;
         let unit = self.players.live_mut(player_id, new)?;
         if let Some(mover) = self.parts.mover_mut(unit.id) {
             mover.waiting = 1;
@@ -117,19 +116,11 @@ impl World {
         if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
             ai.clear_notifies(world_time.since_start())?;
         }
-        self.parts
-            .actions_mut(unit.id)?
-            .list
-            .set_move_to(Some(MoveToAction {
-                sprite,
-                state: MoveTo::Start,
-                point,
-                target: None,
-                range: Distance::ZERO,
-                voice: Voice::Loud,
-                on_target_moved: TargetMoved::Follows,
-                wait: MoveWait::default(),
-            }));
+        // the MoveTo to the point (FUN_140aa0d30: range 0, the walking sprite), then its
+        // install (slot 0x808), which starts it on the empty list
+        let sprite = self.point_move_sprite(player_id, new)?;
+        let move_to = MoveToAction::to_point(point, Distance::ZERO, sprite);
+        self.install_move_to(player_id, new, move_to)?;
         let id = self.players.live(player_id, new)?.id;
         self.count_command(id)
     }

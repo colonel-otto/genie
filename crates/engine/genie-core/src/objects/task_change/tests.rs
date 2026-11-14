@@ -10,7 +10,6 @@ use crate::gathering::hunt::tests::hunting;
 use crate::gathering::hunt::{HUNT, HuntAction, HuntState, HuntTask};
 use crate::map::{Distance, Position};
 use crate::math::rng::Well512;
-use crate::movement::Speed;
 use crate::movement::explore::{ExploreAction, ExploreState};
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::objects::Graphics;
@@ -163,7 +162,6 @@ fn walk(state: MoveTo, sprite: i16) -> MoveToAction {
             Position::new(5.0, 5.0, 0.0),
             Distance::ZERO,
             Some(graphic(sprite)),
-            Speed::new(1.0),
         )
     }
 }

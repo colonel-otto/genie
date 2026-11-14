@@ -4,15 +4,17 @@
 use crate::combat::abilities::Look;
 use crate::construction::build::CART_TASK;
 use crate::map::Distance;
+use crate::map::Footprint;
 use crate::map::Position;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::movement::Speed;
 use crate::movement::move_to::Shown;
 use crate::movement::move_to::{
-    Follow, Goal, MoveTo, MoveWait, TargetMoved, Walk, ask_walk, target_left, walk_or_give_up,
+    Follow, Goal, MoveTo, MoveWait, NO_TARGET_GAP, TargetMoved, Walk, ask_walk, target_left,
+    walk_or_give_up,
 };
-use crate::movement::{Mover, PathAsk, footprint_gap};
+use crate::movement::{PathAsk, footprint_gap};
 use crate::objects::Graphics;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
@@ -276,35 +278,10 @@ pub struct Shows<'world> {
     pub(crate) master_standing: Option<Graphic>,
 }
 
-/// A `MoveTo` to an object it holds ([`MoveToAction::to_target`]): the unit's place, its movement
-/// state and top speed (slot 0x208), the target, the range and the sprite.
+/// A `MoveTo` to an object ([`MoveToAction::to_object`]): the target and its state, the range,
+/// the sprite and whether the unit is livestock (class 58).
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ToTarget<'world> {
-    /// The unit's place.
-    pub(crate) me: Position,
-    /// Its movement state.
-    pub(crate) mover: &'world Mover,
-    /// Its top speed (slot 0x208).
-    pub(crate) top: Speed,
-    /// The target.
-    pub(crate) target: ObjectId,
-    /// The range.
-    pub(crate) range: Distance,
-    /// The `MoveTo`'s sprite.
-    pub(crate) sprite: Option<Graphic>,
-}
-
-/// A `MoveTo` to an object ([`MoveToAction::to_object`]): the unit's place, its movement state and
-/// top speed (slot 0x208), the target and its state, the range, the sprite and whether the unit is
-/// livestock (class 58).
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ToObject<'world> {
-    /// The unit's place.
-    pub(crate) me: Position,
-    /// Its movement state.
-    pub(crate) mover: &'world Mover,
-    /// Its top speed (slot 0x208).
-    pub(crate) top: Speed,
+pub(crate) struct ToObject {
     /// The target.
     pub(crate) target: ObjectId,
     /// The target's state.
@@ -318,137 +295,100 @@ pub(crate) struct ToObject<'world> {
 }
 
 impl MoveToAction {
-    /// A new `MoveTo` of its own to the object `target` within `range` (`FUN_140aa0df0`; its point
-    /// `+0x38` the target's place, which a path request renews), with its `sprite`
-    /// ([`MoveToAction::sprite`]), as its start (slot 0x808 -> `0x140aa2100`) leaves it: a unit
-    /// more than `MoveToTuning::arrived` from the target's footprint (`FUN_14118f680`) in state 3
-    /// with speed (slot 0x208), 13 without; a unit at the target already in state 1, which its next
-    /// update ends. States 1 and 13 (`0x140aa29e0`, not quiet) show the master's standing sprite
-    /// ([`MoveToAction::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the
-    /// caller's, [`MoveToAction::shows_standing`]). `me` is the unit's place, `mover` its movement
-    /// state and `top` its top speed (slot 0x208).
-    pub(crate) fn to_target(
-        world: &Spatial,
-        request: ToTarget<'_>,
-        move_to_tuning: &MoveToTuning,
-    ) -> GenieResult<Self> {
-        let ToTarget {
-            me,
-            mover,
-            top,
-            target,
-            range,
-            sprite,
-        } = request;
-        let placed = world.get_known(target)?.ok_or(TARGET_LACKING)?;
-        let ground = mover.stats.radius.ground();
-        let state = if footprint_gap(me, ground, placed.position, placed.radius)
-            <= Distance::new(move_to_tuning.arrived)
-        {
-            MoveTo::Arrived
-        } else if top == Speed::ZERO {
-            MoveTo::Failed
-        } else {
-            MoveTo::Start
-        };
-        Ok(Self {
-            state,
-            point: placed.position,
-            target: Some(target),
-            range,
-            sprite,
-            voice: Voice::Loud,
-            on_target_moved: TargetMoved::Follows,
-            wait: MoveWait::default(),
-        })
-    }
-
     /// A new `MoveTo` of its own (loud, `+0x60` 0) to the object `target` within `range`
-    /// (`FUN_140aa0df0`), then its start (slot 0x808 -> `0x140aa2100`). Livestock (`livestock`, the
-    /// unit's class 58) moving to a town centre (master 109) holds no target and walks to the
-    /// centre's place less `ArtifactTuning::town_centre_offset` on both axes; a target in a `state`
-    /// of 7 or later is not held either (`FUN_140a7a230`: its id stays −1) and the `MoveTo` walks
-    /// to its place, as a `MoveTo` to that point starts ([`MoveToAction::to_point`]). Any other
-    /// target is held ([`MoveToAction::to_target`]), and the caller takes it (slot 0x178,
-    /// [`MoveToAction::target`] not −1). `mover` is the unit's movement state, `top` its top speed
-    /// (slot 0x208).
+    /// (`FUN_140aa0df0`), with its `sprite` ([`MoveToAction::sprite`]), before its start
+    /// ([`MoveToAction::start`]). Livestock (`livestock`, the unit's class 58) moving to a town
+    /// centre (master 109) holds no target and walks to the centre's place less
+    /// `ArtifactTuning::town_centre_offset` on both axes; a target in a `state` of 7 or later is
+    /// not held either (`FUN_140a7a230`: its id stays −1) and the `MoveTo` walks to its place, as
+    /// a `MoveTo` to that point ([`MoveToAction::to_point`]). Any other target is held, its place
+    /// the point (`+0x38`, which a path request renews), and the caller takes it (slot 0x178,
+    /// [`MoveToAction::target`] not −1).
     ///
     /// # Errors
     ///
     /// A target the world lacks.
     pub(crate) fn to_object(
         world: &Spatial,
-        request: ToObject<'_>,
+        request: ToObject,
         model: &Model,
     ) -> GenieResult<Self> {
         let ToObject {
-            me,
-            mover,
-            top,
             target,
             state,
             range,
             sprite,
             livestock,
         } = request;
-        let (roles, artifact_tuning, move_to_tuning) =
-            (&model.roles, model.tuning.artifact, &model.tuning.move_to);
+        let (roles, artifact_tuning) = (&model.roles, model.tuning.artifact);
         let placed = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let at = placed.position;
-        let goal = if livestock
+        if livestock
             && roles
                 .of_master(placed.master)
                 .contains(MasterRoles::TOWN_CENTRE)
         {
-            Position::new(
+            let beside = Position::new(
                 at.x() - artifact_tuning.town_centre_offset,
                 at.y() - artifact_tuning.town_centre_offset,
                 at.z(),
-            )
-        } else if holds_object(livestock, placed.master, state, roles) {
-            return Self::to_target(
-                world,
-                ToTarget {
-                    me,
-                    mover,
-                    top,
-                    target,
-                    range,
-                    sprite,
-                },
-                move_to_tuning,
             );
-        } else {
-            at
-        };
-        Ok(Self::to_point(goal, range, sprite, top))
+            return Ok(Self::to_point(beside, range, sprite));
+        }
+        let held = holds_object(livestock, placed.master, state, roles).then_some(target);
+        Ok(Self {
+            target: held,
+            ..Self::to_point(at, range, sprite)
+        })
     }
 
-    /// A new `MoveTo` of its own (not quiet) to `point` within `range` (`FUN_140aa0d30`), with its
-    /// `sprite` ([`MoveToAction::sprite`]), as its start (slot 0x808 -> `0x140aa2100`) leaves it.
-    /// Without a target object the start's gap (`FUN_14118f680` with none) is `f32::MAX`, never
-    /// within 0.01: a unit with speed `top` (slot 0x208, `UCOMISS`: a NaN speed has some) is in
-    /// state 3, one without in 13 (`0x140aa29e0`, not quiet: the master's standing sprite,
-    /// [`MoveToAction::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the caller's,
-    /// [`MoveToAction::shows_standing`]). A unit without movement state has no speed
-    /// ([`TopSpeed::of_object`](crate::movement::TopSpeed::of_object)).
+    /// A new `MoveTo` of its own (not quiet) to `point` within `range` (`FUN_140aa0d30`), with
+    /// its `sprite` ([`MoveToAction::sprite`]), before its start ([`MoveToAction::start`]),
+    /// which sets its state (3 until then).
     #[must_use]
-    pub fn to_point(point: Position, range: Distance, sprite: Option<Graphic>, top: Speed) -> Self {
-        let state = if top == Speed::ZERO {
+    pub const fn to_point(point: Position, range: Distance, sprite: Option<Graphic>) -> Self {
+        Self {
+            voice: Voice::Loud,
+            ..Self::sub_to_point(point, range, sprite)
+        }
+    }
+
+    /// Its start (slot 5 with 1, `0x140aa2100`) as the list's add runs it (`FUN_140a977e0`) for a
+    /// unit below state 3, by `gap`, the unit's from its target's footprint
+    /// ([`MoveToAction::start_gap`]): within `MoveToTuning::arrived` it arrived (1; `COMISS`,
+    /// `JC`: a NaN gap is far), else it starts (3) with the unit's top speed `top` (slot 0x208,
+    /// read as the start runs) and fails (13) without (`UCOMISS`, `JP`: a NaN speed starts).
+    /// States 1 and 13 (`0x140aa29e0`) show the master's standing sprite unless the `MoveTo` is
+    /// quiet ([`MoveToAction::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the
+    /// caller's).
+    pub(crate) fn start(&mut self, gap: Distance, top: Speed, move_to_tuning: &MoveToTuning) {
+        self.state = if gap <= Distance::new(move_to_tuning.arrived) {
+            MoveTo::Arrived
+        } else if top == Speed::ZERO {
             MoveTo::Failed
         } else {
             MoveTo::Start
         };
-        Self {
-            state,
-            point,
-            target: None,
-            range,
-            sprite,
-            voice: Voice::Loud,
-            on_target_moved: TargetMoved::Follows,
-            wait: MoveWait::default(),
-        }
+    }
+
+    /// The gap its start measures (`FUN_14118f680`) from the unit at `me` of its master's radii
+    /// `ground` (`+0x5d8`, `+0x5dc`) to its target object in `world`, footprint to footprint:
+    /// [`NO_TARGET_GAP`] without a target (`f32::MAX`, never within reach).
+    ///
+    /// # Errors
+    ///
+    /// A target the world lacks.
+    pub(crate) fn start_gap(
+        &self,
+        world: &Spatial,
+        me: Position,
+        ground: Footprint,
+    ) -> GenieResult<Distance> {
+        let Some(target) = self.target else {
+            return Ok(Distance::new(NO_TARGET_GAP));
+        };
+        let placed = world.get_known(target)?.ok_or(TARGET_LACKING)?;
+        Ok(footprint_gap(me, ground, placed.position, placed.radius))
     }
 
     /// Where it walks (`+0x30`, else `+0x38`..`+0x40`): its target object, else its point.
@@ -606,6 +546,8 @@ impl MoveToAction {
     /// motion step; none for a `MoveTo` to a point) by its `+0x61` ([`target_left`]): the path's
     /// end follows the target ([`Mover::follow_path_end`]), or the `MoveTo` turns to state 3 (the
     /// slice's [`MoveTo::Start`]) when it asks again or its path's end could not follow.
+    ///
+    /// [`Mover::follow_path_end`]: crate::movement::Mover::follow_path_end
     ///
     /// # Errors
     ///
@@ -1039,45 +981,81 @@ mod tests {
         );
     }
 
+    /// The `MoveTo` of its own to `target` (alive, range 0, no sprite) of a unit that is not
+    /// livestock, as `FUN_140aa0df0` makes it.
+    fn held(world: &Spatial, target: ObjectId) -> MoveToAction {
+        MoveToAction::to_object(
+            world,
+            ToObject {
+                target,
+                state: ObjectState::Alive,
+                range: Distance::ZERO,
+                sprite: None,
+                livestock: false,
+            },
+            model(),
+        )
+        .unwrap()
+    }
+
+    /// `move_to` as its start (`0x140aa2100` with 1) leaves it for the tests' unit at (30, 40)
+    /// with the walker's radii and top speed `top`.
+    fn started(world: &Spatial, mut move_to: MoveToAction, top: Speed) -> MoveToAction {
+        let me = Position::new(30.0, 40.0, 0.0);
+        let gap = move_to
+            .start_gap(world, me, tests_walker().stats.radius.ground())
+            .unwrap();
+        move_to.start(gap, top, &tuning().move_to);
+        move_to
+    }
+
     #[test]
     fn move_to_an_object_at_hand_starts_arrived_and_shows_the_standing_sprite() {
         let mut world = Spatial::new(GridSize::new(120, 120));
         world.insert(object_id(9185), sheep(30.4, 40.0));
         world.insert(object_id(9186), sheep(35.0, 40.0));
-        let walker = tests_walker();
+        let speed = tests_walker().stats.speed;
         // footprints 0 apart: within ARRIVED, state 1 (its owner shows the standing sprite)
-        let me = Position::new(30.0, 40.0, 0.0);
-        let at_hand = MoveToAction::to_target(
-            &world,
-            ToTarget {
-                me,
-                mover: &walker,
-                top: walker.stats.speed,
-                target: object_id(9185),
-                range: Distance::ZERO,
-                sprite: None,
-            },
-            &tuning().move_to,
-        )
-        .unwrap();
+        let at_hand = started(&world, held(&world, object_id(9185)), speed);
         assert!(at_hand.arrived());
+        assert!(at_hand.shows_standing());
         // 4.6 tiles on it starts walking (state 3)
-        let walker = tests_walker();
-        let far = MoveToAction::to_target(
-            &world,
-            ToTarget {
-                me,
-                mover: &walker,
-                top: walker.stats.speed,
-                target: object_id(9186),
-                range: Distance::ZERO,
-                sprite: None,
-            },
-            &tuning().move_to,
-        )
-        .unwrap();
+        let far = started(&world, held(&world, object_id(9186)), speed);
         assert!(!far.arrived());
-        assert_eq!(walker.stats.speed, Speed::new(0.8));
+        assert_eq!(far.state, MoveTo::Start);
+    }
+
+    /// `FUN_14118f680` from the unit's footprint to its target's (each axis's gap past both radii,
+    /// 0 where they overlap), `f32::MAX` without a target; a target the world lacks is refused.
+    #[test]
+    fn start_gap_measures_footprint_to_footprint_and_far_without_target() {
+        let mut world = Spatial::new(GridSize::new(120, 120));
+        world.insert(object_id(9186), sheep(35.0, 40.0));
+        let me = Position::new(30.0, 40.0, 0.0);
+        let to_sheep = held(&world, object_id(9186));
+        let ground = Footprint::new(0.5, 0.5);
+        assert_eq!(
+            to_sheep.start_gap(&world, me, ground),
+            Ok(footprint_gap(
+                me,
+                ground,
+                Position::new(35.0, 40.0, 0.0),
+                sheep(35.0, 40.0).radius
+            ))
+        );
+        let to_point = MoveToAction::to_point(me, Distance::ZERO, None);
+        assert_eq!(
+            to_point.start_gap(&world, me, ground),
+            Ok(Distance::new(NO_TARGET_GAP))
+        );
+        let lacking = MoveToAction {
+            target: Some(object_id(9187)),
+            ..to_point
+        };
+        assert_eq!(
+            lacking.start_gap(&world, me, ground).unwrap_err().reason(),
+            TARGET_LACKING.reason()
+        );
     }
 
     /// `FUN_140aa0df0` on an object: a live target is held (the caller takes it); a target in
@@ -1096,15 +1074,10 @@ mod tests {
                 ..sheep(50.0, 40.0)
             },
         );
-        let me = Position::new(30.0, 40.0, 0.0);
         let to = |target: (ObjectId, ObjectState), livestock, speed: f32| {
-            let walker = tests_walker();
-            MoveToAction::to_object(
+            let made = MoveToAction::to_object(
                 &world,
                 ToObject {
-                    me,
-                    mover: &walker,
-                    top: Speed::new(speed),
                     target: target.0,
                     state: target.1,
                     range: Distance::ZERO,
@@ -1113,7 +1086,8 @@ mod tests {
                 },
                 model(),
             )
-            .unwrap()
+            .unwrap();
+            started(&world, made, Speed::new(speed))
         };
         let held = to((object_id(9186), ObjectState::Alive), false, 0.8);
         assert_eq!(
@@ -1144,15 +1118,22 @@ mod tests {
     /// `FUN_140aa0d30` and its start `0x140aa2100`: a point is never within 0.01 (no target, so
     /// `f32::MAX`): state 3 for a unit with top speed (slot 0x208; a NaN speed has some), 13 for
     /// one without, whose not quiet `set_state` shows the standing sprite. Its point is `+0x38`.
+    /// Before its start the constructor leaves it loud, in state 3.
     #[test]
     fn move_to_point_starts_unless_its_unit_has_no_speed() {
         let point = Position::new(12.0, 34.0, 1.0);
+        let made = MoveToAction::to_point(point, Distance::new(0.5), Some(RUNNING));
+        assert_eq!((made.state, made.voice), (MoveTo::Start, Voice::Loud));
         let start = |speed: f32| {
-            let move_to_action =
-                MoveToAction::to_point(point, Distance::new(0.5), Some(RUNNING), Speed::new(speed));
-            (move_to_action, Speed::new(speed))
+            let mut move_to_action = made;
+            move_to_action.start(
+                Distance::new(NO_TARGET_GAP),
+                Speed::new(speed),
+                &tuning().move_to,
+            );
+            move_to_action
         };
-        let (moving, speed) = start(0.8);
+        let moving = start(0.8);
         assert_eq!(
             (
                 moving.state,
@@ -1169,15 +1150,28 @@ mod tests {
                 Some(RUNNING)
             )
         );
-        assert_eq!(speed, Speed::new(0.8));
         assert!(!moving.shows_standing());
         assert_eq!(moving.point, point);
-        assert_eq!(start(f32::NAN).0.state, MoveTo::Start);
-        let (stuck, _) = start(0.0);
+        assert_eq!(start(f32::NAN).state, MoveTo::Start);
+        let stuck = start(0.0);
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
-        let none = MoveToAction::to_point(point, Distance::ZERO, None, Speed::ZERO);
-        assert_eq!(none.state, MoveTo::Failed);
+    }
+
+    /// The start's arrival compare (`COMISS`, `JC`): a gap at most `MoveToTuning::arrived` arrives,
+    /// one above it or a NaN gap is far.
+    #[test]
+    fn move_to_start_arrives_within_its_reach_only() {
+        let start = |gap: f32| {
+            let mut move_to_action = MoveToAction::to_point(Position::ORIGIN, Distance::ZERO, None);
+            move_to_action.start(Distance::new(gap), Speed::new(0.8), &tuning().move_to);
+            move_to_action.state
+        };
+        let arrived = tuning().move_to.arrived;
+        assert_eq!(start(arrived), MoveTo::Arrived);
+        assert_eq!(start(0.0), MoveTo::Arrived);
+        assert_eq!(start(arrived * 2.0), MoveTo::Start);
+        assert_eq!(start(f32::NAN), MoveTo::Start);
     }
 
     /// `FUN_140aa0df0` puts the target's place in `+0x38` (its point); a unit
@@ -1187,37 +1181,9 @@ mod tests {
     fn move_to_an_object_holds_its_place_and_unit_without_speed_fails_standing() {
         let mut world = Spatial::new(GridSize::new(120, 120));
         world.insert(object_id(9186), sheep(35.0, 40.0));
-        let me = Position::new(30.0, 40.0, 0.0);
-        let mut walker = tests_walker();
-        let far = MoveToAction::to_target(
-            &world,
-            ToTarget {
-                me,
-                mover: &walker,
-                top: walker.stats.speed,
-                target: object_id(9186),
-                range: Distance::ZERO,
-                sprite: None,
-            },
-            &tuning().move_to,
-        )
-        .unwrap();
+        let far = started(&world, held(&world, object_id(9186)), Speed::new(0.8));
         assert_eq!(far.point, Position::new(35.0, 40.0, 0.0));
-        assert_eq!(walker.stats.speed, Speed::new(0.8));
-        walker.stats.speed = Speed::ZERO;
-        let stuck = MoveToAction::to_target(
-            &world,
-            ToTarget {
-                me,
-                mover: &walker,
-                top: walker.stats.speed,
-                target: object_id(9186),
-                range: Distance::ZERO,
-                sprite: None,
-            },
-            &tuning().move_to,
-        )
-        .unwrap();
+        let stuck = started(&world, held(&world, object_id(9186)), Speed::ZERO);
         assert_eq!(stuck.state, MoveTo::Failed);
         assert!(stuck.shows_standing());
     }

@@ -61,14 +61,13 @@ impl MoveToAction {
 
     /// Its start as its owner adds it to its sub-actions (`FUN_140a977e0`): a unit in a state
     /// (`+0x640`) of 3 or later adds none (the game deletes the new `MoveTo`). Else its start
-    /// (slot 5 with 1, `0x140aa2100`) sets its state by `gap`, the unit's from the target's
-    /// footprint (`FUN_14118f680`; [`NO_TARGET_GAP`] for a `MoveTo` to a point): within
-    /// `MoveToTuning::arrived` it arrived (1; `COMISS`, `JC`: a NaN gap is far), else it starts (3) with
-    /// `speed` (slot 0x208) and fails (13) without (`UCOMISS`, `JP`: a NaN speed starts). A quiet
-    /// `MoveTo` shows no standing sprite in states 1 and 13 (`0x140aa29e0`).
+    /// ([`MoveToAction::start`]) sets its state by `gap`, the unit's from the target's
+    /// footprint (`FUN_14118f680`; [`NO_TARGET_GAP`] for a `MoveTo` to a point), and the unit's
+    /// `speed` (slot 0x208). A quiet `MoveTo` shows no standing sprite in states 1 and 13
+    /// (`0x140aa29e0`).
     #[must_use]
     pub fn added(
-        self,
+        mut self,
         unit_state: ObjectState,
         gap: Distance,
         speed: Speed,
@@ -77,14 +76,8 @@ impl MoveToAction {
         if ObjectState::Dying <= unit_state {
             return None;
         }
-        let state = if gap <= Distance::new(move_to_tuning.arrived) {
-            MoveTo::Arrived
-        } else if speed == Speed::ZERO {
-            MoveTo::Failed
-        } else {
-            MoveTo::Start
-        };
-        Some(Self { state, ..self })
+        self.start(gap, speed, move_to_tuning);
+        Some(self)
     }
 
     /// Its update as an action's sub-action (`0x140aa2a70`, which the action's sub-action list

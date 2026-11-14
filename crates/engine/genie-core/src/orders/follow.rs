@@ -21,7 +21,6 @@ use crate::objects::masters::OwnerMasters;
 use crate::objects::masters::PlayersMastersExt;
 use crate::orders::ControlKey;
 use crate::orders::Kept;
-use crate::orders::moves::MOVED_UNMOVING;
 use crate::orders::{Followed, follow_axis, follow_spread, ignore_unit};
 use crate::players::PlayerId;
 use crate::unit_ai::AiAction;
@@ -345,10 +344,10 @@ impl World {
     /// modelled; a `MoveTo`'s or an Explore's never); else a `MoveTo` to the target
     /// (`FUN_140aa0df0`: no range, so slot 0x268's, [`crate::movement::move_to::object_range`]; the
     /// walking sprite) takes the target it holds
-    /// (slot 0x178, [`crate::movement::move_to::holds_object`]) and replaces its actions (slot 0x808, the
-    /// old ones' teardowns let their targets go, [`World::clear_actions`]; then its start,
-    /// [`MoveToAction::to_object`]) and its command count goes one up
-    /// ([`World::count_command`]).
+    /// (slot 0x178, [`crate::movement::move_to::holds_object`]) and replaces its actions (slot
+    /// 0x808, [`World::install_move_to`]: the old ones' teardowns let their targets go, then its
+    /// start; a unit in state 3 or later lets the new one's target go) and its command count goes
+    /// one up ([`World::count_command`]).
     ///
     /// [`MoveToAction::to_object`]: crate::movement::move_to::MoveToAction::to_object
     pub(crate) fn move_to_object(
@@ -414,43 +413,36 @@ impl World {
         if holds_object(livestock, target_master, target_state, &self.model.roles) {
             self.take(target, self.releaser(player, idx)?)?;
         }
-        self.clear_actions(player, idx)?;
-        self.start_object_move(player, idx, (target, target_state), livestock)?;
+        let move_to = self.object_move(player, idx, (target, target_state), livestock)?;
+        self.install_move_to(player, idx, move_to)?;
         let id = self.players.live(player, idx)?.id;
         self.count_command(id)?;
         Ok(Answer::NotTaken)
     }
 
-    /// [`World::move_to_object`]'s new `MoveTo` toward `target` (in state `target_state`), once the
-    /// unit's actions are cleared: its range and sprite, the action's start and the standing
-    /// sprite it may show; no action took the move.
+    /// [`World::move_to_object`]'s new `MoveTo` toward `target` (in state `target_state`) before
+    /// its install (`FUN_140aa0df0`, [`MoveToAction::to_object`]): no range, so slot 0x268's
+    /// ([`object_range`]), and the master's walking sprite.
     ///
     /// # Errors
     ///
-    /// What the start does not model.
-    fn start_object_move(
-        &mut self,
+    /// A unit or a master the world lacks, and a target without a place.
+    fn object_move(
+        &self,
         player: PlayerId,
         idx: ListIndex,
         (target, target_state): (ObjectId, ObjectState),
         livestock: bool,
-    ) -> GenieResult<()> {
+    ) -> GenieResult<MoveToAction> {
         let master = self
             .players
             .live(player, idx)?
             .master(self.master_tables(), player)?;
         let range = object_range(Distance::ZERO, Some(master), &self.model.tuning.order);
         let sprite = object_sprite(master).and_then(|id| self.model.graphics.get(id).copied());
-        let top = self.top_speed(player, self.players.live(player, idx)?)?;
-        let unit = self.players.live_mut(player, idx)?;
-        let here = unit.position();
-        let mover = self.parts.mover_of(unit.id).ok_or(MOVED_UNMOVING)?;
-        let move_to = MoveToAction::to_object(
+        MoveToAction::to_object(
             &self.spatial,
             ToObject {
-                me: here,
-                mover,
-                top,
                 target,
                 state: target_state,
                 range,
@@ -458,21 +450,7 @@ impl World {
                 livestock,
             },
             &self.model,
-        )?;
-        if move_to.shows_standing() {
-            unit.shows_standing_sprite(
-                self.parts.motion.layer_mut(unit.id),
-                OwnerMasters::new(&self.parts.own_master, self.model.masters.of(player)),
-                &self.model.graphics,
-                self.streams.get_mut(Stream::Sprite),
-                self.model.tuning.sprite,
-            )?;
-        }
-        self.parts
-            .actions_mut(unit.id)?
-            .list
-            .set_move_to(Some(move_to));
-        Ok(())
+        )
     }
 
     /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,

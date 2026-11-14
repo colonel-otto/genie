@@ -105,7 +105,7 @@ use crate::movement::fly::Fly;
 use crate::movement::fly::FlyState;
 use crate::movement::move_to::MoveWaitState;
 use crate::movement::move_to::Patience;
-use crate::movement::move_to::{MOVE_TO, MoveWait, TargetMoved};
+use crate::movement::move_to::{MOVE_TO, MoveWait, NO_TARGET_GAP, TargetMoved};
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::movement::tests::{builder_9177, path_world};
 use crate::movement::{
@@ -5004,20 +5004,28 @@ fn the_unit_ai_moves_and_works_apply_in_order() {
         world.parts.actions_of(unit.id).list.move_to().copied(),
         None
     );
-    // a unit that does not move cannot be moved to an object
+    // a unit without movement state has no top speed: its MoveTo fails at its start (13)
     world
         .parts
         .put_mover(world.players[1].objects[ListIndex::new(0)].id, None);
-    assert!(
-        with_effects(
-            &mut world,
-            vec![Effect::MoveToObject {
-                target: object_id(600),
-                state: ObjectState::Alive,
-                range: Distance::new(0.5),
-            }],
-        )
-        .is_err()
+    with_effects(
+        &mut world,
+        vec![Effect::MoveToObject {
+            target: object_id(600),
+            state: ObjectState::Alive,
+            range: Distance::new(0.5),
+        }],
+    )
+    .unwrap();
+    let unit = &world.players[1].objects[ListIndex::new(0)];
+    assert_eq!(
+        world
+            .parts
+            .actions_of(unit.id)
+            .list
+            .move_to()
+            .map(|move_to| (move_to.state, move_to.target)),
+        Some((MoveTo::Failed, Some(object_id(600))))
     );
 }
 
@@ -8788,12 +8796,10 @@ fn an_inside_unit_update_deletes_its_top_action() {
         .of_mut(world.players[1].objects[ListIndex::new(0)].id)
         .unwrap()
         .list
-        .set_move_to(Some(MoveToAction::to_point(
-            Position::new(40.0, 80.0, 0.0),
-            Distance::ZERO,
-            None,
-            Speed::ZERO,
-        )));
+        .set_move_to(Some(MoveToAction {
+            state: MoveTo::Failed,
+            ..MoveToAction::to_point(Position::new(40.0, 80.0, 0.0), Distance::ZERO, None)
+        }));
     world.tick(Millis::new(50));
     let unit = &world.players[1].objects[ListIndex::new(0)];
     assert_eq!(
@@ -13692,12 +13698,7 @@ pub(crate) fn villager_holding(list: ActionList, state: ObjectState) -> World {
 pub(crate) fn walk_to_town_centre() -> MoveToAction {
     MoveToAction {
         target: Some(object_id(9149)),
-        ..MoveToAction::to_point(
-            Position::new(20.0, 20.0, 0.0),
-            Distance::ZERO,
-            None,
-            Speed::new(1.0),
-        )
+        ..MoveToAction::to_point(Position::new(20.0, 20.0, 0.0), Distance::ZERO, None)
     }
 }
 
@@ -13948,7 +13949,7 @@ fn set_only_action_deletes_the_list_with_its_restarts() {
 /// The villager holding `list` ([`villager_holding`], alive), with a unit AI and, while it walks,
 /// its top speed off its base 0.8 (1.3) and its animation speed 1.0: what its standing sprite
 /// (the base again) and a stop (an animation speed of 0) change shows.
-fn walking_villager_holding(list: ActionList) -> World {
+pub(crate) fn walking_villager_holding(list: ActionList) -> World {
     let mut world = villager_holding(list, ObjectState::Alive);
     world
         .parts
@@ -13968,7 +13969,7 @@ pub(crate) fn wait_over(under: ActionList) -> ActionList {
 }
 
 /// The villager's top speed with its sprite and its animation speed.
-fn villager_speeds(world: &World) -> (Speed, Speed) {
+pub(crate) fn villager_speeds(world: &World) -> (Speed, Speed) {
     let mover = world.parts.mover_of(object_id(40)).unwrap();
     (mover.stats.speed, mover.animated.speed)
 }
@@ -14192,12 +14193,7 @@ fn deleted_head_over_own_move_to_walks_at_once_with_its_sprite() {
         let own = MoveToAction {
             state,
             sprite: Some(RUNNING),
-            ..MoveToAction::to_point(
-                Position::new(30.0, 88.0, 0.0),
-                Distance::new(0.1),
-                None,
-                Speed::new(0.8),
-            )
+            ..MoveToAction::to_point(Position::new(30.0, 88.0, 0.0), Distance::new(0.1), None)
         };
         world.parts.actions.of_mut(object_id(9177)).unwrap().list =
             wait_over(ActionList::default().with_move_to(Some(own)));
@@ -18985,8 +18981,8 @@ fn own_attack(target: i32, target2: i32, state: AttackState) -> Attack {
 
 /// The unit's slot 0x340 ([`Unit::ai_move_with`]) for the unit of class `class` of player 1:
 /// what it let go, or why it stopped. A list the head declines the point for goes as the step's
-/// deletion takes a list of one (`FUN_140a98620`: no head left to restart), then the `MoveTo`
-/// ([`Unit::install_ai_move`]).
+/// deletion takes a list of one (`FUN_140a98620`: no head left to restart), then the `MoveTo` it
+/// made starts ([`Unit::start_own_move_to`], a point's gap).
 fn ai_move_of(
     (unit, actions, motion): (&mut Unit, &mut Action, &mut Motion),
     ai_move: AiMove,
@@ -19017,7 +19013,7 @@ fn ai_move_of(
         (&mut releases, &mut leaves, by),
         sprites,
     )?;
-    if moves == MoveWith::Replaces {
+    if let MoveWith::Replaces(move_to) = moves {
         let top = TopSpeed::Own.of_object(motion.mover(), unit.position().ground());
         while !actions.list.is_empty() {
             let (torn, next) = actions
@@ -19027,7 +19023,14 @@ fn ai_move_of(
             releases.extend(torn.releases.into_iter().map(|object_id| (object_id, by)));
             leaves.extend(torn.builder_leaves);
         }
-        unit.install_ai_move(actions, motion.lent(), ai_move, sprites, &mut rng)?;
+        unit.start_own_move_to(
+            actions,
+            motion.lent(),
+            move_to,
+            Distance::new(NO_TARGET_GAP),
+            sprites,
+            &mut rng,
+        )?;
     }
     assert!(releases.iter().all(|&(_, releaser)| releaser == by));
     Ok(releases
@@ -19270,7 +19273,10 @@ fn an_unforced_ai_move_leaves_move_to_the_same_point() {
         force: OrderForce::Unforced,
         ..forced(Pace::Run)
     };
-    let old = MoveToAction::to_point(AI_POINT, Distance::ZERO, None, Speed::ZERO);
+    let old = MoveToAction {
+        state: MoveTo::Failed,
+        ..MoveToAction::to_point(AI_POINT, Distance::ZERO, None)
+    };
     let (mut unit, mut actions, mut motion) = mover_unit(5);
     actions.list.set_move_to(Some(old));
     assert_eq!(
@@ -19470,12 +19476,10 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_villager_waits() {
         mover.stats.speed = Speed::new(1.4003);
         unit.sprite = Some(ActiveSprite::start(walking, rng, tuning().sprite));
         motion.lent().set_anim_speed(Speed::new(1.0));
-        actions.list.set_move_to(Some(MoveToAction::to_point(
-            Position::new(119.5, 172.5, 0.0),
-            Distance::ZERO,
-            None,
-            Speed::ZERO,
-        )));
+        actions.list.set_move_to(Some(MoveToAction {
+            state: MoveTo::Failed,
+            ..MoveToAction::to_point(Position::new(119.5, 172.5, 0.0), Distance::ZERO, None)
+        }));
         (unit, actions, motion)
     };
     let (mut rng_unit, mut actions, mut motion) = deer(&mut rng);

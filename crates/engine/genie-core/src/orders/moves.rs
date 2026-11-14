@@ -51,8 +51,7 @@ pub(crate) const PACK_OR_UNPACK: GenieError =
 /// An order's target without a place on the map.
 const ORDER_TARGET_UNPLACED: GenieError = GenieError::unsupported("a target without a place");
 /// A unit a move order moves without movement state.
-pub(crate) const MOVED_UNMOVING: GenieError =
-    GenieError::unsupported("a moved unit without movement state");
+const MOVED_UNMOVING: GenieError = GenieError::unsupported("a moved unit without movement state");
 
 /// `FUN_1410862c0` of the unit at `me` of master `master` against the object at `them`
 /// ([`work_reach`] of the footprint gap): within its reach, and too close.
@@ -197,7 +196,8 @@ impl World {
     /// `FUN_14106d340` on a move of the unit at `idx` to `point`: a unit with a unit AI
     /// (`FUN_140c5dc10` clears its notifies with the world time) lets its head action take the
     /// point ([`World::head_takes_move`]) unless it stops after a kill (`FUN_140c41c10`); else a
-    /// `MoveTo` to the point replaces its actions and its command count goes one up
+    /// `MoveTo` to the point ([`MoveToAction::to_point`]) replaces its actions through the
+    /// install ([`World::install_move_to`], slot 0x808) and its command count goes one up
     /// ([`World::count_command`]). Taken when the action took it.
     pub(crate) fn move_to_point(
         &mut self,
@@ -240,26 +240,12 @@ impl World {
             Answer::NotTaken
         };
         if taken == Answer::NotTaken {
-            // the MoveTo to the point (FUN_140aa0d30: range 0, the walking sprite) and its
-            // install (slot 0x808: the MoveTo's slot 0x70, FUN_140a78050, does nothing; the list
-            // clears, then the start)
-            self.clear_actions(player, idx)?;
+            // the MoveTo to the point (FUN_140aa0d30: range 0, the walking sprite), then its
+            // install (slot 0x808), which deletes the list and starts it
             let sprite = self.point_move_sprite(player, idx)?;
-            let top = self.top_speed(player, self.players.live(player, idx)?)?;
-            let unit = self.players.live_mut(player, idx)?;
-            let move_to = MoveToAction::to_point(point, Distance::ZERO, sprite, top);
-            if move_to.shows_standing() {
-                unit.shows_standing_sprite(
-                    self.parts.motion.layer_mut(unit.id),
-                    OwnerMasters::new(&self.parts.own_master, self.model.masters.of(player)),
-                    &self.model.graphics,
-                    self.streams.get_mut(Stream::Sprite),
-                    self.model.tuning.sprite,
-                )?;
-            }
-            let id = unit.id;
-            self.parts.actions_mut(id)?.list.set_move_to(Some(move_to));
-            self.count_command(id)?;
+            let move_to = MoveToAction::to_point(point, Distance::ZERO, sprite);
+            self.install_move_to(player, idx, move_to)?;
+            self.count_command(self.players.live(player, idx)?.id)?;
         }
         Ok(taken)
     }
@@ -282,9 +268,9 @@ impl World {
     }
 
     /// The unit's slot 0x340 from its unit AI's move off a footprint (slot 0x148,
-    /// [`crate::objects::unit::Unit::ai_move_with`]): a list whose head declines the point is
-    /// deleted ([`World::clear_actions`]: a deleted head's restart at once) for the unit's `MoveTo`
-    /// ([`crate::objects::unit::Unit::install_ai_move`]); a Transport sails
+    /// [`crate::objects::unit::Unit::ai_move_with`]): the `MoveTo` made for a list whose head
+    /// declines the point replaces the list through the install ([`World::install_move_to`]: a
+    /// deleted head's restart at once); a Transport sails
     /// ([`World::transport_move`]); then what the head let go: a counted repairer leaves its
     /// building ([`World::leave_builders`]), the targets go ([`World::release`]).
     pub(crate) fn move_aside(
@@ -319,27 +305,7 @@ impl World {
             MoveWith::Sails(transport_action) => {
                 self.transport_move((player, idx), transport_action, ai_move.point)?;
             }
-            MoveWith::Replaces => {
-                self.clear_actions(player, idx)?;
-                self.players.live_mut(player, idx)?.install_ai_move(
-                    self.parts.actions.of_mut(id)?,
-                    self.parts.motion.layer_mut(id),
-                    ai_move,
-                    MoveSprites {
-                        masters: OwnerMasters::new(
-                            &self.parts.own_master,
-                            self.model.masters.of(player),
-                        ),
-                        graphics: &self.model.graphics,
-                        look: self.parts.combat.of(id).abilities.look.as_ref(),
-                        roles: &self.model.roles,
-                        sprite_tuning: self.model.tuning.sprite,
-                        move_to_tuning: &self.model.tuning.move_to,
-                        top_speed,
-                    },
-                    self.streams.get_mut(Stream::Sprite),
-                )?;
-            }
+            MoveWith::Replaces(move_to) => self.install_move_to(player, idx, move_to)?,
             MoveWith::Walks => {}
         }
         for id in builder_leaves {
