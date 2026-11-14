@@ -36,6 +36,20 @@ use crate::{GenieError, GenieResult};
 const STARTED_ATTACK_UNLISTED: GenieError =
     GenieError::unreachable("the started attack is not on its list");
 
+/// The work command clears its unit AI's `+0x1d5` after the install through `+0x6b0` with no null
+/// test (`0x141070afa`: `MOV RCX,[RDI+0x6b0]`, then `0x141070b01`: `MOV byte ptr [RCX+0x1d5]`):
+/// for an object without a unit AI the game faults there, before `FUN_140a7a190`.
+pub(super) const ATTACK_WITHOUT_UNIT_AI: GenieError =
+    GenieError::unreachable("the work command's attack writes through a null unit AI");
+
+/// The install (slot 0x808) deleted the work command's Attack unstarted (state 3 or later) of a
+/// unit with a unit AI. Only a combat object or a building holds one (`TRIBE_Combat_Object`), and
+/// for those slot 0x7e8 (`FUN_141227190`, [`World::order_work`]) ignores the order past state 2
+/// before the work command runs.
+pub(super) const DELETED_ATTACK_WITH_UNIT_AI: GenieError = GenieError::unreachable(
+    "the work command's attack of a unit with a unit AI was deleted unstarted",
+);
+
 /// Where an attack task's target aims ([`World::attack_aim`]).
 pub(super) struct Aim {
     /// The target's master's class.
@@ -76,23 +90,22 @@ impl World {
     /// list's deletion, then its add), and the Attack's second target (`FUN_140a7a190`), the
     /// command's `target` (`R14`, `0x141070b11`). So a unit with a unit AI attacks an annex's
     /// main building, which the constructor takes, and holds the annex as its second target,
-    /// which `FUN_140a7a190` takes. Below state 3 the add starts the Attack and it takes its
-    /// second target ([`World::install_attack`]). The unit AI's `+0x1d5`, cleared after the
-    /// install, is not held; a task range other than 0 is not modelled.
+    /// which `FUN_140a7a190` takes ([`World::give_second_target`]). Below state 3 the add starts
+    /// the Attack ([`World::install_attack`]). Between the install and `FUN_140a7a190` the work
+    /// command clears the unit AI's `+0x1d5` (not held: the task unit-ai-1d5-attack-ready)
+    /// through a pointer it does not test. A task range other than 0 is not modelled.
     ///
     /// In state 3 or later the add deletes the Attack unstarted: its destructor (`FUN_140a7f640`)
-    /// lets the target go and frees it. An action object's slot 0x7e8 (types 40 to 60) is the
-    /// work command in any state; a combat object's and a building's ignore the order there.
-    /// `FUN_140a7a190` then runs on the freed Attack, which the game's clients read as the
-    /// destructor left it most often (FD-001-D30): a free writes nothing into a small block's
-    /// bytes in the Windows heap's low-fragmentation part, and only the first 16 in its back end
-    /// and in Wine's. So it held no second target (`+0x28` 0) to let go, and the target is taken
-    /// once more (slot 0x178 with its unit, `+0x10`), a take no action lets go.
+    /// lets the target go and frees it. Only an action object (types 40 to 60, whose slot 0x7e8
+    /// is the work command in any state) reaches the work command there, and it holds no unit
+    /// AI: the game faults at the `+0x1d5` write before `FUN_140a7a190` reads the freed Attack.
     ///
     /// # Errors
     ///
     /// A task range of its own, and what the aim, the factory, the notify, the install and the
-    /// start cannot read or do not model.
+    /// start cannot read or do not model. A unit without a unit AI, where the game writes through
+    /// a null pointer ([`ATTACK_WITHOUT_UNIT_AI`]), and a unit with one whose Attack the install
+    /// deleted unstarted, which no caller reaches ([`DELETED_ATTACK_WITH_UNIT_AI`]).
     pub(super) fn start_attack(
         &mut self,
         player: PlayerId,
@@ -112,11 +125,17 @@ impl World {
         let constructed_on = attack_task_ai(self.parts.unit_ai.get_mut(id), target, &aim);
         let attack = self.construct_attack(player, idx, constructed_on, task)?;
         self.attack_notifies(player, idx, target, aim.class, point, notifies)?;
-        match self.set_only_action(player, idx, Some(attack))? {
-            Some(attack) => self.install_attack(player, idx, &attack, target),
-            // `FUN_140a7a190` on the freed Attack: no second target to let go, the target taken
-            None => self.take(target, self.releaser(player, idx)?),
+        let installed = self.set_only_action(player, idx, Some(attack))?;
+        if let Some(attack) = &installed {
+            self.install_attack(player, idx, attack)?;
         }
+        if self.parts.unit_ai.get(id).is_none() {
+            return Err(ATTACK_WITHOUT_UNIT_AI.with("object", id));
+        }
+        if installed.is_none() {
+            return Err(DELETED_ATTACK_WITH_UNIT_AI.with("object", id));
+        }
+        self.give_second_target(player, idx, target)
     }
 
     /// The Attack's constructor (`FUN_140a7c210`) from the attack task's factory, for object
@@ -172,26 +191,39 @@ impl World {
 
     /// The add's part of the install (`FUN_140a977e0` below state 3) of the work command's new
     /// `attack` on object `idx` of `player`: the list holds it as its head, and its slot 0x28
-    /// with 1 starts it ([`Unit::start_listed_attack`] with [`HeadStart::Added`]). Then
-    /// `FUN_140a7a190` gives the Attack `target` as its second target: it held none, so nothing
-    /// is let go, and the target is taken (slot 0x178).
+    /// with 1 starts it ([`Unit::start_listed_attack`] with [`HeadStart::Added`]).
     ///
     /// [`Unit::start_listed_attack`]: crate::objects::unit::Unit::start_listed_attack
     ///
     /// # Errors
     ///
-    /// The start's and the take's.
+    /// The start's.
     fn install_attack(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
         attack: &Attack,
-        target: ObjectId,
     ) -> GenieResult<()> {
         self.run_on_step(player, idx, |unit, actions, step| {
             actions.list.set_attack(Some(*attack));
             unit.start_listed_attack(*attack, HeadStart::Added, actions, step)
-        })?;
+        })
+    }
+
+    /// `FUN_140a7a190` on the work command's started Attack of object `idx` of `player`: the
+    /// command's `target` becomes its second target (`+0x28`, `+0x34`). The new Attack held
+    /// none, so nothing is let go (slot 0x180), and the target is taken (slot 0x178 with the
+    /// unit, `+0x10`).
+    ///
+    /// # Errors
+    ///
+    /// An Attack the list no longer holds ([`STARTED_ATTACK_UNLISTED`]), and the take's.
+    fn give_second_target(
+        &mut self,
+        player: PlayerId,
+        idx: ListIndex,
+        target: ObjectId,
+    ) -> GenieResult<()> {
         let id = self.players.live(player, idx)?.id;
         self.parts
             .actions

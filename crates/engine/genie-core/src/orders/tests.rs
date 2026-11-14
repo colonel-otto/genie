@@ -82,6 +82,7 @@ use crate::orders::OrderSource;
 use crate::orders::ReadyOrders;
 use crate::orders::SavedPatrols;
 use crate::orders::attack::attack_task_ai;
+use crate::orders::attack::{ATTACK_WITHOUT_UNIT_AI, DELETED_ATTACK_WITH_UNIT_AI};
 use crate::orders::split::JoinTest;
 use crate::orders::split::splits_together;
 use crate::orders::town_bell::BellShelter;
@@ -775,12 +776,12 @@ fn work_attack_on_touching_target_starts_its_move_to_arrived() {
 /// The work command's Attack of an action object in state 3 (types 40 to 60: their slot 0x7e8
 /// is the work command in any state, and they hold no unit AI, which `TRIBE_Combat_Object`
 /// holds; [`work_attack`]'s world holds no sight, so no seer mirrors the state): the constructor
-/// clears the soldier's attack count and takes the wolf (`FUN_140a7c210`), the install (slot
-/// 0x808) deletes the Attack unstarted, its destructor letting the wolf go, and `FUN_140a7a190`
-/// on the freed Attack takes the wolf once more. The list stays empty, the soldier keeps its
-/// sprite and animation, and the wolf counts one worker.
+/// clears the soldier's attack count and takes the wolf (`FUN_140a7c210`), and the install (slot
+/// 0x808) deletes the Attack unstarted, its destructor letting the wolf go. Then the game writes
+/// the unit AI's `+0x1d5` through the null `+0x6b0` (`0x141070b01`) and faults, before
+/// `FUN_140a7a190` reads the freed Attack: the work command stops with that error.
 #[test]
-fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
+fn work_attack_of_dying_action_object_deletes_its_attack_and_stops_at_null_unit_ai() {
     let (mut world, task) = work_attack(UnitStance::Aggressive);
     Arc::make_mut(&mut world.model.masters[1])
         .get_mut(master_id(4))
@@ -790,16 +791,18 @@ fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
     world.parts.set_unit_ai(soldier, None);
     world.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
     world.parts.combat_mut(soldier).unwrap().attack_count = AttackCount::of_data(3);
-    world
-        .start_attack(
-            PlayerId::new(1),
-            ListIndex::new(0),
-            object_id(50),
-            &task,
-            Position::new(10.4, 10.0, 0.0),
-            Notifies::Cleared,
-        )
-        .unwrap();
+    let started = world.start_attack(
+        PlayerId::new(1),
+        ListIndex::new(0),
+        object_id(50),
+        &task,
+        Position::new(10.4, 10.0, 0.0),
+        Notifies::Cleared,
+    );
+    assert_eq!(
+        started.map_err(|error| error.reason()),
+        Err(ATTACK_WITHOUT_UNIT_AI.reason())
+    );
     assert!(world.parts.actions_of(soldier).list.is_empty());
     assert_eq!(
         world.parts.combat_of(soldier).attack_count,
@@ -807,7 +810,7 @@ fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
     );
     assert_eq!(
         world.players[0].objects[ListIndex::new(0)].workers,
-        WorkerCount::of_data(1)
+        WorkerCount::ZERO
     );
     assert_eq!(
         world.players[1].objects[ListIndex::new(0)]
@@ -816,6 +819,30 @@ fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
         Some(SpriteId::named(302))
     );
     assert_eq!(world.parts.anim_speed_of(soldier), Some(Speed::new(1.0)));
+}
+
+/// The work command's Attack deleted unstarted by the install (state 3) of a soldier with a unit
+/// AI: no caller reaches it, as slot 0x7e8 of a combat object (`FUN_141227190`,
+/// [`World::order_work`]) ignores the order past state 2, so the work command stops with an
+/// unreachable error before `FUN_140a7a190` would read the freed Attack.
+#[test]
+fn work_attack_deleted_unstarted_of_unit_with_unit_ai_is_unreachable() {
+    let (mut world, task) = work_attack(UnitStance::Aggressive);
+    let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    world.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
+    let started = world.start_attack(
+        PlayerId::new(1),
+        ListIndex::new(0),
+        object_id(50),
+        &task,
+        Position::new(10.4, 10.0, 0.0),
+        Notifies::Cleared,
+    );
+    assert_eq!(
+        started.map_err(|error| error.reason()),
+        Err(DELETED_ATTACK_WITH_UNIT_AI.reason())
+    );
+    assert!(world.parts.actions_of(soldier).list.is_empty());
 }
 
 /// The work command's check of the top Attack (`FUN_14106ff70`, [`World::keep_attack`]): an
@@ -1309,41 +1336,46 @@ fn an_attack_task_of_unit_that_cannot_move_goes_ready_in_reach() {
     }
 }
 
-/// The attack task's Attack of a soldier without a unit AI fails at its start (`0x140a7f8c0`:
-/// `+0x6b0` null, `set_state(13)`, which shows the standing sprite at speed 1) and nothing more:
-/// it stays on the list with both targets; a soldier inside an object (`+0x2f0`) fails it alike.
+/// The attack task's Attack of a soldier inside an object (`+0x2f0`) fails at its start
+/// (`0x140a7f8c0`: `set_state(13)`, which shows the standing sprite at speed 1) and nothing more:
+/// it stays on the list with both targets. A soldier without a unit AI fails its start alike
+/// (`+0x6b0` null), but then the work command writes the unit AI's `+0x1d5` through that null
+/// pointer (`0x141070b01`) and the game faults: the command stops with that error.
 #[test]
-fn an_attack_task_of_unit_without_unit_ai_or_inside_fails_at_its_start() {
-    let failed = (
-        AttackState::Failed,
-        Some(AttackTargetId::new(object_id(50))),
-        Some(AttackTargetId::new(object_id(50))),
-        Some(SpriteId::named(300)),
-        Some(Speed::new(1.0)),
-    );
-    assert_eq!(
-        attack_started_after(|world, id| world.parts.set_unit_ai(id, None)),
-        failed
-    );
+fn an_attack_task_of_unit_inside_fails_at_its_start_and_of_one_without_unit_ai_stops() {
     assert_eq!(
         attack_started_after(|world, id| {
             world.object_mut(id).unwrap().1.life.inside = Some(ContainerId::new(object_id(50)));
         }),
-        failed
+        Ok((
+            AttackState::Failed,
+            Some(AttackTargetId::new(object_id(50))),
+            Some(AttackTargetId::new(object_id(50))),
+            Some(SpriteId::named(300)),
+            Some(Speed::new(1.0)),
+        ))
+    );
+    assert_eq!(
+        attack_started_after(|world, id| world.parts.set_unit_ai(id, None)),
+        Err(ATTACK_WITHOUT_UNIT_AI.reason())
     );
 }
 
-/// [`work_attack`]'s soldier after `change` and the attack task on the wolf: its Attack's state
-/// and targets, the soldier's sprite and its animation speed.
-fn attack_started_after(
-    change: impl FnOnce(&mut World, ObjectId),
-) -> (
+/// A started Attack's state and targets, and its soldier's sprite and animation speed.
+type StartedAttack = (
     AttackState,
     Option<AttackTargetId>,
     Option<AttackTargetId>,
     Option<SpriteId>,
     Option<Speed>,
-) {
+);
+
+/// [`work_attack`]'s soldier after `change` and the attack task on the wolf: its Attack's state
+/// and targets, the soldier's sprite and its animation speed ([`StartedAttack`]), or the reason
+/// the task stopped.
+fn attack_started_after(
+    change: impl FnOnce(&mut World, ObjectId),
+) -> Result<StartedAttack, &'static str> {
     let (mut world, task) = work_attack(UnitStance::Aggressive);
     let id = world.players[1].objects[ListIndex::new(0)].id;
     change(&mut world, id);
@@ -1356,7 +1388,7 @@ fn attack_started_after(
             Position::new(10.4, 10.0, 0.0),
             Notifies::Cleared,
         )
-        .unwrap();
+        .map_err(|error| error.reason())?;
     let attack = world
         .parts
         .actions_of(id)
@@ -1364,7 +1396,7 @@ fn attack_started_after(
         .attack()
         .copied()
         .expect("the soldier's Attack");
-    (
+    Ok((
         attack.state,
         attack.target,
         attack.target2,
@@ -1372,19 +1404,21 @@ fn attack_started_after(
             .sprite
             .map(|active_sprite| active_sprite.graphic.id),
         world.parts.anim_speed_of(id),
-    )
+    ))
 }
 
 /// The work command's Attack on the annex 61: the list's factory (`FUN_140a97e00` case 7) of a
 /// soldier with a unit AI hands the constructor the aimed main building 60 (`FUN_141189b20`'s
 /// answer, `0x140a97f00`), so the Attack targets it, sees it at its place and takes it; then
 /// `FUN_140a7a190` gives it the annex, the command's object, as its second target and takes the
-/// annex: one worker each. A soldier without a unit AI hands the constructor the annex itself
-/// (`0x140a97edf`): both targets are the annex, which counts two workers, and the main building
-/// none.
+/// annex: one worker each. The factory's `FUN_140c64c10` gives the unit AI the main building
+/// with its class 3, and the work notify (slot 0x828, `R8` the command's object at
+/// `0x141070ace`) the annex with its class 52, so the main building becomes the last target. A
+/// soldier without a unit AI stops where the work command writes the unit AI's `+0x1d5`
+/// through its null pointer (`0x141070b01`).
 #[test]
-fn work_attack_on_annex_targets_its_main_building_only_with_unit_ai() {
-    let outcome = |with_unit_ai: bool| {
+fn work_attack_on_annex_targets_its_main_building_and_tells_its_unit_ai_the_annex() {
+    let attack_on_annex = |with_unit_ai: bool| {
         let (mut world, task) = work_attack(UnitStance::Aggressive);
         annexed(&mut world);
         annexed_on_map(&mut world);
@@ -1392,7 +1426,7 @@ fn work_attack_on_annex_targets_its_main_building_only_with_unit_ai() {
         if !with_unit_ai {
             world.parts.set_unit_ai(soldier, None);
         }
-        world
+        let started = world
             .start_attack(
                 PlayerId::new(1),
                 ListIndex::new(0),
@@ -1401,24 +1435,26 @@ fn work_attack_on_annex_targets_its_main_building_only_with_unit_ai() {
                 Position::new(22.0, 20.5, 0.0),
                 Notifies::Cleared,
             )
-            .unwrap();
-        let attack = world
-            .parts
-            .actions_of(soldier)
-            .list
-            .attack()
-            .copied()
-            .expect("the soldier's Attack");
+            .map_err(|error| error.reason());
+        (world, soldier, started)
+    };
+    let (world, soldier, started) = attack_on_annex(true);
+    assert_eq!(started, Ok(()));
+    let attack = world
+        .parts
+        .actions_of(soldier)
+        .list
+        .attack()
+        .copied()
+        .expect("the soldier's Attack");
+    assert_eq!(
         (
             attack.target,
             attack.target2,
             attack.seen,
             world.players[0].objects[ListIndex::new(1)].workers,
             world.players[0].objects[ListIndex::new(2)].workers,
-        )
-    };
-    assert_eq!(
-        outcome(true),
+        ),
         (
             Some(AttackTargetId::new(object_id(60))),
             Some(AttackTargetId::new(object_id(61))),
@@ -1427,16 +1463,27 @@ fn work_attack_on_annex_targets_its_main_building_only_with_unit_ai() {
             WorkerCount::of_data(1)
         )
     );
+    let ai = world
+        .parts
+        .unit_ai
+        .get(soldier)
+        .expect("the soldier's unit AI");
     assert_eq!(
-        outcome(false),
         (
-            Some(AttackTargetId::new(object_id(61))),
-            Some(AttackTargetId::new(object_id(61))),
-            Position::new(22.0, 20.5, 0.0),
-            WorkerCount::ZERO,
-            WorkerCount::of_data(2)
+            ai.current_target,
+            ai.target_class,
+            ai.last_target,
+            ai.last_target_class
+        ),
+        (
+            Some(object_id(61)),
+            class_of(52),
+            Some(object_id(60)),
+            class_of(3)
         )
     );
+    let (_, _, started) = attack_on_annex(false);
+    assert_eq!(started, Err(ATTACK_WITHOUT_UNIT_AI.reason()));
 }
 
 /// [`annexed`]'s main building 60 and annex 61 on the map's lists, each at its place with a
@@ -6270,19 +6317,19 @@ fn drop_off_order_fails_on_what_it_does_not_hold() {
 
 /// The attack task's start ends where the game's start does ([`crate::combat::attack::Attack::command`]
 /// on the soldier's step): with the wolf out of reach a soldier that may move posts 0x1fd to its
-/// unit AI and turns to state 4, and one that cannot move (no unit AI) fails at once
-/// (`set_state(13)`: its animation at speed 1, its standing sprite); with the wolf in reach a
-/// soldier that may move starts its `MoveTo` arrived and shows its standing sprite.
+/// unit AI and turns to state 4; with the wolf in reach a soldier that may move starts its
+/// `MoveTo` arrived and shows its standing sprite. One without a unit AI fails its start
+/// (`set_state(13)`), and then the work command stops where it writes the unit AI's `+0x1d5`
+/// through the null pointer (`0x141070b01`).
 #[test]
 fn an_attack_task_start_ends_where_the_start_does() {
     use crate::combat::attack::AttackState;
-    let started = |ai: bool, at: f32| {
+    let started = |ai: bool, at: f32| -> Result<_, &'static str> {
         let (mut world, task) = work_attack(UnitStance::Aggressive);
         let unit = &mut world.players[1].objects[ListIndex::new(0)];
         if !ai {
             world.parts.set_unit_ai(unit.id, None);
         }
-        world.parts.set_anim_speed(unit.id, Speed::new(0.5));
         let mut wolf = *world.spatial.get(object_id(50)).unwrap();
         wolf.position = Position::new(at, 10.0, 0.0);
         world.spatial.insert(object_id(50), wolf);
@@ -6297,7 +6344,7 @@ fn an_attack_task_start_ends_where_the_start_does() {
                 Position::new(at, 10.0, 0.0),
                 Notifies::Cleared,
             )
-            .unwrap();
+            .map_err(|error| error.reason())?;
         let unit = &world.players[1].objects[ListIndex::new(0)];
         let state = world
             .parts
@@ -6307,11 +6354,11 @@ fn an_attack_task_start_ends_where_the_start_does() {
             .map(|attack| attack.state.bare());
         let notifies = world.parts.unit_ai.get(unit.id).map(|ai| ai.notifies.len());
         let sprite = unit.sprite.map(|active_sprite| active_sprite.graphic.id);
-        (state, world.parts.anim_speed_of(unit.id), sprite, notifies)
+        Ok((state, sprite, notifies))
     };
-    let (near, _, sprite, near_notifies) = started(true, 10.4);
+    let (near, sprite, near_notifies) = started(true, 10.4).unwrap();
     assert_eq!(sprite, Some(SpriteId::named(300)));
-    let (far, _, _, far_notifies) = started(true, 30.0);
+    let (far, _, far_notifies) = started(true, 30.0).unwrap();
     assert_eq!(
         (far, far_notifies),
         (
@@ -6320,15 +6367,7 @@ fn an_attack_task_start_ends_where_the_start_does() {
         )
     );
     assert_ne!(near, None);
-    let (failed, speed, sprite, _) = started(false, 30.0);
-    assert_eq!(
-        (failed, speed, sprite),
-        (
-            Some(AttackState::Failed),
-            Some(Speed::new(1.0)),
-            Some(SpriteId::named(300))
-        )
-    );
+    assert_eq!(started(false, 30.0), Err(ATTACK_WITHOUT_UNIT_AI.reason()));
 }
 
 /// The work command's task (`FUN_14106ff70`): none on a point; the forager's Gather task 2 on
