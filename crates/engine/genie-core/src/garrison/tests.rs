@@ -3998,6 +3998,72 @@ fn an_unload_command_sends_transport_toward_the_shore() {
     );
 }
 
+/// [`coast_world`]'s ship 200 in `state`, its sight's mirror too where the sight holds one, as a
+/// state change writes both.
+fn ship_in(world: &mut World, state: ObjectState) {
+    world.object_mut(object_id(200)).unwrap().1.life.state = state;
+    if let Some(seer) = world
+        .spatial
+        .sight
+        .as_mut()
+        .and_then(|sight| sight.seer_mut(object_id(200)))
+    {
+        seer.state = state;
+    }
+}
+
+/// The unload command (slot 0x3a8, `FUN_14108d050`) without a Transport on top makes one at the
+/// ship's place (`FUN_140aa3ab0`), deletes the list (`FUN_140a98620`: the `MoveTo` it held goes,
+/// in either state) and installs it (slot 0x808, `0x14108d502`). Below state 3 the list's add
+/// starts it (`set_state(11)`), and its work at the point sails it there to unload
+/// (`set_state(4)`, its `MoveTo` starting). In state 3 the add deletes it unstarted, and the work
+/// that the game then calls on the freed block changes nothing (`RGE_Action`'s slot 9): the ship
+/// holds no action.
+#[test]
+fn unload_command_in_state_3_deletes_the_new_transport_unstarted() {
+    for (state, held) in [(ObjectState::Alive, true), (ObjectState::Dying, false)] {
+        let mut world = coast_world(Point::new(10.5, 10.5));
+        world
+            .parts
+            .actions
+            .of_mut(object_id(200))
+            .unwrap()
+            .list
+            .set_move_to(Some(MoveToAction::to_point(
+                Position::new(5.5, 10.5, 0.0),
+                Distance::ZERO,
+                None,
+            )));
+        ship_in(&mut world, state);
+        let idx = world.players[1]
+            .objects
+            .position_of(object_id(200))
+            .unwrap();
+        world
+            .transport_order(PlayerId::new(1), idx, Position::new(17.5, 10.5, 0.0))
+            .unwrap();
+        let list = &world.parts.actions_of(object_id(200)).list;
+        assert_eq!(list.move_to(), None, "{state:?}");
+        assert_eq!(
+            list.transport().map(|tr| (
+                tr.state.bare(),
+                tr.mode,
+                tr.state
+                    .move_to()
+                    .copied()
+                    .map(|move_to_action| move_to_action.state)
+            )),
+            held.then_some((
+                TransportState::SailToUnload { move_to: None },
+                TransportMode::Work,
+                Some(MoveTo::Start)
+            )),
+            "{state:?}"
+        );
+        assert_eq!(list.is_empty(), !held, "{state:?}");
+    }
+}
+
 /// [`coast_world`] with the ship's task 7 of type 12 for the land (terrain 0; the game's data
 /// has it for a beach), the market (84) and its building 4000 of player 1 on the land, and the
 /// ship's place in its player's list.

@@ -112,7 +112,7 @@ impl Action {
     /// its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit its top speed
     /// `top` as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its target and the
     /// object it was fired from go. The Make, the wait for a foundation (`0x140ae8780`) and the
-    /// Transport hold no target.
+    /// Transport (`FUN_140aa3b60`, the base teardown alone) hold no target.
     ///
     /// # Errors
     ///

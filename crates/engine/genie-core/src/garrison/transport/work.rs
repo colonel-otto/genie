@@ -24,9 +24,8 @@ impl World {
     /// The work command's Transport (its task of action type 12, the factory `FUN_140aca4b0`
     /// case 0xc: [`TransportAction::on_task`] at the work's `point`); the unit AI's notify
     /// (`FUN_14106e4e0` kind 0xc: the transport order 0x2ca and action 0x266, the target with
-    /// its class, none for a point, the work's point); the install (slot 0x808,
-    /// [`World::set_only_action`]) clears the action list, then the list's add starts it
-    /// ([`TransportAction::start`] with 1), or deletes it for a ship in state 3 or later.
+    /// its class, none for a point, the work's point); then its install
+    /// ([`World::install_transport`]), after which the list holds the started Transport.
     ///
     /// # Errors
     ///
@@ -40,10 +39,39 @@ impl World {
     ) -> GenieResult<()> {
         self.notify_transport((player_id, list_index), (target, point), notifies)?;
         let transport_action = TransportAction::on_task(Some(*task), point);
+        let Some(transport_action) =
+            self.install_transport(player_id, list_index, transport_action)?
+        else {
+            return Ok(());
+        };
+        self.parts
+            .actions_mut(self.players.live(player_id, list_index)?.id)?
+            .list
+            .set_transport(Some(transport_action));
+        Ok(())
+    }
+
+    /// The install of the new Transport `transport_action` on player `player_id`'s object at
+    /// `list_index` (slot 0x808, [`World::set_only_action`]): the action list's deletion, then
+    /// its add. For a unit below state 3 the add starts it ([`TransportAction::start`] with 1),
+    /// and what its state change leaves applies at once ([`World::transport_changed`]); the
+    /// started Transport comes back for its caller to put on the list. For a unit in state 3 or
+    /// later the add deletes it unstarted, and none comes back: a new Transport holds no target
+    /// for its destructor to let go.
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, and what the actions' teardowns do not model.
+    pub(super) fn install_transport(
+        &mut self,
+        player_id: PlayerId,
+        list_index: ListIndex,
+        transport_action: TransportAction,
+    ) -> GenieResult<Option<TransportAction>> {
         let Some(mut transport_action) =
             self.set_only_action(player_id, list_index, Some(transport_action))?
         else {
-            return Ok(());
+            return Ok(None);
         };
         let move_to_tuning = self.model.tuning.move_to;
         let transport_tuning = self.model.tuning.transport;
@@ -52,6 +80,44 @@ impl World {
             list_index,
             transport_action.task,
             |ship, shore| transport_action.start(ship, shore, &transport_tuning, &move_to_tuning),
+        )?;
+        self.transport_changed(player_id, list_index, changed)?;
+        Ok(Some(transport_action))
+    }
+
+    /// The work order (slot 0x48, [`TransportAction::work`]) of the Transport
+    /// `transport_action` of player `player_id`'s object at `list_index` at `point`, naming the
+    /// unit itself ([`TransportTarget::Ship`]) or another object or none: the Transport goes onto
+    /// the list as its head, and what its state change leaves applies
+    /// ([`World::transport_changed`]).
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, and what the map reads give.
+    pub(super) fn work_transport(
+        &mut self,
+        player_id: PlayerId,
+        list_index: ListIndex,
+        mut transport_action: TransportAction,
+        point: Position,
+        named: TransportTarget,
+    ) -> GenieResult<()> {
+        let move_to_tuning = self.model.tuning.move_to;
+        let transport_tuning = self.model.tuning.transport;
+        let changed = self.with_shore(
+            player_id,
+            list_index,
+            transport_action.task,
+            |ship, shore| {
+                transport_action.work(
+                    point,
+                    named,
+                    ship,
+                    shore,
+                    &transport_tuning,
+                    &move_to_tuning,
+                )
+            },
         )?;
         self.parts
             .actions_mut(self.players.live(player_id, list_index)?.id)?
@@ -117,7 +183,7 @@ impl World {
             }
             _ => None,
         };
-        let Some(mut transport_action) = on_task else {
+        let Some(transport_action) = on_task else {
             return Ok(Answer::NotTaken);
         };
         if self.trade_at_own_market((player_id, list_index), target)? {
@@ -128,28 +194,7 @@ impl World {
         } else {
             TransportTarget::Other
         };
-        let move_to_tuning = self.model.tuning.move_to;
-        let transport_tuning = self.model.tuning.transport;
-        let changed = self.with_shore(
-            player_id,
-            list_index,
-            transport_action.task,
-            |ship, shore| {
-                transport_action.work(
-                    point,
-                    named,
-                    ship,
-                    shore,
-                    &transport_tuning,
-                    &move_to_tuning,
-                )
-            },
-        )?;
-        self.parts
-            .actions_mut(self.players.live(player_id, list_index)?.id)?
-            .list
-            .set_transport(Some(transport_action));
-        self.transport_changed(player_id, list_index, changed)?;
+        self.work_transport(player_id, list_index, transport_action, point, named)?;
         self.notify_transport((player_id, list_index), (target, point), notifies)?;
         Ok(Answer::Taken)
     }

@@ -6,8 +6,7 @@ use crate::garrison::transport::TransportState;
 use crate::garrison::transport::TransportTarget;
 use crate::garrison::transport::unit::SailWorld;
 use crate::garrison::transport::{
-    Around, Changed, DropDraws, MapShore, NONE, Ship, TRANSPORT, TransportAction, in_zone,
-    retry_point,
+    Around, Changed, DropDraws, MapShore, NONE, Ship, TransportAction, in_zone, retry_point,
 };
 use crate::map::Distance;
 use crate::map::Footprint;
@@ -17,6 +16,7 @@ use crate::map::Rect;
 use crate::math::rng::Stream;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
+use crate::objects::actions::Action;
 use crate::objects::masters::PlayersMastersExt;
 use crate::objects::masters::{Master, OwnerMasters};
 use crate::pathing::zones::Relabel;
@@ -57,13 +57,24 @@ const DROP_CALL: PlacementCall = PlacementCall {
 /// units put ashore.
 impl World {
     /// The unit's unload command (slot 0x3a8, `FUN_14108d050`) at `to` for player `player_id`'s
-    /// object at `list_index`, after the unit AI that gave it: a Transport on top (type 12,
-    /// `FUN_140a7be70`) is told to work at the unit's own place ("Telling existing action to work":
-    /// slot 9 with the unit itself as its object, [`TransportAction::work`]); else the actions go
-    /// (`FUN_140a98620`, [`crate::world::World::clear_actions`]) and a Transport at the unit's
-    /// place ([`TransportAction::new`]) replaces them (slot 0x808: its slot 0x70, the base's, does
-    /// nothing; the list's add starts it, [`TransportAction::start`]), then takes the work order at
-    /// `to` from the unit itself.
+    /// object at `list_index`, after the unit AI that gave it. A Transport on top (type 12,
+    /// `FUN_140a7be70`) is told to work at the unit's own place ("Telling existing action to
+    /// work": slot 9 with the unit itself as its object, [`World::work_transport`]). Else the
+    /// command makes a Transport at the unit's place first ([`TransportAction::new`]), deletes
+    /// the actions (`FUN_140a98620`, which the install's own deletion covers) and installs it
+    /// (slot 0x808 at `0x14108d502`, [`World::install_transport`]: its slot 0x70, the base's, does
+    /// nothing; the list's add starts it). Then the Transport takes the work order at `to` from
+    /// the unit itself (its slot 0x48 at `0x14108d522`).
+    ///
+    /// In state 3 or later the add deletes the new Transport unstarted, and the game calls that
+    /// slot 0x48 on the freed block. Its destructor (`FUN_140aa3b60`, then `FUN_140a73fc0`) wrote
+    /// `RGE_Action`'s vtable (`0x142ed4128`) into it first, whose slot 9 (`FUN_140a7bf40`) answers
+    /// 0 and changes nothing. A free in the low-fragmentation heap leaves a small block's bytes as
+    /// they are; a heap whose free list writes into the block's first bytes (the back end's,
+    /// Wine's) makes the call fault. So the game's clients most often do nothing there, and genie
+    /// does nothing (FD-001-D30). The unit AI orders no unit above state 2, so in genie only a
+    /// scenario trigger could reach this (the Unload effect, `FUN_141592720` case 0x10, on an
+    /// object by its id), and genie runs no triggers. The command answers 1 either way.
     ///
     /// # Errors
     ///
@@ -74,95 +85,32 @@ impl World {
         list_index: ListIndex,
         to: Position,
     ) -> GenieResult<()> {
-        let existing = self
-            .parts
-            .actions_of(self.players.live(player_id, list_index)?.id)
-            .top_action_kind()
-            == Some(TRANSPORT);
-        if !existing {
-            self.clear_actions(player_id, list_index)?;
-        }
-        // a new Transport has no task (`TransportAction::new`)
-        let task = self
-            .parts
-            .actions_of(self.players.live(player_id, list_index)?.id)
-            .list
-            .transport()
-            .filter(|_| existing)
-            .and_then(|transport_action| transport_action.task);
-        let ship = {
-            let unit = self.players.live(player_id, list_index)?;
-            let master = unit.master(self.master_tables(), player_id)?;
-            Ship::of_unit(
-                unit,
-                self.top_speed(player_id, unit)?,
-                master,
-                self.spatial.map,
-                (
-                    &self.model.graphics,
-                    self.parts.combat_of(unit.id).abilities.look.as_ref(),
-                ),
-                task.as_ref(),
-                &self.model.roles,
-            )
-        };
-        let restriction = self
-            .players
-            .live(player_id, list_index)?
-            .master(self.master_tables(), player_id)?
-            .terrain_restriction;
-        let mut shore = MapShore::new(
-            &self.spatial,
-            &mut self.zones,
-            &mut self.pathing,
-            restriction,
-            ship.position,
-            &self.model.tuning.tile_path,
-        )?;
-        let unit = self.players.live_mut(player_id, list_index)?;
-        let changes = if let Some(transport_action) = self
-            .parts
-            .actions
-            .of_mut(unit.id)?
-            .list
-            .transport_mut()
-            .filter(|_| existing)
+        let unit = self.players.live(player_id, list_index)?;
+        let at = unit.position();
+        if let Some(Action::Transport(transport_action)) =
+            self.parts.actions_of(unit.id).list.head()
         {
-            vec![transport_action.work(
-                ship.position,
+            let transport_action = *transport_action;
+            return self.work_transport(
+                player_id,
+                list_index,
+                transport_action,
+                at,
                 TransportTarget::Ship,
-                &ship,
-                &mut shore,
-                &self.model.tuning.transport,
-                &self.model.tuning.move_to,
-            )?]
-        } else {
-            let mut transport_action = TransportAction::new(ship.position);
-            let started = transport_action.start(
-                &ship,
-                &mut shore,
-                &self.model.tuning.transport,
-                &self.model.tuning.move_to,
-            )?;
-            let worked = transport_action.work(
-                to,
-                TransportTarget::Ship,
-                &ship,
-                &mut shore,
-                &self.model.tuning.transport,
-                &self.model.tuning.move_to,
-            )?;
-            self.parts
-                .actions
-                .of_mut(unit.id)?
-                .list
-                .set_transport(Some(transport_action));
-            vec![started, worked]
-        };
-        for changed in changes {
-            self.transport_changed(player_id, list_index, changed)?;
+            );
         }
-        Ok(())
+        let Some(transport_action) =
+            self.install_transport(player_id, list_index, TransportAction::new(at))?
+        else {
+            return Ok(());
+        };
+        self.work_transport(
+            player_id,
+            list_index,
+            transport_action,
+            to,
+            TransportTarget::Ship,
+        )
     }
 
     /// The Transport `transport_action` of player `player_id`'s object at `list_index`, its head's
