@@ -1,5 +1,6 @@
 //! The Enter's install (slot 0x808, or the Artifact's sub-list under one on top) and its start
 //! there: the failure inside an object, the walk to a target without room, the enter or the walk.
+//! The add deletes the Enter unstarted for a unit in state 3 or later.
 
 use crate::garrison::ContainerId;
 use crate::garrison::EnterSlot;
@@ -9,11 +10,11 @@ use crate::map::Point;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveToReads;
 use crate::objects::ListIndex;
-use crate::objects::ObjectId;
 use crate::objects::masters::OwnerMasters;
 use crate::objects::masters::PlayersMastersExt;
 use crate::objects::masters::Task;
 use crate::objects::teardown::TornWalk;
+use crate::objects::teardown::admit;
 use crate::orders::object_gone;
 use crate::ownership::artifact::ArtifactSub;
 use crate::players::PlayerId;
@@ -24,12 +25,14 @@ use crate::world::slots::PlayerSlotsExt;
 use crate::{GenieError, GenieResult};
 
 impl World {
-    /// The Enter's install (slot 0x808): the action list empties and the Enter starts (slot 5,
-    /// `FUN_140a86f20`): a unit inside an object fails it (`set_state(13)`, its notify for the
-    /// unit's own AI the answer, [`World::install_enter_as`]); a target without room walks to its
-    /// place ([`World::enter_without_room`]); else its `set_state(4)`
-    /// ([`EnterAction::walk_again`]): a unit in reach enters at once ([`World::enter_now`]),
-    /// else it walks, a transport to the point first ([`World::move_transport`]).
+    /// The Enter's install (slot 0x808, [`World::set_only_action`]): the action list's deletion,
+    /// then its add, which deletes the Enter unstarted for a unit in state 3 or later. Below, the
+    /// Enter starts (slot 0x28 with 1, `0x140a86f20`): a unit inside an object fails it
+    /// (`set_state(13)`, its notify for the unit's own AI the answer, [`World::install_enter_as`]);
+    /// a target without room walks to its place ([`World::enter_without_room`]); else its
+    /// `set_state(4)` ([`EnterAction::walk_again`]): a unit in reach enters at once
+    /// ([`World::enter_now`]), else it walks, a transport to the point first
+    /// ([`World::move_transport`]).
     pub(super) fn install_enter(
         &mut self,
         player: PlayerId,
@@ -41,29 +44,25 @@ impl World {
         self.install_enter_as(player, idx, target, action, task, EnterSlot::Own)
     }
 
-    /// [`World::install_enter`], or with `sub` the Enter as the sub-action of the Artifact on top
-    /// (`FUN_1410847e0`): the Artifact's sub-action goes (`FUN_140a98e20`,
-    /// [`crate::ownership::artifact::Artifact::hold_enter`]: an Enter lets its target go, slot 0x180
-    /// ([`World::release`]), and a walking `MoveTo`'s teardown stops the unit) and the Enter
-    /// starts in its list (`FUN_140a977e0`), the Artifact's update running it from then on.
-    /// Returns the notify a unit inside an object posts its own unit AI (0x1f9 with the Enter's
-    /// action value), which the caller posts: the unit AI that gave the enter command holds it
-    /// out of the unit while it runs.
+    /// [`World::install_enter`] in the Enter's `slot`: the unit's own, or the sub-action of the
+    /// Artifact on top (`FUN_1410847e0`), the Artifact's update running it from then on. The add
+    /// ([`World::add_enter`]) hands the Enter back to start, or deletes it unstarted in state 3 or
+    /// later, and then nothing starts. Returns the notify a unit inside an object posts its own
+    /// unit AI (0x1f9 with the Enter's action value), which the caller posts: the unit AI that
+    /// gave the enter command holds it out of the unit while it runs.
     pub(super) fn install_enter_as(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
         target: ContainerId,
-        mut action: EnterAction,
+        action: EnterAction,
         task: &Task,
         slot: EnterSlot,
     ) -> GenieResult<Option<Notify>> {
+        let Some(mut action) = self.add_enter(player, idx, action, slot)? else {
+            return Ok(None);
+        };
         let id = self.players.live(player, idx)?.id;
-        if slot == EnterSlot::UnderArtifact {
-            self.enter_under_artifact(player, idx, id, action)?;
-        } else {
-            self.clear_actions(player, idx)?;
-        }
         if self.players.live(player, idx)?.life.inside.is_some() {
             return self.enter_from_inside(player, idx, action, slot).map(Some);
         }
@@ -106,6 +105,30 @@ impl World {
         }
     }
 
+    /// The add of the new Enter `action` to unit `idx` of `player` in its `slot`, its start the
+    /// caller's: the unit's own through slot 0x808 (`0x141084b1f`, [`World::set_only_action`]:
+    /// the list's deletion, which the enter command's own `FUN_140a98620` before it left nothing
+    /// to do, then the list's add); under the Artifact on top through its sub-list
+    /// ([`World::enter_under_artifact`]). The Enter back below state 3; none in state 3 or later,
+    /// where the add deleted it unstarted and its teardown let go the target that its
+    /// constructor took.
+    ///
+    /// # Errors
+    ///
+    /// The deletions' and what they let go.
+    fn add_enter(
+        &mut self,
+        player: PlayerId,
+        idx: ListIndex,
+        action: EnterAction,
+        slot: EnterSlot,
+    ) -> GenieResult<Option<EnterAction>> {
+        match slot {
+            EnterSlot::Own => self.set_only_action(player, idx, Some(action)),
+            EnterSlot::UnderArtifact => self.enter_under_artifact(player, idx, action),
+        }
+    }
+
     /// [`World::install_enter_as`] into a target without room for unit `idx` of `player`: the
     /// player's message (`FUN_140a864d0`, through the screen's `FUN_140c85f00`: nothing
     /// simulated), then `set_state(11)` ([`EnterAction::walk_to_point`]): `FUN_140a85f30`, whose
@@ -138,18 +161,26 @@ impl World {
         Ok(())
     }
 
-    /// [`World::install_enter_as`] under the Artifact on top of unit `idx` of `player` (its id
-    /// `id`): the Artifact's sub-action goes for the Enter `action`
-    /// ([`crate::ownership::artifact::Artifact::hold_enter`]): an old Enter lets its target go
-    /// (slot 0x180, [`World::release`]), then a walking `MoveTo`'s teardown stops the unit.
+    /// [`World::add_enter`] under the Artifact on top of unit `idx` of `player` (`0x141084ad5`):
+    /// `FUN_140a98e20` deletes the Artifact's sub-action
+    /// ([`crate::ownership::artifact::Artifact::drop_sub_actions`]; it holds one at most, so none
+    /// restarts): an old Enter lets its target go (slot 0x180, [`World::release`]), then a walking
+    /// `MoveTo`'s teardown stops the unit. Then the sub-list's add (`FUN_140a977e0`, [`admit`] on
+    /// the unit's state and its top speed after the deletion) hands the Enter `action` back to
+    /// start, or deletes it unstarted in state 3 or later, and what its teardown left goes at
+    /// once ([`World::let_go_torn`]).
+    ///
+    /// # Errors
+    ///
+    /// A unit the list does not hold, the releases', the stop's and the top speed's.
     fn enter_under_artifact(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
-        id: ObjectId,
         action: EnterAction,
-    ) -> GenieResult<()> {
+    ) -> GenieResult<Option<EnterAction>> {
         let by = self.releaser(player, idx)?;
+        let id = self.players.live(player, idx)?.id;
         // `EnterSlot::under` read the Artifact on top before the task search, which takes no
         // action of the unit
         let art =
@@ -161,18 +192,26 @@ impl World {
                 .ok_or(GenieError::unreachable(
                     "an Artifact on top without its action",
                 ))?;
-        let gone = art.hold_enter(action);
+        let gone = art.drop_sub_actions();
         // the old Enter's teardown lets its target go before its MoveTo's stops the unit
         if let Some(object_id) = gone.released {
             self.release(object_id, by)?;
         }
-        let unit = self.players.live(player, idx)?;
         if gone.walk == TornWalk::Stops
-            && let Some(mover) = self.parts.mover_mut(unit.id)
+            && let Some(mover) = self.parts.mover_mut(id)
         {
             mover.stop()?;
         }
-        Ok(())
+        let unit = self.players.live(player, idx)?;
+        let top = self.top_speed(player, unit)?;
+        let (action, torn) = admit(
+            action,
+            self.parts.motion.layer_mut(id),
+            top,
+            unit.life.state,
+        )?;
+        self.let_go_torn(torn, by)?;
+        Ok(action)
     }
 
     /// [`World::install_enter_as`] for unit `idx` of `player` inside an object: the Enter

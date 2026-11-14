@@ -243,7 +243,7 @@ impl World {
     /// What an action list's destructors left (`torn`) applied by `by`: a counted builder leaves
     /// its building (`FUN_140aadbf0` before its base teardown, [`World::leave_builders`]), then
     /// the targets go (slot 0x180, [`World::release`]).
-    fn let_go_torn(&mut self, torn: TornDown, by: Releaser) -> GenieResult<()> {
+    pub(crate) fn let_go_torn(&mut self, torn: TornDown, by: Releaser) -> GenieResult<()> {
         for id in torn.builder_leaves {
             self.leave_builders(Some(id))?;
         }

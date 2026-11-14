@@ -22,9 +22,11 @@ pub enum ArtifactSub {
         move_to: MoveToAction,
     },
     /// The Enter an enter command made its sub-action (`FUN_1410847e0` under an Artifact on
-    /// top), which its update runs first ([`Artifact::hold_enter`]).
+    /// top, [`World::install_enter_as`]), which its update runs first
+    /// ([`Unit::artifact_enter_part`]).
     ///
-    /// [`Artifact::hold_enter`]: crate::ownership::artifact::Artifact::hold_enter
+    /// [`World::install_enter_as`]: crate::world::World::install_enter_as
+    /// [`Unit::artifact_enter_part`]: crate::objects::unit::Unit::artifact_enter_part
     Enter {
         /// The Enter.
         enter: EnterAction,

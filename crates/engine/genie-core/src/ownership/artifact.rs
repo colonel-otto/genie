@@ -220,15 +220,6 @@ impl Artifact {
         }
     }
 
-    /// The enter command's Enter as the sub-action (`FUN_1410847e0` with an Artifact on top:
-    /// `FUN_140a98e20` pops the sub-action it held, [`Artifact::drop_sub_actions`], then
-    /// `FUN_140a977e0` takes the Enter). What went, the caller's.
-    pub fn hold_enter(&mut self, enter: EnterAction) -> SubActionsGone {
-        let gone = self.drop_sub_actions();
-        self.sub = Some(ArtifactSub::Enter { enter });
-        gone
-    }
-
     /// Slot 0x190 and slot 0x288 on the animal with this as its top action (`FUN_14106d090`,
     /// `FUN_141082dc0`): no target (`+0x30` −1) and no point (`+0x38` −1). A herder waits for this
     /// before it slaughters.
@@ -982,13 +973,14 @@ mod tests {
         assert_eq!(artifact.enter().copied(), None);
     }
 
-    /// `FUN_1410847e0` under an Artifact: `FUN_140a98e20` pops the sub-action the enter command
-    /// replaces. An Enter goes with its teardown (`FUN_140a85bf0` -> `FUN_140a73fc0`): its
-    /// building or transport is let go (slot 0x180), and its walking `MoveTo`'s teardown stops
-    /// the unit (430061417's pig 7920 in update 32: INTERACT on the transport 7934 again, the
-    /// unit's speed and acceleration 0, so the next velocity step does not move it).
+    /// `FUN_1410847e0` under an Artifact: `FUN_140a98e20` deletes the sub-action before the enter
+    /// command's Enter takes its place ([`Artifact::drop_sub_actions`]). An Enter goes with its
+    /// teardown (`FUN_140a85bf0` -> `FUN_140a73fc0`): its building or transport is let go (slot
+    /// 0x180), and its walking `MoveTo`'s teardown stops the unit (430061417's pig 7920 in update
+    /// 32: INTERACT on the transport 7934 again, the unit's speed and acceleration 0, so the next
+    /// velocity step does not move it).
     #[test]
-    fn an_enter_command_replaces_the_held_enter_letting_its_target_go_and_stopping_its_walk() {
+    fn the_enter_command_deletes_the_held_sub_action_letting_its_target_go_and_stopping_its_walk() {
         let enter = |target| {
             EnterAction::new(
                 target,
@@ -999,40 +991,29 @@ mod tests {
         let gone = |walk, released| SubActionsGone { walk, released };
         let mut artifact = Artifact::new(PlayerId::new(1), None);
         // nothing held: nothing to let go, nothing walking
-        assert_eq!(
-            artifact.hold_enter(enter(ContainerId::new(object_id(7934)))),
-            gone(TornWalk::Untouched, None)
-        );
+        assert_eq!(artifact.drop_sub_actions(), gone(TornWalk::Untouched, None));
         // the held Enter walks: its MoveTo's teardown stops the unit
-        let held = artifact.take_enter().unwrap();
         artifact.sub = Some(ArtifactSub::Enter {
-            enter: held.walking(MoveTo::Moving),
+            enter: enter(ContainerId::new(object_id(7934))).walking(MoveTo::Moving),
         });
         assert_eq!(
-            artifact.hold_enter(enter(ContainerId::new(object_id(7934)))),
+            artifact.drop_sub_actions(),
             gone(TornWalk::Stops, Some(object_id(7934)))
         );
-        assert_eq!(
-            artifact
-                .enter()
-                .copied()
-                .map(|enter_action| (enter_action.target, enter_action.state.move_to().copied())),
-            Some((Some(ContainerId::new(object_id(7934))), None))
-        );
+        assert_eq!(artifact.sub, None);
         // an Enter not walking only lets its target go
+        artifact.sub = Some(ArtifactSub::Enter {
+            enter: enter(ContainerId::new(object_id(7935))),
+        });
         assert_eq!(
-            artifact.hold_enter(enter(ContainerId::new(object_id(7935)))),
-            gone(TornWalk::Untouched, Some(object_id(7934)))
+            artifact.drop_sub_actions(),
+            gone(TornWalk::Untouched, Some(object_id(7935)))
         );
-        // the Artifact's own MoveTo goes with its goal and stops the unit
-        artifact.sub = None;
+        // the Artifact's own MoveTo goes and stops the unit
         artifact.sub = Some(ArtifactSub::Walk {
             move_to: MoveToAction::sub_in(MoveTo::Moving),
         });
-        assert_eq!(
-            artifact.hold_enter(enter(ContainerId::new(object_id(7934)))),
-            gone(TornWalk::Stops, None)
-        );
+        assert_eq!(artifact.drop_sub_actions(), gone(TornWalk::Stops, None));
         assert_eq!(artifact.move_to().copied(), None);
     }
 

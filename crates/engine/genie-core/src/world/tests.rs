@@ -8779,6 +8779,185 @@ fn livestock_second_enter_command_stops_the_walk_and_lets_the_old_enter_target_g
     );
 }
 
+/// [`enter_world`]'s unit (the villager, or the livestock of [`livestock_enter_world`]) in
+/// `state`, its sight's mirror too where the sight holds one, as a state change writes both.
+fn entering_unit_in(world: &mut World, state: ObjectState) {
+    let unit = &mut world.players[1].objects[ListIndex::new(0)];
+    unit.life.state = state;
+    let id = unit.id;
+    if let Some(seer) = world
+        .spatial
+        .sight
+        .as_mut()
+        .and_then(|sight| sight.seer_mut(id))
+    {
+        seer.state = state;
+    }
+}
+
+/// Slot 0x3a0's install of the unit's own Enter (`FUN_140a98620`, then slot 0x808 at
+/// `0x141084b1f`): below state 3 the list's add (`FUN_140a977e0`) starts the Enter and the list
+/// holds it; in state 3 the add deletes it unstarted, and its teardown lets go the house that its
+/// constructor took. The command is taken either way.
+#[test]
+fn enter_command_in_state_3_deletes_the_new_enter_unstarted() {
+    for (state, held, workers) in [
+        (ObjectState::Alive, true, 1),
+        (ObjectState::Dying, false, 0),
+    ] {
+        let mut world = enter_world(vec![], 5);
+        // the villager out of reach, so that its started Enter walks
+        world.players[1].objects[ListIndex::new(0)].place_for_test(Position::new(20.0, 80.0, 0.0));
+        world
+            .spatial
+            .set_position(
+                object_id(9175),
+                Position::new(20.0, 80.0, 0.0),
+                &roles(),
+                tuning().visibility,
+            )
+            .unwrap();
+        entering_unit_in(&mut world, state);
+        assert_eq!(
+            world.enter_command(
+                PlayerId::new(1),
+                ListIndex::new(0),
+                object_id(10028),
+                OrderForce::Forced
+            ),
+            Ok(Answer::Taken),
+            "{state:?}"
+        );
+        let unit = &world.players[1].objects[ListIndex::new(0)];
+        assert_eq!(
+            world.parts.actions_of(unit.id).list.enter().is_some(),
+            held,
+            "{state:?}"
+        );
+        assert_eq!(
+            world.players[1].objects[ListIndex::new(1)].workers,
+            WorkerCount::of_data(workers),
+            "{state:?}"
+        );
+    }
+}
+
+/// Slot 0x3a0 under the Artifact on top (`0x141084ad5`): `FUN_140a98e20` deletes the walking
+/// Enter that the Artifact held (its teardown lets the house go, its `MoveTo`'s stops the walk),
+/// then the sub-list's add (`FUN_140a977e0`) holds the new Enter below state 3 and deletes it
+/// unstarted in state 3, its teardown letting go the house that its constructor took.
+#[test]
+fn livestock_enter_command_in_state_3_deletes_the_new_sub_action_unstarted() {
+    for (state, held, workers) in [
+        (ObjectState::Alive, true, 1),
+        (ObjectState::Dying, false, 0),
+    ] {
+        let mut world = livestock_enter_world();
+        let walking = EnterAction::new(
+            ContainerId::new(object_id(10028)),
+            Position::new(30.0, 88.0, 0.0),
+            &enter_task(Distance::ZERO, class::BUILDING),
+        )
+        .walking(MoveTo::Moving);
+        let sheep = world.players[1].objects[ListIndex::new(0)].id;
+        world
+            .parts
+            .actions
+            .of_mut(sheep)
+            .unwrap()
+            .list
+            .artifact_mut()
+            .unwrap()
+            .sub = Some(ArtifactSub::Enter { enter: walking });
+        world.parts.mover_mut(sheep).unwrap().velocity = Some(Velocity {
+            velocity: BVector::new(0.0, 0.0, 0.7),
+            acceleration: BVector::new(0.0, 0.0, f32::MAX),
+        });
+        // the old Enter took the house
+        world.players[1].objects[ListIndex::new(1)].workers = WorkerCount::of_data(1);
+        entering_unit_in(&mut world, state);
+        assert_eq!(
+            world.enter_command(
+                PlayerId::new(1),
+                ListIndex::new(0),
+                object_id(10028),
+                OrderForce::Forced
+            ),
+            Ok(Answer::Taken),
+            "{state:?}"
+        );
+        let unit = &world.players[1].objects[ListIndex::new(0)];
+        let artifact = world
+            .parts
+            .actions_of(unit.id)
+            .list
+            .artifact()
+            .copied()
+            .unwrap();
+        assert_eq!(
+            artifact.enter().is_some() || unit.life.inside.is_some(),
+            held,
+            "{state:?}"
+        );
+        let velocity = world.parts.mover_of(unit.id).unwrap().velocity.unwrap();
+        assert_eq!(
+            (velocity.velocity.y(), velocity.acceleration.y()),
+            (0.0, 0.0),
+            "{state:?}"
+        );
+        assert_eq!(
+            world.players[1].objects[ListIndex::new(1)].workers,
+            WorkerCount::of_data(workers),
+            "{state:?}"
+        );
+    }
+}
+
+/// Unforced, slot 0x3a0 keeps the head only when it is an Enter (`FUN_140a7be70` 3) on the
+/// target: a `MoveTo` toward the house is no Enter, so the command looks for a task, finds the
+/// garrison task and installs a new Enter in its place (the list's deletion lets the house the
+/// `MoveTo` held go, the Enter's constructor takes it again).
+#[test]
+fn unforced_enter_command_replaces_another_action_on_its_target() {
+    let mut world = enter_world(vec![], 5);
+    let villager = world.players[1].objects[ListIndex::new(0)].id;
+    world
+        .parts
+        .actions
+        .of_mut(villager)
+        .unwrap()
+        .list
+        .set_move_to(Some(MoveToAction {
+            target: Some(object_id(10028)),
+            ..MoveToAction::to_point(Position::new(30.0, 88.0, 0.0), Distance::ZERO, None)
+        }));
+    world.players[1].objects[ListIndex::new(1)].workers = WorkerCount::of_data(1);
+    assert_eq!(
+        world.enter_command(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(10028),
+            OrderForce::Unforced
+        ),
+        Ok(Answer::Taken)
+    );
+    let list = &world.parts.actions_of(villager).list;
+    assert_eq!(list.move_to().copied(), None);
+    assert!(
+        list.enter()
+            .is_some_and(|enter_action| enter_action.target == Some(container_id(10028)))
+            || world.players[1].objects[ListIndex::new(0)]
+                .life
+                .inside
+                .is_some(),
+        "{list:?}"
+    );
+    assert_eq!(
+        world.players[1].objects[ListIndex::new(1)].workers,
+        WorkerCount::of_data(1)
+    );
+}
+
 /// The inside update (`FUN_140a98790`) of a villager inside the house deletes its top action
 /// whatever its kind: a `MoveTo` left from before the enter goes (its destructor stops the
 /// unit), and the update after has nothing left to delete (426027790-style villagers in a town

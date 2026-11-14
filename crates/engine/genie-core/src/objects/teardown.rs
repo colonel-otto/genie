@@ -277,7 +277,9 @@ impl ActionList {
 /// layer and top speed (`motion`, `top`: slot 0x208 as the deletion started). Below state 3 the
 /// action comes back, and the caller's start (its slot 0x28 with 1) holds it as the head of the
 /// emptied list; in state 3 or later the list deletes it unstarted, its destructor (slot 0 with
-/// 1, [`Action::tear_down`]) after the old actions'. With what its destructor left.
+/// 1, [`Action::tear_down`]) after the old actions'. With what its destructor left. The enter
+/// command adds its Enter the same way to the sub-list of an Artifact on top, after
+/// `FUN_140a98e20` deleted the sub-action there (`FUN_1410847e0`, [`World::enter_under_artifact`]).
 ///
 /// Slot 0x808 itself runs the new action's slot 0x70 with the old head (`FUN_140a986f0`) first,
 /// which does nothing for every kind the list holds: the base's (`FUN_140a78050`); only
@@ -288,6 +290,7 @@ impl ActionList {
 ///
 /// [`Unit::clear_own_actions`]: crate::objects::unit::Unit::clear_own_actions
 /// [`World::clear_actions`]: crate::world::World::clear_actions
+/// [`World::enter_under_artifact`]: crate::world::World::enter_under_artifact
 ///
 /// # Errors
 ///

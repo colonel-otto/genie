@@ -180,11 +180,10 @@ impl World {
         self.enter_with(player, idx, order.target, &order.task, order.slot)
     }
 
-    /// The enter command's Enter on `task` (`FUN_140a855d0`, [`World::new_enter`]): under an
-    /// Artifact on top (`under_artifact`, read before the task search) it would become the
-    /// Artifact's sub-action, which is not modelled; else the action list empties and the Enter
-    /// is installed (slot 0x808, [`World::install_enter`]). Returns the notify the install gives
-    /// the unit's own AI ([`World::install_enter_as`]).
+    /// The enter command's Enter on `task` (`FUN_140a855d0`, [`World::new_enter`]), then its
+    /// install in `slot` ([`World::install_enter_as`]): the unit's own through slot 0x808, or the
+    /// sub-action of the Artifact on top (read before the task search). Returns the notify the
+    /// install gives the unit's own AI.
     ///
     /// # Errors
     ///
