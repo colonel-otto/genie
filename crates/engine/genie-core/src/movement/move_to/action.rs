@@ -344,7 +344,10 @@ impl MoveToAction {
 
     /// A new `MoveTo` of its own (not quiet) to `point` within `range` (`FUN_140aa0d30`), with
     /// its `sprite` ([`MoveToAction::sprite`]), before its start ([`MoveToAction::start`]),
-    /// which sets its state (3 until then).
+    /// which sets its state. The game's constructor leaves the state (`+0x18`) at 0, as the base
+    /// action's (`FUN_140a73e90`) writes it; genie holds 3 until the start, because nothing reads
+    /// the state in between (the `MoveTo`'s slot 0x70 does nothing, and its destructor
+    /// `FUN_140aa1f30` reads no state).
     #[must_use]
     pub const fn to_point(point: Position, range: Distance, sprite: Option<Graphic>) -> Self {
         Self {
@@ -1123,7 +1126,7 @@ mod tests {
     fn move_to_point_starts_unless_its_unit_has_no_speed() {
         let point = Position::new(12.0, 34.0, 1.0);
         let made = MoveToAction::to_point(point, Distance::new(0.5), Some(RUNNING));
-        assert_eq!((made.state, made.voice), (MoveTo::Start, Voice::Loud));
+        assert_eq!(made.voice, Voice::Loud);
         let start = |speed: f32| {
             let mut move_to_action = made;
             move_to_action.start(

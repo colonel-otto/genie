@@ -296,7 +296,6 @@ impl World {
                 graphics: &self.model.graphics,
                 look: self.parts.combat.of(id).abilities.look.as_ref(),
                 roles: &self.model.roles,
-                sprite_tuning: self.model.tuning.sprite,
                 move_to_tuning: &self.model.tuning.move_to,
                 top_speed,
             },

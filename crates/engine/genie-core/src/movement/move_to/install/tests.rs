@@ -39,7 +39,7 @@ fn walker_in(state: ObjectState) -> World {
         Placed {
             position: Position::new(20.0, 20.0, 0.0),
             radius: Footprint::new(2.0, 2.0),
-            class: class::TOWER,
+            class: class::BUILDING,
             player: PlayerId::new(1),
             master: ids::TOWN_CENTRE,
             obstruction_kind: ObstructionKind::NONE,

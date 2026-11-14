@@ -348,8 +348,6 @@ impl World {
     /// 0x808, [`World::install_move_to`]: the old ones' teardowns let their targets go, then its
     /// start; a unit in state 3 or later lets the new one's target go) and its command count goes
     /// one up ([`World::count_command`]).
-    ///
-    /// [`MoveToAction::to_object`]: crate::movement::move_to::MoveToAction::to_object
     pub(crate) fn move_to_object(
         &mut self,
         player: PlayerId,
@@ -522,7 +520,6 @@ impl World {
                 graphics: &self.model.graphics,
                 look: self.parts.combat.of(id).abilities.look.as_ref(),
                 roles: &self.model.roles,
-                sprite_tuning: self.model.tuning.sprite,
                 move_to_tuning: &self.model.tuning.move_to,
                 top_speed,
             },

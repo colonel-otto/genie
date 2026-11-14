@@ -104,6 +104,7 @@ use crate::movement::fly::FLY;
 use crate::movement::fly::Fly;
 use crate::movement::fly::FlyState;
 use crate::movement::move_to::MoveWaitState;
+use crate::movement::move_to::OwnMoveToStart;
 use crate::movement::move_to::Patience;
 use crate::movement::move_to::{MOVE_TO, MoveWait, NO_TARGET_GAP, TargetMoved};
 use crate::movement::move_to::{MoveTo, MoveToAction};
@@ -19001,7 +19002,6 @@ fn ai_move_of(
         graphics: &graphics,
         look: None,
         roles: static_roles(),
-        sprite_tuning: tuning().sprite,
         move_to_tuning: &tuning().move_to,
         top_speed: TopSpeed::Own,
     };
@@ -19028,7 +19028,13 @@ fn ai_move_of(
             motion.lent(),
             move_to,
             Distance::new(NO_TARGET_GAP),
-            sprites,
+            OwnMoveToStart {
+                masters: sprites.masters,
+                graphics: sprites.graphics,
+                sprite_tuning: tuning().sprite,
+                move_to_tuning: sprites.move_to_tuning,
+                top_speed: sprites.top_speed,
+            },
             &mut rng,
         )?;
     }
@@ -19381,7 +19387,6 @@ fn an_ai_move_of_trebuchet_packs_and_the_base_slot_takes_nothing() {
                 graphics: &none,
                 look: None,
                 roles: static_roles(),
-                sprite_tuning: tuning().sprite,
                 move_to_tuning: &tuning().move_to,
                 top_speed: TopSpeed::Own,
             },
@@ -19401,7 +19406,6 @@ fn an_ai_move_of_trebuchet_packs_and_the_base_slot_takes_nothing() {
                 graphics: &none,
                 look: None,
                 roles: static_roles(),
-                sprite_tuning: tuning().sprite,
                 move_to_tuning: &tuning().move_to,
                 top_speed: TopSpeed::Own,
             },

@@ -57,8 +57,7 @@ use crate::world::{Unread, WALKER_UNMOVING};
 
 /// What the sprites of a move the unit AI gives read: the owner's masters, the sprites' table,
 /// the unit's terrain look and the build's roles, and what its slot 0x208 reads
-/// ([`Unit::ai_move_with`], [`Unit::head_takes_point`]; the start of a unit's own `MoveTo`,
-/// [`Unit::start_own_move_to`], reads its masters, table, tuning and slot 0x208's terms).
+/// ([`Unit::ai_move_with`], [`Unit::head_takes_point`]).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MoveSprites<'world> {
     /// The unit's owner's masters.
@@ -69,8 +68,6 @@ pub(crate) struct MoveSprites<'world> {
     pub(crate) look: Option<&'world Look>,
     /// The build's roles.
     pub(crate) roles: &'world Roles,
-    /// The sprites' tuning values.
-    pub(crate) sprite_tuning: SpriteTuning,
     /// The `MoveTo`'s tuning values.
     pub(crate) move_to_tuning: &'world MoveToTuning,
     /// What the unit's slot 0x208 reads besides its mover's own speed and its place.
@@ -111,7 +108,6 @@ impl Unit {
                 graphics: &step.world.model.graphics,
                 look: step.world.parts.combat.of(self.id).abilities.look.as_ref(),
                 roles,
-                sprite_tuning: step.world.model.tuning.sprite,
                 move_to_tuning: &step.world.model.tuning.move_to,
                 top_speed,
             },

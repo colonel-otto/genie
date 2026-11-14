@@ -43,6 +43,8 @@ pub use crate::movement::move_to::action::{
     object_sprite, point_sprite,
 };
 pub use crate::movement::move_to::constructors::{MoveToReads, WalkTo};
+#[cfg(test)]
+pub(crate) use crate::movement::move_to::install::OwnMoveToStart;
 pub use crate::movement::move_to::list::ListUpdate;
 pub(crate) use crate::movement::move_to::list::update_sub_actions;
 pub use crate::movement::move_to::move_wait_state::MoveWaitState;

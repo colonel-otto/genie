@@ -5,8 +5,9 @@ use crate::GenieResult;
 use crate::map::Distance;
 use crate::math::rng::Stream;
 use crate::math::rng::Well512;
-use crate::movement::ai_moves::MoveSprites;
+use crate::movement::TopSpeed;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::Graphics;
 use crate::objects::ListIndex;
 use crate::objects::layers::Action;
 use crate::objects::layers::MotionMut;
@@ -15,8 +16,26 @@ use crate::objects::masters::PlayersMastersExt;
 use crate::objects::unit::Unit;
 use crate::players::PlayerId;
 use crate::world::World;
+use crate::world::layer::generated::MoveToTuning;
+use crate::world::layer::generated::SpriteTuning;
 use crate::world::slots::PlayerSlotsExt;
 use crate::world::step::Step;
+
+/// What the start of a unit's own `MoveTo` reads ([`Unit::start_own_move_to`]): the standing
+/// sprite's masters, table and tuning, the `MoveTo`'s tuning and what the unit's slot 0x208 reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OwnMoveToStart<'world> {
+    /// The unit's owner's masters.
+    pub(crate) masters: OwnerMasters<'world>,
+    /// The sprites' table.
+    pub(crate) graphics: &'world Graphics,
+    /// The sprites' tuning values.
+    pub(crate) sprite_tuning: SpriteTuning,
+    /// The `MoveTo`'s tuning values.
+    pub(crate) move_to_tuning: &'world MoveToTuning,
+    /// What the unit's slot 0x208 reads besides its mover's own speed and its place.
+    pub(crate) top_speed: TopSpeed,
+}
 
 impl World {
     /// Slot 0x808 with a new `MoveTo` of its own (`move_to`, its constructor's) of object `idx` of
@@ -51,11 +70,9 @@ impl World {
             self.parts.motion.layer_mut(id),
             move_to,
             gap,
-            MoveSprites {
+            OwnMoveToStart {
                 masters: OwnerMasters::new(&self.parts.own_master, self.model.masters.of(player)),
                 graphics: &self.model.graphics,
-                look: self.parts.combat.of(id).abilities.look.as_ref(),
-                roles: &self.model.roles,
                 sprite_tuning: self.model.tuning.sprite,
                 move_to_tuning: &self.model.tuning.move_to,
                 top_speed,
@@ -90,14 +107,12 @@ impl Unit {
             step.world.parts.motion.layer_mut(self.id),
             move_to,
             gap,
-            MoveSprites {
+            OwnMoveToStart {
                 masters: OwnerMasters::new(
                     &step.world.parts.own_master,
                     step.world.model.masters.of(step.player),
                 ),
                 graphics: &step.world.model.graphics,
-                look: step.world.parts.combat.of(self.id).abilities.look.as_ref(),
-                roles: &step.world.model.roles,
                 sprite_tuning: step.world.model.tuning.sprite,
                 move_to_tuning: &step.world.model.tuning.move_to,
                 top_speed,
@@ -109,7 +124,7 @@ impl Unit {
     /// The start (slot 5 with 1, `0x140aa2100`) of the `MoveTo` of its own that the install
     /// handed back (`move_to`, `gap` its start's gap to its target), on the unit with its action
     /// layer `actions` and its motion layer `motion`: its state by the gap and the unit's top
-    /// speed (slot 0x208 with the terms in `sprites`, [`MoveToAction::start`]); one that ends at
+    /// speed (slot 0x208 with the terms in `reads`, [`MoveToAction::start`]); one that ends at
     /// its start shows the standing sprite of the unit's master ([`Unit::shows_standing_sprite`],
     /// a draw of `sprite_rng`); then the list holds it.
     ///
@@ -122,20 +137,20 @@ impl Unit {
         mut motion: MotionMut<'_>,
         mut move_to: MoveToAction,
         gap: Distance,
-        sprites: MoveSprites<'_>,
+        reads: OwnMoveToStart<'_>,
         sprite_rng: &mut Well512,
     ) -> GenieResult<()> {
-        let top = sprites
+        let top = reads
             .top_speed
             .of_object(motion.mover(), self.position().ground());
-        move_to.start(gap, top, sprites.move_to_tuning);
+        move_to.start(gap, top, reads.move_to_tuning);
         if move_to.shows_standing() {
             self.shows_standing_sprite(
                 motion.reborrow(),
-                sprites.masters,
-                sprites.graphics,
+                reads.masters,
+                reads.graphics,
                 sprite_rng,
-                sprites.sprite_tuning,
+                reads.sprite_tuning,
             )?;
         }
         actions.list.set_move_to(Some(move_to));
