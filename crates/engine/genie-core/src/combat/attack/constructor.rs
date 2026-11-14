@@ -5,7 +5,6 @@ use crate::combat::abilities::Look;
 use crate::combat::attack::ATTACK_TARGET_NOT_LIVE;
 use crate::combat::attack::AttackState;
 use crate::combat::attack::CHARGE_RANGE;
-use crate::combat::attack::STANDING_SPRITE_LACKING;
 use crate::combat::attack::TARGET_GONE;
 use crate::combat::attack::{
     Arms, Attack, AttackReads, BeginReads, Begun, Engagement, Fight, Ground, NONE, OwnStart,
@@ -17,7 +16,7 @@ use crate::map::Point;
 use crate::map::Position;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{at_most_or_unordered, sqrt};
-use crate::math::rng::{Stream, Well512};
+use crate::math::rng::Stream;
 use crate::movement::MoveStart;
 use crate::movement::Speed;
 use crate::movement::gate_gap;
@@ -27,14 +26,11 @@ use crate::objects::Graphics;
 use crate::objects::ObjectId;
 use crate::objects::SpriteId;
 use crate::objects::Voice;
-use crate::objects::layers::MotionMut;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::PlayersMastersExt;
 use crate::objects::masters::TaskSprites;
 use crate::objects::masters::{Master, MasterTables, OwnerMasters};
-use crate::objects::sprite::ActiveSprite;
 use crate::objects::sprite::Cargo;
-use crate::objects::sprite::new_sprite;
 use crate::objects::sprite::{running, walking};
 use crate::objects::task_change::{TaskChange, TaskSprite, swapped};
 use crate::objects::teardown::HeadStart;
@@ -50,7 +46,6 @@ use crate::world::layer::MasterRoles;
 use crate::world::layer::Roles;
 use crate::world::layer::generated::AttackTuning;
 use crate::world::layer::generated::MoveToTuning;
-use crate::world::layer::generated::SpriteTuning;
 use crate::world::motions::BesideParts;
 use crate::world::objects_ref::ObjectsRef;
 use crate::world::step::Step;
@@ -434,29 +429,6 @@ impl Attack {
     ) -> bool {
         let (dx, dy) = (at.x() - centre.x(), at.y() - centre.y());
         sqrt(dy * dy + dx * dx) >= (self.range + Distance::new(attack_tuning.leash_slack)).get()
-    }
-
-    /// The start's `set_state(13)` of a new Attack of a unit inside another (the attack command's,
-    /// [`crate::unit_ai::world_view::UnitView::start_attack_now`]), as [`Attack::finish_in`]: the
-    /// state, the unit's animation at speed 1 and its standing sprite (a new Attack holds no
-    /// `MoveTo` to stop). Its next update posts 0x1f9 and removes it.
-    ///
-    /// # Errors
-    ///
-    /// When the unit's master has no standing sprite.
-    pub fn fail_at_start(
-        &mut self,
-        sprite: &mut Option<ActiveSprite>,
-        mut motion: MotionMut<'_>,
-        rng: &mut Well512,
-        sprite_tuning: SpriteTuning,
-    ) -> GenieResult<()> {
-        // State 13 ("Failed"): the target went out of sight.
-        self.state = AttackState::Failed;
-        motion.set_anim_speed(Speed::new(1.0));
-        let idle = self.arms.idle_sprite.ok_or(STANDING_SPRITE_LACKING)?;
-        new_sprite(sprite, motion.move_stats_mut(), idle, rng, sprite_tuning);
-        Ok(())
     }
 
     /// The start's `set_state(6)` for a unit that cannot move ([`Attack::start_own`]): the range

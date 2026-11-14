@@ -19908,6 +19908,60 @@ fn scout_attack_on_wolf(
     list: ActionList,
     force: OrderForce,
 ) -> (Object, Attacked, Vec<i32>) {
+    scout_attack_with(ScoutAttack {
+        wolf_id,
+        timer,
+        inside,
+        ..ScoutAttack::new(list, force)
+    })
+}
+
+/// How [`scout_attack_with`] sets up the scout 123 and Gaia's wolf before the attack command.
+struct ScoutAttack {
+    /// The wolf's id.
+    wolf_id: ObjectId,
+    /// The workers the wolf counts: the takes of the scout's actions on it.
+    wolf_workers: WorkerCount,
+    /// The scout's attack timer.
+    timer: f32,
+    /// The object the scout is inside, if any.
+    inside: Option<ObjectId>,
+    /// The scout's action list.
+    list: ActionList,
+    /// The command's force.
+    force: OrderForce,
+    /// The scout's state (the fixture's map holds no sight, so no seer mirrors it).
+    state: ObjectState,
+}
+
+impl ScoutAttack {
+    /// The command `force`d or not by the live scout on the map with its action list `list`
+    /// and its attack timer run out, on the wolf 50 that no action took.
+    fn new(list: ActionList, force: OrderForce) -> Self {
+        Self {
+            wolf_id: object_id(50),
+            wolf_workers: WorkerCount::ZERO,
+            timer: 0.0,
+            inside: None,
+            list,
+            force,
+            state: ObjectState::Alive,
+        }
+    }
+}
+
+/// The unit AI's attack command of the scout 123 on Gaia's wolf as `setup` sets them up: the
+/// scout (with its parts) and what the command answered and took.
+fn scout_attack_with(setup: ScoutAttack) -> (Object, Attacked, Vec<i32>) {
+    let ScoutAttack {
+        wolf_id,
+        wolf_workers,
+        timer,
+        inside,
+        list,
+        force,
+        state,
+    } = setup;
     let standing = scout_standing();
     let graphics = Graphics::from([
         (SpriteId::named(300), standing),
@@ -19968,6 +20022,7 @@ fn scout_attack_on_wolf(
                 master_id: master_id(126),
                 ..Lifecycle::default()
             },
+            workers: wolf_workers,
             ..Unit::default()
         }]
         .into(),
@@ -19985,6 +20040,7 @@ fn scout_attack_on_wolf(
                 life: Lifecycle {
                     master_id: ids::ID_448,
                     inside: inside.map(ContainerId::new),
+                    state,
                     ..Lifecycle::default()
                 },
                 ..Unit::default()
@@ -20523,8 +20579,8 @@ fn an_attack_command_on_its_own_attack_target_asks_that_attack_again() {
 
 /// `FUN_141081a80` compares the object its top action's target names (`FUN_140a78450`) with the
 /// target it found: a recyclable target (the wolf under −50) names none, so its own Attack on it
-/// is no match, forced or not. A new Attack replaces it: it takes the wolf, and the scout, which
-/// may not move, swings at once.
+/// is no match, forced or not. A new Attack replaces it: it takes the wolf, which the old one
+/// had taken and lets go, and the scout, which may not move, swings at once.
 #[test]
 fn an_attack_command_on_its_own_recyclable_attack_target_starts_new_attack() {
     let own = Attack {
@@ -20533,8 +20589,11 @@ fn an_attack_command_on_its_own_recyclable_attack_target_starts_new_attack() {
     };
     let list = ActionList::default().with_attack(Some(own));
     for force in [OrderForce::Unforced, OrderForce::Forced] {
-        let (object, attacked, takes) =
-            scout_attack_on_wolf(object_id(-50), 0.0, None, list.clone(), force);
+        let (object, attacked, takes) = scout_attack_with(ScoutAttack {
+            wolf_id: object_id(-50),
+            wolf_workers: WorkerCount::ONE,
+            ..ScoutAttack::new(list.clone(), force)
+        });
         assert_eq!((attacked.attacks, takes), (true, vec![-50]));
         assert_eq!(
             object
@@ -20551,13 +20610,11 @@ fn an_attack_command_on_its_own_recyclable_attack_target_starts_new_attack() {
     }
 }
 
-/// `FUN_141081a80` reads the head (`FUN_140a986f0`) at both its compares: an Attack on the target
-/// below a `MoveTo` on it is no match, as the head's type is 1, forced or not. A new Attack
-/// replaces the list: it takes the wolf, and the scout, which may not move, swings at once. The
-/// list's deletion restarts the Attack once the `MoveTo` goes, so it holds the scout's standing
-/// sprite as an Attack of the scout's master does.
-#[test]
-fn an_attack_command_reads_the_head_and_not_an_attack_below_it() {
+/// The scout's list for [`an_attack_command_reads_the_head_and_not_an_attack_below_it`]: its
+/// Attack on the wolf 50 below a `MoveTo` on the wolf, each of which took it and lets it go (the
+/// wolf counts two workers). The Attack holds the scout's standing sprite, as an Attack of the
+/// scout's master does: the list's deletion restarts it once the `MoveTo` goes.
+fn attack_below_move_to() -> ActionList {
     let below = own_attack(50, -1, AttackState::Done);
     let own = Attack {
         seen: Position::new(-1.0, -1.0, -1.0),
@@ -20567,15 +20624,25 @@ fn an_attack_command_reads_the_head_and_not_an_attack_below_it() {
         },
         ..below
     };
-    let list = ActionList::default()
+    ActionList::default()
         .with_attack(Some(own))
         .with_move_to(Some(MoveToAction {
             target: Some(object_id(50)),
             ..MoveToAction::sub_in(MoveTo::Moving)
-        }));
+        }))
+}
+
+/// `FUN_141081a80` reads the head (`FUN_140a986f0`) at both its compares: an Attack on the target
+/// below a `MoveTo` on it is no match, as the head's type is 1, forced or not. A new Attack
+/// replaces the list ([`attack_below_move_to`]): it takes the wolf, the old actions let it go,
+/// and the scout, which may not move, swings at once.
+#[test]
+fn an_attack_command_reads_the_head_and_not_an_attack_below_it() {
     for force in [OrderForce::Unforced, OrderForce::Forced] {
-        let (object, attacked, takes) =
-            scout_attack_on_wolf(object_id(50), 0.0, None, list.clone(), force);
+        let (object, attacked, takes) = scout_attack_with(ScoutAttack {
+            wolf_workers: WorkerCount::of_data(2),
+            ..ScoutAttack::new(attack_below_move_to(), force)
+        });
         assert_eq!((attacked.attacks, takes), (true, vec![50]));
         let after = &object.parts.actions.list;
         assert_eq!(after.iter().len(), 1);
@@ -20584,6 +20651,54 @@ fn an_attack_command_reads_the_head_and_not_an_attack_below_it() {
             Some((AttackState::Swing, Some(AttackTargetId::new(object_id(50)))))
         );
     }
+}
+
+/// `FUN_141081a80` makes its Attack (`FUN_140a7c210`, which takes the target) before the list's
+/// deletion (`FUN_140a98620`) lets the old actions' target go ([`attack_below_move_to`]): on a
+/// wolf that counts the most workers the game counts (550, [`WorkerCount::MOST`]) the take adds
+/// none and the two releases take two, so the wolf counts 548 (the releases first and the take
+/// after would leave 549).
+#[test]
+fn an_attack_command_takes_its_target_before_the_deletion_lets_it_go() {
+    let (object, attacked, takes) = scout_attack_with(ScoutAttack {
+        wolf_workers: WorkerCount::MOST,
+        ..ScoutAttack::new(attack_below_move_to(), OrderForce::Forced)
+    });
+    assert!(attacked.attacks);
+    assert_eq!(takes.len(), 548);
+    assert_eq!(
+        object
+            .parts
+            .actions
+            .list
+            .attack()
+            .map(|attack| attack.target),
+        Some(Some(AttackTargetId::new(object_id(50))))
+    );
+}
+
+/// `FUN_141081a80` of a scout in state 3: the constructor takes the wolf, then slot 0x808
+/// (`0x141081ff7`, [`Unit::set_only_own_action`]) deletes the new Attack unstarted, its destructor
+/// (`FUN_140a7f640`) letting the wolf go. The command answers true with no notifies; the list is
+/// empty, and the scout keeps its standing sprite, as no start swings it.
+///
+/// [`Unit::set_only_own_action`]: crate::objects::unit::Unit::set_only_own_action
+#[test]
+fn an_attack_command_of_dying_unit_deletes_its_new_attack_unstarted() {
+    let (object, attacked, takes) = scout_attack_with(ScoutAttack {
+        state: ObjectState::Dying,
+        ..ScoutAttack::new(ActionList::default(), OrderForce::Unforced)
+    });
+    assert_eq!((attacked.attacks, attacked.posted), (true, vec![]));
+    assert_eq!(takes, Vec::<i32>::new());
+    assert!(object.parts.actions.list.is_empty());
+    assert_eq!(
+        object
+            .unit
+            .sprite
+            .map(|active_sprite| active_sprite.graphic.id),
+        Some(SpriteId::named(300))
+    );
 }
 
 /// `FUN_141081a80`'s start (`0x140a7f8c0`) of a unit that cannot move (stance 2, no order) in

@@ -253,6 +253,24 @@ impl Unit {
     ) -> GenieResult<Option<A>> {
         let by = self.releaser(step)?;
         let ai_target = step.world.ai_target(self.id);
+        self.set_only_own_action_with(actions, action, step, ai_target, by)
+    }
+
+    /// [`Unit::set_only_own_action`] from the unit AI's side, which lends the AI out of the
+    /// world's table: the deletion's and the add's top speed read the target `ai_target` of the
+    /// AI as it runs, and what the destructors left is let go by `by`.
+    ///
+    /// # Errors
+    ///
+    /// The deletions' and what they let go.
+    pub(crate) fn set_only_own_action_with<A: Into<ActionsAction>>(
+        &mut self,
+        actions: &mut Action,
+        action: Option<A>,
+        step: &mut Step<'_>,
+        ai_target: Option<ObjectId>,
+        by: Releaser,
+    ) -> GenieResult<Option<A>> {
         self.clear_own_actions(actions, step, ai_target, by)?;
         let Some(action) = action else {
             return Ok(None);

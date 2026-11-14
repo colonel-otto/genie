@@ -4,8 +4,10 @@
 
 use crate::combat::AttackCount;
 use crate::combat::attack::AttackSource;
+use crate::combat::attack::AttackState;
 use crate::combat::attack::{
-    Attack, Mark, OwnStart, ReadyReads, Wielder, arms_looking, engagement, target_in_sight,
+    Attack, Mark, OwnStart, Posted, ReadyReads, TARGET_GONE, Wielder, arms_looking, engagement,
+    target_in_sight,
 };
 use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
@@ -17,7 +19,6 @@ use crate::math::rng::Well512;
 use crate::objects::ObjectId;
 use crate::objects::actions::Action;
 use crate::objects::masters::ActionKind;
-use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
 use crate::objects::masters::TaskGroup;
 use crate::objects::masters::TaskSprites;
@@ -35,7 +36,6 @@ use crate::unit_ai::task_finder::world::SideWorld;
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView};
 use crate::unit_ai::{AiCommand, Effect};
-use crate::world::ATTACKER_UNMOVING;
 use crate::world::layer::ClassRoles;
 use crate::world::layer::Roles;
 use crate::world::slots::PlayerSlotsExt;
@@ -45,26 +45,24 @@ use crate::{GenieError, GenieResult};
 impl UnitView<'_, '_> {
     /// The attack command (slot 0x338, `FUN_14120cea0`; a trebuchet's own part first,
     /// [`UnitView::trebuchet_attack`]) -> `FUN_141081a80`: a target the world does not hold fails;
-    /// `+0x648` takes the world's time (not held); a top Attack whose target is the object (slot
-    /// 0x190's lookup, [`UnitView::top_target_now`]: never a recyclable one) answers true, forced
-    /// after its slot 0x48 on it ([`UnitView::attack_again`]); a villager switches its master
-    /// first (slot 0x90, [`UnitView::swapped_master`]). Then the new Attack
-    /// ([`crate::combat::attack::Attack::own`]): the constructor takes its target (slot 0x178,
-    /// through the view) and clears the unit's `+0x900` (its target is new), the action list clears
-    /// ([`UnitView::attack_clears_actions`]), and the install's start (`0x140a7f8c0` with 1) of a
-    /// unit inside another fails it at once (`set_state(13)`,
-    /// [`crate::combat::attack::Attack::fail_at_start`]); else it clears `+0x900` again, puts the
-    /// unit on its standing sprite (slot 0x68 with `+0x80`) and runs the range test
-    /// ([`crate::combat::attack::Attack::start_own`]): readyToAttack's failure before a `set_state(4)`
-    /// leaves the animation at speed 1; a `MoveTo` that starts arrived shows the standing sprite; a
-    /// unit that cannot move in reach goes ready (`set_state(6)`,
-    /// [`crate::combat::attack::Attack::enter_ready`]: readyToAttack again, then the swing, `set_state(7)`,
-    /// when it faces its target and may attack), whose notifies join the start's. A notify posted
-    /// while the AI runs (its buffer, `FUN_140c55270`) is not modelled.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "the attack command (slot 0x338, `FUN_14120cea0`) and `FUN_141081a80` ported as one function, its branches in the game's order"
-    )]
+    /// a top Attack whose target is the object (slot 0x190's lookup, [`UnitView::top_target_now`]:
+    /// never a recyclable one) answers true, forced after its slot 0x48 on it
+    /// ([`UnitView::attack_again`]); a villager switches its master first (slot 0x90,
+    /// [`UnitView::swapped_master`]); `+0x648` takes the world's time (not held). Then the new
+    /// Attack ([`UnitView::construct_attack`]: it takes its target), the list's deletion
+    /// (`FUN_140a98620`, [`Unit::tear_down_actions`]: what the old actions let go follows the
+    /// take) and slot 0x808 with it (`0x141081ff7`, [`Unit::set_only_own_action_with`], with the
+    /// running AI's target): below state 3 the list's add starts it
+    /// ([`UnitView::start_added_attack`]), in state 3 or later it deletes it unstarted, its
+    /// destructor letting the target go. The command answers true either way, with the notifies
+    /// the start posted. The command answers two top actions before the switch, an unforced one
+    /// of type 7 on the target (true) and one of type `0x7e` (false), but genie's list holds
+    /// neither type; a unit the load could not read whole stops at the deletion with the
+    /// import's error. A notify posted while the AI runs (its buffer, `FUN_140c55270`) is not
+    /// modelled.
+    ///
+    /// [`Unit::tear_down_actions`]: crate::objects::unit::Unit::tear_down_actions
+    /// [`Unit::set_only_own_action_with`]: crate::objects::unit::Unit::set_only_own_action_with
     pub(crate) fn start_attack_now(
         &mut self,
         target: ObjectId,
@@ -83,9 +81,8 @@ impl UnitView<'_, '_> {
             return Ok(attacked);
         }
         let ai = &*ai;
-        let no = Attacked::default;
         let Some(placed) = self.step.world.spatial.get_known(target)?.copied() else {
-            return Ok(no());
+            return Ok(Attacked::default());
         };
         // the head's target as `FUN_140a78450` finds it: a recyclable one names no object
         if let Some(&Action::Attack(attack)) = self.actions.list.head()
@@ -100,90 +97,177 @@ impl UnitView<'_, '_> {
             });
         }
         let master = &self.swapped_master(own, ai.current_target, roles)?;
-        let me_at = *self
-            .step
-            .world
-            .spatial
-            .get(self.unit.id)
-            .ok_or(ATTACKER_UNPLACED)?;
-        let target_master = self.step.world.master_tables().of_placed(target, &placed)?;
-        let visible = target_in_sight(
-            &self.step.world.spatial,
-            self.player,
-            &placed,
-            target_master.fog_visibility,
-        )?;
-        let unit = &mut *self.unit;
-        // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
-        let look = self
-            .step
-            .world
-            .parts
-            .combat_of(unit.id)
-            .abilities
-            .look
-            .as_ref();
-        let arms = arms_looking(
-            master,
-            look,
-            &self.step.world.model.graphics,
-            TaskSprites::NONE,
-            None,
-            roles,
-        );
-        let standing = arms.idle_sprite.ok_or(NO_STANDING_SPRITE)?;
-        if unit.sprite.is_none() {
+        if self.unit.sprite.is_none() {
             return Err(GenieError::unsupported(
                 "an attack command of a unit whose sprite the slice does not hold",
             ));
         }
-        let by = self.attack_clears_actions(master.class, ai.current_target)?;
-        let unit = &mut *self.unit;
-        // slot 0x208 where it stands, its unit AI's target the running AI's
-        if self.step.world.parts.mover_of(unit.id).is_none() {
-            return Err(ATTACKER_UNMOVING);
-        }
-        let speed = self
-            .step
-            .world
-            .top_speed_with(self.player, unit, ai.current_target)?;
-        let engagement = engagement(
-            Some(ai),
-            speed,
-            master,
-            &me_at,
-            &placed,
-            self.step.world.world_time,
-            self.step.world.parts.combat_of(unit.id).next_volley,
-        )?;
-        // the constructor clears +0x900 for a target other than its own (none yet)
-        self.step.world.parts.combat_mut(unit.id)?.attack_count = AttackCount::ZERO;
-        if unit.life.inside.is_some() {
-            return self.attack_from_inside(Attack::own(target, &engagement, arms), by, roles);
-        }
-        new_sprite(
-            &mut unit.sprite,
-            self.step.world.parts.move_stats_mut(unit.id),
-            standing,
-            self.step.world.streams.get_mut(Stream::Sprite),
-            self.step.world.model.tuning.sprite,
-        );
-        let start = OwnStart {
-            target,
-            engagement: &engagement,
-            visible,
-            target_owner: placed.player,
-            ready: self.ready_reads(target, master, ai, roles)?,
+        let by = Releaser {
+            id: self.unit.id,
+            class: Some(master.class),
+            player: self.player,
         };
-        let unit = &mut *self.unit;
-        let mut attack = Attack::own(target, &engagement, arms);
-        let posted = attack.start_own(self.step, unit, HeadStart::Added, &start, roles)?;
-        self.actions.list.set_attack(Some(attack));
-        self.take(target, by, roles)?;
+        let attack = self.construct_attack(target, &placed, master, ai, by, roles)?;
+        self.unit
+            .tear_down_actions(self.actions, self.step, ai.current_target, by)?;
+        let posted = match self.unit.set_only_own_action_with(
+            self.actions,
+            Some(attack),
+            self.step,
+            ai.current_target,
+            by,
+        )? {
+            Some(attack) => self.start_added_attack(attack, master, ai, roles)?,
+            None => Vec::new(),
+        };
         Ok(Attacked {
             attacks: true,
             posted,
         })
+    }
+
+    /// The attack command's Attack (`FUN_141081a80` -> `FUN_140a7c210` with its unit's master's
+    /// range `+0x828`, least range `+0x850` and sprites `+0x83c`, `+0x842`: no task and no
+    /// `MoveTo` sprite) on `target` at `placed`, of the unit of `master` (the switched one) whose
+    /// unit AI runs as `ai`. The target differs from the new Attack's none, so the unit's attack
+    /// count (`+0x900`) clears, and the Attack takes it (`FUN_140a7a230`, slot 0x178 as `by`,
+    /// through the view). It holds the master's sprites with the unit's look ([`arms_looking`]),
+    /// and the range, the least range, the target's place and whether the target is the unit's
+    /// player's as the two stand ([`Attack::own`]; the start reads the rest of their
+    /// [`engagement`] anew). Its own choice of what it takes (an area-effect unit's annex target
+    /// its main building, a class 60 none, one past state 6 not taken) is the task
+    /// attack-constructor-past-state-6.
+    ///
+    /// # Errors
+    ///
+    /// A unit the map does not place, its master's charge range, and the take's.
+    fn construct_attack(
+        &mut self,
+        target: ObjectId,
+        placed: &Placed,
+        master: &Master,
+        ai: &UnitAi,
+        by: Releaser,
+        roles: &Roles,
+    ) -> GenieResult<Attack> {
+        let id = self.unit.id;
+        self.step.world.parts.combat_mut(id)?.attack_count = AttackCount::ZERO;
+        self.take(target, by, roles)?;
+        let world = &self.step.world;
+        let arms = arms_looking(
+            master,
+            world.parts.combat_of(id).abilities.look.as_ref(),
+            &world.model.graphics,
+            TaskSprites::NONE,
+            None,
+            roles,
+        );
+        let me_at = world.spatial.get(id).ok_or(ATTACKER_UNPLACED)?;
+        let engagement = engagement(
+            Some(ai),
+            world.top_speed_with(self.player, self.unit, ai.current_target)?,
+            master,
+            me_at,
+            placed,
+            world.world_time,
+            world.parts.combat_of(id).next_volley,
+        )?;
+        Ok(Attack::own(target, &engagement, arms))
+    }
+
+    /// The list's add of the attack command's new `attack` below state 3 (`FUN_140a977e0`): the
+    /// list holds it at its head, and its slot 0x28 with 1 (`0x140a7f8c0`) starts it
+    /// ([`UnitView::begin_added_attack`]) on the unit of `master` with its unit AI as it runs
+    /// (`ai`). The started Attack goes back to the list, before an error too. Returns the
+    /// notifies the start posted, in order.
+    ///
+    /// # Errors
+    ///
+    /// The start's.
+    fn start_added_attack(
+        &mut self,
+        mut attack: Attack,
+        master: &Master,
+        ai: &UnitAi,
+        roles: &Roles,
+    ) -> GenieResult<Vec<Posted>> {
+        self.actions.list.set_attack(Some(attack));
+        let started = self.begin_added_attack(&mut attack, master, ai, roles);
+        self.actions.list.set_attack(Some(attack));
+        started
+    }
+
+    /// `RGE_Action_Attack`'s slot 0x28 with 1 (`0x140a7f8c0`) on the attack command's `attack`
+    /// at the head of the list, as [`Unit::start_listed_attack`] runs it from the world, with the
+    /// unit AI that runs (`ai`, the unit's `+0x6b0`: never null here). A unit inside an object
+    /// (`+0x2f0`) fails it (`set_state(13)`, [`Attack::finish_in`]: speed 1, the standing
+    /// sprite). Any other shows the sprite the Attack stands with (slot 0x68 with `+0x80`),
+    /// then the start goes on ([`Attack::start_own`], which clears the attack count `+0x900`)
+    /// on what it reads of the unit of `master` and of its target after the sprite: its top
+    /// speed (slot 0x208), the target's sight ([`target_in_sight`]) and readyToAttack's reads
+    /// ([`UnitView::ready_reads`]). The start reads only whether the top speed is 0, which no
+    /// sprite changes (`FUN_14114d1d0` keeps the base for a factor of 0 or less).
+    ///
+    /// [`Unit::start_listed_attack`]: crate::objects::unit::Unit::start_listed_attack
+    ///
+    /// # Errors
+    ///
+    /// An Attack without a target or on one the world does not hold, a unit without a standing
+    /// sprite or one the map does not place, and the start's.
+    fn begin_added_attack(
+        &mut self,
+        attack: &mut Attack,
+        master: &Master,
+        ai: &UnitAi,
+        roles: &Roles,
+    ) -> GenieResult<Vec<Posted>> {
+        let unit = &mut *self.unit;
+        let world = &mut *self.step.world;
+        let sprite_tuning = world.model.tuning.sprite;
+        if unit.life.inside.is_some() {
+            attack.finish_in(
+                AttackState::Failed,
+                unit,
+                world.parts.motion_mut(unit.id),
+                world.streams.get_mut(Stream::Sprite),
+                sprite_tuning,
+            )?;
+            return Ok(Vec::new());
+        }
+        let standing = attack.arms.idle_sprite.ok_or(NO_STANDING_SPRITE)?;
+        new_sprite(
+            &mut unit.sprite,
+            world.parts.move_stats_mut(unit.id),
+            standing,
+            world.streams.get_mut(Stream::Sprite),
+            sprite_tuning,
+        );
+        let target = attack.target.ok_or(TARGET_GONE)?.id();
+        let placed = *world.spatial.get_known(target)?.ok_or(TARGET_GONE)?;
+        let me_at = world.spatial.get(unit.id).ok_or(ATTACKER_UNPLACED)?;
+        let engagement = engagement(
+            Some(ai),
+            world.top_speed_with(self.player, unit, ai.current_target)?,
+            master,
+            me_at,
+            &placed,
+            world.world_time,
+            world.parts.combat_of(unit.id).next_volley,
+        )?;
+        let target_master = world.master_tables().of_placed(target, &placed)?;
+        let start = OwnStart {
+            target,
+            engagement: &engagement,
+            visible: target_in_sight(
+                &world.spatial,
+                self.player,
+                &placed,
+                target_master.fog_visibility,
+            )?,
+            target_owner: placed.player,
+            ready: self.ready_reads(target, master, ai, roles)?,
+        };
+        attack.start_own(self.step, self.unit, HeadStart::Added, &start, roles)
     }
 
     /// Slot 0x338's (`FUN_14120cea0`) own part for a trebuchet, of class 51 (packed) or 54
@@ -256,53 +340,6 @@ impl UnitView<'_, '_> {
         };
         self.switch_unit_master(&own, next.id, ai_target)?;
         Ok(next)
-    }
-
-    /// The install's start (`0x140a7f8c0`) of the Attack of a unit inside another: it fails at
-    /// once (`set_state(13)`, [`crate::combat::attack::Attack::fail_at_start`]) and holds its
-    /// target, which it takes (slot 0x178, as `by`).
-    fn attack_from_inside(
-        &mut self,
-        mut attack: Attack,
-        by: Releaser,
-        roles: &Roles,
-    ) -> GenieResult<Attacked> {
-        let unit = &mut *self.unit;
-        attack.fail_at_start(
-            &mut unit.sprite,
-            self.step.world.parts.motion_mut(unit.id),
-            self.step.world.streams.get_mut(Stream::Sprite),
-            self.step.world.model.tuning.sprite,
-        )?;
-        let target = attack.target;
-        self.actions.list.set_attack(Some(attack));
-        if let Some(target) = target {
-            self.take(target.id(), by, roles)?;
-        }
-        Ok(Attacked {
-            attacks: true,
-            posted: Vec::new(),
-        })
-    }
-
-    /// The action list's clearing before the attack command's Attack (`FUN_140a98620`): an
-    /// Attack on another target tears down (its `MoveTo`'s stops the unit) and lets its targets
-    /// go (slot 0x180) through the view, as do the others; the teardowns read the unit's top
-    /// speed with the running unit AI's target `ai_target`. The releaser, the unit as master
-    /// class `class`.
-    fn attack_clears_actions(
-        &mut self,
-        class: ClassId,
-        ai_target: Option<ObjectId>,
-    ) -> GenieResult<Releaser> {
-        let by = Releaser {
-            id: self.unit.id,
-            class: Some(class),
-            player: self.player,
-        };
-        self.unit
-            .tear_down_actions(self.actions, self.step, ai_target, by)?;
-        Ok(by)
     }
 
     /// The forced attack command on the target of the unit's own Attack (`FUN_141081a80`): the
