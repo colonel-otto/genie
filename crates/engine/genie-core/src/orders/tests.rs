@@ -81,6 +81,7 @@ use crate::orders::OrderFlags;
 use crate::orders::OrderSource;
 use crate::orders::ReadyOrders;
 use crate::orders::SavedPatrols;
+use crate::orders::attack::attack_task_ai;
 use crate::orders::split::JoinTest;
 use crate::orders::split::splits_together;
 use crate::orders::town_bell::BellShelter;
@@ -772,11 +773,12 @@ fn work_attack_on_touching_target_starts_its_move_to_arrived() {
 }
 
 /// The work command's Attack of an action object in state 3 (types 40 to 60: their slot 0x7e8
-/// is the work command in any state; [`work_attack`]'s world holds no sight, so no seer mirrors
-/// the state): the constructor clears the soldier's attack count and takes the wolf
-/// (`FUN_140a7c210`), the install (slot 0x808) deletes the Attack unstarted, its destructor
-/// letting the wolf go, and `FUN_140a7a190` on the freed Attack takes the wolf once more. The
-/// list stays empty, the soldier keeps its sprite and animation, and the wolf counts one worker.
+/// is the work command in any state, and they hold no unit AI, which `TRIBE_Combat_Object`
+/// holds; [`work_attack`]'s world holds no sight, so no seer mirrors the state): the constructor
+/// clears the soldier's attack count and takes the wolf (`FUN_140a7c210`), the install (slot
+/// 0x808) deletes the Attack unstarted, its destructor letting the wolf go, and `FUN_140a7a190`
+/// on the freed Attack takes the wolf once more. The list stays empty, the soldier keeps its
+/// sprite and animation, and the wolf counts one worker.
 #[test]
 fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
     let (mut world, task) = work_attack(UnitStance::Aggressive);
@@ -785,6 +787,7 @@ fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
         .unwrap()
         .kind = MasterKind::ACTION;
     let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    world.parts.set_unit_ai(soldier, None);
     world.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
     world.parts.combat_mut(soldier).unwrap().attack_count = AttackCount::of_data(3);
     world
@@ -1182,11 +1185,11 @@ fn an_attack_task_aims_at_its_target_or_an_annex_main_building() {
 }
 
 /// The attack task's word to its unit AI: the factory's (`FUN_140c64b50`, `FUN_140c64c10`) makes
-/// the aimed main building its target, which becomes the soldier's last target once the work
-/// notify's (`FUN_14106e4e0` kind 9) gives it the annex with its class at the work's point under
-/// order 700 and action 600; the last retarget time and the order history take the world's
-/// time. Neither takes the annex (the constructor's take), and a soldier without a unit AI hears
-/// nothing.
+/// the aimed main building its target and hands it to the constructor, and it becomes the
+/// soldier's last target once the work notify's (`FUN_14106e4e0` kind 9) gives it the annex with
+/// its class at the work's point under order 700 and action 600; the last retarget time and the
+/// order history take the world's time. Neither takes the annex (the constructor's take), and a
+/// soldier without a unit AI hears nothing and hands the constructor the annex.
 #[test]
 fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     let (mut world, _) = work_attack(UnitStance::Aggressive);
@@ -1194,9 +1197,9 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     world.world_time = WorldTime::from_millis(1730);
     let aim = world.attack_aim(object_id(61)).unwrap();
     let tell = |world: &mut World| {
-        world
-            .attack_task_ai(PlayerId::new(1), ListIndex::new(0), &aim)
-            .unwrap();
+        let soldier = world.players[1].objects[ListIndex::new(0)].id;
+        let constructed_on =
+            attack_task_ai(world.parts.unit_ai.get_mut(soldier), object_id(61), &aim);
         world
             .attack_notifies(
                 PlayerId::new(1),
@@ -1207,8 +1210,9 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
                 Notifies::Cleared,
             )
             .unwrap();
+        constructed_on
     };
-    tell(&mut world);
+    assert_eq!(tell(&mut world), object_id(60));
     let ai = world
         .parts
         .unit_ai
@@ -1252,7 +1256,7 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
         .parts
         .set_unit_ai(world.players[1].objects[ListIndex::new(0)].id, None);
     // without a unit AI both answer at once, and still neither takes the annex
-    tell(&mut world);
+    assert_eq!(tell(&mut world), object_id(61));
     assert_eq!(
         world.players[0].objects[ListIndex::new(2)].workers,
         WorkerCount::ZERO
@@ -1369,6 +1373,105 @@ fn attack_started_after(
             .map(|active_sprite| active_sprite.graphic.id),
         world.parts.anim_speed_of(id),
     )
+}
+
+/// The work command's Attack on the annex 61: the list's factory (`FUN_140a97e00` case 7) of a
+/// soldier with a unit AI hands the constructor the aimed main building 60 (`FUN_141189b20`'s
+/// answer, `0x140a97f00`), so the Attack targets it, sees it at its place and takes it; then
+/// `FUN_140a7a190` gives it the annex, the command's object, as its second target and takes the
+/// annex: one worker each. A soldier without a unit AI hands the constructor the annex itself
+/// (`0x140a97edf`): both targets are the annex, which counts two workers, and the main building
+/// none.
+#[test]
+fn work_attack_on_annex_targets_its_main_building_only_with_unit_ai() {
+    let outcome = |with_unit_ai: bool| {
+        let (mut world, task) = work_attack(UnitStance::Aggressive);
+        annexed(&mut world);
+        annexed_on_map(&mut world);
+        let soldier = world.players[1].objects[ListIndex::new(0)].id;
+        if !with_unit_ai {
+            world.parts.set_unit_ai(soldier, None);
+        }
+        world
+            .start_attack(
+                PlayerId::new(1),
+                ListIndex::new(0),
+                object_id(61),
+                &task,
+                Position::new(22.0, 20.5, 0.0),
+                Notifies::Cleared,
+            )
+            .unwrap();
+        let attack = world
+            .parts
+            .actions_of(soldier)
+            .list
+            .attack()
+            .copied()
+            .expect("the soldier's Attack");
+        (
+            attack.target,
+            attack.target2,
+            attack.seen,
+            world.players[0].objects[ListIndex::new(1)].workers,
+            world.players[0].objects[ListIndex::new(2)].workers,
+        )
+    };
+    assert_eq!(
+        outcome(true),
+        (
+            Some(AttackTargetId::new(object_id(60))),
+            Some(AttackTargetId::new(object_id(61))),
+            Position::new(20.5, 20.5, 0.0),
+            WorkerCount::of_data(1),
+            WorkerCount::of_data(1)
+        )
+    );
+    assert_eq!(
+        outcome(false),
+        (
+            Some(AttackTargetId::new(object_id(61))),
+            Some(AttackTargetId::new(object_id(61))),
+            Position::new(22.0, 20.5, 0.0),
+            WorkerCount::ZERO,
+            WorkerCount::of_data(2)
+        )
+    );
+}
+
+/// [`annexed`]'s main building 60 and annex 61 on the map's lists, each at its place with a
+/// footprint of 1 by 1, Gaia's and of its master's class, and the players' sight over the
+/// 40×40 tiles about them, every tile seen.
+fn annexed_on_map(world: &mut World) {
+    world.spatial.sight = Some(Visibility::new(
+        GridSize::new(40, 40),
+        vec![],
+        vec![VisionBits::from_bits_retain(u64::MAX); 1600],
+        vec![],
+        0,
+        vec![],
+    ));
+    for (id, x, class, master) in [
+        (60, 20.5, class::BUILDING, master_id(200)),
+        (61, 22.0, class::TOWER, master_id(201)),
+    ] {
+        world.spatial.insert(
+            object_id(id),
+            Placed {
+                position: Position::new(x, 20.5, 0.0),
+                radius: Footprint::new(1.0, 1.0),
+                class,
+                player: PlayerId::new(0),
+                master,
+                obstruction_kind: ObstructionKind::NONE,
+                buildable_on: BuildableOn::NO,
+                tall: true,
+                moves: false,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+    }
 }
 
 /// Gaia's main building 60 (master 200, class 3) at (20.5, 20.5) and its annex 61 (master 201,

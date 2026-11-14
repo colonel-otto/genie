@@ -23,6 +23,7 @@ use crate::players::PlayerId;
 use crate::unit_ai::AiAction;
 use crate::unit_ai::Notifies;
 use crate::unit_ai::OrderKind;
+use crate::unit_ai::UnitAi;
 use crate::world::World;
 use crate::world::slots::PlayerSlotsExt;
 use crate::world::{ATTACKER_UNPLACED, HUNTER_UNMOVING, TARGET_UNPLACED};
@@ -46,16 +47,38 @@ pub(super) struct Aim {
     pub(super) aimed_class: ClassId,
 }
 
+/// The attack task's part of the list's factory (`FUN_140a97e00` case 7) for the unit's `ai`, on
+/// the command's `target`, which aims at `aim` ([`World::attack_aim`]). A unit with a unit AI
+/// (`+0x6b0`) sets the AI's action 600 (`FUN_140c64b50`) and its target, the aimed object at its
+/// place with its class (`FUN_140c64c10`), and the factory hands the constructor the aimed object
+/// (`FUN_141189b20`'s answer, `0x140a97f00`: an annex's main building, any other target itself).
+/// A unit without one jumps to the constructor with `target` itself (`0x140a97edf`). Returns the
+/// object the constructor takes.
+pub(super) const fn attack_task_ai(
+    ai: Option<&mut UnitAi>,
+    target: ObjectId,
+    aim: &Aim,
+) -> ObjectId {
+    let Some(ai) = ai else {
+        return target;
+    };
+    ai.set_action(Some(AiAction::Attack));
+    ai.set_target(Some(aim.aimed), aim.aimed_class.or_none(), aim.at);
+    aim.aimed
+}
+
 impl World {
     /// The work command's Attack (`FUN_14106ff70`'s tail for a task of action type 7) of object
     /// `idx` of `player` on `target` at `point`: the list's factory (`FUN_140a97e00` case 7: the
-    /// unit AI's part, [`World::attack_task_ai`], then the constructor,
-    /// [`World::construct_attack`]), the work notify (slot 0x828 with the Attack's type 9,
+    /// unit AI's part, [`attack_task_ai`], then the constructor on the object that part hands
+    /// it, [`World::construct_attack`]), the work notify (slot 0x828 with the Attack's type 9,
     /// [`World::attack_notifies`]), the install (slot 0x808, [`World::set_only_action`]: the
-    /// list's deletion, then its add), and the Attack's second target (`FUN_140a7a190`). Below
-    /// state 3 the add starts the Attack and it takes its second target
-    /// ([`World::install_attack`]). The unit AI's `+0x1d5`, cleared after the install, is not
-    /// held; a task range other than 0 is not modelled.
+    /// list's deletion, then its add), and the Attack's second target (`FUN_140a7a190`), the
+    /// command's `target` (`R14`, `0x141070b11`). So a unit with a unit AI attacks an annex's
+    /// main building, which the constructor takes, and holds the annex as its second target,
+    /// which `FUN_140a7a190` takes. Below state 3 the add starts the Attack and it takes its
+    /// second target ([`World::install_attack`]). The unit AI's `+0x1d5`, cleared after the
+    /// install, is not held; a task range other than 0 is not modelled.
     ///
     /// In state 3 or later the add deletes the Attack unstarted: its destructor (`FUN_140a7f640`)
     /// lets the target go and frees it. An action object's slot 0x7e8 (types 40 to 60) is the
@@ -85,8 +108,9 @@ impl World {
             ));
         }
         let aim = self.attack_aim(target)?;
-        self.attack_task_ai(player, idx, &aim)?;
-        let attack = self.construct_attack(player, idx, target, task)?;
+        let id = self.players.live(player, idx)?.id;
+        let constructed_on = attack_task_ai(self.parts.unit_ai.get_mut(id), target, &aim);
+        let attack = self.construct_attack(player, idx, constructed_on, task)?;
         self.attack_notifies(player, idx, target, aim.class, point, notifies)?;
         match self.set_only_action(player, idx, Some(attack))? {
             Some(attack) => self.install_attack(player, idx, &attack, target),
@@ -95,32 +119,17 @@ impl World {
         }
     }
 
-    /// The attack task's part of the list's factory (`FUN_140a97e00` case 7) for the unit AI of
-    /// object `idx` of `player`: action 600 (`FUN_140c64b50`) and the aimed object at its place
-    /// with its class (`FUN_140c64c10`). A unit without a unit AI goes on to the constructor.
-    pub(super) fn attack_task_ai(
-        &mut self,
-        player: PlayerId,
-        idx: ListIndex,
-        aim: &Aim,
-    ) -> GenieResult<()> {
-        let unit = self.players.live(player, idx)?;
-        if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
-            ai.set_action(Some(AiAction::Attack));
-            ai.set_target(Some(aim.aimed), aim.aimed_class.or_none(), aim.at);
-        }
-        Ok(())
-    }
-
     /// The Attack's constructor (`FUN_140a7c210`) from the attack task's factory, for object
-    /// `idx` of `player` on `target`: the target, which differs from the new Attack's none,
-    /// clears the unit's attack count (`+0x900`), and the Attack takes it (`FUN_140a7a230`, slot
-    /// 0x178). The Attack holds the task's sprites and moving sprite ([`arms`]), and the range,
-    /// the least range, the target's place and whether the target is the unit's player's as the
-    /// two stand ([`Attack::own`]; the start reads the rest of their [`engagement`] anew). The
+    /// `idx` of `player` on `target`, the object the factory hands it ([`attack_task_ai`]'s
+    /// answer): the target, which differs from the new Attack's none, clears the unit's attack
+    /// count (`+0x900`), and the Attack takes it (`FUN_140a7a230`, slot 0x178). The Attack holds
+    /// the task's sprites and moving sprite ([`arms`]), and the range, the least range, the
+    /// target's place and whether the target is the unit's player's as the two stand
+    /// ([`Attack::own`]; the start reads the rest of their [`engagement`] anew). The
     /// constructor's slot 0x1f8, whose answer it drops, and `FUN_140c87e70`, a counter, change
-    /// nothing. Its choice of what it takes (an area-effect unit's annex target its main
-    /// building, a class 60 none, one past state 6 not taken by `FUN_140a7a230`) is the task
+    /// nothing. Its own choice of what it takes (an area-effect unit's annex target its main
+    /// building, here reached only by a unit without a unit AI, whose factory hands it the
+    /// annex; a class 60 none; one past state 6 not taken by `FUN_140a7a230`) is the task
     /// attack-constructor-past-state-6.
     ///
     /// # Errors
@@ -194,7 +203,8 @@ impl World {
         self.take(target, self.releaser(player, idx)?)
     }
 
-    /// Where an attack task on `target` aims (`FUN_141189b20`): a building annex at its main
+    /// Where an attack task on `target` aims (`FUN_141189b20`, which the list's factory calls for
+    /// a unit with a unit AI, [`attack_task_ai`]): a building annex at its main
     /// building, anything else at itself; with the target's master's class, and the aimed
     /// object's place and class.
     pub(super) fn attack_aim(&self, target: ObjectId) -> GenieResult<Aim> {
