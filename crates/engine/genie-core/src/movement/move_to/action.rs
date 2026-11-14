@@ -1121,7 +1121,7 @@ mod tests {
     /// `FUN_140aa0d30` and its start `0x140aa2100`: a point is never within 0.01 (no target, so
     /// `f32::MAX`): state 3 for a unit with top speed (slot 0x208; a NaN speed has some), 13 for
     /// one without, whose not quiet `set_state` shows the standing sprite. Its point is `+0x38`.
-    /// Before its start the constructor leaves it loud, in state 3.
+    /// Before its start the constructor leaves it loud.
     #[test]
     fn move_to_point_starts_unless_its_unit_has_no_speed() {
         let point = Position::new(12.0, 34.0, 1.0);
