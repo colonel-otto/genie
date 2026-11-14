@@ -21,7 +21,7 @@ use crate::gathering::hunt::tests::hunting;
 use crate::gathering::hunt::{HuntAction, HuntState, Lead};
 use crate::map::Point;
 use crate::map::{Distance, Offset, Position};
-use crate::movement::explore::ExploreAction;
+use crate::movement::explore::{ExploreAction, ExploreState};
 use crate::movement::fly::{Fly, FlyState};
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::movement::{Acceleration, Speed};
@@ -46,9 +46,14 @@ use crate::world::tests::{villager_holding, wait_over, walk_to_town_centre};
 
 /// The idle update of `action` with every object it holds in `state`.
 fn idled_in(action: &mut Action, state: ObjectState) -> Idled {
+    idled_by(action, |_| state)
+}
+
+/// The idle update of `action` with the object of each id in the state `state_of` gives.
+fn idled_by(action: &mut Action, state_of: impl Fn(ObjectId) -> ObjectState) -> Idled {
     action
         .idle_update(&IdleReads {
-            state_of: &|_| Ok(state),
+            state_of: &|id| Ok(state_of(id)),
         })
         .unwrap()
 }
@@ -64,12 +69,63 @@ fn releasing(released: &[i32]) -> Idled {
     }
 }
 
-/// A `MoveTo` to (5, 5) that holds `target`, with `voice`.
-fn move_to_holding(target: i32, voice: Voice) -> MoveToAction {
+/// The target of `action` and of each sub-action under it, the action's first: one entry per
+/// level that [`IdledAction::into_sub_action`] reaches.
+fn held_targets(action: &mut Action) -> Vec<Option<ObjectId>> {
+    let mut held = Vec::new();
+    let mut level = Some(IdledAction::Listed(action));
+    while let Some(idled_action) = level {
+        held.push(idled_action.target());
+        level = idled_action.into_sub_action();
+    }
+    held
+}
+
+/// `count` levels of actions that each hold `id`.
+fn holding(id: i32, count: usize) -> Vec<Option<ObjectId>> {
+    vec![Some(object_id(id)); count]
+}
+
+/// A list's `MoveTo` to (5, 5) that holds `target`, not quiet.
+fn move_to_holding(target: i32) -> MoveToAction {
     MoveToAction {
         target: Some(object_id(target)),
-        voice,
+        voice: Voice::Loud,
         ..MoveToAction::sub_in(MoveTo::Moving)
+    }
+}
+
+/// A walk's `MoveTo` to (5, 5) that holds `target`: quiet, as every owner makes one
+/// (`FUN_140aa0df0` with `+0x60` 1, the quiet setter `FUN_140a7a170` with 1).
+fn walk_holding(target: i32) -> MoveToAction {
+    MoveToAction {
+        target: Some(object_id(target)),
+        ..MoveToAction::sub_in(MoveTo::Moving)
+    }
+}
+
+/// The forager 9175's Gather of bush 600 (its quiet walk holding the bush), carrying to the town
+/// centre 700.
+fn gather_of_bush() -> GatherAction {
+    let mut world = forage_world();
+    assert_eq!(
+        world.gather_command(
+            PlayerId::new(1),
+            ListIndex::FIRST,
+            object_id(600),
+            OrderForce::Forced,
+        ),
+        Ok(Answer::Taken)
+    );
+    let gather = *world
+        .parts
+        .actions_of(object_id(9175))
+        .list
+        .gather()
+        .unwrap();
+    GatherAction {
+        carry_to: Some(DropSiteId::new(object_id(700))),
+        ..gather
     }
 }
 
@@ -143,6 +199,50 @@ fn missile_on() -> MissileAction {
     }
 }
 
+/// The unit's Attack on 9149 walking to it (its quiet walk, `FUN_140aa0df0` through
+/// `FUN_140a7a170` with 1).
+fn attack_walking() -> Attack {
+    own_attack(
+        9149,
+        AttackState::Move {
+            move_to: Some(walk_holding(9149)),
+        },
+        Distance::ZERO,
+    )
+}
+
+/// The Enter of town centre 9150 walking to it (its quiet walk, `garrison/walk_in.rs`).
+fn enter_walking() -> EnterAction {
+    EnterAction {
+        state: EnterState::Walk {
+            move_to: Some(walk_holding(9150)),
+        },
+        ..enter_town_centre()
+    }
+}
+
+/// The Hunt of animal 1 in its state 12, carrying to drop site 2: its quiet Attack on the animal
+/// (`FUN_140a7c210` on the Hunt's `+0x20`) walking to it.
+fn hunt_attacking() -> HuntAction {
+    let attack = Attack {
+        voice: Voice::Quiet,
+        ..own_attack(
+            1,
+            AttackState::Move {
+                move_to: Some(walk_holding(1)),
+            },
+            Distance::ZERO,
+        )
+    };
+    HuntAction {
+        carry_to: Some(DropSiteId::new(object_id(2))),
+        state: HuntState::Attack {
+            attack: Some(attack),
+        },
+        ..hunting(1)
+    }
+}
+
 /// `FUN_140a784a0` tests `+0x640` against 7 (`JC`): a target in state 7 or 8 goes, one in state
 /// 6 stays, for each kind's slot 0x68 with none; the base's lets it go. The action holds no
 /// target after, and nothing else changes.
@@ -155,7 +255,7 @@ fn target_past_state_6_goes_and_is_let_go() {
     let enter = enter_town_centre();
     let actions = [
         (Action::Artifact(artifact), 9150),
-        (Action::MoveTo(move_to_holding(9149, Voice::Loud)), 9149),
+        (Action::MoveTo(move_to_holding(9149)), 9149),
         (Action::Enter(enter), 9150),
         (Action::Hunt(hunting(9149)), 9149),
         (
@@ -196,27 +296,8 @@ fn target_past_state_6_goes_and_is_let_go() {
 /// second target) past state 6 goes and is let go too, its place and the rest as they were.
 #[test]
 fn gather_lets_its_target_then_its_drop_site_go() {
-    let mut world = forage_world();
-    assert_eq!(
-        world.gather_command(
-            PlayerId::new(1),
-            ListIndex::FIRST,
-            object_id(600),
-            OrderForce::Forced,
-        ),
-        Ok(Answer::Taken)
-    );
-    let gather = *world
-        .parts
-        .actions_of(object_id(9175))
-        .list
-        .gather()
-        .unwrap();
-    let carrying = GatherAction {
-        carry_to: Some(DropSiteId::new(object_id(700))),
-        ..gather
-    };
-    let mut action = Action::Gather(carrying);
+    let gather = gather_of_bush();
+    let mut action = Action::Gather(gather);
     assert_eq!(
         idled_in(&mut action, ObjectState::Removed),
         releasing(&[600, 700])
@@ -233,41 +314,26 @@ fn gather_lets_its_target_then_its_drop_site_go() {
     assert_eq!(action, Action::Gather(dropped));
 }
 
-/// A quiet `MoveTo` (`+0x60`, as a sub-action is) lets its target go without the release
-/// (`FUN_140a7a230`): it holds none after.
+/// The Attack's slot 0x68 (`FUN_140a82a10`) clears the unit's attack count on a target it held,
+/// then the base lets it go: the unit's own Attack is loud.
 #[test]
-fn quiet_move_to_holds_its_target_no_longer_without_release() {
-    let mut action = Action::MoveTo(move_to_holding(9149, Voice::Quiet));
+fn attack_clears_the_count_and_lets_its_target_go() {
+    let attack = own_attack(9149, AttackState::Ready, Distance::ZERO);
+    let mut action = Action::Attack(attack);
     assert_eq!(
         idled_in(&mut action, ObjectState::Removed),
-        Idled::default()
+        Idled {
+            clears_count: true,
+            ..releasing(&[9149])
+        }
     );
-    assert_eq!(action.target(), None);
-}
-
-/// The Attack's slot 0x68 (`FUN_140a82a10`) clears the unit's attack count on a target it held,
-/// then the base lets it go unless the Attack is quiet.
-#[test]
-fn attack_clears_the_count_and_lets_go_unless_quiet() {
-    let loud = own_attack(9149, AttackState::Ready, Distance::ZERO);
-    for (voice, released) in [(Voice::Loud, vec![9149]), (Voice::Quiet, vec![])] {
-        let mut action = Action::Attack(Attack { voice, ..loud });
-        assert_eq!(
-            idled_in(&mut action, ObjectState::Removed),
-            Idled {
-                clears_count: true,
-                ..releasing(&released)
-            }
-        );
-        assert_eq!(
-            action,
-            Action::Attack(Attack {
-                target: None,
-                voice,
-                ..loud
-            })
-        );
-    }
+    assert_eq!(
+        action,
+        Action::Attack(Attack {
+            target: None,
+            ..attack
+        })
+    );
 }
 
 /// The Hunt's slot 0x68 (`FUN_140ac7980`) clears its lead after the base, its drop site past
@@ -348,89 +414,166 @@ fn counted_builder_and_repairer_leave_their_building_first() {
     }
 }
 
-/// A second target past state 6 is let go whatever the action's `+0x60` (a quiet Attack's
-/// too) and goes; one in state 6 stays, as does the target in state 6.
+/// A second target (`+0x28`) goes by its own state, whatever the target's: one past state 6 is
+/// let go and goes, one in state 6 stays, for each kind that holds one (the Gather's, the Hunt's
+/// and the Build's drop site, a missile's shooter, the attack command's second target). The
+/// release tests no `+0x60` (`0x140a784cc`), and no quiet action holds a second target.
 #[test]
-fn second_target_past_state_6_goes_whatever_the_voice() {
-    let quiet = Attack {
-        target2: Some(AttackTargetId::new(object_id(9150))),
-        voice: Voice::Quiet,
-        ..own_attack(9149, AttackState::Ready, Distance::ZERO)
-    };
-    let states = |id: ObjectId| {
-        Ok(if id == object_id(9150) {
-            ObjectState::Removed
-        } else {
-            ObjectState::Undead
-        })
-    };
-    let mut action = Action::Attack(quiet);
-    assert_eq!(
-        action.idle_update(&IdleReads { state_of: &states }),
-        Ok(releasing(&[9150]))
-    );
-    assert_eq!(
-        action,
-        Action::Attack(Attack {
-            target2: None,
-            ..quiet
-        })
-    );
-    let mut missile = Action::Missile(missile_on());
-    assert_eq!(
-        missile.idle_update(&IdleReads {
-            state_of: &|id| Ok(if id == object_id(9149) {
-                ObjectState::Gone
-            } else {
-                ObjectState::Alive
+fn second_target_goes_by_its_own_state() {
+    let actions = [
+        (Action::Gather(gather_of_bush()), 600, 700),
+        (
+            Action::Hunt(HuntAction {
+                carry_to: Some(DropSiteId::new(object_id(700))),
+                ..hunting(9149)
             }),
-        }),
-        Ok(releasing(&[9149]))
-    );
-    assert_eq!(
-        missile,
-        Action::Missile(MissileAction {
-            fired_from: None,
-            ..missile_on()
-        })
-    );
+            9149,
+            700,
+        ),
+        (Action::Build(build_on_site(false)), 10028, 10050),
+        (Action::Missile(missile_on()), 9150, 9149),
+        (
+            Action::Attack(Attack {
+                target2: Some(AttackTargetId::new(object_id(9150))),
+                ..own_attack(9149, AttackState::Ready, Distance::ZERO)
+            }),
+            9149,
+            9150,
+        ),
+    ];
+    for (action, target, second) in actions {
+        let is_second = |id: ObjectId| id == object_id(second);
+        let mut second_gone = action.clone();
+        let idled = idled_by(&mut second_gone, |id| {
+            if is_second(id) {
+                ObjectState::Removed
+            } else {
+                ObjectState::Undead
+            }
+        });
+        assert_eq!(idled, releasing(&[second]), "{action:?}");
+        assert_eq!(
+            (second_gone.target(), second_gone.second_target()),
+            (Some(object_id(target)), None)
+        );
+        let mut target_gone = action.clone();
+        let idled = idled_by(&mut target_gone, |id| {
+            if is_second(id) {
+                ObjectState::Undead
+            } else {
+                ObjectState::Removed
+            }
+        });
+        assert_eq!(idled.left.releases, vec![object_id(target)], "{action:?}");
+        assert_eq!(
+            (target_gone.target(), target_gone.second_target()),
+            (None, Some(object_id(second)))
+        );
+    }
 }
 
-/// `FUN_140a98bf0` runs `FUN_140a784a0` on the sub-actions after the action's own targets: the
-/// Hunt's Attack (quiet: its target goes without a release, the unit's count clears), the
-/// Attack's second target, then the Attack's walk's `MoveTo`, in this order.
+/// `FUN_140a98bf0` runs `FUN_140a784a0` on each sub-action: a walk's `MoveTo` (quiet), the
+/// Hunt's Attack (quiet) and the Artifact's Enter. A target past state 6 goes at every level and
+/// only the loud ones let it go: the Hunt's Attack clears the unit's attack count. A target in
+/// state 6 stays held at every level, and nothing changes.
+#[test]
+fn sub_actions_drop_their_targets_past_state_6_and_keep_them_in_state_6() {
+    let entering = |target: Option<ObjectId>| Artifact {
+        target,
+        sub: Some(ArtifactSub::Enter {
+            enter: enter_walking(),
+        }),
+        ..Artifact::new(PlayerId::new(1), None)
+    };
+    let to_object = Artifact {
+        target: Some(object_id(9149)),
+        sub: Some(ArtifactSub::Walk {
+            move_to: walk_holding(9149),
+        }),
+        ..Artifact::new(PlayerId::new(1), None)
+    };
+    let cases = [
+        (
+            Action::Attack(attack_walking()),
+            holding(9149, 2),
+            true,
+            vec![9149],
+        ),
+        (
+            Action::Enter(enter_walking()),
+            holding(9150, 2),
+            false,
+            vec![9150],
+        ),
+        (
+            Action::Artifact(to_object),
+            holding(9149, 2),
+            false,
+            vec![9149],
+        ),
+        (
+            Action::Artifact(entering(None)),
+            vec![None, Some(object_id(9150)), Some(object_id(9150))],
+            false,
+            vec![9150],
+        ),
+        (
+            Action::Hunt(hunt_attacking()),
+            holding(1, 3),
+            true,
+            vec![1, 2],
+        ),
+    ];
+    for (action, held, clears_count, released) in cases {
+        let mut kept = action.clone();
+        assert_eq!(held_targets(&mut kept), held, "{action:?}");
+        assert_eq!(idled_in(&mut kept, ObjectState::Undead), Idled::default());
+        assert_eq!(kept, action);
+        let mut dropped = action.clone();
+        assert_eq!(
+            idled_in(&mut dropped, ObjectState::Removed),
+            Idled {
+                clears_count,
+                ..releasing(&released)
+            },
+            "{action:?}"
+        );
+        assert_eq!(held_targets(&mut dropped), vec![None; held.len()]);
+    }
+}
+
+/// The sub-actions take the idle update after the action's own targets: the Artifact lets its
+/// own target go before its Enter lets the town centre go; the Hunt its animal before its drop
+/// site, then its Attack and the Attack's walk hold the animal no longer.
 #[test]
 fn sub_actions_follow_the_targets_in_order() {
-    let attack = Attack {
-        target2: Some(AttackTargetId::new(object_id(4))),
-        state: AttackState::Move {
-            move_to: Some(move_to_holding(5, Voice::Loud)),
-        },
-        voice: Voice::Quiet,
-        ..own_attack(3, AttackState::Ready, Distance::ZERO)
+    let entering = Artifact {
+        target: Some(object_id(9149)),
+        sub: Some(ArtifactSub::Enter {
+            enter: enter_walking(),
+        }),
+        ..Artifact::new(PlayerId::new(1), None)
     };
-    let hunt = HuntAction {
-        carry_to: Some(DropSiteId::new(object_id(2))),
-        state: HuntState::Attack {
-            attack: Some(attack),
-        },
-        ..hunting(1)
-    };
-    let mut action = Action::Hunt(hunt);
+    let mut action = Action::Artifact(entering);
     assert_eq!(
         idled_in(&mut action, ObjectState::Removed),
-        Idled {
-            clears_count: true,
-            ..releasing(&[1, 2, 4, 5])
-        }
+        releasing(&[9149, 9150])
     );
+    let hunt = hunt_attacking();
+    let mut action = Action::Hunt(hunt);
+    let _ = idled_in(&mut action, ObjectState::Removed);
+    let HuntState::Attack {
+        attack: Some(attack),
+    } = hunt.state
+    else {
+        panic!("the Hunt attacks: {hunt:?}");
+    };
     let gone = Attack {
         target: None,
-        target2: None,
         state: AttackState::Move {
             move_to: Some(MoveToAction {
                 target: None,
-                ..move_to_holding(5, Voice::Loud)
+                ..walk_holding(1)
             }),
         },
         ..attack
@@ -447,74 +590,39 @@ fn sub_actions_follow_the_targets_in_order() {
     );
 }
 
-/// The Artifact's sub-action takes the idle update too: its Enter lets its building go and its
-/// walk's `MoveTo` its target; an Enter's and a Fly's walk alike, the Fly holding no target of
-/// its own.
+/// An action without a target (`+0x20` null) reads no object: a wait for a foundation keeps its
+/// foundation at `+0x68`, a Make and a Transport walk nowhere here, and the walks of a Fly
+/// (loud, to the flight's point) and of an Explore (quiet, to its point) hold none either; a
+/// state read would fail.
 #[test]
-fn walks_and_the_artifact_enter_let_their_targets_go() {
-    let mut walking_enter = enter_town_centre();
-    walking_enter.state = EnterState::Walk {
-        move_to: Some(move_to_holding(9149, Voice::Loud)),
-    };
-    let entering = Artifact {
-        sub: Some(ArtifactSub::Enter {
-            enter: walking_enter,
-        }),
-        ..Artifact::new(PlayerId::new(1), None)
-    };
-    let mut action = Action::Artifact(entering);
-    assert_eq!(
-        idled_in(&mut action, ObjectState::Removed),
-        releasing(&[9150, 9149])
-    );
-    let Action::Artifact(Artifact {
-        sub: Some(ArtifactSub::Enter { enter }),
-        ..
-    }) = action
-    else {
-        panic!("the Artifact keeps its Enter: {action:?}");
-    };
-    assert_eq!(
-        (enter.target, enter.state.move_to().map(|walk| walk.target)),
-        (None, Some(None))
-    );
-    let walking = Artifact {
-        sub: Some(ArtifactSub::Walk {
-            move_to: move_to_holding(9149, Voice::Loud),
-        }),
-        ..Artifact::new(PlayerId::new(1), None)
-    };
-    let mut action = Action::Artifact(walking);
-    assert_eq!(idled_in(&mut action, ObjectState::Gone), releasing(&[9149]));
-    let mut action = Action::Enter(walking_enter);
-    assert_eq!(
-        idled_in(&mut action, ObjectState::Gone),
-        releasing(&[9150, 9149])
-    );
+fn action_without_target_reads_no_object() {
+    let fails = |id: ObjectId| Err(GenieError::unreachable("read").with("object", id));
+    let to_point = MoveToAction::sub_to_point(Position::new(10.0, 10.0, 0.0), Distance::ZERO, None);
     let fly = Fly {
         state: FlyState::Flying {
-            move_to: Some(move_to_holding(9149, Voice::Loud)),
+            move_to: Some(MoveToAction {
+                voice: Voice::Loud,
+                ..to_point
+            }),
         },
         timer: Seconds::new(1.0),
         home: Point::new(10.0, 10.0),
         task: Task::default(),
     };
-    let mut action = Action::Fly(fly);
-    assert_eq!(idled_in(&mut action, ObjectState::Gone), releasing(&[9149]));
-}
-
-/// An action without a target (`+0x20` null) reads no object: a wait for a foundation keeps its
-/// foundation at `+0x68`, a Make, an Explore and a Transport walk nowhere here; a state read
-/// would fail.
-#[test]
-fn action_without_target_reads_no_object() {
-    let fails = |id: ObjectId| Err(GenieError::unreachable("read").with("object", id));
+    let exploring = ExploreAction {
+        state: ExploreState::Walk {
+            move_to: Some(to_point),
+        },
+        ..ExploreAction::new(Position::new(10.0, 10.0, 0.0))
+    };
     let actions = [
         Action::WaitSolidify(WaitSolidify::new(
             Task::default(),
             FoundationId::new(object_id(10028)),
         )),
         Action::Explore(ExploreAction::new(Position::ORIGIN)),
+        Action::Explore(exploring),
+        Action::Fly(fly),
     ];
     for action in actions {
         let mut idle = action.clone();
@@ -524,7 +632,7 @@ fn action_without_target_reads_no_object() {
         );
         assert_eq!(idle, action);
     }
-    let mut held = Action::MoveTo(move_to_holding(9149, Voice::Loud));
+    let mut held = Action::MoveTo(move_to_holding(9149));
     assert_eq!(
         held.idle_update(&IdleReads { state_of: &fails })
             .unwrap_err()

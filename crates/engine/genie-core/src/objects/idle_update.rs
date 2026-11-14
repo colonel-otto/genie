@@ -16,7 +16,7 @@ use crate::objects::layers::Action as LayersAction;
 use crate::objects::teardown::TornDown;
 use crate::objects::unit::Unit;
 use crate::orders::object_gone;
-use crate::ownership::artifact::ArtifactSub;
+use crate::ownership::artifact::{Artifact, ArtifactSub};
 use crate::world::step::Step;
 
 /// What an idle update reads: the object state (`+0x640`) of an object an action holds, which
@@ -49,25 +49,15 @@ pub(crate) struct Idled {
 }
 
 impl Action {
-    /// `FUN_140a784a0` on an action of the list: a target (`+0x20`) past state 6 goes by the
-    /// kind's slot 0x68 with none ([`Action::drop_idle_target`]); a second target (`+0x28`) past
-    /// state 6 is let go (slot 0x180 on the object of its id `+0x34`, whatever the action's
-    /// `+0x60`) and goes (`+0x28` 0, `+0x34` −1); then each sub-action (`+0x50`,
-    /// `FUN_140a98bf0`) takes the same ([`Action::idle_sub_actions`]).
+    /// `FUN_140a784a0` on an action of the list ([`IdledAction::idle_update`]), with what it
+    /// leaves the unit's world.
     ///
     /// # Errors
     ///
     /// A target the world does not hold ([`IdleReads::state_of`]).
     pub(crate) fn idle_update(&mut self, reads: &IdleReads<'_>) -> GenieResult<Idled> {
         let mut idled = Idled::default();
-        if reads.gone(self.target())?.is_some() {
-            self.drop_idle_target(&mut idled);
-        }
-        if let Some(second) = reads.gone(self.second_target())? {
-            idled.left.release(second);
-            self.clear_second_target();
-        }
-        self.idle_sub_actions(reads, &mut idled)?;
+        IdledAction::Listed(self).idle_update(reads, &mut idled)?;
         Ok(idled)
     }
 
@@ -151,35 +141,129 @@ impl Action {
             | Self::WaitSolidify(_) => {}
         }
     }
+}
 
-    /// `FUN_140a98bf0` on the action's sub-actions (`+0x50`, one at most): its walk's `MoveTo`,
-    /// the Hunt's Attack ([`Action::sub_action_mut`]) or the Artifact's Enter.
-    fn idle_sub_actions(&mut self, reads: &IdleReads<'_>, idled: &mut Idled) -> GenieResult<()> {
-        if let Self::Artifact(artifact) = self
-            && let Some(ArtifactSub::Enter { enter }) = &mut artifact.sub
-        {
-            return enter.idle_update(reads, idled);
+/// An action `FUN_140a784a0` runs on: one of the list (`FUN_140a78470`, `FUN_140a78480`) or a
+/// sub-action of one (`+0x50`, `FUN_140a98bf0`), which genie's states hold by kind.
+#[derive(Debug)]
+enum IdledAction<'action> {
+    /// An action of the list.
+    Listed(&'action mut Action),
+    /// A walk's `MoveTo`: quiet where it holds a target (`FUN_140a7a170` with 1); the loud
+    /// walks of a Fly and of an Artifact go to a point.
+    Walk(&'action mut MoveToAction),
+    /// The Hunt's Attack (its state 12), quiet.
+    HuntAttack(&'action mut Attack),
+    /// The Artifact's Enter.
+    ArtifactEnter(&'action mut EnterAction),
+}
+
+impl IdledAction<'_> {
+    /// `FUN_140a784a0`: a target (`+0x20`) past state 6 goes by the kind's slot 0x68 with none
+    /// ([`IdledAction::drop_target`]); a second target (`+0x28`) past state 6 is let go (slot
+    /// 0x180 on the object of its id `+0x34`, with no test of the action's `+0x60`) and goes
+    /// (`+0x28` 0, `+0x34` −1); then the sub-actions take the same
+    /// ([`IdledAction::idle_sub_actions`]).
+    ///
+    /// # Errors
+    ///
+    /// A target the world does not hold ([`IdleReads::state_of`]).
+    fn idle_update(mut self, reads: &IdleReads<'_>, idled: &mut Idled) -> GenieResult<()> {
+        if reads.gone(self.target())?.is_some() {
+            self.drop_target(idled);
         }
-        match self.sub_action_mut() {
-            Some(SubActionMut::MoveTo(move_to_action)) => move_to_action.idle_update(reads, idled),
-            Some(SubActionMut::Attack(attack)) => attack.idle_update(reads, idled),
-            None => Ok(()),
+        if let Some(second) = reads.gone(self.second_target())? {
+            idled.left.release(second);
+            self.clear_second_target();
+        }
+        self.idle_sub_actions(reads, idled)
+    }
+
+    /// Its target (`+0x20`, its id `+0x30`).
+    fn target(&self) -> Option<ObjectId> {
+        match self {
+            Self::Listed(action) => action.target(),
+            Self::Walk(move_to_action) => move_to_action.target,
+            Self::HuntAttack(attack) => attack.target.map(RoleId::id),
+            Self::ArtifactEnter(enter_action) => enter_action.target.map(RoleId::id),
+        }
+    }
+
+    /// Its second target (`+0x28`, its id `+0x34`): a `MoveTo` and an Enter hold none, and the
+    /// Hunt's Attack none either (its constructor `FUN_140a7c210` leaves it null, and its update
+    /// only clears it, `0x140a834d1`).
+    fn second_target(&self) -> Option<ObjectId> {
+        match self {
+            Self::Listed(action) => action.second_target(),
+            Self::HuntAttack(attack) => attack.target2.map(RoleId::id),
+            Self::Walk(_) | Self::ArtifactEnter(_) => None,
+        }
+    }
+
+    /// The kind's slot 0x68 with none ([`Action::drop_idle_target`]).
+    fn drop_target(&mut self, idled: &mut Idled) {
+        match self {
+            Self::Listed(action) => action.drop_idle_target(idled),
+            Self::Walk(move_to_action) => move_to_action.drop_idle_target(idled),
+            Self::HuntAttack(attack) => attack.drop_idle_target(idled),
+            Self::ArtifactEnter(enter_action) => enter_action.drop_idle_target(idled),
+        }
+    }
+
+    /// The second target goes ([`Action::clear_second_target`]).
+    const fn clear_second_target(&mut self) {
+        match self {
+            Self::Listed(action) => action.clear_second_target(),
+            Self::HuntAttack(attack) => attack.target2 = None,
+            Self::Walk(_) | Self::ArtifactEnter(_) => {}
+        }
+    }
+
+    /// `FUN_140a98bf0` on the action's sub-actions (`+0x50`, one at most in every state genie
+    /// models), each its [`IdledAction::idle_update`].
+    ///
+    /// # Errors
+    ///
+    /// A target the world does not hold.
+    fn idle_sub_actions(self, reads: &IdleReads<'_>, idled: &mut Idled) -> GenieResult<()> {
+        self.into_sub_action()
+            .map_or(Ok(()), |sub_action| sub_action.idle_update(reads, idled))
+    }
+
+    /// Its sub-action: its walk's `MoveTo`, the Hunt's Attack ([`Action::sub_action_mut`]) or the
+    /// Artifact's Enter, which has no slot 0x50 of its own.
+    fn into_sub_action(self) -> Option<Self> {
+        match self {
+            Self::Listed(Action::Artifact(Artifact {
+                sub: Some(ArtifactSub::Enter { enter }),
+                ..
+            })) => Some(Self::ArtifactEnter(enter)),
+            Self::Listed(action) => action.sub_action_mut().map(Self::from),
+            Self::HuntAttack(attack) => walk_of(attack.state.walk_mut()),
+            Self::ArtifactEnter(enter_action) => walk_of(enter_action.state.walk_mut()),
+            Self::Walk(_) => None,
         }
     }
 }
 
-impl MoveToAction {
-    /// `FUN_140a784a0` on a `MoveTo`: a target past state 6 goes ([`MoveToAction::drop_idle_target`]).
-    /// It holds no second target and makes no sub-action.
-    fn idle_update(&mut self, reads: &IdleReads<'_>, idled: &mut Idled) -> GenieResult<()> {
-        if reads.gone(self.target)?.is_some() {
-            self.drop_idle_target(idled);
+impl<'action> From<SubActionMut<'action>> for IdledAction<'action> {
+    /// A sub-action whose slot 0x50 a task change runs: a walk's `MoveTo` or the Hunt's Attack.
+    fn from(sub_action: SubActionMut<'action>) -> Self {
+        match sub_action {
+            SubActionMut::MoveTo(move_to_action) => Self::Walk(move_to_action),
+            SubActionMut::Attack(attack) => Self::HuntAttack(attack),
         }
-        Ok(())
     }
+}
 
+/// The walk's `MoveTo` of a state's sub-action slot, none for an empty one.
+fn walk_of(slot: Option<&mut Option<MoveToAction>>) -> Option<IdledAction<'_>> {
+    slot.and_then(Option::as_mut).map(IdledAction::Walk)
+}
+
+impl MoveToAction {
     /// Slot 0x68 with none, the base's (`FUN_140a7a230`): the target goes, let go unless the
-    /// `MoveTo` is quiet (`+0x60`, as a sub-action is).
+    /// `MoveTo` is quiet (`+0x60`, as a sub-action that holds a target is).
     fn drop_idle_target(&mut self, idled: &mut Idled) {
         let target = self.target.take();
         if self.voice.is_loud() {
@@ -189,23 +273,6 @@ impl MoveToAction {
 }
 
 impl Attack {
-    /// `FUN_140a784a0` on an Attack, a unit's own or the Hunt's: a target past state 6 goes
-    /// ([`Attack::drop_idle_target`]), a second target past state 6 is let go and goes, then its
-    /// walk's `MoveTo` takes the same.
-    fn idle_update(&mut self, reads: &IdleReads<'_>, idled: &mut Idled) -> GenieResult<()> {
-        if reads.gone(self.target.map(RoleId::id))?.is_some() {
-            self.drop_idle_target(idled);
-        }
-        if let Some(second) = reads.gone(self.target2.map(RoleId::id))? {
-            idled.left.release(second);
-            self.target2 = None;
-        }
-        if let Some(move_to_action) = self.state.walk_mut().and_then(Option::as_mut) {
-            move_to_action.idle_update(reads, idled)?;
-        }
-        Ok(())
-    }
-
     /// Slot 0x68 with none (`FUN_140a82a10`, [`Attack::change_target`]): the unit's attack count
     /// clears, then the target goes, let go unless the Attack is quiet (the Hunt's).
     fn drop_idle_target(&mut self, idled: &mut Idled) {
@@ -216,19 +283,6 @@ impl Attack {
 }
 
 impl EnterAction {
-    /// `FUN_140a784a0` on an Enter, a unit's own or the Artifact's sub-action: a target past
-    /// state 6 goes ([`EnterAction::drop_idle_target`]), then its walk's `MoveTo` takes the same.
-    /// It holds no second target.
-    fn idle_update(&mut self, reads: &IdleReads<'_>, idled: &mut Idled) -> GenieResult<()> {
-        if reads.gone(self.target.map(RoleId::id))?.is_some() {
-            self.drop_idle_target(idled);
-        }
-        if let Some(move_to_action) = self.state.walk_mut().and_then(Option::as_mut) {
-            move_to_action.idle_update(reads, idled)?;
-        }
-        Ok(())
-    }
-
     /// Slot 0x68 with none, the base's (`FUN_140a7a230`): the building or transport goes, let go.
     fn drop_idle_target(&mut self, idled: &mut Idled) {
         idled.left.release(self.target.take().map(RoleId::id));
