@@ -11,7 +11,7 @@ use crate::movement::move_to::MoveToAction;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::RoleId;
-use crate::objects::actions::{Action, LAST_TAKEN, SubActionMut};
+use crate::objects::actions::{Action, LAST_TAKEN, SubActionMut, sub_walk};
 use crate::objects::layers::Action as LayersAction;
 use crate::objects::teardown::TornDown;
 use crate::objects::unit::Unit;
@@ -239,8 +239,10 @@ impl IdledAction<'_> {
                 ..
             })) => Some(Self::ArtifactEnter(enter)),
             Self::Listed(action) => action.sub_action_mut().map(Self::from),
-            Self::HuntAttack(attack) => walk_of(attack.state.walk_mut()),
-            Self::ArtifactEnter(enter_action) => walk_of(enter_action.state.walk_mut()),
+            Self::HuntAttack(attack) => sub_walk(attack.state.walk_mut()).map(Self::from),
+            Self::ArtifactEnter(enter_action) => {
+                sub_walk(enter_action.state.walk_mut()).map(Self::from)
+            }
             Self::Walk(_) => None,
         }
     }
@@ -254,11 +256,6 @@ impl<'action> From<SubActionMut<'action>> for IdledAction<'action> {
             SubActionMut::Attack(attack) => Self::HuntAttack(attack),
         }
     }
-}
-
-/// The walk's `MoveTo` of a state's sub-action slot, none for an empty one.
-fn walk_of(slot: Option<&mut Option<MoveToAction>>) -> Option<IdledAction<'_>> {
-    slot.and_then(Option::as_mut).map(IdledAction::Walk)
 }
 
 impl MoveToAction {

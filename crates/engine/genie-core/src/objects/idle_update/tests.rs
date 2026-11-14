@@ -15,10 +15,12 @@ use crate::construction::repair::{RepairAction, RepairState, RepairTask};
 use crate::construction::wait_solidify::WaitSolidify;
 use crate::construction::{FoundationId, RepairTargetId};
 use crate::garrison::EnterState;
+use crate::garrison::transport::{TransportAction, TransportState};
 use crate::gathering::DropSiteId;
 use crate::gathering::gather::GatherAction;
 use crate::gathering::hunt::tests::hunting;
 use crate::gathering::hunt::{HuntAction, HuntState, Lead};
+use crate::gathering::make::{MakeAction, MakeState};
 use crate::map::Point;
 use crate::map::{Distance, Offset, Position};
 use crate::movement::explore::{ExploreAction, ExploreState};
@@ -35,6 +37,7 @@ use crate::objects::masters::TaskSprites;
 use crate::objects::masters::{Task, WorkValue};
 use crate::objects::teardown::HeadCode;
 use crate::ownership::artifact::Artifact;
+use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::test_ids::object_id;
 use crate::test_ids::task_key;
@@ -86,7 +89,8 @@ fn holding(id: i32, count: usize) -> Vec<Option<ObjectId>> {
     vec![Some(object_id(id)); count]
 }
 
-/// A list's `MoveTo` to (5, 5) that holds `target`, not quiet.
+/// A list's `MoveTo` that holds `target`, not quiet; it walks to the target, its point the
+/// origin.
 fn move_to_holding(target: i32) -> MoveToAction {
     MoveToAction {
         target: Some(object_id(target)),
@@ -95,7 +99,7 @@ fn move_to_holding(target: i32) -> MoveToAction {
     }
 }
 
-/// A walk's `MoveTo` to (5, 5) that holds `target`: quiet, as every owner makes one
+/// A walk's `MoveTo` that holds `target`, its point the origin: quiet, as every owner makes one
 /// (`FUN_140aa0df0` with `+0x60` 1, the quiet setter `FUN_140a7a170` with 1).
 fn walk_holding(target: i32) -> MoveToAction {
     MoveToAction {
@@ -591,9 +595,9 @@ fn sub_actions_follow_the_targets_in_order() {
 }
 
 /// An action without a target (`+0x20` null) reads no object: a wait for a foundation keeps its
-/// foundation at `+0x68`, a Make and a Transport walk nowhere here, and the walks of a Fly
-/// (loud, to the flight's point) and of an Explore (quiet, to its point) hold none either; a
-/// state read would fail.
+/// foundation at `+0x68`, a Make holds none, and the walks of a Fly (loud, to the flight's
+/// point), of an Explore and of a sailing Transport (quiet, each to its point) hold none either;
+/// a state read would fail.
 #[test]
 fn action_without_target_reads_no_object() {
     let fails = |id: ObjectId| Err(GenieError::unreachable("read").with("object", id));
@@ -615,6 +619,18 @@ fn action_without_target_reads_no_object() {
         },
         ..ExploreAction::new(Position::new(10.0, 10.0, 0.0))
     };
+    let sailing = TransportAction {
+        state: TransportState::Sail {
+            move_to: Some(to_point),
+        },
+        ..TransportAction::new(Position::new(10.0, 10.0, 0.0))
+    };
+    let making = MakeAction {
+        state: MakeState::Making,
+        remaining: Amount::new(175.0),
+        total: Amount::new(175.0),
+        task: Task::default(),
+    };
     let actions = [
         Action::WaitSolidify(WaitSolidify::new(
             Task::default(),
@@ -623,6 +639,9 @@ fn action_without_target_reads_no_object() {
         Action::Explore(ExploreAction::new(Position::ORIGIN)),
         Action::Explore(exploring),
         Action::Fly(fly),
+        Action::Make(making),
+        Action::Transport(TransportAction::new(Position::ORIGIN)),
+        Action::Transport(sailing),
     ];
     for action in actions {
         let mut idle = action.clone();

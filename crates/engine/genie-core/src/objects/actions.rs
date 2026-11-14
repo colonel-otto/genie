@@ -258,15 +258,15 @@ impl Action {
     /// an Artifact's Enter has no slot 0x50 of its own (`0x140a782d0`, the base's).
     pub(crate) fn sub_action_mut(&mut self) -> Option<SubActionMut<'_>> {
         match self {
-            Self::Attack(attack) => walk(attack.state.walk_mut()),
-            Self::Build(build_action) => walk(build_action.state.walk_mut()),
-            Self::Repair(repair_action) => walk(repair_action.state.walk_mut()),
-            Self::Gather(gather_action) => walk(gather_action.state.walk_mut()),
-            Self::Enter(enter_action) => walk(enter_action.state.walk_mut()),
-            Self::Transport(transport_action) => walk(transport_action.state.walk_mut()),
+            Self::Attack(attack) => sub_walk(attack.state.walk_mut()),
+            Self::Build(build_action) => sub_walk(build_action.state.walk_mut()),
+            Self::Repair(repair_action) => sub_walk(repair_action.state.walk_mut()),
+            Self::Gather(gather_action) => sub_walk(gather_action.state.walk_mut()),
+            Self::Enter(enter_action) => sub_walk(enter_action.state.walk_mut()),
+            Self::Transport(transport_action) => sub_walk(transport_action.state.walk_mut()),
             Self::Hunt(hunt_action) => match &mut hunt_action.state {
                 HuntState::Attack { attack } => attack.as_mut().map(SubActionMut::Attack),
-                walking => walk(walking.walk_mut()),
+                walking => sub_walk(walking.walk_mut()),
             },
             Self::Fly(fly) => fly.state.move_to_mut().map(SubActionMut::MoveTo),
             Self::Explore(explore_action) => {
@@ -282,7 +282,7 @@ impl Action {
 }
 
 /// The walk's `MoveTo` of a state's sub-action slot, none for an empty one.
-fn walk(slot: Option<&mut Option<MoveToAction>>) -> Option<SubActionMut<'_>> {
+pub(crate) fn sub_walk(slot: Option<&mut Option<MoveToAction>>) -> Option<SubActionMut<'_>> {
     slot.and_then(Option::as_mut).map(SubActionMut::MoveTo)
 }
 
