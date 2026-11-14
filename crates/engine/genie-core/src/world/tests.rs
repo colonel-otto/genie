@@ -19594,25 +19594,9 @@ fn on_side<R>(
     (answer.unwrap(), world)
 }
 
-/// [`scout_attack`] of a scout whose own Attack is `own`, the command `force`d or not.
-fn scout_attack_on(
-    timer: f32,
-    inside: Option<ObjectId>,
-    own: Option<&Attack>,
-    force: OrderForce,
-) -> (Object, Attacked, Vec<i32>) {
-    scout_attack_on_wolf(object_id(50), timer, inside, own, force)
-}
-
-/// [`scout_attack_on`] with Gaia's wolf under the id `wolf_id`.
-fn scout_attack_on_wolf(
-    wolf_id: ObjectId,
-    timer: f32,
-    inside: Option<ObjectId>,
-    own: Option<&Attack>,
-    force: OrderForce,
-) -> (Object, Attacked, Vec<i32>) {
-    let standing = Graphic {
+/// The standing sprite 300 of [`scout_attack_on`]'s scout: ten frames of 0.1 s in eight facets.
+fn scout_standing() -> Graphic {
+    Graphic {
         id: SpriteId::named(300),
         frames: Frame::of_data(10),
         facets: FacetCount::of_data(8),
@@ -19620,7 +19604,30 @@ fn scout_attack_on_wolf(
         frame_duration: Seconds::new(0.1),
         replay_delay: Seconds::ZERO,
         flags: SpriteFlags::ANIMATED,
-    };
+    }
+}
+
+/// [`scout_attack`] of a scout whose own Attack is `own`, the command `force`d or not.
+fn scout_attack_on(
+    timer: f32,
+    inside: Option<ObjectId>,
+    own: Option<&Attack>,
+    force: OrderForce,
+) -> (Object, Attacked, Vec<i32>) {
+    let list = ActionList::default().with_attack(own.copied());
+    scout_attack_on_wolf(object_id(50), timer, inside, list, force)
+}
+
+/// [`scout_attack_on`] with Gaia's wolf under the id `wolf_id` and the scout's action list
+/// `list`.
+fn scout_attack_on_wolf(
+    wolf_id: ObjectId,
+    timer: f32,
+    inside: Option<ObjectId>,
+    list: ActionList,
+    force: OrderForce,
+) -> (Object, Attacked, Vec<i32>) {
+    let standing = scout_standing();
     let graphics = Graphics::from([
         (SpriteId::named(300), standing),
         (
@@ -19702,7 +19709,7 @@ fn scout_attack_on_wolf(
                 ..Unit::default()
             },
             Action {
-                list: ActionList::default().with_attack(own.copied()),
+                list,
                 ..Default::default()
             },
         ),
@@ -19745,15 +19752,7 @@ fn scout_attack_on_wolf(
 fn attack_by(who: Master, also: Vec<Master>) -> (Object, Attacked, f32, Tracker) {
     let (timer, inside, own, force) = (0.0, None, None, OrderForce::Forced);
     let attacker_master = who.id;
-    let standing = Graphic {
-        id: SpriteId::named(300),
-        frames: Frame::of_data(10),
-        facets: FacetCount::of_data(8),
-        speed_multiplier: SpeedMultiplier::ONE,
-        frame_duration: Seconds::new(0.1),
-        replay_delay: Seconds::ZERO,
-        flags: SpriteFlags::ANIMATED,
-    };
+    let standing = scout_standing();
     let graphics = Graphics::from([
         (SpriteId::named(300), standing),
         (
@@ -20251,9 +20250,10 @@ fn an_attack_command_on_its_own_recyclable_attack_target_starts_new_attack() {
         seen: Position::new(-1.0, -1.0, -1.0),
         ..own_attack(-50, -1, AttackState::Done)
     };
+    let list = ActionList::default().with_attack(Some(own));
     for force in [OrderForce::Unforced, OrderForce::Forced] {
         let (object, attacked, takes) =
-            scout_attack_on_wolf(object_id(-50), 0.0, None, Some(&own), force);
+            scout_attack_on_wolf(object_id(-50), 0.0, None, list.clone(), force);
         assert_eq!((attacked.attacks, takes), (true, vec![-50]));
         assert_eq!(
             object
@@ -20266,6 +20266,41 @@ fn an_attack_command_on_its_own_recyclable_attack_target_starts_new_attack() {
                 AttackState::Swing,
                 Some(AttackTargetId::new(object_id(-50)))
             ))
+        );
+    }
+}
+
+/// `FUN_141081a80` reads the head (`FUN_140a986f0`) at both its compares: an Attack on the target
+/// below a `MoveTo` on it is no match, as the head's type is 1, forced or not. A new Attack
+/// replaces the list: it takes the wolf, and the scout, which may not move, swings at once. The
+/// list's deletion restarts the Attack once the `MoveTo` goes, so it holds the scout's standing
+/// sprite as an Attack of the scout's master does.
+#[test]
+fn an_attack_command_reads_the_head_and_not_an_attack_below_it() {
+    let below = own_attack(50, -1, AttackState::Done);
+    let own = Attack {
+        seen: Position::new(-1.0, -1.0, -1.0),
+        arms: Arms {
+            idle_sprite: Some(scout_standing()),
+            ..below.arms
+        },
+        ..below
+    };
+    let list = ActionList::default()
+        .with_attack(Some(own))
+        .with_move_to(Some(MoveToAction {
+            target: Some(object_id(50)),
+            ..MoveToAction::sub_in(MoveTo::Moving)
+        }));
+    for force in [OrderForce::Unforced, OrderForce::Forced] {
+        let (object, attacked, takes) =
+            scout_attack_on_wolf(object_id(50), 0.0, None, list.clone(), force);
+        assert_eq!((attacked.attacks, takes), (true, vec![50]));
+        let after = &object.parts.actions.list;
+        assert_eq!(after.iter().len(), 1);
+        assert_eq!(
+            after.attack().map(|attack| (attack.state, attack.target)),
+            Some((AttackState::Swing, Some(AttackTargetId::new(object_id(50)))))
         );
     }
 }
