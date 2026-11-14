@@ -33,8 +33,7 @@ use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::Relics;
 use crate::objects::WorkRate;
-use crate::objects::layers::default_start;
-use crate::objects::layers::{Action, Animated, Building, Combat, DefaultTask, Motion, Static};
+use crate::objects::layers::{Action, Animated, Building, Combat, Motion, Static};
 use crate::objects::lifecycle::Held;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::BlastDefense;
@@ -152,9 +151,6 @@ impl World {
         // the new object's new_position: the ground's height (slot 0x60)
         let position = self.on_ground(player, master, position);
         let id = self.take_object_id(player, master);
-        // what its first update as a built building starts (slot 0x7f0)
-        let default_task = player_master(&self.model.masters, player, master)
-            .map_or(DefaultTask::Nothing, default_start);
         let ai = unit_ai
             .and_then(|unit_ai_kind| {
                 Ok((
@@ -368,10 +364,7 @@ impl World {
             attacking_units: Vec::new(),
         };
         let parts = ObjectParts {
-            actions: Action {
-                default_task,
-                ..Action::default()
-            },
+            actions: Action::default(),
             unit_ai: ai,
             building: layer,
             combat,

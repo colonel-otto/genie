@@ -21,7 +21,8 @@ The other files of this folder:
 
 - `life_step.rs` holds the life cycle's step in the update: the hit points, the states and what
   each new state sets off.
-- `default_task.rs` holds the master's default task, which an idle unit starts.
+- `default_task.rs` holds slot 0x7f0: the master's default task, which an idle unit starts by
+  its type at each call, and the default tasks the slice cannot start.
 - `answers.rs` holds what the object and its actions answer: its taker, its gait, whether its
   top action may be interrupted and the target it attacks. The top action itself is the action
   layer's (`objects/layers/action.rs`).
@@ -41,7 +42,7 @@ The other files of this folder:
 | --- | --- |
 | [`answers.rs`](answers.rs) | What a unit and its action layer answer: their taker, its context, its gait, whether its top action may be interrupted and the target it attacks. |
 | [`death.rs`](death.rs) | An object's death (`set_state(3)` and the static part of it) and a foundation's death. |
-| [`default_task.rs`](default_task.rs) | The master's default task, which an idle unit starts in its update: a bird's Fly, a farm's Make or the Artifact of livestock. |
+| [`default_task.rs`](default_task.rs) | The master's default task, which an idle unit starts in its update (slot 0x7f0): a bird's Fly, a farm's Make or the Artifact of livestock, and the default tasks the slice cannot start. |
 | [`idle_time.rs`](idle_time.rs) | What `RGE_Action_Object::update` (`0x14106ac90`) does after the action list: a villager's idle statistics, then the drop of a speed-up building that is gone or out of range. |
 | [`life_step.rs`](life_step.rs) | The life cycle's step in a unit's update: the hit points, the states, and what each new state sets off. |
 | [`mod.rs`](mod.rs) | What the slice tracks of one object (`Unit`) and its update, action by action. |

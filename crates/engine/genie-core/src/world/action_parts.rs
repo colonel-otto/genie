@@ -67,14 +67,14 @@ impl Parts {
 #[cfg(test)]
 mod tests {
     use crate::objects::layers::Action;
-    #[cfg(test)]
-    use crate::objects::layers::DefaultTask;
+    use crate::objects::layers::CommandCount;
     use crate::test_ids::object_id;
     use crate::world::parts::Parts;
 
-    fn flying() -> Action {
+    /// A layer that differs from an empty one: one command taken.
+    fn commanded() -> Action {
         Action {
-            default_task: DefaultTask::Fly,
+            commands: CommandCount::of_data(1),
             ..Action::default()
         }
     }
@@ -89,10 +89,10 @@ mod tests {
     fn an_object_the_table_does_not_hold_reads_an_empty_layer() {
         let mut parts = Parts::default();
         assert_eq!(parts.actions_of(object_id(1)), &Action::default());
-        parts.actions_mut(object_id(1)).unwrap().default_task = DefaultTask::Make;
+        parts.actions_mut(object_id(1)).unwrap().commands = CommandCount::of_data(2);
         assert_eq!(
-            parts.actions_of(object_id(1)).default_task,
-            DefaultTask::Make
+            parts.actions_of(object_id(1)).commands,
+            CommandCount::of_data(2)
         );
     }
 
@@ -100,16 +100,16 @@ mod tests {
     fn taken_layer_leaves_an_empty_one_and_comes_back() {
         let mut parts = Parts::default();
         let id = object_id(7);
-        parts.put_actions(id, flying());
-        assert_eq!(parts.take_actions(id), flying());
+        parts.put_actions(id, commanded());
+        assert_eq!(parts.take_actions(id), commanded());
         assert_eq!(
             parts.actions_of(id),
             &Action::default(),
             "out for its update"
         );
         assert!(parts.actions.contains(id), "its slot kept");
-        parts.put_actions(id, flying());
-        assert_eq!(parts.actions_of(id), &flying());
+        parts.put_actions(id, commanded());
+        assert_eq!(parts.actions_of(id), &commanded());
         assert_eq!(
             parts.take_actions(object_id(8)),
             Action::default(),

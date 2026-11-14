@@ -16,10 +16,11 @@ pub enum SleepCheck {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[must_use]
 pub enum DefaultStart {
-    /// Slot 0x7f0 ran: the action it made, if any, has its first update in the next update, and
-    /// the list's update does not run in this one.
+    /// An idle unit in state 2 asked for its master's default task (slot 0x7f0, which a master
+    /// without one skips): the action it made, if any, has its first update in the next update,
+    /// and the list's update does not run in this one.
     Started,
-    /// None started: the unit is busy, not alive, or its master has none.
+    /// None started: the unit is busy or not alive.
     NotStarted,
 }
 

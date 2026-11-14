@@ -4,9 +4,9 @@ use crate::construction::Annexes;
 use crate::garrison::NestedCount;
 use crate::movement::explore::EXPLORE;
 use crate::objects::ObjectId;
-use crate::objects::layers::{DefaultTask, UnreadDefault, Unstartable};
 use crate::objects::masters::FlyMode;
 use crate::objects::masters::MasterId;
+use crate::objects::unit::UnreadDefault;
 use crate::orders::town_bell::TownBell;
 use crate::ownership::artifact::ARTIFACT_KIND;
 use crate::players::CivId;
@@ -88,7 +88,7 @@ fn saved_building_parts_are_its_object_s() {
 }
 
 /// A save from the start: livestock's default task is the Artifact, which exists from the
-/// load on and starts again when its action list empties; a dead sheep (state 5) holds none.
+/// load on; a dead sheep (state 5) holds none.
 #[test]
 fn livestock_starts_with_its_artifact() {
     let table = MasterTable::of_master(
@@ -116,7 +116,6 @@ fn livestock_starts_with_its_artifact() {
     );
     assert_eq!(object.unit.id, object_id(5));
     assert!(object.parts.actions.list.artifact().is_some());
-    assert_eq!(object.parts.actions.default_task, DefaultTask::Artifact);
     // a combat object's mover needs its master, which this save does not hold
     assert!(object.parts.unread.is_some());
     let mut dead = combat_object(6, 83);
@@ -131,10 +130,10 @@ fn livestock_starts_with_its_artifact() {
         &missile_tuning(),
     );
     assert!(object.parts.actions.list.artifact().is_none());
-    assert_eq!(object.parts.actions.default_task, DefaultTask::Artifact);
 }
 
-/// Without a table the default task is unknown: reported, as the object's.
+/// Without a table the default task of a save from the start is unknown: the object's unread
+/// part.
 #[test]
 fn without_table_the_default_task_is_reported() {
     let object = object(
@@ -147,8 +146,8 @@ fn without_table_the_default_task_is_reported() {
         &missile_tuning(),
     );
     assert_eq!(
-        object.parts.actions.default_task,
-        DefaultTask::Fails(Unstartable::Unread(UnreadDefault::NoMasterTable))
+        object.parts.unread.map(|unread| unread.error().reason()),
+        Some(UnreadDefault::NoMasterTable.reason())
     );
     assert!(object.parts.actions.list.artifact().is_none());
 }
@@ -178,7 +177,6 @@ fn saved_action_the_slice_does_not_model_is_reported() {
         &missile_tuning(),
     );
     assert!(object.parts.unread.is_some());
-    assert_ne!(object.parts.actions.default_task, DefaultTask::Fly);
 }
 
 /// A missile without its action (it met its target) flies on with its own fields.

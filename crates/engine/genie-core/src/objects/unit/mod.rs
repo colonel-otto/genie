@@ -38,6 +38,8 @@ mod life_step;
 mod stop;
 mod update;
 
+pub use self::default_task::{UnreadDefault, Unstartable};
+
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =
     GenieError::unsupported("a dying sprite the data file does not have");

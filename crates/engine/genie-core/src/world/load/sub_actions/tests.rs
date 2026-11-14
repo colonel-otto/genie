@@ -12,7 +12,6 @@ use crate::objects::Graphics;
 use crate::objects::SpriteId;
 use crate::objects::Voice;
 use crate::objects::WorkRate;
-use crate::objects::layers::{DefaultTask, UnreadDefault, Unstartable};
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::ActionPart;
 use crate::objects::masters::FlyMode;
@@ -22,11 +21,10 @@ use crate::objects::masters::Task;
 use crate::objects::masters::TaskId;
 use crate::objects::masters::TaskIndex;
 use crate::objects::masters::TaskSprites;
+use crate::objects::unit::{UnreadDefault, Unstartable};
 use crate::ownership::artifact::ARTIFACT_KIND;
-use crate::ownership::artifact::Artifact;
 use crate::players::Amount;
 use crate::players::CivId;
-use crate::players::PlayerId;
 use crate::production::{MakeObjState, MakeTechState, Making};
 use crate::technology::TechId;
 use crate::test_ids::object_id;
@@ -36,8 +34,8 @@ use crate::world::load::fixtures::{
     action_list, building_mut, building_object, combat_object, static_mut,
 };
 use crate::world::load::sub_actions::{
-    DefaultStart, SaveHolds, default_task, gather_point, loaded_default_task, own_build_task,
-    own_fly_task, production, saved_attack,
+    DefaultStart, default_task, gather_point, own_build_task, own_fly_task, production,
+    saved_attack,
 };
 use genie_import::dat::{DefaultAction, MasterTable};
 use genie_save::generated::world::{
@@ -487,33 +485,4 @@ fn own_master_gives_the_fly_and_build_tasks() {
             .map_err(|error| error.reason()),
         Err("a builder whose master has no Build task")
     );
-}
-
-/// A default Fly or Make starts before the object's first update only when its save holds no
-/// actions: a saved object's actions are that task's own. No default task starts nothing, and an
-/// Artifact starts again either way.
-#[test]
-fn default_fly_or_make_starts_only_without_saved_actions() {
-    let artifact = DefaultStart::Artifact(Box::new(Artifact::new(PlayerId::GAIA, None)));
-    for (start, without, with) in [
-        (
-            Some(&DefaultStart::Fly),
-            DefaultTask::Fly,
-            DefaultTask::Nothing,
-        ),
-        (
-            Some(&DefaultStart::Make),
-            DefaultTask::Make,
-            DefaultTask::Nothing,
-        ),
-        (None, DefaultTask::Nothing, DefaultTask::Nothing),
-        (
-            Some(&artifact),
-            DefaultTask::Artifact,
-            DefaultTask::Artifact,
-        ),
-    ] {
-        assert_eq!(loaded_default_task(start, SaveHolds::NoActions), without);
-        assert_eq!(loaded_default_task(start, SaveHolds::Actions), with);
-    }
 }

@@ -39,7 +39,7 @@ use crate::{GenieError, GenieResult};
 
 use crate::combat::missile::grounded;
 use crate::objects::facing::{SpriteFacets, drawn_angle, draws_angle};
-use crate::objects::layers::{Action, Combat, Motion, Static, default_start};
+use crate::objects::layers::{Action, Combat, Motion, Static};
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::Master;
 use crate::production::spawn::objects::RECYCLABLE_NEW_OBJECT;
@@ -482,11 +482,7 @@ impl World {
             ..Unit::default()
         };
         let parts = ObjectParts {
-            actions: Action {
-                // what its master's default task starts once its action list is empty
-                default_task: default_start(made),
-                ..Default::default()
-            },
+            actions: Action::default(),
             unit_ai: Some(ai),
             combat,
             // FUN_1411580a0: facing x (an immediate 1.0), its right -z, not waiting; the animated

@@ -100,7 +100,6 @@ use crate::movement::ai_moves::MoveSprites;
 use crate::movement::ai_moves::MoveWith;
 use crate::movement::ai_moves::PointMove;
 use crate::movement::explore::{ExploreAction, ExploreState, InfluenceMap, bare_walk};
-use crate::movement::fly::FLY;
 use crate::movement::fly::Fly;
 use crate::movement::fly::FlyState;
 use crate::movement::move_to::MoveWaitState;
@@ -133,9 +132,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::facing::{SpriteFacets, drawn_angle};
 use crate::objects::hit_points::HpChange;
 use crate::objects::idle_update::IdleFrom;
-use crate::objects::layers::{
-    Action, Animated, Building, Combat, DefaultTask, Motion, MotionMut, Static, Unstartable,
-};
+use crate::objects::layers::{Action, Animated, Building, Combat, Motion, MotionMut, Static};
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Held, Lifecycle, MasterData};
 use crate::objects::lines::UnitLines;
@@ -10175,7 +10172,6 @@ fn livestock_world(list: ActionList, default: Option<TaskIndex>) -> World {
         },
         Action {
             list,
-            default_task: DefaultTask::Artifact,
             ..Default::default()
         },
     );
@@ -10213,7 +10209,7 @@ fn livestock_world(list: ActionList, default: Option<TaskIndex>) -> World {
 
 /// The sheep's slot 0x7f0 (`FUN_14106eb40`, [`Unit::set_default_task`]) in `world`: what it
 /// answers and the sheep's list after.
-fn default_artifact(mut world: World) -> (GenieResult<DefaultStart>, ActionList) {
+fn default_artifact(mut world: World) -> (GenieResult<()>, ActionList) {
     let started = in_update(
         &mut world,
         (PlayerId::new(1), ListIndex::new(0)),
@@ -10221,6 +10217,18 @@ fn default_artifact(mut world: World) -> (GenieResult<DefaultStart>, ActionList)
         Unit::set_default_task,
     );
     (started, world.parts.actions_of(object_id(40)).list.clone())
+}
+
+/// [`livestock_world`] whose sheep is of a stand-in master 273 (an id the `.dat` leaves empty
+/// in every civilisation) of the sheep's kind and class, whose default task 0 is `task`.
+fn stand_in_default_of(list: ActionList, task: Task) -> World {
+    let mut world = livestock_world(list, TaskIndex::of_data(0));
+    let mut stand_in = world.model.masters[1].get(master_id(594)).unwrap().clone();
+    stand_in.id = master_id(273);
+    stand_in.action.as_mut().unwrap().tasks = vec![task];
+    world.model.masters[1] = Arc::new(Masters::new([stand_in]));
+    world.players[1].objects[ListIndex::new(0)].life.master_id = master_id(273);
+    world
 }
 
 /// Slot 0x7f0 makes the sheep's default task's Artifact, and slot 0x808 installs it
@@ -10232,10 +10240,65 @@ fn livestock_default_artifact_replaces_its_list() {
     assert_eq!(
         default_artifact(world),
         (
-            Ok(DefaultStart::Started),
+            Ok(()),
             ActionList::default()
                 .with_artifact(Some(Artifact::new(PlayerId::new(1), Some(artifact_task()))))
         )
+    );
+}
+
+/// The factory (slot 0x10) makes the action of the type of the master's default task as the
+/// slot reads it (`+0xe`): a type it makes that the slice does not start (a Gather, 5) fails,
+/// and one it makes nothing of (an Explore, 6) leaves the list as it was, with no install.
+#[test]
+fn default_task_makes_the_action_of_its_kind() {
+    let waiting = wait_over(ActionList::default());
+    let of_kind = |action_kind| {
+        default_artifact(stand_in_default_of(
+            waiting.clone(),
+            Task {
+                action_kind,
+                ..Task::default()
+            },
+        ))
+    };
+    let (gather, list) = of_kind(GATHER);
+    assert_eq!(
+        gather.map_err(|error| error.reason()),
+        Err("a default task the slice does not model")
+    );
+    assert_eq!(list, waiting);
+    assert_eq!(of_kind(ActionKind::named(6)), (Ok(()), waiting.clone()));
+}
+
+/// `RGE_Action_Object::update`'s test (`0x14106ac90`): a unit in state 2 with an empty list
+/// asks for its default task, and the list's update does not run, also for a master without
+/// one (`+0x790` −1, `0x14106af45`); a unit with an action or past state 2 asks for none.
+#[test]
+fn default_start_is_asked_for_in_state_2_with_an_empty_list() {
+    let start = |mut world: World| {
+        in_update(
+            &mut world,
+            (PlayerId::new(1), ListIndex::new(0)),
+            50,
+            Unit::start_default_task,
+        )
+        .map(|started| (started, world.parts.actions_of(object_id(40)).list.clone()))
+    };
+    assert_eq!(
+        start(livestock_world(ActionList::default(), None)),
+        Ok((DefaultStart::Started, ActionList::default()))
+    );
+    let waiting = wait_over(ActionList::default());
+    assert_eq!(
+        start(livestock_world(waiting.clone(), TaskIndex::of_data(0))),
+        Ok((DefaultStart::NotStarted, waiting))
+    );
+    let mut dying = livestock_world(ActionList::default(), TaskIndex::of_data(0));
+    dying.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
+    assert_eq!(
+        start(dying),
+        Ok((DefaultStart::NotStarted, ActionList::default()))
     );
 }
 
@@ -10246,7 +10309,7 @@ fn livestock_default_artifact_makes_nothing_without_task_or_beside_artifact() {
     let waiting = wait_over(ActionList::default());
     assert_eq!(
         default_artifact(livestock_world(waiting.clone(), None)),
-        (Ok(DefaultStart::Started), waiting)
+        (Ok(()), waiting)
     );
     let waits = ActionList::default().with_artifact(Some(Artifact {
         state: ArtifactState::Wait,
@@ -10254,7 +10317,7 @@ fn livestock_default_artifact_makes_nothing_without_task_or_beside_artifact() {
     }));
     assert_eq!(
         default_artifact(livestock_world(waits.clone(), TaskIndex::of_data(0))),
-        (Ok(DefaultStart::Started), waits)
+        (Ok(()), waits)
     );
 }
 
@@ -10513,61 +10576,6 @@ fn dead_farm_gives_its_death_spawn_its_kept_snow() {
     assert_eq!(spawn_snow(Snow::Kept, MasterKind::ANIMATED), None);
 }
 
-/// A new unit's default task is its master's (slot 0x7f0 starts it once its list is empty in
-/// state 2, [`crate::objects::layers::default_start`]): a death spawn of a bird's master (its
-/// default task a Fly) flies, where the spawn gave only livestock its Artifact.
-#[test]
-fn death_spawn_of_bird_master_takes_its_fly() {
-    use crate::objects::layers::DefaultTask;
-    let mut world = forage_world();
-    let villager = world.model.masters[1].get(master_id(120)).unwrap().clone();
-    let mut bird = Master {
-        id: master_id(98),
-        ..villager
-    };
-    let action = bird.action.get_or_insert_with(Default::default);
-    action.tasks[0].action_kind = FLY;
-    action.default_task = TaskIndex::of_data(0);
-    // the new unit's standing sprite, which its making starts
-    let standing = SpriteId::named(207);
-    bird.standing_sprite = Some(standing);
-    let _ = Arc::make_mut(&mut world.model.graphics).insert(
-        standing,
-        Graphic {
-            id: standing,
-            frames: Frame::of_data(10),
-            facets: FacetCount::of_data(1),
-            speed_multiplier: SpeedMultiplier::ONE,
-            frame_duration: Seconds::new(0.1),
-            replay_delay: Seconds::ZERO,
-            flags: SpriteFlags::ANIMATED,
-        },
-    );
-    let ms = &mut world.model.masters[1];
-    *ms = Arc::new(Masters::new(
-        ms.iter()
-            .cloned()
-            .map(|mut master| {
-                if master.id == master_id(120) {
-                    master.death_spawns = [Some(master_id(98)), None];
-                }
-                master
-            })
-            .chain([bird]),
-    ));
-    let id = world.players[1].objects[ListIndex::new(0)].id;
-    in_update(
-        &mut world,
-        (PlayerId::new(1), ListIndex::new(0)),
-        50,
-        Unit::death_spawn_comes,
-    )
-    .unwrap();
-    let made = world.players[1].objects.iter().last().unwrap().id;
-    assert_ne!(made, id);
-    assert_eq!(world.parts.actions_of(made).default_task, DefaultTask::Fly);
-}
-
 /// The Artifact's handover to Gaia (state 100, [`Unit::artifact_handover`]): player 1's sheep
 /// stops and changes hands to Gaia (slot 0x70), and its Artifact checks again (state 6). The
 /// world's first update runs no Artifact (`0x140aad250` from the second on).
@@ -10667,10 +10675,7 @@ fn farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
             },
             ..Unit::default()
         },
-        Action {
-            default_task: DefaultTask::Make,
-            ..Default::default()
-        },
+        Action::default(),
     );
     let mut attributes = vec![Amount::ZERO; 100];
     attributes[attribute::FARM_FOOD_AMOUNT.index()] = Amount::new(175.0);
@@ -10748,10 +10753,7 @@ fn farm_owing_its_bonus_takes_it_off_its_make_in_the_update_after_the_start() {
             },
             ..Unit::default()
         },
-        Action {
-            default_task: DefaultTask::Make,
-            ..Default::default()
-        },
+        Action::default(),
     );
     let mut attributes = vec![Amount::ZERO; 240];
     attributes[attribute::FARM_FOOD_AMOUNT.index()] = Amount::new(175.0);
@@ -10792,37 +10794,6 @@ fn farm_owing_its_bonus_takes_it_off_its_make_in_the_update_after_the_start() {
         (Some(Amount::new(175.0 - 45.0 - made)), false)
     );
     assert!(world.players[0].unsupported.is_none());
-}
-
-/// What a new object's master's default task starts (slot 0x7f0, [`default_start`]): a farm's
-/// Make, a bird's Fly, livestock's Artifact; another type the factory makes is reported.
-///
-/// [`default_start`]: crate::objects::layers::default_start
-#[test]
-fn new_object_default_task_starts_by_its_master_task_kind() {
-    use crate::objects::layers::DefaultTask;
-    use crate::objects::layers::default_start;
-    use crate::ownership::artifact::ARTIFACT_KIND;
-    assert_eq!(default_start(&farm_master()), DefaultTask::Make);
-    let mut other = farm_master();
-    let with_kind = |master: &mut Master, kind| {
-        master.action.get_or_insert_with(Default::default).tasks[0].action_kind = kind;
-        default_start(master)
-    };
-    assert_eq!(with_kind(&mut other, FLY), DefaultTask::Fly);
-    assert_eq!(with_kind(&mut other, ARTIFACT_KIND), DefaultTask::Artifact);
-    assert_eq!(
-        with_kind(&mut other, GATHER),
-        DefaultTask::Fails(Unstartable::Unported(GATHER))
-    );
-    // a type the factories make nothing of starts nothing (a wild animal's Explore, 6)
-    other.action.get_or_insert_with(Default::default).tasks[0].action_kind = ActionKind::named(6);
-    assert_eq!(default_start(&other), DefaultTask::Nothing);
-    other
-        .action
-        .get_or_insert_with(Default::default)
-        .default_task = None;
-    assert_eq!(default_start(&other), DefaultTask::Nothing);
 }
 
 /// `TRIBE_Building_Object::update`'s whole seconds (`0x1411c95a2`): a built building outside
@@ -21775,7 +21746,6 @@ fn livestock_got_in_by_its_artifact_enter_keeps_the_artifact_to_its_next_update(
 fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
     let mut world = livestock_enter_world();
     let players = &mut world.players[1].objects[ListIndex::new(0)];
-    world.parts.actions.of_mut(players.id).unwrap().default_task = DefaultTask::Artifact;
     world
         .parts
         .actions

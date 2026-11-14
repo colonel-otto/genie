@@ -39,7 +39,7 @@ use crate::objects::Relics;
 use crate::objects::WorkRate;
 use crate::objects::WorkerCount;
 use crate::objects::layers::Building;
-use crate::objects::layers::{Action, Animated, Combat, DefaultTask, Motion, Static};
+use crate::objects::layers::{Action, Animated, Combat, Motion, Static};
 use crate::objects::layers::{CommandCount, Speedup, SpeedupValue};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::ActionKind;
@@ -72,7 +72,6 @@ use crate::world::load::sub_actions::build_task;
 use crate::world::load::sub_actions::default_task;
 use crate::world::load::sub_actions::fly_task;
 use crate::world::load::sub_actions::gather_point;
-use crate::world::load::sub_actions::loaded_default_task;
 use crate::world::load::sub_actions::production;
 use crate::world::load::sub_actions::saved_sprite;
 use crate::world::load::sub_actions::{own_build_task, own_fly_task};
@@ -573,7 +572,6 @@ fn row(
         ..Unit::default()
     };
     let mut actions = Action::default();
-    let default = default_task(object, rge_static_object, objects, civ, masters, own);
     let imported = match holds {
         SaveHolds::Actions => saved_actions(
             object,
@@ -602,19 +600,17 @@ fn row(
         // an object without actions in a save: its default task's action, which the game starts
         // in state 2 only (`RGE_Action_Object::update`: an Artifact exists from the load on, a
         // Fly starts in its first update); a dead object's list stays empty
-        SaveHolds::NoActions => match &default {
-            Ok(Some(DefaultStart::Artifact(artifact))) if life.state == ObjectState::Alive => {
-                actions.list.set_artifact(Some(**artifact));
-                Ok(())
+        SaveHolds::NoActions => {
+            match default_task(object, rge_static_object, objects, civ, masters, own) {
+                Ok(Some(DefaultStart::Artifact(artifact))) if life.state == ObjectState::Alive => {
+                    actions.list.set_artifact(Some(*artifact));
+                    Ok(())
+                }
+                Ok(_) => Ok(()),
+                Err(unstartable) => Err(unstartable.error()),
             }
-            Ok(_) => Ok(()),
-            Err(unstartable) => Err(unstartable.error()),
-        },
+        }
     };
-    actions.default_task = default.as_ref().map_or_else(
-        |unstartable| DefaultTask::Fails(*unstartable),
-        |start| loaded_default_task(start.as_ref(), holds),
-    );
     actions.speedup = object
         .action_part()
         .map_or(Speedup::NONE, |rge_action_object| Speedup {

@@ -18,12 +18,12 @@ use crate::objects::ObjectId;
 use crate::objects::SpriteId;
 use crate::objects::Voice;
 use crate::objects::WorkRate;
-use crate::objects::layers::{DefaultTask, UnreadDefault, Unstartable};
 use crate::objects::masters::ACTION_FACTORY_KINDS;
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::MasterId;
 use crate::objects::masters::{Master as MastersMaster, Task};
 use crate::objects::sprite::ActiveSprite;
+use crate::objects::unit::{UnreadDefault, Unstartable};
 use crate::ownership::artifact::ARTIFACT_KIND;
 use crate::ownership::artifact::Artifact;
 use crate::players::Amount;
@@ -522,11 +522,12 @@ pub enum DefaultStart {
 }
 
 /// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
-/// 0x14106ac90): only action objects (types 40 and up) have one. The default task is game data:
-/// the table's, from the `.dat`, or the object's own master's (`own`, as the import read the
-/// record the object holds; none for a record it could not read). The slice models the Artifact
-/// action (type 107, the default task of livestock) and a bird's Fly (type 10); any other default
-/// task is a start the slice cannot make ([`Unstartable`]).
+/// 0x14106ac90, then slot 0x7f0's choice by the task's type, `FUN_14106eb40`): only action
+/// objects (types 40 and up) have one. The default task is game data: the table's, from the
+/// `.dat`, or the object's own master's (`own`, as the import read the record the object holds;
+/// none for a record it could not read). The slice models the Artifact action (type 107, the
+/// default task of livestock), a bird's Fly (type 10) and a farm's Make (type 21); any other
+/// type the factory makes is a start the slice cannot make ([`Unstartable`]).
 pub fn default_task(
     object: &genie_save::Object,
     rge_static_object: &RgeStaticObject,
@@ -599,22 +600,6 @@ impl SaveHolds {
         } else {
             Self::NoActions
         }
-    }
-}
-
-/// What the default task's start `start` of an object starts once its action list empties, by
-/// what its save `holds`: nothing, a Fly or a Make before its first update, or the Artifact
-/// again. A saved object's Fly is its saved action's: none starts again (it never ends); a saved
-/// Make started. A default task the slice cannot start is the caller's.
-pub(crate) fn loaded_default_task(start: Option<&DefaultStart>, holds: SaveHolds) -> DefaultTask {
-    match start {
-        None => DefaultTask::Nothing,
-        Some(DefaultStart::Fly | DefaultStart::Make) if holds == SaveHolds::Actions => {
-            DefaultTask::Nothing
-        }
-        Some(DefaultStart::Fly) => DefaultTask::Fly,
-        Some(DefaultStart::Make) => DefaultTask::Make,
-        Some(DefaultStart::Artifact(_)) => DefaultTask::Artifact,
     }
 }
 

@@ -454,14 +454,13 @@ mod tests {
     use crate::movement::TopSpeed;
     use crate::movement::move_to::MoveTo;
     use crate::objects::ActionState;
-    use crate::objects::DefaultStart;
     use crate::objects::ListIndex;
     use crate::objects::ObjectState;
     use crate::objects::SpeedMultiplier;
     use crate::objects::SpriteFlags;
     use crate::objects::actions::ActionList;
     #[cfg(test)]
-    use crate::objects::layers::{DefaultTask, Motion, Static};
+    use crate::objects::layers::{Motion, Static};
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::masters::MovingPart;
     use crate::objects::masters::TaskTerrain;
@@ -886,14 +885,12 @@ mod tests {
         default: Option<TaskIndex>,
         fly_mode: FlyMode,
         list: ActionList,
-    ) -> (GenieResult<DefaultStart>, ActionList, u32, f32) {
+    ) -> (GenieResult<()>, ActionList, u32, f32) {
         let mut world = sky_world(hawk(FlyState::Resting, 0.5), 1.32, 1);
         let bird = object_id(9925);
         world.players[0].objects[ListIndex::new(0)].place =
             Static::at(Position::new(AT.x(), AT.y(), 0.0));
-        let layer = world.parts.actions.of_mut(bird).unwrap();
-        layer.list = list;
-        layer.default_task = DefaultTask::Fly;
+        world.parts.actions.of_mut(bird).unwrap().list = list;
         let master = Arc::make_mut(&mut world.model.masters[0])
             .get_mut(master_id(96))
             .unwrap();
@@ -933,7 +930,7 @@ mod tests {
             let (start, list, draws, z) =
                 default_fly(task, TaskIndex::of_data(0), fly_mode, waiting.clone());
             let fly = list.fly().copied().unwrap();
-            assert_eq!(start, Ok(DefaultStart::Started));
+            assert_eq!(start, Ok(()));
             assert_eq!(list.iter().count(), 1, "the wait went");
             assert_eq!((fly.state, fly.task, draws), (FlyState::Choosing, task, 1));
             assert_eq!(fly.home, AT.ground());
@@ -962,12 +959,12 @@ mod tests {
         let waiting = wait_over(ActionList::default());
         assert_eq!(
             default_fly(task, None, FlyMode::GROUND, waiting.clone()),
-            (Ok(DefaultStart::Started), waiting, 0, 0.0)
+            (Ok(()), waiting, 0, 0.0)
         );
         let flying = ActionList::default().with_fly(Some(hawk(FlyState::Resting, 0.5)));
         assert_eq!(
             default_fly(task, TaskIndex::of_data(0), FlyMode::GROUND, flying.clone()),
-            (Ok(DefaultStart::Started), flying, 0, 0.0)
+            (Ok(()), flying, 0, 0.0)
         );
     }
 

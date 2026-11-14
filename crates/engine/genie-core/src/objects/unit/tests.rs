@@ -36,19 +36,18 @@ use crate::objects::Voice;
 use crate::objects::WorkRate;
 use crate::objects::actions::ActionList;
 use crate::objects::facing::SpriteFacets;
-use crate::objects::layers::{Action, Action as LayersAction, DefaultTask};
+use crate::objects::layers::{Action, Action as LayersAction};
 use crate::objects::layers::{Animated, Motion};
 use crate::objects::layers::{IdleCount, IdleTime, Speedup, SpeedupValue};
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::TaskId;
-use crate::objects::masters::TaskIndex;
 use crate::objects::masters::TaskSprites;
 use crate::objects::masters::{Task, WorkValue};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::objects::{FacetCount, Frame};
-use crate::ownership::artifact::{ARTIFACT_KIND, Artifact, ArtifactSub};
+use crate::ownership::artifact::{Artifact, ArtifactSub};
 use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::test_ids::group_id;
@@ -458,8 +457,7 @@ fn the_list_update_idles_the_actions_below_its_head_before_the_deletion() {
 }
 
 /// An object inside another runs its inside update (`FUN_140a98790`) in place of its actions':
-/// its Gather goes, with no walk; an empty list in state 2 starts the master's default task,
-/// which waits for the next update.
+/// its Gather goes, with no walk.
 #[test]
 fn an_object_inside_another_runs_its_inside_update() {
     let mut world = forage_world();
@@ -487,38 +485,6 @@ fn an_object_inside_another_runs_its_inside_update() {
     let unit = &world.players[1].objects[ListIndex::new(0)];
     assert!(world.parts.actions_of(unit.id).list.is_empty());
     assert_eq!(unit.position(), at);
-    let unit = &mut world.players[1].objects[ListIndex::new(0)];
-    unit.life.inside = None;
-    world.parts.actions.of_mut(unit.id).unwrap().default_task = DefaultTask::Artifact;
-    let artifact_task = Task {
-        action_kind: ARTIFACT_KIND,
-        ..Task::default()
-    };
-    let action = Arc::make_mut(&mut world.model.masters[1])
-        .get_mut(master_id(120))
-        .unwrap()
-        .action
-        .get_or_insert_with(Default::default);
-    action.tasks.push(artifact_task);
-    action.default_task = TaskIndex::of_data(1);
-    assert_eq!(
-        in_update(
-            &mut world,
-            (PlayerId::new(1), ListIndex::new(0)),
-            50,
-            |unit, action, step| Unit::update_actions(unit, action, step, &roles(), slots())
-        ),
-        Ok(None)
-    );
-    assert_eq!(
-        world
-            .parts
-            .actions_of(world.players[1].objects[ListIndex::new(0)].id)
-            .list
-            .artifact(),
-        Some(&Artifact::new(PlayerId::new(1), Some(artifact_task))),
-        "the Artifact the default task made has not run yet"
-    );
 }
 
 /// Slot 0x190 (`FUN_14106d090`, `FUN_140a78450`): the object the top action targets as the

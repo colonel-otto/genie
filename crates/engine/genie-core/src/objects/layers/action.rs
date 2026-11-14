@@ -1,7 +1,6 @@
 //! `RGE_Action_Object` (types 40 and up, FD-045-D06): the action layer, the save's action list
-//! (`RgeActionObject`'s `actions`), then what genie keeps for the default task its update starts
-//! (`RGE_Action_Object::update`, `0x14106ac90`), and the reads of its top action. An object
-//! that has one holds it in the world's table (`Parts::actions`, FD-045-D59).
+//! (`RgeActionObject`'s `actions`) and the fields beside it, and the reads of its top action. An
+//! object that has one holds it in the world's table (`Parts::actions`, FD-045-D59).
 
 use crate::combat::attack::ATTACK;
 use crate::garrison::ENTER;
@@ -13,7 +12,6 @@ use crate::objects::actions;
 use crate::objects::actions::ActionList;
 use crate::objects::actions::target_object;
 use crate::objects::layers::CommandCount;
-use crate::objects::layers::DefaultTask;
 use crate::objects::layers::{IdleTime, Speedup};
 use crate::objects::masters::ActionKind;
 use crate::ownership::artifact::{ARTIFACT_KIND, Artifact};
@@ -26,16 +24,13 @@ use genie_diff::Diff;
 const UNMODELLED_SLOTS: GenieError =
     GenieError::unsupported("slots 0x190 and 0x288 of an action the slice does not model");
 
-/// The action layer of an object: its action list, its master's default task, a villager's
-/// idle time, the building that speeds it up and its command count.
+/// The action layer of an object: its action list, a villager's idle time, the building that
+/// speeds it up and its command count.
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Action {
     /// Its action list (`RGE_Action_List`, [`ActionList`]): the actions it holds, its current one
     /// first.
     pub list: ActionList,
-    /// What its master's default task starts once its action list is empty in state 2
-    /// ([`DefaultTask`]).
-    pub default_task: DefaultTask,
     /// A villager's idle time not yet in its owner's statistics (`+0x898` to `+0x8a0`,
     /// [`IdleTime`]).
     #[diff(unsaved)]
@@ -47,11 +42,10 @@ pub struct Action {
 }
 
 impl Action {
-    /// The layer of an object the world's table does not hold (a tree's): no action, no default
-    /// task, no idle time, no speed-up building and no command.
+    /// The layer of an object the world's table does not hold (a tree's): no action, no idle
+    /// time, no speed-up building and no command.
     pub const NONE: Self = Self {
         list: ActionList::EMPTY,
-        default_task: DefaultTask::Nothing,
         idle: IdleTime::NONE,
         speedup: Speedup::NONE,
         commands: CommandCount::ZERO,
