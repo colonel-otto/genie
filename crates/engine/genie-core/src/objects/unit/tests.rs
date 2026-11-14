@@ -42,12 +42,13 @@ use crate::objects::layers::{IdleCount, IdleTime, Speedup, SpeedupValue};
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::TaskId;
+use crate::objects::masters::TaskIndex;
 use crate::objects::masters::TaskSprites;
 use crate::objects::masters::{Task, WorkValue};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::objects::{FacetCount, Frame};
-use crate::ownership::artifact::{Artifact, ArtifactSub};
+use crate::ownership::artifact::{ARTIFACT_KIND, Artifact, ArtifactSub};
 use crate::players::Amount;
 use crate::players::PlayerId;
 use crate::test_ids::group_id;
@@ -489,6 +490,17 @@ fn an_object_inside_another_runs_its_inside_update() {
     let unit = &mut world.players[1].objects[ListIndex::new(0)];
     unit.life.inside = None;
     world.parts.actions.of_mut(unit.id).unwrap().default_task = DefaultTask::Artifact;
+    let artifact_task = Task {
+        action_kind: ARTIFACT_KIND,
+        ..Task::default()
+    };
+    let action = Arc::make_mut(&mut world.model.masters[1])
+        .get_mut(master_id(120))
+        .unwrap()
+        .action
+        .get_or_insert_with(Default::default);
+    action.tasks.push(artifact_task);
+    action.default_task = TaskIndex::of_data(1);
     assert_eq!(
         in_update(
             &mut world,
@@ -504,7 +516,7 @@ fn an_object_inside_another_runs_its_inside_update() {
             .actions_of(world.players[1].objects[ListIndex::new(0)].id)
             .list
             .artifact(),
-        Some(&Artifact::new(PlayerId::new(1), None)),
+        Some(&Artifact::new(PlayerId::new(1), Some(artifact_task))),
         "the Artifact the default task made has not run yet"
     );
 }
@@ -646,11 +658,7 @@ fn every_kind_of_top_action_shows_its_sub_action() {
     );
     enter = enter.walking(MoveTo::Moving);
     assert_eq!(of(Action::Enter(enter)), walking);
-    let mut fly = Fly::start(
-        Task::default(),
-        Position::new(1.0, 2.0, 0.0),
-        &mut Well512::default(),
-    );
+    let mut fly = Fly::new(Task::default(), Position::new(1.0, 2.0, 0.0));
     fly.state = FlyState::Flying {
         move_to: Some(MoveToAction::sub_in(MoveTo::Moving)),
     };

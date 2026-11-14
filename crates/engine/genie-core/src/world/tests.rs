@@ -113,6 +113,7 @@ use crate::movement::{
     Me, MoveStats, Mover, PathData, Velocity, WaypointIndex, footprint_gap_squared,
 };
 use crate::objects::ActionState;
+use crate::objects::DefaultStart;
 use crate::objects::Graphics;
 use crate::objects::HitPoints;
 use crate::objects::HpPowerup;
@@ -8533,7 +8534,8 @@ fn the_unit_ai_enter_from_inside_tells_its_ai_as_the_side_returns() {
     );
 }
 
-/// [`enter_world`] whose villager is a sheep under its Artifact, the house taking herdables in.
+/// [`enter_world`] whose villager is a sheep under its Artifact, the house taking herdables in;
+/// the sheep's default task is its task 0, the Artifact ([`artifact_task`]).
 fn livestock_enter_world() -> World {
     let mut world = enter_world(vec![], 5);
     let sheep = Master {
@@ -8543,12 +8545,16 @@ fn livestock_enter_world() -> World {
         radius: Footprint::new(0.2, 0.2),
         standing_sprite: None,
         action: Some(ActionPart {
-            tasks: vec![Task {
-                id: task_id(1),
-                action_kind: ENTER,
-                object_group: Some(class_id(3)),
-                ..Task::default()
-            }],
+            default_task: TaskIndex::of_data(0),
+            tasks: vec![
+                artifact_task(),
+                Task {
+                    id: task_id(1),
+                    action_kind: ENTER,
+                    object_group: Some(class_id(3)),
+                    ..Task::default()
+                },
+            ],
             ..ActionPart::default()
         }),
         moving: Some(MovingPart {
@@ -10145,11 +10151,17 @@ fn farm_master() -> Master {
     }
 }
 
-/// Livestock whose action list is empty in state 2 (out of a building, its Artifact gone)
-/// starts its default task's Artifact again (slot 0x7f0), Gaia's waiting half as long; its first
-/// update comes in the next tick, as a Fly's.
-#[test]
-fn livestock_without_actions_starts_its_artifact_again() {
+/// The sheep's default task 0 (build 158041's `.dat`): an Artifact (action type 107).
+fn artifact_task() -> Task {
+    Task {
+        action_kind: ARTIFACT_KIND,
+        ..Task::default()
+    }
+}
+
+/// Player 1's sheep 40 (master 594, livestock) in state 2 holding `list`, whose default task
+/// starts an Artifact: its master's `default` task (task 0, [`artifact_task`]).
+fn livestock_world(list: ActionList, default: Option<TaskIndex>) -> World {
     let sheep = Object::with_actions(
         Unit {
             id: object_id(40),
@@ -10162,6 +10174,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
             ..Unit::default()
         },
         Action {
+            list,
             default_task: DefaultTask::Artifact,
             ..Default::default()
         },
@@ -10187,9 +10200,70 @@ fn livestock_without_actions_starts_its_artifact_again() {
             id: master_id(594),
             kind: MasterKind::COMBAT,
             class: class::LIVESTOCK,
+            action: Some(ActionPart {
+                default_task: default,
+                tasks: vec![artifact_task()],
+                ..ActionPart::default()
+            }),
             ..Master::default()
         }])),
     ];
+    world
+}
+
+/// The sheep's slot 0x7f0 (`FUN_14106eb40`, [`Unit::set_default_task`]) in `world`: what it
+/// answers and the sheep's list after.
+fn default_artifact(mut world: World) -> (GenieResult<DefaultStart>, ActionList) {
+    let started = in_update(
+        &mut world,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        Unit::set_default_task,
+    );
+    (started, world.parts.actions_of(object_id(40)).list.clone())
+}
+
+/// Slot 0x7f0 makes the sheep's default task's Artifact, and slot 0x808 installs it
+/// (`0x14106ebe5`): the wait for a foundation the list held goes, and the Artifact on the
+/// task is the list's one action.
+#[test]
+fn livestock_default_artifact_replaces_its_list() {
+    let world = livestock_world(wait_over(ActionList::default()), TaskIndex::of_data(0));
+    assert_eq!(
+        default_artifact(world),
+        (
+            Ok(DefaultStart::Started),
+            ActionList::default()
+                .with_artifact(Some(Artifact::new(PlayerId::new(1), Some(artifact_task()))))
+        )
+    );
+}
+
+/// Slot 0x7f0 makes nothing for a master without a default task (`FUN_14109e0c0` none), nor
+/// while the list holds an Artifact (`FUN_140a98740`): the list stays as it was.
+#[test]
+fn livestock_default_artifact_makes_nothing_without_task_or_beside_artifact() {
+    let waiting = wait_over(ActionList::default());
+    assert_eq!(
+        default_artifact(livestock_world(waiting.clone(), None)),
+        (Ok(DefaultStart::Started), waiting)
+    );
+    let waits = ActionList::default().with_artifact(Some(Artifact {
+        state: ArtifactState::Wait,
+        ..Artifact::new(PlayerId::new(1), None)
+    }));
+    assert_eq!(
+        default_artifact(livestock_world(waits.clone(), TaskIndex::of_data(0))),
+        (Ok(DefaultStart::Started), waits)
+    );
+}
+
+/// Livestock whose action list is empty in state 2 (out of a building, its Artifact gone)
+/// starts its default task's Artifact again (slot 0x7f0), Gaia's waiting half as long; its first
+/// update comes in the next tick, as a Fly's.
+#[test]
+fn livestock_without_actions_starts_its_artifact_again() {
+    let mut world = livestock_world(ActionList::default(), TaskIndex::of_data(0));
     world.tick(Millis::new(50));
     let artifact = world
         .parts
@@ -10198,7 +10272,10 @@ fn livestock_without_actions_starts_its_artifact_again() {
         .artifact()
         .copied()
         .expect("the Artifact again");
-    assert_eq!(artifact, Artifact::new(PlayerId::new(1), None));
+    assert_eq!(
+        artifact,
+        Artifact::new(PlayerId::new(1), Some(artifact_task()))
+    );
     // its first update checks for a new owner, finds none and waits a second
     world.tick(Millis::new(50));
     let artifact = world

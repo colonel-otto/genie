@@ -56,35 +56,26 @@ pub struct MakeAction {
     /// `+0x44`: the food still to make.
     pub(crate) remaining: Amount,
     /// `+0x68`: the food made in all; the constructor's 120.0 never shows, as
-    /// [`MakeAction::start`] sets it at once.
+    /// its start ([`MakeAction::first`]) sets it at once.
     pub(crate) total: Amount,
     /// `+0x48`: the master's default task.
     pub(crate) task: Task,
 }
 
 impl MakeAction {
-    /// The default task's start (slot 0x7f0, `FUN_14106eb40`): the factory's action
-    /// (`FUN_140a99430`), then `set_only_action` (slot 0x808, `FUN_14106e990`), whose push
-    /// (`FUN_140a977e0`) runs `first_in_stack` ([`MakeAction::first`]) on the farm's lifecycle
-    /// `life`.
+    /// The Make the action list's factory makes of a farm's default task (`FUN_140a97e00` case
+    /// 0x15, constructor `FUN_140a99430`): in state 0 on `task`, nothing left to make. The list's
+    /// add starts it after the install ([`MakeAction::first`], slot 0x7f0's
+    /// [`Unit::set_default_task`]).
     #[must_use]
-    pub fn start(
-        task: Task,
-        attributes: &[Amount],
-        life: &mut Lifecycle,
-        roles: &Roles,
-        slots: Slots,
-    ) -> Self {
-        // the factory's constructor (FUN_140a99430) sets +0x68 to 120.0, which set_state(6)
-        // replaces at once
-        let mut make = Self {
+    pub const fn new(task: Task) -> Self {
+        // the constructor sets +0x68 to 120.0, which the start's set_state(6) replaces at once
+        Self {
             state: MakeState::New,
             remaining: Amount::ZERO,
             total: Amount::new(120.0),
             task,
-        };
-        make.first(attributes, life, roles, slots);
-        make
+        }
     }
 
     /// `first_in_stack` (slot 0x28, `FUN_140a99980`), which reads no argument: its start (with 1)
@@ -289,13 +280,16 @@ mod tests {
     use super::*;
     use crate::construction::FoundationId;
     use crate::construction::wait_solidify::WaitSolidify;
+    use crate::objects::DefaultStart;
     use crate::objects::ListIndex;
     use crate::objects::WorkRate;
     use crate::objects::layers::Building;
+    use crate::objects::layers::DefaultTask;
     use crate::objects::masters::ActionPart;
     use crate::objects::masters::CarryCapacity;
     use crate::objects::masters::MasterId;
     use crate::objects::masters::MasterKind;
+    use crate::objects::masters::TaskIndex;
     #[cfg(test)]
     use crate::objects::masters::WorkValue;
     use crate::objects::masters::{Master, Masters};
@@ -316,6 +310,7 @@ mod tests {
     use crate::world::WorldTime;
     #[cfg(test)]
     use crate::world::tests::in_update;
+    use crate::world::tests::wait_over;
     use crate::world::{Player, World};
     use std::slice::from_ref;
     use std::sync::Arc;
@@ -429,7 +424,8 @@ mod tests {
             amount: Amount::new(15.0),
             ..Lifecycle::default()
         };
-        let make = MakeAction::start(farm_task(), &attributes(), &mut life, &roles(), slots());
+        let mut make = MakeAction::new(farm_task());
+        make.first(&attributes(), &mut life, &roles(), slots());
         assert_eq!(
             (make.state, make.remaining, make.total),
             (MakeState::Making, Amount::new(175.0), Amount::new(175.0))
@@ -451,7 +447,8 @@ mod tests {
             amount: Amount::new(15.0),
             ..Lifecycle::default()
         };
-        let make = MakeAction::start(task, &attributes(), &mut life, &roles(), slots());
+        let mut make = MakeAction::new(task);
+        make.first(&attributes(), &mut life, &roles(), slots());
         assert_eq!(
             (make.remaining, life.attribute_kind, life.amount),
             (
@@ -541,6 +538,89 @@ mod tests {
         assert_eq!(
             (player.attributes[0], player.escrow[0]),
             (gained, EscrowShare::of_data(0.5).of(gained))
+        );
+    }
+
+    /// Farm 600's slot 0x7f0 (`FUN_14106eb40`, [`Unit::set_default_task`]) with its master's
+    /// (50) `default` task (task 0, the farm's), its list `list` before and food held: what it
+    /// answers, its list and default task after, and what the farm holds.
+    fn default_make(
+        default: Option<TaskIndex>,
+        list: ActionList,
+    ) -> (
+        GenieResult<DefaultStart>,
+        ActionList,
+        DefaultTask,
+        (Option<AttributeId>, Amount),
+    ) {
+        let mut world = farm_world(making(0.0, 0.0, farm_task()), ids::FARM, 15.0);
+        world.players[1].objects[ListIndex::new(0)]
+            .life
+            .attribute_kind = Some(attribute::FOOD);
+        let farm = object_id(600);
+        let layer = world.parts.actions.of_mut(farm).unwrap();
+        layer.list = list;
+        layer.default_task = DefaultTask::Make;
+        let action = Arc::make_mut(&mut world.model.masters[1])
+            .get_mut(ids::FARM)
+            .unwrap()
+            .action
+            .get_or_insert_with(Default::default);
+        action.tasks = vec![farm_task()];
+        action.default_task = default;
+        let started = in_update(
+            &mut world,
+            (PlayerId::new(1), ListIndex::new(0)),
+            104,
+            Unit::set_default_task,
+        );
+        let layer = world.parts.actions_of(farm);
+        let life = &world.players[1].objects[ListIndex::new(0)].life;
+        (
+            started,
+            layer.list.clone(),
+            layer.default_task,
+            (life.attribute_kind, life.amount),
+        )
+    }
+
+    /// Slot 0x7f0 makes the farm's default task's Make, and slot 0x808 installs it
+    /// (`0x14106ebe5`): the wait for a foundation the list held goes, and the list's add starts
+    /// the Make (`FUN_140a99980`: the player's farm food to make, the farm food held from
+    /// nothing) as the list's one action, once.
+    #[test]
+    fn farm_default_make_replaces_its_list_with_the_started_make() {
+        let (started, list, default_task, held) =
+            default_make(TaskIndex::of_data(0), wait_over(ActionList::default()));
+        assert_eq!(started, Ok(DefaultStart::Started));
+        assert_eq!(
+            list,
+            ActionList::default().with_make(Some(making(175.0, 175.0, farm_task())))
+        );
+        assert_eq!(default_task, DefaultTask::Nothing);
+        assert_eq!(held, (Some(attribute::FARM_FOOD), Amount::ZERO));
+    }
+
+    /// Slot 0x7f0 makes nothing for a master without a default task (`FUN_14109e0c0` none), nor
+    /// while the list holds a Make (`FUN_140a98740`): the list and what the farm holds stay; the
+    /// Make starts once all the same.
+    #[test]
+    fn farm_default_make_makes_nothing_without_task_or_beside_make() {
+        let waiting = wait_over(ActionList::default());
+        let held = (Some(attribute::FOOD), Amount::new(15.0));
+        assert_eq!(
+            default_make(None, waiting.clone()),
+            (
+                Ok(DefaultStart::Started),
+                waiting,
+                DefaultTask::Nothing,
+                held
+            )
+        );
+        let made = ActionList::default().with_make(Some(making(10.0, 20.0, farm_task())));
+        assert_eq!(
+            default_make(TaskIndex::of_data(0), made.clone()),
+            (Ok(DefaultStart::Started), made, DefaultTask::Nothing, held)
         );
     }
 

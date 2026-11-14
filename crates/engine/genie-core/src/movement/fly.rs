@@ -71,20 +71,18 @@ pub struct FlightSprites<'graphics> {
 }
 
 impl Fly {
-    /// The Fly a bird's default task starts (constructor `FUN_140a845c0`, then its first, slot
-    /// 0x28 `FUN_140a84900` with 1, as the action list adds it): its home the bird's place
-    /// (`position`), then `set_state(3)` draws the flight's time from the Action stream. The
-    /// first's other parts are the caller's: a player's bird whose task has `+0x15` set goes to
-    /// state 1 first, and a master of fly mode 1 lifts the bird to `FlyTuning::height` (slot 0x58).
-    pub fn start(task: Task, position: Position, action: &mut Well512) -> Self {
-        let mut fly = Self {
+    /// The Fly the action list's factory makes of a bird's default task (`FUN_140a97e00` case
+    /// 10, `RGE_Action_Bird`'s constructor `FUN_140a845c0`): new on `task`, its home the bird's
+    /// place (`position`: its x and y, `+0x38` and `+0x3c`; the constructor also keeps its z at
+    /// `+0x40`). The list's add starts it ([`Unit::start_fly`]).
+    #[must_use]
+    pub const fn new(task: Task, position: Position) -> Self {
+        Self {
             state: FlyState::New,
             timer: Seconds::ZERO,
             home: position.ground(),
             task,
-        };
-        let _ = fly.set_state(FlyState::Choosing, action);
-        fly
+        }
     }
 
     /// `set_state` (`0x140a84a50`): 2 and 3 drop the `MoveTo` (its teardown stops the bird, the
@@ -392,14 +390,21 @@ fn stop_if(mover: Option<&mut Mover>, dropped: MoveToDrop) -> GenieResult<()> {
 }
 
 impl Unit {
-    /// The default task's Fly ([`crate::movement::fly::Fly::start`]): a player's bird (its task's
-    /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
-    /// height (slot 0x58, the position setter: its tile stays, so do its counts).
+    /// The start of the default task's Fly `fly` that the install handed back (slot 0x28 with 1,
+    /// `0x140a84900`, as the action list's add `FUN_140a977e0` runs it): a player's bird (its
+    /// task's `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the
+    /// fly height (slot 0x58, the position setter: its tile stays, so do its counts); then
+    /// `set_state(3)` draws the flight's time from the Action stream ([`Fly::set_state_of`]: a
+    /// new Fly holds no `MoveTo` to drop), and the list holds the Fly.
+    ///
+    /// # Errors
+    ///
+    /// A player's bird, a bird whose master the world lacks, and the lift's.
     pub(crate) fn start_fly(
         &mut self,
         actions: &mut Action,
         step: &mut Step<'_>,
-        task: Task,
+        mut fly: Fly,
     ) -> GenieResult<()> {
         if step.player != PlayerId::GAIA {
             return Err(GenieError::unsupported(
@@ -409,14 +414,11 @@ impl Unit {
         let fly_mode = self
             .master(step.world.master_tables(), step.player)?
             .fly_mode;
-        actions.list.set_fly(Some(Fly::start(
-            task,
-            self.position(),
-            step.world.streams.get_mut(Stream::Action),
-        )));
         if fly_mode == FlyMode::ABOVE {
             self.lift_to_fly_height(step)?;
         }
+        fly.set_state_of(self, FlyState::Choosing, step)?;
+        actions.list.set_fly(Some(fly));
         Ok(())
     }
 
@@ -457,6 +459,7 @@ mod tests {
     use crate::objects::ObjectState;
     use crate::objects::SpeedMultiplier;
     use crate::objects::SpriteFlags;
+    use crate::objects::actions::ActionList;
     #[cfg(test)]
     use crate::objects::layers::{DefaultTask, Motion, Static};
     use crate::objects::lifecycle::Lifecycle;
@@ -478,6 +481,7 @@ mod tests {
     use crate::world::WorldTime;
     #[cfg(test)]
     use crate::world::tests::in_update;
+    use crate::world::tests::wait_over;
     use crate::world::{Player, World};
     use std::sync::Arc;
 
@@ -874,56 +878,97 @@ mod tests {
         assert_eq!(flown(&mut world), Err(NO_MOVER));
     }
 
-    /// A bird that starts its master's default Fly (a load from the header) takes the master's
-    /// default task as it starts (slot 0x7f0): the Fly runs with that task; a master without a
-    /// default task lacks it.
+    /// The hawk's slot 0x7f0 (`FUN_14106eb40`, [`Unit::set_default_task`]) with its master's
+    /// `default` task (task 0, `task`) of fly mode `fly_mode`, its list `list` before: what it
+    /// answers, its list after, the Action stream's draws and its height.
+    fn default_fly(
+        task: Task,
+        default: Option<TaskIndex>,
+        fly_mode: FlyMode,
+        list: ActionList,
+    ) -> (GenieResult<DefaultStart>, ActionList, u32, f32) {
+        let mut world = sky_world(hawk(FlyState::Resting, 0.5), 1.32, 1);
+        let bird = object_id(9925);
+        world.players[0].objects[ListIndex::new(0)].place =
+            Static::at(Position::new(AT.x(), AT.y(), 0.0));
+        let layer = world.parts.actions.of_mut(bird).unwrap();
+        layer.list = list;
+        layer.default_task = DefaultTask::Fly;
+        let master = Arc::make_mut(&mut world.model.masters[0])
+            .get_mut(master_id(96))
+            .unwrap();
+        master.fly_mode = fly_mode;
+        let action = master.action.get_or_insert_with(Default::default);
+        action.tasks = vec![task];
+        action.default_task = default;
+        let draws = world.streams.get_mut(Stream::Action).draws;
+        let started = in_update(
+            &mut world,
+            (PlayerId::new(0), ListIndex::new(0)),
+            21,
+            Unit::set_default_task,
+        );
+        (
+            started,
+            world.parts.actions_of(bird).list.clone(),
+            world.streams.get_mut(Stream::Action).draws - draws,
+            world.players[0].objects[ListIndex::new(0)].position().z(),
+        )
+    }
+
+    /// Slot 0x7f0 makes the master's default task's Fly, and slot 0x808 installs it
+    /// (`0x14106ebe5`): the wait for a foundation the list held goes, and the list's add starts
+    /// the Fly (`0x140a84900` with 1: `set_state(3)` draws its flight's time) as the list's one
+    /// action. A master of fly mode 1 lifts the bird to the fly height first; one of fly mode 0
+    /// leaves it on the ground.
     #[test]
-    fn bird_default_fly_takes_its_master_default_task() {
+    fn bird_default_fly_replaces_its_list_with_the_started_fly() {
         let task = Task {
             action_kind: FLY,
             wait_time: Seconds::new(3.0),
             ..Task::default()
         };
-        let start = |default: Option<TaskIndex>| {
-            let mut world = sky_world(hawk(FlyState::Resting, 0.5), 1.32, 1);
-            let bird = &mut world.players[0].objects[ListIndex::new(0)];
-            world
-                .parts
-                .actions
-                .of_mut(bird.id)
-                .unwrap()
-                .list
-                .set_fly(None);
-            world.parts.actions.of_mut(bird.id).unwrap().default_task = DefaultTask::Fly;
-            let master = Arc::make_mut(&mut world.model.masters[0])
-                .get_mut(master_id(96))
-                .unwrap();
-            let action = master.action.get_or_insert_with(Default::default);
-            action.tasks = vec![task];
-            action.default_task = default;
-            let in_update = in_update(
-                &mut world,
-                (PlayerId::new(0), ListIndex::new(0)),
-                21,
-                Unit::start_default_task,
-            );
-            let fly = world
-                .parts
-                .actions_of(world.players[0].objects[ListIndex::new(0)].id)
-                .list
-                .fly()
-                .copied();
-            (in_update, fly)
+        let waiting = wait_over(ActionList::default());
+        let started = |fly_mode| {
+            let (start, list, draws, z) =
+                default_fly(task, TaskIndex::of_data(0), fly_mode, waiting.clone());
+            let fly = list.fly().copied().unwrap();
+            assert_eq!(start, Ok(DefaultStart::Started));
+            assert_eq!(list.iter().count(), 1, "the wait went");
+            assert_eq!((fly.state, fly.task, draws), (FlyState::Choosing, task, 1));
+            assert_eq!(fly.home, AT.ground());
+            z
         };
-        let (default_start, fly) = start(TaskIndex::of_data(0));
-        assert_eq!(default_start, Ok(DefaultStart::Started));
-        assert_eq!(fly.map(|task_fly| task_fly.task), Some(task));
-        let (default_start, fly) = start(None);
+        assert_eq!(started(FlyMode::GROUND), 0.0);
         assert_eq!(
-            default_start.unwrap_err().reason(),
-            "a bird's default Fly whose master has no default task"
+            started(FlyMode::ABOVE),
+            sky_world(hawk(FlyState::Resting, 0.5), 1.32, 1)
+                .model
+                .tuning
+                .fly
+                .height
         );
-        assert_eq!(fly, None);
+    }
+
+    /// Slot 0x7f0 makes nothing for a master without a default task (`FUN_14109e0c0` none),
+    /// nor while the list holds an action of the task's type (`FUN_140a98740`): the list stays
+    /// as it was, a Fly held unchanged, and the Action stream is not drawn from.
+    #[test]
+    fn bird_default_fly_makes_nothing_without_task_or_beside_fly() {
+        let task = Task {
+            action_kind: FLY,
+            ..Task::default()
+        };
+        let waiting = wait_over(ActionList::default());
+        assert_eq!(
+            default_fly(task, None, FlyMode::GROUND, waiting.clone()),
+            (Ok(DefaultStart::Started), waiting, 0, 0.0)
+        );
+        let flying = ActionList::default().with_fly(Some(hawk(FlyState::Resting, 0.5)));
+        assert_eq!(
+            default_fly(task, TaskIndex::of_data(0), FlyMode::GROUND, flying.clone()),
+            (Ok(DefaultStart::Started), flying, 0, 0.0)
+        );
     }
 
     #[test]

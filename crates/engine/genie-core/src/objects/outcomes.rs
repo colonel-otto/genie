@@ -16,7 +16,8 @@ pub enum SleepCheck {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[must_use]
 pub enum DefaultStart {
-    /// The task started; its first update comes in the next update.
+    /// Slot 0x7f0 ran: the action it made, if any, has its first update in the next update, and
+    /// the list's update does not run in this one.
     Started,
     /// None started: the unit is busy, not alive, or its master has none.
     NotStarted,
