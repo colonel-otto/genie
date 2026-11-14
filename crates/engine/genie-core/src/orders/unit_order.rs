@@ -16,6 +16,7 @@ use crate::movement::move_to::WalkTo;
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
+use crate::objects::actions::target_object;
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::MasterTables;
@@ -266,10 +267,10 @@ impl World {
     /// Gather (5) or Build (101) gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`],
     /// then `set_state(8)`: [`Unit::drop_off_in`](crate::objects::unit::Unit::drop_off_in),
     /// [`Unit::gather_drop_off_in`](crate::objects::unit::Unit::gather_drop_off_in),
-    /// [`World::build_drop_off_now`]); for 8 one without a target or a point records its work for
-    /// the town bell first (`FUN_141206a20`) and queues the way back after (`FUN_141205ac0`). For
-    /// 6, and a unit without one of these actions: [`World::drop_off_unasked`] (the way back for 8
-    /// alone).
+    /// [`World::build_drop_off_now`]); for 8 one at no point whose target names no object
+    /// ([`target_object`]) records its work for the town bell first (`FUN_141206a20`) and queues
+    /// the way back after (`FUN_141205ac0`). For 6, and a unit without one of these actions:
+    /// [`World::drop_off_unasked`] (the way back for 8 alone).
     ///
     /// [`HuntAction::drop_off_asked`]: crate::gathering::hunt::HuntAction::drop_off_asked
     pub(crate) fn unit_order(
@@ -322,8 +323,8 @@ impl World {
     /// The drop-off order's ask of object `idx` of player `player_id` (`asks` for the orders 7 and
     /// 8): a top Gather (5), Build (101) or Hunt (110), with whether it asks for the drop-off of
     /// the load (slot 0x78: the task's resource, any for −1, of the load's kind) and whether it is
-    /// unaimed (`way_back`, the order 8, of an action without a target or a point); None for
-    /// another action, for none and for the order 6.
+    /// unaimed (`way_back`, the order 8, of an action at no point whose target names no object,
+    /// [`target_object`]); None for another action, for none and for the order 6.
     pub(super) fn drop_off_ask(
         &self,
         player_id: PlayerId,
@@ -390,7 +391,12 @@ impl World {
                 self.players.player(player_id)?.attributes.len(),
                 self.model.slots,
             ),
-            unaimed: way_back && target.is_none() && point.x() == NO_POINT && point.y() == NO_POINT,
+            // the target as `FUN_140a78450` finds it (0x14161f052): none also for a recyclable
+            // one and one the world no longer holds
+            unaimed: way_back
+                && target_object(target, |id| self.object(id)).is_none()
+                && point.x() == NO_POINT
+                && point.y() == NO_POINT,
         }))
     }
 
@@ -523,6 +529,6 @@ pub(super) struct DropOffAsk {
     pub(super) by: DropOffBy,
     /// The action asks for the drop-off of the load (slot 0x78).
     pub(super) asked: bool,
-    /// The order 8 to an action without a target or a point.
+    /// The order 8 to an action at no point whose target names no object.
     pub(super) unaimed: bool,
 }

@@ -5584,6 +5584,47 @@ fn drop_off_order_asks_the_top_gather_build_or_hunt() {
     );
 }
 
+/// The order 8's unaimed test reads the object the top action's target names (`FUN_140a78450`
+/// at `0x14161f052`), not its raw id: a Gather at no point on bush 600 is aimed, on the
+/// recyclable −600 (a copy the world holds) and on 777 (an object the world does not hold) it
+/// is unaimed.
+#[test]
+fn drop_off_order_finds_unaimed_target_as_the_world_holds_it() {
+    use crate::gathering::GatherTargetId;
+    let unaimed = |target: i32| {
+        let mut foraging = foraging();
+        let bush = foraging.players[0]
+            .objects
+            .iter()
+            .find(|unit| unit.id == object_id(600))
+            .unwrap();
+        let mut copy = bush.clone();
+        copy.id = object_id(-600);
+        foraging.players[0].objects.push(copy);
+        foraging.reindex();
+        let gather_action = foraging
+            .parts
+            .actions
+            .of_mut(object_id(9175))
+            .unwrap()
+            .list
+            .gather_mut()
+            .unwrap();
+        (gather_action.target, gather_action.point) = (
+            Some(GatherTargetId::new(object_id(target))),
+            Position::new(NO_POINT, NO_POINT, 0.0),
+        );
+        foraging
+            .drop_off_ask(PlayerId::new(1), ListIndex::new(0), (true, true))
+            .unwrap()
+            .map(|ask| ask.unaimed)
+    };
+    assert_eq!(
+        (unaimed(600), unaimed(-600), unaimed(777)),
+        (Some(false), Some(true), Some(true))
+    );
+}
+
 /// The drop-off order 7 to the forager's Gather: it carries its berries to the town centre
 /// 700 (state 8), which counts it as a worker; a load of wood instead posts the other load
 /// (0x21c) and leaves the Gather; the order 8 to an unaimed Gather records its work for the

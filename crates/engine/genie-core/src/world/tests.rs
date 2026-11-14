@@ -19601,6 +19601,17 @@ fn scout_attack_on(
     own: Option<&Attack>,
     force: OrderForce,
 ) -> (Object, Attacked, Vec<i32>) {
+    scout_attack_on_wolf(object_id(50), timer, inside, own, force)
+}
+
+/// [`scout_attack_on`] with Gaia's wolf under the id `wolf_id`.
+fn scout_attack_on_wolf(
+    wolf_id: ObjectId,
+    timer: f32,
+    inside: Option<ObjectId>,
+    own: Option<&Attack>,
+    force: OrderForce,
+) -> (Object, Attacked, Vec<i32>) {
     let standing = Graphic {
         id: SpriteId::named(300),
         frames: Frame::of_data(10),
@@ -19658,12 +19669,12 @@ fn scout_attack_on(
         placed(10.0, class::CLASS_47, PlayerId::new(1), ids::ID_448),
     );
     spatial.insert(
-        object_id(50),
+        wolf_id,
         placed(10.5, class::PREDATOR, PlayerId::new(0), master_id(126)),
     );
     let gaia = Player {
         objects: vec![Unit {
-            id: object_id(50),
+            id: wolf_id,
             place: Static::at(Position::new(10.5, 10.0, 0.0)),
             life: Lifecycle {
                 master_id: master_id(126),
@@ -19714,7 +19725,7 @@ fn scout_attack_on(
         UnitGroups::default(),
         |side| {
             let mut ai = ai.clone();
-            side.attack(object_id(50), force, &mut ai, &mut Well512::default())
+            side.attack(wolf_id, force, &mut ai, &mut Well512::default())
                 .unwrap()
         },
     );
@@ -20228,6 +20239,35 @@ fn an_attack_command_on_its_own_attack_target_asks_that_attack_again() {
         object.parts.actions.list.attack().map(|attack| attack.seen),
         Some(Position::from([-1.0; 3]))
     );
+}
+
+/// `FUN_141081a80` compares the object its top action's target names (`FUN_140a78450`) with the
+/// target it found: a recyclable target (the wolf under −50) names none, so its own Attack on it
+/// is no match, forced or not. A new Attack replaces it: it takes the wolf, and the scout, which
+/// may not move, swings at once.
+#[test]
+fn an_attack_command_on_its_own_recyclable_attack_target_starts_new_attack() {
+    let own = Attack {
+        seen: Position::new(-1.0, -1.0, -1.0),
+        ..own_attack(-50, -1, AttackState::Done)
+    };
+    for force in [OrderForce::Unforced, OrderForce::Forced] {
+        let (object, attacked, takes) =
+            scout_attack_on_wolf(object_id(-50), 0.0, None, Some(&own), force);
+        assert_eq!((attacked.attacks, takes), (true, vec![-50]));
+        assert_eq!(
+            object
+                .parts
+                .actions
+                .list
+                .attack()
+                .map(|attack| (attack.state, attack.target)),
+            Some((
+                AttackState::Swing,
+                Some(AttackTargetId::new(object_id(-50)))
+            ))
+        );
+    }
 }
 
 /// `FUN_141081a80`'s start (`0x140a7f8c0`) of a unit that cannot move (stance 2, no order) in

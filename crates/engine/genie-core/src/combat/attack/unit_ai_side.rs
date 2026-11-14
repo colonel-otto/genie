@@ -2,6 +2,7 @@
 //! new Attack, a forced attack again on the unit's own target, the
 //! target as a hit reads it, the start's readiness, the target's sight and a villager's swap.
 
+use crate::combat::AttackCount;
 use crate::combat::attack::AttackSource;
 use crate::combat::attack::{
     Attack, Mark, OwnStart, ReadyReads, Wielder, arms_looking, engagement, target_in_sight,
@@ -10,11 +11,11 @@ use crate::combat::attack::{AttackReads, Fight};
 use crate::combat::damage::Victim;
 use crate::combat::victims::{ChargeOf, VictimLayers, VictimView};
 use crate::combat::victims::{victim_in, victim_of};
-use crate::combat::{AttackCount, AttackTargetId};
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
 use crate::math::rng::Well512;
 use crate::objects::ObjectId;
+use crate::objects::actions::Action;
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::ClassId;
 use crate::objects::masters::Master;
@@ -44,9 +45,10 @@ use crate::{GenieError, GenieResult};
 impl UnitView<'_, '_> {
     /// The attack command (slot 0x338, `FUN_14120cea0`; a trebuchet's own part first,
     /// [`UnitView::trebuchet_attack`]) -> `FUN_141081a80`: a target the world does not hold fails;
-    /// `+0x648` takes the world's time (not held); the unit's own Attack on the target answers
-    /// true, forced after its slot 0x48 on it ([`UnitView::attack_again`]); a villager's master
-    /// switch (slot 0x90) is not modelled. Then the new Attack
+    /// `+0x648` takes the world's time (not held); a top Attack whose target is the object (slot
+    /// 0x190's lookup, [`UnitView::top_target_now`]: never a recyclable one) answers true, forced
+    /// after its slot 0x48 on it ([`UnitView::attack_again`]); a villager switches its master
+    /// first (slot 0x90, [`UnitView::swapped_master`]). Then the new Attack
     /// ([`crate::combat::attack::Attack::own`]): the constructor takes its target (slot 0x178,
     /// through the view) and clears the unit's `+0x900` (its target is new), the action list clears
     /// ([`UnitView::attack_clears_actions`]), and the install's start (`0x140a7f8c0` with 1) of a
@@ -85,10 +87,9 @@ impl UnitView<'_, '_> {
         let Some(placed) = self.step.world.spatial.get_known(target)?.copied() else {
             return Ok(no());
         };
-        if let Some(&attack) =
-            self.actions.list.attack().filter(|target_attack| {
-                target_attack.target.map(AttackTargetId::id) == Some(target)
-            })
+        // the head's target as `FUN_140a78450` finds it: a recyclable one names no object
+        if let Some(&Action::Attack(attack)) = self.actions.list.head()
+            && self.top_target_now() == Some(target)
         {
             if force == OrderForce::Forced {
                 self.attack_again((target, attack), &placed, master, ai, roles)?;
