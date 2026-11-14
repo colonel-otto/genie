@@ -15,6 +15,7 @@ mod container_id;
 mod counts;
 mod damage_rate;
 mod enter;
+mod install;
 pub(crate) use self::enter::EnterSlot;
 mod enter_state;
 mod firepower;

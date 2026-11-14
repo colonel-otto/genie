@@ -6,9 +6,10 @@ Units go into buildings and transports, and come out again. This folder holds bo
   takes it in, the nearest first.
 - `takes_in.rs` tests whether a building takes a unit in, and how much room it has.
 - `enter.rs`, `walk_in.rs` and `meeting.rs` hold the Enter action: the command, the walk to the
-  building or transport, and the point where they meet. `walk_point.rs` holds its walks to a
-  point: to a target without room (state 11), and without a target. `restart.rs` starts it
-  again when the action list's deletion leaves it at the head.
+  building or transport, and the point where they meet. `install.rs` installs a new Enter (slot
+  0x808, or the Artifact's sub-list under one on top) and starts it there. `walk_point.rs` holds
+  its walks to a point: to a target without room (state 11), and without a target. `restart.rs`
+  starts it again when the action list's deletion leaves it at the head.
 - `unit.rs` is the unit's part: a unit entering and its update while it is inside another
   object. `holder.rs` is the container's part of an enter and a leave: its list, its volleys
   and, in a building, its counts of the villagers and raiders inside (`counts.rs`) and of the
@@ -39,13 +40,14 @@ Units go into buildings and transports, and come out again. This folder holds bo
 | [`counts.rs`](counts.rs) | A building's counts of the units inside it (`GarrisonCounts`). |
 | [`counts_tests.rs`](counts_tests.rs) | Tests: A building's counts of the units inside it, its villagers (`+0xba8`) and its raiders (`+0xc2c`): as units enter and leave, as the load links them in again, and in its slot 0x498. |
 | [`damage_rate.rs`](damage_rate.rs) | The damage an object deals per second (`DamageRate`). |
-| [`enter.rs`](enter.rs) | The enter command and the Enter's construction, install and start, at once or with the transport's move. |
+| [`enter.rs`](enter.rs) | The enter command and the Enter's construction, and what its start reads and does: its view of the target, its walk again, the enter at once and the transport's move. |
 | [`enter_state.rs`](enter_state.rs) | An Enter's state: walking to a building or transport, waiting, inside; each walk with its `MoveTo`. |
 | [`firepower.rs`](firepower.rs) | A unit's attack rate and firepower, and its share of a building's volleys (`FUN_141213520`). |
 | [`heal.rs`](heal.rs) | A building's heal of its units inside and its repair by the villagers inside: the end of `TRIBE_Building_Object::update`'s whole seconds (`0x1411c9000`). |
 | [`heal_tests.rs`](heal_tests.rs) | Tests: A building's whole seconds with units inside (`TRIBE_Building_Object::update`, `0x1411c9000`): the heal of every unit inside by its own master and type, the armor a full heal gives back, the repair by the villagers inside, and a foundation completed in its update, which runs none. |
 | [`holder.rs`](holder.rs) | A container's own part of a unit's enter and leave (its slots 0x1c0 and 0x1c8): its list, its volleys and a building's counts. |
 | [`inside_count.rs`](inside_count.rs) | How many units an object holds inside (`InsideCount`). |
+| [`install.rs`](install.rs) | The Enter's install (slot 0x808, or the Artifact's sub-list under one on top) and its start there: the failure inside an object, the walk to a target without room, the enter or the walk. |
 | [`let_out.rs`](let_out.rs) | A unit's leave of the building or the transport it is inside (`FUN_1411e7220`), or its place on the map. |
 | [`meeting.rs`](meeting.rs) | Where an Enter meets its target (`FUN_140a85f30`): the landing tile, the walled-off test, the meeting point and the reach. |
 | [`mod.rs`](mod.rs) | Units inside other objects: the garrison order, the Enter action, the unloads and the Transport action. |
