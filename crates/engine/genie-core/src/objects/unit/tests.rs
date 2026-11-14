@@ -902,3 +902,108 @@ fn speedup_building_stays_only_within_its_range() {
     };
     assert_eq!(check(&mut world, gone, 1000.0), Speedup::NONE);
 }
+
+/// An action layer whose top action is an Artifact, checking for a new owner, with its target
+/// (`+0x30`) and its point (`+0x38`, none for −1).
+fn artifact_layer(target: Option<i32>, goal: Option<Position>) -> Action {
+    Action {
+        list: ActionList::default().with_artifact(Some(Artifact {
+            goal,
+            target: target.map(object_id),
+            ..Artifact::new(PlayerId::new(1), None)
+        })),
+        ..Default::default()
+    }
+}
+
+/// Slot 0x2d0's default case (`FUN_14106d170`) for an Artifact: false for a target the world's
+/// table holds (`FUN_140a78450`: an id of 0 or more, found), else whether its point's x
+/// (`FUN_140a7be40`) is −1. A recyclable target is not looked up, and a target the table no
+/// longer holds is no target.
+#[test]
+fn artifact_with_target_held_is_not_interruptible() {
+    let every = |id: ObjectId| Some(id);
+    let gone = |_: ObjectId| None::<ObjectId>;
+    assert_eq!(
+        artifact_layer(None, None).interruptible(None, every),
+        Ok(true)
+    );
+    assert_eq!(
+        artifact_layer(Some(800), None).interruptible(None, every),
+        Ok(false),
+        "a target the table holds"
+    );
+    assert_eq!(
+        artifact_layer(Some(800), None).interruptible(None, gone),
+        Ok(true),
+        "a target the table no longer holds"
+    );
+    assert_eq!(
+        artifact_layer(Some(-5), None).interruptible(None, every),
+        Ok(true),
+        "a recyclable target"
+    );
+}
+
+/// Slot 0x2d0's default case (`FUN_14106d170`) for an Artifact without a target: its point's x
+/// (`FUN_140a7be40`) against −1 (`UCOMISS`, then `JP` and `JNZ` refuse, `0x14106d264`): a
+/// point whose x is −1 counts as none whatever its y, and a NaN x is not −1.
+#[test]
+fn artifact_with_point_is_not_interruptible() {
+    let every = |id: ObjectId| Some(id);
+    let pointed = |x: f32| artifact_layer(None, Some(Position::new(x, 6.0, 0.0)));
+    assert_eq!(pointed(5.0).interruptible(None, every), Ok(false));
+    assert_eq!(
+        pointed(-1.0).interruptible(None, every),
+        Ok(true),
+        "only the point's x is read"
+    );
+    assert_eq!(
+        pointed(f32::NAN).interruptible(None, every),
+        Ok(false),
+        "a NaN x is not −1"
+    );
+}
+
+/// [`World::top_action_interruptible`] looks an Artifact's target up in the world's table: a
+/// target the table holds refuses, one it does not hold and a recyclable one the table holds
+/// (it is not looked up) do not; an object the load could not read is not modelled.
+#[test]
+fn top_action_interruptible_looks_target_up_in_world_table() {
+    use crate::world::{FrameSeed, Player, Unread};
+    let held = |id: i32| Unit {
+        id: object_id(id),
+        ..Unit::default()
+    };
+    let player = Player {
+        objects: vec![held(5), held(800), held(-5)].into(),
+        ..Player::default()
+    };
+    let mut world = World::new(
+        WorldTime::ZERO,
+        FrameSeed::of_data(0),
+        PlayerId::new(0),
+        vec![Millis::ZERO, Millis::ZERO],
+        vec![Player::default(), player],
+    );
+    let answer = |world: &World, target| {
+        world.top_action_interruptible(object_id(5), &artifact_layer(Some(target), None))
+    };
+    assert_eq!(answer(&world, 800), Ok(false), "a target the table holds");
+    assert_eq!(
+        answer(&world, 9),
+        Ok(true),
+        "a target the table does not hold"
+    );
+    assert_eq!(answer(&world, -5), Ok(true), "a recyclable target");
+    world
+        .set_part(
+            object_id(5),
+            Part::Unread(Some(Unread::new(GenieError::unsupported("unread")))),
+        )
+        .unwrap();
+    assert!(
+        answer(&world, 9).is_err(),
+        "an object the load could not read"
+    );
+}

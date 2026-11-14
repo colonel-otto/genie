@@ -188,7 +188,7 @@ impl Unit {
         let class = master.map(|ms| ms.class);
         let (player, player_kind) = (step.player, step.world.players.player(step.player)?.kind);
         let view = OwnerView::of(step, None)?;
-        let interruptible = actions.interruptible(step.world.parts.unread.get(self.id))?;
+        let interruptible = step.world.top_action_interruptible(self.id, actions)?;
         let at = self.surroundings(
             actions,
             step,
@@ -343,7 +343,7 @@ impl Unit {
             return Ok(None);
         };
         // slot 0x2d0 matters only to a queue with orders
-        let interruptible = match actions.interruptible(step.world.parts.unread.get(self.id)) {
+        let interruptible = match step.world.top_action_interruptible(self.id, actions) {
             Ok(answer) => answer,
             Err(error) if orders => return Err(error),
             Err(_) => false,

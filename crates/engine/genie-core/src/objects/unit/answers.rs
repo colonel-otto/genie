@@ -17,14 +17,21 @@ use crate::combat::attack::ATTACK;
 use crate::gathering::HuntTargetId;
 use crate::map::spatial::Gait;
 use crate::math::fmath::length;
+use crate::math::image::unit::INTERRUPT_NO_POINT;
 use crate::movement::Me;
 use crate::movement::TopSpeed;
 use crate::objects::WorkerCount;
+use crate::objects::actions;
 use crate::objects::layers::{Action, Building};
 use crate::ownership::artifact::ARTIFACT_KIND;
 use crate::unit_ai::{AiAction, OrderKind, UnitAi};
 use crate::world::Unread;
+use crate::world::World;
 use crate::world::checkpoint::TopAction;
+
+/// The x of an action's point of none (`DAT_14330ec20`, −1.0), against which slot 0x2d0
+/// compares an Artifact's (`UCOMISS` at `0x14106d264`).
+const NO_POINT: f32 = INTERRUPT_NO_POINT;
 
 impl Unit {
     /// Slot 0x520: where it last moved to, as the game's vector: a moving object's `+0x824`
@@ -149,13 +156,24 @@ impl Unit {
 }
 
 impl Action {
-    /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group
-    /// test first; the slice holds no groups). None may; type `0x7e` never; by state, 0, 1, 3,
-    /// 0xd and 0xe may, 2 unless an Attack (9); in any other state only an Artifact (`0x6b`)
-    /// without a target or a point (`+0x30`, `+0x38` = −1). A trade (`0x6f`) in state 4 is not
-    /// modelled, nor is an action the slice does not hold (`unread`: the load could not read the
-    /// object whole, [`Unread`]).
-    pub(crate) fn interruptible(&self, unread: Option<&Unread>) -> GenieResult<bool> {
+    /// Slot 0x2d0's switch on its top action (`FUN_14106d170`): whether that action may be
+    /// interrupted. None may; type `0x7e` never; by state, 0, 1, 3, 0xd and 0xe may, 2 unless an
+    /// Attack (9). In any other state only an Artifact (`0x6b`) may, without a target that `find`
+    /// finds in the world's table (`FUN_140a78450`, [`Action::top_action_object`]: a recyclable
+    /// id is not looked up) and with its point's x (`+0x38`, `FUN_140a7be40`) at −1 (`UCOMISS`,
+    /// `0x14106d264`: a NaN x is not). A trade (`0x6f`) in state 4 is not modelled, nor is an
+    /// action the slice does not hold (`unread`: the load could not read the object whole,
+    /// [`Unread`]). The routine's group and order tests before the switch are
+    /// [`World::unit_may_interrupt`]'s.
+    ///
+    /// # Errors
+    ///
+    /// A trade in state 4, and an object the load could not read whole.
+    pub(crate) fn interruptible<T>(
+        &self,
+        unread: Option<&Unread>,
+        find: impl FnOnce(ObjectId) -> Option<T>,
+    ) -> GenieResult<bool> {
         if unread.is_some() {
             return Err(GenieError::unsupported(
                 "slot 0x2d0 of an action the slice does not model",
@@ -171,10 +189,11 @@ impl Action {
             }
             (_, 0 | 1 | 3 | 0xd | 0xe) => true,
             (_, 2) => kind != ATTACK,
-            (ARTIFACT_KIND, _) => self
-                .list
-                .artifact()
-                .is_some_and(|artifact| artifact.goal.is_none_or(|position| position.x() == -1.0)),
+            (ARTIFACT_KIND, _) => {
+                self.top_action_object(find).is_none()
+                    && matches!(self.list.head(), Some(actions::Action::Artifact(artifact))
+                        if artifact.goal.is_none_or(|position| position.x() == NO_POINT))
+            }
             _ => false,
         })
     }
@@ -204,5 +223,23 @@ impl Action {
                     .map(|role_id| Some(role_id.id()))
             })
             .flatten()
+    }
+}
+
+impl World {
+    /// Slot 0x2d0's switch on the top action (`FUN_14106d170`, [`Action::interruptible`]) of
+    /// object `id` with its action layer `actions`, which a unit that updates holds out of the
+    /// world's tables: an Artifact's target is looked up in the world's table
+    /// (`FUN_140a78450`, [`World::object`]), and the object's [`Unread`] is the world's.
+    ///
+    /// # Errors
+    ///
+    /// As [`Action::interruptible`].
+    pub(crate) fn top_action_interruptible(
+        &self,
+        id: ObjectId,
+        actions: &Action,
+    ) -> GenieResult<bool> {
+        actions.interruptible(self.parts.unread.get(id), |target| self.object(target))
     }
 }

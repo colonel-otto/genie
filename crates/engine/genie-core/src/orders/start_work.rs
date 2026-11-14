@@ -123,12 +123,7 @@ impl World {
                 .unit_ai
                 .get(unit.id)
                 .is_some_and(|ai| ai.orders.is_empty());
-            if !idle
-                || !self
-                    .parts
-                    .actions_of(unit.id)
-                    .interruptible(self.parts.unread.get(unit.id))?
-            {
+            if !idle || !self.top_action_interruptible(unit.id, self.parts.actions_of(unit.id))? {
                 list_index = list_index.next();
                 continue;
             }

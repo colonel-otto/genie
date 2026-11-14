@@ -51,8 +51,9 @@ impl UnitView<'_, '_> {
     ///
     /// [`SurroundingFlags::INTERRUPTIBLE`]: crate::unit_ai::SurroundingFlags::INTERRUPTIBLE
     pub(crate) fn interruptible_now(&self) -> GenieResult<bool> {
-        self.actions
-            .interruptible(self.step.world.parts.unread.get(self.unit.id))
+        self.step
+            .world
+            .top_action_interruptible(self.unit.id, self.actions)
     }
 
     /// The soldier's slot 0x1d8 (`FUN_140c1c6e0`): of the last search's enemies (list 4) the world

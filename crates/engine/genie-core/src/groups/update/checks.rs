@@ -174,7 +174,7 @@ impl World {
         {
             return Ok(false);
         }
-        actions.interruptible(self.parts.unread.get(unit.id))
+        self.top_action_interruptible(unit.id, actions)
     }
 
     /// `FUN_141007a50` of group `group`: at rest without a command (-1), its motion not moving

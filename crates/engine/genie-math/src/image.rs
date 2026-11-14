@@ -460,6 +460,12 @@ pub mod turn {
     pub const SPEED_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
 }
 
+/// The values the `unit` port reads.
+pub mod unit {
+    /// -1.0
+    pub const INTERRUPT_NO_POINT: f32 = f32::from_bits(0xbf80_0000);
+}
+
 /// The values the `unit_ai` port reads.
 pub mod unit_ai {
     /// 3.4028234663852886e+38
