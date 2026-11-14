@@ -104,7 +104,7 @@ impl World {
                         action_kind,
                         ActionKind::MAKE_OBJECT
                             | ActionKind::MAKE_TECH
-                            | ActionKind::ACTION_123
+                            | ActionKind::HOUSING
                             | ActionKind::PACK
                             | ActionKind::UNPACK
                     )

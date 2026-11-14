@@ -165,6 +165,7 @@ impl Unit {
                 .map(|()| HeadCode::Keeps),
             Some(Action::Fly(_)) => self.fly_part(actions, step, me).map(|()| HeadCode::Keeps),
             Some(Action::Make(_)) => self.make_part(actions, step, roles),
+            Some(Action::Housing(_)) => self.housing_part(actions, step),
             Some(Action::Gather(gather)) => {
                 let gather = *gather;
                 self.gather_update(gather, actions, step, me, roles)

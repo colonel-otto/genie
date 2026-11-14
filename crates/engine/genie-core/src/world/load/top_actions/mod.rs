@@ -2,7 +2,9 @@
 //! kind.
 
 use crate::combat::missile::ShooterId;
+use crate::commands::QueueId;
 use crate::construction::build::{BuildAction, BuildTask};
+use crate::construction::housing::{HousingAction, HousingState};
 use crate::garrison::ContainerId;
 use crate::gathering::DropSiteId;
 use crate::map::Distance;
@@ -125,7 +127,8 @@ struct SavedObject<'save> {
 /// action (107), the Build action (101) with its `MoveTo`, a `MoveTo` of its own (type 1), a
 /// bird's Fly action (10) with its `MoveTo`, the Hunt (110) with its Attack or `MoveTo` (and in
 /// state 8 its second target, the drop site), a farm's Make (21), the Repair, the Gather, the
-/// Enter, the Transport, the Explore, the Attack, the missile's and the wait for a foundation.
+/// Enter, the Transport, the Explore, the Attack, the missile's, the wait for a foundation and the
+/// Housing.
 /// Any other saved action ([`not_imported`]) stops the object's player.
 fn saved_action(
     saved_object: SavedObject<'_>,
@@ -166,6 +169,7 @@ fn saved_action(
         EXPLORE => import_explore(&saved, task_at),
         ATTACK => import_attack(&saved),
         WAIT_SOLIDIFY => import_wait_solidify(&saved, task_at),
+        ActionKind::HOUSING => import_housing(&saved),
         _ => Err(not_imported().with("action type", kind)),
     }
 }
@@ -616,6 +620,29 @@ fn import_wait_solidify(saved: &Saved<'_>, task_at: TaskAt<'_>) -> GenieResult<A
     let mut wait = WaitSolidify::new(saved.task(task_at)?, target);
     wait.set_state(WaitSolidifyState::of_byte(saved.base.state)?);
     Ok(ActionsAction::from(wait))
+}
+
+/// `TRIBE_Action_Housing`'s load (`FUN_140ac1bc0`): the base action's state and timer (`+0x44`)
+/// and the order's queue id (`unique_id`, `+0x68`). Nothing gives a Housing a sub-action, so a
+/// save that holds one is no game's; its base's target stays unread, as no slot of it reads one.
+fn import_housing(saved: &Saved<'_>) -> GenieResult<ActionsAction> {
+    if saved.base.sub_actions.entries().next().is_some() {
+        return Err(GenieError::invalid_input(
+            "a saved Housing with a sub-action",
+        ));
+    }
+    let part = saved
+        .action
+        .tribe_action_housing
+        .as_deref()
+        .ok_or(GenieError::unreachable(
+            "a saved Housing without its own part, which the reader gives every action of type 0x7b",
+        ))?;
+    Ok(ActionsAction::from(HousingAction {
+        state: HousingState::of_byte(saved.base.state)?,
+        timer: Seconds::new(saved.base.timer),
+        unique_id: QueueId::of_data(part.unique_id),
+    }))
 }
 
 /// A saved `MoveTo`'s wait (`+0x6c`, `+0x70`, `+0x74`); none for another sub-action.

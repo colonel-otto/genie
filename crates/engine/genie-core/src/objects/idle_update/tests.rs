@@ -36,6 +36,7 @@ use crate::objects::masters::TaskId;
 use crate::objects::masters::TaskSprites;
 use crate::objects::masters::{Task, WorkValue};
 use crate::objects::teardown::HeadCode;
+use crate::objects::teardown::Refund;
 use crate::ownership::artifact::Artifact;
 use crate::players::Amount;
 use crate::players::PlayerId;
@@ -66,6 +67,7 @@ fn releasing(released: &[i32]) -> Idled {
     Idled {
         clears_count: false,
         left: TornDown {
+            refund: Refund::Nothing,
             releases: released.iter().copied().map(object_id).collect(),
             builder_leaves: Vec::new(),
         },

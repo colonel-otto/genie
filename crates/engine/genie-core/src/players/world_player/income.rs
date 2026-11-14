@@ -211,7 +211,8 @@ impl World {
     /// [`ResourceShare::Shared`]) of `amount` to attribute `kind` of player `player_id`: the
     /// call of a storage's entries (`FUN_141193860`, `FUN_1411a56c0`, `FUN_1411e63f0`), a
     /// foundation's refund (`FUN_1411ccbb0`), a tribute (`FUN_140e7d040`), a Make's food
-    /// (`FUN_140a99e30`) and a technology's resource add (`FUN_141661160`).
+    /// (`FUN_140a99e30`), a technology's resource add (`FUN_141661160`) and a Housing's
+    /// headroom (`0x140ac2a10`).
     ///
     /// # Errors
     ///

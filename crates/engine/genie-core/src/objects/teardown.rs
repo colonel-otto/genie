@@ -5,6 +5,8 @@
 use crate::GenieResult;
 use crate::combat::missile::ShooterId;
 use crate::construction::FoundationId;
+use crate::construction::build::BuildAction;
+use crate::construction::repair::RepairAction;
 use crate::garrison::ContainerId;
 use crate::gathering::DropSiteId;
 use crate::movement::Speed;
@@ -23,17 +25,56 @@ use crate::world::slots::PlayerSlotsExt;
 use crate::world::step::Step;
 
 /// What an action's destructor or its idle update ([`crate::objects::idle_update`]) leaves its
-/// unit's world: the targets it lets go (slot 0x180), in order, and the buildings a counted
-/// builder or repairer leaves (`FUN_140aaddb0`).
+/// unit's world: the targets it lets go (slot 0x180), in order, the buildings a counted
+/// builder or repairer leaves (`FUN_140aaddb0`) and what a destructor gives back.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TornDown {
     /// The objects let go, in the order the destructors let them go.
     pub(crate) releases: Vec<ObjectId>,
     /// The buildings whose builders or repairers count one less.
     pub(crate) builder_leaves: Vec<ObjectId>,
+    /// What the destructor gives back to the unit's owner before its base teardown, which the
+    /// caller applies first ([`crate::world::World::give_back_torn`]).
+    pub(crate) refund: Refund,
+}
+
+/// What an action's destructor gives back to its unit's owner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) enum Refund {
+    /// Nothing.
+    #[default]
+    Nothing,
+    /// A Housing at work went (`0x140ac20f0`): its cost goes back to the owner's wood while the
+    /// game is played ([`crate::construction::housing::HousingAction::refund`]).
+    HousingCost,
 }
 
 impl TornDown {
+    /// What the Build's destructor (`FUN_140aadbf0`) of `build_action` leaves before its base
+    /// teardown: a counted builder (`+0x68`) leaves its building's builders (`FUN_140aaddb0`),
+    /// then the building and the drop site go.
+    fn build_left(&mut self, build_action: &BuildAction) {
+        if build_action.added
+            && let Some(target) = build_action.target
+        {
+            self.builder_leaves.push(target.id());
+        }
+        self.release(build_action.target.map(FoundationId::id));
+        self.release(build_action.site.map(DropSiteId::id));
+    }
+
+    /// What the Repair's destructor (`FUN_140ad8fd0`) of `repair_action` leaves before its base
+    /// teardown: a counted repairer (`+0x6c`) leaves its target's repairers (`FUN_140aaddb0`),
+    /// then the target goes.
+    fn repair_left(&mut self, repair_action: &RepairAction) {
+        if repair_action.counted
+            && let Some(target) = repair_action.target
+        {
+            self.builder_leaves.push(target.id());
+        }
+        self.release(repair_action.target);
+    }
+
     /// `target` let go, unless it is none (−1).
     pub(crate) fn release(&mut self, target: impl ObjectKey) {
         if let Some(target) = target.key() {
@@ -41,23 +82,27 @@ impl TornDown {
         }
     }
 
-    /// Whether it lets nothing go and leaves no building.
+    /// Whether it lets nothing go, leaves no building and gives nothing back.
     pub(crate) const fn is_empty(&self) -> bool {
-        self.releases.is_empty() && self.builder_leaves.is_empty()
+        self.releases.is_empty()
+            && self.builder_leaves.is_empty()
+            && matches!(self.refund, Refund::Nothing)
     }
 
-    /// What the destructors left, applied at once from the update
-    /// ([`crate::world::lets::torn_down`]), `by` the unit letting go.
+    /// What the destructors left, applied at once from the update, `by` the unit letting go: what
+    /// a destructor gave back to `by`'s player first ([`crate::world::World::give_back_torn`]),
+    /// then the buildings and the targets ([`crate::world::lets::torn_down`]).
     ///
     /// # Errors
     ///
-    /// [`crate::world::lets::torn_down`]'s.
+    /// The give-back's and [`crate::world::lets::torn_down`]'s.
     pub(crate) fn let_go(
         self,
         step: &mut Step<'_>,
         me: &mut Unit,
         by: Releaser,
     ) -> GenieResult<()> {
+        step.world.give_back_torn(self.refund, by.player)?;
         let releases = self
             .releases
             .into_iter()
@@ -112,7 +157,11 @@ impl Action {
     /// its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit its top speed
     /// `top` as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its target and the
     /// object it was fired from go. The Make, the wait for a foundation (`0x140ae8780`) and the
-    /// Transport (`FUN_140aa3b60`, the base teardown alone) hold no target.
+    /// Transport (`FUN_140aa3b60`, the base teardown alone) hold no target; the Housing's
+    /// (`0x140ac20f0`) gives its cost back at work ([`HousingAction::refund`]) and holds none
+    /// either.
+    ///
+    /// [`HousingAction::refund`]: crate::construction::housing::HousingAction::refund
     ///
     /// # Errors
     ///
@@ -121,6 +170,7 @@ impl Action {
         let mut torn = TornDown::default();
         match self {
             Self::WaitSolidify(_) | Self::Make(_) => {}
+            Self::Housing(housing_action) => torn.refund = housing_action.refund(),
             Self::Artifact(mut artifact) => {
                 let (released, gone) = artifact.tear_down();
                 torn.release(released);
@@ -140,22 +190,11 @@ impl Action {
                 stop_if_moving(motion, TornWalk::from(transport_action.state.move_to()))?;
             }
             Self::Build(build_action) => {
-                if build_action.added
-                    && let Some(target) = build_action.target
-                {
-                    torn.builder_leaves.push(target.id());
-                }
-                torn.release(build_action.target.map(FoundationId::id));
-                torn.release(build_action.site.map(DropSiteId::id));
+                torn.build_left(&build_action);
                 stop_if_moving(motion, TornWalk::from(build_action.state.move_to()))?;
             }
             Self::Repair(repair_action) => {
-                if repair_action.counted
-                    && let Some(target) = repair_action.target
-                {
-                    torn.builder_leaves.push(target.id());
-                }
-                torn.release(repair_action.target);
+                torn.repair_left(&repair_action);
                 stop_if_moving(motion, TornWalk::from(repair_action.state.move_to()))?;
             }
             Self::Explore(explore_action) => {
@@ -312,7 +351,8 @@ impl Unit {
     /// list of a unit below state 3 ([`NextHead::Restarts`]), on the unit where it stands (its
     /// action layer `actions`, its step): the Artifact's (`0x140aac960`) acts only with 1, the
     /// wait for a foundation's (`0x140ae87c0`) is empty, and the Make's (`0x140a99980`) starts it
-    /// again ([`MakeAction::first`] with its owner's attributes). The Explore's (`0x140a87e10`)
+    /// again ([`MakeAction::first`] with its owner's attributes); the Housing's (`0x140ac2240`)
+    /// acts only with 1 ([`HousingAction::start`]). The Explore's (`0x140a87e10`)
     /// starts it again too ([`Unit::restart_explore`]: to its point, or waiting for one); the
     /// Transport's (`FUN_140aa3e10`) idles ([`Unit::restart_transport`]) and the missile's
     /// (`0x140a9c5b0`) flies ([`MissileAction::restart`]). A `MoveTo` of its own (`0x140aa2100`)
@@ -328,6 +368,7 @@ impl Unit {
     /// `set_state(3)` with 0. Nothing for an empty list.
     ///
     /// [`MakeAction::first`]: crate::gathering::make::MakeAction::first
+    /// [`HousingAction::start`]: crate::construction::housing::HousingAction::start
     /// [`MissileAction::restart`]: crate::combat::missile::MissileAction::restart
     /// [`Fly::restart`]: crate::movement::fly::Fly::restart
     ///
@@ -341,7 +382,9 @@ impl Unit {
         step: &mut Step<'_>,
     ) -> GenieResult<()> {
         match actions.list.head_mut() {
-            None | Some(Action::Artifact(_) | Action::WaitSolidify(_)) => Ok(()),
+            None | Some(Action::Artifact(_) | Action::WaitSolidify(_) | Action::Housing(_)) => {
+                Ok(())
+            }
             Some(Action::Make(make)) => {
                 make.first(
                     &step.world.players.player(step.player)?.attributes,
@@ -493,6 +536,7 @@ mod tests {
             TornDown {
                 releases: vec![object_id(10028)],
                 builder_leaves: vec![object_id(10028)],
+                refund: Refund::Nothing,
             }
         );
         assert!(!moves(&motion));

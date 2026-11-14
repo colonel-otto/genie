@@ -26744,6 +26744,10 @@ fn routes(
 #[test]
 fn the_command_phase_runs_each_unit_command_by_its_handler() {
     let forage_world = forage_world();
+    let later = World {
+        world_time: WorldTime::from_millis(1000),
+        ..forage_world.clone()
+    };
     let ids = object_ids([9175]);
     let way = vec![Point::new(40.5, 89.5)];
     let sweep = Sweep {
@@ -26897,15 +26901,12 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             PlayerId::new(1),
             |world| world.cancel_order(&ids, UnitIndex::of_data(0), Batch::Five),
         ),
-        routes(
-            &forage_world,
-            &unit_order(9, true),
-            PlayerId::new(1),
-            |world| {
-                world.human_order(&ids);
-                world.unit_order(player_id(1), &ids, UnitOrderAction::Other(9))
-            },
-        ),
+        // a byte without a case does nothing; a human player's order still writes its units'
+        // last human order time, which a later world time shows
+        routes(&later, &unit_order(9, true), PlayerId::new(1), |world| {
+            world.human_order(&ids);
+            world.unit_order(player_id(1), &ids, UnitOrderAction::Other(9))
+        }),
     ];
     assert_eq!(
         changed,

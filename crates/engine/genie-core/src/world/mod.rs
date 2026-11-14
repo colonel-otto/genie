@@ -174,7 +174,7 @@ pub(crate) const GATE_COUNT_CAP: usize = 25;
 
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
 pub(crate) const BLOCKS_RESEARCH: [ActionKind; 3] =
-    [ActionKind::ACTION_123, ActionKind::PACK, ActionKind::UNPACK];
+    [ActionKind::HOUSING, ActionKind::PACK, ActionKind::UNPACK];
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
 pub(crate) const STATIC_KINDS_END: MasterKind = MasterKind::ACTION;

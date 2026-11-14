@@ -186,7 +186,8 @@ impl Action {
             actions::Action::MoveTo(_)
             | actions::Action::Missile(_)
             | actions::Action::Make(_)
-            | actions::Action::WaitSolidify(_) => None,
+            | actions::Action::WaitSolidify(_)
+            | actions::Action::Housing(_) => None,
         }
     }
 

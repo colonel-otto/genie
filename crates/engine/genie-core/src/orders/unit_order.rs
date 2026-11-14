@@ -38,6 +38,10 @@ use crate::world::others::OthersRef;
 use crate::world::slots::PlayerSlotsExt;
 use crate::{GenieError, GenieResult};
 
+/// A `UNIT_ORDER` that names a sleeping object, which the order cases genie holds do not model.
+pub(super) const ORDER_ASLEEP: GenieError =
+    GenieError::unsupported("a UNIT_ORDER to a sleeping object");
+
 impl World {
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
     /// [`crate::ownership::artifact::Artifact::take_object`]): its old target is let go (slot 0x180,
@@ -270,7 +274,8 @@ impl World {
     /// [`World::build_drop_off_now`]); for 8 one at no point whose target names no object
     /// ([`target_object`]) records its work for the town bell first (`FUN_141206a20`) and queues
     /// the way back after (`FUN_141205ac0`). For 6, and a unit without one of these actions:
-    /// [`World::drop_off_unasked`] (the way back for 8 alone).
+    /// [`World::drop_off_unasked`] (the way back for 8 alone). Any other byte does nothing: the
+    /// switch has no case for it.
     ///
     /// [`HuntAction::drop_off_asked`]: crate::gathering::hunt::HuntAction::drop_off_asked
     pub(crate) fn unit_order(
@@ -285,9 +290,11 @@ impl World {
             UnitOrderAction::DropOffSearch => (false, false),
             UnitOrderAction::DropOff => (true, false),
             UnitOrderAction::DropOffAndBack => (true, true),
+            // the switch has no case for another byte (`JA` at `0x14161ea8b`)
+            UnitOrderAction::Other(_) => return Ok(()),
             _ => {
                 return Err(GenieError::unsupported(
-                    "a UNIT_ORDER other than the garrison (5) and the drop-offs (6 to 8)",
+                    "a UNIT_ORDER other than the Housing (3), the garrison (5) and the drop-offs (6 to 8)",
                 ));
             }
         };
@@ -296,7 +303,7 @@ impl World {
                 continue;
             };
             let Place::Live(player_id, idx) = place else {
-                return Err(GenieError::unsupported("a UNIT_ORDER to a sleeping object"));
+                return Err(ORDER_ASLEEP);
             };
             // any player's unit the world holds: the command's list (`FUN_140e6b750`) and the
             // order filter none by owner

@@ -52,6 +52,7 @@ mod drop_site;
 mod follow;
 mod form;
 mod gather;
+mod housing_order;
 mod interact;
 mod master_change;
 pub(crate) use self::master_change::{ActionsOnChange, hit_point_share};

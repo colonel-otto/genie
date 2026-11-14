@@ -67,8 +67,10 @@ impl ActionKind {
     /// owner's attribute 90.
     pub const HEAL: Self = Self::named(0x69);
 
-    /// The type 123 (`0x7b`) a building's queue counts as busy with [`Self::PACK`] and [`Self::UNPACK`].
-    pub const ACTION_123: Self = Self::named(0x7b);
+    /// `TRIBE_Action_Housing`'s type (123, `0x7b`): a building's housing, which its queue counts
+    /// as busy with [`Self::PACK`] and [`Self::UNPACK`]
+    /// (`genie_core::construction::housing`).
+    pub const HOUSING: Self = Self::named(0x7b);
 
     /// The type 126 (`0x7e`): its object is never interruptible (slot 0x2d0).
     pub const ACTION_126: Self = Self::named(0x7e);

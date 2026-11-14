@@ -4,9 +4,11 @@
 use crate::combat::attack::ATTACK;
 use crate::combat::missile::ShooterId;
 use crate::combat::missile::{HitMode, MISSILE, MissileState};
+use crate::commands::QueueId;
 use crate::construction::FoundationId;
 use crate::construction::build::BuildState;
 use crate::construction::build::BuildTask;
+use crate::construction::housing::{HousingAction, HousingState};
 use crate::garrison::transport::TransportMode;
 use crate::gathering::DropSiteId;
 use crate::gathering::FarmStops;
@@ -53,7 +55,7 @@ use crate::{GenieError, GenieResult};
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByKind, RgeActionEnter,
     RgeActionGather, RgeActionMake, RgeActionMissile, RgeActionMoveTo, RgeMissileObject, RgeObject,
-    TribeActionArtifact, TribeActionBuild, TribeActionHunt, TribeActionRepair,
+    TribeActionArtifact, TribeActionBuild, TribeActionHousing, TribeActionHunt, TribeActionRepair,
     TribeActionWaitSolidify,
 };
 
@@ -1570,5 +1572,60 @@ fn hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
             crate::ErrorKind::InvalidInput,
             "an Attack of a Hunt that does not attack"
         )
+    );
+}
+
+/// A saved Housing (type 0x7b) of base `rge_action` and queue id 7.
+fn saved_housing(rge_action: RgeAction) -> Action {
+    Action {
+        tribe_action_housing: Some(Box::new(TribeActionHousing {
+            rge_action,
+            unique_id: 7,
+        })),
+        ..Action::default()
+    }
+}
+
+/// The Housing's load (`FUN_140ac1bc0`): its base's state and timer, and its queue id.
+#[test]
+fn housing_takes_its_state_timer_and_queue_id() {
+    let housing = imported(ActionKind::HOUSING, saved_housing(base(6)))
+        .unwrap()
+        .list
+        .housing()
+        .copied();
+    assert_eq!(
+        housing,
+        Some(HousingAction {
+            state: HousingState::Working,
+            timer: Seconds::new(1.5),
+            unique_id: QueueId::of_data(7),
+        })
+    );
+}
+
+/// A saved Housing with a sub-action, in a state of no Housing or without its own part is no
+/// game's.
+#[test]
+fn housing_refuses_what_no_housing_holds() {
+    assert_eq!(
+        imported(
+            ActionKind::HOUSING,
+            saved_housing(with_sub(base(6), EXPLORE, explore(base(3))))
+        )
+        .unwrap_err(),
+        GenieError::invalid_input("a saved Housing with a sub-action")
+    );
+    assert_eq!(
+        imported(ActionKind::HOUSING, saved_housing(base(2)))
+            .unwrap_err()
+            .reason(),
+        "no state of a Housing"
+    );
+    assert_eq!(
+        imported(ActionKind::HOUSING, explore(base(6)))
+            .unwrap_err()
+            .kind(),
+        crate::ErrorKind::Unreachable
     );
 }

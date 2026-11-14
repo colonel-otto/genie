@@ -14,6 +14,8 @@ The files hold the orders by kind:
 - Work: `tasks.rs` (hunt, gather, build, repair), `gather.rs`, `attack.rs`, `drop_site.rs`.
 - The unit's state and its stops: `commands.rs` (STOP, EXPLORE, the auto scout),
   `unit_order.rs`, `actions.rs`.
+- `housing_order.rs`: `UNIT_ORDER`'s Housing (case 3), which gives a building that is not at
+  work a new Housing (`construction/housing/`).
 - `town_bell.rs`: what a villager worked on before an order took it away, for the way back;
   `town_bell/` rings the town bell and ends it.
 - `start_work.rs`: the Empire Wars start, which puts every idle villager to work in the first tick.
@@ -36,6 +38,7 @@ The files hold the orders by kind:
 | [`follow.rs`](follow.rs) | FOLLOW and GUARD, a move to an object and the head action's move. |
 | [`form.rs`](form.rs) | `FORM_FORMATION`'s handler (`FUN_14161dba0`): the listed units are split into groups, which lock to the formation the command names. |
 | [`gather.rs`](gather.rs) | A gather's retarget and take, the quarry, a gather's and a hunt's start. |
+| [`housing_order.rs`](housing_order.rs) | `UNIT_ORDER`'s Housing (case 3) and the work that keeps a building from its cases 1 to 3. |
 | [`interact.rs`](interact.rs) | An interact order's unit, an order on a target, MOVE and its groups. |
 | [`master_change.rs`](master_change.rs) | Slot 0x90, a unit's or a building's change of master: its actions cleared or kept, its hit points, sight, place, sprites, powerups and volleys taken from the new master. |
 | [`mod.rs`](mod.rs) | The orders a command gives its units: INTERACT and its splitter into loose units and groups, the moves, patrols and follows, the work, gather, hunt and build orders, the drop-offs, the town bell and the Empire Wars start. |
@@ -52,6 +55,7 @@ The files hold the orders by kind:
 | [`unit_order.rs`](unit_order.rs) | An artifact's and a herd's take, an order's cancel and a unit's order. |
 | [`work.rs`](work.rs) | A kept attack, the garrison task and the work command and its task. |
 | [`gather/`](gather/) | The work command's Hunt and the Gather's retarget. |
+| [`housing_order/`](housing_order/) | The Housing order's tests. |
 | [`tasks/`](tasks/) | The work tasks' tests. |
 | [`town_bell/`](town_bell/) | The town bell's commands. |
 | [`work/`](work/) | The work command's parts. |

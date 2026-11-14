@@ -240,10 +240,12 @@ impl World {
         Ok(action)
     }
 
-    /// What an action list's destructors left (`torn`) applied by `by`: a counted builder leaves
-    /// its building (`FUN_140aadbf0` before its base teardown, [`World::leave_builders`]), then
-    /// the targets go (slot 0x180, [`World::release`]).
+    /// What an action list's destructors left (`torn`) applied by `by`: what a destructor gave
+    /// back to `by`'s player first ([`World::give_back_torn`]), then a counted builder leaves its
+    /// building (`FUN_140aadbf0` before its base teardown, [`World::leave_builders`]), then the
+    /// targets go (slot 0x180, [`World::release`]).
     pub(crate) fn let_go_torn(&mut self, torn: TornDown, by: Releaser) -> GenieResult<()> {
+        self.give_back_torn(torn.refund, by.player)?;
         for id in torn.builder_leaves {
             self.leave_builders(Some(id))?;
         }

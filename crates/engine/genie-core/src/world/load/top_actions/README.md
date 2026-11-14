@@ -19,5 +19,5 @@ first, with the sub-action it carries.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`combat`](../../../combat/), [`construction`](../../../construction/), [`garrison`](../../../garrison/), [`gathering`](../../../gathering/), [`map`](../../../map/), [`movement`](../../../movement/), [`objects`](../../../objects/), [`ownership`](../../../ownership/), [`players`](../../../players/).
+- Uses: [`combat`](../../../combat/), [`commands`](../../../commands/), [`construction`](../../../construction/), [`garrison`](../../../garrison/), [`gathering`](../../../gathering/), [`map`](../../../map/), [`movement`](../../../movement/), [`objects`](../../../objects/), [`ownership`](../../../ownership/), [`players`](../../../players/).
 <!-- /uses -->

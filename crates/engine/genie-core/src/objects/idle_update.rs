@@ -117,7 +117,8 @@ impl Action {
             | Self::Explore(_)
             | Self::Transport(_)
             | Self::Make(_)
-            | Self::WaitSolidify(_) => {}
+            | Self::WaitSolidify(_)
+            | Self::Housing(_) => {}
         }
     }
 
@@ -138,7 +139,8 @@ impl Action {
             | Self::Enter(_)
             | Self::Transport(_)
             | Self::Make(_)
-            | Self::WaitSolidify(_) => {}
+            | Self::WaitSolidify(_)
+            | Self::Housing(_) => {}
         }
     }
 }

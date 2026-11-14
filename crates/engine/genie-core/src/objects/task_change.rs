@@ -98,8 +98,8 @@ impl Action {
     /// Its task (`+0x48`) as a task change reads it, none for an action without one: the task
     /// factory gives an Attack none (`FUN_140a97e00` case 7), a `MoveTo` and a Missile hold none,
     /// nor do a Transport of the unload command and an Explore of the explore command. The
-    /// Attack's constructors (`FUN_140a7c210`, `FUN_140a7bf50`) and the Missile's
-    /// (`FUN_140a9a040`) store no task.
+    /// Attack's constructors (`FUN_140a7c210`, `FUN_140a7bf50`), the Missile's (`FUN_140a9a040`)
+    /// and the Housing's (`FUN_140ac1b80`) store no task.
     pub(crate) fn held_task(&self) -> Option<HeldTask> {
         match self {
             Self::Hunt(hunt_action) => Some(HeldTask {
@@ -125,7 +125,7 @@ impl Action {
             Self::Enter(enter_action) => Some(HeldTask::of(&enter_action.task)),
             Self::Explore(explore_action) => explore_action.task.as_ref().map(HeldTask::of),
             Self::Artifact(artifact) => artifact.task.as_ref().map(HeldTask::of),
-            Self::Attack(_) | Self::MoveTo(_) | Self::Missile(_) => None,
+            Self::Attack(_) | Self::MoveTo(_) | Self::Missile(_) | Self::Housing(_) => None,
         }
     }
 
@@ -147,7 +147,7 @@ impl Action {
             Self::Enter(enter_action) => enter_action.task = *task,
             Self::Explore(explore_action) => explore_action.task = Some(*task),
             Self::Artifact(artifact) => artifact.task = Some(*task),
-            Self::Attack(_) | Self::MoveTo(_) | Self::Missile(_) => {}
+            Self::Attack(_) | Self::MoveTo(_) | Self::Missile(_) | Self::Housing(_) => {}
         }
     }
 }
@@ -253,7 +253,8 @@ pub(crate) fn action_take_master(
         | Action::Transport(_)
         | Action::Missile(_)
         | Action::Make(_)
-        | Action::WaitSolidify(_) => {}
+        | Action::WaitSolidify(_)
+        | Action::Housing(_) => {}
     }
 }
 

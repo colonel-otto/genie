@@ -711,7 +711,7 @@ fn unit_order_drop_off_sends_carrying_builder_to_the_table_drop_site() {
     );
     assert!(
         world
-            .unit_order(player_id(0), &object_ids([10]), UnitOrderAction::Gather)
+            .unit_order(player_id(0), &object_ids([10]), UnitOrderAction::Transform)
             .is_err()
     );
 }

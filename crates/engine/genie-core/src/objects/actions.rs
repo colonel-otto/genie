@@ -15,6 +15,7 @@ use crate::combat::attack::Attack;
 use crate::combat::missile::MISSILE;
 use crate::combat::missile::MissileAction;
 use crate::construction::build::BuildAction;
+use crate::construction::housing::HousingAction;
 use crate::construction::repair::REPAIR;
 use crate::construction::repair::RepairAction;
 use crate::construction::wait_solidify::WAIT_SOLIDIFY;
@@ -140,6 +141,8 @@ action_kinds! {
     /// A villager's wait for a foundation ([`crate::construction::wait_solidify`]).
     WaitSolidify(WaitSolidify) => wait_solidify, wait_solidify_mut, take_wait_solidify,
         set_wait_solidify, with_wait_solidify;
+    /// A building's Housing ([`crate::construction::housing`]).
+    Housing(HousingAction) => housing, housing_mut, take_housing, set_housing, with_housing;
 }
 
 impl Action {
@@ -161,6 +164,7 @@ impl Action {
             Self::Missile(_) => MISSILE,
             Self::Make(_) => MAKE,
             Self::WaitSolidify(_) => WAIT_SOLIDIFY,
+            Self::Housing(_) => ActionKind::HOUSING,
         }
     }
 
@@ -182,6 +186,7 @@ impl Action {
             Self::Missile(missile_action) => missile_action.state.get(),
             Self::Make(make_action) => make_action.state.get(),
             Self::WaitSolidify(wait_solidify) => wait_solidify.state.get(),
+            Self::Housing(housing_action) => housing_action.state.get(),
         })
     }
 }
@@ -205,7 +210,7 @@ pub(crate) fn target_object<T>(
 impl Action {
     /// The action's target (`+0x30`), the id [`target_object`] looks up; none for an action
     /// without one (an Artifact not moving to an object, a Fly, an Explore, a Transport, a Make,
-    /// a wait for a foundation, which keeps the foundation at `+0x68`).
+    /// a wait for a foundation, which keeps the foundation at `+0x68`, a Housing).
     #[must_use]
     pub fn target(&self) -> Option<ObjectId> {
         match self {
@@ -222,7 +227,8 @@ impl Action {
             | Self::Explore(_)
             | Self::Transport(_)
             | Self::Make(_)
-            | Self::WaitSolidify(_) => None,
+            | Self::WaitSolidify(_)
+            | Self::Housing(_) => None,
         }
     }
 
@@ -254,8 +260,8 @@ pub(crate) enum SubActionMut<'action> {
 
 impl Action {
     /// Its sub-action (`+0x50`, one at most in every state genie models), none for an action
-    /// that holds none: a `MoveTo`, a Missile, a Make and a wait for a foundation make none, and
-    /// an Artifact's Enter has no slot 0x50 of its own (`0x140a782d0`, the base's).
+    /// that holds none: a `MoveTo`, a Missile, a Make, a wait for a foundation and a Housing make
+    /// none, and an Artifact's Enter has no slot 0x50 of its own (`0x140a782d0`, the base's).
     pub(crate) fn sub_action_mut(&mut self) -> Option<SubActionMut<'_>> {
         match self {
             Self::Attack(attack) => sub_walk(attack.state.walk_mut()),
@@ -276,7 +282,11 @@ impl Action {
                 Some(ArtifactSub::Walk { move_to }) => Some(SubActionMut::MoveTo(move_to)),
                 Some(ArtifactSub::Enter { .. }) | None => None,
             },
-            Self::MoveTo(_) | Self::Missile(_) | Self::Make(_) | Self::WaitSolidify(_) => None,
+            Self::MoveTo(_)
+            | Self::Missile(_)
+            | Self::Make(_)
+            | Self::WaitSolidify(_)
+            | Self::Housing(_) => None,
         }
     }
 }

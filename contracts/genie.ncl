@@ -34,6 +34,7 @@
   AttributeRoles = [| 'ALIVE_STORAGE, 'ALLIED_VISION, 'CIV_NAME_OVERRIDE, 'DECAY_TASK, 'EFFECT_FUNCTION, 'FARM_FOOD, 'FARM_FOOD_AMOUNT, 'FOOD, 'GOLD, 'HEADROOM, 'HUNTED_LOAD, 'MAGNITUDE_STORAGE, 'ORE, 'POPULATION_PEAK, 'RELIC, 'RELICS_HELD, 'SHARED_VISION, 'SPREAD_ATTRIBUTE, 'STONE, 'WOOD |],
   AttributeSlots | doc "The attribute ids the engine names, one field each." = {
     food | AttributeId | doc "Food: the first of the four resources (food, wood, stone, gold: 0 to 3).",
+    wood | AttributeId | doc "Wood (1, the scripts' `cAttributeWood`; `player+0x100`'s `+0x8`): a building's Housing (`TRIBE_Action_Housing`) pays its cost out of it as its start (slot 0x28 with 1) and gives the cost back to it in its destructor and its stop (slot 0x38).",
     gold | AttributeId | doc "Gold: a sale gives it and a purchase costs it, the treason costs it.",
     headroom | AttributeId | doc "The population headroom (`+0x308` 4): a building's held amount gives it, and a cost check skips it (`FUN_141618db0` with its fifth argument 1).",
     current_age | AttributeId | doc "The current age (`+0x30`, `player+0x100`), as the `i16` game mode 16's QUEUE, a new soldier's unit AI (`FUN_140c12300`) and a command compare; the mode's bound is `DAT_14330eb8c`.",
@@ -58,6 +59,7 @@
     gold_counter | AttributeId | doc "The gold counter, which gold with a statistic grows (`FUN_141616820`).",
     monasteries | AttributeId | doc "The monasteries the player holds (52): their completion adds 1, their death takes it.",
     tribute_given | AttributeId | doc "The giver's tribute given (53).",
+    building_house_rate | AttributeId | doc "The work a building's Housing takes (62, the scripts' `cAttributeBuildingHouseRate`; `player+0x100`'s `+0x1f0`): the Housing's `set_state(6)` (slot 0x80) starts its timer (`+0x44`) at it.",
     salvage_decay_rate | AttributeId | doc "The salvage decay rate (65, seconds): the combat setup (`FUN_14121df60`) starts every combat object's decay timer (`+0x99c`) at it times 1000, and a salvage pile's update (`TRIBE_Combat_Object::update`) again each time its timer runs out.",
     market_fee | AttributeId | doc "The share of a trade's worth the market keeps (78).",
     queued | AttributeId | doc "The units queued (80).",
@@ -484,6 +486,13 @@
   HitMode | doc "A missile's hit mode (its master's `hit_mode`, `+0x882`, the save's `missile_hit_info`; the\nmissile's copy `+0x80`): which objects on its way it hits. Mode 0 hits its target alone; a\nmiss turns it into mode 1, which hits another player's objects too. Mode 2 strikes its\ntarget on landing as mode 0 does; its hits on the way are not modelled." = std.contract.from_predicate (fun x => std.is_number x && x % 1 == 0 && 0 <= x && x <= 255),
   HitPoints | doc "Hit points as the game's `f32` holds them: an object's (`+0x40`), its powerup's room, what a\nheal, a gain or a loss moves, a building's loss while it is built. A master holds whole hit\npoints ([`MasterHitPoints`], [`HitPoints::of_master`]). Each operator is the one `f32` operation\nthe game does, in its order; a comparison is `f32`'s (a NaN compares false)." = Number,
   HotkeyId | doc "A train location's hotkey (`hotkeyID`, `+0x8`, an int of the `.dat`), which no modelled\nroutine reads. Every int is kept." = std.contract.from_predicate (fun x => std.is_number x && x % 1 == 0),
+  HousingTuning | doc "The `housing` port's tuning values." = {
+    cost | Number | doc "The wood a building's Housing costs (`DAT_142eb0f50`): its start pays it (`0x140ac2240`, unless the owner holds less: `set_state(13)`), and its destructor at work (`0x140ac20f0`) and its stop (`0x140ac2910`) give it back.\n\n`housing::COST`: 50 in build 158041.",
+    full | Number | doc "`UNIT_ORDER`'s Housing (case 3) takes an object holding less than this (`DAT_142f66f60`, `COMISS` at `0x14161ee34`), and any building not at work that holds no headroom.\n\n`housing::FULL`: 45 in build 158041.",
+    gain | Number | doc "The headroom a building's Housing adds once its work is done (its update `0x140ac2a10`, `DAT_14330ebb8`): to the building's held headroom (`FUN_14119d310`) and to its owner's attribute 4 (slot 0xf8).\n\n`housing::GAIN`: 5 in build 158041.",
+    instant_work | Number | doc "The work a building's Housing does in an update while the quick-build cheat holds (`DAT_14330ebe0`, the game's `+0xc14` not 0).\n\n`housing::INSTANT_WORK`: 1000 in build 158041.",
+    least_share | Number | doc "The least share of its work rate a damaged building's Housing does (`DAT_142e7f384`, `MAXSS` with the building's hit points over its master's).\n\n`housing::LEAST_SHARE`: 0.5 in build 158041.",
+  },
   HpPercent | doc "A hit point share in whole per cent (a byte): a damage sprite's `damage_percent` (`+0x8`),\nbelow which share it shows, and an object's damage share (`+0xd`) the sprites follow." = std.contract.from_predicate (fun x => std.is_number x && x % 1 == 0 && 0 <= x && x <= 255),
   HullPathTuning | doc "The `hull_path` port's tuning values." = {
     entrance_step | Number | doc "The step along a box's side, of its length, of the walk into a hull (`DAT_142eb880c`).\n\n`hull_path::ENTRANCE_STEP`: 0.25 in build 158041.",
@@ -944,6 +953,7 @@
     gather_search | GatherSearchTuning | doc "The `gather_search` port's.",
     group | GroupTuning | doc "The `group` port's.",
     history | HistoryTuning | doc "The `history` port's.",
+    housing | HousingTuning | doc "The `housing` port's.",
     hull_path | HullPathTuning | doc "The `hull_path` port's.",
     hunt | HuntTuning | doc "The `hunt` port's.",
     long_path | LongPathTuning | doc "The `long_path` port's.",

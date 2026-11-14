@@ -260,7 +260,9 @@ impl World {
     }
 
     /// Slot 0x38 of the top actions with their own besides the Hunt's, each [`StopList::Keeps`]:
-    /// the Gather's (`FUN_140a8e1b0`, [`crate::gathering::gather::GatherAction::halt`]: its target
+    /// the Housing's (`0x140ac2910`, [`crate::construction::housing::HousingAction::halt`]: done,
+    /// its cost back to the owner's wood), the Gather's (`FUN_140a8e1b0`,
+    /// [`crate::gathering::gather::GatherAction::halt`]: its target
     /// and second target go, [`World::release`]), the Build's (`FUN_140ab0350`,
     /// [`crate::construction::build::BuildAction::halt`]: a counted builder leaves its foundation's
     /// builders, [`World::leave_builders`], before the rest; the foundation goes), the Attack's
@@ -300,6 +302,7 @@ impl World {
             }
             Action::Artifact(artifact) => self.halt_artifact((player_id, idx), artifact, by)?,
             Action::Transport(transport) => self.halt_transport(player_id, idx, transport)?,
+            Action::Housing(housing) => self.halt_housing(player_id, idx, housing)?,
             Action::MoveTo(_)
             | Action::Explore(_)
             | Action::Enter(_)

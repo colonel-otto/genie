@@ -18,8 +18,8 @@ pub enum UnitOrderAction {
     OffboardTrade,
     /// 2: a unit transform to a point or a target (`FUN_140ae58a0`), not modelled.
     Transform,
-    /// 3: a gather action (`FUN_140ac1b80`), not modelled.
-    Gather,
+    /// 3: a building's Housing (`FUN_140ac1b80`, [`World::housing_order`]).
+    Housing,
     /// 4: a building's queue cancels an entry (`FUN_1411d66b0`, [`World::cancel_order`]).
     Cancel,
     /// 5: the units garrison in the target ([`World::garrison_order`]).
@@ -42,7 +42,7 @@ impl UnitOrderAction {
         match byte {
             1 => Self::OffboardTrade,
             2 => Self::Transform,
-            3 => Self::Gather,
+            3 => Self::Housing,
             4 => Self::Cancel,
             5 => Self::Garrison,
             6 => Self::DropOffSearch,
@@ -58,7 +58,7 @@ impl UnitOrderAction {
         match self {
             Self::OffboardTrade => 1,
             Self::Transform => 2,
-            Self::Gather => 3,
+            Self::Housing => 3,
             Self::Cancel => 4,
             Self::Garrison => 5,
             Self::DropOffSearch => 6,
@@ -83,7 +83,8 @@ pub struct UnitOrderCommand {
     pub target: Option<ObjectId>,
     /// `+0xc`, `+0x10`: the point, which the actions modelled do not read.
     pub point: Point,
-    /// `+0x14`, the formatter's `qId`, which the actions modelled do not read.
+    /// `+0x14`, the formatter's `qId`: the Housing's unique id (`+0x68`), which the other actions
+    /// modelled do not read.
     pub queue_id: QueueId,
     /// `+0x1d`: shift held, which a garrison reads as its dispatch (through the units' unit AIs,
     /// their slot 0x30) and a cancel as its batch (up to five of a kind).
@@ -102,8 +103,8 @@ impl UnitOrderCommand {
     /// `do_command`'s check refuses a count past the packet's ids; the handler reads the first
     /// of them ([`World::read_units`]). A human player's order takes the world time as its
     /// units' last human order time first ([`World::human_order`]); then the action: the
-    /// garrison ([`World::garrison_order`]), a cancel ([`World::cancel_order`]) or the others
-    /// ([`World::unit_order`]).
+    /// garrison ([`World::garrison_order`]), a cancel ([`World::cancel_order`]), the Housing
+    /// ([`World::housing_order`]) or the others ([`World::unit_order`]).
     pub(crate) fn run(&self, world: &mut World) -> GenieResult<()> {
         let Some(ids) = world.read_units(self.player, &self.units) else {
             return Ok(());
@@ -120,6 +121,7 @@ impl UnitOrderCommand {
                 self.scope,
             ),
             UnitOrderAction::Cancel => world.cancel_order(ids, self.param, self.shift.batch()),
+            UnitOrderAction::Housing => world.housing_order(ids, self.queue_id),
             action => world.unit_order(self.player, ids, action),
         }
     }

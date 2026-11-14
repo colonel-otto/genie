@@ -606,6 +606,8 @@ pub struct TechSlots {}
 pub struct AttributeSlots {
     /// Food: the first of the four resources (food, wood, stone, gold: 0 to 3).
     pub food: AttributeId,
+    /// Wood (1, the scripts' `cAttributeWood`; `player+0x100`'s `+0x8`): a building's Housing (`TRIBE_Action_Housing`) pays its cost out of it as its start (slot 0x28 with 1) and gives the cost back to it in its destructor and its stop (slot 0x38).
+    pub wood: AttributeId,
     /// Gold: a sale gives it and a purchase costs it, the treason costs it.
     pub gold: AttributeId,
     /// The population headroom (`+0x308` 4): a building's held amount gives it, and a cost check skips it (`FUN_141618db0` with its fifth argument 1).
@@ -654,6 +656,8 @@ pub struct AttributeSlots {
     pub monasteries: AttributeId,
     /// The giver's tribute given (53).
     pub tribute_given: AttributeId,
+    /// The work a building's Housing takes (62, the scripts' `cAttributeBuildingHouseRate`; `player+0x100`'s `+0x1f0`): the Housing's `set_state(6)` (slot 0x80) starts its timer (`+0x44`) at it.
+    pub building_house_rate: AttributeId,
     /// The salvage decay rate (65, seconds): the combat setup (`FUN_14121df60`) starts every combat object's decay timer (`+0x99c`) at it times 1000, and a salvage pile's update (`TRIBE_Combat_Object::update`) again each time its timer runs out.
     pub salvage_decay_rate: AttributeId,
     /// The share of a trade's worth the market keeps (78).
@@ -820,6 +824,8 @@ pub struct Tuning {
     pub group: GroupTuning,
     /// The `history` port's.
     pub history: HistoryTuning,
+    /// The `housing` port's.
+    pub housing: HousingTuning,
     /// The `hull_path` port's.
     pub hull_path: HullPathTuning,
     /// The `hunt` port's.
@@ -1332,6 +1338,32 @@ pub struct HistoryTuning {
     ///
     /// `history::BATTLE_START`: 0.12 in build 158041.
     pub battle_start: f64,
+}
+
+/// The `housing` port's tuning values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct HousingTuning {
+    /// The wood a building's Housing costs (`DAT_142eb0f50`): its start pays it (`0x140ac2240`, unless the owner holds less: `set_state(13)`), and its destructor at work (`0x140ac20f0`) and its stop (`0x140ac2910`) give it back.
+    ///
+    /// `housing::COST`: 50 in build 158041.
+    pub cost: f32,
+    /// `UNIT_ORDER`'s Housing (case 3) takes an object holding less than this (`DAT_142f66f60`, `COMISS` at `0x14161ee34`), and any building not at work that holds no headroom.
+    ///
+    /// `housing::FULL`: 45 in build 158041.
+    pub full: f32,
+    /// The headroom a building's Housing adds once its work is done (its update `0x140ac2a10`, `DAT_14330ebb8`): to the building's held headroom (`FUN_14119d310`) and to its owner's attribute 4 (slot 0xf8).
+    ///
+    /// `housing::GAIN`: 5 in build 158041.
+    pub gain: f32,
+    /// The work a building's Housing does in an update while the quick-build cheat holds (`DAT_14330ebe0`, the game's `+0xc14` not 0).
+    ///
+    /// `housing::INSTANT_WORK`: 1000 in build 158041.
+    pub instant_work: f32,
+    /// The least share of its work rate a damaged building's Housing does (`DAT_142e7f384`, `MAXSS` with the building's hit points over its master's).
+    ///
+    /// `housing::LEAST_SHARE`: 0.5 in build 158041.
+    pub least_share: f32,
 }
 
 /// The `hull_path` port's tuning values.

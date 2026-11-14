@@ -20,6 +20,7 @@ use genie_model::layer::generated::GatherSearchTuning;
 use genie_model::layer::generated::GatherTuning;
 use genie_model::layer::generated::GroupTuning;
 use genie_model::layer::generated::HistoryTuning;
+use genie_model::layer::generated::HousingTuning;
 use genie_model::layer::generated::HullPathTuning;
 use genie_model::layer::generated::HuntTuning;
 use genie_model::layer::generated::LongPathTuning;
@@ -81,6 +82,7 @@ pub fn build_158041() -> BuildLayer {
             gather_search: gather_search(),
             group: group(),
             history: history(),
+            housing: housing(),
             hull_path: hull_path(),
             hunt: hunt(),
             long_path: long_path(),
@@ -973,6 +975,7 @@ const fn tech_slots() -> TechSlots {
 const fn attribute_slots() -> AttributeSlots {
     AttributeSlots {
         food: AttributeId::named(0),
+        wood: AttributeId::named(1),
         gold: AttributeId::named(3),
         headroom: AttributeId::named(4),
         current_age: AttributeId::named(6),
@@ -997,6 +1000,7 @@ const fn attribute_slots() -> AttributeSlots {
         gold_counter: AttributeId::named(49),
         monasteries: AttributeId::named(52),
         tribute_given: AttributeId::named(53),
+        building_house_rate: AttributeId::named(62),
         salvage_decay_rate: AttributeId::named(65),
         market_fee: AttributeId::named(78),
         queued: AttributeId::named(80),
@@ -1244,6 +1248,17 @@ const fn history() -> HistoryTuning {
     HistoryTuning {
         battle_record: f64::from_bits(0x3fc3_3333_3333_3333),
         battle_start: f64::from_bits(0x3fbe_b851_eb85_1eb8),
+    }
+}
+
+/// The `housing` port's tuning values.
+const fn housing() -> HousingTuning {
+    HousingTuning {
+        cost: f32::from_bits(0x4248_0000),
+        full: f32::from_bits(0x4234_0000),
+        gain: f32::from_bits(0x40a0_0000),
+        instant_work: f32::from_bits(0x447a_0000),
+        least_share: f32::from_bits(0x3f00_0000),
     }
 }
 
