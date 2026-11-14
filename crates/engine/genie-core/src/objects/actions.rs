@@ -3,10 +3,10 @@
 //!
 //! The game keeps a linked list at the action object's `+0x880` (its head at the list's
 //! `+0x10`): only the head runs (slot 0x30, `FUN_140a992b0`), the others get the idle update
-//! (`FUN_140a78470`), and a removal (`FUN_140a98e20`) tears the head down and starts the next one
-//! (slot 0x28). Each kind has its accessors here (`attack()`, `attack_mut()`, `take_attack()`,
-//! `set_attack()`), so a part of the object borrows the list apart from its place and its motion
-//! part ([`Motion`]).
+//! (`FUN_140a78470`, [`crate::objects::idle_update`]), and a removal (`FUN_140a98e20`) tears the
+//! head down and starts the next one (slot 0x28). Each kind has its accessors here (`attack()`,
+//! `attack_mut()`, `take_attack()`, `set_attack()`), so a part of the object borrows the list
+//! apart from its place and its motion part ([`Motion`]).
 //!
 //! [`Motion`]: crate::objects::layers::Motion
 

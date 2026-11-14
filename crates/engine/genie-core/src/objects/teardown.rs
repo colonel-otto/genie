@@ -22,8 +22,9 @@ use crate::world::lets::torn_down;
 use crate::world::slots::PlayerSlotsExt;
 use crate::world::step::Step;
 
-/// What an action's destructor leaves its unit's world: the targets it lets go (slot 0x180),
-/// in order, and the buildings a counted builder or repairer leaves (`FUN_140aaddb0`).
+/// What an action's destructor or its idle update ([`crate::objects::idle_update`]) leaves its
+/// unit's world: the targets it lets go (slot 0x180), in order, and the buildings a counted
+/// builder or repairer leaves (`FUN_140aaddb0`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TornDown {
     /// The objects let go, in the order the destructors let them go.
@@ -34,10 +35,15 @@ pub(crate) struct TornDown {
 
 impl TornDown {
     /// `target` let go, unless it is none (−1).
-    fn release(&mut self, target: impl ObjectKey) {
+    pub(crate) fn release(&mut self, target: impl ObjectKey) {
         if let Some(target) = target.key() {
             self.releases.push(target);
         }
+    }
+
+    /// Whether it lets nothing go and leaves no building.
+    pub(crate) const fn is_empty(&self) -> bool {
+        self.releases.is_empty() && self.builder_leaves.is_empty()
     }
 
     /// What the destructors left, applied at once from the update

@@ -212,21 +212,27 @@ impl Attack {
     }
 
     /// Slot 0x68 (`FUN_140a82a10`, `set_target_obj`): a target of class 60 (`-0xe70` raw) changes
-    /// nothing; another target than the Attack's clears the unit's attack count (`+0x900`); then
-    /// the action's own (`FUN_140a7a230`): a new target lets the old one go (its slot 0x180, when
-    /// the world still holds it: the caller's) unless the Attack is a sub-action (`+0x60`), and
-    /// becomes the Attack's (`+0x20`, its id `+0x30`) below state 7, taken (its slot 0x178 with
-    /// the action's type 9, the caller's) unless a sub-action; one in state 7 or more leaves the
-    /// Attack without a target (−1), as does none.
+    /// nothing; any other takes the Attack's place ([`Attack::change_target`]).
     pub fn set_target(&mut self, target: Option<Mark>, roles: &Roles) -> Worked {
-        let mut worked = Worked::default();
         if target.is_some_and(|mark| {
             roles
                 .of_class(mark.class)
                 .contains(ClassRoles::NOT_ATTACK_TARGET)
         }) {
-            return worked;
+            return Worked::default();
         }
+        self.change_target(target)
+    }
+
+    /// Slot 0x68 (`FUN_140a82a10`) past its class test, the whole of it for none: another
+    /// target than the Attack's clears the unit's attack count (`+0x900`); then the action's own
+    /// (`FUN_140a7a230`): a new target lets the old one go (its slot 0x180, when the world still
+    /// holds it: the caller's) unless the Attack is a sub-action (`+0x60`), and becomes the
+    /// Attack's (`+0x20`, its id `+0x30`) below state 7, taken (its slot 0x178 with the action's
+    /// type 9, the caller's) unless a sub-action; one in state 7 or more leaves the Attack
+    /// without a target (−1), as does none.
+    pub(crate) fn change_target(&mut self, target: Option<Mark>) -> Worked {
+        let mut worked = Worked::default();
         // slot 0x68 gives the Attack its target
         let new = target.map(|mark| AttackTargetId::new(mark.id));
         if new != self.target {

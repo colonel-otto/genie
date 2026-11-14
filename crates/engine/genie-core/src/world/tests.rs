@@ -130,6 +130,7 @@ use crate::objects::WorkRate;
 use crate::objects::actions::ActionList;
 use crate::objects::facing::{SpriteFacets, drawn_angle};
 use crate::objects::hit_points::HpChange;
+use crate::objects::idle_update::IdleFrom;
 use crate::objects::layers::{
     Action, Animated, Building, Combat, DefaultTask, Motion, MotionMut, Static, Unstartable,
 };
@@ -6298,7 +6299,7 @@ fn hunt_part_of(world: &mut World, dt: u32) -> GenieResult<()> {
                 (&mut own, tree_lost),
                 &roles(),
             )?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     )
 }
@@ -6833,7 +6834,7 @@ fn hunter_work_reaches_its_deer_in_the_same_update() {
                 (&mut own, tree_lost),
                 &roles(),
             )?;
-            unit.end_head_update(actions, step, code)?;
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)?;
             Ok(
                 OthersRef::of(&step.world.players, &step.world.index, step.player)
                     .unwrap()
@@ -6880,7 +6881,7 @@ fn gathering_hunt_whose_target_left_searches_without_reading_one() {
             let mut own = unit.own_victim(actions, step, &roles())?;
             let code =
                 unit.hunt_part((&mut hunt, actions), step, me, (&mut own, false), &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     );
     assert_eq!(in_update, Ok(()));
@@ -8863,7 +8864,7 @@ fn an_enter_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
                     top_speed: TopSpeed::Own,
                 };
                 let code = unit.enter_part(actions, step, me, &roles())?;
-                unit.end_head_update(actions, step, code)?;
+                unit.end_head_update(actions, step, code, IdleFrom::BelowHead)?;
                 let (_, house) = OthersRef::of(&step.world.players, &step.world.index, step.player)
                     .unwrap()
                     .find(object_id(10028))
@@ -8929,7 +8930,7 @@ fn an_enter_unit_leaves_its_group_inside_the_update() {
                 top_speed: TopSpeed::Own,
             };
             let code = unit.enter_part(actions, step, me, &roles())?;
-            unit.end_head_update(actions, step, code)?;
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)?;
             let members: Vec<ObjectId> = step
                 .world
                 .groups
@@ -13674,7 +13675,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
 
 /// The teardown world ([`teardown_world`]) whose villager 40 (player 1, slot 2) holds `list`,
 /// food of 15 and the state `state`; player 1's farm food to make (the build's slot) is 175.
-fn villager_holding(list: ActionList, state: ObjectState) -> World {
+pub(crate) fn villager_holding(list: ActionList, state: ObjectState) -> World {
     let mut world = teardown_world();
     world.parts.actions.of_mut(object_id(40)).unwrap().list = list;
     let mut attributes = vec![Amount::ZERO; 300];
@@ -13688,7 +13689,7 @@ fn villager_holding(list: ActionList, state: ObjectState) -> World {
 }
 
 /// The villager's walk to town centre 9149, its target (one worker).
-fn walk_to_town_centre() -> MoveToAction {
+pub(crate) fn walk_to_town_centre() -> MoveToAction {
     MoveToAction {
         target: Some(object_id(9149)),
         ..MoveToAction::to_point(
@@ -13715,7 +13716,7 @@ fn made_farm_food() -> MakeAction {
 }
 
 /// An Enter of the villager into town centre 9150, its target (one worker).
-fn enter_town_centre() -> EnterAction {
+pub(crate) fn enter_town_centre() -> EnterAction {
     EnterAction {
         target: Some(ContainerId::new(object_id(9150))),
         state: EnterState::Wait,
@@ -13747,7 +13748,7 @@ pub(crate) fn delete_head_at(
 }
 
 /// The workers of town centres 9149 and 9150 and the villager's holding.
-fn town_workers_and_holding(world: &World) -> (i32, i32, Option<AttributeId>, Amount) {
+pub(crate) fn town_workers_and_holding(world: &World) -> (i32, i32, Option<AttributeId>, Amount) {
     let objects = &world.players[1].objects;
     let villager = &objects[ListIndex::new(2)];
     (
@@ -22733,7 +22734,7 @@ fn forager_with_nothing_found_after_the_drop_idles_or_is_done() {
         |unit, actions, step| {
             let gather = *actions.list.gather().unwrap();
             let code = unit.gather_after_drop(gather, actions, step, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     )
     .unwrap();
@@ -22768,7 +22769,7 @@ fn gather_step(world: &mut World) -> GenieResult<()> {
             };
             let gather = *actions.list.gather().unwrap();
             let code = unit.gather_update(gather, actions, step, me, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     )
 }
@@ -22817,7 +22818,9 @@ fn what_follows_the_gather_update_lets_go_builds_or_reseeds() {
                         by,
                         &roles(),
                     )
-                    .and_then(|code| unit.end_head_update(actions, step, code));
+                    .and_then(|code| {
+                        unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
+                    });
                 // the objects let go, as the update leaves them
                 let released = [600, 700]
                     .into_iter()
@@ -23331,7 +23334,7 @@ fn own_move(world: &mut World) -> OwnMoved {
                 top_speed: TopSpeed::Own,
             };
             let code = unit.move_to_part(actions, step, me, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     );
     let players = &world.players[1].objects[ListIndex::new(0)];
@@ -23813,7 +23816,7 @@ fn update_after_drop(world: &mut World) {
         |unit, actions, step| {
             let mut hunt = *actions.list.hunt().unwrap();
             let code = unit.hunt_after_drop(&mut hunt, actions, step, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     )
     .unwrap();
@@ -24975,7 +24978,7 @@ fn repair_for(world: &mut World, updates: usize) -> Vec<Option<RepairState>> {
                     top_speed: TopSpeed::Own,
                 };
                 let code = unit.repair_part(actions, step, me, &roles())?;
-                unit.end_head_update(actions, step, code)
+                unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
             },
         )
         .unwrap();
@@ -25089,7 +25092,7 @@ fn repair_pays_from_what_its_owner_holds_at_the_payment() {
                 top_speed: TopSpeed::Own,
             };
             let code = unit.repair_part(actions, step, me, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     )
     .unwrap();
@@ -25398,7 +25401,7 @@ fn repaired_by(count: usize) -> [(f32, f32); 2] {
                         top_speed: TopSpeed::Own,
                     };
                     let code = unit.repair_part(actions, step, me, &roles())?;
-                    unit.end_head_update(actions, step, code)
+                    unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
                 },
             )
             .unwrap();

@@ -409,10 +409,11 @@ fn gone_foundation() -> WaitSolidify {
 }
 
 /// The list's update (`FUN_140a992b0`) runs its head's update, then the idle update
-/// (`FUN_140a78470`) of each action below it, which is not ported: a wait for a gone foundation
-/// on top of a Gather stops there, before its deletion.
+/// (`FUN_140a78470`) of each action below it, then the head's deletion: a wait for a gone
+/// foundation on top of a Gather ends, and the Gather on its standing bush, idled with its
+/// target held, is the list's head after.
 #[test]
-fn the_list_update_stops_at_an_action_below_its_head() {
+fn the_list_update_idles_the_actions_below_its_head_before_the_deletion() {
     let mut world = forage_world();
     assert_eq!(
         world.gather_command(
@@ -435,25 +436,23 @@ fn the_list_update_stops_at_an_action_below_its_head() {
         world.parts.actions_of(unit.id).top_action_kind(),
         Some(WAIT_SOLIDIFY)
     );
-    let err = in_update(
-        &mut world,
-        (PlayerId::new(1), ListIndex::new(0)),
-        50,
-        |unit, action, step| Unit::update_actions(unit, action, step, &roles(), slots()),
-    )
-    .unwrap_err();
-    assert_eq!(err.kind(), crate::ErrorKind::Unreachable);
     assert_eq!(
-        err.reason(),
-        "an action below the head of the list (its idle update, FUN_140a78470)"
+        in_update(
+            &mut world,
+            (PlayerId::new(1), ListIndex::new(0)),
+            50,
+            |unit, action, step| Unit::update_actions(unit, action, step, &roles(), slots()),
+        ),
+        Ok(None)
     );
-    assert!(
-        world
-            .parts
-            .actions_of(world.players[1].objects[ListIndex::new(0)].id)
-            .list
-            .wait_solidify()
-            .is_some()
+    let list = &world
+        .parts
+        .actions_of(world.players[1].objects[ListIndex::new(0)].id)
+        .list;
+    assert_eq!(list.iter().count(), 1);
+    assert_eq!(
+        list.gather().and_then(|gather| gather.target),
+        Some(GatherTargetId::new(object_id(600)))
     );
 }
 

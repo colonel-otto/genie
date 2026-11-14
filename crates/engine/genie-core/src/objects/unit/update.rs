@@ -11,6 +11,7 @@ use crate::objects::SleepCheck;
 use crate::objects::SpriteFlags;
 use crate::objects::actions::Action;
 use crate::objects::facing::SpriteFacets;
+use crate::objects::idle_update::IdleFrom;
 use crate::objects::layers::{Action as LayersAction, Building};
 use crate::objects::lifecycle::Class;
 use crate::objects::masters::MasterKind;
@@ -30,11 +31,6 @@ use crate::world::step::Step;
 use crate::world::{IN_THE_WAY, Unread};
 use crate::{GenieError, GenieResult};
 use std::mem::take;
-
-/// An action below the head after the head's update: its idle update (`FUN_140a78470`: a target
-/// or second target past state 6 let go, its sub-actions' idle update) is not ported, and no list
-/// of the slice holds two (every add starts from an empty list, the import takes one).
-const BELOW_HEAD: &str = "an action below the head of the list (its idle update, FUN_140a78470)";
 
 impl Unit {
     pub(crate) fn update(
@@ -127,7 +123,7 @@ impl Unit {
         let me = self.me(actions, top_speed);
         let mut captured = None;
         let code = self.head_part(actions, step, me, &mut captured, roles, slots)?;
-        self.end_head_update(actions, step, code)?;
+        self.end_head_update(actions, step, code, IdleFrom::BelowHead)?;
         Ok(captured)
     }
 
@@ -185,22 +181,23 @@ impl Unit {
         }
     }
 
-    /// What follows the head's update (its `code`): the idle update of the actions below it
-    /// ([`BELOW_HEAD`]), then `RGE_Action_Object::update`'s deletion of a head whose code is 1 or
-    /// 3 ([`Unit::delete_own_head`] with the unit's own top speed and as the releaser).
+    /// What follows the head's update (its `code`): the idle update of the actions `from` on
+    /// ([`Unit::idle_actions`]: the list update's of those below the head, the inside update's
+    /// of the head too), then the deletion of a head whose code is 1 or 3
+    /// (`RGE_Action_Object::update`'s, the inside update's of its head;
+    /// [`Unit::delete_own_head`] with the unit's own top speed and as the releaser).
     ///
     /// # Errors
     ///
-    /// An action below the head, and the deletion's.
+    /// The idle update's and the deletion's.
     pub(crate) fn end_head_update(
         &mut self,
         actions: &mut LayersAction,
         step: &mut Step<'_>,
         code: HeadCode,
+        from: IdleFrom,
     ) -> GenieResult<()> {
-        if actions.list.iter().nth(1).is_some() {
-            return Err(GenieError::unreachable(BELOW_HEAD));
-        }
+        self.idle_actions(actions, step, from)?;
         if code == HeadCode::Deletes {
             let by = self.releaser(step)?;
             let top = step.world.top_speed(step.player, self)?;

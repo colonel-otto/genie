@@ -19,7 +19,10 @@ missile. This folder holds the object itself and the parts that every object has
   `Unit::restart_head`) on the unit's step. The step deletes the list with
   `Unit::clear_own_actions`, the world with `World::clear_actions`. A command, an order or a task
   that gives a unit a new action installs it in the list's place (slot 0x808) through
-  `World::set_only_action`, or `Unit::set_only_own_action` in an update.
+  `World::set_only_action`, or `Unit::set_only_own_action` in an update. `idle_update.rs` holds
+  the idle update of the actions the list update does not run: those below the head, and the
+  head too in the inside update of a unit inside another. A target or second target past state 6
+  goes and is let go at once, and the sub-actions take the same.
 - `release.rs` handles an object that leaves the world, and the release of a target by the
   action that held it.
 - `hit_points.rs` holds a combat object's hit points: their gain and loss, the regeneration and
@@ -52,6 +55,7 @@ calls `Unit::update` (`unit/update.rs`), which runs the object's chain of update
 | [`heal_tests.rs`](heal_tests.rs) | Tests: An object's heal by an amount (slot 0x110): a combat object's (`FUN_141213b10`), at a cost of its owner's for the ships' classes, a building's (`FUN_1411d33e0`) always at a cost with the population tested, and the hit point transforms' test the heal runs at once. |
 | [`hit_points.rs`](hit_points.rs) | A combat object's hit points, a unit's or a building's (`TRIBE_Combat_Object`, types 70 and 80): the gain and the loss, the regeneration and the powerup's clamp (slots 0xb8 and 0x260, and the update's checks). |
 | [`id_table.rs`](id_table.rs) | A table of values by object id: a dense column per sign of the id, so that a lookup indexes and a walk takes the ids in a sorted map's order, the most negative first (the order the side tables kept as `BTreeMap`s). |
+| [`idle_update.rs`](idle_update.rs) | The idle update of the actions the list update does not run (`FUN_140a784a0`): the list update's of each action below the head (`FUN_140a78470`), the inside update's of the head too (`FUN_140a78480`). |
 | [`list_index.rs`](list_index.rs) | An object's place in its player's list (`ListIndex`) and a list's places (`Places`). |
 | [`mod.rs`](mod.rs) | One object and what every object has and runs: the object the engine tracks (`unit::Unit`) with its update, its actions' holdings and stops, its life and death, its release, its sprite and facing, and the masters it is made from. |
 | [`object_id.rs`](object_id.rs) | An object's id as one type: the id that names an object across ticks, as the commands, their unit lists and their targets hold it. |
@@ -67,6 +71,7 @@ calls `Unit::update` (`unit/update.rs`), which runs the object's chain of update
 | [`update_code.rs`](update_code.rs) | What an action's update answers its list. |
 | [`voice.rs`](voice.rs) | Whether an action speaks for its unit (`Voice`): the base action's `+0x60`. |
 | [`facing/`](facing/) | The facets of a master's sprites. |
+| [`idle_update/`](idle_update/) | The idle update's tests. |
 | [`layers/`](layers/) | The object's class chain (FD-045-D06): the game's object classes, each layer holding the one below it, as the save reads them (`RgeMovingObject` holds `rge_animated_object`). |
 | [`lifecycle/`](lifecycle/) | What happens to an object once it is dead: the state steps of `RGE_Static_Object::update` (158041 `0x14118ad50`) and `RGE_Animated_Object::update` (`0x141071880`), up to the update that returns 1 and so takes the object off its player's list (`RGE_Object_List::update`, `0x141166550`). |
 | [`masters/`](masters/) | What the engine reads of a player's masters: the tasks a unit can do and the masters a unit changes into to do them, and how an effect changes a master: the attribute setters (slots 0x18, 0x20 and 0x28 of every master type, `Master::set_attribute`), the master copy of an upgrade (slot 8, `Master::copy_from`) and the values the slice derives from a master (`follow`). |

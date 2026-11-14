@@ -20,6 +20,7 @@ use crate::movement::move_to::MoveDefaults;
 use crate::movement::move_to::Patience;
 use crate::objects::HitPoints;
 use crate::objects::ObjectState;
+use crate::objects::idle_update::IdleFrom;
 use crate::objects::layers::Action;
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::GarrisonKinds;
@@ -652,18 +653,17 @@ impl Unit {
     /// The inside update of an object inside another (`FUN_140a98790`), which runs in place of
     /// its actions' update (`RGE_Action_Object::update`): the head's idle update
     /// (`FUN_140a78480` -> `FUN_140a784a0`: a target or second target past state 6 let go, its
-    /// sub-actions' idle update; the head's deletion right after lets them go alike), the idle
-    /// update of each action below it, and the head's deletion ([`Unit::end_head_update`] with
-    /// its 1). A unit its actions got in this update waits for the next. An empty list takes the
-    /// default task instead: livestock inside makes its Artifact in one update and loses it in
-    /// the next.
+    /// sub-actions' idle update) and that of each action below it, then the head's deletion
+    /// ([`Unit::end_head_update`] from the head, with `FUN_140a78480`'s 1). A unit its actions
+    /// got in this update waits for the next. An empty list takes the default task instead:
+    /// livestock inside makes its Artifact in one update and loses it in the next.
     pub(crate) fn inside_update(
         &mut self,
         actions: &mut Action,
         step: &mut Step<'_>,
     ) -> GenieResult<()> {
         if !actions.list.is_empty() {
-            return self.end_head_update(actions, step, HeadCode::Deletes);
+            return self.end_head_update(actions, step, HeadCode::Deletes, IdleFrom::Head);
         }
         if step.world.parts.unread.contains(self.id) {
             return Err(GenieError::unsupported(

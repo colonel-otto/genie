@@ -13,6 +13,7 @@ mod heal;
 #[cfg(test)]
 mod heal_tests;
 pub(crate) mod hit_points;
+pub(crate) mod idle_update;
 use genie_model::objects::hp;
 mod id_table;
 pub mod layers;

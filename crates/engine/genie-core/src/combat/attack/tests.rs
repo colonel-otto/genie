@@ -49,6 +49,7 @@ use crate::objects::SpriteId;
 use crate::objects::UpdateCode;
 use crate::objects::Voice;
 use crate::objects::facing::SpriteFacets;
+use crate::objects::idle_update::IdleFrom;
 use crate::objects::layers::Action;
 use crate::objects::layers::Animated;
 use crate::objects::layers::Speedup;
@@ -2888,7 +2889,7 @@ fn disarmed_building_targetless_attack_ends_standing_and_posts_0x1fb() {
             let attack = *actions.list.attack().unwrap();
             let code =
                 unit.attack_part(attack, actions, step, me(object_id(700)), None, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     )
     .unwrap();
@@ -2924,7 +2925,7 @@ fn disarmed_building_targetless_attack_ends_standing_and_posts_0x1fb() {
             let attack = *actions.list.attack().unwrap();
             let code =
                 unit.attack_part(attack, actions, step, me(object_id(9175)), None, &roles())?;
-            unit.end_head_update(actions, step, code)
+            unit.end_head_update(actions, step, code, IdleFrom::BelowHead)
         },
     );
     assert_eq!(in_update.unwrap_err(), ATTACK_TARGET_NOT_LIVE);

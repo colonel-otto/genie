@@ -240,7 +240,7 @@ impl Artifact {
     /// Slot 0x68, the base's (`FUN_140a7a230`, `+0x60` 0): a target other than `new` goes (let
     /// go), then `new` comes (taken); the caller passes none for a dead one (a state of 7 or
     /// more), which leaves none.
-    fn set_target(&mut self, new: Option<ObjectId>) -> Targets {
+    pub(crate) fn set_target(&mut self, new: Option<ObjectId>) -> Targets {
         let mut targets = Targets::default();
         if self.target == new {
             return targets;
