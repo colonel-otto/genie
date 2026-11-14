@@ -744,6 +744,9 @@
     waypoint_apart | Number | doc "A patrol's waypoint counts when it is at least this far from the last one kept on x or on y (`FUN_14161b970`, `DAT_14330eb8c`).\n\n`order::WAYPOINT_APART`: 1 in build 158041.",
     waypoint_apart_low | Number | doc "A patrol's waypoint counts when its offset from the last one kept on x or on y is at most this (`FUN_14161b970`, `DAT_14330ec20`).\n\n`order::WAYPOINT_APART_LOW`: -1 in build 158041.",
   },
+  PackTuning | doc "The `pack` port's tuning values." = {
+    instant_work | Number | doc "The work a building's Pack does in an update while the quick-build cheat holds (`DAT_14330ebe0`, the game's `+0xc14` not 0): its update (`0x140ad69d0`) adds it to its timer.\n\n`pack::INSTANT_WORK`: 1000 in build 158041.",
+  },
   Party | doc "Which players a block of the base's kinds reaches." = [| 'Own, 'Allies, 'Enemies, 'Neutrals, 'Gaia |],
   PastureTuning | doc "The `pasture` port's tuning values." = {
     end | Number | doc "An edge's end (`DAT_14330eb8c`).\n\n`pasture::END`: 1 in build 158041.",
@@ -963,6 +966,7 @@
     move_to | MoveToTuning | doc "The `move_to` port's.",
     movement | MovementTuning | doc "The `movement` port's.",
     order | OrderTuning | doc "The `order` port's.",
+    pack | PackTuning | doc "The `pack` port's.",
     pasture | PastureTuning | doc "The `pasture` port's.",
     powerup | PowerupTuning | doc "The `powerup` port's.",
     registry | RegistryTuning | doc "The `registry` port's.",

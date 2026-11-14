@@ -3,6 +3,7 @@
 //! object that has one holds it in the world's table (`Parts::actions`, FD-045-D59).
 
 use crate::combat::attack::ATTACK;
+use crate::construction::pack::PackProgress;
 use crate::garrison::ENTER;
 use crate::gathering::make::MAKE;
 use crate::movement::move_to::MOVE_TO;
@@ -25,7 +26,7 @@ const UNMODELLED_SLOTS: GenieError =
     GenieError::unsupported("slots 0x190 and 0x288 of an action the slice does not model");
 
 /// The action layer of an object: its action list, a villager's idle time, the building that
-/// speeds it up and its command count.
+/// speeds it up, its command count and its pack progress.
 #[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Action {
     /// Its action list (`RGE_Action_List`, [`ActionList`]): the actions it holds, its current one
@@ -39,6 +40,11 @@ pub struct Action {
     pub speedup: Speedup,
     /// The works and moves it took (`command_flag`, `+0x888`, [`CommandCount`]).
     pub commands: CommandCount,
+    /// `+0x88a` ([`PackProgress`]): the share of its top Pack done that its last stop kept
+    /// (`FUN_14106fa60`), which the load (`FUN_14106ec00`, `0x14106f489`) and a stop under any
+    /// other action set to 0. Only the Pack's and the Unpack's installs read it.
+    #[diff(unsaved)]
+    pub(crate) pack_progress: PackProgress,
 }
 
 impl Action {
@@ -49,6 +55,7 @@ impl Action {
         idle: IdleTime::NONE,
         speedup: Speedup::NONE,
         commands: CommandCount::ZERO,
+        pack_progress: PackProgress::NONE,
     };
 
     /// Its slot 0x190 (`FUN_14106d090`): the object its top action's target names
@@ -187,7 +194,8 @@ impl Action {
             | actions::Action::Missile(_)
             | actions::Action::Make(_)
             | actions::Action::WaitSolidify(_)
-            | actions::Action::Housing(_) => None,
+            | actions::Action::Housing(_)
+            | actions::Action::Pack(_) => None,
         }
     }
 

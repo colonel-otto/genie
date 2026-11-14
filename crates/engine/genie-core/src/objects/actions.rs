@@ -16,6 +16,7 @@ use crate::combat::missile::MISSILE;
 use crate::combat::missile::MissileAction;
 use crate::construction::build::BuildAction;
 use crate::construction::housing::HousingAction;
+use crate::construction::pack::PackAction;
 use crate::construction::repair::REPAIR;
 use crate::construction::repair::RepairAction;
 use crate::construction::wait_solidify::WAIT_SOLIDIFY;
@@ -143,6 +144,8 @@ action_kinds! {
         set_wait_solidify, with_wait_solidify;
     /// A building's Housing ([`crate::construction::housing`]).
     Housing(HousingAction) => housing, housing_mut, take_housing, set_housing, with_housing;
+    /// A building's Pack ([`crate::construction::pack`]).
+    Pack(PackAction) => pack, pack_mut, take_pack, set_pack, with_pack;
 }
 
 impl Action {
@@ -165,6 +168,7 @@ impl Action {
             Self::Make(_) => MAKE,
             Self::WaitSolidify(_) => WAIT_SOLIDIFY,
             Self::Housing(_) => ActionKind::HOUSING,
+            Self::Pack(_) => ActionKind::PACK,
         }
     }
 
@@ -187,6 +191,7 @@ impl Action {
             Self::Make(make_action) => make_action.state.get(),
             Self::WaitSolidify(wait_solidify) => wait_solidify.state.get(),
             Self::Housing(housing_action) => housing_action.state.get(),
+            Self::Pack(pack_action) => pack_action.state.get(),
         })
     }
 }
@@ -223,6 +228,7 @@ impl Action {
             Self::Attack(attack) => attack.target.map(RoleId::id),
             Self::Enter(enter_action) => enter_action.target.map(RoleId::id),
             Self::Missile(missile_action) => missile_action.target.map(RoleId::id),
+            Self::Pack(pack_action) => pack_action.target,
             Self::Fly(_)
             | Self::Explore(_)
             | Self::Transport(_)
@@ -260,8 +266,8 @@ pub(crate) enum SubActionMut<'action> {
 
 impl Action {
     /// Its sub-action (`+0x50`, one at most in every state genie models), none for an action
-    /// that holds none: a `MoveTo`, a Missile, a Make, a wait for a foundation and a Housing make
-    /// none, and an Artifact's Enter has no slot 0x50 of its own (`0x140a782d0`, the base's).
+    /// that holds none: a `MoveTo`, a Missile, a Make, a wait for a foundation, a Housing and a
+    /// Pack make none, and an Artifact's Enter has no slot 0x50 of its own (`0x140a782d0`, the base's).
     pub(crate) fn sub_action_mut(&mut self) -> Option<SubActionMut<'_>> {
         match self {
             Self::Attack(attack) => sub_walk(attack.state.walk_mut()),
@@ -286,7 +292,8 @@ impl Action {
             | Self::Missile(_)
             | Self::Make(_)
             | Self::WaitSolidify(_)
-            | Self::Housing(_) => None,
+            | Self::Housing(_)
+            | Self::Pack(_) => None,
         }
     }
 }

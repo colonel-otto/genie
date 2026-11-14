@@ -1,5 +1,5 @@
 //! Building and repairing: the Build and Repair actions with each worker's part of its update,
-//! the wait for a foundation, a building's own update and Housing, and the gates.
+//! the wait for a foundation, a building's own update, Housing and Pack, and the gates.
 
 mod annexes;
 pub mod build;
@@ -11,6 +11,7 @@ pub(crate) mod gates;
 pub mod housing;
 mod main_building_id;
 mod outcomes;
+pub mod pack;
 pub mod repair;
 mod repair_target;
 pub(crate) mod speedup;

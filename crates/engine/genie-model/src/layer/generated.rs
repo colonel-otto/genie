@@ -844,6 +844,8 @@ pub struct Tuning {
     pub movement: MovementTuning,
     /// The `order` port's.
     pub order: OrderTuning,
+    /// The `pack` port's.
+    pub pack: PackTuning,
     /// The `pasture` port's.
     pub pasture: PastureTuning,
     /// The `powerup` port's.
@@ -1686,6 +1688,16 @@ pub struct OrderTuning {
     ///
     /// `order::WAYPOINT_APART_LOW`: -1 in build 158041.
     pub waypoint_apart_low: f32,
+}
+
+/// The `pack` port's tuning values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct PackTuning {
+    /// The work a building's Pack does in an update while the quick-build cheat holds (`DAT_14330ebe0`, the game's `+0xc14` not 0): its update (`0x140ad69d0`) adds it to its timer.
+    ///
+    /// `pack::INSTANT_WORK`: 1000 in build 158041.
+    pub instant_work: f32,
 }
 
 /// The `pasture` port's tuning values.

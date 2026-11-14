@@ -39,7 +39,7 @@ impl IdleReads<'_> {
 }
 
 /// What the idle update of an action leaves its unit's world, in the update's order.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Idled {
     /// An Attack's target went (its slot 0x68, `FUN_140a82a10`): the unit's attack count
     /// (`+0x900`) clears.
@@ -89,6 +89,7 @@ impl Action {
                     .left
                     .release(missile_action.target.take().map(RoleId::id));
             }
+            Self::Pack(pack_action) => idled.left.release(pack_action.target.take()),
             Self::Build(build_action) => {
                 if build_action.added
                     && let Some(target) = build_action.target
@@ -140,7 +141,8 @@ impl Action {
             | Self::Transport(_)
             | Self::Make(_)
             | Self::WaitSolidify(_)
-            | Self::Housing(_) => {}
+            | Self::Housing(_)
+            | Self::Pack(_) => {}
         }
     }
 }

@@ -227,6 +227,9 @@
       waypoint_apart = 1,
       waypoint_apart_low = -1,
     },
+    pack = {
+      instant_work = 1000,
+    },
     pasture = {
       end = 1,
       inset = 0.5,

@@ -9,6 +9,7 @@ use crate::construction::FoundationId;
 use crate::construction::build::BuildState;
 use crate::construction::build::BuildTask;
 use crate::construction::housing::{HousingAction, HousingState};
+use crate::construction::pack::{PackAction, PackState, PackStatus};
 use crate::garrison::transport::TransportMode;
 use crate::gathering::DropSiteId;
 use crate::gathering::FarmStops;
@@ -55,8 +56,8 @@ use crate::{GenieError, GenieResult};
 use genie_save::generated::world::{
     Action, PlayerObjects, RgeAction, RgeActionAttack, RgeActionByKind, RgeActionEnter,
     RgeActionGather, RgeActionMake, RgeActionMissile, RgeActionMoveTo, RgeMissileObject, RgeObject,
-    TribeActionArtifact, TribeActionBuild, TribeActionHousing, TribeActionHunt, TribeActionRepair,
-    TribeActionWaitSolidify,
+    TribeActionArtifact, TribeActionBuild, TribeActionHousing, TribeActionHunt, TribeActionPack,
+    TribeActionRepair, TribeActionWaitSolidify,
 };
 
 /// The task of slot `id`, its work range `range`.
@@ -1624,6 +1625,91 @@ fn housing_refuses_what_no_housing_holds() {
     );
     assert_eq!(
         imported(ActionKind::HOUSING, explore(base(6)))
+            .unwrap_err()
+            .kind(),
+        crate::ErrorKind::Unreachable
+    );
+}
+
+/// A saved Pack (type 0x7c) of base `rge_action` and queue id 7, of status `status` and timer
+/// 12.5.
+fn saved_pack(rge_action: RgeAction, status: u8) -> Action {
+    Action {
+        tribe_action_pack: Some(Box::new(TribeActionPack {
+            rge_action,
+            unique_id: 7,
+            pack_status: status,
+            timer: 12.5,
+        })),
+        ..Action::default()
+    }
+}
+
+/// The Pack's load (`FUN_140ad5090`): its base's state and target, its queue id, its status and
+/// its own timer, not the base's; a target −1 is none.
+#[test]
+fn pack_takes_its_state_target_status_timer_and_queue_id() {
+    let pack = |rge_action, status| {
+        imported(ActionKind::PACK, saved_pack(rge_action, status))
+            .unwrap()
+            .list
+            .pack()
+            .copied()
+    };
+    let aimed = RgeAction {
+        target_id: 21,
+        ..base(6)
+    };
+    assert_eq!(
+        pack(aimed, 1),
+        Some(PackAction {
+            state: PackState::Working,
+            target: Some(object_id(21)),
+            timer: Seconds::new(12.5),
+            status: PackStatus::Packing,
+            unique_id: QueueId::of_data(7),
+        })
+    );
+    let done = pack(base(1), 2).unwrap();
+    assert_eq!(
+        (done.state, done.target, done.status),
+        (PackState::Done, None, PackStatus::Transformed)
+    );
+    let made = pack(base(0), 0).unwrap();
+    assert_eq!(
+        (made.state, made.status),
+        (PackState::New, PackStatus::Idle)
+    );
+    let failed = pack(base(13), 0).unwrap();
+    assert_eq!(failed.state, PackState::Failed);
+}
+
+/// A saved Pack with a sub-action, in a state or a status of no Pack or without its own part is
+/// no game's.
+#[test]
+fn pack_refuses_what_no_pack_holds() {
+    assert_eq!(
+        imported(
+            ActionKind::PACK,
+            saved_pack(with_sub(base(6), EXPLORE, explore(base(3))), 1)
+        )
+        .unwrap_err(),
+        GenieError::invalid_input("a saved Pack with a sub-action")
+    );
+    assert_eq!(
+        imported(ActionKind::PACK, saved_pack(base(2), 1))
+            .unwrap_err()
+            .reason(),
+        "no state of a Pack"
+    );
+    assert_eq!(
+        imported(ActionKind::PACK, saved_pack(base(6), 3))
+            .unwrap_err()
+            .reason(),
+        "no status of a Pack"
+    );
+    assert_eq!(
+        imported(ActionKind::PACK, explore(base(6)))
             .unwrap_err()
             .kind(),
         crate::ErrorKind::Unreachable

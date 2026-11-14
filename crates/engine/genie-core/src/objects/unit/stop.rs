@@ -17,7 +17,7 @@ use crate::objects::release::Releaser;
 use crate::objects::sprite::Cargo;
 use crate::objects::sprite::Graphic;
 use crate::objects::sprite::{new_sprite, standing};
-use crate::objects::teardown::{NextHead, admit};
+use crate::objects::teardown::{NextHead, TornDown, admit};
 use crate::objects::unit::STOPPED_SPRITE_LACKING;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
@@ -229,7 +229,7 @@ impl Unit {
             actions
                 .list
                 .delete_head(step.world.parts.motion_mut(self.id), top, self.life.state)?;
-        torn.let_go(step, self, by)?;
+        self.let_go_own(torn, actions, step, by)?;
         if next == NextHead::Restarts {
             self.restart_head(actions, step)?;
         }
@@ -282,8 +282,28 @@ impl Unit {
             top,
             self.life.state,
         )?;
-        torn.let_go(step, self, by)?;
+        self.let_go_own(torn, actions, step, by)?;
         Ok(action)
+    }
+
+    /// What a deletion of the unit's own list left (`torn`), applied at once from its step: a
+    /// torn-down Pack's own part first ([`Unit::pack_left`] on the unit's action layer
+    /// `actions`), then the rest by `by` ([`TornDown::let_go`]).
+    ///
+    /// # Errors
+    ///
+    /// The Pack's part and what the rest lets go.
+    pub(crate) fn let_go_own(
+        &mut self,
+        mut torn: TornDown,
+        actions: &mut Action,
+        step: &mut Step<'_>,
+        by: Releaser,
+    ) -> GenieResult<()> {
+        if let Some(pack) = torn.pack.take() {
+            self.pack_left(pack, actions, step)?;
+        }
+        torn.let_go(step, self, by)
     }
 
     /// A call its unit AI makes on it ([`Effect`]), at once where the AI makes it

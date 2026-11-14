@@ -14,6 +14,7 @@ use crate::movement::move_to::{MoveToAction, point_sprite};
 use crate::objects::ListIndex;
 use crate::objects::ObjectId;
 use crate::objects::ObjectState;
+use crate::objects::masters::ActionKind;
 use crate::objects::masters::Master;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::OwnerMasters;
@@ -318,14 +319,15 @@ impl World {
 
     /// Slot 0x7e8 of a unit on a target object: an action object's (types 40 to 60) is the work
     /// command (`FUN_14106ff70`, [`World::work_command`]). A combat object's or a building's
-    /// (`FUN_141227190`): a unit in state 3 or later, or of
-    /// class 54 under its own Pack or Unpack (`0x7d`, `0x7c`), ignores it. Against a target the
+    /// (`FUN_141227190`): a unit of class 54 under its own Pack or Unpack (`0x7c`, `0x7d`), then a
+    /// unit in state 3 or later, ignores it. Against a target the
     /// unit is not allied with (`FUN_141663d90` with allies) [`work_reach`] (`FUN_1410862c0`)
     /// decides: class 54 out of reach packs (`FUN_140ad4ff0`), class 51 in reach unpacks
     /// (`FUN_140ae58a0`), each through slot 0x808; else a target below the least range is the
     /// unit's notify [`NotifyKind::TOO_CLOSE`] to its own unit AI (slot 0x328) and nothing more.
     /// Without a target the world holds (none, or one gone) the work command goes to the point, and
-    /// a computer's class 54 packs instead. Neither action is held. A villager drops its town-bell
+    /// a computer's class 54 packs instead. Neither install is modelled ([`PACK_OR_UNPACK`]). A
+    /// villager drops its town-bell
     /// flag (`FUN_1412067f0`); then the work command. A villager on a pasture (1893, 1897) whose
     /// livestock's workers (slot 0x780,
     /// [`ObjectsRef::livestock_workers`](crate::world::objects_ref::ObjectsRef::livestock_workers)) are below its owner's
@@ -347,12 +349,23 @@ impl World {
         if master.kind < MasterKind::COMBAT {
             return self.work_command(player, idx, order);
         }
-        // the class-54 test of its top action comes first in the game, but either way the order
-        // is ignored
+        let class = master.class;
+        // 0x141227242 to 0x141227265: the class's word, then the head's type (FUN_140a986f0, +0x8)
+        if self
+            .model
+            .roles
+            .of_class(class)
+            .contains(ClassRoles::UNPACKED_TREBUCHET)
+            && matches!(
+                self.parts.actions_of(unit.id).top_action_kind(),
+                Some(ActionKind::PACK | ActionKind::UNPACK)
+            )
+        {
+            return Ok(());
+        }
         if ObjectState::Alive < unit.life.state {
             return Ok(());
         }
-        let class = master.class;
         let target = self.object(order.target).map(|(tp, _)| tp);
         let reach = self.order_reach(player, unit.id, order, target, master)?;
         let packs = packs(
@@ -362,7 +375,7 @@ impl World {
             self.players.player(player)?.kind,
             &self.model.roles,
         );
-        // a class 54 under an action the slice does not hold may be under its Pack or Unpack
+        // a class 54 under an action the slice does not hold may be under its Unpack
         if packs
             || (self
                 .model

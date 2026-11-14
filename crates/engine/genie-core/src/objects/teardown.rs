@@ -2,10 +2,12 @@
 //! they leave (slot 0x28 with 0), its add after the install (slot 0x808, `FUN_14106e990`) and
 //! each action's destructor (its slot 0): what they leave the unit's world to apply.
 
+use crate::GenieError;
 use crate::GenieResult;
 use crate::combat::missile::ShooterId;
 use crate::construction::FoundationId;
 use crate::construction::build::BuildAction;
+use crate::construction::pack::PackAction;
 use crate::construction::repair::RepairAction;
 use crate::garrison::ContainerId;
 use crate::gathering::DropSiteId;
@@ -26,8 +28,9 @@ use crate::world::step::Step;
 
 /// What an action's destructor or its idle update ([`crate::objects::idle_update`]) leaves its
 /// unit's world: the targets it lets go (slot 0x180), in order, the buildings a counted
-/// builder or repairer leaves (`FUN_140aaddb0`) and what a destructor gives back.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// builder or repairer leaves (`FUN_140aaddb0`), what a destructor gives back and a Pack's own
+/// part.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TornDown {
     /// The objects let go, in the order the destructors let them go.
     pub(crate) releases: Vec<ObjectId>,
@@ -36,7 +39,23 @@ pub(crate) struct TornDown {
     /// What the destructor gives back to the unit's owner before its base teardown, which the
     /// caller applies first ([`crate::world::World::give_back_torn`]).
     pub(crate) refund: Refund,
+    /// The Pack whose destructor ran (`FUN_140ad5370`): its notify and the building it puts back
+    /// come before its base teardown, which the caller runs first
+    /// ([`crate::world::World::pack_torn_down`] from the world,
+    /// [`crate::objects::unit::Unit::pack_left`] in the unit's step).
+    pub(crate) pack: Option<PackAction>,
 }
+
+/// A Pack's teardown that reached [`TornDown::let_go`]: only the unit's own deletions
+/// ([`Unit::delete_own_head`], [`Unit::set_only_own_action_with`]) tear a Pack down in its step,
+/// and they run its part first ([`Unit::let_go_own`]); an idle update and an Enter's teardown
+/// leave none.
+///
+/// [`Unit::delete_own_head`]: crate::objects::unit::Unit::delete_own_head
+/// [`Unit::set_only_own_action_with`]: crate::objects::unit::Unit::set_only_own_action_with
+/// [`Unit::let_go_own`]: crate::objects::unit::Unit::let_go_own
+const PACK_LEFT_UNRUN: GenieError =
+    GenieError::unreachable("a torn-down Pack whose own part its unit's deletion did not run");
 
 /// What an action's destructor gives back to its unit's owner.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -82,11 +101,12 @@ impl TornDown {
         }
     }
 
-    /// Whether it lets nothing go, leaves no building and gives nothing back.
+    /// Whether it lets nothing go, leaves no building, gives nothing back and holds no Pack.
     pub(crate) const fn is_empty(&self) -> bool {
         self.releases.is_empty()
             && self.builder_leaves.is_empty()
             && matches!(self.refund, Refund::Nothing)
+            && self.pack.is_none()
     }
 
     /// What the destructors left, applied at once from the update, `by` the unit letting go: what
@@ -95,13 +115,17 @@ impl TornDown {
     ///
     /// # Errors
     ///
-    /// The give-back's and [`crate::world::lets::torn_down`]'s.
+    /// A Pack whose own part did not run ([`PACK_LEFT_UNRUN`]), the give-back's and
+    /// [`crate::world::lets::torn_down`]'s.
     pub(crate) fn let_go(
         self,
         step: &mut Step<'_>,
         me: &mut Unit,
         by: Releaser,
     ) -> GenieResult<()> {
+        if self.pack.is_some() {
+            return Err(PACK_LEFT_UNRUN.with("object", me.id));
+        }
         step.world.give_back_torn(self.refund, by.player)?;
         let releases = self
             .releases
@@ -159,7 +183,9 @@ impl Action {
     /// object it was fired from go. The Make, the wait for a foundation (`0x140ae8780`) and the
     /// Transport (`FUN_140aa3b60`, the base teardown alone) hold no target; the Housing's
     /// (`0x140ac20f0`) gives its cost back at work ([`HousingAction::refund`]) and holds none
-    /// either.
+    /// either. The Pack's (`0x140ad6070` over `FUN_140ad5370`) hands itself to the caller for its
+    /// notify and the building it puts back ([`TornDown::pack`]), then its base teardown lets
+    /// its target go: it is loud.
     ///
     /// [`HousingAction::refund`]: crate::construction::housing::HousingAction::refund
     ///
@@ -171,6 +197,10 @@ impl Action {
         match self {
             Self::WaitSolidify(_) | Self::Make(_) => {}
             Self::Housing(housing_action) => torn.refund = housing_action.refund(),
+            Self::Pack(pack_action) => {
+                torn.pack = Some(pack_action);
+                torn.release(pack_action.target);
+            }
             Self::Artifact(mut artifact) => {
                 let (released, gone) = artifact.tear_down();
                 torn.release(released);
@@ -352,7 +382,8 @@ impl Unit {
     /// action layer `actions`, its step): the Artifact's (`0x140aac960`) acts only with 1, the
     /// wait for a foundation's (`0x140ae87c0`) is empty, and the Make's (`0x140a99980`) starts it
     /// again ([`MakeAction::first`] with its owner's attributes); the Housing's (`0x140ac2240`)
-    /// acts only with 1 ([`HousingAction::start`]). The Explore's (`0x140a87e10`)
+    /// acts only with 1 ([`HousingAction::start`]), as the Pack's (`0x140ad6150`) does. The
+    /// Explore's (`0x140a87e10`)
     /// starts it again too ([`Unit::restart_explore`]: to its point, or waiting for one); the
     /// Transport's (`FUN_140aa3e10`) idles ([`Unit::restart_transport`]) and the missile's
     /// (`0x140a9c5b0`) flies ([`MissileAction::restart`]). A `MoveTo` of its own (`0x140aa2100`)
@@ -382,9 +413,13 @@ impl Unit {
         step: &mut Step<'_>,
     ) -> GenieResult<()> {
         match actions.list.head_mut() {
-            None | Some(Action::Artifact(_) | Action::WaitSolidify(_) | Action::Housing(_)) => {
-                Ok(())
-            }
+            None
+            | Some(
+                Action::Artifact(_)
+                | Action::WaitSolidify(_)
+                | Action::Housing(_)
+                | Action::Pack(_),
+            ) => Ok(()),
             Some(Action::Make(make)) => {
                 make.first(
                     &step.world.players.player(step.player)?.attributes,
@@ -537,6 +572,7 @@ mod tests {
                 releases: vec![object_id(10028)],
                 builder_leaves: vec![object_id(10028)],
                 refund: Refund::Nothing,
+                pack: None,
             }
         );
         assert!(!moves(&motion));

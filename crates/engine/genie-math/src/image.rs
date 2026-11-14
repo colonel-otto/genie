@@ -356,6 +356,12 @@ pub mod order {
     pub const DAMAGE_WHOLE: f32 = f32::from_bits(0x42c8_0000);
 }
 
+/// The values the `pack` port reads.
+pub mod pack {
+    /// 100.0
+    pub const PERCENT: f32 = f32::from_bits(0x42c8_0000);
+}
+
 /// The values the `powerup` port reads.
 pub mod powerup {
     /// 1.0000000116860974e-07

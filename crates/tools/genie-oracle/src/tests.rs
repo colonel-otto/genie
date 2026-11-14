@@ -47,10 +47,9 @@ fn building_production_state_comes_before_its_top_action_s() {
         ..Production::default()
     };
     let kind = ARTIFACT_KIND;
-    let top = Action {
-        list: ActionList::default().with_artifact(Some(artifact)),
-        ..Default::default()
-    };
+    // the layer's crate-private columns leave no struct update to another crate
+    let mut top = Action::default();
+    top.list = ActionList::default().with_artifact(Some(artifact));
     assert_eq!(
         checkpoint_action(&top, Some(&making)),
         Some(ActionTerm {

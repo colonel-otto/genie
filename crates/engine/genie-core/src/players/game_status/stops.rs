@@ -3,6 +3,7 @@
 
 use crate::construction::FoundationId;
 use crate::construction::build::BuildAction;
+use crate::construction::pack::{PackProgress, pack_time};
 use crate::construction::repair::RepairAction;
 use crate::construction::repair::RepairerCount;
 use crate::gathering::DropSiteId;
@@ -23,7 +24,6 @@ use crate::objects::teardown::TornWalk;
 use crate::ownership::artifact::ANIMAL_UNMOVING;
 use crate::ownership::artifact::Artifact;
 use crate::players::PlayerId;
-use crate::players::game_status::KEEPING_KINDS;
 use crate::unit_ai::AiAction;
 use crate::unit_ai::StopOrder;
 use crate::world::Seconds;
@@ -107,8 +107,11 @@ impl World {
     }
 
     /// The object stop (slot 0x148, `FUN_14108c050`; a building's `FUN_1411e6290`) of the object
-    /// at `idx` of player `player_id`: the action object's stop (`FUN_14106fa60`): its top action's
-    /// slot 0x38 ([`World::halt_top_action`]); the action list goes ([`World::clear_actions`])
+    /// at `idx` of player `player_id`: the action object's stop (`FUN_14106fa60`): its pack
+    /// progress (`+0x88a`) takes a top Pack's share done (`FUN_140ad6170`,
+    /// [`crate::construction::pack::PackAction::progress`]), else 0 (a top Unpack's,
+    /// `FUN_140ae6cd0`, is not modelled); then its top action's slot 0x38
+    /// ([`World::halt_top_action`]); the action list goes ([`World::clear_actions`])
     /// unless that answered true for a unit that is no trade cart with goods; then a unit AI of
     /// a class other than 58 whose action value is not `0x2c2` and whose top action is no trade
     /// (0x6f) with a load stops (slot 0xb0 with 0: the order ends, and stopAction, slot 0x3c0)
@@ -117,15 +120,16 @@ impl World {
         let unit = &self.players.live(player_id, idx)?;
         let master = unit.master(self.master_tables(), player_id)?;
         let class = master.class;
-        if self
-            .parts
-            .actions_of(unit.id)
-            .top_action_kind()
-            .is_some_and(|action_kind| KEEPING_KINDS.contains(&action_kind))
-        {
-            return Err(GenieError::unsupported(
-                "a stop of an action of type 0x7c or 0x7d",
-            ));
+        let progress = match self.parts.actions_of(unit.id).list.head() {
+            Some(Action::Pack(pack)) => pack.progress(pack_time(master)),
+            Some(head) if head.kind() == ActionKind::UNPACK => {
+                return Err(GenieError::unsupported("a stop of an action of type 0x7d"));
+            }
+            _ => PackProgress::NONE,
+        };
+        // an object whose layer the table does not hold reads 0 already: no entry for it
+        if progress != self.parts.actions_of(unit.id).pack_progress {
+            self.parts.actions.of_mut(unit.id)?.pack_progress = progress;
         }
         let list = self.halt_top_action(player_id, idx)?;
         // The livestock's class, whose unit AI a stop leaves alone (`FUN_14108c050`: raw `-0xe72`).
@@ -268,7 +272,8 @@ impl World {
     /// builders, [`World::leave_builders`], before the rest; the foundation goes), the Attack's
     /// (`FUN_140a82ac0`, [`crate::combat::attack::Attack::halt`]), the Artifact's
     /// (`FUN_140aad1a0`, [`crate::ownership::artifact::Artifact::stop`]) and the Transport's
-    /// (`FUN_140aa4620`, [`World::halt_transport`]). The Gather, the Build and
+    /// (`FUN_140aa4620`, [`World::halt_transport`]) and the Pack's (`0x140ad69b0`,
+    /// [`crate::construction::pack::PackAction::halt`]: done). The Gather, the Build and
     /// the Artifact show the master's standing sprite (the Gather the task's carrying one while it
     /// carries at least 1 of the task's resource, `FUN_140a8b6b0`).
     /// [`Action::list`](crate::objects::layers::Action::list) holds no other kind.
@@ -303,6 +308,11 @@ impl World {
             Action::Artifact(artifact) => self.halt_artifact((player_id, idx), artifact, by)?,
             Action::Transport(transport) => self.halt_transport(player_id, idx, transport)?,
             Action::Housing(housing) => self.halt_housing(player_id, idx, housing)?,
+            Action::Pack(mut pack) => {
+                pack.halt();
+                let id = self.players.live(player_id, idx)?.id;
+                self.parts.actions.of_mut(id)?.list.set_pack(Some(pack));
+            }
             Action::MoveTo(_)
             | Action::Explore(_)
             | Action::Enter(_)

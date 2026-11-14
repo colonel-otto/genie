@@ -197,7 +197,7 @@ impl World {
                 top,
                 state,
             )?;
-            self.let_go_torn(torn, by)?;
+            self.let_go_torn(torn, idx, by)?;
             if next == NextHead::Restarts {
                 self.run_on_step(player, idx, |unit, actions, step| {
                     unit.restart_head(actions, step)
@@ -236,15 +236,28 @@ impl World {
             top,
             unit.life.state,
         )?;
-        self.let_go_torn(torn, by)?;
+        self.let_go_torn(torn, idx, by)?;
         Ok(action)
     }
 
-    /// What an action list's destructors left (`torn`) applied by `by`: what a destructor gave
-    /// back to `by`'s player first ([`World::give_back_torn`]), then a counted builder leaves its
-    /// building (`FUN_140aadbf0` before its base teardown, [`World::leave_builders`]), then the
-    /// targets go (slot 0x180, [`World::release`]).
-    pub(crate) fn let_go_torn(&mut self, torn: TornDown, by: Releaser) -> GenieResult<()> {
+    /// What an action list's destructors left (`torn`) applied by `by`, the unit at `idx` of its
+    /// player: a torn-down Pack's own part first ([`World::pack_torn_down`]), then what a
+    /// destructor gave back to `by`'s player ([`World::give_back_torn`]), then a counted builder
+    /// leaves its building (`FUN_140aadbf0` before its base teardown, [`World::leave_builders`]),
+    /// then the targets go (slot 0x180, [`World::release`]).
+    ///
+    /// # Errors
+    ///
+    /// The Pack's part, the give-back's, the leaves' and the releases'.
+    pub(crate) fn let_go_torn(
+        &mut self,
+        torn: TornDown,
+        idx: ListIndex,
+        by: Releaser,
+    ) -> GenieResult<()> {
+        if let Some(pack) = torn.pack {
+            self.pack_torn_down(by.player, idx, pack)?;
+        }
         self.give_back_torn(torn.refund, by.player)?;
         for id in torn.builder_leaves {
             self.leave_builders(Some(id))?;

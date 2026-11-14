@@ -210,7 +210,7 @@ impl World {
             top,
             unit.life.state,
         )?;
-        self.let_go_torn(torn, by)?;
+        self.let_go_torn(torn, idx, by)?;
         Ok(action)
     }
 

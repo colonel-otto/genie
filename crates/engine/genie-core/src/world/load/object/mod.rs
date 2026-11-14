@@ -571,6 +571,7 @@ fn row(
             .and_then(|master_table| saved_sprite(rge_static_object, &master_table.graphics)),
         ..Unit::default()
     };
+    // the pack progress (+0x88a) starts at 0, which the load writes (FUN_14106ec00, 0x14106f489)
     let mut actions = Action::default();
     let imported = match holds {
         SaveHolds::Actions => saved_actions(

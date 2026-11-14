@@ -32,6 +32,7 @@ use genie_model::layer::generated::MissileTuning;
 use genie_model::layer::generated::MoveToTuning;
 use genie_model::layer::generated::MovementTuning;
 use genie_model::layer::generated::OrderTuning;
+use genie_model::layer::generated::PackTuning;
 use genie_model::layer::generated::PastureTuning;
 use genie_model::layer::generated::PowerupTuning;
 use genie_model::layer::generated::RegistryTuning;
@@ -92,6 +93,7 @@ pub fn build_158041() -> BuildLayer {
             move_to: move_to(),
             movement: movement(),
             order: order(),
+            pack: pack(),
             pasture: pasture(),
             powerup: powerup(),
             registry: registry(),
@@ -1380,6 +1382,13 @@ const fn order() -> OrderTuning {
         table_drop_far: f32::from_bits(0x4974_2400),
         waypoint_apart: f32::from_bits(0x3f80_0000),
         waypoint_apart_low: f32::from_bits(0xbf80_0000),
+    }
+}
+
+/// The `pack` port's tuning values.
+const fn pack() -> PackTuning {
+    PackTuning {
+        instant_work: f32::from_bits(0x447a_0000),
     }
 }
 

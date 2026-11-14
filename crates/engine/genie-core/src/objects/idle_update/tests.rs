@@ -9,8 +9,10 @@ use crate::combat::attack::tests::own_attack;
 use crate::combat::missile::{
     HitMode, MissileAction, MissileState, MissileTargetId, Origin, ShooterId, StrikeResult,
 };
+use crate::commands::QueueId;
 use crate::construction::build::tests::started;
 use crate::construction::build::{BuildAction, BuildTask};
+use crate::construction::pack::{PackAction, PackState, PackStatus};
 use crate::construction::repair::{RepairAction, RepairState, RepairTask};
 use crate::construction::wait_solidify::WaitSolidify;
 use crate::construction::{FoundationId, RepairTargetId};
@@ -70,6 +72,7 @@ fn releasing(released: &[i32]) -> Idled {
             refund: Refund::Nothing,
             releases: released.iter().copied().map(object_id).collect(),
             builder_leaves: Vec::new(),
+            pack: None,
         },
     }
 }
@@ -272,6 +275,16 @@ fn target_past_state_6_goes_and_is_let_go() {
             9150,
         ),
         (Action::Repair(repair_of(false, Voice::Loud)), 20),
+        (
+            Action::Pack(PackAction {
+                state: PackState::Working,
+                target: Some(object_id(9150)),
+                timer: Seconds::new(3.0),
+                status: PackStatus::Packing,
+                unique_id: QueueId::of_data(-1),
+            }),
+            9150,
+        ),
     ];
     for (action, target) in actions {
         let mut kept = action.clone();
