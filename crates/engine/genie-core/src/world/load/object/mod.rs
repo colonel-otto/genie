@@ -472,16 +472,13 @@ fn row(
                 .map_or(0.0, |tribe_combat_object| tribe_combat_object.speed_stinger),
         ),
         // the load reads each saved stinger's 32 bytes raw (FUN_14121ec90)
-        active_stingers: object
-            .combat()
-            .map(|tribe_combat_object| {
-                tribe_combat_object
-                    .stinger
-                    .iter()
-                    .map(ActiveStinger::of_save)
-                    .collect()
-            })
-            .unwrap_or_default(),
+        active_stingers: object.combat().map_or_default(|tribe_combat_object| {
+            tribe_combat_object
+                .stinger
+                .iter()
+                .map(ActiveStinger::of_save)
+                .collect()
+        }),
         // unsaved: the load leaves them empty
         hp_stinger: HitPoints::ZERO,
         attack_stinger: AttackBonus::ZERO,
@@ -513,21 +510,18 @@ fn row(
             KillState::of_data(rge_combat_object.processed_kill)
         }),
         // the combat object's localResourceStore (+0xae0), a map by attribute saved in its order
-        store: object
-            .combat()
-            .map(|tribe_combat_object| {
-                tribe_combat_object
-                    .local_resource_store
-                    .iter()
-                    .filter_map(|entry| {
-                        Some((
-                            AttributeId::of_index(usize::from(entry.attribute_idx))?,
-                            Amount::new(entry.value),
-                        ))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
+        store: object.combat().map_or_default(|tribe_combat_object| {
+            tribe_combat_object
+                .local_resource_store
+                .iter()
+                .filter_map(|entry| {
+                    Some((
+                        AttributeId::of_index(usize::from(entry.attribute_idx))?,
+                        Amount::new(entry.value),
+                    ))
+                })
+                .collect()
+        }),
         // not saved: the load's constructor sets 1
         order_source: OrderSource::Direct,
     };

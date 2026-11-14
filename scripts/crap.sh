@@ -51,8 +51,24 @@ llvm_tools() {
     exit 2
 }
 
+# cargo 1.100 builds each binary into debug/build/PACKAGE/HASH/out. The older layout's binaries
+# stay in debug/deps and, with their hash in the name, in debug/examples, and cargo-llvm-cov
+# 0.9.1 still reads them. An older build's copy of a function that no test ran then sets the
+# lines it shares with the run's copy to 0 in the LCOV export (genie-dat's
+# `TaskList::read_from`: 5917 calls, its `?` lines 0), and functions rise above the threshold.
+# They go before each run; cargo 1.100 writes neither.
+stale_binaries() {
+    local debug=${CARGO_LLVM_COV_TARGET_DIR:-${CARGO_TARGET_DIR:-target}/llvm-cov-target}/debug
+    rm -rf "$debug/deps"
+    if [ -d "$debug/examples" ]; then
+        find "$debug/examples" -maxdepth 1 -type f -regextype posix-extended \
+            -regex '.*-[0-9a-f]{16}(\.d)?' -delete
+    fi
+}
+
 if [ "${CRAP_COVERAGE:-}" != keep ] || [ ! -f "$lcov" ]; then
     llvm_tools
+    stale_binaries
     mkdir -p coverage
     # the run's output goes to a log, shown only when it fails
     if ! cargo llvm-cov nextest --workspace --lcov --output-path "$lcov" \

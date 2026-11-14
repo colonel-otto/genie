@@ -87,7 +87,7 @@ pub fn header_survey(
         if stopped.iter().all(|&stop| stop) {
             break;
         }
-        if update < first || (update - first) % every.get() != 0 {
+        if update < first || (update - first) % every != 0 {
             continue;
         }
         let Some(game) = save(update) else {

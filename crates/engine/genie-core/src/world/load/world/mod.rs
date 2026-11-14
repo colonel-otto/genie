@@ -217,7 +217,7 @@ pub fn saved_world(
                     .base
                     .pending_debit
                     .map(Amount::new),
-                techs: techs.get_mut(index).map(take).unwrap_or_default(),
+                techs: techs.get_mut(index).map_or_default(take),
                 unsupported: None,
                 freezes: Vec::new(),
                 stopped: false,

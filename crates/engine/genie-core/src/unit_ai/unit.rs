@@ -519,9 +519,7 @@ impl Unit {
         mover: Option<&mut Mover>,
         ais: &mut PartTable<UnitAi>,
     ) -> GenieResult<()> {
-        let in_the_way = mover
-            .map(|mover| take(&mut mover.in_the_way))
-            .unwrap_or_default();
+        let in_the_way = mover.map_or_default(|mover| take(&mut mover.in_the_way));
         for id in in_the_way {
             self.post_own(ais, NotifyKind::IN_THE_WAY, [id.get(), -1, -1])?;
         }

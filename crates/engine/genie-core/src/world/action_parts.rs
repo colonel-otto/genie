@@ -50,7 +50,7 @@ impl Parts {
     /// Object `id`'s action layer out of the table for its update, as its row is out of its
     /// list: its slot holds an empty one meanwhile ([`Parts::put_actions`] puts it back).
     pub(crate) fn take_actions(&mut self, id: ObjectId) -> Action {
-        self.actions.get_mut(id).map(take).unwrap_or_default()
+        self.actions.get_mut(id).map_or_default(take)
     }
 
     /// Object `id`'s action layer `layer` in the table: filed where it differs from an empty

@@ -124,8 +124,7 @@ impl World {
             .parts
             .unit_ai
             .get(building.id)
-            .map(|unit_ai| unit_ai.building_orders.clone())
-            .unwrap_or_default();
+            .map_or_default(|unit_ai| unit_ai.building_orders.clone());
         let gather = self.parts.gather_point.get(building.id).copied();
         let position = building.position();
         if made.move_stats.is_none() {

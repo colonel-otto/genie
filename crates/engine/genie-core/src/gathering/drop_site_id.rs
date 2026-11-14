@@ -7,7 +7,7 @@ use crate::objects::{Role, RoleId};
 /// one a unit AI sends a load elsewhere to. Not the drop-site table's row
 /// ([`crate::unit_ai::task_finder::DropSite`]), which names a master.
 #[derive(Clone, Copy, Debug)]
-pub enum DropSite {}
+pub struct DropSite(!);
 
 impl Role for DropSite {
     const NAME: &'static str = "DropSiteId";

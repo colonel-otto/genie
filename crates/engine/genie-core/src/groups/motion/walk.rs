@@ -151,8 +151,7 @@ fn weigh_hits(
     let top_ignore = motion
         .paths
         .last()
-        .map(|path_data| path_data.ignore.as_slice())
-        .unwrap_or_default();
+        .map_or_default(|path_data| path_data.ignore.as_slice());
     let mut on_target = false;
     let mut newer = 0;
     for &hit in hits {

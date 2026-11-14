@@ -6,7 +6,7 @@ use crate::objects::{Role, RoleId};
 /// attacks, whose hits it deals ([`crate::combat::damage::Victim`], what a hit reads and changes
 /// of it). The work command's Attack takes its target as both.
 #[derive(Clone, Copy, Debug)]
-pub enum AttackTarget {}
+pub struct AttackTarget(!);
 
 impl Role for AttackTarget {
     const NAME: &'static str = "AttackTargetId";

@@ -111,9 +111,8 @@ impl InformationAi {
         if ai.resource_kinds.len() < 4 {
             ai.resource_kinds.resize(4, vec![]);
         }
-        for resource_id in 0..4 {
+        for list in ai.resource_kinds.iter_mut().take(4) {
             let num_res = input.read_u32::<LE>()?;
-            let list = &mut ai.resource_kinds[resource_id];
             for _ in 0..num_res {
                 list.push(input.read_u32::<LE>()?);
             }

@@ -11,7 +11,7 @@ pub(crate) const MAIN_BUILDING_GONE: GenieError =
 /// save's linked owner), which takes a hit on the annex, pays for its repair and keeps its
 /// annexes' list (`+0xbc0`).
 #[derive(Clone, Copy, Debug)]
-pub enum MainBuilding {}
+pub struct MainBuilding(!);
 
 impl Role for MainBuilding {
     const NAME: &'static str = "MainBuildingId";

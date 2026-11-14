@@ -1544,7 +1544,7 @@ fn an_attack_rate_needs_reload_and_range_that_compare_above_their_limits() {
             combat: Some(CombatPart {
                 reload: Seconds::new(reload),
                 weapon_range: Distance::new(range),
-                ..town_center().combat.clone().unwrap_or_default()
+                ..town_center().combat.unwrap_or_default()
             }),
             ..town_center()
         };

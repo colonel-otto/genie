@@ -6,7 +6,7 @@ use crate::objects::{Role, RoleId};
 /// player it leads to a drop site. The work command's target the hunt reads
 /// ([`crate::gathering::hunt::Quarry`]) takes it.
 #[derive(Clone, Copy, Debug)]
-pub enum HuntTarget {}
+pub struct HuntTarget(!);
 
 impl Role for HuntTarget {
     const NAME: &'static str = "HuntTargetId";

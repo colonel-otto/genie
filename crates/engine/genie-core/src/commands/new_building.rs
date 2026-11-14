@@ -100,8 +100,7 @@ impl World {
         master: MasterId,
     ) -> GenieResult<Held> {
         let storage = player_master(&self.model.masters, player, master)
-            .map(|master| master.storage.clone())
-            .unwrap_or_default();
+            .map_or_default(|master| master.storage.clone());
         self.static_storage(player, &storage)
     }
 

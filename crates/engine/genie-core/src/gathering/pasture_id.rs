@@ -6,7 +6,7 @@ use crate::objects::{Role, RoleId};
 /// `+0x790`), the one a unit tends (`my_pasture_id`, `+0x794`) and the one a building's stack
 /// unit made at its completion (`+0xcb0`).
 #[derive(Clone, Copy, Debug)]
-pub enum Pasture {}
+pub struct Pasture(!);
 
 impl Role for Pasture {
     const NAME: &'static str = "PastureId";

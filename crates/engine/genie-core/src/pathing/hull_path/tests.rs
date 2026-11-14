@@ -2354,6 +2354,53 @@ fn walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_goal_in_range() {
     );
 }
 
+/// `pathWithinHull` out of a hull (`FUN_140f8cf00`) from a start that the search cannot take:
+/// off the map (within the unit's radius of its edge) the start node is passed over and the
+/// list runs dry; outside the search area the walk stops at it. Neither keeps a way out
+/// (result 2).
+#[test]
+fn walk_out_from_off_the_map_or_out_of_its_area_finds_no_way() {
+    let mut spatial = walled(8, Point::new(4.9, 5.5));
+    let mut walk = |start: Point, area: TileRect| {
+        let mut hull_pather = HullPather::new(
+            (&mut spatial, ObjectsRef::empty()),
+            object_id(9171),
+            Some(object_id(9149)),
+            TerrainMask::of_bits(6),
+            Distance::new(0.2),
+        );
+        hull_pather.area = area;
+        let hull_index = hull_pather
+            .add_shape(Point::new(4.0, 4.0), Point::new(7.0, 7.0))
+            .unwrap();
+        let mut paths = vec![Waypoints::default(); PATHS];
+        let mut count = 0;
+        let walk = hull_pather
+            .walk_out(WalkOut {
+                hull: hull_index,
+                start,
+                goal: None,
+                target: None,
+                range: Distance::new(0.1),
+                nudge: true,
+                paths: &mut paths,
+                most: PATHS,
+                count: &mut count,
+            })
+            .unwrap();
+        (walk.result, walk.left_boxes, count)
+    };
+    let no_way = (WalkResult::NoWay, false, 0);
+    assert_eq!(
+        walk(Point::new(0.1, 5.5), TileRect::new(0, 0, 19, 19)),
+        no_way
+    );
+    assert_eq!(
+        walk(Point::new(4.2, 5.5), TileRect::new(0, 0, 3, 3)),
+        no_way
+    );
+}
+
 /// `pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of the hull from the goal
 /// inside a box toward the start, its ways out nudged back in by [`NUDGE`], each with the hull
 /// side it leaves by (result 5: the goal is inside a box).

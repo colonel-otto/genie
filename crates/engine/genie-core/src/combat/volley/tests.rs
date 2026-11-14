@@ -127,17 +127,12 @@ fn reason<T>(result: GenieResult<T>) -> Option<String> {
 
 /// The kinds and parameters of the notifies queued at the archer's unit AI.
 fn archer_notifies(world: &World) -> Vec<(NotifyKind, [i32; 3])> {
-    world
-        .parts
-        .unit_ai
-        .get(ARCHER)
-        .map(|ai| {
-            ai.notifies
-                .iter()
-                .map(|notify| (notify.kind, notify.params))
-                .collect()
-        })
-        .unwrap_or_default()
+    world.parts.unit_ai.get(ARCHER).map_or_default(|ai| {
+        ai.notifies
+            .iter()
+            .map(|notify| (notify.kind, notify.params))
+            .collect()
+    })
 }
 
 /// A stinger task of 2 that lasts 5 seconds.

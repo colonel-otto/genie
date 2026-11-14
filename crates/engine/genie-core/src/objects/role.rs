@@ -11,7 +11,9 @@ use std::marker::PhantomData;
 use crate::math::msvc::IntKey;
 use crate::objects::{ObjectId, ObjectKey};
 
-/// A part an object plays for another ([`RoleId`]): the role's name, which `Debug` prints.
+/// A part an object plays for another ([`RoleId`]): the role's name, which `Debug` prints. A
+/// role is a struct around the never type (`pub struct Foundation(!);`): no value of it exists,
+/// only the ids of its objects.
 pub trait Role {
     /// The role's type name (`ContainerId`).
     const NAME: &'static str;
@@ -128,7 +130,7 @@ mod tests {
     use crate::objects::{ObjectId, ObjectKey};
 
     /// A role of the tests only.
-    enum Tested {}
+    struct Tested(!);
 
     impl Role for Tested {
         const NAME: &'static str = "TestedId";

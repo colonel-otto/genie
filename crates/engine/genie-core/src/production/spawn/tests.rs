@@ -1186,8 +1186,7 @@ fn made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         .parts
         .unit_ai
         .get(made.id)
-        .map(|ai| ai.orders.clone())
-        .unwrap_or_default();
+        .map_or_default(|ai| ai.orders.clone());
     assert_eq!(
         queued
             .iter()
@@ -1235,8 +1234,7 @@ fn made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         .parts
         .unit_ai
         .get(made.id)
-        .map(|ai| ai.orders.iter().map(|order| order.target).collect())
-        .unwrap_or_default();
+        .map_or_default(|ai| ai.orders.iter().map(|order| order.target).collect());
     assert_eq!(targets, [Some(centre)]);
     let mut game = world();
     game.players[1].kind = PlayerKind::Computer;

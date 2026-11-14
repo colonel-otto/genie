@@ -468,17 +468,14 @@ fn unit_ais_of(header: &Header, player: usize, ids: &[i32]) -> GenieResult<Strin
             ai.randomized_retarget_timer,
             ai.state_value
         );
-        let actions: Vec<_> = object
-            .actions()
-            .map(|action_list| {
-                action_list
-                    .entries()
-                    .map(|(kind, action)| {
-                        (kind, action.base().map_or(0, |rge_action| rge_action.state))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let actions: Vec<_> = object.actions().map_or_default(|action_list| {
+            action_list
+                .entries()
+                .map(|(kind, action)| {
+                    (kind, action.base().map_or(0, |rge_action| rge_action.state))
+                })
+                .collect()
+        });
         let _ = writeln!(
             out,
             "  actions {actions:?} notifies {} orders {}",

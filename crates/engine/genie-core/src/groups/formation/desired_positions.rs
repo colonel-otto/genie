@@ -91,8 +91,7 @@ impl World {
             let formations = group
                 .owner
                 .and_then(|player_id| self.players.get(player_id.index()))
-                .map(|player| player.formations)
-                .unwrap_or_default();
+                .map_or_default(|player| player.formations);
             let mut column_to_line = formations.column_to_line_distance.distance().get();
             let min_column = formations.min_column_distance.distance().get();
             if group.current_target.target.key().is_some() {

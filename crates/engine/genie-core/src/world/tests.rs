@@ -331,9 +331,8 @@ pub(crate) fn stock_masters(world: &mut World) {
         .enumerate()
         .map(|(index, player)| {
             let held = world.model.masters.get(index);
-            let mut all: Vec<Master> = held
-                .map(|masters| masters.iter().cloned().collect())
-                .unwrap_or_default();
+            let mut all: Vec<Master> =
+                held.map_or_default(|masters| masters.iter().cloned().collect());
             for unit in player.objects.iter().chain(&player.sleeping) {
                 if !all.iter().any(|master| master.id == unit.life.master_id) {
                     all.push(Master {
@@ -1012,12 +1011,8 @@ fn flare_at_point_stands_on_the_ground() {
     world
         .flare(None, Point::new(19.114_586, 29.197_92), 3)
         .unwrap();
-    for index in 1..3 {
-        let at: Vec<Position> = world.players[index]
-            .objects
-            .iter()
-            .map(Unit::position)
-            .collect();
+    for player in &world.players[1..3] {
+        let at: Vec<Position> = player.objects.iter().map(Unit::position).collect();
         assert_eq!(at, [Position::new(19.114_586, 29.197_92, 4.0)]);
     }
 }
@@ -1907,13 +1902,13 @@ fn resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
     ];
     placeable(&mut game);
     let sight = game.spatial.sight.as_mut().unwrap();
-    for index in 0..2 {
-        sight.resources[index] = VisibleResources {
+    for resources in &mut sight.resources[..2] {
+        *resources = VisibleResources {
             capacities: vec![32; 5],
             lists: vec![Vec::new(); 5],
         };
-        sight.resources[index].add(object_id(501), GatherGroup::WOOD, Point::new(10.5, 10.5));
-        sight.resources[index].add(object_id(502), GatherGroup::FORAGE, Point::new(10.5, 10.5));
+        resources.add(object_id(501), GatherGroup::WOOD, Point::new(10.5, 10.5));
+        resources.add(object_id(502), GatherGroup::FORAGE, Point::new(10.5, 10.5));
     }
     let held = |world: &World| -> Vec<(usize, usize)> {
         let visibility = world.spatial.sight.as_ref().unwrap();
@@ -3821,7 +3816,6 @@ pub(crate) fn forage_world() -> World {
                     .unwrap()
                     .clone()
                     .action
-                    .clone()
                     .unwrap_or_default()
             }),
             ..masters.get(VILLAGER_MALE).unwrap().clone()
@@ -5922,7 +5916,6 @@ pub(crate) fn hunt_world() -> World {
                     .unwrap()
                     .clone()
                     .action
-                    .clone()
                     .unwrap_or_default()
             }),
             ..masters.get(VILLAGER_MALE).unwrap().clone()
@@ -9592,7 +9585,6 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
                     .unwrap()
                     .clone()
                     .action
-                    .clone()
                     .unwrap_or_default()
             }),
             ..masters.get(VILLAGER_MALE).unwrap().clone()
@@ -21999,7 +21991,6 @@ fn volley_own_missiles_hit_without_the_shooter() {
                     .unwrap()
                     .clone()
                     .combat
-                    .clone()
                     .unwrap_or_default()
             }),
             ..masters.get(master_id(363)).unwrap().clone()
@@ -26114,7 +26105,6 @@ fn built_building_death_reaches_its_owner_within_its_update() {
                         .unwrap()
                         .clone()
                         .creatable
-                        .clone()
                         .unwrap_or_default()
                 }),
                 ..masters.get(ids::HOUSE).unwrap().clone()

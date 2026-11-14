@@ -7,7 +7,7 @@ use crate::objects::{Role, RoleId};
 /// ([`crate::gathering::gather::Resource`]) takes it, or the second target's role
 /// ([`crate::gathering::DropSiteId`]) when a loaded gatherer is sent to its player's drop site.
 #[derive(Clone, Copy, Debug)]
-pub enum GatherTarget {}
+pub struct GatherTarget(!);
 
 impl Role for GatherTarget {
     const NAME: &'static str = "GatherTargetId";

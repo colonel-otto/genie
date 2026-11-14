@@ -542,4 +542,7 @@ pub enum MarketHotkeys {
 /// Hotkeys for the blacksmith.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
+// No hotkey yet: the files hold none of the blacksmith's. A newer game can add some, and the enum
+// then takes them as variants (CODING_STYLE.md section 5); clippy's struct around `!` cannot.
+#[allow(clippy::empty_enums)]
 pub enum BlacksmithHotkeys {}

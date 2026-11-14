@@ -298,8 +298,7 @@ pub(crate) fn write_back(
         razed: victim
             .building
             .as_mut()
-            .map(|building| take(&mut building.razed))
-            .unwrap_or_default(),
+            .map_or_default(|building| take(&mut building.razed)),
     };
     let Some((_, _, sleeps)) = step.world.locate(victim.id) else {
         return Ok(None);

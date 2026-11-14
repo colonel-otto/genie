@@ -1,5 +1,6 @@
 [workspace]
-# Format crates (GPL-3.0, imported from genie-rs) inherit [workspace.package] below.
+# Format crates (GPL-3.0, imported from genie-rs) inherit [workspace.package] below; every crate
+# sets its own licence.
 # Engine crates (AGPL-3.0) set their own licence, edition and authors; engine crates may depend on
 # format crates, never the reverse (a GPL crate must not pull in AGPL code).
 # Tool crates (AGPL-3.0, crates/tools/) follow the engine crates' rules and may depend on both.
@@ -37,7 +38,6 @@ members = [
 authors = ["Libre:Match Authors <info@librematch.org>"]
 edition = "2024"
 rust-version = "1.99.0"
-license = "AGPL-3.0-only"
 repository = "https://github.com/librematch/genie"
 
 [workspace.dependencies]

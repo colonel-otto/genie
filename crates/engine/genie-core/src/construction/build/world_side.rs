@@ -320,8 +320,7 @@ impl World {
             self.parts
                 .unit_ai
                 .get(old.id)
-                .map(|ai| ai.building_orders.clone())
-                .unwrap_or_default(),
+                .map_or_default(|ai| ai.building_orders.clone()),
             self.parts.gather_point.get(building).copied(),
         );
         let old_class = old.master(self.master_tables(), owner)?.class;

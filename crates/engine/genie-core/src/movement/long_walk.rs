@@ -269,8 +269,7 @@ pub(crate) fn tile_plan_for(
     };
     let annexes = level_target
         .filter(|&object_id| by_id.annex_of(object_id).is_none())
-        .map(|object_id| by_id.annexes(object_id).ids().collect::<Vec<_>>())
-        .unwrap_or_default();
+        .map_or_default(|object_id| by_id.annexes(object_id).ids().collect::<Vec<_>>());
     let (slots, ignore) = plan.pathing.smoothing_ignore(
         walker.id,
         level_target.map(|object_id| (object_id, annexes.as_slice())),

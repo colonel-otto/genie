@@ -6,7 +6,7 @@ use crate::objects::{Role, RoleId};
 /// ([`crate::construction::repair::Repairee`], what its update reads of it). Its repairers count
 /// in it, or in its main building for an annex.
 #[derive(Clone, Copy, Debug)]
-pub enum RepairTarget {}
+pub struct RepairTarget(!);
 
 impl Role for RepairTarget {
     const NAME: &'static str = "RepairTargetId";

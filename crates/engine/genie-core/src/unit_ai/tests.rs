@@ -14593,16 +14593,12 @@ fn retargets(
         (player_id(1), object_id(500)),
         |ai, at, side, kind, rng| ai.retarget_search(search, kind, at, side, rng),
     );
-    let seen = world
-        .spatial
-        .searched()
-        .map(|by_relation| {
-            by_relation[UnitRelation::Enemy]
-                .iter()
-                .map(|record| record.id)
-                .collect()
-        })
-        .unwrap_or_default();
+    let seen = world.spatial.searched().map_or_default(|by_relation| {
+        by_relation[UnitRelation::Enemy]
+            .iter()
+            .map(|record| record.id)
+            .collect()
+    });
     (run_ai, attacks_500(world), seen)
 }
 
