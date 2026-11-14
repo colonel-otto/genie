@@ -6,6 +6,7 @@ use crate::construction::repair::REPAIR;
 use crate::garrison::transport::TRANSPORT;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
+use crate::gathering::hunt::HuntAction;
 use crate::map::Position;
 use crate::math::rng::Stream;
 use crate::objects::ListIndex;
@@ -16,10 +17,8 @@ use crate::objects::masters::ClassId;
 use crate::objects::masters::Task;
 use crate::orders::work::{MasterSwap, TERRAIN_TASK};
 use crate::players::PlayerId;
-use crate::unit_ai::AiAction;
 use crate::unit_ai::Answer;
 use crate::unit_ai::Notifies;
-use crate::unit_ai::OrderKind;
 use crate::unit_ai::work_orders;
 use crate::world::World;
 use crate::world::layer::MasterRoles;
@@ -48,11 +47,7 @@ impl World {
             Some(Action::Hunt(hunt_action))
                 if task.action_kind == HUNT && hunt_action.task.id == task.id =>
             {
-                self.retarget_hunt_work(
-                    player,
-                    idx,
-                    (target.ok_or(TERRAIN_TASK)?, point, notifies),
-                )?;
+                self.retarget_hunt_work(player, idx, &hunt_action, target, point, notifies)?;
                 Answer::Taken
             }
             Some(Action::Build(build)) if task.action_kind == ActionKind::BUILD => {
@@ -101,42 +96,41 @@ impl World {
         })
     }
 
-    /// A Hunt on the work's task retargets (slot 9, [`World::retarget_hunt`]) and its unit AI
-    /// hears the hunt order and action on the target at the work's point; a hunt sent to its
-    /// player's master 84 is not modelled.
+    /// A Hunt `hunt` on top on the work's task retargets: the top action's slot 0x48
+    /// (`FUN_140a977a0` at `0x1410707ae`, slot 9: [`World::retarget_hunt`]) with the work's
+    /// target (none for a task for a terrain: `R14` null) and point, which answers 1. Its unit AI
+    /// hears of the action now on top ([`World::notify_retaken`]). A hunt sent to its player's
+    /// master 84 is not modelled.
     pub(in crate::orders) fn retarget_hunt_work(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
-        (target, point, notifies): (ObjectId, Position, Notifies),
+        hunt: &HuntAction,
+        target: Option<ObjectId>,
+        point: Position,
+        notifies: Notifies,
     ) -> GenieResult<()> {
-        let task_target = self.task_target(target, 0)?;
-        if self
-            .model
-            .roles
-            .of_master(task_target.master.id)
-            .contains(MasterRoles::MARKET)
-            && task_target.player == player
-        {
-            return Err(GenieError::unsupported(
-                "a hunt sent to its player's master 84",
-            ));
-        }
-        let class = task_target.master.class;
-        self.retarget_hunt(player, idx, target)?;
-        let unit = self.players.live_mut(player, idx)?;
-        if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
-            ai.notify_work(
-                Some(OrderKind::Hunt),
-                Some(AiAction::Hunt),
-                Some((target, class)),
-                point,
-                notifies,
-                self.streams.get_mut(Stream::Ai),
-            )?;
-            self.remember_order(player, idx, (Some(OrderKind::Hunt), Some(AiAction::Hunt)))?;
-        }
-        Ok(())
+        // the master-84 test and the notify read a target (TEST R14 at 0x1410706c6)
+        let told = match target {
+            Some(target) => {
+                let task_target = self.task_target(target, 0)?;
+                if self
+                    .model
+                    .roles
+                    .of_master(task_target.master.id)
+                    .contains(MasterRoles::MARKET)
+                    && task_target.player == player
+                {
+                    return Err(GenieError::unsupported(
+                        "a hunt sent to its player's master 84",
+                    ));
+                }
+                Some((target, task_target.master.class))
+            }
+            None => None,
+        };
+        self.retarget_hunt(player, idx, *hunt, target, point)?;
+        self.notify_retaken(player, idx, told, point, notifies)
     }
 
     /// A Gather on the work's task retargets (slot 9, [`World::retarget_gather`] with the work's

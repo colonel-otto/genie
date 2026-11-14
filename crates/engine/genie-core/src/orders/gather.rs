@@ -19,7 +19,6 @@ use crate::objects::ObjectKey;
 use crate::objects::lifecycle::Held;
 use crate::objects::masters::MasterKind;
 use crate::objects::masters::{ClassId, MasterTables, Task};
-use crate::objects::release::Releaser;
 use crate::players::AllyTest;
 use crate::players::Amount;
 use crate::players::PlayerId;
@@ -64,27 +63,6 @@ pub(super) struct HuntOrder {
 }
 
 impl World {
-    /// The Gather's targets that changed (its target and its second target, `old` and `new`): the
-    /// old one is let go (slot 0x180) and the new one taken (slot 0x178), each pair in order.
-    fn exchange_gather_targets(
-        &mut self,
-        old: [Option<ObjectId>; 2],
-        new: [Option<ObjectId>; 2],
-        by: Releaser,
-    ) -> GenieResult<()> {
-        for (old, new) in old.into_iter().zip(new) {
-            if old != new {
-                if let Some(old) = old {
-                    self.release(old, by)?;
-                }
-                if let Some(new) = new {
-                    self.take(new, by)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// The Gather's slot 0x40 (`0x140a8b740`,
     /// [`crate::gathering::gather::GatherAction::take_move`]) on a move of the gatherer at `idx` to
     /// `point` toward the object `target`: always taken; the targets that changed are let go and
@@ -139,7 +117,7 @@ impl World {
             &self.model.tuning.move_to,
         )?;
         let new = gather.targets();
-        self.exchange_gather_targets(old, new, by)?;
+        self.exchange_targets(old, new, by)?;
         Ok(Answer::Taken)
     }
 

@@ -7913,6 +7913,51 @@ fn hunt_that_lost_its_tree_takes_the_next_one() {
     assert_eq!(search(&mut world, None, None), Ok(TreeSearch::NoneFound));
 }
 
+/// The tree search's slot 9 on the next tree lets the hunt's second target go (`FUN_140a7a190`
+/// with none): the town centre it carried to counts a worker less, the tree one more.
+#[test]
+fn hunt_next_tree_lets_its_second_target_go() {
+    let mut world = lumber_world(31.5);
+    let hunter = world.players[1].objects[ListIndex::new(0)].id;
+    let by = world.releaser(PlayerId::new(1), ListIndex::new(0)).unwrap();
+    world.take(object_id(700), by).unwrap();
+    world
+        .parts
+        .actions
+        .of_mut(hunter)
+        .unwrap()
+        .list
+        .hunt_mut()
+        .unwrap()
+        .carry_to = Some(DropSiteId::new(object_id(700)));
+    let found = in_update(
+        &mut world,
+        (PlayerId::new(1), ListIndex::new(0)),
+        50,
+        |unit, actions, step| {
+            let mut hunt = *actions.list.hunt().unwrap();
+            unit.hunt_tree_search((&mut hunt, actions), step, None, None, &roles())
+        },
+    );
+    assert_eq!(found, Ok(TreeSearch::Found));
+    let hunt_action = world.parts.actions_of(hunter).list.hunt().copied().unwrap();
+    let workers = |world: &World, id| world.object(object_id(id)).unwrap().1.workers;
+    assert_eq!(
+        (
+            hunt_action.target,
+            hunt_action.carry_to,
+            workers(&world, 520),
+            workers(&world, 700)
+        ),
+        (
+            Some(HuntTargetId::new(object_id(520))),
+            None,
+            WorkerCount::of_data(1),
+            WorkerCount::ZERO
+        )
+    );
+}
+
 /// A hunt's end of an Attack that failed (`FUN_140ac4670` with -1 and 5,
 /// [`Unit::hunt_attack_failed`]): a hunter whose unit AI targets trees takes the next tree
 /// within 5 of it; with none so near, or a unit AI that targets another class, the hunt

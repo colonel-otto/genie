@@ -22,8 +22,6 @@ use crate::objects::ObjectId;
 use crate::objects::ObjectState;
 use crate::objects::actions::LAST_TAKEN;
 use crate::objects::lifecycle::Held;
-use crate::objects::masters::ActionKind;
-use crate::objects::masters::MasterKind;
 use crate::objects::unit::Unit;
 use crate::players::Amount;
 use crate::players::PlayerId;
@@ -84,18 +82,48 @@ pub struct HuntStart<'world> {
     pub(crate) walks: Walks<'world>,
 }
 
-/// What a hunt's retarget takes besides its attack and its mover ([`HuntAction::retarget`]'s
+/// A hunt's new target and what its retarget reads with it ([`HuntRetarget::target`]).
+#[derive(Clone, Copy, Debug)]
+pub struct NewTarget {
+    /// The object (`RDX`).
+    pub(crate) quarry: Quarry,
+    /// The hunter's engagement with it, which its Attack starts with.
+    pub(crate) engagement: Engagement,
+    /// Its own master (`+0x58` of its `+0xa0`, not an annex's main building's) is one of the
+    /// hunter's master's drop sites (`FUN_14109d4f0`).
+    pub(crate) drops_here: bool,
+}
+
+/// What a hunt's retarget takes besides its arms and its mover ([`HuntAction::retarget`]'s
 /// arguments).
 #[derive(Clone, Copy, Debug)]
 pub struct HuntRetarget<'world> {
-    /// The work command's new target.
-    pub(crate) target: &'world Quarry,
+    /// The new target, none for none: the work command's on a terrain's task (`R14` null at
+    /// `0x1410707ab`).
+    pub(crate) target: Option<&'world NewTarget>,
+    /// The slot's point (`XMM2`, `XMM3` and `[RSP+0x28]`): the target's place at the hunt command
+    /// and at the hunt's own searches, the work command's point.
+    pub(crate) point: Position,
     /// The owner.
     pub(crate) player: PlayerId,
     /// What the hunter carries, and what its `MoveTo`s' constructors read of it.
     pub(crate) walks: Walks<'world>,
-    /// The target is a drop site of the hunter's master.
-    pub(crate) drops_here: bool,
+}
+
+/// What a hunt's retarget did ([`HuntAction::retarget`]); slot 9 answers 1 for each
+/// (`MOV AL, 1` at `0x140ac99ed`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Retargeted {
+    /// The target it holds already (`+0x20`): nothing changed.
+    Kept,
+    /// It took the point, the drop site or the target, and walks or attacks: how its walk or its
+    /// Attack's `MoveTo` started.
+    Started(MoveStart),
+    /// `set_state(4)` failed it at once (`set_state(13)`, `LAB_140ac679d`): it holds no target,
+    /// or the target is a live allied one. The unit takes the sprite the hunt stands with (case
+    /// 0xd's slot 0x68 with `FUN_140ac5210`'s, [`crate::gathering::hunt::stand_sprite`]), the
+    /// caller's.
+    Failed,
 }
 
 /// What a hunt's chase of its target takes besides its attack and its mover
@@ -243,7 +271,9 @@ impl HuntAction {
     }
 
     /// `set_state(4)` (`0x140ac60e0` case 4): the sub-actions go (an Attack's `MoveTo` stops the
-    /// unit), the timer clears and the target's place becomes the point. A dead target, or the hunter's own
+    /// unit) and the timer clears. A hunt that holds no target (`+0x20` null: one past
+    /// [`LAST_TAKEN`] that slot 0x68 left none) fails (`set_state(13)`). Else the target's place
+    /// becomes the point. A dead target, or the hunter's own
     /// player's livestock, is walked to: a quiet `MoveTo` within the task's range, or
     /// `HuntTuning::own_livestock_range` to the livestock (`FUN_140aa0df0`; its start `0x140aa2100`: a unit
     /// within 0.01 of the target's footprint is there already). A target not dead yet of another,
@@ -272,6 +302,11 @@ impl HuntAction {
         self.tear_down(Some(mover))?;
         self.state = HuntState::Walk { move_to: None };
         self.timer = Seconds::ZERO;
+        if self.target.is_none() {
+            // `+0x20` null: LAB_140ac679d, set_state(13), whose sprite is the caller's
+            self.state = HuntState::Failed;
+            return Ok(MoveStart::UnderWay);
+        }
         self.point = target.position;
         let own_livestock =
             roles.of_class(target.class).contains(ClassRoles::LIVESTOCK) && target.player == player;
@@ -318,78 +353,94 @@ impl HuntAction {
         Ok(move_start)
     }
 
-    /// Slot 9 (`0x140ac97c0`), the work command's new target for the hunt it keeps: some when the
-    /// hunt takes it. A building whose top action is an Unpack ([`ActionKind::UNPACK`], 125) takes
-    /// it to `set_state` 15, not modelled. Its own player's drop site (one of its master's,
-    /// `drops_here`, `FUN_14109d4f0`) while it carries something (`held`) takes the load there: the
-    /// target goes (slot 0x68 with none; the caller releases it), the timer and the point clear,
-    /// the drop site becomes the second target (`FUN_140a7a190`) with its class, and
-    /// `set_state(8)`. Another target becomes the hunt's (slot 0x68, `FUN_140ac7980`; the caller
-    /// releases the old target and takes the new) and the hunt starts over at `set_state(4)`. Its
-    /// own target changes nothing. Some when it took the target, [`MoveStart::Arrived`] when its
-    /// Attack's `MoveTo` starts arrived (the caller shows the idle sprite,
-    /// [`crate::combat::attack::show_arrived`]).
+    /// Slot 9 (`0x140ac97c0`, slot 0x48): the new target of the work command, the hunt command or
+    /// the hunt's own searches, for the hunt it keeps; slot 9 answers 1 whatever it did.
+    ///
+    /// - Without a target, or on a building under its Unpack ([`Quarry::unpacking`]), the hunt
+    ///   walks to the point: the point (`+0x38`..`+0x40`) is the slot's, the target goes (slot
+    ///   0x68 with none, `FUN_140ac7980`) and `set_state(15)` walks there
+    ///   ([`HuntAction::set_point_walk`]). The target type (`+0x68`) and the second target stay.
+    /// - Its own player's drop site (`drops_here`) while the hunter carries something (`+0x310`
+    ///   above 0: `COMISS` and `JBE` at `0x140ac9925` send a NaN to the new target) takes the load
+    ///   there: the target goes, the timer and the point clear, the drop site becomes the second
+    ///   target (`FUN_140a7a190`), its class the target type, and `set_state(8)` walks there.
+    /// - The target it holds (`+0x20`) changes nothing ([`Retargeted::Kept`]).
+    /// - Any other target becomes its target (slot 0x68: none past [`LAST_TAKEN`],
+    ///   `FUN_140a7a230`), its class the target type; the second target goes (`FUN_140a7a190`
+    ///   with none) and `set_state(4)` chases the target ([`HuntAction::chase`]), which fails
+    ///   without one.
+    ///
+    /// The caller lets go and takes the targets that changed ([`HuntAction::targets`] before and
+    /// after), each pair in this order, as slot 0x68 (`FUN_140a7a230`) and `FUN_140a7a190` do:
+    /// the drop site is taken whatever its state.
+    ///
+    /// # Errors
+    ///
+    /// What the walks and the Attack do not model.
     pub(crate) fn retarget(
         &mut self,
         retarget: HuntRetarget<'_>,
-        attack: &Engagement,
         arms: Arms,
         mover: &mut Mover,
         layer: BeginLayer<'_>,
         hunt_tuning: &HuntTuning,
-    ) -> GenieResult<Option<MoveStart>> {
-        let BeginLayer {
-            roles,
-            attack_tuning,
-            move_to_tuning,
-        } = layer;
+    ) -> GenieResult<Retargeted> {
         let HuntRetarget {
             target,
+            point,
             player,
             walks,
-            drops_here,
         } = retarget;
-        let held = walks.held.amount;
-        // A building's master type (`'P'`).
-        // A building whose top action is an Unpack takes a hunt sent to it to `set_state` 15.
-        if target.kind == MasterKind::BUILDING && target.top_action == Some(ActionKind::UNPACK) {
-            return Err(GenieError::unsupported(
-                "a hunt sent to a building whose top action is an Unpack (set_state 15)",
-            ));
-        }
-        if target.player == player && drops_here && Amount::ZERO < held {
+        let Some(&NewTarget {
+            quarry: ref target,
+            ref engagement,
+            drops_here,
+        }) = target.filter(|new| !new.quarry.unpacking())
+        else {
+            // 0x140ac9a95: the slot's point, slot 0x68 with none, set_state(15)
+            self.point = point;
+            self.set_target(None);
+            self.set_point_walk(
+                |move_to| HuntState::WalkPoint { move_to },
+                mover,
+                &walks,
+                layer.move_to_tuning,
+            )?;
+            return Ok(Retargeted::Started(MoveStart::UnderWay));
+        };
+        if target.player == player && drops_here && Amount::ZERO < walks.held.amount {
             self.set_target(None);
             self.timer = Seconds::ZERO;
             self.point = Position::from([-1.0; 3]);
             self.carry_to = Some(DropSiteId::new(target.id));
-            self.target_class = Some(target.class);
-            self.set_drop(target.position, attack.gap, mover, &walks, move_to_tuning)?;
-            return Ok(Some(MoveStart::UnderWay));
+            self.target_class = target.class.or_none();
+            self.set_drop(
+                target.position,
+                engagement.gap,
+                mover,
+                &walks,
+                layer.move_to_tuning,
+            )?;
+            return Ok(Retargeted::Started(MoveStart::UnderWay));
         }
+        // the target pointer (`+0x20`), which FUN_140a7a230 keeps with the id
         if self.target.map(HuntTargetId::id) == Some(target.id) {
-            return Ok(None);
+            return Ok(Retargeted::Kept);
         }
-        self.set_target(Some(HuntTargetId::new(target.id)));
-        self.target_class = Some(target.class);
+        self.set_target((target.state <= LAST_TAKEN).then(|| HuntTargetId::new(target.id)));
+        self.target_class = target.class.or_none();
         self.carry_to = None;
         let chase = HuntChase {
             target,
             player,
             walks: &walks,
         };
-        self.chase(
-            chase,
-            attack,
-            arms,
-            mover,
-            BeginLayer {
-                roles,
-                attack_tuning,
-                move_to_tuning,
-            },
-            hunt_tuning,
-        )
-        .map(Some)
+        let move_start = self.chase(chase, engagement, arms, mover, layer, hunt_tuning)?;
+        Ok(if self.state == HuntState::Failed {
+            Retargeted::Failed
+        } else {
+            Retargeted::Started(move_start)
+        })
     }
 
     /// Slot 0x40 (`FUN_140ac52c0`): the hunt takes a move's `target` (None for a point) and

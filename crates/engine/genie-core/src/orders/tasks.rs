@@ -50,7 +50,8 @@ impl World {
     /// the world does not hold (`FUN_1415417a0`; none, −1) is 0. A Hunt on top on the target is 1
     /// at once unforced, the top action's target as `FUN_140a78450` finds it
     /// ([`World::top_target_object`]: never one with a recyclable id); else the Hunt on top takes
-    /// the target (its slot 0x48 with the target's place, slot 9: [`World::retarget_hunt`]): 1.
+    /// the target (its slot 0x48 with the target's place, `0x14121539e`, slot 9:
+    /// [`World::retarget_hunt`]): 1.
     /// Without one slot 0x820 finds the task ([`World::find_work_task`] with any filter, `0xffff`,
     /// and the master switch): none is 0, else a new Hunt on it, whatever its action type or
     /// requirement (`FUN_140ac2dd0`), replaces the unit's actions (`FUN_140a98620`, slot 0x808:
@@ -70,11 +71,11 @@ impl World {
         };
         let (target, point) = (target_unit.id, target_unit.position());
         let unit_id = self.players.live(player, idx)?.id;
-        if let Some(Action::Hunt(_)) = self.parts.actions_of(unit_id).list.head() {
+        if let Some(&Action::Hunt(hunt)) = self.parts.actions_of(unit_id).list.head() {
             if force == OrderForce::Unforced && self.top_target_object(unit_id) == Some(target) {
                 return Ok(Answer::Taken);
             }
-            self.retarget_hunt(player, idx, target)?;
+            self.retarget_hunt(player, idx, hunt, Some(target), point)?;
             return Ok(Answer::Taken);
         }
         let Some(task) =

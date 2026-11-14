@@ -7,6 +7,7 @@ use crate::gathering::hunt::HUNTER_STATE_LACKING;
 use crate::gathering::hunt::HuntState;
 use crate::gathering::hunt::Quarry;
 use crate::gathering::hunt::{HUNT_TARGET_UNPLACED, HUNTER_UNPLACED, HuntAction, HuntRetarget};
+use crate::gathering::hunt::{NewTarget, Retargeted};
 use crate::math::rng::Stream;
 use crate::movement::MoveStart;
 use crate::objects::ObjectId;
@@ -19,7 +20,7 @@ use crate::players::NO_RELATIONS;
 use crate::unit_ai::task_finder::allied;
 use crate::world::layer::MasterRoles;
 use crate::world::layer::Roles;
-use crate::world::lets::take;
+use crate::world::lets::exchange_targets;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use crate::{GenieError, GenieResult};
@@ -27,8 +28,9 @@ use crate::{GenieError, GenieResult};
 impl Unit {
     /// The object `found` becomes the hunt's target (slot 0x48,
     /// [`crate::gathering::hunt::HuntAction::retarget`] with the hunter's engagement and arms,
-    /// the arrived sprite when it starts there), which takes it (its workers count one more; one
-    /// of its own player's directly, never listed). A farm found is not modelled. A hunt that
+    /// the arrived sprite when it starts there); the targets that changed are let go and taken
+    /// ([`exchange_targets`]: the found object's workers count one more, one of its own player's
+    /// directly, never listed). A farm found is not modelled. A hunt that
     /// fails at once takes the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit
     /// carries nothing now).
     #[expect(
@@ -124,18 +126,23 @@ impl Unit {
             },
             roles,
         )?;
-        let by = self.releaser(step)?;
         let Some(mover) = step.world.parts.mover_mut(self.id) else {
             return Err(HUNTER_STATE_LACKING);
         };
+        let new = NewTarget {
+            quarry,
+            engagement,
+            drops_here,
+        };
+        let old = hunt.targets();
+        // the object's place is the slot's point
         let retargeted = hunt.retarget(
             HuntRetarget {
-                target: &quarry,
+                target: Some(&new),
+                point: new.quarry.position,
                 player: step.player,
                 walks,
-                drops_here,
             },
-            &engagement,
             arms,
             mover,
             BeginLayer {
@@ -146,18 +153,18 @@ impl Unit {
             &step.world.model.tuning.hunt,
         );
         actions.list.set_hunt(Some(*hunt));
-        if let Some(move_start) = retargeted? {
-            if move_start == MoveStart::Arrived {
-                show_arrived(
-                    &arms,
-                    &mut self.sprite,
-                    step.world.parts.motion_mut(self.id),
-                    step.world.streams.get_mut(Stream::Sprite),
-                    step.world.model.tuning.sprite,
-                )?;
-            }
-            take(step, self, found, by, roles)?;
+        if retargeted? == Retargeted::Started(MoveStart::Arrived) {
+            show_arrived(
+                &arms,
+                &mut self.sprite,
+                step.world.parts.motion_mut(self.id),
+                step.world.streams.get_mut(Stream::Sprite),
+                step.world.model.tuning.sprite,
+            )?;
         }
+        // slot 0x68 (FUN_140a7a230) and FUN_140a7a190: the targets that changed
+        let by = self.releaser(step)?;
+        exchange_targets(step, self, old, hunt.targets(), by, roles)?;
         self.hunt_failed_sprite(hunt, step)
     }
 

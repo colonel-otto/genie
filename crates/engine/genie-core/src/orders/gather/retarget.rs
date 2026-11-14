@@ -157,7 +157,7 @@ impl World {
         let old = gather.targets();
         gather.walk_to_moved_point(point, mover, &walks, &self.model.tuning.move_to)?;
         let new = gather.targets();
-        self.exchange_gather_targets(old, new, by)?;
+        self.exchange_targets(old, new, by)?;
         Ok(Answer::Taken)
     }
 
@@ -318,7 +318,7 @@ impl World {
         let new = gather.targets();
         // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
         let waits = matches!(gather.state, GatherState::WalkBack { .. }) && new[0].is_none();
-        self.exchange_gather_targets(old, new, by)?;
+        self.exchange_targets(old, new, by)?;
         if waits && old[0] != Some(target) {
             self.take(target, by)?;
             self.release(target, by)?;

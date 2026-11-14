@@ -515,6 +515,73 @@ fn villager_sent_to_tree_attacks_it_first_and_walks_there() {
     assert_eq!(hunt.lead.start, Point::new(-1.0, -1.0));
 }
 
+/// Slot 9 ([`HuntAction::retarget`]) of human player 2's hunter `mover` carrying `held`: the new
+/// target `target` (none for none) with `point`.
+fn retarget(
+    hunt: &mut HuntAction,
+    target: Option<&NewTarget>,
+    point: Position,
+    held: Held,
+    mover: &mut Mover,
+) -> Retargeted {
+    hunt.retarget(
+        HuntRetarget {
+            target,
+            point,
+            player: PlayerId::new(2),
+            walks: walks(held),
+        },
+        ARMS,
+        mover,
+        BeginLayer {
+            roles: &roles(),
+            attack_tuning: &tuning().attack,
+            move_to_tuning: &tuning().move_to,
+        },
+        &tuning().hunt,
+    )
+    .unwrap()
+}
+
+/// `quarry` as a hunt's new target with [`engagement`], not one of its drop sites.
+fn new_target(quarry: Quarry) -> NewTarget {
+    NewTarget {
+        quarry,
+        engagement: engagement(),
+        drops_here: false,
+    }
+}
+
+/// A Hunt [`started`] on the [`tree`] that carries its load to the town centre 700 (`+0x28`)
+/// and led a sheep once.
+fn hunt_with_second_target(mover: &mut Mover) -> HuntAction {
+    let mut held = Held::default();
+    let mut hunt = started(&tree(), &mut held, mover);
+    hunt.carry_to = Some(DropSiteId::new(object_id(700)));
+    hunt.lead = Lead {
+        moved: true,
+        still_time: 3,
+        start: Point::new(127.5, 30.4),
+    };
+    hunt
+}
+
+/// Player 2's town centre 700, a building.
+fn town_centre() -> Quarry {
+    Quarry {
+        id: object_id(700),
+        position: Position::new(20.0, 89.5, 0.0),
+        class: class::BUILDING,
+        kind: MasterKind::BUILDING,
+        state: ObjectState::Alive,
+        player: PlayerId::new(2),
+        amount: Amount::ZERO,
+        allied: true,
+        top_action: None,
+        drop_site: false,
+    }
+}
+
 /// Slot 0x48 on another tree: the hunt takes it and its Attack starts over; one within 0.01
 /// starts arrived, which the caller shows (records/425906646's 31110 in update 7967). Its own
 /// target it does not take.
@@ -523,44 +590,39 @@ fn hunt_retargeted_to_tree_beside_it_starts_its_attack_arrived() {
     let mut mover = walker();
     let mut held = Held::default();
     let mut hunt = started(&tree(), &mut held, &mut mover);
-    let retarget =
-        |hunt: &mut HuntAction, quarry: &Quarry, engagement: &Engagement, mover: &mut Mover| {
-            hunt.retarget(
-                HuntRetarget {
-                    target: quarry,
-                    player: PlayerId::new(2),
-                    walks: walks(Held::default()),
-                    drops_here: false,
-                },
-                engagement,
-                ARMS,
-                mover,
-                BeginLayer {
-                    roles: &roles(),
-                    attack_tuning: &tuning().attack,
-                    move_to_tuning: &tuning().move_to,
-                },
-                &tuning().hunt,
-            )
-            .unwrap()
-        };
+    let at = tree().position;
     assert_eq!(
-        retarget(&mut hunt, &tree(), &engagement(), &mut mover),
-        None
+        retarget(
+            &mut hunt,
+            Some(&new_target(tree())),
+            at,
+            Held::default(),
+            &mut mover
+        ),
+        Retargeted::Kept
     );
     let beside = Quarry {
         id: object_id(9366),
         position: Position::new(20.78, 97.5, 0.0),
         ..tree()
     };
-    let close = Engagement {
-        gap: Distance::new(0.005),
-        target_position: beside.position,
-        ..engagement()
+    let close = NewTarget {
+        engagement: Engagement {
+            gap: Distance::new(0.005),
+            target_position: beside.position,
+            ..engagement()
+        },
+        ..new_target(beside)
     };
     assert_eq!(
-        retarget(&mut hunt, &beside, &close, &mut mover),
-        Some(MoveStart::Arrived)
+        retarget(
+            &mut hunt,
+            Some(&close),
+            beside.position,
+            Held::default(),
+            &mut mover
+        ),
+        Retargeted::Started(MoveStart::Arrived)
     );
     let attack = hunt.state.attack().copied().unwrap();
     assert_eq!(
@@ -590,63 +652,327 @@ fn hunt_retargeted_to_tree_beside_it_starts_its_attack_arrived() {
 #[test]
 fn hunt_new_target_clears_its_lead() {
     let mut mover = walker();
-    let mut held = Held::default();
-    let mut hunt = started(&tree(), &mut held, &mut mover);
-    let led = Lead {
-        moved: true,
-        still_time: 3,
-        start: Point::new(127.5, 30.4),
-    };
-    hunt.lead = led;
+    let mut hunt = hunt_with_second_target(&mut mover);
+    let led = hunt.lead;
     let other = Quarry {
         id: object_id(9366),
         position: Position::new(20.78, 97.5, 0.0),
         ..tree()
     };
     // its own target changes nothing
-    let _ = hunt
-        .retarget(
-            HuntRetarget {
-                target: &tree(),
-                player: PlayerId::new(2),
-                walks: walks(Held::default()),
-                drops_here: false,
-            },
-            &engagement(),
-            ARMS,
-            &mut mover,
-            BeginLayer {
-                roles: &roles(),
-                attack_tuning: &tuning().attack,
-                move_to_tuning: &tuning().move_to,
-            },
-            &tuning().hunt,
-        )
-        .unwrap();
-    assert_eq!(hunt.lead, led);
-    let _ = hunt
-        .retarget(
-            HuntRetarget {
-                target: &other,
-                player: PlayerId::new(2),
-                walks: walks(Held::default()),
-                drops_here: false,
-            },
-            &engagement(),
-            ARMS,
-            &mut mover,
-            BeginLayer {
-                roles: &roles(),
-                attack_tuning: &tuning().attack,
-                move_to_tuning: &tuning().move_to,
-            },
-            &tuning().hunt,
-        )
-        .unwrap();
+    let at = tree().position;
+    let kept = retarget(
+        &mut hunt,
+        Some(&new_target(tree())),
+        at,
+        Held::default(),
+        &mut mover,
+    );
+    assert_eq!((kept, hunt.lead), (Retargeted::Kept, led));
+    let _ = retarget(
+        &mut hunt,
+        Some(&new_target(other)),
+        other.position,
+        Held::default(),
+        &mut mover,
+    );
     assert_eq!(
         (hunt.target, hunt.lead),
         (Some(HuntTargetId::new(object_id(9366))), Lead::NEW)
     );
+}
+
+/// Slot 9 without a target (`0x140ac9a95`): the point is the slot's, the target goes with the
+/// lead (slot 0x68 with none) and `set_state(15)` walks to the point with a quiet `MoveTo` within
+/// the task's range. The target type (`+0x68`) and the second target stay.
+#[test]
+fn hunt_retargeted_without_target_walks_to_its_point() {
+    let mut mover = walker();
+    let mut hunt = hunt_with_second_target(&mut mover);
+    let point = Position::new(31.5, 70.25, 1.5);
+    assert_eq!(
+        retarget(&mut hunt, None, point, Held::default(), &mut mover),
+        Retargeted::Started(MoveStart::UnderWay)
+    );
+    let move_to = hunt.state.move_to().copied().unwrap();
+    assert_eq!(
+        (
+            hunt.state.bare(),
+            hunt.target,
+            hunt.point,
+            hunt.target_class,
+            hunt.carry_to,
+            hunt.lead,
+            hunt.timer
+        ),
+        (
+            HuntState::WalkPoint { move_to: None },
+            None,
+            point,
+            Some(class::TREE),
+            Some(DropSiteId::new(object_id(700))),
+            Lead::NEW,
+            Seconds::ZERO
+        )
+    );
+    assert_eq!(
+        (move_to.point, move_to.target, move_to.range, move_to.voice),
+        (point, None, CHOP.range, Voice::Quiet)
+    );
+}
+
+/// Slot 9's first test (`0x140ac97e9`): a building (`'P'`) whose top action is an Unpack (125)
+/// sends the hunt to the point as no target does. A building under another top action, and an
+/// object of another type under an Unpack, become the target.
+#[test]
+fn hunt_retargeted_to_unpacking_building_walks_to_its_point() {
+    let point = Position::new(31.5, 70.25, 1.5);
+    let building = |kind, top_action| Quarry {
+        id: object_id(800),
+        kind,
+        top_action,
+        player: PlayerId::new(1),
+        allied: false,
+        ..town_centre()
+    };
+    for (quarry, walks_there) in [
+        (
+            building(MasterKind::BUILDING, Some(ActionKind::UNPACK)),
+            true,
+        ),
+        (building(MasterKind::BUILDING, Some(HUNT)), false),
+        (building(MasterKind::BUILDING, None), false),
+        (
+            building(MasterKind::COMBAT, Some(ActionKind::UNPACK)),
+            false,
+        ),
+    ] {
+        let mut mover = walker();
+        let mut hunt = hunt_with_second_target(&mut mover);
+        let _ = retarget(
+            &mut hunt,
+            Some(&new_target(quarry)),
+            point,
+            Held::default(),
+            &mut mover,
+        );
+        let expected = if walks_there {
+            (
+                None,
+                HuntState::WalkPoint { move_to: None },
+                point,
+                Some(DropSiteId::new(object_id(700))),
+            )
+        } else {
+            (
+                Some(HuntTargetId::new(object_id(800))),
+                HuntState::Attack { attack: None },
+                quarry.position,
+                None,
+            )
+        };
+        assert_eq!(
+            (hunt.target, hunt.state.bare(), hunt.point, hunt.carry_to),
+            expected,
+            "{quarry:?}"
+        );
+    }
+}
+
+/// Slot 9 on its own player's drop site while the hunter carries something takes the load there:
+/// the target goes (slot 0x68 with none), the timer and the point clear, the drop site becomes
+/// the second target (`FUN_140a7a190`) with its class (`+0x68`) and `set_state(8)` walks there.
+/// Another player's drop site, a target that is no drop site and a hunter carrying nothing take
+/// the target instead; so does a NaN load (`COMISS` and `JBE` at `0x140ac9925`).
+#[test]
+fn loaded_hunt_retargeted_to_its_drop_site_carries_load_there() {
+    let site = NewTarget {
+        drops_here: true,
+        ..new_target(town_centre())
+    };
+    // a load of another resource: the walk shows no carrying sprite, which the table lacks
+    let carried = carrying(Some(attribute::STONE), 5.0);
+    let mut mover = walker();
+    let mut hunt = hunt_with_second_target(&mut mover);
+    hunt.carry_to = None;
+    hunt.timer = Seconds::new(-1.5);
+    assert_eq!(
+        retarget(
+            &mut hunt,
+            Some(&site),
+            site.quarry.position,
+            carried,
+            &mut mover
+        ),
+        Retargeted::Started(MoveStart::UnderWay)
+    );
+    assert_eq!(
+        (
+            hunt.state.bare(),
+            hunt.target,
+            hunt.carry_to,
+            hunt.target_class,
+            hunt.point,
+            hunt.timer,
+            hunt.lead
+        ),
+        (
+            HuntState::Drop { move_to: None },
+            None,
+            Some(DropSiteId::new(object_id(700))),
+            Some(class::BUILDING),
+            Position::from([-1.0; 3]),
+            Seconds::ZERO,
+            Lead::NEW
+        )
+    );
+    let other_player = NewTarget {
+        quarry: Quarry {
+            player: PlayerId::new(1),
+            allied: false,
+            ..town_centre()
+        },
+        ..site
+    };
+    let no_drop_site = NewTarget {
+        drops_here: false,
+        ..site
+    };
+    for (new, held) in [
+        (other_player, carried),
+        (no_drop_site, carried),
+        (site, carrying(Some(attribute::STONE), 0.0)),
+        (site, carrying(Some(attribute::STONE), f32::NAN)),
+    ] {
+        let mut mover = walker();
+        let mut hunt = hunt_with_second_target(&mut mover);
+        let _ = retarget(&mut hunt, Some(&new), new.quarry.position, held, &mut mover);
+        assert_eq!(
+            (hunt.target, hunt.carry_to),
+            (Some(HuntTargetId::new(object_id(700))), None),
+            "{new:?} {held:?}"
+        );
+    }
+}
+
+/// Slot 9 on a new target holds it only up to state 6 (slot 0x68, `FUN_140a7a230`); the second
+/// target goes (`FUN_140a7a190` with none). A target past it leaves the hunt without one, and
+/// `set_state(4)` fails it (`set_state(13)`): the timer clears, the point stays and the target
+/// type is the target's class. One in state 6 is chased.
+#[test]
+fn hunt_retargeted_to_target_past_state_6_fails_without_it() {
+    for (state, failed) in [
+        (ObjectState::Undead, false),
+        (ObjectState::Removed, true),
+        (ObjectState::Gone, true),
+    ] {
+        let mut mover = walker();
+        let mut hunt = hunt_with_second_target(&mut mover);
+        let old_point = hunt.point;
+        let other = Quarry {
+            id: object_id(9366),
+            position: Position::new(20.78, 97.5, 0.0),
+            state,
+            ..tree()
+        };
+        let retargeted = retarget(
+            &mut hunt,
+            Some(&new_target(other)),
+            other.position,
+            Held::default(),
+            &mut mover,
+        );
+        let expected = if failed {
+            (Retargeted::Failed, None, HuntState::Failed, old_point)
+        } else {
+            (
+                Retargeted::Started(MoveStart::UnderWay),
+                Some(HuntTargetId::new(object_id(9366))),
+                HuntState::Walk { move_to: None },
+                other.position,
+            )
+        };
+        assert_eq!(
+            (retargeted, hunt.target, hunt.state.bare(), hunt.point),
+            expected,
+            "{state:?}"
+        );
+        assert_eq!(
+            (hunt.carry_to, hunt.target_class, hunt.timer),
+            (None, Some(class::TREE), Seconds::ZERO),
+            "{state:?}"
+        );
+    }
+}
+
+/// A live allied target fails the hunt at once (`set_state(4)`'s `set_state(13)`): slot 9 says
+/// so, as the caller shows the sprite the hunt stands with.
+#[test]
+fn hunt_retargeted_to_live_allied_target_fails() {
+    let mut mover = walker();
+    let mut hunt = hunt_with_second_target(&mut mover);
+    let ally = Quarry {
+        id: object_id(9366),
+        kind: MasterKind::COMBAT,
+        class: class::PREY,
+        player: PlayerId::new(2),
+        allied: true,
+        ..tree()
+    };
+    assert_eq!(
+        retarget(
+            &mut hunt,
+            Some(&new_target(ally)),
+            ally.position,
+            Held::default(),
+            &mut mover
+        ),
+        Retargeted::Failed
+    );
+    assert_eq!(
+        (hunt.target, hunt.state),
+        (Some(HuntTargetId::new(object_id(9366))), HuntState::Failed)
+    );
+}
+
+/// The target type (`+0x68`) is the target master's class as an `int`: a classless one (−1)
+/// leaves none, for the new target and for the drop site.
+#[test]
+fn hunt_retargeted_to_classless_target_takes_no_class() {
+    let classless = |quarry: Quarry, drops_here| NewTarget {
+        quarry: Quarry {
+            class: ClassId::of_master(-1),
+            ..quarry
+        },
+        drops_here,
+        ..new_target(quarry)
+    };
+    let other = Quarry {
+        id: object_id(9366),
+        ..tree()
+    };
+    for (new, held) in [
+        (classless(other, false), Held::default()),
+        (
+            classless(town_centre(), true),
+            carrying(Some(attribute::STONE), 5.0),
+        ),
+    ] {
+        let mut mover = walker();
+        let mut hunt = hunt_with_second_target(&mut mover);
+        let _ = retarget(&mut hunt, Some(&new), new.quarry.position, held, &mut mover);
+        assert_eq!(hunt.target_class, None, "{new:?}");
+    }
+}
+
+/// [`HuntAction::targets`]: its target and its second target, by id.
+#[test]
+fn hunt_targets_are_its_target_and_second_target() {
+    let mut hunt = hunting(31);
+    assert_eq!(hunt.targets(), [Some(object_id(31)), None]);
+    hunt.carry_to = Some(DropSiteId::new(object_id(700)));
+    hunt.target = None;
+    assert_eq!(hunt.targets(), [None, Some(object_id(700))]);
 }
 
 #[test]

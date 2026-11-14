@@ -5958,15 +5958,16 @@ fn work_command_retargets_gather_or_hunt_on_its_task() {
         ),
         Ok(Answer::Taken)
     );
+    let hunter = world.players[1].objects[ListIndex::new(0)].id;
+    let hunt = *world.parts.actions_of(hunter).list.hunt().unwrap();
     world
         .retarget_hunt_work(
             PlayerId::new(1),
             ListIndex::new(0),
-            (
-                object_id(501),
-                Position::new(36.5, 89.5, 0.0),
-                Notifies::Cleared,
-            ),
+            &hunt,
+            Some(object_id(501)),
+            Position::new(36.5, 89.5, 0.0),
+            Notifies::Cleared,
         )
         .unwrap();
     let unit = &world.players[1].objects[ListIndex::new(0)];
@@ -5987,6 +5988,62 @@ fn work_command_retargets_gather_or_hunt_on_its_task() {
             Some(AiAction::Hunt),
             Some(object_id(501))
         )
+    );
+}
+
+/// A work command on a task for a terrain (no target, `R14` null) retakes the Hunt on its task:
+/// slot 9 without a target sends the Hunt to the work's point (state 15) and lets its deer go;
+/// the unit AI hears the hunt order and action at the point without a target.
+#[test]
+fn work_command_without_target_sends_hunt_on_its_task_to_its_point() {
+    let mut world = hunt_world();
+    assert_eq!(
+        world.hunt_command(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            Some(object_id(500)),
+            OrderForce::Forced
+        ),
+        Ok(Answer::Taken)
+    );
+    let hunter = world.players[1].objects[ListIndex::new(0)].id;
+    let task = *world.model.masters[1]
+        .get(master_id(122))
+        .unwrap()
+        .action_part()
+        .tasks
+        .first()
+        .unwrap();
+    let point = Position::new(30.5, 80.5, 0.0);
+    assert_eq!(
+        world.retake_task(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            (None, point, Notifies::Cleared),
+            &task,
+            MasterSwap::Keep
+        ),
+        Ok(Answer::Taken)
+    );
+    let hunt = *world.parts.actions_of(hunter).list.hunt().unwrap();
+    assert_eq!(
+        (
+            hunt.target,
+            hunt.point,
+            hunt.state.bare(),
+            world.object(object_id(500)).unwrap().1.workers
+        ),
+        (
+            None,
+            point,
+            HuntState::WalkPoint { move_to: None },
+            WorkerCount::ZERO
+        )
+    );
+    let ai = world.parts.unit_ai.get(hunter).unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (Some(OrderKind::Hunt), Some(AiAction::Hunt), None)
     );
 }
 
@@ -6052,14 +6109,15 @@ fn work_command_retarget_to_its_player_master_84_fails() {
         ),
         Ok(Answer::Taken)
     );
+    let hunter = world.players[1].objects[ListIndex::new(0)].id;
+    let hunt = *world.parts.actions_of(hunter).list.hunt().unwrap();
     let retarget_hunt_work = world.retarget_hunt_work(
         PlayerId::new(1),
         ListIndex::new(0),
-        (
-            object_id(800),
-            Position::new(33.5, 89.5, 0.0),
-            Notifies::Cleared,
-        ),
+        &hunt,
+        Some(object_id(800)),
+        Position::new(33.5, 89.5, 0.0),
+        Notifies::Cleared,
     );
     assert_eq!(
         retarget_hunt_work.err().map(|error| error.reason()),

@@ -55,7 +55,8 @@ pub enum HuntState {
     },
     /// 13 ("Failed"), the state every action shares.
     Failed,
-    /// 15 (`0xf`): walking to a point a move gave it (its slot 0x40).
+    /// 15 (`0xf`): walking to a point a move gave it (its slot 0x40), or its retarget without a
+    /// target (slot 9).
     WalkPoint {
         /// Its quiet `MoveTo` to the point.
         move_to: Option<MoveToAction>,

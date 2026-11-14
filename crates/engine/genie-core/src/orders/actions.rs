@@ -68,6 +68,33 @@ impl World {
         self.with_lets(by.player, |lets, others| lets.release(others, None, id, by))?
     }
 
+    /// An action's targets that changed (its target and its second target, `old` and `new`, as
+    /// the Gather's and the Hunt's slot 0x68 and `FUN_140a7a190` change them): the old one is let
+    /// go (slot 0x180, [`World::release`]) and the new one taken (slot 0x178, [`World::take`]),
+    /// each pair in order.
+    ///
+    /// # Errors
+    ///
+    /// The releases' and the takes'.
+    pub(crate) fn exchange_targets(
+        &mut self,
+        old: [Option<ObjectId>; 2],
+        new: [Option<ObjectId>; 2],
+        by: Releaser,
+    ) -> GenieResult<()> {
+        for (old, new) in old.into_iter().zip(new) {
+            if old != new {
+                if let Some(old) = old {
+                    self.release(old, by)?;
+                }
+                if let Some(new) = new {
+                    self.take(new, by)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Object `idx` of player `player` as the releaser of its actions' targets.
     pub(crate) fn releaser(&self, player: PlayerId, idx: ListIndex) -> GenieResult<Releaser> {
         let unit = self.players.live(player, idx)?;

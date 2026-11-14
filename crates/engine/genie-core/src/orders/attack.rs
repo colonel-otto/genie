@@ -3,7 +3,7 @@
 use crate::combat::attack::BeginLayer;
 use crate::combat::attack::{Attack, AttackReads, Fight};
 use crate::construction::MainBuildingId;
-use crate::gathering::hunt::HuntRetarget;
+use crate::gathering::hunt::{HuntAction, HuntRetarget, NewTarget, Retargeted, stand_sprite};
 use crate::map::Distance;
 use crate::map::Position;
 use crate::math::rng::Stream;
@@ -29,9 +29,7 @@ use crate::combat::attack::{
 };
 use crate::combat::victims::victim_of;
 use crate::combat::victims::{ChargeOf, VictimLayers, VictimView};
-use crate::gathering::HuntTargetId;
 use crate::gathering::gather::unit::WalkSprites;
-use crate::gathering::hunt::HUNTER_STATE_LACKING;
 use crate::objects::masters::player_masters;
 use crate::objects::masters::{Master, MasterTables, Task};
 use crate::objects::sprite::new_sprite;
@@ -39,7 +37,7 @@ use crate::unit_ai::AiAction;
 use crate::unit_ai::Notify;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
-use crate::world::{ATTACKER_UNPLACED, NO_STANDING_SPRITE, TARGET_UNPLACED};
+use crate::world::{ATTACKER_UNPLACED, HUNTER_UNMOVING, NO_STANDING_SPRITE, TARGET_UNPLACED};
 
 /// Where an attack task's target aims ([`World::attack_aim`]).
 pub(super) struct Aim {
@@ -292,48 +290,44 @@ impl World {
         Ok(())
     }
 
-    /// The hunt's slot 9 (`0x140ac97c0`) on the work command's new target: a new target is
-    /// released for the old one (slot 0x68, `FUN_140ac7980`, through `FUN_140a7a230`) and the hunt
-    /// starts over.
+    /// The action list's top action's slot 0x48 (`FUN_140a977a0`) on the Hunt `hunt` that the
+    /// caller found at the head of the hunter at `idx`: its slot 9 ([`HuntAction::retarget`],
+    /// `0x140ac97c0`) on the new `target` of the work command or the hunt command (none for
+    /// none) with `point`. The Hunt goes back to the head. A Hunt whose Attack's `MoveTo`
+    /// starts arrived shows its idle sprite; one that failed at once the sprite it stands with
+    /// (`set_state(13)`'s slot 0x68 with `FUN_140ac5210`'s, [`stand_sprite`]). Then the targets
+    /// that changed are let go and taken ([`World::exchange_targets`]).
+    ///
+    /// # Errors
+    ///
+    /// What [`World::hunt_new_target`] cannot read; a hunter without its mover; what the Hunt's
+    /// walks and Attack do not model.
+    ///
+    /// [`HuntAction::retarget`]: crate::gathering::hunt::HuntAction::retarget
     pub(super) fn retarget_hunt(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
-        target: ObjectId,
+        mut hunt: HuntAction,
+        target: Option<ObjectId>,
+        point: Position,
     ) -> GenieResult<()> {
-        let quarry = self.quarry(player, target)?;
-        let engagement = self.engagement(player, idx, target)?;
-        let task = self
-            .parts
-            .actions_of(self.players.live(player, idx)?.id)
-            .list
-            .hunt()
-            .map(|hunt_action| hunt_action.task)
-            .ok_or(GenieError::unsupported(
-                "a hunt's retarget without its hunt",
-            ))?;
-        let arms = self.arms(player, idx, &task)?;
-        // FUN_14109d4f0: the target's master is one of the unit's master's drop sites
-        let target_master = self
-            .object(target)
-            .map(|(_, target_unit)| target_unit.life.master_id);
-        let drops_here = self
-            .players
-            .live(player, idx)?
-            .master(self.master_tables(), player)?
-            .action_part()
-            .drop_sites
-            .iter()
-            .any(|&master_id| Some(master_id) == target_master);
-        let top_speed = self.top_speed_terms(player, self.players.live(player, idx)?)?;
+        let new = match target {
+            Some(target) => Some(self.hunt_new_target(player, idx, target)?),
+            None => None,
+        };
+        let arms = self.arms(player, idx, &hunt.task)?;
+        let by = self.releaser(player, idx)?;
+        let unit = self.players.live(player, idx)?;
+        let top_speed = self.top_speed_terms(player, unit)?;
+        // FUN_140ac5210 reads the unit's load, which the retarget leaves as it is
+        let stand = stand_sprite(
+            &hunt.task,
+            unit.master(self.master_tables(), player)?.standing_sprite,
+            unit.life.held(),
+            &self.model.graphics,
+        );
         let unit = self.players.live_mut(player, idx)?;
-        let old = self
-            .parts
-            .actions_of(unit.id)
-            .list
-            .hunt()
-            .map(|hunt_action| hunt_action.target)
-            .filter(|&role_id| role_id.is_some());
         let walks = unit.move_walks(
             self.parts.mover_of(unit.id),
             top_speed,
@@ -345,21 +339,19 @@ impl World {
             },
             &self.model.roles,
         )?;
-        let (Some(hunt), Some(mover)) = (
-            self.parts.actions.of_mut(unit.id)?.list.hunt_mut(),
-            self.parts.motion.mover_mut(unit.id),
-        ) else {
-            return Err(HUNTER_STATE_LACKING);
-        };
-        let unit_player = player;
-        if let Some(move_start) = hunt.retarget(
+        let mover = self
+            .parts
+            .motion
+            .mover_mut(unit.id)
+            .ok_or(HUNTER_UNMOVING)?;
+        let old = hunt.targets();
+        let retargeted = hunt.retarget(
             HuntRetarget {
-                target: &quarry,
-                player: unit_player,
+                target: new.as_ref(),
+                point,
+                player,
                 walks,
-                drops_here,
             },
-            &engagement,
             arms,
             mover,
             BeginLayer {
@@ -368,22 +360,76 @@ impl World {
                 move_to_tuning: &self.model.tuning.move_to,
             },
             &self.model.tuning.hunt,
-        )? {
-            if move_start == MoveStart::Arrived {
-                show_arrived(
-                    &arms,
-                    &mut unit.sprite,
-                    self.parts.motion.layer_mut(unit.id),
-                    self.streams.get_mut(Stream::Sprite),
-                    self.model.tuning.sprite,
-                )?;
+        );
+        self.parts
+            .actions
+            .of_mut(unit.id)?
+            .list
+            .set_hunt(Some(hunt));
+        match retargeted? {
+            Retargeted::Started(MoveStart::Arrived) => show_arrived(
+                &arms,
+                &mut unit.sprite,
+                self.parts.motion.layer_mut(unit.id),
+                self.streams.get_mut(Stream::Sprite),
+                self.model.tuning.sprite,
+            )?,
+            Retargeted::Failed => {
+                if let Some(graphic) = stand {
+                    new_sprite(
+                        &mut unit.sprite,
+                        self.parts.move_stats_mut(unit.id),
+                        graphic,
+                        self.streams.get_mut(Stream::Sprite),
+                        self.model.tuning.sprite,
+                    );
+                }
             }
-            // the hunt's slot 0x68 (FUN_140ac7980): FUN_140a7a230 on the new target, which the
-            // work command's task finder took below state 3
-            let old = old.flatten().map(HuntTargetId::id);
-            let _ = self.retarget_action(player, idx, old, target, Voice::Loud)?;
+            Retargeted::Kept | Retargeted::Started(MoveStart::UnderWay) => {}
         }
-        Ok(())
+        self.exchange_targets(old, hunt.targets(), by)
+    }
+
+    /// What the Hunt's slot 9 reads of the new `target` of the hunter at `idx` ([`NewTarget`]):
+    /// the target ([`World::quarry`]), the hunter's engagement with it, and whether the target's
+    /// own master (`+0x58`, not an annex's main building's) is one of the hunter's master's drop
+    /// sites (`FUN_14109d4f0`).
+    ///
+    /// # Errors
+    ///
+    /// A target the world does not hold or the hunter cannot reach; a building that the load
+    /// could not read whole (its [`Unread::error`]): slot 9 reads its action list's top action.
+    ///
+    /// [`NewTarget`]: crate::gathering::hunt::NewTarget
+    /// [`Unread::error`]: crate::world::Unread::error
+    fn hunt_new_target(
+        &self,
+        player: PlayerId,
+        idx: ListIndex,
+        target: ObjectId,
+    ) -> GenieResult<NewTarget> {
+        let quarry = self.quarry(player, target)?;
+        if quarry.kind == MasterKind::BUILDING
+            && let Some(unread) = self.parts.unread.get(target)
+        {
+            return Err(unread.error());
+        }
+        let target_master = self
+            .object(target)
+            .map(|(_, target_unit)| target_unit.life.master_id);
+        let drops_here = self
+            .players
+            .live(player, idx)?
+            .master(self.master_tables(), player)?
+            .action_part()
+            .drop_sites
+            .iter()
+            .any(|&master_id| Some(master_id) == target_master);
+        Ok(NewTarget {
+            quarry,
+            engagement: self.engagement(player, idx, target)?,
+            drops_here,
+        })
     }
 
     /// An action's slot 0x68 base (`FUN_140a7a230`) for the unit at `idx`: its target `old`

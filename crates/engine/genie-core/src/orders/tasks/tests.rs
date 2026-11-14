@@ -753,3 +753,154 @@ fn hunt_command_unforced_on_recyclable_top_target_retargets_hunt() {
         (None, Some(DropSiteId::new(RECYCLED)))
     );
 }
+
+/// [`deer_hunter`] whose Hunt also carries to the town centre 700 (`+0x28`), which it took.
+fn deer_hunter_with_drop_site() -> World {
+    let mut world = deer_hunter();
+    let by = world.releaser(PLAYER, SLOT).unwrap();
+    world.take(TOWN_CENTRE, by).unwrap();
+    world
+        .parts
+        .actions
+        .of_mut(VILLAGER)
+        .unwrap()
+        .list
+        .hunt_mut()
+        .unwrap()
+        .carry_to = Some(DropSiteId::new(TOWN_CENTRE));
+    world
+}
+
+/// The workers of the deer and of the town centre.
+fn hunt_workers(world: &World) -> [WorkerCount; 3] {
+    [DEER[0], DEER[1], TOWN_CENTRE].map(|id| workers(world, id))
+}
+
+/// The Hunt's slot 9 on another deer lets its old target go and takes the new one (slot 0x68,
+/// `FUN_140a7a230`), and lets its second target go (`FUN_140a7a190` with none).
+#[test]
+fn hunt_retarget_lets_old_targets_go_and_takes_new_one() {
+    let mut world = deer_hunter_with_drop_site();
+    let [one, none] = [WorkerCount::of_data(1), WorkerCount::ZERO];
+    assert_eq!(hunt_workers(&world), [one, none, one]);
+    assert_eq!(
+        world.hunt_command(PLAYER, SLOT, Some(DEER[1]), OrderForce::Forced),
+        Ok(Answer::Taken)
+    );
+    let hunt = hunt_of(&world).unwrap();
+    assert_eq!(
+        (hunt.target, hunt.carry_to, hunt_workers(&world)),
+        (Some(HuntTargetId::new(DEER[1])), None, [none, one, none])
+    );
+}
+
+/// A loaded hunter sent to its town centre takes it as its second target (`FUN_140a7a190`),
+/// whatever the town centre's state, and lets its deer go (slot 0x68 with none). Sent there again
+/// it takes it no second time: the second target is the town centre already.
+#[test]
+fn loaded_hunter_sent_to_its_town_centre_takes_it_once_whatever_its_state() {
+    for state in [ObjectState::Alive, ObjectState::Removed] {
+        let mut world = deer_hunter();
+        world.object_mut(VILLAGER).unwrap().1.life.amount = Amount::new(5.0);
+        world.object_mut(TOWN_CENTRE).unwrap().1.life.state = state;
+        let [one, none] = [WorkerCount::of_data(1), WorkerCount::ZERO];
+        for _ in 0..2 {
+            assert_eq!(
+                world.hunt_command(PLAYER, SLOT, Some(TOWN_CENTRE), OrderForce::Forced),
+                Ok(Answer::Taken),
+                "{state:?}"
+            );
+            let hunt = hunt_of(&world).unwrap();
+            assert_eq!(
+                (hunt.target, hunt.carry_to, hunt.state.bare()),
+                (
+                    None,
+                    Some(DropSiteId::new(TOWN_CENTRE)),
+                    HuntState::Drop { move_to: None }
+                ),
+                "{state:?}"
+            );
+            assert_eq!(hunt_workers(&world), [none, none, one], "{state:?}");
+        }
+    }
+}
+
+/// The Hunt's slot 9 on a deer past state 6 holds no target (`FUN_140a7a230`) and takes none;
+/// `set_state(4)` fails the Hunt (`set_state(13)`), and the hunter takes the sprite the hunt
+/// stands with (`FUN_140ac5210`: its master's standing sprite, as it carries nothing). Its old
+/// deer and the town centre are let go.
+#[test]
+fn hunt_retarget_on_deer_past_state_6_fails_hunt_with_standing_sprite() {
+    use crate::objects::FacetCount;
+    use crate::objects::Frame;
+    use crate::objects::SpeedMultiplier;
+    use crate::objects::SpriteFlags;
+    use crate::objects::SpriteId;
+    use crate::objects::masters::{Master, Masters};
+    use crate::objects::sprite::Graphic;
+    use std::sync::Arc;
+    let standing = Graphic {
+        id: SpriteId::named(410),
+        frames: Frame::of_data(10),
+        facets: FacetCount::of_data(8),
+        speed_multiplier: SpeedMultiplier::ONE,
+        frame_duration: Seconds::new(0.1),
+        replay_delay: Seconds::ZERO,
+        flags: SpriteFlags::ANIMATED,
+    };
+    let mut world = deer_hunter_with_drop_site();
+    let hunter = world.object(VILLAGER).unwrap().1.life.master_id;
+    for masters in &mut world.model.masters {
+        *masters = Arc::new(Masters::new(masters.iter().cloned().map(|master| {
+            if master.id == hunter {
+                Master {
+                    standing_sprite: Some(standing.id),
+                    ..master
+                }
+            } else {
+                master
+            }
+        })));
+    }
+    let _ = Arc::make_mut(&mut world.model.graphics).insert(standing.id, standing);
+    world.object_mut(DEER[1]).unwrap().1.life.state = ObjectState::Removed;
+    assert_eq!(
+        world.hunt_command(PLAYER, SLOT, Some(DEER[1]), OrderForce::Forced),
+        Ok(Answer::Taken)
+    );
+    let hunt = hunt_of(&world).unwrap();
+    assert_eq!(
+        (hunt.target, hunt.carry_to, hunt.state, hunt_workers(&world)),
+        (None, None, HuntState::Failed, [WorkerCount::ZERO; 3])
+    );
+    let sprite = world.object(VILLAGER).unwrap().1.sprite;
+    assert_eq!(
+        sprite.map(|active_sprite| active_sprite.graphic.id),
+        Some(standing.id)
+    );
+}
+
+/// A building target that the load could not read whole stops the Hunt's slot 9 with the
+/// import's error: its action list may hold the Unpack the slot tests. The Hunt stays as it was.
+/// The slot reads no other object's action list: an unread deer is retargeted.
+#[test]
+fn hunt_retarget_on_unread_building_stops_with_import_error() {
+    let why = GenieError::unsupported("a pack");
+    let mut world = deer_hunter();
+    world.set_unread(TOWN_CENTRE, why.clone());
+    let hunt = hunt_of(&world);
+    assert_eq!(
+        world.hunt_command(PLAYER, SLOT, Some(TOWN_CENTRE), OrderForce::Forced),
+        Err(why.clone())
+    );
+    assert_eq!(hunt_of(&world), hunt);
+    world.set_unread(DEER[1], why);
+    assert_eq!(
+        world.hunt_command(PLAYER, SLOT, Some(DEER[1]), OrderForce::Forced),
+        Ok(Answer::Taken)
+    );
+    assert_eq!(
+        hunt_of(&world).and_then(|hunt_action| hunt_action.target),
+        Some(HuntTargetId::new(DEER[1]))
+    );
+}

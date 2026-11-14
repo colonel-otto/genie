@@ -4,9 +4,9 @@
 use crate::combat::attack::BeginLayer;
 use crate::combat::attack::{arms, engagement, show_arrived};
 use crate::gathering::gather::unit::WalkSprites;
-use crate::gathering::hunt::HuntRetarget;
 use crate::gathering::hunt::TreeSearch;
 use crate::gathering::hunt::{HUNT_OBJECT_UNPLACED, HuntAction, Quarry};
+use crate::gathering::hunt::{HuntRetarget, NewTarget, Retargeted};
 use crate::map::Distance;
 use crate::map::Position;
 use crate::math::fmath::sqrt;
@@ -23,7 +23,7 @@ use crate::players::AllyTest;
 use crate::unit_ai::task_finder::allied;
 use crate::world::HUNTER_UNMOVING;
 use crate::world::layer::Roles;
-use crate::world::lets::take;
+use crate::world::lets::exchange_targets;
 use crate::world::others::OthersRef;
 use crate::world::step::Step;
 use crate::{GenieError, GenieResult};
@@ -38,7 +38,8 @@ impl Unit {
     /// target as the drop site, at most 2 workers ([`Unit::resource_search_from`]) names the next
     /// tree; with `near` (its second argument above 0; 5 when the Attack's `MoveTo` failed) a tree
     /// farther than it from the unit (the same 3D distance) does not count. The hunt takes it (slot
-    /// 0x48: [`crate::gathering::hunt::HuntAction::retarget`], the new target taken).
+    /// 0x48: [`crate::gathering::hunt::HuntAction::retarget`] at the tree's place), and the
+    /// targets that changed are let go and taken ([`exchange_targets`]).
     /// [`TreeSearch::Found`] when it found one.
     #[expect(
         clippy::too_many_lines,
@@ -153,7 +154,6 @@ impl Unit {
             },
             roles,
         )?;
-        let old = hunt.target;
         let moving = hunt.task.walk_sprite_id(self.life.held());
         let arms = arms(
             master,
@@ -163,14 +163,20 @@ impl Unit {
             roles,
         );
         let mover = step.world.parts.mover_mut(self.id).ok_or(HUNTER_UNMOVING)?;
+        let new = NewTarget {
+            quarry,
+            engagement,
+            drops_here,
+        };
+        let old = hunt.targets();
+        // the tree's place is the slot's point (x, y and z, FUN_140ac4670)
         let retargeted = hunt.retarget(
             HuntRetarget {
-                target: &quarry,
+                target: Some(&new),
+                point: new.quarry.position,
                 player: step.player,
                 walks,
-                drops_here,
             },
-            &engagement,
             arms,
             mover,
             BeginLayer {
@@ -181,21 +187,20 @@ impl Unit {
             &step.world.model.tuning.hunt,
         );
         actions.list.set_hunt(Some(*hunt));
-        if let Some(move_start) = retargeted? {
-            if move_start == MoveStart::Arrived {
-                show_arrived(
-                    &arms,
-                    &mut self.sprite,
-                    step.world.parts.motion_mut(self.id),
-                    step.world.streams.get_mut(Stream::Sprite),
-                    step.world.model.tuning.sprite,
-                )?;
-            }
-            // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
-            self.hunt_release(step, [old])?;
-            let by = self.releaser(step)?;
-            take(step, self, found, by, roles)?;
+        match retargeted? {
+            Retargeted::Started(MoveStart::Arrived) => show_arrived(
+                &arms,
+                &mut self.sprite,
+                step.world.parts.motion_mut(self.id),
+                step.world.streams.get_mut(Stream::Sprite),
+                step.world.model.tuning.sprite,
+            )?,
+            Retargeted::Failed => self.hunt_stand(step, &hunt.task)?,
+            Retargeted::Kept | Retargeted::Started(MoveStart::UnderWay) => {}
         }
+        // slot 0x68 (FUN_140a7a230) and FUN_140a7a190: the targets that changed
+        let by = self.releaser(step)?;
+        exchange_targets(step, self, old, hunt.targets(), by, roles)?;
         Ok(TreeSearch::Found)
     }
 }

@@ -8,7 +8,9 @@ use crate::combat::attack::tests::own_attack;
 use crate::map::Distance;
 use crate::test_ids::object_id;
 use crate::testing::class;
+use crate::unit_ai::AiAction;
 use crate::unit_ai::OrderForce;
+use crate::unit_ai::OrderKind;
 use crate::world::WorldTime;
 use crate::world::tests::forage_world;
 

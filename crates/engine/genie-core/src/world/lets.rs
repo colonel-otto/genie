@@ -194,6 +194,30 @@ pub(crate) fn release(
     step.world.release(id, by)
 }
 
+/// An action's targets that changed (its target and its second target, `old` and `new`), from
+/// an update: the old one is let go ([`release`]) and the new one taken ([`take`]), each pair in
+/// order, as [`World::exchange_targets`] does outside one; `me` is the updating object.
+///
+/// # Errors
+///
+/// [`release`]'s and [`take`]'s.
+pub(crate) fn exchange_targets(
+    step: &mut Step<'_>,
+    me: &mut Unit,
+    old: [Option<ObjectId>; 2],
+    new: [Option<ObjectId>; 2],
+    by: Releaser,
+    roles: &Roles,
+) -> GenieResult<()> {
+    for (old, new) in old.into_iter().zip(new) {
+        if old != new {
+            release(step, me, old, by)?;
+            take(step, me, new, by, roles)?;
+        }
+    }
+    Ok(())
+}
+
 /// A counted builder's leave of the building a Build on `id` counted it in, from an update
 /// ([`World::leave_builders`]): one on the updating object `me` itself, or on an annex whose
 /// main building it is, counts on `me` ([`Lets::leave_builders`]). An id that names none

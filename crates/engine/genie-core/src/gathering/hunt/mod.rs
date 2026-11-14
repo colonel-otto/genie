@@ -49,7 +49,10 @@ pub use self::hunt_state::HuntState;
 pub use self::outcomes::{HuntGather, TreeSearch};
 pub use self::sprites::{HuntSprites, walk_sprite};
 pub(crate) use self::sprites::{asked_drop_off, resource_kind, stand_sprite};
-pub use self::start::{HuntChase, HuntMove, HuntRetarget, HuntStart, PointWalk, PointWalker};
+pub(crate) use self::start::Retargeted;
+pub use self::start::{
+    HuntChase, HuntMove, HuntRetarget, HuntStart, NewTarget, PointWalk, PointWalker,
+};
 #[cfg(test)]
 use crate::combat::damage::Victim;
 use crate::gathering::{DropSiteId, HuntTargetId};
@@ -117,6 +120,24 @@ pub struct HuntAction {
     pub(crate) timer: Seconds,
     /// What it keeps of the livestock it leads to its drop site.
     pub(crate) lead: Lead,
+}
+
+impl HuntAction {
+    /// Its target and its second target (`+0x30`, `+0x34`): a caller lets go of each one that
+    /// changed and takes its new one (slot 0x180 and slot 0x178, [`HuntAction::retarget`]).
+    #[must_use]
+    pub const fn targets(&self) -> [Option<ObjectId>; 2] {
+        [
+            match self.target {
+                Some(role_id) => Some(role_id.id()),
+                None => None,
+            },
+            match self.carry_to {
+                Some(role_id) => Some(role_id.id()),
+                None => None,
+            },
+        ]
+    }
 }
 
 /// What a hunt keeps of the livestock it leads to its drop site (`TRIBE_Action_Hunt`'s
@@ -283,6 +304,16 @@ pub struct Quarry {
     /// The hunter's master has its master (a building annex's main building's, `+0xbb8`) among
     /// its drop sites (`FUN_14109d4f0`), which the start reads of its own player's object.
     pub(crate) drop_site: bool,
+}
+
+impl Quarry {
+    /// A building (`'P'` at the object's `+0xf`, its master's type) whose action list's top
+    /// action (`FUN_140a98730`, `FUN_140a986f0`) is an Unpack ([`ActionKind::UNPACK`], 125): slot
+    /// 9's first test (`0x140ac97e9`), which sends the hunt to the point instead.
+    #[must_use]
+    pub(crate) fn unpacking(&self) -> bool {
+        self.kind == MasterKind::BUILDING && self.top_action == Some(ActionKind::UNPACK)
+    }
 }
 
 #[cfg(test)]
