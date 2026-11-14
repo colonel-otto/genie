@@ -18,6 +18,7 @@ use crate::gathering::PastureId;
 use crate::gathering::gather::GATHER;
 use crate::gathering::gather::GatherState;
 use crate::gathering::hunt::HUNT;
+use crate::groups::formation::tests::ghost_at;
 use crate::groups::{GroupCommandKind, GroupFlags, Member, Motion, UnitGroup};
 use crate::map::DistanceSquared;
 use crate::map::Footprint;
@@ -8351,10 +8352,11 @@ fn grouped_ship_world(
 }
 
 /// Slot 0x1d0, canMoveToAttack (`FUN_140c48420`, [`World::can_move_to_attack`]): a target the
-/// world does not hold (98) answers false, none or one it holds (the ship 50) asks on; a group
-/// the world holds that is not idle (its motion moves) answers false, an idle one or one the
-/// world does not hold asks on; then an order answers true, and without one a stance of at most
-/// 1 (aggressive, defensive).
+/// world does not hold (98, and the ghost −2 before player 1 holds it) answers false; none, a
+/// unit it holds (the ship 50) and a ghost it holds (−2, `FUN_1415417a0`'s negative half) ask
+/// on; a group the world holds that is not idle (its motion moves) answers false, an idle one or
+/// one the world does not hold asks on; then an order answers true, and without one a stance of
+/// at most 1 (aggressive, defensive).
 #[test]
 fn move_to_attack_needs_held_target_idle_group_and_order_or_low_stance() {
     let still = Some((GroupCommandKind::MOVE, BVector::ZERO, GroupFlags::empty()));
@@ -8379,11 +8381,17 @@ fn move_to_attack_needs_held_target_idle_group_and_order_or_low_stance() {
     };
     let aggressive = ai(None, UnitStance::Aggressive);
     let ordered = ai(Some(OrderKind::Attack), UnitStance::NoAttack);
-    let world = grouped_ship_world(aggressive.clone(), None, (false, &[]));
+    let mut world = grouped_ship_world(aggressive.clone(), None, (false, &[]));
     assert!(can_move(&world, &aggressive, None));
     assert!(can_move(&world, &aggressive, Some(object_id(50))));
     assert!(!can_move(&world, &aggressive, Some(object_id(98))));
     assert!(!can_move(&world, &ordered, Some(object_id(98))));
+    assert!(!can_move(&world, &aggressive, Some(object_id(-2))));
+    world.players[1].ghosts = vec![ghost_at(-2, 31.0, 30.0)];
+    assert!(can_move(&world, &aggressive, Some(object_id(-2))));
+    assert!(can_move(&world, &ordered, Some(object_id(-2))));
+    let standing = ai(None, UnitStance::StandGround);
+    assert!(!can_move(&world, &standing, Some(object_id(-2))));
     assert!(can_move(&world, &ordered, None));
     for (stance, expected) in [
         (UnitStance::Aggressive, true),

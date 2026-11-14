@@ -311,8 +311,9 @@ impl Seeker {
 
 impl World {
     /// Slot 0x1d0 of unit AI `ai`, `UAM::canMoveToAttack` (`FUN_140c48420`, every unit AI's), on
-    /// `target`, its unit in group `group` (`+0x6d0`): false on a target the world does not hold
-    /// (`FUN_1415417a0`; none passes), and while the group the world holds (`FUN_14152ff40`) is
+    /// `target`, its unit in group `group` (`+0x6d0`): false on a target the world's table does
+    /// not hold (`FUN_1415417a0`, [`World::world_object`]: a unit, live or sleeping, or a ghost
+    /// for a negative id; none passes), and while the group the world holds (`FUN_14152ff40`) is
     /// not idle (`IsIdle`, [`UnitGroup::is_idle`]); else true with an order (`+0x3c`), or without
     /// one in a stance (`+0x1a9`) of at most 1.
     ///
@@ -323,7 +324,7 @@ impl World {
         group: Option<GroupId>,
         target: Option<ObjectId>,
     ) -> bool {
-        if target.is_some_and(|id| self.object(id).is_none()) {
+        if target.is_some_and(|id| self.world_object(id).is_none()) {
             return false;
         }
         if group
