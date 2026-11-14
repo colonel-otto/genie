@@ -1,8 +1,10 @@
 //! An attack's start, a hunt's and an action's retarget.
 
-use crate::combat::attack::BeginLayer;
-use crate::combat::attack::{Attack, AttackReads, Fight};
+use crate::combat::AttackCount;
+use crate::combat::AttackTargetId;
+use crate::combat::attack::{Attack, BeginLayer, arms, engagement, show_arrived};
 use crate::construction::MainBuildingId;
+use crate::gathering::gather::unit::WalkSprites;
 use crate::gathering::hunt::{HuntAction, HuntRetarget, NewTarget, Retargeted, stand_sprite};
 use crate::map::Distance;
 use crate::map::Position;
@@ -13,39 +15,30 @@ use crate::objects::ObjectId;
 use crate::objects::Voice;
 use crate::objects::actions::LAST_TAKEN;
 use crate::objects::masters::ClassId;
-use crate::objects::masters::FogVisibility;
 use crate::objects::masters::MasterKind;
+use crate::objects::masters::{MasterTables, Task};
+use crate::objects::sprite::new_sprite;
 use crate::objects::teardown::HeadStart;
 use crate::players::PlayerId;
-use crate::unit_ai::Notifies;
-use crate::world::WorldTime;
-use crate::world::slots::PlayerSlotsExt;
-use crate::{GenieError, GenieResult};
-
-use crate::combat::AttackTargetId;
-use crate::combat::attack::AttackSource;
-use crate::combat::attack::{
-    OwnStart, ReadyReads, arms, engagement, show_arrived, target_in_sight,
-};
-use crate::combat::victims::victim_of;
-use crate::combat::victims::{ChargeOf, VictimLayers, VictimView};
-use crate::gathering::gather::unit::WalkSprites;
-use crate::objects::masters::player_masters;
-use crate::objects::masters::{Master, MasterTables, Task};
-use crate::objects::sprite::new_sprite;
 use crate::unit_ai::AiAction;
-use crate::unit_ai::Notify;
+use crate::unit_ai::Notifies;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
-use crate::world::{ATTACKER_UNPLACED, HUNTER_UNMOVING, NO_STANDING_SPRITE, TARGET_UNPLACED};
+use crate::world::slots::PlayerSlotsExt;
+use crate::world::{ATTACKER_UNPLACED, HUNTER_UNMOVING, TARGET_UNPLACED};
+use crate::{GenieError, GenieResult};
+
+/// The work command's started Attack is not on its unit's list: [`Unit::start_listed_attack`]
+/// puts it back, before an error too.
+///
+/// [`Unit::start_listed_attack`]: crate::objects::unit::Unit::start_listed_attack
+const STARTED_ATTACK_UNLISTED: GenieError =
+    GenieError::unreachable("the started attack is not on its list");
 
 /// Where an attack task's target aims ([`World::attack_aim`]).
 pub(super) struct Aim {
-    /// The target's owner.
-    pub(super) owner: PlayerId,
-    /// The target's master's class and fog visibility.
+    /// The target's master's class.
     pub(super) class: ClassId,
-    pub(super) fog_visibility: FogVisibility,
     /// The object aimed at (the target, or a building annex's main building), its place and its
     /// master's class.
     pub(super) aimed: ObjectId,
@@ -54,63 +47,29 @@ pub(super) struct Aim {
 }
 
 impl World {
-    /// What the attack's first update reads of the attacker at `idx` of player `player` and of
-    /// its `target` as combat objects; none when the world cannot read the target.
-    fn attack_ready(
-        &self,
-        player: PlayerId,
-        idx: ListIndex,
-        target: ObjectId,
-        (master, world_time): (&Master, WorldTime),
-    ) -> GenieResult<Option<ReadyReads>> {
-        let unit = self.players.live(player, idx)?;
-        let held = self.players.player(player)?;
-        let reads = AttackReads::of(
-            AttackSource {
-                combat: self.parts.combat_of(unit.id),
-                top_speed: self.top_speed_terms(player, unit)?,
-                master,
-                graphics: &self.model.graphics,
-                ai: self.parts.unit_ai.get(unit.id),
-                player_kind: held.kind,
-                now: world_time,
-            },
-            &self.model.roles,
-            &self.model.tuning.turn,
-        );
-        let own = victim_of(
-            VictimView {
-                unit,
-                layers: VictimLayers::of(&self.parts, unit.id, self.parts.actions.of(unit.id)),
-                master,
-                charge_of: ChargeOf(&|with| self.special_charge(unit, with)),
-                player,
-                masters: player_masters(&self.model.masters, player)?,
-                attributes: &held.attributes,
-                terrain: self.spatial.terrain.as_ref(),
-                mode_680: self.mode_680,
-            },
-            &self.model.roles,
-        )?;
-        Ok(self.victim(target, player)?.map(|victim| ReadyReads {
-            reads,
-            fight: Fight { victim, own },
-        }))
-    }
-
-    /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):
-    /// the unit AI takes action 600 (`FUN_140c64b50`) and the target (an annex its main building,
-    /// `FUN_141189b20`) at its place (`FUN_140c64c10`); the Attack (`FUN_140a7c210`, sub-action 0:
-    /// the task's sprites, the task's range or slot 0x238's for 0) takes its target (slot 0x178);
-    /// the notify (`FUN_14106e4e0` kind 9: the last retarget time `+0xbc` takes the world's time,
-    /// then order 700, action 600, the target with its class and the work's point); the install
-    /// clears the action list and starts the Attack (slot 5, `0x140a7f8c0` with 1: `+0x900`
-    /// cleared, the standing sprite, the range test of [`Attack::start_own`]; a unit that cannot move in reach
-    /// goes ready, `set_state(6)`, [`Attack::enter_ready`]; one that may move ends in
-    /// `set_state(4)`, whose `MoveTo` starting arrived shows the standing sprite at its speed and
-    /// clears `+0x7b8`, `0x140aa29e0`); then the Attack takes the target as
-    /// its second target too (`FUN_140a7a190`, slot 0x178). The unit AI's `+0x1d5`, cleared, is
-    /// not held; a task range other than 0 is not modelled.
+    /// The work command's Attack (`FUN_14106ff70`'s tail for a task of action type 7) of object
+    /// `idx` of `player` on `target` at `point`: the list's factory (`FUN_140a97e00` case 7: the
+    /// unit AI's part, [`World::attack_task_ai`], then the constructor,
+    /// [`World::construct_attack`]), the work notify (slot 0x828 with the Attack's type 9,
+    /// [`World::attack_notifies`]), the install (slot 0x808, [`World::set_only_action`]: the
+    /// list's deletion, then its add), and the Attack's second target (`FUN_140a7a190`). Below
+    /// state 3 the add starts the Attack and it takes its second target
+    /// ([`World::install_attack`]). The unit AI's `+0x1d5`, cleared after the install, is not
+    /// held; a task range other than 0 is not modelled.
+    ///
+    /// In state 3 or later the add deletes the Attack unstarted: its destructor (`FUN_140a7f640`)
+    /// lets the target go and frees it. An action object's slot 0x7e8 (types 40 to 60) is the
+    /// work command in any state; a combat object's and a building's ignore the order there.
+    /// `FUN_140a7a190` then runs on the freed Attack, which the game's clients read as the
+    /// destructor left it most often (FD-001-D30): a free writes nothing into a small block's
+    /// bytes in the Windows heap's low-fragmentation part, and only the first 16 in its back end
+    /// and in Wine's. So it held no second target (`+0x28` 0) to let go, and the target is taken
+    /// once more (slot 0x178 with its unit, `+0x10`), a take no action lets go.
+    ///
+    /// # Errors
+    ///
+    /// A task range of its own, and what the aim, the factory, the notify, the install and the
+    /// start cannot read or do not model.
     pub(super) fn start_attack(
         &mut self,
         player: PlayerId,
@@ -126,13 +85,60 @@ impl World {
             ));
         }
         let aim = self.attack_aim(target)?;
-        let world_time = self.world_time;
-        self.attack_notifies(player, idx, (target, &aim), point, notifies)?;
-        self.clear_actions(player, idx)?;
-        let master = self
-            .players
-            .live(player, idx)?
-            .master(self.master_tables(), player)?;
+        self.attack_task_ai(player, idx, &aim)?;
+        let attack = self.construct_attack(player, idx, target, task)?;
+        self.attack_notifies(player, idx, target, aim.class, point, notifies)?;
+        match self.set_only_action(player, idx, Some(attack))? {
+            Some(attack) => self.install_attack(player, idx, &attack, target),
+            // `FUN_140a7a190` on the freed Attack: no second target to let go, the target taken
+            None => self.take(target, self.releaser(player, idx)?),
+        }
+    }
+
+    /// The attack task's part of the list's factory (`FUN_140a97e00` case 7) for the unit AI of
+    /// object `idx` of `player`: action 600 (`FUN_140c64b50`) and the aimed object at its place
+    /// with its class (`FUN_140c64c10`). A unit without a unit AI goes on to the constructor.
+    pub(super) fn attack_task_ai(
+        &mut self,
+        player: PlayerId,
+        idx: ListIndex,
+        aim: &Aim,
+    ) -> GenieResult<()> {
+        let unit = self.players.live(player, idx)?;
+        if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
+            ai.set_action(Some(AiAction::Attack));
+            ai.set_target(Some(aim.aimed), aim.aimed_class.or_none(), aim.at);
+        }
+        Ok(())
+    }
+
+    /// The Attack's constructor (`FUN_140a7c210`) from the attack task's factory, for object
+    /// `idx` of `player` on `target`: the target, which differs from the new Attack's none,
+    /// clears the unit's attack count (`+0x900`), and the Attack takes it (`FUN_140a7a230`, slot
+    /// 0x178). The Attack holds the task's sprites and moving sprite ([`arms`]), and the range,
+    /// the least range, the target's place and whether the target is the unit's player's as the
+    /// two stand ([`Attack::own`]; the start reads the rest of their [`engagement`] anew). The
+    /// constructor's slot 0x1f8, whose answer it drops, and `FUN_140c87e70`, a counter, change
+    /// nothing. Its choice of what it takes (an area-effect unit's annex target its main
+    /// building, a class 60 none, one past state 6 not taken by `FUN_140a7a230`) is the task
+    /// attack-constructor-past-state-6.
+    ///
+    /// # Errors
+    ///
+    /// A unit or a target the map does not place, the unit's master and top speed, and a
+    /// charge's range ([`engagement`]'s).
+    fn construct_attack(
+        &mut self,
+        player: PlayerId,
+        idx: ListIndex,
+        target: ObjectId,
+        task: &Task,
+    ) -> GenieResult<Attack> {
+        let id = self.players.live(player, idx)?.id;
+        self.parts.combat_mut(id)?.attack_count = AttackCount::ZERO;
+        self.take(target, self.releaser(player, idx)?)?;
+        let unit = self.players.live(player, idx)?;
+        let master = unit.master(self.master_tables(), player)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
         let arms = arms(
             master,
@@ -141,88 +147,56 @@ impl World {
             task.sprites.moving,
             &self.model.roles,
         );
-        let standing = arms.idle_sprite.ok_or(NO_STANDING_SPRITE)?;
-        let me_at = *self
-            .spatial
-            .get(self.players.live(player, idx)?.id)
-            .ok_or(ATTACKER_UNPLACED)?;
-        let target_at = *self.spatial.get_known(target)?.ok_or(TARGET_UNPLACED)?;
-        let visible = target_in_sight(&self.spatial, player, &target_at, aim.fog_visibility)?;
-        let ready = self.attack_ready(player, idx, target, (master, world_time))?;
-        let attacker = self.players.live(player, idx)?;
-        let speed = self.top_speed(player, attacker)?;
+        let me_at = self.spatial.get(id).ok_or(ATTACKER_UNPLACED)?;
+        let target_at = self.spatial.get_known(target)?.ok_or(TARGET_UNPLACED)?;
         let engagement = engagement(
-            self.parts.unit_ai.get(attacker.id),
-            speed,
+            self.parts.unit_ai.get(id),
+            self.top_speed(player, unit)?,
             master,
-            &me_at,
-            &target_at,
-            world_time,
-            self.parts.combat_of(attacker.id).next_volley,
+            me_at,
+            target_at,
+            self.world_time,
+            self.parts.combat_of(id).next_volley,
         )?;
-        let unit = self.players.live_mut(player, idx)?;
-        if unit.sprite.is_none() {
-            return Err(GenieError::unsupported(
-                "an attack task of a unit whose sprite the slice does not hold",
-            )
-            .with("object", unit.id)
-            .with("master", unit.life.master_id));
-        }
-        new_sprite(
-            &mut unit.sprite,
-            self.parts.move_stats_mut(unit.id),
-            standing,
-            self.streams.get_mut(Stream::Sprite),
-            self.model.tuning.sprite,
-        );
-        let start = OwnStart {
-            target,
-            engagement: &engagement,
-            visible,
-            target_owner: aim.owner,
-            ready,
-        };
-        self.install_attack(player, idx, Attack::own(target, &engagement, arms), &start)
+        Ok(Attack::own(target, &engagement, arms))
     }
 
-    /// The new `attack`'s start on object `idx` of `player` ([`Attack::start_own`] with 1 and
-    /// `start`): the start's notifies go to the unit AI, the Attack takes its target as its second
-    /// target too (`FUN_140a7a190`) and goes on the action list, and the unit takes the target
-    /// (slot 0x178).
+    /// The add's part of the install (`FUN_140a977e0` below state 3) of the work command's new
+    /// `attack` on object `idx` of `player`: the list holds it as its head, and its slot 0x28
+    /// with 1 starts it ([`Unit::start_listed_attack`] with [`HeadStart::Added`]). Then
+    /// `FUN_140a7a190` gives the Attack `target` as its second target: it held none, so nothing
+    /// is let go, and the target is taken (slot 0x178).
+    ///
+    /// [`Unit::start_listed_attack`]: crate::objects::unit::Unit::start_listed_attack
+    ///
+    /// # Errors
+    ///
+    /// The start's and the take's.
     fn install_attack(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
-        mut attack: Attack,
-        start: &OwnStart<'_>,
+        attack: &Attack,
+        target: ObjectId,
     ) -> GenieResult<()> {
-        let roles = self.model.roles.clone();
-        let target = start.target;
-        let posted = self.run_on_step(player, idx, |unit, _, step| {
-            attack.start_own(step, unit, HeadStart::Added, start, &roles)
+        self.run_on_step(player, idx, |unit, actions, step| {
+            actions.list.set_attack(Some(*attack));
+            unit.start_listed_attack(*attack, HeadStart::Added, actions, step)
         })?;
-        // the start's notifies go to the unit AI (the unit's slot 0x328 -> the AI's slot 0x38)
-        let unit = self.players.live_mut(player, idx)?;
-        let (id, state) = (unit.id, unit.life.state);
-        for (kind, params) in posted {
-            if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
-                ai.post(Notify::own(id, kind, params), state)?;
-            }
-        }
-        // the attack command gives the Attack its second target
-        attack.target2 = Some(AttackTargetId::new(target));
+        let id = self.players.live(player, idx)?.id;
         self.parts
             .actions
-            .of_mut(unit.id)?
+            .of_mut(id)?
             .list
-            .set_attack(Some(attack));
-        self.take(target, self.releaser(player, idx)?)?;
-        Ok(())
+            .attack_mut()
+            .ok_or(STARTED_ATTACK_UNLISTED)?
+            .target2 = Some(AttackTargetId::new(target));
+        self.take(target, self.releaser(player, idx)?)
     }
 
     /// Where an attack task on `target` aims (`FUN_141189b20`): a building annex at its main
-    /// building, anything else at itself; with the target's owner, its master's class and fog
-    /// visibility, and the aimed object's place and class.
+    /// building, anything else at itself; with the target's master's class, and the aimed
+    /// object's place and class.
     pub(super) fn attack_aim(&self, target: ObjectId) -> GenieResult<Aim> {
         let (owner, target_unit) = self.object(target).ok_or(GenieError::unsupported(
             "an attack task's target the slice does not hold",
@@ -241,42 +215,41 @@ impl World {
             "an attack task's main building is gone",
         ))?;
         Ok(Aim {
-            owner,
             class: tm.class,
-            fog_visibility: tm.fog_visibility,
             aimed,
             at: unit.position(),
             aimed_class: unit.master(self.master_tables(), ap)?.class,
         })
     }
 
-    /// The attack task's word to the unit AI of object `idx` of `player`: action 600 and the
-    /// aimed object at its place (`FUN_140c64b50`, `FUN_140c64c10`); the target taken (slot
-    /// 0x178); the last retarget time the world's; the work notify (`FUN_14106e4e0` kind 9:
-    /// order 700, action 600, the target with its class and the work's `point`, its notifies
-    /// cleared with `notifies`) and the order history.
+    /// The attack task's work notify (slot 0x828 with the Attack's type 9, `FUN_14106e4e0`) to the
+    /// unit AI of object `idx` of `player`: the last retarget time the world's, then order 700,
+    /// action 600, `target` with its master's `class` and the work's `point`, its notifies cleared
+    /// with `notifies` ([`UnitAi::notify_work`]), and the order history
+    /// ([`World::remember_order`]). A unit without a unit AI hears nothing.
+    ///
+    /// [`UnitAi::notify_work`]: crate::unit_ai::UnitAi::notify_work
+    ///
+    /// # Errors
+    ///
+    /// A unit the world does not hold, and the notify's and the order history's.
     pub(super) fn attack_notifies(
         &mut self,
         player: PlayerId,
         idx: ListIndex,
-        (target, aim): (ObjectId, &Aim),
+        target: ObjectId,
+        class: ClassId,
         point: Position,
         notifies: Notifies,
     ) -> GenieResult<()> {
         let world_time = self.world_time;
         let unit = self.players.live_mut(player, idx)?;
         if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
-            ai.set_action(Some(AiAction::Attack));
-            ai.set_target(Some(aim.aimed), aim.aimed_class.or_none(), aim.at);
-        }
-        self.take(target, self.releaser(player, idx)?)?;
-        let unit = self.players.live_mut(player, idx)?;
-        if let Some(ai) = self.parts.unit_ai.get_mut(unit.id) {
             ai.last_retarget_time = world_time;
             ai.notify_work(
                 Some(OrderKind::Attack),
                 Some(AiAction::Attack),
-                Some((target, aim.class)),
+                Some((target, class)),
                 point,
                 notifies,
                 self.streams.get_mut(Stream::Ai),

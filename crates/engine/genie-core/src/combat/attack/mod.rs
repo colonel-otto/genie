@@ -47,9 +47,9 @@ use genie_model::model::Model;
 
 mod attack_state;
 mod constructor;
+mod head_start;
 mod hits;
 mod ready_to_attack;
-mod restart;
 mod sprites;
 mod states;
 mod unit;

@@ -1,5 +1,6 @@
-//! The Attack's restart under a deleted head (slot 0x28 with 0, `0x140a7f8c0`): its unit AI and
-//! place test, the sprite it stands with, then the start as the list's add runs it.
+//! The Attack's start at the head of its unit's list (slot 0x28, `0x140a7f8c0`), from the
+//! list's add (with 1) and from a deletion that left it there (with 0): its unit AI and place
+//! test, the sprite it stands with, then readyToAttack and its state.
 
 use crate::GenieResult;
 use crate::combat::attack::TARGET_GONE;
@@ -19,20 +20,21 @@ use crate::world::step::Step;
 use crate::world::{ATTACKER_MASTER, ATTACKER_UNPLACED, NO_STANDING_SPRITE};
 
 impl Unit {
-    /// `RGE_Action_Attack`'s slot 0x28 with 0 (`0x140a7f8c0`) once a deletion left `attack` at
-    /// the head of the unit's list ([`Unit::restart_head`]), on the unit's step: a unit without
-    /// a unit AI (`+0x6b0`) or inside an object (`+0x2f0`) fails it (`set_state(13)`,
-    /// [`Attack::finish_in`]: a `MoveTo` it held stops the unit) and nothing more. Any other keeps
-    /// its attack count (`+0x900`, which the argument 1 clears), shows the sprite the Attack
-    /// stands with (slot 0x68 with `+0x80`), and the start goes on as the list's add's
-    /// ([`Attack::start_own`] with [`HeadStart::Restarted`]) on what the Attack reads of the unit
-    /// and its target now: readyToAttack, then state 4, 6 or 13. Its notifies go to the unit AI,
-    /// in order. The Attack goes back to the list, before an error too (the stop's context reads
-    /// the list).
+    /// `RGE_Action_Attack`'s slot 0x28 (`0x140a7f8c0`) on `attack` at the head of the unit's list
+    /// `actions`, on the unit's step, as `head` says it came there: the list's add put it there
+    /// new (with 1, the work command's [`World::install_attack`]), or a deletion left it there
+    /// (with 0, [`Unit::restart_head`]). A unit without a unit AI (`+0x6b0`) or inside an object
+    /// (`+0x2f0`) fails it (`set_state(13)`, [`Attack::finish_in`]: a `MoveTo` it held stops the
+    /// unit) and nothing more. Any other shows the sprite the Attack stands with (slot 0x68 with
+    /// `+0x80`), and the start goes on ([`Attack::start_own`], whose add clears the attack count
+    /// `+0x900` and whose restart keeps it) on what the Attack reads of the unit and its target
+    /// now: readyToAttack, then state 4, 6 or 13. Its notifies go to the unit AI, in order. The
+    /// Attack goes back to the list, before an error too (the stop's context reads the list).
     ///
     /// The unit AI is the world's: while the unit's own AI runs, the world holds none (the task
     /// restart-reads-lent-unit-ai).
     ///
+    /// [`World::install_attack`]: crate::world::World::install_attack
     /// [`Unit::restart_head`]: crate::objects::unit::Unit::restart_head
     ///
     /// # Errors
@@ -40,21 +42,23 @@ impl Unit {
     /// An Attack without a target or on one the world does not hold (readyToAttack's part
     /// without a target is not ported), a unit without a standing sprite or a master, and the
     /// start's.
-    pub(crate) fn restart_attack(
+    pub(crate) fn start_listed_attack(
         &mut self,
         mut attack: Attack,
+        head: HeadStart,
         actions: &mut Action,
         step: &mut Step<'_>,
     ) -> GenieResult<()> {
-        let restarted = self.restart_listed_attack(&mut attack, actions, step);
+        let started = self.start_head_attack(&mut attack, head, actions, step);
         actions.list.set_attack(Some(attack));
-        restarted
+        started
     }
 
-    /// [`Unit::restart_attack`] on the head's copy `attack`, the list `actions` as it stands.
-    fn restart_listed_attack(
+    /// [`Unit::start_listed_attack`] on the head's copy `attack`, the list `actions` as it stands.
+    fn start_head_attack(
         &mut self,
         attack: &mut Attack,
+        head: HeadStart,
         actions: &Action,
         step: &mut Step<'_>,
     ) -> GenieResult<()> {
@@ -101,19 +105,19 @@ impl Unit {
                 target_master.fog_visibility,
             )?,
             target_owner: placed.player,
-            ready: self.restart_ready_reads(target, master, actions, step, roles)?,
+            ready: self.start_ready_reads(target, master, actions, step, roles)?,
         };
-        let posted = attack.start_own(step, self, HeadStart::Restarted, &start, roles)?;
+        let posted = attack.start_own(step, self, head, &start, roles)?;
         posted.into_iter().try_for_each(|(kind, params)| {
             self.post_own(&mut step.world.parts.unit_ai, kind, params)
         })
     }
 
-    /// What the restart's `set_state(6)` reads ([`ReadyReads`]): the unit of `master` with its
+    /// What the start's `set_state(6)` reads ([`ReadyReads`]): the unit of `master` with its
     /// list `actions` as the Attack's update reads it ([`AttackReads::of`]), the target `target`
     /// as a hit reads it (none when the world does not hold it live) and the unit as a combat
     /// object.
-    fn restart_ready_reads(
+    fn start_ready_reads(
         &self,
         target: ObjectId,
         master: &Master,

@@ -764,6 +764,55 @@ fn work_attack_on_touching_target_starts_its_move_to_arrived() {
         world.parts.mover_of(unit.id).map(|mover| mover.stats.speed),
         Some(Speed::new(0.8))
     );
+    // the constructor's take and the second target's
+    assert_eq!(
+        world.players[0].objects[ListIndex::new(0)].workers,
+        WorkerCount::of_data(2)
+    );
+}
+
+/// The work command's Attack of an action object in state 3 (types 40 to 60: their slot 0x7e8
+/// is the work command in any state; [`work_attack`]'s world holds no sight, so no seer mirrors
+/// the state): the constructor clears the soldier's attack count and takes the wolf
+/// (`FUN_140a7c210`), the install (slot 0x808) deletes the Attack unstarted, its destructor
+/// letting the wolf go, and `FUN_140a7a190` on the freed Attack takes the wolf once more. The
+/// list stays empty, the soldier keeps its sprite and animation, and the wolf counts one worker.
+#[test]
+fn work_attack_of_dying_action_object_deletes_its_attack_unstarted() {
+    let (mut world, task) = work_attack(UnitStance::Aggressive);
+    Arc::make_mut(&mut world.model.masters[1])
+        .get_mut(master_id(4))
+        .unwrap()
+        .kind = MasterKind::ACTION;
+    let soldier = world.players[1].objects[ListIndex::new(0)].id;
+    world.players[1].objects[ListIndex::new(0)].life.state = ObjectState::Dying;
+    world.parts.combat_mut(soldier).unwrap().attack_count = AttackCount::of_data(3);
+    world
+        .start_attack(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(50),
+            &task,
+            Position::new(10.4, 10.0, 0.0),
+            Notifies::Cleared,
+        )
+        .unwrap();
+    assert!(world.parts.actions_of(soldier).list.is_empty());
+    assert_eq!(
+        world.parts.combat_of(soldier).attack_count,
+        AttackCount::ZERO
+    );
+    assert_eq!(
+        world.players[0].objects[ListIndex::new(0)].workers,
+        WorkerCount::of_data(1)
+    );
+    assert_eq!(
+        world.players[1].objects[ListIndex::new(0)]
+            .sprite
+            .map(|active_sprite| active_sprite.graphic.id),
+        Some(SpriteId::named(302))
+    );
+    assert_eq!(world.parts.anim_speed_of(soldier), Some(Speed::new(1.0)));
 }
 
 /// The work command's check of the top Attack (`FUN_14106ff70`, [`World::keep_attack`]): an
@@ -1089,16 +1138,13 @@ fn work_command_retargets_area_effect_attack_on_annex_to_its_main_building() {
 }
 
 /// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
-/// its main building, with the annex's owner, class and fog visibility but the main building's
-/// place and class; a target or a main building the slice does not hold fails.
+/// its main building, with the annex's class but the main building's place and class; a target
+/// or a main building the slice does not hold fails.
 #[test]
 fn an_attack_task_aims_at_its_target_or_an_annex_main_building() {
     let (mut world, _) = work_attack(UnitStance::Aggressive);
     let aim = world.attack_aim(object_id(50)).unwrap();
-    assert_eq!(
-        (aim.owner, aim.class, aim.fog_visibility),
-        (PlayerId::new(0), class::PREDATOR, FogVisibility::INVISIBLE)
-    );
+    assert_eq!(aim.class, class::PREDATOR);
     assert_eq!(
         (aim.aimed, aim.at, aim.aimed_class),
         (
@@ -1109,10 +1155,7 @@ fn an_attack_task_aims_at_its_target_or_an_annex_main_building() {
     );
     annexed(&mut world);
     let aim = world.attack_aim(object_id(61)).unwrap();
-    assert_eq!(
-        (aim.owner, aim.class, aim.fog_visibility),
-        (PlayerId::new(0), class::TOWER, FogVisibility::VISIBLE)
-    );
+    assert_eq!(aim.class, class::TOWER);
     assert_eq!(
         (aim.aimed, aim.at, aim.aimed_class),
         (
@@ -1138,26 +1181,34 @@ fn an_attack_task_aims_at_its_target_or_an_annex_main_building() {
     );
 }
 
-/// The attack task's word to its unit AI (`FUN_140c64b50`, `FUN_140c64c10`, `FUN_14106e4e0`
-/// kind 9): the aimed main building becomes the soldier's last target, the annex its target
-/// with its class at the work's point under order 700 and action 600; the last retarget time
-/// and the order history take the world's time, and the annex counts the soldier as a worker.
-/// A soldier without a unit AI only takes the target.
+/// The attack task's word to its unit AI: the factory's (`FUN_140c64b50`, `FUN_140c64c10`) makes
+/// the aimed main building its target, which becomes the soldier's last target once the work
+/// notify's (`FUN_14106e4e0` kind 9) gives it the annex with its class at the work's point under
+/// order 700 and action 600; the last retarget time and the order history take the world's
+/// time. Neither takes the annex (the constructor's take), and a soldier without a unit AI hears
+/// nothing.
 #[test]
 fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     let (mut world, _) = work_attack(UnitStance::Aggressive);
     annexed(&mut world);
     world.world_time = WorldTime::from_millis(1730);
     let aim = world.attack_aim(object_id(61)).unwrap();
-    world
-        .attack_notifies(
-            PlayerId::new(1),
-            ListIndex::new(0),
-            (object_id(61), &aim),
-            Position::new(21.0, 21.0, 0.0),
-            Notifies::Cleared,
-        )
-        .unwrap();
+    let tell = |world: &mut World| {
+        world
+            .attack_task_ai(PlayerId::new(1), ListIndex::new(0), &aim)
+            .unwrap();
+        world
+            .attack_notifies(
+                PlayerId::new(1),
+                ListIndex::new(0),
+                object_id(61),
+                aim.class,
+                Position::new(21.0, 21.0, 0.0),
+                Notifies::Cleared,
+            )
+            .unwrap();
+    };
+    tell(&mut world);
     let ai = world
         .parts
         .unit_ai
@@ -1195,30 +1246,22 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     );
     assert_eq!(
         world.players[0].objects[ListIndex::new(2)].workers,
-        WorkerCount::of_data(1)
+        WorkerCount::ZERO
     );
     world
         .parts
         .set_unit_ai(world.players[1].objects[ListIndex::new(0)].id, None);
-    world
-        .attack_notifies(
-            PlayerId::new(1),
-            ListIndex::new(0),
-            (object_id(61), &aim),
-            Position::new(21.0, 21.0, 0.0),
-            Notifies::Cleared,
-        )
-        .unwrap();
+    // without a unit AI both answer at once, and still neither takes the annex
+    tell(&mut world);
     assert_eq!(
         world.players[0].objects[ListIndex::new(2)].workers,
-        WorkerCount::of_data(2)
+        WorkerCount::ZERO
     );
 }
 
-/// The attack task's Attack of a soldier without a unit AI (it cannot move) touching the wolf
-/// goes ready at its start (`set_state(6)`, [`crate::combat::attack::Attack::command`]): with its reload
-/// under way it waits ready on its standing sprite; with it done it swings at once on its
-/// attack sprite.
+/// The attack task's Attack of a soldier without a top speed (slot 0x208 0: it cannot move)
+/// touching the wolf goes ready at its start (`set_state(6)`): with its reload under way it
+/// waits ready on its standing sprite; with it done it swings at once on its attack sprite.
 #[test]
 fn an_attack_task_of_unit_that_cannot_move_goes_ready_in_reach() {
     use crate::combat::attack::AttackState;
@@ -1229,7 +1272,8 @@ fn an_attack_task_of_unit_that_cannot_move_goes_ready_in_reach() {
         let (mut world, task) = work_attack(UnitStance::Aggressive);
         let unit = &mut world.players[1].objects[ListIndex::new(0)];
         let id = unit.id;
-        world.parts.set_unit_ai(id, None);
+        let stats = &mut world.parts.mover_mut(id).unwrap().stats;
+        (stats.base, stats.speed) = (Speed::ZERO, Speed::ZERO);
         world.parts.combat_mut(id).unwrap().attack_timer = Seconds::new(timer);
         world
             .start_attack(
@@ -1259,6 +1303,72 @@ fn an_attack_task_of_unit_that_cannot_move_goes_ready_in_reach() {
             Some(SpriteId::named(sprite))
         );
     }
+}
+
+/// The attack task's Attack of a soldier without a unit AI fails at its start (`0x140a7f8c0`:
+/// `+0x6b0` null, `set_state(13)`, which shows the standing sprite at speed 1) and nothing more:
+/// it stays on the list with both targets; a soldier inside an object (`+0x2f0`) fails it alike.
+#[test]
+fn an_attack_task_of_unit_without_unit_ai_or_inside_fails_at_its_start() {
+    let failed = (
+        AttackState::Failed,
+        Some(AttackTargetId::new(object_id(50))),
+        Some(AttackTargetId::new(object_id(50))),
+        Some(SpriteId::named(300)),
+        Some(Speed::new(1.0)),
+    );
+    assert_eq!(
+        attack_started_after(|world, id| world.parts.set_unit_ai(id, None)),
+        failed
+    );
+    assert_eq!(
+        attack_started_after(|world, id| {
+            world.object_mut(id).unwrap().1.life.inside = Some(ContainerId::new(object_id(50)));
+        }),
+        failed
+    );
+}
+
+/// [`work_attack`]'s soldier after `change` and the attack task on the wolf: its Attack's state
+/// and targets, the soldier's sprite and its animation speed.
+fn attack_started_after(
+    change: impl FnOnce(&mut World, ObjectId),
+) -> (
+    AttackState,
+    Option<AttackTargetId>,
+    Option<AttackTargetId>,
+    Option<SpriteId>,
+    Option<Speed>,
+) {
+    let (mut world, task) = work_attack(UnitStance::Aggressive);
+    let id = world.players[1].objects[ListIndex::new(0)].id;
+    change(&mut world, id);
+    world
+        .start_attack(
+            PlayerId::new(1),
+            ListIndex::new(0),
+            object_id(50),
+            &task,
+            Position::new(10.4, 10.0, 0.0),
+            Notifies::Cleared,
+        )
+        .unwrap();
+    let attack = world
+        .parts
+        .actions_of(id)
+        .list
+        .attack()
+        .copied()
+        .expect("the soldier's Attack");
+    (
+        attack.state,
+        attack.target,
+        attack.target2,
+        world.players[1].objects[ListIndex::new(0)]
+            .sprite
+            .map(|active_sprite| active_sprite.graphic.id),
+        world.parts.anim_speed_of(id),
+    )
 }
 
 /// Gaia's main building 60 (master 200, class 3) at (20.5, 20.5) and its annex 61 (master 201,
