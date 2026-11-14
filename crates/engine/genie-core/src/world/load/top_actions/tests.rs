@@ -1,4 +1,5 @@
-//! Each saved top action the slice imports, and the saved actions it refuses.
+//! Each saved action the slice imports, a list of several in its order, and the saved actions
+//! it refuses.
 
 use crate::combat::attack::ATTACK;
 use crate::combat::missile::ShooterId;
@@ -20,6 +21,7 @@ use crate::objects::SpriteFlags;
 use crate::objects::SpriteId;
 use crate::objects::Voice;
 use crate::objects::WorkRate;
+use crate::objects::actions::Action as ActionsAction;
 use crate::objects::layers;
 use crate::objects::masters::ActionKind;
 use crate::objects::masters::ClassId;
@@ -172,7 +174,7 @@ fn import_drawn(
 ) -> GenieResult<layers::Action> {
     let mut actions = layers::Action::default();
     let rge_static_object = object.static_part().expect("a test object's static part");
-    saved_actions(
+    actions.list = saved_actions(
         object,
         rge_static_object,
         objects,
@@ -193,7 +195,6 @@ fn import_drawn(
         |_| Ok(task(8, 3.0)),
         |_, slot| Ok(task(slot, 2.0)),
         graphics,
-        &mut actions,
     )?;
     Ok(actions)
 }
@@ -231,18 +232,69 @@ fn second_target_or_an_unknown_action_is_unsupported() {
     );
 }
 
-/// A saved list of two actions: the list update's idle update of an action below the head
-/// (`FUN_140a78470`) is not ported, so the import refuses the action below the head rather than
-/// dropping it, and names it.
+/// A saved list of several actions imports each one in the list's order, the head first, two of
+/// one type included (the list update's idle update of those below the head,
+/// [`crate::objects::idle_update`]); an empty list is the caller's mistake.
 #[test]
-fn second_saved_action_is_refused() {
+fn saved_list_imports_every_action_in_its_order() {
+    let mut object = acting(MOVE_TO, move_to(2, 0.5));
+    let saved = [
+        (MOVE_TO, move_to(2, 0.5)),
+        (EXPLORE, explore(base(3))),
+        (MOVE_TO, move_to(4, 1.5)),
+    ];
+    combat_mut(&mut object)
+        .rge_combat_object
+        .rge_action_object
+        .actions = action_list(saved.to_vec());
+    let imported = import(&object, &PlayerObjects::default()).unwrap();
+    let one_by_one: Vec<_> = saved
+        .into_iter()
+        .map(|(kind, action)| {
+            let alone = acting(kind, action);
+            import(&alone, &PlayerObjects::default())
+                .unwrap()
+                .list
+                .head()
+                .cloned()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        imported.list.iter().cloned().collect::<Vec<_>>(),
+        one_by_one
+    );
+    assert_eq!(
+        imported
+            .list
+            .iter()
+            .map(ActionsAction::kind)
+            .collect::<Vec<_>>(),
+        [MOVE_TO, EXPLORE, MOVE_TO]
+    );
+    combat_mut(&mut object)
+        .rge_combat_object
+        .rge_action_object
+        .actions = action_list(vec![]);
+    assert_eq!(
+        import(&object, &PlayerObjects::default())
+            .unwrap_err()
+            .reason(),
+        "saved_actions called for an object without actions"
+    );
+}
+
+/// An action below the head that the slice does not import stops the whole list, whose head it
+/// would have imported.
+#[test]
+fn unimported_action_below_the_head_refuses_the_list() {
     let mut object = acting(MOVE_TO, move_to(2, 0.5));
     combat_mut(&mut object)
         .rge_combat_object
         .rge_action_object
         .actions = action_list(vec![
         (MOVE_TO, move_to(2, 0.5)),
-        (EXPLORE, explore(base(0))),
+        (action_kind(99), explore(base(0))),
     ]);
     let err = import(&object, &PlayerObjects::default()).unwrap_err();
     assert_eq!(
@@ -251,7 +303,7 @@ fn second_saved_action_is_refused() {
     );
     assert_eq!(
         err.context().collect::<Vec<_>>(),
-        [("below the head", EXPLORE.to_string().as_str())]
+        [("action type", action_kind(99).to_string().as_str())]
     );
 }
 

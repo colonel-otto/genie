@@ -8,7 +8,7 @@ use crate::gathering::make::{MakeAction, MakeState};
 use crate::gathering::{FarmStops, GatherTargetId, HuntTargetId, StopIndex};
 use crate::map::Point;
 use crate::movement::move_to::MOVE_TO;
-use crate::objects::layers;
+use crate::objects::actions::Action as ActionsAction;
 use crate::objects::masters::ClassId;
 use crate::players::Amount;
 use crate::world::Seconds;
@@ -19,11 +19,7 @@ use crate::{GenieError, GenieResult};
 use genie_save::generated::world::Action;
 
 /// A farm's Make (21): its timers and task; it makes no sub-action.
-pub fn import_make(
-    saved: &Saved<'_>,
-    task_at: TaskAt<'_>,
-    actions: &mut layers::Action,
-) -> GenieResult<()> {
+pub fn import_make(saved: &Saved<'_>, task_at: TaskAt<'_>) -> GenieResult<ActionsAction> {
     let base = saved.base;
     let make = saved
         .action
@@ -34,22 +30,17 @@ pub fn import_make(
     if base.sub_actions.entries().next().is_some() {
         return Err(GenieError::unsupported("a saved Make with a sub-action"));
     }
-    actions.list.set_make(Some(MakeAction {
+    Ok(ActionsAction::from(MakeAction {
         state: MakeState::of_byte(base.state)?,
         remaining: Amount::new(base.timer),
         total: Amount::new(make.work_timer),
         task: saved.task(task_at)?,
-    }));
-    Ok(())
+    }))
 }
 
 /// The Hunt (110): its task, drop site and lead, with its Attack or `MoveTo`. Its Attack reads
 /// and changes the unit's sprite from here on.
-pub fn import_hunt(
-    saved: &Saved<'_>,
-    task_at: TaskAt<'_>,
-    actions: &mut layers::Action,
-) -> GenieResult<()> {
+pub fn import_hunt(saved: &Saved<'_>, task_at: TaskAt<'_>) -> GenieResult<ActionsAction> {
     use crate::gathering::hunt::{HuntAction, HuntState};
     let base = saved.base;
     let part = saved
@@ -108,8 +99,7 @@ pub fn import_hunt(
             ),
         },
     };
-    actions.list.set_hunt(Some(hunt));
-    Ok(())
+    Ok(ActionsAction::from(hunt))
 }
 
 /// A Hunt's Attack. A swing past its hit: the swing's times (`+0xb0`, `+0xb4`, unsaved) are
@@ -131,11 +121,7 @@ fn hunt_attack(saved: &Saved<'_>, sub: &Action) -> GenieResult<Attack> {
 }
 
 /// The Gather (5): its stops and task, with its `MoveTo`.
-pub fn import_gather(
-    saved: &Saved<'_>,
-    task_at: TaskAt<'_>,
-    actions: &mut layers::Action,
-) -> GenieResult<()> {
+pub fn import_gather(saved: &Saved<'_>, task_at: TaskAt<'_>) -> GenieResult<ActionsAction> {
     use crate::gathering::gather::{GatherAction, GatherState};
     let base = saved.base;
     let part = saved
@@ -193,6 +179,5 @@ pub fn import_gather(
         farm: Point::new(part.farm_x, part.farm_y),
         gather_at: Point::new(part.gather_x, part.gather_y),
     };
-    actions.list.set_gather(Some(gather));
-    Ok(())
+    Ok(ActionsAction::from(gather))
 }

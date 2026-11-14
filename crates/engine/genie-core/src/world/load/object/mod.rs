@@ -597,8 +597,8 @@ fn row(
                 )
             },
             masters.map(|master_table| &master_table.graphics),
-            &mut actions,
-        ),
+        )
+        .map(|list| actions.list = list),
         // an object without actions in a save: its default task's action, which the game starts
         // in state 2 only (`RGE_Action_Object::update`: an Artifact exists from the load on, a
         // Fly starts in its first update); a dead object's list stays empty

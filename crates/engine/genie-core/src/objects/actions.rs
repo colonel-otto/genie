@@ -355,6 +355,20 @@ impl ActionList {
     }
 }
 
+impl FromIterator<Action> for ActionList {
+    /// The actions in their order, the first at the head: a saved list's, as its load reads it.
+    fn from_iter<I: IntoIterator<Item = Action>>(actions: I) -> Self {
+        Self(actions.into_iter().collect())
+    }
+}
+
+impl Extend<Action> for ActionList {
+    /// The actions after those it holds, in their order.
+    fn extend<I: IntoIterator<Item = Action>>(&mut self, actions: I) {
+        self.0.extend(actions);
+    }
+}
+
 impl<'list> IntoIterator for &'list ActionList {
     type Item = &'list Action;
     type IntoIter = Iter<'list, Action>;

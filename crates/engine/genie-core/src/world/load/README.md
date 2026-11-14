@@ -13,7 +13,7 @@ masters (genie-import's tables).
 - `object/` holds a saved object as a row of the world and its parts.
 - `object_parts/` holds an object's lifecycle and its unit AI.
 - `movers/` holds a moving object's movement and its path levels.
-- `top_actions/` holds an object's top action.
+- `top_actions/` holds an object's action list.
 - `sub_actions/` holds a unit's sub-actions, its tasks and a building's production.
 - `fixtures.rs` holds the tests' save records.
 
@@ -35,7 +35,7 @@ masters (genie-import's tables).
 | [`object/`](object/) | A saved object as the slice's object (`object`: its row, `unit`, and its parts): its town bell, a building's gate and its construction. |
 | [`object_parts/`](object_parts/) | A saved object's lifecycle fields and its unit AI. |
 | [`sub_actions/`](sub_actions/) | A saved unit's reload, sprite and Attack, its Build and Fly tasks, a building's production and gather point, and the default task an object's first update starts. |
-| [`top_actions/`](top_actions/) | A saved object's top action as the slice models it (`saved_actions`). |
+| [`top_actions/`](top_actions/) | A saved object's action list as the slice models it (`saved_actions`), each action by its kind. |
 | [`world/`](world/) | The world as a save holds it (`saved_world`): every player's objects in their saved order, its technologies, wonder time, ghosts, AI settings and history, the map, the groups and the garrisons' firepower; and as the game's load leaves it (`loaded_world`). |
 <!-- /files -->
 
